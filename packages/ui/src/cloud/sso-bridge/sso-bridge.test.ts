@@ -559,7 +559,49 @@ describe("signOutFromSsoBridgedHost", () => {
       await signOutFromSsoBridgedHost("cloud.eliza.app", fn);
       expect(isSsoLoggedOut()).toBe(true);
       expect(calls[0].url).toBe("https://cloud.eliza.app/api/auth/logout");
+      expect(calls[0].init).toMatchObject({
+        method: "POST",
+        credentials: "include",
+      });
+      expect(new Headers(calls[0].init?.headers).get("content-type")).toBe(
+        "application/json",
+      );
+      expect(new Headers(calls[0].init?.headers).get("authorization")).toBe(
+        `Bearer ${token}`,
+      );
       expect(proofAtServerLogoutIssue).toBe(false);
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("rejects when the hosted session cannot be ended", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 204 }))) as typeof fetch;
+    try {
+      const { fn } = fetchStub(() =>
+        json(403, { error: "csrf_marker_required" }),
+      );
+      await expect(
+        signOutFromSsoBridgedHost("cloud.eliza.app", fn),
+      ).rejects.toThrow("could not end the browser session (403)");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("rejects when the hosted logout request cannot reach the server", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 204 }))) as typeof fetch;
+    try {
+      const networkFailure = new TypeError("network unavailable");
+      const fn = (() => Promise.reject(networkFailure)) as typeof fetch;
+      await expect(
+        signOutFromSsoBridgedHost("cloud.eliza.app", fn),
+      ).rejects.toBe(networkFailure);
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
     } finally {
       globalThis.fetch = realFetch;
@@ -581,6 +623,30 @@ describe("prepareSsoAccountSwitch", () => {
       );
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
       expect(isSsoLoggedOut()).toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("authorizes the non-simple account-switch logout request", async () => {
+    const token = liveToken();
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 204 }))) as typeof fetch;
+    try {
+      const { fn, calls } = fetchStub(() => json(200, { success: true }));
+      await prepareSsoAccountSwitch("eliza.app", fn);
+      expect(calls[0].init).toMatchObject({
+        method: "POST",
+        credentials: "include",
+      });
+      expect(new Headers(calls[0].init?.headers).get("content-type")).toBe(
+        "application/json",
+      );
+      expect(new Headers(calls[0].init?.headers).get("authorization")).toBe(
+        `Bearer ${token}`,
+      );
     } finally {
       globalThis.fetch = realFetch;
     }

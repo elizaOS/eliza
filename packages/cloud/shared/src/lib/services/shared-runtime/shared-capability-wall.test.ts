@@ -10,6 +10,15 @@ import {
 describe("Shared capability wall", () => {
   test.each([
     ["remind me tomorrow at 9", "reminders"],
+    ["Clean the reminder list please", "reminders"],
+    ["Remove the reminder add something in my todo", "reminders"],
+    ["update my Stretch reminder", "reminders"],
+    ["Snooze my reminder Stretch for 5 minutes", "reminders"],
+    ["Complete the reminder Stretch", "reminders"],
+    ["clear all my reminders", "reminders"],
+    ["Dismiss all reminders", "reminders"],
+    ["Cancel all my reminders", "reminders"],
+    ["delete the Stretch reminder", "reminders"],
     ["add milk to my todo list", "todos"],
     ["add milk to my tasks", "todos"],
     ["show my checklist", "todos"],
@@ -58,6 +67,11 @@ describe("Shared capability wall", () => {
     "Give me two ideas for making a meeting shorter.",
     "Remember this code word for my next message: apricot-816.",
     "Make this message shorter.",
+    "Can you clear the list?",
+    "Could you not update my reminder?",
+    "I don't want you to update my reminder to 3pm",
+    "Don’t update my reminder",
+    "Update the reminder Stretch to 4pm, actually don't",
   ])("keeps discussion and research in Shared: %s", (message) => {
     expect(resolveSharedCapabilityWall(message)).toBeNull();
   });

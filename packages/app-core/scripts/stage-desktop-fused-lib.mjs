@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * stage-desktop-fused-lib.mjs — build + stage the fused `libelizainference` for
  * the DESKTOP host (Linux / macOS / Windows) with host-GPU autodetection and a
@@ -19,7 +19,7 @@
  * works with no env wiring.
  *
  * Usage:
- *   node packages/app-core/scripts/stage-desktop-fused-lib.mjs \
+ *   bun packages/app-core/scripts/stage-desktop-fused-lib.mjs \
  *     [--variant auto|cpu|cuda|vulkan|metal|hip] [--out <dir>] [--jobs N]
  *     [--portable-cpu] [--force]
  *
@@ -79,7 +79,7 @@ function run(cmd, args, opts = {}) {
 }
 function removePathRecursive(targetPath) {
   const res = spawnSync(
-    "node",
+    process.execPath,
     [cleanupHelperScript, path.relative(repoRoot, targetPath)],
     {
       cwd: repoRoot,

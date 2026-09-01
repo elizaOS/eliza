@@ -16,12 +16,14 @@
  * vs. yolo execution policy for shell tools); do not conflate.
  */
 
+import { statSync } from "node:fs";
 import {
   type DeploymentTargetConfig,
   normalizeDeploymentTargetConfig,
 } from "@elizaos/shared";
 import * as zod from "zod";
 import { loadEffectiveElizaConfig } from "../../config/config.ts";
+import { resolveConfigPath } from "../../config/paths.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
@@ -130,18 +132,58 @@ export function resolveRuntimeMode(
 }
 
 /**
- * Disk-backed resolver. Reads `eliza.json` from the canonical config path on
- * every call so a mode change persisted by first-run/settings applies to the
- * next request without a restart.
+ * Disk-backed resolver with an mtime-keyed cache. A persisted mode change
+ * still applies to the next request without a restart (the settings write
+ * bumps the config file's mtime, invalidating the cache), but the pre-dispatch
+ * route guard no longer pays a full four-file config load per request — under
+ * a client request storm that read amplification alone pinned the API core
+ * (observed live: ~40 config loads/second, 130% CPU).
  */
-export function getRuntimeMode(): RuntimeMode {
-  return resolveRuntimeMode(parseRuntimeModeConfig(loadEffectiveElizaConfig()))
-    .mode;
+let cachedSnapshot: RuntimeModeSnapshot | null = null;
+let cachedConfigMtimeMs = -1;
+let cachedStatAtMs = 0;
+const SNAPSHOT_STAT_INTERVAL_MS = 1_000;
+
+function currentConfigMtimeMs(): number {
+  try {
+    return statSync(resolveConfigPath()).mtimeMs;
+  } catch {
+    // Missing config file: defaults apply; represent as a stable sentinel so
+    // the cache still works and creation of the file invalidates it.
+    return 0;
+  }
 }
 
-/** Disk-backed snapshot. */
+function resolveSnapshotCached(): RuntimeModeSnapshot {
+  const now = Date.now();
+  if (cachedSnapshot && now - cachedStatAtMs < SNAPSHOT_STAT_INTERVAL_MS) {
+    return cachedSnapshot;
+  }
+  const mtimeMs = currentConfigMtimeMs();
+  cachedStatAtMs = now;
+  if (!cachedSnapshot || mtimeMs !== cachedConfigMtimeMs) {
+    cachedConfigMtimeMs = mtimeMs;
+    cachedSnapshot = resolveRuntimeMode(
+      parseRuntimeModeConfig(loadEffectiveElizaConfig()),
+    );
+  }
+  return cachedSnapshot;
+}
+
+/** Test-only: drop the snapshot cache so config edits apply immediately. */
+export function __resetRuntimeModeSnapshotCacheForTests(): void {
+  cachedSnapshot = null;
+  cachedConfigMtimeMs = -1;
+  cachedStatAtMs = 0;
+}
+
+export function getRuntimeMode(): RuntimeMode {
+  return resolveSnapshotCached().mode;
+}
+
+/** Disk-backed snapshot (cached; see resolver note above). */
 export function getRuntimeModeSnapshot(): RuntimeModeSnapshot {
-  return resolveRuntimeMode(parseRuntimeModeConfig(loadEffectiveElizaConfig()));
+  return resolveSnapshotCached();
 }
 
 /** True for both `local` and `local-only`. */

@@ -14,11 +14,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createGoogleConnectorAccountProvider,
   revokeGoogleOAuthGrantWithFetch,
+  stableGoogleConnectorAccountId,
 } from "./connector-account-provider.js";
 
 const AGENT_ID = "00000000-0000-4000-8000-00000000e19a" as UUID;
 const ACCOUNT_ID = "10000000-0000-4000-8000-000000000001" as UUID;
 const VAULT_REF = `connector.${AGENT_ID}.google.${ACCOUNT_ID}.oauth_tokens`;
+const SIBLING_ACCOUNT_ID = "10000000-0000-4000-8000-000000000002" as UUID;
+const SIBLING_VAULT_REF = `connector.${AGENT_ID}.google.${SIBLING_ACCOUNT_ID}.oauth_tokens`;
 
 function runtimeHarness() {
   const adapter = new InMemoryDatabaseAdapter();
@@ -75,6 +78,8 @@ async function connectedManager(harness: ReturnType<typeof runtimeHarness>) {
       purpose: ["messaging"],
       accessGate: "owner_binding",
       status: "connected",
+      externalId: "google-shared-subject",
+      accountKey: stableGoogleConnectorAccountId("google-shared-subject", "OWNER"),
       createdAt: Date.now(),
       updatedAt: Date.now(),
       metadata: {},
@@ -150,6 +155,49 @@ describe("Google connector disconnect", () => {
     await expect(harness.adapter.getConnectorAccount({ id: ACCOUNT_ID })).resolves.toBeNull();
   });
 
+  it("removes one role locally without revoking a Google grant still used by a sibling role", async () => {
+    const harness = runtimeHarness();
+    const manager = await connectedManager(harness);
+    harness.vault.set(
+      SIBLING_VAULT_REF,
+      JSON.stringify({ access_token: "agent-access", refresh_token: "agent-refresh" })
+    );
+    await manager.upsertAccount(
+      "google",
+      {
+        id: SIBLING_ACCOUNT_ID,
+        provider: "google",
+        role: "AGENT",
+        purpose: ["messaging"],
+        accessGate: "owner_binding",
+        status: "connected",
+        externalId: "google-shared-subject",
+        accountKey: stableGoogleConnectorAccountId("google-shared-subject", "AGENT"),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+      SIBLING_ACCOUNT_ID
+    );
+    await harness.adapter.setConnectorAccountCredentialRef({
+      accountId: SIBLING_ACCOUNT_ID,
+      credentialType: "oauth.tokens",
+      vaultRef: SIBLING_VAULT_REF,
+    });
+
+    await expect(manager.deleteAccount("google", SIBLING_ACCOUNT_ID)).resolves.toBe(true);
+
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(harness.vault.has(SIBLING_VAULT_REF)).toBe(false);
+    expect(harness.vault.has(VAULT_REF)).toBe(true);
+    await expect(manager.getAccount("google", ACCOUNT_ID)).resolves.toMatchObject({
+      status: "connected",
+      role: "OWNER",
+    });
+    await expect(
+      harness.adapter.listConnectorAccountCredentialRefs({ accountId: ACCOUNT_ID })
+    ).resolves.toHaveLength(1);
+  });
+
   it("keeps the connected account and credentials when Google cannot confirm revocation", async () => {
     const harness = runtimeHarness();
     const manager = await connectedManager(harness);
@@ -170,6 +218,51 @@ describe("Google connector disconnect", () => {
     });
     await expect(
       harness.adapter.listConnectorAccountCredentialRefs({ accountId: ACCOUNT_ID })
+    ).resolves.toHaveLength(1);
+  });
+
+  it("rejects a connected account with no stable identity before revoking its grant", async () => {
+    const harness = runtimeHarness();
+    await harness.adapter.initialize();
+    const manager = getConnectorAccountManager(harness.runtime);
+    manager.registerProvider(createGoogleConnectorAccountProvider(harness.runtime));
+    const account = await manager.upsertAccount(
+      "google",
+      {
+        id: ACCOUNT_ID,
+        provider: "google",
+        role: "OWNER",
+        purpose: ["messaging"],
+        accessGate: "owner_binding",
+        status: "connected",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        metadata: {},
+      },
+      ACCOUNT_ID
+    );
+    await harness.adapter.setConnectorAccountCredentialRef({
+      accountId: account.id as UUID,
+      credentialType: "oauth.tokens",
+      vaultRef: VAULT_REF,
+    });
+
+    await expect(manager.deleteAccount("google", account.id)).rejects.toMatchObject({
+      code: "GOOGLE_OAUTH_EXTERNAL_ID_MISSING",
+    });
+
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(harness.revokeWatches).not.toHaveBeenCalled();
+    expect(harness.remove).not.toHaveBeenCalled();
+    expect(harness.vault.has(VAULT_REF)).toBe(true);
+    await expect(
+      harness.adapter.getConnectorAccount({ id: account.id as UUID })
+    ).resolves.toMatchObject({
+      status: "connected",
+      deletedAt: null,
+    });
+    await expect(
+      harness.adapter.listConnectorAccountCredentialRefs({ accountId: account.id as UUID })
     ).resolves.toHaveLength(1);
   });
 
@@ -196,7 +289,9 @@ describe("Google connector disconnect", () => {
     const manager = await connectedManager(harness);
     harness.remove.mockRejectedValueOnce(new Error("vault unavailable"));
 
-    await expect(manager.deleteAccount("google", ACCOUNT_ID)).rejects.toThrow(/vault unavailable/);
+    await expect(manager.deleteAccount("google", ACCOUNT_ID)).rejects.toThrow(
+      /sibling degradation/i
+    );
     const fetchStub = vi.mocked(globalThis.fetch);
     expect(fetchStub).toHaveBeenCalledTimes(1);
     await expect(harness.adapter.getConnectorAccount({ id: ACCOUNT_ID })).resolves.toMatchObject({

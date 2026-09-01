@@ -6,8 +6,16 @@
 // auto-enable engine loads dozens of these per boot.
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
-/** Enable when an `imessage` connector block is present and not explicitly disabled. */
+function isFalse(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "0" || normalized === "false" || normalized === "no";
+}
+
+/** Enable from connector config or an explicit environment-backed transport. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
+  if (isFalse(ctx.env.IMESSAGE_ENABLED)) return false;
+  if (ctx.env.IMESSAGE_TRANSPORT?.trim().toLowerCase() === "blooio") return true;
+  if (ctx.env.IMESSAGE_ENABLED?.trim()) return true;
   const c = (ctx.config.connectors as Record<string, unknown> | undefined)
     ?.imessage;
   if (!c || typeof c !== "object") return false;

@@ -360,6 +360,19 @@ describe("EventEditorDrawer", () => {
     const title = screen.getByLabelText("Event title") as HTMLInputElement;
     expect(title.value).toBe("");
 
+    const drawerStyle = screen.getByTestId("event-editor-drawer").style;
+    expect(drawerStyle.top).toBe("0px");
+    expect(drawerStyle.right).toBe("0px");
+    expect(drawerStyle.bottom).toBe("0px");
+    expect(drawerStyle.left).toBe("auto");
+    expect(drawerStyle.width).toBe("28rem");
+    expect(drawerStyle.maxWidth).toBe("100vw");
+    expect(drawerStyle.height).toBe("100dvh");
+    expect(drawerStyle.margin).toBe("0px");
+    expect(drawerStyle.padding).toBe("0px");
+    expect(drawerStyle.overflowY).toBe("auto");
+    expect(drawerStyle.transform).toBe("none");
+
     const start = document.getElementById(
       "event-editor-start-at",
     ) as HTMLInputElement;

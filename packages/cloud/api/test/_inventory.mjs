@@ -2,7 +2,6 @@
  * Per-route inventory of cloud/apps/api/.
  *
  * Categorizes every route.ts file into:
- *   - codegen-skipped: Explicitly excluded from the generated Worker router.
  *   - hono-real:   Hono-shaped route AND does NOT return a 501
  *                  legacy Worker migration body.
  *   - hono-legacy: Hono-shaped route AND returns the migration body.
@@ -24,7 +23,6 @@ import {
   collectRouteEntries,
   fileToHttpPaths,
   isHonoRouteSource,
-  isRouteCodegenSkippedSource,
 } from "../src/_generate-router.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -44,12 +42,10 @@ const expectedMountedRoutes = entries.map((entry) => entry.path);
 
 const inventory = files.map((p) => {
   const text = readFileSync(p, "utf8");
-  const isCodegenSkipped = isRouteCodegenSkippedSource(text);
   const isHono = isHonoRouteSource(text);
   const hasLegacyWorkerBody = LEGACY_WORKER_BODY_RE.test(text);
   let kind;
-  if (isCodegenSkipped) kind = "codegen-skipped";
-  else if (isHono) kind = hasLegacyWorkerBody ? "hono-legacy" : "hono-real";
+  if (isHono) kind = hasLegacyWorkerBody ? "hono-legacy" : "hono-real";
   else kind = "next"; // refined below
   return {
     path: p,
@@ -80,17 +76,10 @@ const counts = inventory.reduce(
     acc[f.kind] = (acc[f.kind] ?? 0) + 1;
     return acc;
   },
-  {
-    "codegen-skipped": 0,
-    "hono-real": 0,
-    "hono-legacy": 0,
-    "next-only": 0,
-    "dead-next": 0,
-  },
+  { "hono-real": 0, "hono-legacy": 0, "next-only": 0, "dead-next": 0 },
 );
 
 const grouped = {
-  "codegen-skipped": [],
   "hono-real": [],
   "hono-legacy": [],
   "next-only": [],
@@ -126,9 +115,6 @@ lines.push(
 lines.push("");
 lines.push("| Bucket | Count | Meaning |");
 lines.push("| --- | ---: | --- |");
-lines.push(
-  `| codegen-skipped | ${counts["codegen-skipped"]} | Explicitly excluded from the generated Worker router by an exact first-line directive. |`,
-);
 lines.push(
   `| hono-real | ${counts["hono-real"]} | Hono handler with a real implementation; mounted by codegen. |`,
 );
@@ -166,13 +152,7 @@ lines.push(`### Stale generated routes (${staleGenerated.length})`);
 lines.push("");
 for (const route of staleGenerated) lines.push(`- \`${route}\``);
 lines.push("");
-for (const bucket of [
-  "codegen-skipped",
-  "hono-legacy",
-  "dead-next",
-  "next-only",
-  "hono-real",
-]) {
+for (const bucket of ["hono-legacy", "dead-next", "next-only", "hono-real"]) {
   lines.push(`## ${bucket} (${grouped[bucket].length})`);
   lines.push("");
   for (const r of grouped[bucket]) lines.push(`- \`${r}\``);

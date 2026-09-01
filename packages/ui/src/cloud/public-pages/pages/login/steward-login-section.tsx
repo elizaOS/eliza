@@ -71,6 +71,7 @@ import {
   DEFAULT_STEWARD_TENANT_ID,
 } from "../../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
+import { clearSsoLoggedOut } from "../../../sso-bridge/sso-bridge";
 import { getErrorMessage } from "../../lib/error-message";
 import {
   consumePendingOAuthReturnTo,
@@ -186,6 +187,7 @@ async function persistStewardToken(token: string): Promise<void> {
       "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
     );
   }
+  clearSsoLoggedOut();
 }
 
 /**
@@ -546,8 +548,10 @@ function writeSessionCachedProviders(providers: StewardProviders): void {
 function loadStewardProviders(auth: {
   getProviders: () => Promise<StewardProviders>;
 }): Promise<StewardProviders> {
-  if (cachedStewardProviders) return Promise.resolve(cachedStewardProviders);
   const requestGeneration = stewardProvidersRequestGeneration;
+  // Cached capabilities may paint non-wallet controls early, but they are not
+  // current authorization. Always query Steward so wallet providers remain
+  // gated on this document's live tenant configuration.
   stewardProvidersPromise ??= auth.getProviders().then(
     (loadedProviders) => {
       // error-policy:J3 SDK response data is an untrusted transport boundary.
@@ -717,11 +721,19 @@ export default function StewardLoginSection() {
     string | null
   >(null);
   const [providerDiscoveryAttempt, setProviderDiscoveryAttempt] = useState(0);
+  const providerDiscoveryEpochRef = useRef(0);
   const [providers, setProviders] = useState<StewardProviders | null>(
     () =>
       cachedStewardProviders ??
       readSessionCachedProviders() ??
       (PLAYWRIGHT_TEST_AUTH_ENABLED ? DEFAULT_PROVIDERS : null),
+  );
+  // A sessionStorage/module snapshot is a paint accelerator, not an
+  // authorization signal. Wallet provider mounts can auto-reconnect persisted
+  // browser state, so require a successful live discovery for this document
+  // before exposing either wallet intent.
+  const [walletProvidersConfirmed, setWalletProvidersConfirmed] = useState(
+    PLAYWRIGHT_TEST_AUTH_ENABLED,
   );
   const [passkeyCapability, setPasskeyCapability] =
     useState<WebPasskeyCapability | null>(
@@ -742,11 +754,21 @@ export default function StewardLoginSection() {
   const hasIdentityProviders =
     enabledOAuthProviders.length > 0 || providers?.telegram === true;
   const emailEnabled = providers !== null && providers.email !== false;
-  const showWallets = providers !== null && hasAnyWalletProvider(providers);
+  const showWallets =
+    walletProvidersConfirmed &&
+    providers !== null &&
+    hasAnyWalletProvider(providers);
   const showPasskey =
     providers !== null &&
     providers.passkey !== false &&
     passkeyCapability?.usable === true;
+  const hasUsableNonWalletProvider =
+    providers !== null &&
+    (emailEnabled ||
+      providers.sms === true ||
+      showPasskey ||
+      hasIdentityProviders ||
+      LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED);
 
   const abortSharedEmailSessionRecovery = useCallback(() => {
     const pending = sharedSessionRecoveryRef.current;
@@ -799,11 +821,20 @@ export default function StewardLoginSection() {
       event: PageTransitionEvent,
     ) => {
       if (!event.persisted) return;
+      // A BFCache restoration resumes this exact React tree; it does not
+      // remount the section or rerun discovery. Revoke live wallet authority
+      // before doing anything else so persisted adapters cannot auto-reconnect
+      // under a capability result from the prior page lifetime.
+      providerDiscoveryEpochRef.current += 1;
+      discardStewardProvidersRequest();
+      setWalletProvidersConfirmed(false);
+      setProviderDiscoveryError(null);
+      setProvidersLoaded(false);
+      setProviderDiscoveryAttempt((current) => current + 1);
       setLoading((current) => {
         if (
-          current === "google" ||
-          current === "discord" ||
-          current === "github"
+          current !== null &&
+          STEWARD_OAUTH_PROVIDERS.some((provider) => provider === current)
         ) {
           return null;
         }
@@ -811,10 +842,10 @@ export default function StewardLoginSection() {
       });
     };
 
-    // OAuth owns the current document, but browser Back may revive this React
-    // tree from the back/forward cache with its pre-navigation loading state.
-    // A fresh load already starts idle; only a persisted history restoration
-    // needs to release the provider lock (#20385).
+    // OAuth and wallet authority belong to the current document lifetime, but
+    // browser Back may revive this React tree from the back/forward cache. A
+    // fresh load already starts unconfirmed; only a persisted restoration must
+    // explicitly release the OAuth lock and rediscover wallet capability.
     window.addEventListener("pageshow", recoverOAuthIntentAfterHistoryRestore);
     return () => {
       window.removeEventListener(
@@ -838,28 +869,30 @@ export default function StewardLoginSection() {
     // effect re-runs, so the retry surface still gets live discovery.
     if (completingCallback) return;
     let cancelled = false;
+    const discoveryEpoch = providerDiscoveryEpochRef.current;
+    const stillOwnsDiscovery = () =>
+      !cancelled && providerDiscoveryEpochRef.current === discoveryEpoch;
     loadStewardProvidersWithTimeout(auth)
       .then((loadedProviders) => {
-        if (!cancelled) {
+        if (stillOwnsDiscovery()) {
           setProviderDiscoveryError(null);
           setProviders(loadedProviders);
+          setWalletProvidersConfirmed(true);
         }
       })
       .catch((providerError: unknown) => {
+        if (!stillOwnsDiscovery()) return;
         discardStewardProvidersRequest();
-        if (cancelled) return;
-        // error-policy:J4 with a session-cached provider set already rendered,
-        // a failed background reconcile keeps the usable cached form instead
-        // of blasting an error over working sign-in options; a first-load
-        // failure (nothing rendered yet) still surfaces the error.
-        if (readSessionCachedProviders() === null) {
-          setProviderDiscoveryError(
-            getErrorMessage(providerError, "Steward provider discovery failed"),
-          );
-        }
+        // A cached non-wallet method can remain usable, but wallet mounts stay
+        // gated on live discovery. Always retain the failure so wallet-only
+        // tenants receive a recovery surface instead of an empty form, while
+        // mixed tenants can show the same retry non-destructively.
+        setProviderDiscoveryError(
+          getErrorMessage(providerError, "Steward provider discovery failed"),
+        );
       })
       .finally(() => {
-        if (!cancelled) setProvidersLoaded(true);
+        if (stillOwnsDiscovery()) setProvidersLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -869,9 +902,11 @@ export default function StewardLoginSection() {
   const retryProviderDiscovery = useCallback(() => {
     // Return to the reserved loading geometry and trigger a fresh server query;
     // never render a fabricated subset of sign-in methods.
+    providerDiscoveryEpochRef.current += 1;
     discardStewardProvidersRequest();
     setProviderDiscoveryError(null);
     setProvidersLoaded(false);
+    setWalletProvidersConfirmed(false);
     setProviderDiscoveryAttempt((attempt) => attempt + 1);
   }, []);
 
@@ -2349,12 +2384,15 @@ export default function StewardLoginSection() {
     );
   }
 
-  // A fresh browser has no authoritative provider set to render when discovery
-  // fails. Showing DEFAULT_PROVIDERS here used to make the same Steward login
-  // look like a second email/passkey-only product and could hide enabled OAuth
-  // methods. Fail visibly and retry discovery instead. A valid session-cached
-  // set takes the separate background-reconcile path above and remains usable.
-  if (providerDiscoveryError || providers === null) {
+  // A fresh browser — or a wallet-only cached tenant whose wallets cannot be
+  // activated without live confirmation — has no usable provider set when
+  // discovery fails. Fail visibly with a retry rather than rendering an empty
+  // email shell. Mixed cached tenants keep their non-wallet methods below and
+  // receive the non-destructive retry warning in the normal form.
+  if (
+    providers === null ||
+    (providerDiscoveryError !== null && !hasUsableNonWalletProvider)
+  ) {
     return (
       <ReservedLoginFrame>
         <div
@@ -2402,6 +2440,30 @@ export default function StewardLoginSection() {
 
   return (
     <div className="space-y-4">
+      {providerDiscoveryError && (
+        <Alert variant="warning">
+          <AlertCircle aria-hidden="true" />
+          <AlertDescription>
+            <p>
+              {t("cloud.login.providerDiscovery.message", {
+                defaultValue:
+                  "Retry to load the sign-in methods enabled for this Eliza Cloud account.",
+              })}
+            </p>
+            <Button
+              variant="outlineMuted"
+              type="button"
+              className="hosted-signin-focus-emphasis mt-2 min-h-touch w-full"
+              onClick={retryProviderDiscovery}
+            >
+              {t("cloud.login.providerDiscovery.retry", {
+                defaultValue: "Retry sign-in options",
+              })}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {callbackError && (
         <Alert variant="destructive">
           <AlertCircle />
@@ -2810,11 +2872,16 @@ export default function StewardLoginSection() {
                   </div>
                 }
               >
-                <StewardWalletProviders>
+                <StewardWalletProviders
+                  enableEvm={providers.siwe === true}
+                  enableSolana={providers.siws === true}
+                >
                   <WalletButtons
                     auth={auth}
                     autoStart={autoStartWallet}
                     disabled={isLoading}
+                    siwe={providers.siwe === true}
+                    siws={providers.siws === true}
                     loadingProvider={
                       loading === "ethereum" || loading === "solana"
                         ? (loading as WalletKind)

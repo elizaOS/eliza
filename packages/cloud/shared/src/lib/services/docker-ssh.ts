@@ -83,6 +83,19 @@ function createDockerSshAbortError(hostname: string): Error {
   return error;
 }
 
+function getDockerSshAbortReason(signal: AbortSignal, hostname: string): unknown {
+  // Abort reasons are part of the caller's cancellation contract. Preserve the
+  // exact value (including non-Error values) when the runtime exposes one, and
+  // synthesize a redacted AbortError only for older/incomplete implementations.
+  try {
+    const reason = signal.reason;
+    if (reason !== undefined) return reason;
+  } catch {
+    // error-policy:J3 an incomplete AbortSignal becomes an explicit redacted AbortError.
+  }
+  return createDockerSshAbortError(hostname);
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -377,7 +390,7 @@ export class DockerSSHClient {
    */
   async connect(signal?: AbortSignal): Promise<void> {
     if (signal?.aborted) {
-      throw createDockerSshAbortError(this.hostname);
+      throw getDockerSshAbortReason(signal, this.hostname);
     }
     if (this.connected && this.client) {
       return;
@@ -386,7 +399,7 @@ export class DockerSSHClient {
     const SSHClientCtor = await loadSSHClientCtor();
 
     if (signal?.aborted) {
-      throw createDockerSshAbortError(this.hostname);
+      throw getDockerSshAbortReason(signal, this.hostname);
     }
 
     return new Promise<void>((resolve, reject) => {
@@ -399,14 +412,14 @@ export class DockerSSHClient {
         signal?.removeEventListener("abort", onAbort);
       };
 
-      const failPendingConnection = (error: Error) => {
+      const failPendingConnection = (error: unknown) => {
         if (settled) return;
         settled = true;
         cleanupPendingConnection();
         try {
           conn.destroy();
         } catch {
-          /* best-effort; rejection still fences this client instance */
+          // error-policy:J6 rejection still fences this failed connection instance.
         }
         this.connected = false;
         if (this.client === conn) this.client = null;
@@ -414,7 +427,8 @@ export class DockerSSHClient {
       };
 
       const onAbort = () => {
-        failPendingConnection(createDockerSshAbortError(this.hostname));
+        if (!signal) return;
+        failPendingConnection(getDockerSshAbortReason(signal, this.hostname));
       };
 
       const timeout = setTimeout(() => {
@@ -436,7 +450,7 @@ export class DockerSSHClient {
           try {
             conn.destroy();
           } catch {
-            /* best-effort */
+            // error-policy:J6 the late connection is already fenced from callers.
           }
           return;
         }
@@ -758,13 +772,13 @@ export class DockerSSHClient {
     timeoutMs?: number,
   ): Promise<void> {
     if (signal.aborted) {
-      throw createDockerSshAbortError(this.hostname);
+      throw getDockerSshAbortReason(signal, this.hostname);
     }
     if (!this.connected || !this.client) {
       await this.connect(signal);
     }
     if (signal.aborted) {
-      throw createDockerSshAbortError(this.hostname);
+      throw getDockerSshAbortReason(signal, this.hostname);
     }
 
     this.lastActivityMs = Date.now();
@@ -774,7 +788,8 @@ export class DockerSSHClient {
     return new Promise<void>((resolve, reject) => {
       let outputBytes = 0;
       let settled = false;
-      let terminalError: Error | undefined;
+      let terminalError: unknown;
+      let hasTerminalError = false;
       let stream: ClientChannel | undefined;
       let closeGraceTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -784,11 +799,11 @@ export class DockerSSHClient {
         signal.removeEventListener("abort", onAbort);
       };
 
-      const finish = (error?: Error) => {
+      const finish = (error?: unknown) => {
         if (settled) return;
         settled = true;
         cleanup();
-        if (error) reject(error);
+        if (error !== undefined) reject(error);
         else resolve();
       };
 
@@ -796,7 +811,7 @@ export class DockerSSHClient {
         try {
           client.destroy();
         } catch {
-          /* best-effort; the local channel was already destroyed */
+          // error-policy:J6 the local channel was already destroyed before session teardown.
         }
         if (this.client === client) {
           this.client = null;
@@ -808,18 +823,19 @@ export class DockerSSHClient {
         try {
           stream?.close();
         } catch {
-          /* best-effort */
+          // error-policy:J6 destroy below remains the authoritative channel teardown.
         }
         try {
           stream?.destroy();
         } catch {
-          /* best-effort */
+          // error-policy:J6 the grace timer destroys the dedicated session if close never arrives.
         }
       };
 
-      const cancel = (error: Error) => {
-        if (settled || terminalError) return;
+      const cancel = (error: unknown) => {
+        if (settled || hasTerminalError) return;
         terminalError = error;
+        hasTerminalError = true;
         clearTimeout(commandTimer);
 
         if (!stream) {
@@ -844,7 +860,7 @@ export class DockerSSHClient {
       };
 
       const onAbort = () => {
-        cancel(createDockerSshAbortError(this.hostname));
+        cancel(getDockerSshAbortReason(signal, this.hostname));
       };
 
       const commandTimer = setTimeout(() => {
@@ -866,7 +882,7 @@ export class DockerSSHClient {
           try {
             openedStream?.destroy();
           } catch {
-            /* best-effort */
+            // error-policy:J6 the parent SSH session was already fenced before this late callback.
           }
           return;
         }
@@ -879,7 +895,7 @@ export class DockerSSHClient {
 
         const observeBoundedOutput = (data: Buffer) => {
           try {
-            if (terminalError || settled) return;
+            if (hasTerminalError || settled) return;
             outputBytes += data.byteLength;
             if (outputBytes > ABORTABLE_STDIN_MAX_OUTPUT_BYTES) {
               cancel(
@@ -903,7 +919,7 @@ export class DockerSSHClient {
           observeBoundedOutput(data);
         });
         stream.on("close", (code: number) => {
-          if (terminalError) {
+          if (hasTerminalError) {
             finish(terminalError);
             return;
           }
@@ -918,7 +934,7 @@ export class DockerSSHClient {
           }
         });
         stream.on("error", () => {
-          if (terminalError) return;
+          if (hasTerminalError) return;
           cancel(new Error(`[docker-ssh] stdin channel failed on ${this.hostname}`));
         });
 
@@ -929,6 +945,7 @@ export class DockerSSHClient {
         try {
           stream.end(input);
         } catch {
+          // error-policy:J1 translate a synchronous SSH writable failure after teardown starts.
           cancel(new Error(`[docker-ssh] stdin write failed on ${this.hostname}`));
         }
       });

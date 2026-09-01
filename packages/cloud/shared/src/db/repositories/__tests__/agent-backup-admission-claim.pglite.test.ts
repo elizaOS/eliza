@@ -38,7 +38,7 @@ const CLAIM_ELIGIBILITY_SQL = await Bun.file(
   new URL("../../migrations/0364_agent_backup_admission_claim_eligibility.sql", import.meta.url),
 ).text();
 const CLAIM_RECOVERY_CURSOR_SQL = await Bun.file(
-  new URL("../../migrations/0366_agent_backup_admission_recovery_cursor.sql", import.meta.url),
+  new URL("../../migrations/0369_agent_backup_admission_recovery_cursor.sql", import.meta.url),
 ).text();
 const WORK_IDENTITY_GUARD_SQL = await Bun.file(
   new URL("../../migrations/0356_agent_backup_admission_work_identity_guard.sql", import.meta.url),
@@ -274,7 +274,8 @@ beforeAll(async () => {
     CREATE TABLE agent_sandboxes (
       id uuid PRIMARY KEY, organization_id uuid NOT NULL, status text NOT NULL,
       pool_status text, execution_tier text NOT NULL, sandbox_id text, node_id text,
-      image_digest text, lifecycle_revision bigint NOT NULL,
+      image_digest text, lifecycle_revision bigint NOT NULL, deletion_attempt_id uuid,
+      deleted_at timestamptz,
       activation_generation uuid, activation_lifecycle_revision bigint,
       activation_phase text, activation_container_id text, activation_node_id text,
       activation_image_digest text, activation_boot_id uuid,
@@ -1046,6 +1047,79 @@ describe("schedule-capture admission claims on primary PGlite", () => {
         attempts: 0,
       })),
     );
+  });
+
+  test("settles future-tier, soft-deleted, and deletion-owned sources before leasing", async () => {
+    const futureTier = source(33, {
+      priorityClass: "lifecycle_safety",
+      basePriority: 0,
+    });
+    const softDeleted = source(34, {
+      priorityClass: "lifecycle_safety",
+      basePriority: 0,
+    });
+    const deletionOwned = source(35, {
+      priorityClass: "lifecycle_safety",
+      basePriority: 0,
+    });
+    const valid = source(36, {
+      priorityClass: "lifecycle_safety",
+      basePriority: 0,
+    });
+    for (const candidate of [futureTier, softDeleted, deletionOwned, valid]) {
+      await seedSource(candidate);
+    }
+    await dbWrite.execute(sql`UPDATE agent_sandboxes
+      SET execution_tier = 'future-dedicated'
+      WHERE id = ${futureTier.sandboxId}::uuid`);
+    await dbWrite.execute(sql`UPDATE agent_sandboxes
+      SET deleted_at = clock_timestamp()
+      WHERE id = ${softDeleted.sandboxId}::uuid`);
+    await dbWrite.execute(sql`UPDATE agent_sandboxes
+      SET deletion_attempt_id = ${ids(835)}::uuid
+      WHERE id = ${deletionOwned.sandboxId}::uuid`);
+
+    const { claims } = await driveUntilClaim({
+      ownerId: OWNER_A,
+      limit: 4,
+      leaseMs: 60_000,
+    });
+
+    expect(claims.map(({ workId }) => workId)).toEqual([valid.workId]);
+    const result = await dbWrite.execute(sql`SELECT id, state, attempts,
+        lease_owner, settled_reason
+      FROM agent_backup_admission_work
+      ORDER BY id`);
+    expect(result.rows).toEqual([
+      {
+        id: futureTier.workId,
+        state: "settled",
+        attempts: 0,
+        lease_owner: null,
+        settled_reason: "SOURCE_SUPERSEDED",
+      },
+      {
+        id: softDeleted.workId,
+        state: "settled",
+        attempts: 0,
+        lease_owner: null,
+        settled_reason: "SOURCE_SUPERSEDED",
+      },
+      {
+        id: deletionOwned.workId,
+        state: "settled",
+        attempts: 0,
+        lease_owner: null,
+        settled_reason: "SOURCE_SUPERSEDED",
+      },
+      {
+        id: valid.workId,
+        state: "leased",
+        attempts: 1,
+        lease_owner: OWNER_A,
+        settled_reason: null,
+      },
+    ]);
   });
 
   test("continues when a visible recovery window transitions no rows", async () => {

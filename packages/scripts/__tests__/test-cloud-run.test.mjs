@@ -101,6 +101,21 @@ describe("chunkByBudget", () => {
 
     expect(batches.map((batch) => batch.length)).toEqual([16, 16, 8]);
   });
+
+  it("gives resource-sensitive suites a fresh process without dropping neighbors", () => {
+    const files = ["a", "b", "memory", "c", "d"];
+    const batches = chunkByBudget(files, 3, 100000, new Set(["memory"]));
+
+    expect(batches).toEqual([["a", "b"], ["memory"], ["c", "d"]]);
+    expect(batches.flat()).toEqual(files);
+  });
+
+  it("preserves later budget boundaries after extracting a singleton", () => {
+    const files = ["a", "memory", "b", "c", "d", "e"];
+    const batches = chunkByBudget(files, 3, 100000, new Set(["memory"]));
+
+    expect(batches).toEqual([["a"], ["memory"], ["b"], ["c", "d", "e"]]);
+  });
 });
 
 describe("formatBatchFiles", () => {
@@ -569,7 +584,7 @@ describe("watchdog configuration", () => {
     });
 
     expect(identity).toBe("win-creation:638915887234567890");
-    expect(invocation.command).toBe("powershell.exe");
+    expect(invocation.command).toBe("pwsh.exe");
     expect(invocation.args).toContain("-NoProfile");
     expect(invocation.args.at(-1)).toContain("Get-Process -Id 321");
     expect(invocation.args.at(-1)).not.toContain("Get-CimInstance");
@@ -579,6 +594,25 @@ describe("watchdog configuration", () => {
       timeout: 10_000,
       maxBuffer: 4096,
     });
+  });
+
+  it("falls back to Windows PowerShell when PowerShell 7 is unavailable", () => {
+    const invocations = [];
+    const identity = readProcessIdentity(321, {
+      platform: "win32",
+      spawnSyncFn: (command) => {
+        invocations.push(command);
+        if (command === "pwsh.exe") {
+          return {
+            error: Object.assign(new Error("missing"), { code: "ENOENT" }),
+          };
+        }
+        return { status: 0, stdout: "638915887234567890" };
+      },
+    });
+
+    expect(identity).toBe("win-creation:638915887234567890");
+    expect(invocations).toEqual(["pwsh.exe", "powershell.exe"]);
   });
 
   it("rejects missing or malformed Windows process identities", () => {
@@ -855,6 +889,66 @@ describe("watchdog configuration", () => {
     expect(terminations).toEqual([321]);
     expect(signalSource.listenerCount("SIGINT")).toBe(0);
     expect(signalSource.listenerCount("SIGTERM")).toBe(0);
+  });
+
+  it("recaptures an identity that was unavailable immediately after spawn", async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter();
+    child.pid = 321;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    let terminationOptions;
+    const resultPromise = runCommandWithWatchdog("bun", ["test"], {
+      timeoutMs: 1,
+      writeOut: () => {},
+      writeErr: () => {},
+      platform: "win32",
+      signalSource,
+      identityFn: () => undefined,
+      spawnFn: () => child,
+      terminateTree: async (_pid, options) => {
+        terminationOptions = options;
+        child.emit("close", null, "SIGKILL");
+      },
+    });
+
+    const result = await resultPromise;
+
+    expect(result.timedOut).toBe(true);
+    expect(terminationOptions).toMatchObject({
+      expectedIdentity: undefined,
+      identityCaptured: false,
+    });
+  });
+
+  it("preserves a process identity captured immediately after spawn", async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter();
+    child.pid = 321;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    let terminationOptions;
+    const resultPromise = runCommandWithWatchdog("bun", ["test"], {
+      timeoutMs: 1,
+      writeOut: () => {},
+      writeErr: () => {},
+      platform: "win32",
+      signalSource,
+      identityFn: () => "original-process",
+      spawnFn: () => child,
+      terminateTree: async (_pid, options) => {
+        terminationOptions = options;
+        child.emit("close", null, "SIGKILL");
+      },
+    });
+
+    const result = await resultPromise;
+
+    expect(result.timedOut).toBe(true);
+    expect(terminationOptions).toMatchObject({
+      expectedIdentity: "original-process",
+      identityCaptured: true,
+    });
   });
 
   it("keeps the first termination cause when a parent signal races a timeout", async () => {

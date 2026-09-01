@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildDedicatedStreamRequest,
   buildOpenAiRequestBody,
   buildProofPrompt,
   consumeOpenAiEvent,
@@ -223,6 +224,33 @@ test("buildProofPrompt preserves a custom prompt and always adds the nonce", () 
   assert.match(buildProofPrompt(undefined, "proof-456"), /proof-456/);
 });
 
+test("buildDedicatedStreamRequest matches the frontend delta stream contract", () => {
+  const request = buildDedicatedStreamRequest({
+    apiKey: "secret",
+    prompt: "private prompt",
+    clientMessageId: "message-1",
+    turnCorrelation: "11111111-1111-4111-8111-111111111111",
+    traceId: "22222222-2222-4222-8222-222222222222",
+  });
+
+  assert.deepEqual(JSON.parse(request.body), {
+    text: "private prompt",
+    channelType: "DM",
+    clientMessageId: "message-1",
+    streamProtocol: "delta-v2",
+  });
+  assert.deepEqual(request.headers, {
+    Authorization: "Bearer secret",
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+    "X-Eliza-Trace-Id": "22222222-2222-4222-8222-222222222222",
+    "X-Eliza-Telemetry": "full",
+    "X-ElizaOS-Turn-Correlation": "11111111-1111-4111-8111-111111111111",
+    "X-ElizaOS-Turn-Attempt": "1",
+    "User-Agent": "eliza-chat-latency/1.0",
+  });
+});
+
 test("probeOpenAi requires a clean terminal frame and never records prompt text", async () => {
   let requestBody = null;
   const result = await probeOpenAi({
@@ -393,7 +421,12 @@ test("safeTerminalTelemetry uses exact numeric paths and drops arbitrary strings
 test("probeDedicated requires a done terminal and sanitizes telemetry", async () => {
   const calls = [];
   const fetchImpl = async (url, init = {}) => {
-    calls.push({ url, method: init.method });
+    calls.push({
+      url,
+      method: init.method,
+      headers: init.headers,
+      body: init.body,
+    });
     if (calls.length === 1) {
       return Response.json({ conversation: { id: "conversation-1" } });
     }
@@ -426,6 +459,12 @@ test("probeDedicated requires a done terminal and sanitizes telemetry", async ()
     runtime: { totalMs: 20, provider: "cerebras" },
   });
   assert.equal(calls.length, 3);
+  assert.match(
+    calls[1].headers["X-ElizaOS-Turn-Correlation"],
+    /^[0-9a-f-]{36}$/,
+  );
+  assert.equal(calls[1].headers["X-ElizaOS-Turn-Attempt"], "1");
+  assert.equal(JSON.parse(calls[1].body).streamProtocol, "delta-v2");
   assert.equal(calls[2].method, "DELETE");
 
   const errorResult = await probeDedicated({

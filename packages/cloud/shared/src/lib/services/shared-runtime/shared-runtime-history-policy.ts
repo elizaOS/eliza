@@ -9,6 +9,7 @@ import type { ModelMessage } from "ai";
 import type {
   SharedRuntimeHistoryMessage,
   SharedRuntimePublicGrounding,
+  SharedRuntimeReminderActionProvenance,
 } from "../../../db/schemas/shared-runtime-history";
 import { logger } from "../../utils/logger";
 
@@ -142,6 +143,62 @@ export function parseSharedPublicWebGrounding(
     sourceUrls: sources.map((source) => source.url),
     sources,
     truncated: false,
+  };
+}
+
+const REMINDER_OPERATIONS = new Set<SharedRuntimeReminderActionProvenance["operation"]>([
+  "create",
+  "list",
+  "update",
+  "snooze",
+  "complete",
+  "delete",
+  "dismiss",
+  "clear",
+]);
+
+/** Validates persisted mutation provenance without trusting assistant text. */
+export function parseSharedReminderActionProvenance(
+  value: unknown,
+): SharedRuntimeReminderActionProvenance | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.actionName !== "REMINDERS" ||
+    typeof candidate.operation !== "string" ||
+    !REMINDER_OPERATIONS.has(
+      candidate.operation as SharedRuntimeReminderActionProvenance["operation"],
+    ) ||
+    typeof candidate.success !== "boolean" ||
+    (candidate.requiresConfirmation !== undefined && candidate.requiresConfirmation !== true) ||
+    (candidate.requiresSelection !== undefined && candidate.requiresSelection !== true) ||
+    typeof candidate.deliveryScope !== "string" ||
+    !candidate.deliveryScope.trim() ||
+    !Array.isArray(candidate.taskIds) ||
+    candidate.taskIds.some((taskId) => typeof taskId !== "string" || !taskId.trim()) ||
+    (candidate.requiresSelection === true
+      ? candidate.success !== false ||
+        !Array.isArray(candidate.candidateTaskIds) ||
+        candidate.candidateTaskIds.length === 0 ||
+        candidate.candidateTaskIds.length > 100 ||
+        candidate.candidateTaskIds.some((taskId) => typeof taskId !== "string" || !taskId.trim())
+      : candidate.candidateTaskIds !== undefined)
+  ) {
+    return undefined;
+  }
+  return {
+    actionName: "REMINDERS",
+    operation: candidate.operation as SharedRuntimeReminderActionProvenance["operation"],
+    success: candidate.success,
+    ...(candidate.requiresConfirmation === true ? { requiresConfirmation: true } : {}),
+    ...(candidate.requiresSelection === true ? { requiresSelection: true } : {}),
+    taskIds: [...new Set(candidate.taskIds.map((taskId) => taskId.trim()))],
+    ...(candidate.requiresSelection === true && Array.isArray(candidate.candidateTaskIds)
+      ? {
+          candidateTaskIds: [...new Set(candidate.candidateTaskIds.map((taskId) => taskId.trim()))],
+        }
+      : {}),
+    deliveryScope: candidate.deliveryScope.trim(),
   };
 }
 
@@ -512,7 +569,15 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
   current: T | undefined,
   incoming: T,
 ): T {
-  if (!current) return incoming;
+  if (!current) {
+    if (incoming.role !== "assistant") return incoming;
+    const { reminderAction: _untrustedReminderAction, ...rest } = incoming;
+    const reminderAction = parseSharedReminderActionProvenance(incoming.reminderAction);
+    return {
+      ...rest,
+      ...(reminderAction ? { reminderAction } : {}),
+    } as T;
+  }
   if (
     current.role === "assistant" &&
     incoming.role === "assistant" &&
@@ -534,16 +599,29 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
   if (current.role !== "assistant" || incoming.role !== "assistant") return chosen;
   const currentGrounding = parseSharedPublicWebGrounding(current.grounding);
   const incomingGrounding = parseSharedPublicWebGrounding(incoming.grounding);
-  if (!currentGrounding && !incomingGrounding) return chosen;
-  if (!currentGrounding) return { ...chosen, grounding: incomingGrounding };
-  if (!incomingGrounding) return { ...chosen, grounding: currentGrounding };
-  const grounding =
-    incomingGrounding.observedAt > currentGrounding.observedAt ||
-    (incomingGrounding.observedAt === currentGrounding.observedAt &&
-      JSON.stringify(incomingGrounding) > JSON.stringify(currentGrounding))
-      ? incomingGrounding
-      : currentGrounding;
-  return { ...chosen, grounding };
+  const grounding = !currentGrounding
+    ? incomingGrounding
+    : !incomingGrounding
+      ? currentGrounding
+      : incomingGrounding.observedAt > currentGrounding.observedAt ||
+          (incomingGrounding.observedAt === currentGrounding.observedAt &&
+            JSON.stringify(incomingGrounding) > JSON.stringify(currentGrounding))
+        ? incomingGrounding
+        : currentGrounding;
+  const currentReminderAction = parseSharedReminderActionProvenance(current.reminderAction);
+  const incomingReminderAction = parseSharedReminderActionProvenance(incoming.reminderAction);
+  const reminderAction =
+    currentReminderAction && incomingReminderAction
+      ? JSON.stringify(currentReminderAction) === JSON.stringify(incomingReminderAction)
+        ? currentReminderAction
+        : undefined
+      : (currentReminderAction ?? incomingReminderAction);
+  const { reminderAction: _untrustedReminderAction, ...chosenWithoutReminderAction } = chosen;
+  return {
+    ...chosenWithoutReminderAction,
+    ...(grounding ? { grounding } : {}),
+    ...(reminderAction ? { reminderAction } : {}),
+  } as T;
 }
 
 export function compareSharedRuntimeHistoryMessages(
