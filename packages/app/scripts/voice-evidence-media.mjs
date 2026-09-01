@@ -1272,6 +1272,38 @@ export function finalizeWebVoiceEvidence(args) {
   }
 }
 
+export function assertLiveMatrixReport(matrix, head, expectedSession) {
+  if (
+    matrix?.schema !== "eliza_voice_live_matrix_v2" ||
+    matrix?.revision !== head ||
+    typeof expectedSession !== "string" ||
+    !/^[A-Za-z0-9-]{12,128}$/.test(expectedSession) ||
+    matrix?.sessionId !== expectedSession ||
+    matrix?.mode !== "run" ||
+    matrix?.selection?.filterCount !== 1 ||
+    matrix?.selection?.matched !== 1 ||
+    matrix?.selection?.errorCode !== null ||
+    matrix?.summary?.pass !== 1 ||
+    matrix?.summary?.fail !== 0 ||
+    matrix?.summary?.pending !== 0 ||
+    matrix?.summary?.skip !== 0 ||
+    !Array.isArray(matrix?.cells) ||
+    matrix.cells.length !== 1 ||
+    matrix.cells[0]?.id !== "web.live.railway-roundtrip" ||
+    matrix.cells[0]?.platform !== "web" ||
+    matrix.cells[0]?.status !== "pass" ||
+    matrix.cells[0]?.probe?.available !== true ||
+    matrix.cells[0]?.probe?.code !== "WEB_LIVE_READY" ||
+    matrix.cells[0]?.execution?.exitCode !== 0 ||
+    matrix.cells[0]?.execution?.signalCode !== null ||
+    matrix.cells[0]?.execution?.code !== "COMMAND_PASSED"
+  ) {
+    throw new Error(
+      "Live matrix report is not the revision- and session-bound Railway cell pass.",
+    );
+  }
+}
+
 function finalizeWebVoiceEvidenceSnapshot({
   resultsDir,
   failureResultsDir,
@@ -1281,6 +1313,7 @@ function finalizeWebVoiceEvidenceSnapshot({
   matrixReport,
   outDir,
   expectedRevision,
+  expectedSession,
   tools = resolveMediaTools(),
 }) {
   const files = walkFiles(resultsDir);
@@ -1327,14 +1360,8 @@ function finalizeWebVoiceEvidenceSnapshot({
     );
   }
   const matrix = readJson(matrixReport, "live matrix report");
-  if (
-    matrix?.selection?.matched !== 1 ||
-    matrix?.summary?.pass !== 1 ||
-    matrix?.summary?.fail !== 0 ||
-    matrix?.summary?.skip !== 0
-  ) {
-    throw new Error("Live matrix report is not an executed single-cell pass.");
-  }
+  const head = revision(expectedRevision);
+  assertLiveMatrixReport(matrix, head, expectedSession);
   assertFreshCapture(systemLoopback, networkValue.startedAt, "system loopback");
   const loopbackInspection = inspectAudibleMedia(systemLoopback, tools);
   const micInspection = inspectAudibleMedia(mic, tools);
@@ -1348,7 +1375,6 @@ function finalizeWebVoiceEvidenceSnapshot({
     tools,
   );
   requireFile(backendLog, "backend log");
-  const head = revision(expectedRevision);
   return atomicallyPublishEvidence(outDir, (stagingDir) => {
     const safeLoopback = projectAcousticSignal(
       loopbackInspection.duration,
@@ -1901,6 +1927,7 @@ function main() {
     outDir: values.out,
     backendLog: values.backend,
     expectedRevision: process.env.ELIZA_VOICE_EVIDENCE_REVISION,
+    expectedSession: process.env.ELIZA_VOICE_MATRIX_SESSION_ID,
   };
   const result =
     command === "web"

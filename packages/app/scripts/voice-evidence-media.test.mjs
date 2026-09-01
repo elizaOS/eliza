@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  assertLiveMatrixReport,
   correlateAudioWindow,
   finalizeDesktopVoiceEvidence,
   finalizeWebVoiceEvidence,
@@ -399,9 +400,28 @@ function webFixture(root, tools) {
   const backend = path.join(root, "backend.log");
   fs.writeFileSync(backend, "[voice] live route complete\n");
   const matrix = path.join(root, "voice-matrix.json");
+  const revision = currentHead();
+  const sessionId = "voice-web-live-session-123456";
   writeJson(matrix, {
-    selection: { matched: 1 },
+    schema: "eliza_voice_live_matrix_v2",
+    revision,
+    sessionId,
+    mode: "run",
+    selection: { filterCount: 1, matched: 1, errorCode: null },
     summary: { pass: 1, fail: 0, pending: 0, skip: 0 },
+    cells: [
+      {
+        id: "web.live.railway-roundtrip",
+        platform: "web",
+        status: "pass",
+        probe: { available: true, code: "WEB_LIVE_READY" },
+        execution: {
+          exitCode: 0,
+          signalCode: null,
+          code: "COMMAND_PASSED",
+        },
+      },
+    ],
   });
   return {
     resultsDir: path.join(root, "results"),
@@ -410,6 +430,8 @@ function webFixture(root, tools) {
     loopbackClock,
     backendLog: backend,
     matrixReport: matrix,
+    expectedRevision: revision,
+    expectedSession: sessionId,
     outDir: path.join(root, "final"),
     tools,
   };
@@ -647,6 +669,44 @@ describeWithMedia("web voice media evidence", () => {
     ).toThrow(/does not match HEAD/);
     expect(fs.existsSync(fixture.outDir)).toBe(false);
     expect(evidenceStagingSiblings(fixture.outDir)).toEqual([]);
+  });
+
+  test.each([
+    ["revision", "0".repeat(40)],
+    ["sessionId", "replayed-voice-session"],
+    ["cell", "web.failure-paths"],
+    ["execution", "COMMAND_EXIT_NONZERO"],
+  ])("refuses a matrix report with mismatched %s authority", (field, value) => {
+    const revision = currentHead();
+    const sessionId = "voice-web-live-session-123456";
+    const matrix = {
+      schema: "eliza_voice_live_matrix_v2",
+      revision,
+      sessionId,
+      mode: "run",
+      selection: { filterCount: 1, matched: 1, errorCode: null },
+      summary: { pass: 1, fail: 0, pending: 0, skip: 0 },
+      cells: [
+        {
+          id: "web.live.railway-roundtrip",
+          platform: "web",
+          status: "pass",
+          probe: { available: true, code: "WEB_LIVE_READY" },
+          execution: {
+            exitCode: 0,
+            signalCode: null,
+            code: "COMMAND_PASSED",
+          },
+        },
+      ],
+    };
+    if (field === "cell") matrix.cells[0].id = value;
+    else if (field === "execution") matrix.cells[0].execution.code = value;
+    else matrix[field] = value;
+
+    expect(() => assertLiveMatrixReport(matrix, revision, sessionId)).toThrow(
+      /revision- and session-bound Railway cell pass/,
+    );
   });
 
   test("removes staging after a transcode fails and publishes nothing", () => {

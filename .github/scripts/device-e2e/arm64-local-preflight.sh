@@ -32,7 +32,10 @@ java_major=$(java -XshowSettings:properties -version 2>&1 \
   || fail_preflight JAVA_VERSION_UNAVAILABLE
 [[ "$java_major" == "21" ]] || fail_preflight JAVA_VERSION_INVALID
 
-mapfile -t attached_devices < <(adb devices 2>/dev/null \
+attached_devices=()
+while IFS= read -r attached_device; do
+  [[ -n "$attached_device" ]] && attached_devices+=("$attached_device")
+done < <(adb devices 2>/dev/null \
   | awk 'NR > 1 && $2 == "device" { print $1 }')
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
   printf '%s\n' "${attached_devices[@]}" | grep -Fx -- "$ANDROID_SERIAL" >/dev/null \

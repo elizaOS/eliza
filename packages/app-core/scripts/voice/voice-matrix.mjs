@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Drives repo automation voice matrix with explicit CLI and CI behavior. */
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +14,27 @@ const REPO_ROOT = path.resolve(
   "..",
 );
 const ISSUE = "9958";
+
+function exactRevision() {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
+  const revision = result.status === 0 ? result.stdout.trim() : "";
+  if (!/^[0-9a-f]{40}$/.test(revision)) {
+    throw new Error("Voice matrix requires an exact Git revision.");
+  }
+  return revision;
+}
+
+function matrixSessionId() {
+  const sessionId =
+    process.env.ELIZA_VOICE_MATRIX_SESSION_ID?.trim() || randomUUID();
+  if (!/^[A-Za-z0-9-]{12,128}$/.test(sessionId)) {
+    throw new Error("Voice matrix session ID is not a safe closed identifier.");
+  }
+  return sessionId;
+}
 
 const DIMENSIONS = {
   platform: [
@@ -1210,6 +1232,8 @@ async function main() {
 
   const report = {
     schema: "eliza_voice_live_matrix_v2",
+    revision: exactRevision(),
+    sessionId: matrixSessionId(),
     issue: Number(ISSUE),
     generatedAt: new Date().toISOString(),
     mode: args.run ? "run" : "probe",
