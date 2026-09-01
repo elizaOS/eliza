@@ -461,6 +461,7 @@ export async function handleCalendarRoutes(
           description: body.notes,
           startAt: body.startAt,
           endAt: body.endAt,
+          allDay: body.allDay,
           timeZone: body.timeZone,
           location: body.location,
           attendees: body.attendees,

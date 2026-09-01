@@ -467,6 +467,13 @@ export class OwnerCalendarMutationGatewayService
       title: request.title,
       startsAtMs,
       endsAtMs,
+      allDay:
+        range.isAllDay && range.startDate && range.endDateExclusive
+          ? {
+              startDate: range.startDate,
+              endDateExclusive: range.endDateExclusive,
+            }
+          : null,
       timeZone: range.timeZone,
       durationMinutes: request.durationMinutes ?? null,
       windowPreset: request.windowPreset ?? null,
@@ -572,6 +579,7 @@ export class OwnerCalendarMutationGatewayService
             request.endAt !== undefined
               ? requireAbsoluteTimestamp(request.endAt, "endAt")
               : null,
+          allDay: request.allDay ?? null,
           timeZone: request.timeZone ?? null,
           attendees:
             request.attendees?.map((attendee) => ({

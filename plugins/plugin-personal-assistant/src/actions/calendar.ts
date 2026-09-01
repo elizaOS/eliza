@@ -368,6 +368,7 @@ export function createCalendarMutationApprovalGateway(options?: {
         title: args.request.title,
         startsAtMs: requireCalendarTimestamp(args.request.startAt, "startAt"),
         endsAtMs: requireCalendarTimestamp(args.request.endAt, "endAt"),
+        allDay: args.request.allDay ?? null,
         timeZone: args.request.timeZone ?? null,
         durationMinutes: args.request.durationMinutes ?? null,
         windowPreset: args.request.windowPreset ?? null,
@@ -400,7 +401,9 @@ export function createCalendarMutationApprovalGateway(options?: {
         action: "schedule_event",
         provider: boundCalendarProviderForGrant(args.request.grantId),
         payload,
-        reason: `Create "${approvalSafeLabel(payload.title)}" at ${new Date(payload.startsAtMs).toISOString()} on the bound calendar${travel}, ${notification}.`,
+        reason: payload.allDay
+          ? `Create "${approvalSafeLabel(payload.title)}" as an all-day event from ${payload.allDay.startDate} through ${payload.allDay.endDateExclusive} (exclusive) on the bound calendar${travel}, ${notification}.`
+          : `Create "${approvalSafeLabel(payload.title)}" at ${new Date(payload.startsAtMs).toISOString()} on the bound calendar${travel}, ${notification}.`,
       });
     },
     async modify(args) {
@@ -435,6 +438,7 @@ export function createCalendarMutationApprovalGateway(options?: {
           endsAtMs: args.request.endAt
             ? requireCalendarTimestamp(args.request.endAt, "endAt")
             : null,
+          allDay: args.request.allDay ?? null,
           timeZone: args.request.timeZone ?? null,
           attendees:
             args.request.attendees?.map((attendee) => ({
