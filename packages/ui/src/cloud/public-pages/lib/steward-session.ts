@@ -530,20 +530,28 @@ async function clearRejectedCookieSession(): Promise<void> {
   // The DELETE and subsequent token removal can each fail. Retire proof before
   // either boundary so recovery can never reuse pre-clear cookie authority.
   invalidateStewardServerCookieSyncMarker();
-  const response = await postAuthJson(
-    STEWARD_SESSION_ENDPOINT,
-    undefined,
-    "DELETE",
-  );
-  if (!response.ok) {
-    const body = await readSessionError(response);
-    throw new StewardSessionError(
-      body.error || "Could not reset the expired Eliza Cloud session.",
-      response.status,
-      body.code ?? null,
-    );
-  }
-  await clearStoredStewardToken();
+  await runStewardSessionAuthorityExclusive({
+    kind: "cookie-delete",
+    work: async (ctx) => {
+      ctx.revalidate();
+      const response = await postAuthJson(
+        STEWARD_SESSION_ENDPOINT,
+        undefined,
+        "DELETE",
+        ctx.signal,
+      );
+      ctx.revalidate();
+      if (!response.ok) {
+        const body = await readSessionError(response);
+        throw new StewardSessionError(
+          body.error || "Could not reset the expired Eliza Cloud session.",
+          response.status,
+          body.code ?? null,
+        );
+      }
+      await clearStoredStewardToken();
+    },
+  });
 }
 
 /**

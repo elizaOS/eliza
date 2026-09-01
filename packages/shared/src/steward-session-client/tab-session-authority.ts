@@ -210,12 +210,15 @@ export function createStewardTabSessionAuthorityCoordinator(
   const timeoutMs = deps.timeoutMs ?? STEWARD_SESSION_AUTHORITY_TIMEOUT_MS;
   const getStorage = (): StewardSessionAuthorityStorage | null =>
     deps.storage === undefined ? resolveBrowserStorage() : deps.storage;
-  const originWideLocks =
+  const getOriginWideLocks = (): StewardSessionAuthorityLockManager | null =>
     deps.lockManager === undefined
       ? resolveBrowserLockManager()
       : deps.lockManager;
-  const originWide = originWideLocks !== null && getStorage() !== null;
-  const locks = originWideLocks ?? createFallbackLockManager();
+  const fallbackLocks = createFallbackLockManager();
+  const getLocks = (): StewardSessionAuthorityLockManager =>
+    getOriginWideLocks() ?? fallbackLocks;
+  const isOriginWide = (): boolean =>
+    getOriginWideLocks() !== null && getStorage() !== null;
   let holdDepth = 0;
   const randomId = deps.randomId ?? randomGenerationNonce;
 
@@ -303,7 +306,7 @@ export function createStewardTabSessionAuthorityCoordinator(
   async function runExclusive<T>(
     options: StewardSessionAuthorityRunOptions<T>,
   ): Promise<T> {
-    if (options.requireOriginWide && !originWide) {
+    if (options.requireOriginWide && !isOriginWide()) {
       throw new StewardSessionAuthorityError(
         "Origin-wide Steward session authority is unavailable.",
         "STEWARD_SESSION_AUTHORITY_UNAVAILABLE",
@@ -377,7 +380,7 @@ export function createStewardTabSessionAuthorityCoordinator(
         }
       }
 
-      const result = await locks.request(
+      const result = await getLocks().request(
         STEWARD_SESSION_AUTHORITY_LOCK_NAME,
         { mode: "exclusive", signal: controller.signal },
         async () => {
@@ -406,7 +409,9 @@ export function createStewardTabSessionAuthorityCoordinator(
   }
 
   return {
-    originWide,
+    get originWide() {
+      return isOriginWide();
+    },
     readGeneration,
     readSnapshot,
     runExclusive,
