@@ -4,6 +4,8 @@
  *
  * 716 routes mounted across 128 lazy shards,
  * 709 routes mounted across 127 lazy shards,
+=======
+ * 710 routes mounted across 127 lazy shards,
  * 0 unmounted. Route modules are imported
  * dynamically so a request only evaluates the shard that can match its
  * path (issue #22550); a null-shard mount goes into every shard app.
@@ -1871,6 +1873,11 @@ export const ROUTE_MOUNTS: readonly GeneratedRouteMount[] = [
     path: "/api/v1/billing/limits",
     shard: "v1/billing",
     load: () => import("../v1/billing/limits/route"),
+  },
+  {
+    path: "/api/v1/billing/payment-states/:id",
+    shard: "v1/billing",
+    load: () => import("../v1/billing/payment-states/[id]/route"),
   },
   {
     path: "/api/v1/billing/payment-states",
