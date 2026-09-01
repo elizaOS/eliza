@@ -84,9 +84,7 @@ export async function signVoiceModelCatalog(args: {
 }): Promise<string> {
   const secretRaw = decodeBase64Strict(args.secretKeyBase64);
   if (secretRaw.byteLength !== 32) {
-    throw new Error(
-      `Ed25519 secret key must be 32 bytes, got ${secretRaw.byteLength}`,
-    );
+    throw new Error(`Ed25519 secret key must be 32 bytes, got ${secretRaw.byteLength}`);
   }
   // Web Crypto's importKey requires the "pkcs8" or "jwk" format for
   // Ed25519 private keys. Wrap the raw 32-byte seed in a minimal PKCS8
@@ -111,9 +109,7 @@ export async function signVoiceModelCatalog(args: {
 export function fingerprintPublicKey(rawPublicKeyBase64: string): string {
   const raw = decodeBase64Strict(rawPublicKeyBase64);
   if (raw.byteLength !== 32) {
-    throw new Error(
-      `Ed25519 public key must be 32 bytes, got ${raw.byteLength}`,
-    );
+    throw new Error(`Ed25519 public key must be 32 bytes, got ${raw.byteLength}`);
   }
   return encodeBase64(raw);
 }
@@ -211,8 +207,7 @@ function wrapEd25519SeedInPkcs8(seed: Uint8Array): Uint8Array {
     throw new Error(`Ed25519 seed must be 32 bytes`);
   }
   const prefix = new Uint8Array([
-    0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70,
-    0x04, 0x22, 0x04, 0x20,
+    0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
   ]);
   const out = new Uint8Array(prefix.length + seed.length);
   out.set(prefix, 0);
