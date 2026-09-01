@@ -988,8 +988,9 @@ jobs:
           envs: CANARY_DIAGNOSTIC_SUFFIX
           script: |
             set -euo pipefail
+            set +e
             raw="$(
-              sudo systemd-run \
+              timeout --signal=TERM --kill-after=5s 105s sudo systemd-run \
                 --quiet \
                 --wait \
                 --pipe \
@@ -1003,8 +1004,15 @@ jobs:
                 packages/cloud/scripts/admin/managed-dedicated-mesh-state-diagnostic.ts \
                 "$CANARY_DIAGNOSTIC_SUFFIX" 2>&1
             )"
+            probe_status=$?
+            set -e
             diagnostic="$(printf '%s\n' "$raw" | sed -n 's/^MESH_DIAGNOSTIC=//p' | tail -n 1)"
             unset raw
+            if [ -z "$diagnostic" ]; then
+              echo "::error::Exact private mesh diagnostic produced no closed artifact (status $probe_status)."
+              exit 1
+            fi
+            unset probe_status
             jq -e '
               keys == ["container", "logs", "schemaVersion", "tailscale", "targetCount"] and
               .schemaVersion == 1 and
