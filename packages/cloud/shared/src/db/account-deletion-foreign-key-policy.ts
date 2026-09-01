@@ -143,9 +143,9 @@ const SHARED_RESOURCE_TABLES = new Set([
 ]);
 
 /**
- * Financial, abuse, settlement, and security evidence is retained only after
- * its direct user/org identifier has been nulled or replaced by a bounded,
- * non-identifying audit digest.
+ * Financial, abuse, settlement, and security tables need explicit handling
+ * when a restrictive identifier cannot cascade. The provider inventory may
+ * erase privacy-bearing history instead of retaining and anonymizing it.
  */
 const RETAINED_AUDIT_TABLES = new Set([
   "admin_users",

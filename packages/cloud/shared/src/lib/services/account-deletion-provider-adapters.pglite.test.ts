@@ -42,6 +42,26 @@ beforeAll(async () => {
       )`,
     );
   }
+  await dbWrite.execute(sql`
+    CREATE FUNCTION reject_subscription_append_only_mutation()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      IF current_setting('eliza.subscription_account_deletion_authority', true) = 'on' THEN
+        RETURN NULL;
+      END IF;
+      RAISE EXCEPTION '% is append-only', TG_TABLE_NAME USING ERRCODE = '23514';
+    END;
+    $$
+  `);
+  for (const table of ["billing_subscription_revisions", "subscription_allowance_transactions"]) {
+    await dbWrite.execute(
+      sql`CREATE TRIGGER ${sql.raw(`${table}_immutable_guard`)}
+          BEFORE UPDATE OR DELETE OR TRUNCATE ON ${sql.raw(table)}
+          FOR EACH STATEMENT EXECUTE FUNCTION reject_subscription_append_only_mutation()`,
+    );
+  }
   for (const entry of ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY) {
     const subject = entry.subject === "user" ? USER_ID : ORGANIZATION_ID;
     await dbWrite.execute(
