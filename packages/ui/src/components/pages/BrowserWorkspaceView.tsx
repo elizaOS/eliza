@@ -2794,7 +2794,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       {/* Mobile overflow (#29261): the toolbar stays one 44px row, so the
           secondary actions live behind one touch-sized menu instead of a
           second row. */}
-      <span className="md:hidden">
+      <span className="inline-flex shrink-0 md:hidden">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -2809,7 +2809,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
               <EllipsisVertical className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-52">
+          <DropdownMenuContent align="end" className="min-w-52 md:hidden">
             <DropdownMenuItem
               className="min-h-12 gap-3"
               disabled={busyAction !== null || browserWorkspaceUnavailable}
