@@ -820,6 +820,15 @@ export default function StewardLoginSection() {
       event: PageTransitionEvent,
     ) => {
       if (!event.persisted) return;
+      // A BFCache restoration resumes this exact React tree; it does not
+      // remount the section or rerun discovery. Revoke live wallet authority
+      // before doing anything else so persisted adapters cannot auto-reconnect
+      // under a capability result from the prior page lifetime.
+      discardStewardProvidersRequest();
+      setWalletProvidersConfirmed(false);
+      setProviderDiscoveryError(null);
+      setProvidersLoaded(false);
+      setProviderDiscoveryAttempt((current) => current + 1);
       setLoading((current) => {
         if (
           current !== null &&
@@ -831,10 +840,10 @@ export default function StewardLoginSection() {
       });
     };
 
-    // OAuth owns the current document, but browser Back may revive this React
-    // tree from the back/forward cache with its pre-navigation loading state.
-    // A fresh load already starts idle; only a persisted history restoration
-    // needs to release the provider lock (#20385).
+    // OAuth and wallet authority belong to the current document lifetime, but
+    // browser Back may revive this React tree from the back/forward cache. A
+    // fresh load already starts unconfirmed; only a persisted restoration must
+    // explicitly release the OAuth lock and rediscover wallet capability.
     window.addEventListener("pageshow", recoverOAuthIntentAfterHistoryRestore);
     return () => {
       window.removeEventListener(

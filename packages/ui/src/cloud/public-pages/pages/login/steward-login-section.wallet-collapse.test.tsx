@@ -1,7 +1,14 @@
 /** Verifies StewardLoginSection wallet-method collapse (#19217). */
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -295,6 +302,57 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     // Focus must land in the controlled region (not body / not the disabled
     // toggle) after the peer button unmounts and the disclosure locks.
     expect(document.activeElement).toBe(liveRegion);
+  });
+
+  it("revokes mounted wallets on BFCache restore until fresh discovery succeeds", async () => {
+    let resolveFreshProviders!: (
+      providers: ReturnType<typeof walletProviders>,
+    ) => void;
+    const freshProviders = new Promise<ReturnType<typeof walletProviders>>(
+      (resolve) => {
+        resolveFreshProviders = resolve;
+      },
+    );
+    stewardAuthSpies.getProviders
+      .mockResolvedValueOnce(walletProviders())
+      .mockReturnValueOnce(freshProviders)
+      .mockRejectedValueOnce(new Error("provider discovery unavailable"));
+
+    await renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Continue with a wallet/i,
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /EVM wallet/i }));
+    expect(await screen.findByTestId("mounted-wallet-buttons")).toBeTruthy();
+
+    const historyRestore = new Event("pageshow");
+    Object.defineProperty(historyRestore, "persisted", { value: true });
+    fireEvent(window, historyRestore);
+
+    expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
+    await waitFor(() =>
+      expect(stewardAuthSpies.getProviders).toHaveBeenCalledTimes(2),
+    );
+    expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
+
+    await act(async () => {
+      resolveFreshProviders(walletProviders());
+      await freshProviders;
+    });
+    expect(await screen.findByTestId("mounted-wallet-buttons")).toBeTruthy();
+
+    const failedRestore = new Event("pageshow");
+    Object.defineProperty(failedRestore, "persisted", { value: true });
+    fireEvent(window, failedRestore);
+
+    expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
+    await waitFor(() =>
+      expect(stewardAuthSpies.getProviders).toHaveBeenCalledTimes(3),
+    );
+    await screen.findByRole("alert");
+    expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
   });
 
   it.each([

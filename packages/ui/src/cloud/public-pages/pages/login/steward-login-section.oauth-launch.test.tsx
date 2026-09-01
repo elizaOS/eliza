@@ -441,7 +441,15 @@ describe("StewardLoginSection OAuth launch", () => {
       Object.defineProperty(historyRestore, "persisted", { value: true });
       fireEvent(window, historyRestore);
 
-      await waitFor(() => expect(providerButton.disabled).toBe(false));
+      await waitFor(() =>
+        expect(
+          (
+            screen.getByRole("button", {
+              name: providerLabel,
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false),
+      );
     },
   );
 
