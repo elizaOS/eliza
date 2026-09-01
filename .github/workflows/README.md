@@ -87,7 +87,12 @@ from someone other than the last pusher, and resolved threads.
 separate explicit `--apply` authority to create or update only the selected
 ruleset. Apply accepts only a manifest whose reviewed source state is already
 `active`; `disabled` and `evaluate` manifests fail before any GitHub API
-request, with no runtime bypass flag. It asks GitHub for the active rules
+request or `gh` invocation, with no runtime bypass flag. Authentication is
+checked only after that in-memory admission guard. The helper accepts an
+operator-supplied manifest path, so provenance from a reviewed source change is
+an authorization/process invariant rather than a cryptographic property of the
+file; an authorized administration token remains capable of calling the API
+directly. It asks GitHub for the active rules
 effective on each exact target ref and fails closed when any rule is attributed
 to a different repository or inherited ruleset, both before and immediately
 after an authorized apply. An active ruleset with no rules has no admission

@@ -48,6 +48,7 @@ const fakeGhSource = String.raw`#!/usr/bin/env node
 const { appendFileSync, readFileSync, writeFileSync } = require("node:fs");
 
 const args = process.argv.slice(2);
+appendFileSync(process.env.FAKE_GH_COMMAND_LOG, JSON.stringify(args) + "\n");
 if (args[0] === "auth" && args[1] === "status") process.exit(0);
 if (args[0] !== "api") {
   console.error("unsupported fake gh command");
@@ -256,6 +257,7 @@ function runHelper(
   state: FakeState,
   args: string[],
 ): {
+  commands: string[][];
   exitCode: number;
   requests: Array<{
     endpoint: string;
@@ -270,17 +272,20 @@ function runHelper(
   const bin = join(root, "bin");
   const statePath = join(root, "state.json");
   const logPath = join(root, "requests.jsonl");
+  const commandLogPath = join(root, "commands.jsonl");
   mkdirSync(bin);
   writeFileSync(join(bin, "gh"), fakeGhSource);
   chmodSync(join(bin, "gh"), 0o755);
   writeFileSync(statePath, JSON.stringify(state));
   writeFileSync(logPath, "");
+  writeFileSync(commandLogPath, "");
   try {
     const result = Bun.spawnSync({
       cmd: [HELPER, ...args],
       cwd: REPO_ROOT,
       env: {
         ...process.env,
+        FAKE_GH_COMMAND_LOG: commandLogPath,
         FAKE_GH_LOG: logPath,
         FAKE_GH_STATE: statePath,
         GH_TOKEN: "deterministic-test-token",
@@ -295,7 +300,13 @@ function runHelper(
       .split("\n")
       .filter(Boolean)
       .map((line) => JSON.parse(line));
+    const commands = readFileSync(commandLogPath, "utf8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
     return {
+      commands,
       exitCode: result.exitCode,
       requests,
       stderr: result.stderr.toString(),
@@ -452,22 +463,53 @@ describe("repository ruleset contract", () => {
     const result = runHelper(stateWithManifests(), ["--dry-run"]);
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("--manifest is required in every mode");
+    expect(result.commands).toEqual([]);
     expect(result.requests).toEqual([]);
   });
 
-  test("refuses to apply the disabled develop candidate before any API request", () => {
+  test("prints a validated dry-run without invoking GitHub", () => {
     const result = runHelper(stateWithManifests(), [
       "--manifest",
-      manifestPath("develop"),
-      "--apply",
+      manifestPath("main"),
+      "--dry-run",
       "--repo",
       "test/repo",
     ]);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain(
-      "a reviewed source change to active is required first",
-    );
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(mainManifest);
+    expect(result.commands).toEqual([]);
     expect(result.requests).toEqual([]);
+  });
+
+  test("refuses every non-active apply before invoking GitHub", () => {
+    const root = mkdtempSync(join(tmpdir(), "ruleset-non-active-"));
+    try {
+      for (const enforcement of ["disabled", "evaluate"] as const) {
+        const path = join(root, `${enforcement}.json`);
+        writeFileSync(
+          path,
+          `${JSON.stringify({ ...developManifest, enforcement })}\n`,
+        );
+        const result = runHelper(stateWithManifests(), [
+          "--manifest",
+          path,
+          "--apply",
+          "--repo",
+          "test/repo",
+        ]);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain(
+          `cannot be applied while enforcement is '${enforcement}'`,
+        );
+        expect(result.stderr).toContain(
+          "a reviewed source change to active is required first",
+        );
+        expect(result.commands).toEqual([]);
+        expect(result.requests).toEqual([]);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("performs a successful check without a mutating GitHub request", () => {
@@ -482,6 +524,7 @@ describe("repository ruleset contract", () => {
     expect(result.stdout).toContain(
       "ruleset readback passed: epic-25025-develop-admission",
     );
+    expect(result.commands[0]).toEqual(["auth", "status"]);
     expect(result.requests.length).toBeGreaterThan(0);
     expect(
       result.requests.every((request) => request.method === "GET"),

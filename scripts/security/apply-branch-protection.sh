@@ -55,17 +55,6 @@ if [[ ! -f "$MANIFEST" ]]; then
   exit 1
 fi
 
-if [[ "$MODE" != "dry-run" ]]; then
-  if ! command -v gh >/dev/null 2>&1; then
-    echo "error: gh CLI is required for ruleset readback" >&2
-    exit 1
-  fi
-  if ! gh auth status >/dev/null 2>&1; then
-    echo "error: gh is not authenticated; set GH_TOKEN or run gh auth login" >&2
-    exit 1
-  fi
-fi
-
 node - "$REPO" "$MANIFEST" "$MODE" <<'EOF_NODE'
 const { readFileSync } = require("node:fs");
 const { spawnSync } = require("node:child_process");
@@ -128,6 +117,25 @@ if (mode === "dry-run") {
   process.stdout.write(expectedPayload);
   process.exit(0);
 }
+
+function requireAuthenticatedGh() {
+  const result = spawnSync("gh", ["auth", "status"], {
+    encoding: "utf8",
+    env: process.env,
+    stdio: "ignore",
+  });
+  if (result.error?.code === "ENOENT") {
+    fail("gh CLI is required for ruleset readback");
+  }
+  if (result.error) {
+    fail(`gh authentication check failed: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    fail("gh is not authenticated; set GH_TOKEN or run gh auth login");
+  }
+}
+
+requireAuthenticatedGh();
 
 function runGh(args, input) {
   const result = spawnSync("gh", args, {
