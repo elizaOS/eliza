@@ -637,9 +637,42 @@ describe("agent backup restore-v3 stream contract", () => {
         ...proof,
         completion: {
           ...proof.completion,
+          backendIdentityFingerprint: `sha256:${"9".repeat(64)}`,
+        },
+      },
+      {
+        ...proof,
+        completion: {
+          ...proof.completion,
+          endpointAliasFingerprint: `sha256:${"9".repeat(64)}`,
+        },
+      },
+      {
+        ...proof,
+        completion: {
+          ...proof.completion,
           bucketFingerprint: `sha256:${"9".repeat(64)}`,
         },
       },
+      {
+        ...proof,
+        completion: {
+          ...proof.completion,
+          regionFingerprint: `sha256:${"9".repeat(64)}`,
+        },
+      },
+      {
+        ...proof,
+        completion: {
+          ...proof.completion,
+          keyFingerprint: `sha256:${"9".repeat(64)}`,
+        },
+      },
+      {
+        ...proof,
+        completion: { ...proof.completion, versionSource: "etag" as const },
+      },
+      { ...proof, componentIndex: 1 },
       {
         ...proof,
         completion: { ...proof.completion, ciphertextSha256: "2".repeat(64) },
@@ -853,6 +886,42 @@ describe("agent backup restore-v3 stream contract", () => {
         ),
       }),
     ).rejects.toThrow("differs from its immutable catalogue authority");
+  });
+
+  test("rejects staged ciphertext that differs from its exact catalogue proof", async () => {
+    const fixture = await candidateContextFixture();
+
+    await expect(
+      validateAgentBackupRestoreV3CandidateContext({
+        ...fixture,
+        receipt: {
+          ...fixture.receipt,
+          sourceObjects: fixture.receipt.sourceObjects.map((source, index) =>
+            index === 0
+              ? { ...source, ciphertextSha256: "a".repeat(64) }
+              : source,
+          ),
+        },
+      }),
+    ).rejects.toThrow("differs from its exact proof");
+  });
+
+  test("rejects staged size that differs from its exact catalogue proof", async () => {
+    const fixture = await candidateContextFixture();
+
+    await expect(
+      validateAgentBackupRestoreV3CandidateContext({
+        ...fixture,
+        receipt: {
+          ...fixture.receipt,
+          sourceObjects: fixture.receipt.sourceObjects.map((source, index) =>
+            index === 0
+              ? { ...source, sizeBytes: source.sizeBytes + 1 }
+              : source,
+          ),
+        },
+      }),
+    ).rejects.toThrow("differs from its exact proof");
   });
 
   test("rejects principal identity mutations across the complete context", async () => {
