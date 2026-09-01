@@ -127,6 +127,40 @@ function normalizeOptionalCredentialValue(value: string | undefined): string | n
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+interface VerifiedTwitterIdentity {
+  username: string;
+  userId: string;
+  avatarUrl?: string;
+}
+
+/** Treat the provider response as untrusted runtime data before reporting readiness. */
+function parseVerifiedTwitterIdentity(value: unknown): VerifiedTwitterIdentity | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const data = Reflect.get(value, "data");
+  if (data === null || typeof data !== "object" || Array.isArray(data)) return null;
+
+  const username = Reflect.get(data, "username");
+  const userId = Reflect.get(data, "id");
+  if (
+    typeof username !== "string" ||
+    username.trim().length === 0 ||
+    typeof userId !== "string" ||
+    userId.trim().length === 0
+  ) {
+    return null;
+  }
+
+  const avatarUrl = Reflect.get(data, "profile_image_url");
+  const normalizedAvatarUrl =
+    typeof avatarUrl === "string" && avatarUrl.trim().length > 0 ? avatarUrl.trim() : undefined;
+
+  return {
+    username: username.trim(),
+    userId: userId.trim(),
+    ...(normalizedAvatarUrl ? { avatarUrl: normalizedAvatarUrl } : {}),
+  };
+}
+
 function addTwitterApiErrorPart(parts: string[], value: unknown): void {
   if (typeof value === "string" && value.trim().length > 0) {
     parts.push(value.trim());
@@ -300,6 +334,14 @@ export interface TwitterConnectionStatus {
   username?: string;
   userId?: string;
   avatarUrl?: string;
+  /** Stored fallback metadata; `verified: false` means it cannot prove connection readiness. */
+  storedIdentity?: {
+    verified: false;
+    username?: string;
+    userId?: string;
+  };
+  /** Stable, redacted classification for provider identity verification failures. */
+  errorCode?: "provider_identity_verification_failed";
   error?: string;
 }
 
@@ -776,38 +818,45 @@ class TwitterAutomationService {
         "user.fields": ["profile_image_url"],
       });
 
-      return {
-        connected: true,
-        username: me.data.username,
-        userId: me.data.id,
-        avatarUrl: me.data.profile_image_url,
-      };
-    } catch (error) {
-      // error-policy:J4 token-validation failure degrades to a distinguishable connection status
-      // carrying an explicit error field — never a silent healthy/empty state. A missing-credentials
-      // case returns { connected:false } with no error above; this branch always sets error.
-      const errorMessage = formatTwitterApiError(error, "Token validation failed");
-      logger.warn("[TwitterAutomation] Token validation failed", {
-        organizationId,
-        connectionRole: role,
-        error: errorMessage,
-        status: getTwitterApiErrorStatus(error),
-      });
-
-      if (oauth2AccessToken && getTwitterApiErrorStatus(error) === 403) {
-        return {
-          connected: true,
-          username: username ?? undefined,
-          userId: twitterUserId ?? undefined,
-          error: `X rejected profile validation, but OAuth2 credentials are stored: ${errorMessage}`,
-        };
+      const identity = parseVerifiedTwitterIdentity(me);
+      if (!identity) {
+        throw new Error("X returned an invalid identity response");
       }
 
       return {
+        connected: true,
+        username: identity.username,
+        userId: identity.userId,
+        ...(identity.avatarUrl ? { avatarUrl: identity.avatarUrl } : {}),
+      };
+    } catch (error) {
+      // error-policy:J4 token/provider-identity validation failure degrades to a distinguishable
+      // connection status carrying an explicit error field — never a silent healthy/empty state. A
+      // missing-credentials case returns { connected:false } with no error above; this branch always
+      // sets error.
+      const errorCode = "provider_identity_verification_failed" as const;
+      const status = getTwitterApiErrorStatus(error);
+      logger.warn("[TwitterAutomation] Provider identity verification failed", {
+        organizationId,
+        connectionRole: role,
+        errorCode,
+        status,
+      });
+
+      const storedIdentity =
+        username || twitterUserId
+          ? {
+              verified: false as const,
+              username: username ?? undefined,
+              userId: twitterUserId ?? undefined,
+            }
+          : undefined;
+
+      return {
         connected: false,
-        username: username ?? undefined,
-        userId: twitterUserId ?? undefined,
-        error: "Token may be expired. Try reconnecting.",
+        ...(storedIdentity ? { storedIdentity } : {}),
+        errorCode,
+        error: "X identity could not be verified. Try reconnecting.",
       };
     }
   }
