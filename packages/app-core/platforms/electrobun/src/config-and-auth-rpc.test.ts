@@ -151,6 +151,7 @@ describe("getAuthStatus typed RPC", () => {
       pairingEnabled: true,
       expiresAt: 1700000000000,
       authenticated: false,
+      instanceId: "instance-a",
     });
     const snap = await composeAuthStatusSnapshot(31337, reader);
     const _typed: AuthStatusSnapshot = snap;
@@ -159,6 +160,7 @@ describe("getAuthStatus typed RPC", () => {
     expect(snap.pairingEnabled).toBe(true);
     expect(snap.expiresAt).toBe(1700000000000);
     expect(snap.authenticated).toBe(false);
+    expect(snap.instanceId).toBe("instance-a");
   });
 
   it("readAuthStatusViaHttp coerces missing/wrong-typed fields to defaults", async () => {
@@ -167,6 +169,7 @@ describe("getAuthStatus typed RPC", () => {
         required: "yes",
         pairingEnabled: true,
         expiresAt: "soon",
+        instanceId: 42,
       }),
     );
     const result = await readAuthStatusViaHttp(31337);
@@ -175,6 +178,22 @@ describe("getAuthStatus typed RPC", () => {
     expect(result.required).toBe(false);
     expect(result.pairingEnabled).toBe(true);
     expect(result.expiresAt).toBeNull();
+    expect(result.instanceId).toBeUndefined();
+  });
+
+  it("readAuthStatusViaHttp preserves a valid pairing instance binding", async () => {
+    installFetch(() =>
+      Response.json({
+        required: true,
+        pairingEnabled: true,
+        expiresAt: 1700000000000,
+        instanceId: "instance-a",
+      }),
+    );
+
+    await expect(readAuthStatusViaHttp(31337)).resolves.toMatchObject({
+      instanceId: "instance-a",
+    });
   });
 });
 

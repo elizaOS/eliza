@@ -1,3 +1,4 @@
+/** Verifies bounded response retries honor explicit upstream disposition. */
 import { describe, expect, mock, test } from "bun:test";
 import { executeResponseAttempts } from "./response-attempts";
 
@@ -63,5 +64,77 @@ describe("executeResponseAttempts", () => {
       }),
     ).rejects.toThrow("still unavailable");
     expect(request).toHaveBeenCalledTimes(3);
+  });
+
+  test("does not replay a terminal 500 when the upstream marks it non-retryable", async () => {
+    const request = mock(
+      async () =>
+        new Response("terminal", {
+          status: 500,
+          headers: { "X-Eliza-Retryable": "false" },
+        }),
+    );
+    const observations: boolean[] = [];
+
+    const result = await executeResponseAttempts({
+      maxAttempts: 3,
+      honorExplicitRetryable: true,
+      retryStatuses: true,
+      retryTransport: true,
+      request,
+      observe: (observation) => {
+        observations.push(observation.retryable);
+      },
+    });
+
+    expect(result.response.status).toBe(500);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(observations).toEqual([false]);
+  });
+
+  test("retries an explicitly recoverable non-5xx response", async () => {
+    let attempts = 0;
+    const result = await executeResponseAttempts({
+      maxAttempts: 2,
+      honorExplicitRetryable: true,
+      retryStatuses: true,
+      retryTransport: true,
+      request: async () => {
+        attempts += 1;
+        return attempts === 1
+          ? new Response("pending", {
+              status: 409,
+              headers: {
+                "Retry-After": "0",
+                "X-Eliza-Retryable": "true",
+              },
+            })
+          : new Response("ok", { status: 200 });
+      },
+      observe: () => undefined,
+    });
+
+    expect(result.response.status).toBe(200);
+    expect(attempts).toBe(2);
+  });
+
+  test("keeps legacy status retries unless explicit disposition is opted in", async () => {
+    let attempts = 0;
+    const result = await executeResponseAttempts({
+      maxAttempts: 2,
+      retryStatuses: true,
+      retryTransport: true,
+      request: async () => {
+        attempts += 1;
+        return new Response("terminal for opted-in callers only", {
+          status: 500,
+          headers: { "X-Eliza-Retryable": "false" },
+        });
+      },
+      observe: () => undefined,
+    });
+
+    expect(result.response.status).toBe(500);
+    expect(attempts).toBe(2);
   });
 });

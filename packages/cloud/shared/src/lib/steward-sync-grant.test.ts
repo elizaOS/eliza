@@ -1,9 +1,10 @@
-/** Proves Steward account creation starts at $0 without touching the credit ledger. */
+/** Proves Steward account creation receives the fixed opening credit exactly once. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // ── Mock state captured per test ─────────────────────────────────────────
 const addCreditsCalls: unknown[] = [];
+const orgCreateCalls: unknown[] = [];
 const orgUpdateCalls: Array<{ id: string; data: unknown }> = [];
 const orgDeleteCalls: string[] = [];
 const loggerErrorCalls: Array<{ message: string; context?: unknown }> = [];
@@ -16,7 +17,7 @@ const createdOrg = {
   id: "org-new-1",
   name: "alice's Organization",
   slug: "alice-abc123",
-  credit_balance: "0.00",
+  credit_balance: "5.00",
 };
 const createdUser = {
   id: "user-new-1",
@@ -56,7 +57,10 @@ mock.module("./services/credits", () => ({
 mock.module("./services/organizations", () => ({
   organizationsService: {
     getBySlug: async () => undefined,
-    create: async () => createdOrg,
+    create: async (data: unknown) => {
+      orgCreateCalls.push(data);
+      return createdOrg;
+    },
     update: async (id: string, data: unknown) => {
       orgUpdateCalls.push({ id, data });
       return { ...createdOrg, ...(data as object) };
@@ -161,9 +165,10 @@ const baseParams = {
   name: "alice",
 };
 
-describe("syncUserFromSteward — zero-credit account creation", () => {
+describe("syncUserFromSteward — fixed signup credit", () => {
   beforeEach(() => {
     addCreditsCalls.length = 0;
+    orgCreateCalls.length = 0;
     orgUpdateCalls.length = 0;
     orgDeleteCalls.length = 0;
     loggerErrorCalls.length = 0;
@@ -173,12 +178,13 @@ describe("syncUserFromSteward — zero-credit account creation", () => {
     };
   });
 
-  test("creates the account without a grant, balance write, or withheld state", async () => {
+  test("creates the account with $5 without a second credit transaction", async () => {
     const { syncUserFromSteward } = await import("./steward-sync");
 
     const result = await syncUserFromSteward(baseParams);
 
     expect(addCreditsCalls).toHaveLength(0);
+    expect(orgCreateCalls).toEqual([expect.objectContaining({ credit_balance: "5.00" })]);
     expect(
       orgUpdateCalls.filter((c) => (c.data as { credit_balance?: string }).credit_balance),
     ).toHaveLength(0);
@@ -186,8 +192,8 @@ describe("syncUserFromSteward — zero-credit account creation", () => {
     expect(loggerErrorCalls).toHaveLength(0);
     expect(result).toMatchObject({
       ...finalUserWithOrg,
-      initialCreditsGranted: false,
-      initialFreeCreditsUsd: 0,
+      initialCreditsGranted: true,
+      initialFreeCreditsUsd: 5,
     });
   });
 });

@@ -1023,7 +1023,7 @@ bucket_name = "eliza-cloud-blob"
 # WebSocket driver in client.ts, which bypasses this binding).
 [[env.production.hyperdrive]]
 binding = "HYPERDRIVE"
-id = "486bdc36737a4ad1b526fc3c08627658"
+id = "9f59e4ec65f048f7b87e29e7b9c5d728"
 
 # KV is the Worker's cache backend (CacheClient). Workers can't reliably open raw
 # TCP to an external Redis (Railway's public proxy hangs under load), so the Worker

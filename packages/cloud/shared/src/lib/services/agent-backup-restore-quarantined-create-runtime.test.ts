@@ -36,6 +36,7 @@ const CLAIM_GENERATIONS = [
 const RECEIPT_ID = "00000000-0000-4000-8000-000000000013";
 const VAULT_GENERATION_ID = "00000000-0000-4000-8000-000000000014";
 const IMAGE_DIGEST = `sha256:${"a".repeat(64)}`;
+const CURRENT_IMAGE_DIGEST = `sha256:${"8".repeat(64)}`;
 const IMAGE_PLATFORM_DIGEST = `sha256:${"9".repeat(64)}`;
 const MANIFEST_SHA256 = "b".repeat(64);
 const ACTIVATION_TOKEN_SHA256 = "d".repeat(64);
@@ -46,6 +47,14 @@ const VOLUME_PATH = deriveRestoreStagingVolumePathV1(AGENT_ID, RESTORE_ATTEMPT_I
 const IMAGE_REFERENCE = `ghcr.io/elizaos/eliza@${IMAGE_DIGEST}`;
 const IMAGE_PLATFORM_REFERENCE = `ghcr.io/elizaos/eliza@${IMAGE_PLATFORM_DIGEST}`;
 const IMAGE_PLATFORM = "linux/amd64" as const;
+const PROVIDER_RECEIPT_GOLDEN_DIGEST =
+  "d5e92444ad706e345f5032b3ad17066fdd1b76a784e0af39fa6448b7bd128c52";
+const PROVIDER_RECEIPT_QUARANTINE_FALSE_GOLDEN_DIGEST =
+  "6f148e1302419816c9befdce6f9a426db6a958169c8dd68fc2cd92fb3b2407c6";
+const PROVIDER_RECEIPT_ARM64_GOLDEN_DIGEST =
+  "d4f40e956fa5b416fad7680dd7cd4b6a05399da0d51548391f18af4ee4e6f6cf";
+const PROVIDER_RECEIPT_ALTERNATE_NODE_GOLDEN_DIGEST =
+  "cf4cfff058ecbd968a829c9f44019436594ff1d281ffcb3518192bd17248c7b2";
 const IMAGE_AUTHORITY = Object.freeze({
   imageReference: IMAGE_REFERENCE,
   imageDigest: IMAGE_DIGEST,
@@ -135,6 +144,199 @@ function locator(containerId: string | null = null) {
   };
 }
 
+type ExactProviderReceiptInput = Parameters<
+  typeof buildAgentBackupRestoreExactProviderReceiptDigestV1
+>[0];
+
+function exactProviderReceiptInput(): ExactProviderReceiptInput {
+  return {
+    operation: operation("container_created", CONTAINER_ID),
+    replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+    locator: locator(CONTAINER_ID),
+  };
+}
+
+describe("buildAgentBackupRestoreExactProviderReceiptDigestV1", () => {
+  test("matches the frozen canonical provider receipt digest", () => {
+    const digest = buildAgentBackupRestoreExactProviderReceiptDigestV1(exactProviderReceiptInput());
+    expect(digest).toBe(PROVIDER_RECEIPT_GOLDEN_DIGEST);
+
+    // Independently frozen from the same canonical payload with quarantine=false.
+    // The main golden therefore also catches removal or inversion of this fixed gate.
+    expect(digest).not.toBe(PROVIDER_RECEIPT_QUARANTINE_FALSE_GOLDEN_DIGEST);
+  });
+
+  test("binds imagePlatform and nodeRecordId into the frozen receipt", () => {
+    const arm64 = exactProviderReceiptInput();
+    const alternateNode = exactProviderReceiptInput();
+    const alternateNodeRecordId = "00000000-0000-4000-8000-000000000099";
+
+    expect(
+      buildAgentBackupRestoreExactProviderReceiptDigestV1({
+        ...arm64,
+        operation: { ...arm64.operation, expected_image_platform: "linux/arm64" },
+      }),
+    ).toBe(PROVIDER_RECEIPT_ARM64_GOLDEN_DIGEST);
+    expect(
+      buildAgentBackupRestoreExactProviderReceiptDigestV1({
+        ...alternateNode,
+        operation: {
+          ...alternateNode.operation,
+          expected_node_record_id: alternateNodeRecordId,
+        },
+        locator: { ...alternateNode.locator, nodeRecordId: alternateNodeRecordId },
+      }),
+    ).toBe(PROVIDER_RECEIPT_ALTERNATE_NODE_GOLDEN_DIGEST);
+  });
+
+  const guardCases: ReadonlyArray<{
+    readonly name: string;
+    readonly mutate: (input: ExactProviderReceiptInput) => ExactProviderReceiptInput;
+  }> = [
+    {
+      name: "a missing container id",
+      mutate: (input) => ({ ...input, locator: { ...input.locator, containerId: null } }),
+    },
+    {
+      name: "a non-canonical container id",
+      mutate: (input) => ({
+        ...input,
+        locator: { ...input.locator, containerId: "C".repeat(64) },
+      }),
+    },
+    {
+      name: "a different locator replacement attempt",
+      mutate: (input) => ({
+        ...input,
+        locator: {
+          ...input.locator,
+          replacementAttemptId: "00000000-0000-4000-8000-000000000098",
+        },
+      }),
+    },
+    {
+      name: "a malformed replacement attempt authority",
+      mutate: (input) => ({
+        ...input,
+        replacementAttemptId: "not-a-uuid",
+        locator: { ...input.locator, replacementAttemptId: "not-a-uuid" },
+      }),
+    },
+    {
+      name: "node record drift",
+      mutate: (input) => ({
+        ...input,
+        locator: {
+          ...input.locator,
+          nodeRecordId: "00000000-0000-4000-8000-000000000098",
+        },
+      }),
+    },
+    {
+      name: "node incarnation drift",
+      mutate: (input) => ({
+        ...input,
+        locator: {
+          ...input.locator,
+          nodeIncarnation: "00000000-0000-4000-8000-000000000098",
+        },
+      }),
+    },
+    {
+      name: "node history drift",
+      mutate: (input) => ({
+        ...input,
+        locator: {
+          ...input.locator,
+          nodeHistoryId: "00000000-0000-4000-8000-000000000098",
+        },
+      }),
+    },
+    {
+      name: "container name drift",
+      mutate: (input) => ({
+        ...input,
+        locator: { ...input.locator, containerName: `${input.locator.containerName}-forged` },
+      }),
+    },
+    {
+      name: "a missing image digest",
+      mutate: (input) => ({
+        ...input,
+        operation: { ...input.operation, expected_image_digest: null },
+      }),
+    },
+    {
+      name: "a malformed image digest",
+      mutate: (input) => ({
+        ...input,
+        operation: { ...input.operation, expected_image_digest: `sha256:${"A".repeat(64)}` },
+      }),
+    },
+    {
+      name: "a mutable tagged image reference",
+      mutate: (input) => ({
+        ...input,
+        operation: {
+          ...input.operation,
+          expected_image_reference: "ghcr.io/elizaos/eliza:latest",
+        },
+      }),
+    },
+    {
+      name: "a digest-pinned reference for another digest",
+      mutate: (input) => ({
+        ...input,
+        operation: {
+          ...input.operation,
+          expected_image_reference: `ghcr.io/elizaos/eliza@${CURRENT_IMAGE_DIGEST}`,
+        },
+      }),
+    },
+    {
+      name: "a missing image reference",
+      mutate: (input) => ({
+        ...input,
+        operation: { ...input.operation, expected_image_reference: null },
+      }),
+    },
+    {
+      name: "a missing image platform",
+      mutate: (input) => ({
+        ...input,
+        operation: { ...input.operation, expected_image_platform: null },
+      }),
+    },
+    {
+      name: "a missing platform digest",
+      mutate: (input) => ({
+        ...input,
+        operation: { ...input.operation, expected_image_platform_digest: null },
+      }),
+    },
+    {
+      name: "a malformed platform digest",
+      mutate: (input) => ({
+        ...input,
+        operation: {
+          ...input.operation,
+          expected_image_platform_digest: `sha256:${"A".repeat(64)}`,
+        },
+      }),
+    },
+  ];
+
+  for (const guardCase of guardCases) {
+    test(`rejects ${guardCase.name}`, () => {
+      expect(() =>
+        buildAgentBackupRestoreExactProviderReceiptDigestV1(
+          guardCase.mutate(exactProviderReceiptInput()),
+        ),
+      ).toThrow();
+    });
+  }
+});
+
 function providerHandle(containerId?: string): SandboxHandle {
   return {
     sandboxId: CONTAINER_NAME,
@@ -178,6 +380,7 @@ interface HarnessOptions {
   providerThrowsAfterSettlement?: boolean;
   seedReceiptExists?: boolean;
   persistedProviderReceiptDigest?: string;
+  sandboxImageReference?: string;
   mutateProviderHandle?: (stage: ProviderHandleStage, handle: SandboxHandle) => SandboxHandle;
 }
 
@@ -238,7 +441,7 @@ function harness(options: HarnessOptions = {}) {
       environmentVars: { RESTORE_TEST: "true" },
       agentConfig: { testMode: true },
       routeAgentId: "route-agent",
-      dockerImageReference: "ghcr.io/elizaos/eliza:source",
+      dockerImageReference: options.sandboxImageReference ?? "ghcr.io/elizaos/eliza:source",
       activationTokenSha256: ACTIVATION_TOKEN_SHA256,
       activationTokenCiphertext: "kms:activation-token-ciphertext",
       activationGeneration: RESTORE_ATTEMPT_ID,
@@ -344,7 +547,7 @@ function harness(options: HarnessOptions = {}) {
     resolveImagePlatform: async (input) => {
       events.push("image:resolve");
       expect(input).toEqual({
-        imageReference: "ghcr.io/elizaos/eliza:source",
+        imageReference: IMAGE_REFERENCE,
         imageDigest: IMAGE_DIGEST,
         platform: IMAGE_PLATFORM,
         signal: undefined,
@@ -535,6 +738,7 @@ describe("runAgentBackupRestoreQuarantinedCreate", () => {
       );
       throw new Error("Expected entry cancellation");
     } catch (error) {
+      // error-policy:J1 the test assertion boundary observes the caller's abort reason.
       expect(error).toBe(abortReason);
     }
     expect(fixture.events).toEqual([]);
@@ -564,6 +768,7 @@ describe("runAgentBackupRestoreQuarantinedCreate", () => {
       );
       throw new Error("Expected vault handoff cancellation");
     } catch (error) {
+      // error-policy:J1 the test assertion boundary observes the caller's abort reason.
       expect(error).toBe(abortReason);
     }
     expect(observedSignal).not.toBe(fixture.lastSeedSignal);
@@ -592,6 +797,7 @@ describe("runAgentBackupRestoreQuarantinedCreate", () => {
       );
       throw new Error("Expected post-resolution cancellation");
     } catch (error) {
+      // error-policy:J1 the test assertion boundary observes the caller's abort reason.
       expect(error).toBe(abortReason);
     }
     expect(fixture.events).not.toContain("db:image-authority");
@@ -621,6 +827,7 @@ describe("runAgentBackupRestoreQuarantinedCreate", () => {
       );
       throw new Error("Expected image-bind cancellation");
     } catch (error) {
+      // error-policy:J1 the test assertion boundary observes the caller's abort reason.
       expect(error).toBe(abortReason);
     }
     expect(fixture.events).toContain("db:image-authority");
@@ -668,6 +875,69 @@ describe("runAgentBackupRestoreQuarantinedCreate", () => {
       "provider:success-cas",
     ]);
   });
+
+  for (const currentImageReference of [
+    `ghcr.io/elizaos/eliza@${CURRENT_IMAGE_DIGEST}`,
+    `ghcr.io/elizaos/eliza:production@${CURRENT_IMAGE_DIGEST}`,
+  ]) {
+    test(`repins historical image authority from ${currentImageReference.includes(":production") ? "tag@B" : "repo@B"} to repo@A`, async () => {
+      const fixture = harness({
+        initialPhase: "vault_seeded",
+        sandboxImageReference: currentImageReference,
+      });
+      let resolvedInput:
+        | Parameters<AgentBackupRestoreQuarantinedCreateDependencies["resolveImagePlatform"]>[0]
+        | null = null;
+      const result = await runAgentBackupRestoreQuarantinedCreate(INPUT, {
+        ...fixture.dependencies,
+        resolveImagePlatform: async (input) => {
+          resolvedInput = input;
+          return IMAGE_AUTHORITY;
+        },
+      });
+
+      expect(result.status).toBe("created");
+      expect(resolvedInput).toEqual({
+        imageReference: IMAGE_REFERENCE,
+        imageDigest: IMAGE_DIGEST,
+        platform: IMAGE_PLATFORM,
+        signal: undefined,
+      });
+    });
+  }
+
+  test("does not hide a repository change while repinning a historical digest", async () => {
+    const fixture = harness({
+      initialPhase: "vault_seeded",
+      initialImageAuthority: "persisted",
+      sandboxImageReference: `ghcr.io/other/project:production@${CURRENT_IMAGE_DIGEST}`,
+    });
+
+    await expect(
+      runAgentBackupRestoreQuarantinedCreate(INPUT, fixture.dependencies),
+    ).rejects.toThrow("differs from its persisted exact image generation");
+    expect(fixture.providerCreateCalls).toBe(0);
+  });
+
+  for (const malformedImageReference of [
+    `ghcr.io/elizaos/eliza:bad tag@${CURRENT_IMAGE_DIGEST}`,
+    `ghcr.io/elizaos/eliza:production@${CURRENT_IMAGE_DIGEST}@${CURRENT_IMAGE_DIGEST}`,
+    "ghcr.io/ElizaOS/eliza:production",
+    "ghcr.io/elizaos/eliza",
+  ]) {
+    test(`rejects malformed current image reference ${malformedImageReference}`, async () => {
+      const fixture = harness({
+        initialPhase: "vault_seeded",
+        sandboxImageReference: malformedImageReference,
+      });
+
+      await expect(
+        runAgentBackupRestoreQuarantinedCreate(INPUT, fixture.dependencies),
+      ).rejects.toThrow();
+      expect(fixture.events).not.toContain("image:resolve");
+      expect(fixture.providerCreateCalls).toBe(0);
+    });
+  }
 
   test("replays the attempt-scoped seed before a response-loss provider retry", async () => {
     const fixture = harness({ initialPhase: "vault_seeded" });

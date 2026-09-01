@@ -36,6 +36,13 @@
       "when": 1785384000000,
       "tag": "0004_approval_request_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787752800000,
+      "tag": "0005_connector_account_external_role",
+      "breakpoints": true
     }
   ]
 }

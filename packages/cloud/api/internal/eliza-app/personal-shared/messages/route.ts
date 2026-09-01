@@ -1,5 +1,11 @@
 /** Runs a trusted messaging delivery through one rowless personal Shared turn. */
 
+import {
+  ELIZA_FAILURE_CAUSE_NAME_HEADER,
+  ELIZA_FAILURE_NAME_HEADER,
+  ELIZA_FAILURE_STAGE_HEADER,
+  ELIZA_RETRYABLE_HEADER,
+} from "@elizaos/cloud-services-common/personal-shared-failure";
 import { ChannelType } from "@elizaos/core/edge";
 import type { SharedGroupReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import { Hono } from "hono";
@@ -42,7 +48,10 @@ import {
   sharedRestMessageSend,
   sharedTurnServerTiming,
 } from "@/lib/services/shared-runtime/shared-rest-adapter";
-import { SharedRuntimeCacheWarmingError } from "@/lib/services/shared-runtime/shared-runtime-errors";
+import {
+  SharedRuntimeCacheWarmingError,
+  SharedRuntimeTurnError,
+} from "@/lib/services/shared-runtime/shared-runtime-errors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
@@ -55,8 +64,6 @@ const MAX_TELEGRAM_VOICE_BYTES = 8 * 1024 * 1024;
 const MAX_TELEGRAM_VOICE_BASE64_LENGTH =
   Math.ceil(MAX_TELEGRAM_VOICE_BYTES / 3) * 4;
 const DEFAULT_WHISPER_MODEL = "Systran/faster-whisper-small";
-const FAILURE_STAGE_HEADER = "X-Eliza-Failure-Stage";
-const FAILURE_NAME_HEADER = "X-Eliza-Failure-Name";
 const GROUP_CLAIM_TTL_MS = 10 * 60_000;
 const GROUP_JOIN_CHALLENGE_TTL_MS = 10 * 60_000;
 const GROUP_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -89,6 +96,7 @@ const SAFE_ERROR_NAMES = new Set([
   "RangeError",
   "RateLimitError",
   "SharedRuntimeCacheWarmingError",
+  "SharedRuntimeTurnError",
   "SharedTurnConflictError",
   "TimeoutError",
   "TypeError",
@@ -97,6 +105,19 @@ const SAFE_ERROR_NAMES = new Set([
 function safeErrorName(error: unknown): string {
   const name = error instanceof Error ? error.name : "";
   return SAFE_ERROR_NAMES.has(name) ? name : "OtherError";
+}
+
+function retryableDeliveryError(error: unknown): boolean {
+  if (error instanceof SharedRuntimeTurnError) return error.retryable;
+  const name = error instanceof Error ? error.name : "";
+  return (
+    error instanceof PersonalDeliveryAccountResolutionError ||
+    error instanceof SharedRuntimeCacheWarmingError ||
+    name === "AbortError" ||
+    name === "RateLimitError" ||
+    name === "TimeoutError" ||
+    isGroupDeliveryPendingError(error)
+  );
 }
 
 function isGroupDeliveryPendingError(error: unknown): boolean {
@@ -1616,6 +1637,7 @@ app.post("/", async (c) => {
         organizationId: account.organizationId,
         userId: account.userId,
         mediaUrls: parsed.data.mediaUrls,
+        executionCtx: worker.executionCtx,
       });
       if (enrichment.kind === "described") {
         deliveryMessage = `${deliveryMessage}\n\n[Attached image description]\n${enrichment.description}\n\n[Attached image URL]\n${parsed.data.mediaUrls.join("\n")}`;
@@ -1956,11 +1978,16 @@ app.post("/", async (c) => {
   } catch (error) {
     // error-policy:J1 the internal HTTP boundary emits one structured failure.
     const errorName = safeErrorName(error);
+    const retryable = retryableDeliveryError(error);
+    const failureCauseName =
+      error instanceof SharedRuntimeTurnError ? error.failureName : null;
     const traceId = c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers);
     logger.error("[personal-shared-messaging] delivery failed", {
       traceId,
       stage,
       errorName,
+      ...(failureCauseName ? { failureCauseName } : {}),
+      retryable,
       ...(error instanceof PersonalDeliveryAccountResolutionError
         ? { projectionFailure: error.projectionFailure }
         : {}),
@@ -1975,8 +2002,12 @@ app.post("/", async (c) => {
     // This route is internal-authenticated. Safe classification headers let
     // the connector correlate a retry without exposing exception messages or
     // provider/SQL payloads in its logs.
-    c.header(FAILURE_STAGE_HEADER, stage);
-    c.header(FAILURE_NAME_HEADER, errorName);
+    c.header(ELIZA_FAILURE_STAGE_HEADER, stage);
+    c.header(ELIZA_FAILURE_NAME_HEADER, errorName);
+    c.header(ELIZA_RETRYABLE_HEADER, retryable ? "true" : "false");
+    if (failureCauseName) {
+      c.header(ELIZA_FAILURE_CAUSE_NAME_HEADER, failureCauseName);
+    }
     if (error instanceof PersonalDeliveryAccountResolutionError) {
       // Account resolution only fails here after both the projection and the
       // canonical resolver failed — a transient storage condition the
@@ -1998,6 +2029,18 @@ app.post("/", async (c) => {
         {
           success: false,
           error: "Shared Eliza is warming. Retry this turn shortly.",
+          code: "service_unavailable",
+          retryable: true,
+        },
+        503,
+        { "Retry-After": "1" },
+      );
+    }
+    if (error instanceof SharedRuntimeTurnError && error.retryable) {
+      return c.json(
+        {
+          success: false,
+          error: "Shared Eliza is temporarily unavailable. Retry shortly.",
           code: "service_unavailable",
           retryable: true,
         },

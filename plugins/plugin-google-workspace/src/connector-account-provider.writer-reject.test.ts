@@ -17,7 +17,10 @@ import {
 } from "@elizaos/core";
 import { OAuth2Client } from "google-auth-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGoogleConnectorAccountProvider } from "./connector-account-provider.js";
+import {
+  createGoogleConnectorAccountProvider,
+  stableGoogleConnectorAccountId,
+} from "./connector-account-provider.js";
 
 const REDIRECT_URI = "http://127.0.0.1:31437/api/connectors/google/oauth/callback";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -174,10 +177,15 @@ describe("google provider completion with a rejecting durable credential writer 
 
   it("revokes the combined grant and makes the prior account unavailable after a reauthorization writer failure", async () => {
     const priorVaultRef = "connector.prior.google.account.oauth_tokens";
+    const siblingVaultRef = "connector.prior.google.sibling.oauth_tokens";
     const vault = new Map([
       [
         priorVaultRef,
         JSON.stringify({ access_token: "prior-access", refresh_token: "prior-refresh" }),
+      ],
+      [
+        siblingVaultRef,
+        JSON.stringify({ access_token: "sibling-access", refresh_token: "sibling-refresh" }),
       ],
     ]);
     const putSecret = vi.fn(async () => {
@@ -220,6 +228,24 @@ describe("google provider completion with a rejecting durable credential writer 
       credentialType: "oauth.tokens",
       vaultRef: priorVaultRef,
     });
+    const sibling = await manager.upsertAccount(
+      "google",
+      {
+        provider: "google",
+        role: "AGENT",
+        purpose: ["messaging"],
+        accessGate: "owner_binding",
+        status: "connected",
+        externalId: "google-sub-writer-reject",
+        accountKey: stableGoogleConnectorAccountId("google-sub-writer-reject", "AGENT"),
+      },
+      "acct_google_sibling"
+    );
+    await adapter.setConnectorAccountCredentialRef({
+      accountId: sibling.id as never,
+      credentialType: "oauth.tokens",
+      vaultRef: siblingVaultRef,
+    });
     const flow = await manager.startOAuth("google", {
       accountId: account.id,
       scopes: ["gmail.read"],
@@ -244,10 +270,20 @@ describe("google provider completion with a rejecting durable credential writer 
         oauthUnavailableReason: "reauthorization_compensation_revoked_combined_grant",
       },
     });
+    await expect(manager.getAccount("google", sibling.id)).resolves.toMatchObject({
+      status: "error",
+      metadata: {
+        oauthUnavailableReason: "reauthorization_compensation_revoked_combined_grant",
+      },
+    });
     expect(vault.has(priorVaultRef)).toBe(false);
+    expect(vault.has(siblingVaultRef)).toBe(false);
     expect(remove).toHaveBeenCalledWith(priorVaultRef);
     await expect(
       adapter.listConnectorAccountCredentialRefs({ accountId: account.id as never })
+    ).resolves.toEqual([]);
+    await expect(
+      adapter.listConnectorAccountCredentialRefs({ accountId: sibling.id as never })
     ).resolves.toEqual([]);
   });
 
@@ -296,13 +332,48 @@ describe("google provider completion with a rejecting durable credential writer 
     });
   });
 
-  it("revokes the grant and creates no account when a new-account ID-token validation fails", async () => {
+  it("revokes the grant and degrades every existing account when a new-account ID token is untrusted", async () => {
     const putSecret = vi.fn(async () => "should-not-write");
+    const vault = new Map<string, string>();
+    const remove = vi.fn(async (key: string) => {
+      vault.delete(key);
+    });
     const adapter = new InMemoryDatabaseAdapter();
     await adapter.initialize();
-    const runtime = makeRuntime(putSecret, adapter);
+    const runtime = makeRuntime(putSecret, adapter, remove, {
+      get: async (key) => vault.get(key) ?? "",
+      has: async (key) => vault.has(key),
+    });
     const manager: ConnectorAccountManager = getConnectorAccountManager(runtime);
     manager.registerProvider(createGoogleConnectorAccountProvider(runtime));
+    const existingAccounts = await Promise.all(
+      [
+        ["acct_google_untrusted_owner", "known-owner-subject", "OWNER"],
+        ["acct_google_untrusted_agent", "other-agent-subject", "AGENT"],
+      ].map(async ([id, externalId, role]) => {
+        const account = await manager.upsertAccount(
+          "google",
+          {
+            provider: "google",
+            role: role as "OWNER" | "AGENT",
+            purpose: ["messaging"],
+            accessGate: "owner_binding",
+            status: "connected",
+            externalId,
+            accountKey: stableGoogleConnectorAccountId(externalId, role as "OWNER" | "AGENT"),
+          },
+          id
+        );
+        const vaultRef = `connector.existing.${id}.oauth_tokens`;
+        vault.set(vaultRef, JSON.stringify({ refresh_token: `refresh-${id}` }));
+        await adapter.setConnectorAccountCredentialRef({
+          accountId: account.id as never,
+          credentialType: "oauth.tokens",
+          vaultRef,
+        });
+        return account;
+      })
+    );
     const flow = await manager.startOAuth("google", {
       scopes: ["gmail.read"],
       metadata: { requestedRole: "OWNER" },
@@ -323,7 +394,18 @@ describe("google provider completion with a rejecting durable credential writer 
       REVOKE_ENDPOINT,
       expect.objectContaining({ body: "token=writer-reject-refresh-token" })
     );
-    await expect(manager.listAccounts("google")).resolves.toEqual([]);
+    for (const account of existingAccounts) {
+      await expect(manager.getAccount("google", account.id)).resolves.toMatchObject({
+        status: "error",
+        metadata: {
+          oauthUnavailableReason: "unattributed_compensation_revoked_google_grant",
+        },
+      });
+      await expect(
+        adapter.listConnectorAccountCredentialRefs({ accountId: account.id as never })
+      ).resolves.toEqual([]);
+    }
+    expect(remove).toHaveBeenCalledTimes(2);
   });
 
   it("removes a newly written secret, revokes the grant, and removes the provisional account when the ref writer rejects", async () => {

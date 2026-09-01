@@ -80,7 +80,7 @@ const RESTORE_MIGRATIONS = [
   "0245_agent_vault_key_topology_guard",
 ].map((name) => readFileSync(join(MIGRATIONS_DIR, `${name}.sql`), "utf8"));
 const EXACT_FINAL_REPLACEMENT_GUARD_SQL = readFileSync(
-  join(MIGRATIONS_DIR, "0368_agent_vault_key_seed_receipts_per_replacement.sql"),
+  join(MIGRATIONS_DIR, "0371_agent_vault_key_seed_receipts_per_replacement.sql"),
   "utf8",
 )
   .split("--> statement-breakpoint")
@@ -95,7 +95,7 @@ const EXACT_FINAL_REPLACEMENT_GUARD_SQL = readFileSync(
       ),
   );
 if (EXACT_FINAL_REPLACEMENT_GUARD_SQL.length !== 2) {
-  throw new Error("0368 exact final replacement guard fixture is incomplete");
+  throw new Error("0371 exact final replacement guard fixture is incomplete");
 }
 
 const ORG_ID = "00000000-0000-4000-8000-00000000b101";

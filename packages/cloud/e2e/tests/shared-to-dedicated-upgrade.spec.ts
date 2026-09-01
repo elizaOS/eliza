@@ -560,6 +560,7 @@ test.describe("shared→dedicated tier upgrade", () => {
           body: JSON.stringify({
             platform: "blooio",
             project: "eliza-app",
+            connectorAccountId: "blooio:eliza-app",
             phoneNumber: connectorPhone,
             messageId: "blooio:eliza-app:after-cutover",
             message: "Continue this exact conversation from my phone.",
@@ -614,6 +615,7 @@ test.describe("shared→dedicated tier upgrade", () => {
           body: JSON.stringify({
             platform: "blooio",
             project: "eliza-app",
+            connectorAccountId: "blooio:eliza-app",
             phoneNumber: connectorPhone,
             messageId: "blooio:eliza-app:after-cutover",
             message: "Continue this exact conversation from my phone.",

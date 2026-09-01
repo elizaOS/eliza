@@ -207,7 +207,7 @@ async function startCycle(
   const result = await client.query<{ observed_at: string; statement_time: string }>(
     `UPDATE agent_backup_admission_claim_shards
      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
-       cycle_observed_at = '2000-01-01 00:00:00+00', cycle_max_cohort = 1,
+       cycle_observed_at = '2000-01-01 00:00:00+00', cycle_max_cohort = 42,
        cycle_max_ordinal = 0, cycle_max_id = $2::uuid,
        cycle_aging_interval_ms = 900000, priority_pass = 0
      WHERE work_kind = 'schedule_capture' AND shard_id = $1
@@ -396,6 +396,53 @@ realPostgresTest(
         BigInt(agedProof.rows[0]?.cycle_start_turn ?? 0),
       );
       expect(agedProof.rows[0]?.proof_xid).not.toBe("0");
+
+      for (let attempt = 2; attempt <= 12; attempt += 1) {
+        await database.query(
+          `UPDATE agent_backup_admission_work
+           SET state = 'queued', lease_owner = NULL, lease_generation = NULL,
+             lease_expires_at = NULL, ready_cohort = ready_cohort + 1
+           WHERE id = $1`,
+          [WORK_AGED],
+        );
+        await database.query(
+          `UPDATE agent_backup_admission_work
+           SET state = 'leased', lease_owner = $2,
+             lease_generation = gen_random_uuid(),
+             lease_expires_at = statement_timestamp() + interval '1 hour',
+             attempts = attempts + 1 WHERE id = $1`,
+          [WORK_AGED, `real-postgres-retry-${attempt}`],
+        );
+      }
+      await database.query(
+        `UPDATE agent_backup_admission_work
+         SET state = 'queued', lease_owner = NULL, lease_generation = NULL,
+           lease_expires_at = NULL, ready_cohort = ready_cohort + 1
+         WHERE id = $1`,
+        [WORK_AGED],
+      );
+      await expect(
+        database.query(
+          `UPDATE agent_backup_admission_work
+           SET state = 'leased', lease_owner = 'real-postgres-retry-13',
+             lease_generation = gen_random_uuid(),
+             lease_expires_at = statement_timestamp() + interval '1 hour',
+             attempts = attempts + 1 WHERE id = $1`,
+          [WORK_AGED],
+        ),
+      ).rejects.toThrow(/retry attempt limit/i);
+      const cappedProof = await database.query<{ state: string; attempts: number }>(
+        "SELECT state, attempts FROM agent_backup_admission_work WHERE id = $1",
+        [WORK_AGED],
+      );
+      expect(cappedProof.rows).toEqual([{ state: "queued", attempts: 12 }]);
+      await database.query(
+        `UPDATE agent_backup_admission_work
+         SET state = 'settled', settled_at = statement_timestamp(),
+           settled_reason = 'RETRY_EXHAUSTED'
+         WHERE id = $1`,
+        [WORK_AGED],
+      );
 
       await insertSchedule(database, WORK_FUTURE, ORG_FUTURE, SOURCE_FUTURE, HISTORY_FUTURE, {
         due: clock.future_due,

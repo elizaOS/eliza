@@ -3,7 +3,7 @@
  * reconciliation and isolated Postgres integration tests execute the same query.
  */
 
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { dbRead, dbWrite } from "../../db/helpers";
 import {
   type AgentSandboxReplacementAttemptState,
@@ -108,99 +108,83 @@ async function exactRestoreReplacementTableExists(
   return row?.relation !== null;
 }
 
-async function countExactRestoreReplacementReservations(
-  database: WorkloadCountDatabase,
-  nodeId: string,
-): Promise<{ count: number }> {
-  // Never discover an absent rolling-deploy table by catching 42P01: in
-  // PostgreSQL that error aborts the surrounding recount transaction, so the
-  // subsequent counter repair cannot run. `to_regclass` is non-throwing and
-  // keeps the transaction usable.
-  if (!(await exactRestoreReplacementTableExists(database))) return { count: 0 };
-
-  const [row] = await database
-    .select({ count: sql<number>`count(*)::int` })
-    .from(agentSandboxReplacementAttempts)
-    .where(
-      and(
-        eq(agentSandboxReplacementAttempts.locator_node_id, nodeId),
-        eq(agentSandboxReplacementAttempts.locator_allocation_counted, true),
-        // Non-restore blue/green attempts transfer their accounting through
-        // agent_sandboxes.replacement_cleanup_* and must not enter this
-        // independent reservation ledger.
-        isNotNull(agentSandboxReplacementAttempts.restore_attempt_id),
-        inArray(agentSandboxReplacementAttempts.state, COUNTED_EXACT_RESTORE_REPLACEMENT_STATES),
-      ),
-    );
-  return row;
-}
-
 /** Counts live app and agent rows assigned to one Docker node. */
 export async function countAllocatedWorkloadsOnNodeWithDatabase(
   database: WorkloadCountDatabase,
   nodeId: string,
 ): Promise<number> {
-  // Reconciliation calls this through a transaction-bound pg client. Issue the
-  // statements serially: Promise.all on one client only queues work today and
-  // is deprecated by node-postgres because it can become an overlapping-query
-  // error in pg@9.
-  const [containerRow] = await database
-    .select({ count: sql<number>`count(*)::int` })
-    .from(containers)
-    .where(
-      and(
-        eq(containers.node_id, nodeId),
-        sql`${containers.status} not in ('failed','stopped','deleted')`,
-      ),
-    );
-  const [agentRow] = await database
-    .select({ count: sql<number>`count(*)::int` })
-    .from(agentSandboxes)
-    .where(
-      and(
-        eq(agentSandboxes.node_id, nodeId),
-        // Recorded allocation ownership outranks status. Once a deletion
-        // generation has handed its slot back the row stops consuming
-        // capacity immediately, even though it can linger in a deletion
-        // status until final row cleanup; conversely a `deletion_failed` row
-        // that still owns its slot genuinely occupies one, which a
-        // status-only rule counted as free (#17185).
-        //
-        // NULL keeps the pre-ownership behaviour byte for byte: rows with no
-        // deletion intent never had ownership recorded, and neither did
-        // deletion intents that predate the column — both fall through to the
-        // terminal-status rule rather than being guessed either way.
-        sql`(
-            ${agentSandboxes.deletion_allocation_counted} IS TRUE
-            OR (
-              ${agentSandboxes.deletion_allocation_counted} IS NULL
-              AND ${agentSandboxes.status} not in (${sql.join(
-                TERMINAL_SANDBOX_STATUSES.map((status) => sql`${status}`),
-                sql`, `,
-              )})
-            )
-          )`,
-      ),
-    );
-  const [replacementCleanupRow] = await database
-    .select({ count: sql<number>`count(*)::int` })
-    .from(agentSandboxes)
-    .where(
-      and(
-        eq(agentSandboxes.replacement_cleanup_node_id, nodeId),
-        eq(agentSandboxes.replacement_cleanup_allocation_counted, true),
-      ),
-    );
-  const exactRestoreReplacementRow = await countExactRestoreReplacementReservations(
-    database,
-    nodeId,
-  );
+  // Never discover an absent rolling-deploy table by catching 42P01: in
+  // PostgreSQL that error aborts the surrounding recount transaction, so the
+  // subsequent counter repair cannot run. `to_regclass` is non-throwing and
+  // lets us choose a query that does not reference the absent relation.
+  const includeExactRestoreReservations = await exactRestoreReplacementTableExists(database);
+
+  // All workload ledgers must share one PostgreSQL statement snapshot. Exact
+  // restore atomically transfers one slot from a provider_succeeded attempt to
+  // the canonical sandbox row; separate READ COMMITTED SELECTs could observe
+  // the sandbox before that commit and the attempt after it, transiently
+  // returning zero. Scalar subqueries keep the four categories independent
+  // while making their combined observation indivisible, without adding one
+  // transaction per node to the placement hot path.
+  const commonSelection = {
+    containerCount: sql<number>`(
+      SELECT count(*)::int
+      FROM ${containers}
+      WHERE ${containers.node_id} = ${nodeId}
+        AND ${containers.status} not in ('failed','stopped','deleted')
+    )`,
+    agentCount: sql<number>`(
+      SELECT count(*)::int
+      FROM ${agentSandboxes}
+      WHERE ${agentSandboxes.node_id} = ${nodeId}
+        AND (
+          ${agentSandboxes.deletion_allocation_counted} IS TRUE
+          OR (
+            ${agentSandboxes.deletion_allocation_counted} IS NULL
+            AND ${agentSandboxes.status} not in (${sql.join(
+              TERMINAL_SANDBOX_STATUSES.map((status) => sql`${status}`),
+              sql`, `,
+            )})
+          )
+        )
+    )`,
+    replacementCleanupCount: sql<number>`(
+      SELECT count(*)::int
+      FROM ${agentSandboxes}
+      WHERE ${agentSandboxes.replacement_cleanup_node_id} = ${nodeId}
+        AND ${agentSandboxes.replacement_cleanup_allocation_counted} IS TRUE
+    )`,
+  };
+  const source = sql`(VALUES (1)) AS workload_count_source(value)`;
+
+  if (!includeExactRestoreReservations) {
+    const [row] = await database.select(commonSelection).from(source).where(sql`TRUE`);
+    return row.containerCount + row.agentCount + row.replacementCleanupCount;
+  }
+
+  const [row] = await database
+    .select({
+      ...commonSelection,
+      exactRestoreReplacementCount: sql<number>`(
+        SELECT count(*)::int
+        FROM ${agentSandboxReplacementAttempts}
+        WHERE ${agentSandboxReplacementAttempts.locator_node_id} = ${nodeId}
+          AND ${agentSandboxReplacementAttempts.locator_allocation_counted} IS TRUE
+          AND ${agentSandboxReplacementAttempts.restore_attempt_id} IS NOT NULL
+          AND ${agentSandboxReplacementAttempts.state} in (${sql.join(
+            COUNTED_EXACT_RESTORE_REPLACEMENT_STATES.map((state) => sql`${state}`),
+            sql`, `,
+          )})
+      )`,
+    })
+    .from(source)
+    .where(sql`TRUE`);
 
   return (
-    containerRow.count +
-    agentRow.count +
-    replacementCleanupRow.count +
-    exactRestoreReplacementRow.count
+    row.containerCount +
+    row.agentCount +
+    row.replacementCleanupCount +
+    row.exactRestoreReplacementCount
   );
 }
 

@@ -10,13 +10,11 @@
  *   api/foo/[[...slug]]/route.ts -> /api/foo and /api/foo/:*{.+}
  *   api/(group)/foo/route.ts    -> /api/foo   (group segments dropped)
  *
- * Only leaves whose source is Hono-shaped are mounted, unless an exact
- * byte-zero `// route-codegen: skip` directive explicitly keeps an approved
- * route dormant. The rest are still Next-shaped and would crash at import
- * time. Hono-shaped means the file imports from "hono" directly or exports a
- * known shared Hono app factory. Any other route fails codegen before generated
- * files are written; approved dormant routes fall through to the global 404.
- * A summary is printed at the end.
+ * Only leaves whose source is Hono-shaped are mounted. The rest are still
+ * Next-shaped and would crash at import time. Hono-shaped means the file
+ * imports from "hono" directly or exports a known shared Hono app factory.
+ * Any other route fails codegen before generated files are written. A summary
+ * is printed at the end.
  *
  * Re-run after adding/removing/converting any route file. Idempotent.
  */
@@ -33,11 +31,6 @@ const SHARD_KEYS_OUT_FILE = resolve(
   "_router-shard-keys.generated.ts",
 );
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
-export const APPROVED_CODEGEN_SKIPPED_RELATIVE_FILES = Object.freeze([
-  "v1/cron/remote-host-managed-cleanup/route.ts",
-  "v1/remote/hosts/[id]/managed-network/activate/route.ts",
-  "v1/remote/sessions/activate/route.ts",
-]);
 
 export async function* walk(dir) {
   for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
@@ -122,29 +115,6 @@ export function isHonoRouteSource(code) {
   return HONO_IMPORT_RE.test(code) || HONO_APP_FACTORY_RE.test(code);
 }
 
-export function isRouteCodegenSkippedSource(code) {
-  return /^\/\/ route-codegen: skip(?:\r?\n|$)/.test(code);
-}
-
-export function assertApprovedCodegenSkips(
-  intentionallySkippedFiles,
-  apiRoot = API_ROOT,
-) {
-  const actual = intentionallySkippedFiles
-    .map((file) => relative(apiRoot, file).replace(/\\/g, "/"))
-    .sort();
-  if (
-    actual.length !== APPROVED_CODEGEN_SKIPPED_RELATIVE_FILES.length ||
-    actual.some(
-      (file, index) => file !== APPROVED_CODEGEN_SKIPPED_RELATIVE_FILES[index],
-    )
-  ) {
-    throw new Error(
-      `[codegen] exact route skip allowlist mismatch: ${JSON.stringify(actual)}`,
-    );
-  }
-}
-
 export function assertNoUnmountedRouteFiles(
   unmountedFiles,
   apiRoot = API_ROOT,
@@ -154,7 +124,7 @@ export function assertNoUnmountedRouteFiles(
     .sort();
   if (relativeFiles.length > 0) {
     throw new Error(
-      `[codegen] unmounted route.ts files must be converted or explicitly approved: ${JSON.stringify(relativeFiles)}`,
+      `[codegen] unmounted route.ts files must be converted before codegen: ${JSON.stringify(relativeFiles)}`,
     );
   }
 }
@@ -234,7 +204,6 @@ export async function collectRouteEntries(apiRoot = API_ROOT) {
   const seen = new Map();
   const entries = [];
   const unmountedFiles = [];
-  const intentionallySkippedFiles = [];
   let unconverted = 0;
   for (const f of files) {
     const paths = fileToHttpPaths(f, apiRoot);
@@ -248,11 +217,6 @@ export async function collectRouteEntries(apiRoot = API_ROOT) {
     }
 
     const code = await fs.readFile(f, "utf8");
-    if (isRouteCodegenSkippedSource(code)) {
-      intentionallySkippedFiles.push(f);
-      continue;
-    }
-
     const converted = isHonoRouteSource(code);
     if (!converted) {
       unconverted++;
@@ -268,19 +232,11 @@ export async function collectRouteEntries(apiRoot = API_ROOT) {
   }
 
   entries.sort(compareMountPaths);
-  return {
-    files,
-    entries,
-    unconverted,
-    unmountedFiles,
-    intentionallySkippedFiles,
-  };
+  return { files, entries, unconverted, unmountedFiles };
 }
 
 export async function generateRouter() {
-  const { entries, unconverted, unmountedFiles, intentionallySkippedFiles } =
-    await collectRouteEntries();
-  assertApprovedCodegenSkips(intentionallySkippedFiles);
+  const { entries, unconverted, unmountedFiles } = await collectRouteEntries();
   assertNoUnmountedRouteFiles(unmountedFiles);
   const shardKeys = [
     ...new Set(
@@ -296,7 +252,7 @@ export async function generateRouter() {
     " * Re-run `bun run codegen` after adding or removing a route.ts file.",
     " *",
     ` * ${entries.length} routes mounted across ${shardKeys.length} lazy shards,`,
-    ` * ${unconverted} skipped (still Next-shaped). Route modules are imported`,
+    ` * ${unconverted} unmounted. Route modules are imported`,
     " * dynamically so a request only evaluates the shard that can match its",
     " * path (issue #22550); a null-shard mount goes into every shard app.",
     " */",
@@ -371,7 +327,7 @@ export async function generateRouter() {
   ].join("\n");
   await fs.writeFile(SHARD_KEYS_OUT_FILE, shardKeysBody, "utf8");
   console.log(
-    `[codegen] wrote ${OUT_FILE} and ${SHARD_KEYS_OUT_FILE} (${entries.length} mounted, ${shardKeys.length} shards, ${intentionallySkippedFiles.length} intentionally skipped, ${unconverted} unconverted)`,
+    `[codegen] wrote ${OUT_FILE} and ${SHARD_KEYS_OUT_FILE} (${entries.length} mounted, ${shardKeys.length} shards, ${unconverted} unmounted)`,
   );
 }
 

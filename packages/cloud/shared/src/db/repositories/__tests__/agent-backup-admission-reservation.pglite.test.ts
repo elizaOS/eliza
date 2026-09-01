@@ -372,6 +372,46 @@ describe("agent backup admission reservation on primary PGlite", () => {
     expect(authority?.catalog_revision).toBe(1n);
   });
 
+  test("fails closed when settled replay catalogue version, digest, or retention is altered", async () => {
+    const claim = await seedClaim();
+    await reserveAndSettleAgentBackupAdmissionClaim({ claim });
+    const [original] = await dbWrite.select().from(agentSandboxBackups);
+    if (!original?.catalog_payload_digest || !(original.retention_until instanceof Date)) {
+      throw new Error("Seeded reservation is missing its canonical payload authority");
+    }
+
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ catalog_payload_digest: "f".repeat(64) })
+      .where(eq(agentSandboxBackups.id, original.id));
+    await expect(reserveAndSettleAgentBackupAdmissionClaim({ claim })).rejects.toThrow(
+      /already reserved with a different payload/i,
+    );
+
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({
+        catalog_payload_digest: original.catalog_payload_digest,
+        retention_until: new Date(original.retention_until.getTime() + 1_000),
+      })
+      .where(eq(agentSandboxBackups.id, original.id));
+    await expect(reserveAndSettleAgentBackupAdmissionClaim({ claim })).rejects.toThrow(
+      /already reserved with a different payload/i,
+    );
+
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({
+        catalog_version: 1,
+        catalog_state: "legacy_unmigrated",
+        retention_until: original.retention_until,
+      })
+      .where(eq(agentSandboxBackups.id, original.id));
+    await expect(reserveAndSettleAgentBackupAdmissionClaim({ claim })).rejects.toThrow(
+      /already reserved with a different payload/i,
+    );
+  });
+
   test("rolls back without a backup or settlement for a stale complete fence", async () => {
     const claim = await seedClaim();
 

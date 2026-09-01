@@ -57,6 +57,22 @@ describe("fixture bundle", () => {
     expect(js).toContain("llmText");
   });
 
+  it("ignores incidental CSS imports in the inline JavaScript fixture", async () => {
+    const root = await mkdtemp(join(tmpdir(), "eliza-fixture-css-"));
+    const entry = join(root, "entry.ts");
+    const styles = join(root, "package-styles.css");
+    await writeFile(styles, ".package-only { color: rebeccapurple; }");
+    await writeFile(
+      entry,
+      'import "./package-styles.css"; globalThis.__fixtureCss = "ignored";',
+    );
+
+    const js = await bundleFixture({ entry });
+
+    expect(js).toContain("__fixtureCss");
+    expect(js).not.toContain("rebeccapurple");
+  });
+
   it("renders each styling mode and optional browser bootstrap", () => {
     const cdn = buildFixtureHtml({
       js: "window.started=true",

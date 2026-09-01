@@ -25,8 +25,8 @@ src/
                            `wrangler dev` (workerd) module init.
   _generate-router.mjs     Codegen: walks the package for route.ts/route.tsx leaves and
                            emits _router.generated.ts. Next.js App-Router path mapping
-                           ([id] -> :id, [...slug] -> splat, (group) dropped). An exact
-                           approved first-line route-codegen skip keeps a route dormant.
+                           ([id] -> :id, [...slug] -> splat, (group) dropped). Generation
+                           fails closed if any leaf is not Hono-converted.
   _router.generated.ts     GENERATED — do not hand-edit. ROUTE_MOUNTS lists every
                            route as a lazy dynamic import tagged with its shard;
                            mountShardRoutes(app, shard) mounts one family and
@@ -65,7 +65,7 @@ test/                      e2e harness (test/e2e/), coverage/inventory audit scr
 
 ## Route model (read this before adding endpoints)
 
-Routes are file-based, mirroring Next.js App Router, but each leaf is a Hono sub-app. A `route.ts` at `v1/models/route.ts` mounts at `/api/v1/models`. The codegen mounts leaves whose source imports from `"hono"` (or the `createMcpsTransportApp` factory), except for the exact reviewed allowlist carrying a byte-zero first-line `// route-codegen: skip` directive. An approved dormant leaf falls through to the global 404; every other non-Hono leaf fails codegen and `typecheck`. `index.ts` lazy-loads the whole stack, so route modules are only evaluated on the first real request.
+Routes are file-based, mirroring Next.js App Router, but each leaf is a Hono sub-app. A `route.ts` at `v1/models/route.ts` mounts at `/api/v1/models`. The codegen mounts every leaf whose source imports from `"hono"` (or the `createMcpsTransportApp` factory); any other leaf fails codegen and `typecheck` before generated files are written. `index.ts` lazy-loads the whole stack, so route modules are only evaluated on the first real request.
 
 Path-alias note: `@/lib/*`, `@/db/*`, `@/types/*`, `@/billing/*` resolve into `../shared/src/...` (see `tsconfig.json`). `@/api/*` is this package root and `@/api-app/*` is `./src/*`. So an import of `@/lib/auth/workers-hono-auth` is cloud-shared code, not local.
 
@@ -83,7 +83,7 @@ Path-alias note: `@/lib/*`, `@/db/*`, `@/types/*`, `@/billing/*` resolve into `.
 bun run --cwd packages/cloud/api dev            # wrangler dev (local Worker)
 bun run --cwd packages/cloud/api dev:full       # dev + local control plane
 bun run --cwd packages/cloud/api codegen        # regen src/_router.generated.ts
-bun run --cwd packages/cloud/api check:router-contract # generated parity + dormant allowlist
+bun run --cwd packages/cloud/api check:router-contract # generated parity + required live routes
 bun run --cwd packages/cloud/api build          # tsc --noEmit (type-only)
 bun run --cwd packages/cloud/api typecheck      # tsc + router contract + Worker bundle dry-run
 bun run --cwd packages/cloud/api lint           # biome check .

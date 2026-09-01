@@ -400,7 +400,7 @@ jobs:
       "packages/scripts/run-script-test-files.mjs",
       "--config=packages/scripts/bunfig.script-tests.toml",
     ]);
-    expect(command).toContain("--concurrency=2");
+    expect(command).toContain("--concurrency=1");
     expect(
       command.findIndex((argument) => argument.startsWith("--junit=")),
     ).toBeLessThan(command.indexOf("packages/scripts/example.test.ts"));

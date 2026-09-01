@@ -935,6 +935,7 @@ export async function createNativeAppleCalendarEvent(args: {
     startAt: args.request.startAt,
     endAt: args.request.endAt,
     timeZone: args.request.timeZone,
+    isAllDay: args.request.allDay !== undefined,
     attendees: args.request.attendees,
   });
   if (!payload.ok) {

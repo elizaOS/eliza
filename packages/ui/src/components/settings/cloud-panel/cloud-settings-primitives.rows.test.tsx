@@ -133,8 +133,10 @@ describe("cloud settings row adapters", () => {
     expect(wrapper.textContent).toContain("Connection");
     expect(wrapper.textContent).toContain("Connected");
     expect(wrapper.textContent).toContain("Last checked now");
-    expect(wrapper.firstElementChild?.classList.contains("min-h-[3rem]")).toBe(
-      true,
-    );
+    const rows = wrapper.querySelectorAll('[data-slot="settings-row"]');
+    expect(rows).toHaveLength(1);
+    expect(
+      rows[0]?.querySelector('[data-slot="settings-row-content"]')?.textContent,
+    ).toContain("Last checked now");
   });
 });

@@ -62,6 +62,10 @@ interface LeaseRequest {
   recovery: InferenceAdmissionRecoveryContext;
 }
 
+interface AuthorizedLeaseRequest extends LeaseRequest {
+  credential: CredentialCheckRequest;
+}
+
 interface HydrateRequest {
   balanceUsd: number;
   balanceRevision: string;
@@ -831,6 +835,20 @@ export class InferenceAdmissionGate {
     });
   }
 
+  private async authorizedLease(
+    request: AuthorizedLeaseRequest,
+  ): Promise<Response> {
+    if (
+      !request.credential ||
+      request.credential.organizationId !== request.organizationId
+    ) {
+      return jsonError("Invalid authorized inference admission lease", 400);
+    }
+    const denial = await this.credentialDenial(request.credential);
+    if (denial) return denial;
+    return await this.lease(request);
+  }
+
   private async hydrate(request: HydrateRequest): Promise<Response> {
     if (
       !nonNegativeFinite(request.balanceUsd) ||
@@ -1077,9 +1095,9 @@ export class InferenceAdmissionGate {
     );
   }
 
-  private async credentialCheck(
+  private async credentialDenial(
     request: CredentialCheckRequest,
-  ): Promise<Response> {
+  ): Promise<Response | null> {
     if (
       !validTrimmedId(request.organizationId) ||
       !validTrimmedId(request.userId) ||
@@ -1131,7 +1149,7 @@ export class InferenceAdmissionGate {
             { allowed: false, reason: "credential_revoked" },
             { status: 403 },
           )
-        : Response.json({ allowed: true });
+        : null;
     }
 
     if (revocations.get(credentialKeys[0] ?? "") === true) {
@@ -1148,7 +1166,15 @@ export class InferenceAdmissionGate {
           { allowed: false, reason: "session_revoked" },
           { status: 403 },
         )
-      : Response.json({ allowed: true });
+      : null;
+  }
+
+  private async credentialCheck(
+    request: CredentialCheckRequest,
+  ): Promise<Response> {
+    return (
+      (await this.credentialDenial(request)) ?? Response.json({ allowed: true })
+    );
   }
 
   private async revokeCredential(
@@ -1245,6 +1271,7 @@ export class InferenceAdmissionGate {
     }
     let body:
       | LeaseRequest
+      | AuthorizedLeaseRequest
       | HydrateRequest
       | SettleRequest
       | LeaseIdentityRequest
@@ -1259,6 +1286,7 @@ export class InferenceAdmissionGate {
     try {
       body = (await request.json()) as
         | LeaseRequest
+        | AuthorizedLeaseRequest
         | HydrateRequest
         | SettleRequest
         | LeaseIdentityRequest
@@ -1278,6 +1306,13 @@ export class InferenceAdmissionGate {
     const path = new URL(request.url).pathname;
     if (path === "/lease") {
       return await this.serialize(() => this.lease(body as LeaseRequest));
+    }
+    if (path === "/lease-authorized") {
+      return await this.serializeRevocation(() =>
+        this.serialize(() =>
+          this.authorizedLease(body as AuthorizedLeaseRequest),
+        ),
+      );
     }
     if (path === "/hydrate") {
       return await this.serialize(() => this.hydrate(body as HydrateRequest));

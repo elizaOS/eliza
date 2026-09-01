@@ -1634,6 +1634,132 @@ export const lifeHouseholdAccessGrants = appLifeopsPgSchema.table(
   ],
 );
 
+/** Immutable, content-addressed parenting-agreement versions. */
+export const lifeHouseholdAgreementArtifacts = appLifeopsPgSchema.table(
+  "life_household_agreement_artifacts",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    householdId: text("household_id").notNull(),
+    agreementKey: text("agreement_key").notNull(),
+    version: integer("version").notNull(),
+    supersedesArtifactId: text("supersedes_artifact_id"),
+    title: text("title").notNull(),
+    originalFilename: text("original_filename").notNull(),
+    documentId: text("document_id").notNull(),
+    mediaUrl: text("media_url").notNull(),
+    mediaFileName: text("media_file_name").notNull(),
+    contentSha256: text("content_sha256").notNull(),
+    mimeType: text("mime_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    pageCount: integer("page_count").notNull(),
+    uploadedByEntityId: text("uploaded_by_entity_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    unique("uq_household_agreement_version").on(
+      t.agentId,
+      t.householdId,
+      t.agreementKey,
+      t.version,
+    ),
+    unique("uq_household_agreement_content").on(
+      t.agentId,
+      t.householdId,
+      t.agreementKey,
+      t.contentSha256,
+    ),
+    unique("uq_household_agreement_document").on(t.agentId, t.documentId),
+    index("idx_life_household_agreement_versions").on(
+      t.agentId,
+      t.householdId,
+      t.agreementKey,
+      t.version,
+    ),
+  ],
+);
+
+/** Owner-reviewed, page-cited obligations extracted from one exact version. */
+export const lifeHouseholdAgreementObligations = appLifeopsPgSchema.table(
+  "life_household_agreement_obligations",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    artifactId: text("artifact_id").notNull(),
+    title: text("title").notNull(),
+    obligationText: text("obligation_text").notNull(),
+    pageStart: integer("page_start").notNull(),
+    pageEnd: integer("page_end").notNull(),
+    citationText: text("citation_text").notNull(),
+    status: text("status").notNull().default("proposed"),
+    proposedByEntityId: text("proposed_by_entity_id").notNull(),
+    decidedByEntityId: text("decided_by_entity_id"),
+    decisionReason: text("decision_reason"),
+    decidedAt: text("decided_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("idx_life_household_agreement_obligations").on(
+      t.agentId,
+      t.artifactId,
+      t.status,
+      t.createdAt,
+    ),
+  ],
+);
+
+/** Discovery pins; intentionally contains no principal or permission fields. */
+export const lifeHouseholdKnowledgePins = appLifeopsPgSchema.table(
+  "life_household_knowledge_pins",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    artifactId: text("artifact_id").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    pinnedByEntityId: text("pinned_by_entity_id").notNull(),
+    pinnedAt: text("pinned_at").notNull(),
+    unpinnedAt: text("unpinned_at"),
+  },
+  (t) => [
+    unique().on(t.agentId, t.artifactId, t.targetType, t.targetId),
+    index("idx_life_household_knowledge_pins_target").on(
+      t.agentId,
+      t.targetType,
+      t.targetId,
+    ),
+  ],
+);
+
+/** Resource binding layered over one exact, verified household guest grant. */
+export const lifeHouseholdKnowledgeGrants = appLifeopsPgSchema.table(
+  "life_household_knowledge_grants",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    householdId: text("household_id").notNull(),
+    artifactId: text("artifact_id").notNull(),
+    principalEntityId: text("principal_entity_id").notNull(),
+    householdGrantId: text("household_grant_id").notNull(),
+    issuedByEntityId: text("issued_by_entity_id").notNull(),
+    revokedAt: text("revoked_at"),
+    revokedByEntityId: text("revoked_by_entity_id"),
+    revocationReason: text("revocation_reason"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.artifactId, t.principalEntityId),
+    index("idx_life_household_knowledge_grants_principal").on(
+      t.agentId,
+      t.householdId,
+      t.principalEntityId,
+      t.updatedAt,
+    ),
+  ],
+);
+
 export const lifeHouseholdCoordinationHeads = appLifeopsPgSchema.table(
   "life_household_coordination_heads",
   {
@@ -2089,6 +2215,10 @@ export const lifeOpsSchema = {
   lifeCalendarMutationAttempts,
   lifeHouseholdGrantExpiryWarningClaims,
   lifeHouseholdAccessGrants,
+  lifeHouseholdAgreementArtifacts,
+  lifeHouseholdAgreementObligations,
+  lifeHouseholdKnowledgePins,
+  lifeHouseholdKnowledgeGrants,
   lifeHouseholdCoordinationHeads,
   lifeHouseholdScheduleProposals,
   lifeHouseholdProposalApprovals,

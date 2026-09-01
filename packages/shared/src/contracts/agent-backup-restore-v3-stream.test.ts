@@ -35,6 +35,7 @@ import {
   canonicalizeAgentBackupRestoreV3CandidateReceipt,
   canonicalizeAgentBackupRestoreV3ExactReadReceiptProof,
   canonicalizeAgentBackupRestoreV3SourceAuthority,
+  computeAgentBackupRestoreV3CandidateReceiptSha256,
   computeAgentBackupRestoreV3ExactReadReceiptSha256,
   computeAgentBackupRestoreV3SourceAuthoritySha256,
   createAgentBackupRestoreV3CandidateSealAuthorizationRequest,
@@ -64,6 +65,43 @@ const IDS = Object.freeze({
 const MANIFEST_SHA256 = "a".repeat(64);
 const SOURCE_AUTHORITY_SHA256 = "b".repeat(64);
 const CANDIDATE_SHA256 = "c".repeat(64);
+const WIRE_COMPONENT_DESCRIPTORS = Object.freeze([
+  Object.freeze({
+    name: "character",
+    format: "runtime-character-json-v1",
+    compression: "none",
+    contentKind: "opaque",
+    consistency: "best-effort",
+  }),
+  Object.freeze({
+    name: "database",
+    format: "pglite-data-dir-tar-gzip-v1",
+    compression: "gzip",
+    contentKind: "opaque",
+    consistency: "transactional",
+  }),
+  Object.freeze({
+    name: "media",
+    format: "file-set-v1",
+    compression: "none",
+    contentKind: "file-set",
+    consistency: "best-effort",
+  }),
+  Object.freeze({
+    name: "state-files",
+    format: "file-set-v1",
+    compression: "none",
+    contentKind: "file-set",
+    consistency: "best-effort",
+  }),
+  Object.freeze({
+    name: "vault",
+    format: "file-set-v1",
+    compression: "none",
+    contentKind: "file-set",
+    consistency: "best-effort",
+  }),
+] as const);
 
 function authority(): AgentBackupRestoreV3AuthorityFence {
   return {
@@ -89,7 +127,7 @@ function candidateReceipt(): AgentBackupRestoreV3CandidateReceipt {
     (name, index) => ({
       componentIndex: index,
       componentName: name,
-      descriptor: AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS[index],
+      descriptor: WIRE_COMPONENT_DESCRIPTORS[index],
       dataFrameCount: 1,
       payloadBytes: index + 1,
       payloadSha256: String(index + 1).repeat(64),
@@ -465,6 +503,9 @@ describe("agent backup restore-v3 stream contract", () => {
       "state-files",
       "vault",
     ]);
+    expect(AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS).toEqual(
+      WIRE_COMPONENT_DESCRIPTORS,
+    );
     expect(Object.isFrozen(AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS)).toBe(
       true,
     );
@@ -562,6 +603,20 @@ describe("agent backup restore-v3 stream contract", () => {
       parseAgentBackupRestoreV3ExactReadReceiptProof(checksumAuthority),
     ).toEqual(checksumAuthority);
 
+    const contradictoryChecksum = {
+      ...proof,
+      catalog: {
+        ...proof.catalog,
+        providerChecksum: `sha256:base64:${Buffer.from(
+          "2".repeat(64),
+          "hex",
+        ).toString("base64")}`,
+      },
+    };
+    expect(() =>
+      parseAgentBackupRestoreV3ExactReadReceiptProof(contradictoryChecksum),
+    ).toThrow("differs from its immutable catalogue authority");
+
     for (const invalid of [
       {
         ...proof,
@@ -582,12 +637,109 @@ describe("agent backup restore-v3 stream contract", () => {
         ...proof,
         completion: {
           ...proof.completion,
+          backendIdentityFingerprint: `sha256:${"9".repeat(64)}`,
+        },
+      },
+      {
+        ...proof,
+        completion: {
+          ...proof.completion,
+          endpointAliasFingerprint: `sha256:${"9".repeat(64)}`,
+        },
+      },
+      {
+        ...proof,
+        completion: {
+          ...proof.completion,
           bucketFingerprint: `sha256:${"9".repeat(64)}`,
         },
       },
       {
         ...proof,
+        completion: {
+          ...proof.completion,
+          regionFingerprint: `sha256:${"9".repeat(64)}`,
+        },
+      },
+      {
+        ...proof,
+        completion: {
+          ...proof.completion,
+          keyFingerprint: `sha256:${"9".repeat(64)}`,
+        },
+      },
+      {
+        ...proof,
+        completion: { ...proof.completion, versionSource: "etag" as const },
+      },
+      { ...proof, componentIndex: 1 },
+      {
+        ...proof,
         completion: { ...proof.completion, ciphertextSha256: "2".repeat(64) },
+      },
+    ]) {
+      expect(() =>
+        parseAgentBackupRestoreV3ExactReadReceiptProof(invalid),
+      ).toThrow("differs from its immutable catalogue authority");
+    }
+  });
+
+  test("accepts secondary Hetzner S3 ETag authority and rejects crossed provider roles", () => {
+    const primary = exactReadProof();
+    const secondary = {
+      ...primary,
+      copyRole: "secondary" as const,
+      catalog: {
+        ...primary.catalog,
+        transport: "s3-compatible" as const,
+        provider: "hetzner-object-storage" as const,
+        providerVersionId: null,
+        providerEtag: "hetzner-etag-1",
+        providerChecksum: `sha256:base64:${primary.completion.checksumSha256Base64}`,
+      },
+      completion: {
+        ...primary.completion,
+        transport: "s3-compatible" as const,
+        provider: "s3" as const,
+        version: "hetzner-etag-1",
+        versionSource: "etag" as const,
+      },
+    };
+    expect(parseAgentBackupRestoreV3ExactReadReceiptProof(secondary)).toEqual(
+      secondary,
+    );
+
+    for (const invalid of [
+      { ...primary, copyRole: "secondary" as const },
+      { ...secondary, copyRole: "primary" as const },
+      {
+        ...secondary,
+        catalog: { ...secondary.catalog, transport: "worker-r2" as const },
+        completion: {
+          ...secondary.completion,
+          transport: "worker-r2-binding" as const,
+        },
+      },
+      {
+        ...secondary,
+        completion: {
+          ...secondary.completion,
+          transport: "worker-r2-binding" as const,
+        },
+      },
+      {
+        ...secondary,
+        completion: { ...secondary.completion, provider: "r2" as const },
+      },
+      {
+        ...secondary,
+        catalog: {
+          ...secondary.catalog,
+          providerChecksum: `sha256:base64:${Buffer.from(
+            "2".repeat(64),
+            "hex",
+          ).toString("base64")}`,
+        },
       },
     ]) {
       expect(() =>
@@ -686,6 +838,219 @@ describe("agent backup restore-v3 stream contract", () => {
     expect(canonical).not.toContain('"bucket":');
     expect(canonical).not.toContain('"objectKey":');
     expect(canonical).not.toContain('"endpointAlias":');
+  });
+
+  test("pins the three canonical wire digests to stable literal goldens", async () => {
+    const fixture = await candidateContextFixture();
+    const firstProof = fixture.exactReadProofs[0];
+    if (!firstProof)
+      throw new Error("Fixture omitted its first exact-read proof");
+
+    await expect(
+      computeAgentBackupRestoreV3SourceAuthoritySha256(fixture.sourceAuthority),
+    ).resolves.toBe(
+      "cc9dcaded2a444a7e7efdcb41e7d2b1b3a78761971c51834ee75a698b95f6f19",
+    );
+    await expect(
+      computeAgentBackupRestoreV3ExactReadReceiptSha256(firstProof),
+    ).resolves.toBe(
+      "a173a6939505bc6e5b17877d90c61f49ed719d1bfbb530109af1838639ee8381",
+    );
+    await expect(
+      computeAgentBackupRestoreV3CandidateReceiptSha256(fixture.receipt),
+    ).resolves.toBe(
+      "f9c5855a91551f65b5504bfc0e19d8affb7eabc055b3dca8a86fc76ff52e69a0",
+    );
+  });
+
+  test("rejects provider-checksum contradiction in the complete candidate context", async () => {
+    const fixture = await candidateContextFixture();
+    const contradictoryChecksum = `sha256:base64:${Buffer.from(
+      "f".repeat(64),
+      "hex",
+    ).toString("base64")}`;
+
+    await expect(
+      validateAgentBackupRestoreV3CandidateContext({
+        ...fixture,
+        exactReadProofs: fixture.exactReadProofs.map((proof, index) =>
+          index === 0
+            ? {
+                ...proof,
+                catalog: {
+                  ...proof.catalog,
+                  providerChecksum: contradictoryChecksum,
+                },
+              }
+            : proof,
+        ),
+      }),
+    ).rejects.toThrow("differs from its immutable catalogue authority");
+  });
+
+  test("rejects staged ciphertext that differs from its exact catalogue proof", async () => {
+    const fixture = await candidateContextFixture();
+
+    await expect(
+      validateAgentBackupRestoreV3CandidateContext({
+        ...fixture,
+        receipt: {
+          ...fixture.receipt,
+          sourceObjects: fixture.receipt.sourceObjects.map((source, index) =>
+            index === 0
+              ? { ...source, ciphertextSha256: "a".repeat(64) }
+              : source,
+          ),
+        },
+      }),
+    ).rejects.toThrow("differs from its exact proof");
+  });
+
+  test("rejects staged size that differs from its exact catalogue proof", async () => {
+    const fixture = await candidateContextFixture();
+
+    await expect(
+      validateAgentBackupRestoreV3CandidateContext({
+        ...fixture,
+        receipt: {
+          ...fixture.receipt,
+          sourceObjects: fixture.receipt.sourceObjects.map((source, index) =>
+            index === 0
+              ? { ...source, sizeBytes: source.sizeBytes + 1 }
+              : source,
+          ),
+        },
+      }),
+    ).rejects.toThrow("differs from its exact proof");
+  });
+
+  test("rejects principal identity mutations across the complete context", async () => {
+    const fixture = await candidateContextFixture();
+    const alternateId = "00000000-0000-4000-8000-0000000000ff";
+    const rebindSourceAuthority = async (
+      nextAuthority: AgentBackupRestoreV3AuthorityFence,
+      nextSourceAuthority: AgentBackupRestoreV3SourceAuthority,
+      nextReceipt: AgentBackupRestoreV3CandidateReceipt = fixture.receipt,
+      proofIdentity: Readonly<{
+        organizationId?: string;
+        backupId?: string;
+      }> = {},
+    ) => {
+      const sourceAuthoritySha256 =
+        await computeAgentBackupRestoreV3SourceAuthoritySha256(
+          nextSourceAuthority,
+        );
+      const exactReadProofs: AgentBackupRestoreV3ExactReadReceiptProof[] =
+        fixture.exactReadProofs.map((proof) => ({
+          ...proof,
+          sourceAuthoritySha256,
+          organizationId: proofIdentity.organizationId ?? proof.organizationId,
+          backupId: proofIdentity.backupId ?? proof.backupId,
+        }));
+      const exactReadReceiptSha256 = await Promise.all(
+        exactReadProofs.map((proof) =>
+          computeAgentBackupRestoreV3ExactReadReceiptSha256(proof),
+        ),
+      );
+      return {
+        ...fixture,
+        authority: nextAuthority,
+        sourceAuthority: nextSourceAuthority,
+        exactReadProofs,
+        receipt: {
+          ...nextReceipt,
+          sourceAuthoritySha256,
+          sourceObjects: nextReceipt.sourceObjects.map((source, index) => ({
+            ...source,
+            exactReadReceiptSha256:
+              exactReadReceiptSha256[index] ?? hexDigest("f"),
+          })),
+        },
+      };
+    };
+    const mutations = [
+      {
+        label: "authority organizationId versus manifest identity",
+        input: await rebindSourceAuthority(
+          { ...fixture.authority, organizationId: alternateId },
+          { ...fixture.sourceAuthority, organizationId: alternateId },
+          fixture.receipt,
+          { organizationId: alternateId },
+        ),
+      },
+      {
+        label: "authority agentId versus manifest identity",
+        input: await rebindSourceAuthority(
+          { ...fixture.authority, agentId: alternateId },
+          { ...fixture.sourceAuthority, agentId: alternateId },
+        ),
+      },
+      {
+        label: "authority operationId versus manifest operation",
+        input: await rebindSourceAuthority(
+          { ...fixture.authority, operationId: alternateId },
+          { ...fixture.sourceAuthority, operationId: alternateId },
+          { ...fixture.receipt, operationId: alternateId },
+        ),
+      },
+      {
+        label: "authority activation generation versus manifest identity",
+        input: await rebindSourceAuthority(
+          {
+            ...fixture.authority,
+            sourceActivationGeneration: alternateId,
+          },
+          {
+            ...fixture.sourceAuthority,
+            sourceActivationGeneration: alternateId,
+          },
+        ),
+      },
+      {
+        label: "authority lifecycle revision versus manifest identity",
+        input: await rebindSourceAuthority(
+          { ...fixture.authority, sourceLifecycleRevision: "19" },
+          { ...fixture.sourceAuthority, sourceLifecycleRevision: "19" },
+        ),
+      },
+      {
+        label: "source authority backupId versus durable authority",
+        input: await rebindSourceAuthority(fixture.authority, {
+          ...fixture.sourceAuthority,
+          backupId: alternateId,
+        }),
+      },
+      {
+        label: "source authority catalog epoch versus durable authority",
+        input: await rebindSourceAuthority(fixture.authority, {
+          ...fixture.sourceAuthority,
+          catalogEpoch: "43",
+        }),
+      },
+      {
+        label: "candidate restore attempt versus durable authority",
+        input: {
+          ...fixture,
+          receipt: { ...fixture.receipt, restoreAttemptId: alternateId },
+        },
+      },
+      {
+        label: "candidate key bundle versus manifest encryption",
+        input: {
+          ...fixture,
+          receipt: { ...fixture.receipt, keyBundleGenerationId: alternateId },
+        },
+      },
+    ];
+
+    for (const { label, input } of mutations) {
+      await expect(
+        validateAgentBackupRestoreV3CandidateContext(input),
+        label,
+      ).rejects.toThrow(
+        "Restore candidate differs from its exact manifest or durable authority",
+      );
+    }
   });
 
   test("rejects stale context, omitted chunks, duplicate identities, and proof drift", async () => {

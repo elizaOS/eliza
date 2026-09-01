@@ -4,6 +4,8 @@
  * Provider credentials stay in the caller's runtime and are never logged.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const MAX_MESSAGE_LENGTH = 4096;
 export const TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER =
@@ -12,6 +14,7 @@ export const TELEGRAM_HOSTED_FILE_MAX_BYTES = 20 * 1024 * 1024;
 export const TELEGRAM_VOICE_MAX_BYTES = 8 * 1024 * 1024;
 const TELEGRAM_API_TIMEOUT_MS = 10_000;
 const TELEGRAM_REJECTION_RETRY_CAP_MS = 5_000;
+const TELEGRAM_IDENTITY_ATTESTATION_TTL_MS = 5 * 60_000;
 export const TELEGRAM_VOICE_MAX_DURATION_SECONDS = 15 * 60;
 const TELEGRAM_FILE_FETCH_TIMEOUT_MS = 30_000;
 
@@ -21,8 +24,41 @@ export interface TelegramConnectorLogger {
 
 export interface TelegramConnectorConfig {
   botToken?: string;
+  /** Expected public bot id for the exact credential in `botToken`. */
+  botId?: string;
   botUsername?: string;
   webhookSecret?: string;
+}
+
+export type TelegramIdentityAttestationFailureReason =
+  | "configuration_invalid"
+  | "identity_mismatch"
+  | "not_configured"
+  | "provider_unavailable";
+
+export interface TelegramAttestedBotIdentity {
+  botId: string;
+  botUsername: string;
+}
+
+/**
+ * A value-safe identity failure. Its message and reason are safe at transport
+ * boundaries; the credential, expected identity, and provider payload are
+ * deliberately excluded.
+ */
+export class TelegramIdentityAttestationError extends ElizaError {
+  override readonly name = "TelegramIdentityAttestationError";
+
+  constructor(
+    readonly reason: TelegramIdentityAttestationFailureReason,
+    readonly retryable: boolean,
+  ) {
+    super("Telegram bot identity attestation failed", {
+      code: "TELEGRAM_IDENTITY_ATTESTATION_FAILED",
+      context: { reason, retryable },
+      severity: retryable ? "ephemeral" : "fatal",
+    });
+  }
 }
 
 export interface TelegramConnectorEvent {
@@ -462,6 +498,130 @@ async function telegramApi<T>(
   return data.result as T;
 }
 
+interface CachedTelegramIdentity {
+  expiresAt: number;
+  identity: TelegramAttestedBotIdentity;
+}
+
+const telegramIdentityCache = new Map<string, CachedTelegramIdentity>();
+const telegramIdentityPending = new Map<
+  string,
+  Promise<TelegramAttestedBotIdentity>
+>();
+
+function normalizeExpectedTelegramIdentity(config: TelegramConnectorConfig): {
+  botToken: string;
+  botId: string;
+  botUsername: string;
+  botUsernameKey: string;
+} {
+  const botToken = config.botToken?.trim() ?? "";
+  const botId = config.botId?.trim() ?? "";
+  const botUsername = config.botUsername?.trim().replace(/^@/, "") ?? "";
+  const botIdNumber = Number(botId);
+  if (!botToken || !botId || !botUsername) {
+    throw new TelegramIdentityAttestationError("not_configured", false);
+  }
+  if (
+    !/^[1-9]\d{0,15}$/.test(botId) ||
+    !Number.isSafeInteger(botIdNumber) ||
+    botIdNumber > 4_503_599_627_370_495 ||
+    !/^[A-Za-z0-9_]{5,32}$/.test(botUsername) ||
+    !botUsername.toLowerCase().endsWith("bot")
+  ) {
+    throw new TelegramIdentityAttestationError("configuration_invalid", false);
+  }
+  const tokenBotId = botToken.match(/^([1-9]\d{0,15}):\S+$/)?.[1];
+  if (tokenBotId !== botId) {
+    throw new TelegramIdentityAttestationError("identity_mismatch", false);
+  }
+  return {
+    botToken,
+    botId,
+    botUsername,
+    botUsernameKey: botUsername.toLowerCase(),
+  };
+}
+
+/**
+ * Proves that the exact outbound credential belongs to the selected public bot.
+ * Successful results are cached briefly per credential and expected identity;
+ * failures are never cached, so an operator repair can recover immediately.
+ */
+export async function attestTelegramBotIdentity(
+  config: TelegramConnectorConfig,
+): Promise<TelegramAttestedBotIdentity> {
+  const expected = normalizeExpectedTelegramIdentity(config);
+  const cacheKey = `${expected.botToken}\0${expected.botId}\0${expected.botUsernameKey}`;
+  const cached = telegramIdentityCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.identity;
+  telegramIdentityCache.delete(cacheKey);
+
+  let pending = telegramIdentityPending.get(cacheKey);
+  if (!pending) {
+    pending = (async () => {
+      let me: { id?: unknown; is_bot?: unknown; username?: unknown };
+      try {
+        me = await telegramApi<{
+          id?: unknown;
+          is_bot?: unknown;
+          username?: unknown;
+        }>(expected.botToken, "getMe");
+      } catch {
+        // error-policy:J1 the provider boundary exposes only a value-safe
+        // attestation classification and discards credential-bearing causes.
+        throw new TelegramIdentityAttestationError(
+          "provider_unavailable",
+          true,
+        );
+      }
+      const providerBotId =
+        typeof me.id === "number" && Number.isSafeInteger(me.id) && me.id > 0
+          ? String(me.id)
+          : "";
+      const providerUsername =
+        typeof me.username === "string"
+          ? me.username.trim().replace(/^@/, "")
+          : "";
+      if (
+        me.is_bot !== true ||
+        !providerBotId ||
+        !/^[A-Za-z0-9_]{5,32}$/.test(providerUsername)
+      ) {
+        throw new TelegramIdentityAttestationError(
+          "provider_unavailable",
+          true,
+        );
+      }
+      if (
+        providerBotId !== expected.botId ||
+        providerUsername.toLowerCase() !== expected.botUsernameKey
+      ) {
+        throw new TelegramIdentityAttestationError("identity_mismatch", false);
+      }
+      const identity = {
+        botId: expected.botId,
+        botUsername: expected.botUsername,
+      } satisfies TelegramAttestedBotIdentity;
+      telegramIdentityCache.set(cacheKey, {
+        expiresAt: Date.now() + TELEGRAM_IDENTITY_ATTESTATION_TTL_MS,
+        identity,
+      });
+      return identity;
+    })().finally(() => {
+      telegramIdentityPending.delete(cacheKey);
+    });
+    telegramIdentityPending.set(cacheKey, pending);
+  }
+  return pending;
+}
+
+/** Test-only cache reset; production callers never need to invalidate by value. */
+export function __resetTelegramIdentityAttestationCacheForTests(): void {
+  telegramIdentityCache.clear();
+  telegramIdentityPending.clear();
+}
+
 const telegramBotUsernameCache = new Map<string, Promise<string>>();
 
 /** Resolve this credential's public username without exposing the token. */
@@ -469,6 +629,9 @@ export async function resolveTelegramBotUsername(
   config: TelegramConnectorConfig,
 ): Promise<string> {
   const configured = config.botUsername?.trim().replace(/^@/, "");
+  if (config.botId) {
+    return (await attestTelegramBotIdentity(config)).botUsername;
+  }
   if (configured) return configured;
   const botToken = config.botToken;
   if (!botToken) return "";
@@ -583,6 +746,7 @@ export async function sendTelegramReply(
   deliveryHooks?: TelegramReplyDeliveryHooks,
 ): Promise<TelegramDeliveryReceipt> {
   if (!config.botToken) throw new Error("Missing botToken for Telegram reply");
+  if (config.botId) await attestTelegramBotIdentity(config);
   const providerMessageIds: string[] = [];
   const chunks = splitTelegramMessage(text);
   const threadParams = telegramThreadParams(event);
@@ -670,6 +834,7 @@ export async function sendTelegramTyping(
   event: TelegramConnectorEvent,
 ): Promise<void> {
   if (!config.botToken) throw new Error("Missing botToken for Telegram typing");
+  if (config.botId) await attestTelegramBotIdentity(config);
   await telegramApi(config.botToken, "sendChatAction", {
     chat_id: event.chatId,
     ...telegramThreadParams(event),

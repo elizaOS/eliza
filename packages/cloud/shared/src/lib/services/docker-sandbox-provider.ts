@@ -457,6 +457,67 @@ function buildExactRestoreAnonymousPullCommand(
   return ["docker pull", ...dockerPlatformFlag(platform), shellQuote(imageReference)].join(" ");
 }
 
+const EXACT_RESTORE_MANIFEST_DESCRIPTOR_MINIMUM_API_MINOR = 48;
+const CONTAINERD_SNAPSHOTTER_DRIVER = "io.containerd.snapshotter.v1";
+
+function assertExactRestoreManifestProofCapability(
+  proof: string,
+  nodeId: string,
+  replacementAttemptId: string,
+): void {
+  const lines = proof
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const [clientApiVersion = "", serverApiVersion = "", ...unexpectedApiFields] = (
+    lines[0] ?? ""
+  ).split("|");
+  const supportsManifestDescriptor = (apiVersion: string): boolean => {
+    const apiMatch = /^(\d+)\.(\d+)$/.exec(apiVersion);
+    return Boolean(
+      apiMatch &&
+        (Number(apiMatch[1]) > 1 ||
+          (Number(apiMatch[1]) === 1 &&
+            Number(apiMatch[2]) >= EXACT_RESTORE_MANIFEST_DESCRIPTOR_MINIMUM_API_MINOR)),
+    );
+  };
+  const apiSupportsManifestDescriptor =
+    unexpectedApiFields.length === 0 &&
+    supportsManifestDescriptor(clientApiVersion) &&
+    supportsManifestDescriptor(serverApiVersion);
+  let driverStatus: unknown = null;
+  try {
+    driverStatus = JSON.parse(lines[1] ?? "null");
+  } catch {
+    // error-policy:J3 malformed daemon capability output must fail closed.
+  }
+  const hasContainerdImageStore =
+    Array.isArray(driverStatus) &&
+    driverStatus.some(
+      (entry) =>
+        Array.isArray(entry) &&
+        entry.length === 2 &&
+        entry[0] === "driver-type" &&
+        entry[1] === CONTAINERD_SNAPSHOTTER_DRIVER,
+    );
+  if (lines.length !== 2 || !apiSupportsManifestDescriptor || !hasContainerdImageStore) {
+    throw new ElizaError(
+      "Exact restore target cannot prove the container-bound platform manifest",
+      {
+        code: "SANDBOX_EXACT_RESTORE_IMAGE_PROOF_UNSUPPORTED",
+        context: {
+          nodeId,
+          replacementAttemptId,
+          dockerClientApiVersion: clientApiVersion || null,
+          dockerServerApiVersion: serverApiVersion || null,
+          containerdImageStore: hasContainerdImageStore,
+        },
+        severity: "fatal",
+      },
+    );
+  }
+}
+
 function buildExactRestorePreseedProofCommand(volumePath: string): string {
   validateVolumePath(volumePath);
   const elizaPath = `${volumePath}/eliza`;
@@ -2556,6 +2617,21 @@ export class DockerSandboxProvider implements SandboxProvider {
         buildExactRestoreBootFencedCommand(exactRestore.target.nodeIncarnation, command);
       const exactDockerRemoteCommand = (command: string): string =>
         buildExactRestoreDockerBootFencedCommand(exactRestore.target.nodeIncarnation, command);
+
+      const manifestProofCapability = await ssh.exec(
+        exactDockerRemoteCommand(
+          [
+            `docker version --format ${shellQuote("{{.Client.APIVersion}}|{{.Server.APIVersion}}")}`,
+            `docker info --format ${shellQuote("{{json .DriverStatus}}")}`,
+          ].join("; "),
+        ),
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+      assertExactRestoreManifestProofCapability(
+        manifestProofCapability,
+        exactRestore.target.nodeId,
+        replacementAttemptId,
+      );
 
       await ssh.exec(
         exactRemoteCommand(buildExactRestorePreseedProofCommand(volumePath)),

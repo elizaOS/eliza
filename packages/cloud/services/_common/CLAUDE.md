@@ -1,6 +1,6 @@
 # @elizaos/cloud-services-common
 
-Shared, dependency-free TypeScript utilities for Cloudflare Workers and the
+Shared, import-light TypeScript utilities for Cloudflare Workers and the
 `packages/cloud/services/*` sidecars: connector protocol, retry, delivery,
 structured logging, and Kubernetes ServiceAccount helpers. Private
 (unpublished), ESM, sources consumed directly from `src/` (no build step —
@@ -33,7 +33,8 @@ structured logging, and Kubernetes ServiceAccount helpers. Private
 - `src/response-attempts.ts` (`./response-attempts`) — bounded observable HTTP
   retry behavior shared across transport runtimes.
 - `src/telegram-connector.ts` (`./telegram-connector`) — Web-standard Telegram
-  webhook verification, parsing, typing, voice download, and reply delivery.
+  webhook verification, parsing, typing, voice download, reply delivery, and
+  value-safe exact-token `getMe` identity attestation.
 - `src/telegram-delivery.ts` (`./telegram-delivery`) — exact-once Telegram
   reply state machine over a runtime-provided atomic ledger.
 
@@ -59,10 +60,14 @@ bun run --cwd packages/cloud/services/_common test         # delivery state-mach
 - This is the one place in cloud-services where `console.*` is intentional —
   it is the logger sink itself. Other cloud-services code should log through
   `createServiceLogger`, not `console`.
-- No runtime dependencies; keep it that way so every service can import it
-  cheaply.
+- Keep the runtime graph minimal so every service can import it cheaply. The
+  sole workspace dependency is the shared `@elizaos/core` error contract.
 - Keep provider protocol and delivery semantics runtime-neutral: Workers and
   Railway must delegate to the same source rather than maintaining forks.
+- Successful Telegram identity attestations are briefly cached by credential
+  plus expected ID/username; failures are never cached. Attestation errors may
+  expose only the safe reason/retryability classification, never their provider
+  payload or a nested cause that can contain the credential-bearing URL.
 
 Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [CLAUDE.md](../../../../CLAUDE.md).
 

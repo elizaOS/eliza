@@ -520,20 +520,33 @@ describe("LifeOps Gmail imported-data purge", () => {
 });
 
 describe("LifeOps Gmail effect confirmation", () => {
-  it("rejects a destructive execute request without immediate confirmation", async () => {
-    const { domain, google } = harness({});
+  it.each([
+    ["archive", undefined],
+    ["trash", undefined],
+    ["delete", undefined],
+    ["report_spam", undefined],
+    ["mark_read", undefined],
+    ["mark_unread", undefined],
+    ["apply_label", ["IMPORTANT"]],
+    ["remove_label", ["IMPORTANT"]],
+  ] as const)(
+    "rejects %s execution without immediate confirmation",
+    async (operation, labelIds) => {
+      const { domain, google } = harness({});
 
-    await expect(
-      domain.manageGmailMessages(new URL("http://127.0.0.1/"), {
-        operation: "trash",
-        messageIds: ["message-1"],
-        executionMode: "execute",
-      }),
-    ).rejects.toThrow(/explicit destructive confirmation/i);
-    expect(google.modifyGmailMessages).not.toHaveBeenCalled();
-  });
+      await expect(
+        domain.manageGmailMessages(new URL("http://127.0.0.1/"), {
+          operation,
+          messageIds: ["message-1"],
+          executionMode: "execute",
+          ...(labelIds ? { labelIds: [...labelIds] } : {}),
+        }),
+      ).rejects.toThrow(/explicit confirmation/i);
+      expect(google.modifyGmailMessages).not.toHaveBeenCalled();
+    },
+  );
 
-  it("executes a non-destructive operation without a confirmation flag", async () => {
+  it("executes a non-destructive operation after immediate confirmation", async () => {
     const { domain, google } = harness({});
     google.modifyGmailMessages.mockResolvedValueOnce({
       operation: "archive",
@@ -548,6 +561,7 @@ describe("LifeOps Gmail effect confirmation", () => {
         operation: "archive",
         messageIds: ["message-1"],
         executionMode: "execute",
+        confirmAction: true,
       },
     );
 
@@ -558,6 +572,27 @@ describe("LifeOps Gmail effect confirmation", () => {
     });
     expect(google.modifyGmailMessages).toHaveBeenCalledOnce();
   });
+
+  it.each(["proposal", "dry_run"] as const)(
+    "keeps %s mode non-mutating without confirmation",
+    async (executionMode) => {
+      const { domain, google } = harness({});
+
+      const result = await domain.manageGmailMessages(
+        new URL("http://127.0.0.1/"),
+        {
+          operation: "archive",
+          messageIds: ["message-1"],
+          executionMode,
+        },
+      );
+
+      expect(result).toMatchObject({
+        status: executionMode === "proposal" ? "proposed" : "dry_run",
+      });
+      expect(google.modifyGmailMessages).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns an honest partial receipt and only updates succeeded messages", async () => {
     const { domain, repository } = harness({});

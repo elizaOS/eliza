@@ -195,7 +195,7 @@ describe("agent backup global lock order", () => {
     );
   });
 
-  test("scheduler reservation joins backup order before its outer sandbox lock", () => {
+  test("scheduler reservation locks replay then organization before its outer sandbox lock", () => {
     const scheduler = source("agent-backup-scheduler.ts");
     const reservation = exportedFunction(
       scheduler,
@@ -206,8 +206,20 @@ describe("agent backup global lock order", () => {
     expectOrder(
       reservation,
       "lockAgentBackupReservationReplayInTransaction(tx",
+      ".from(organizations)",
+      "scheduler reservation replay/organization",
+    );
+    expectOrder(
+      reservation,
+      ".from(organizations)",
+      '.for("update")',
+      "scheduler reservation organization lock",
+    );
+    expectOrder(
+      reservation,
+      '.for("update")',
       "lockClaimedSandbox(tx",
-      "scheduler reservation",
+      "scheduler reservation organization/sandbox",
     );
   });
 });

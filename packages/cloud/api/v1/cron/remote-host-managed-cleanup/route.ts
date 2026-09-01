@@ -1,4 +1,3 @@
-// route-codegen: skip
 /** Bounded retry of stranded managed-network host compensation. */
 
 import { Hono } from "hono";

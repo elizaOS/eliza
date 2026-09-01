@@ -474,6 +474,95 @@ export const agentSandboxes = pgTable(
     backup_schedule_due_idx: index("agent_sandboxes_backup_schedule_due_idx")
       .on(table.next_backup_at, table.backup_schedule_retry_at, table.organization_id, table.id)
       .where(sql`${table.next_backup_at} IS NOT NULL`),
+    backup_admission_initial_frontier_idx: index(
+      "agent_sandboxes_backup_admission_initial_frontier_idx",
+    )
+      .on(sql`(get_byte(uuid_send(${table.id}), 0) % 64)`, table.activation_completed_at, table.id)
+      .where(sql`${table.next_backup_at} IS NULL
+        AND ${table.status} = 'running'
+        AND ${table.pool_status} IS NULL
+        AND ${table.execution_tier} IN ('dedicated-lazy', 'dedicated-always', 'custom')
+        AND ${table.deleted_at} IS NULL
+        AND ${table.deletion_attempt_id} IS NULL
+        AND ${table.activation_phase} = 'active'
+        AND ${table.activation_generation} IS NOT NULL
+        AND ${table.activation_lifecycle_revision} IS NOT NULL
+        AND ${table.lifecycle_revision} = ${table.activation_lifecycle_revision}
+        AND ${table.activation_receipt_hash} ~ '^[0-9a-f]{64}$'
+        AND ${table.activation_container_id} ~ '^[0-9a-f]{64}$'
+        AND ${table.sandbox_id} IS NOT NULL
+        AND btrim(${table.sandbox_id}) <> ''
+        AND ${table.sandbox_id} = btrim(${table.sandbox_id})
+        AND ${table.sandbox_id} !~ '[[:cntrl:]]'
+        AND octet_length(${table.sandbox_id}) <= 512
+        AND ${table.sandbox_id} <> ${table.activation_container_id}
+        AND ${table.activation_node_id} IS NOT NULL
+        AND ${table.activation_boot_id} IS NOT NULL
+        AND ${table.activation_image_digest} ~ '^sha256:[0-9a-f]{64}$'
+        AND ${table.activation_authority_published_at} IS NOT NULL
+        AND ${table.activation_dispatched_at} IS NOT NULL
+        AND ${table.activation_completed_at} IS NOT NULL`),
+    backup_admission_scheduled_frontier_idx: index(
+      "agent_sandboxes_backup_admission_scheduled_frontier_idx",
+    )
+      .on(sql`(get_byte(uuid_send(${table.id}), 0) % 64)`, table.next_backup_at, table.id)
+      .where(sql`${table.next_backup_at} IS NOT NULL
+        AND ${table.status} = 'running'
+        AND ${table.pool_status} IS NULL
+        AND ${table.execution_tier} IN ('dedicated-lazy', 'dedicated-always', 'custom')
+        AND ${table.deleted_at} IS NULL
+        AND ${table.deletion_attempt_id} IS NULL
+        AND ${table.activation_phase} = 'active'
+        AND ${table.activation_generation} IS NOT NULL
+        AND ${table.activation_lifecycle_revision} IS NOT NULL
+        AND ${table.lifecycle_revision} = ${table.activation_lifecycle_revision}
+        AND ${table.activation_receipt_hash} ~ '^[0-9a-f]{64}$'
+        AND ${table.activation_container_id} ~ '^[0-9a-f]{64}$'
+        AND ${table.sandbox_id} IS NOT NULL
+        AND btrim(${table.sandbox_id}) <> ''
+        AND ${table.sandbox_id} = btrim(${table.sandbox_id})
+        AND ${table.sandbox_id} !~ '[[:cntrl:]]'
+        AND octet_length(${table.sandbox_id}) <= 512
+        AND ${table.sandbox_id} <> ${table.activation_container_id}
+        AND ${table.activation_node_id} IS NOT NULL
+        AND ${table.activation_boot_id} IS NOT NULL
+        AND ${table.activation_image_digest} ~ '^sha256:[0-9a-f]{64}$'
+        AND ${table.activation_authority_published_at} IS NOT NULL
+        AND ${table.activation_dispatched_at} IS NOT NULL
+        AND ${table.activation_completed_at} IS NOT NULL`),
+    backup_admission_rpo_frontier_idx: index("agent_sandboxes_backup_admission_rpo_frontier_idx")
+      .on(
+        sql`(get_byte(uuid_send(${table.id}), 0) % 64)`,
+        sql`GREATEST(
+          ${table.activation_completed_at},
+          COALESCE(${table.backup_schedule_last_protected_at}, ${table.activation_completed_at})
+        )`,
+        table.id,
+      )
+      .where(sql`${table.next_backup_at} IS NOT NULL
+        AND ${table.status} = 'running'
+        AND ${table.pool_status} IS NULL
+        AND ${table.execution_tier} IN ('dedicated-lazy', 'dedicated-always', 'custom')
+        AND ${table.deleted_at} IS NULL
+        AND ${table.deletion_attempt_id} IS NULL
+        AND ${table.activation_phase} = 'active'
+        AND ${table.activation_generation} IS NOT NULL
+        AND ${table.activation_lifecycle_revision} IS NOT NULL
+        AND ${table.lifecycle_revision} = ${table.activation_lifecycle_revision}
+        AND ${table.activation_receipt_hash} ~ '^[0-9a-f]{64}$'
+        AND ${table.activation_container_id} ~ '^[0-9a-f]{64}$'
+        AND ${table.sandbox_id} IS NOT NULL
+        AND btrim(${table.sandbox_id}) <> ''
+        AND ${table.sandbox_id} = btrim(${table.sandbox_id})
+        AND ${table.sandbox_id} !~ '[[:cntrl:]]'
+        AND octet_length(${table.sandbox_id}) <= 512
+        AND ${table.sandbox_id} <> ${table.activation_container_id}
+        AND ${table.activation_node_id} IS NOT NULL
+        AND ${table.activation_boot_id} IS NOT NULL
+        AND ${table.activation_image_digest} ~ '^sha256:[0-9a-f]{64}$'
+        AND ${table.activation_authority_published_at} IS NOT NULL
+        AND ${table.activation_dispatched_at} IS NOT NULL
+        AND ${table.activation_completed_at} IS NOT NULL`),
     backup_schedule_claim_expiry_idx: index("agent_sandboxes_backup_schedule_claim_expiry_idx")
       .on(table.backup_schedule_claim_expires_at)
       .where(sql`${table.backup_schedule_claim_expires_at} IS NOT NULL`),

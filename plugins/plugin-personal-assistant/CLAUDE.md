@@ -6,7 +6,7 @@ Chat-first owner operations and cross-domain LifeOps orchestration for an Eliza 
 
 This package is the composition root for personal-assistant workflows: briefs, prioritization, approvals, scheduled work, household coordination, owner context, and the policy that joins domain plugins into one assistant. Domain implementations remain with their owning plugins. Calendar, inbox, goals, reminders, finances, health, blocker, browser, phone, and messaging connectors are collaborators, not duplicate subsystems to rebuild here.
 
-The plugin declares Google Workspace and scheduling dependencies and initializes the calendar, finances, reminders, goals, inbox, and health plugins when needed. `@elizaos/plugin-scheduling` owns the single scheduled-task runner; this package supplies LifeOps dependencies, workers, registries, policies, and default packs.
+The plugin declares Google Workspace, scheduling, and PDF dependencies and initializes the calendar, PDF, finances, reminders, goals, inbox, and health plugins when needed. `@elizaos/plugin-scheduling` owns the single scheduled-task runner; this package supplies LifeOps dependencies, workers, registries, policies, and default packs.
 
 All registered actions and providers are wrapped with owner-access guards. The personal assistant is primarily a chat surface, while domain views live with their domain plugins. Its focused `/lifeops/connections` view owns only cross-domain Gmail, Google Calendar, and Apple Calendar onboarding, sync health, recovery, and local imported-data lifecycle; it does not duplicate inbox or calendar product views.
 
@@ -32,7 +32,7 @@ Most umbrella actions use `promoteSubactionsToActions`, so both the umbrella and
 The plugin registers these owner-private providers:
 
 - `lifeops_browser` from `src/provider.ts`
-- `firstRun`, `ftuGoal`, `roomPolicy`, and `lifeops`
+- `firstRun`, `ftuGoal`, `roomPolicy`, `agreementPins`, and `lifeops`
 - `pendingApprovals`, `delegationContracts`, and `pendingPrompts`
 - `workThreads` and `recentTaskStates`
 - `lifeops-health`, `crossChannelContext`, and `activity-profile`
@@ -46,6 +46,7 @@ Inbox triage context is owned and registered by `@elizaos/plugin-inbox`.
 - `BrowserBridgePluginService`
 - `ActivityTrackerService` and `PresenceSignalBridgeService`
 - `HouseholdCoordinationRuntimeService`
+- `AgreementKnowledgeRuntimeService`
 - `AuthenticatedRuntimeSpeakerVerifierService` and `FamilyCommunicationsRuntimeService`
 - `ParentingGuidanceRuntimeService`
 - `HouseholdOperationsRuntimeService`
@@ -53,6 +54,12 @@ Inbox triage context is owned and registered by `@elizaos/plugin-inbox`.
 - `ResourceCapacityRuntimeService`
 - `SchoolSourceFactRuntimeService`
 - `FoodDomainRuntimeService`
+
+Agreement owner operations use `OWNER_AGREEMENT_KNOWLEDGE` and the private
+`/api/lifeops/agreements/*` routes. Keep typed domain authorization in
+`AgreementKnowledgeService`; routes/actions may translate failures but must not
+infer access from actor headers or pins. The planner provider is owner-private
+and may inject only approved obligations from active agent/chat pins.
 
 The scheduled-task runner service is registered by `@elizaos/plugin-scheduling`. Website and app blocking services are registered by `@elizaos/plugin-blocker`; this package composes their action and permission seams.
 
@@ -90,7 +97,7 @@ src/
     relationships/              relationship store
     owner/                      owner facts and profile extraction
     work-threads/               durable work-thread state
-    household*/                 household coordination and operations
+    household*/                 coordination, agreement knowledge, and operations
     family-communications/      authenticated family messaging
     parenting/ food/ school/    household domain modules
     oracles/                    external facts and local conditions
@@ -139,6 +146,7 @@ Connector credentials and domain-specific settings belong to their owning plugin
 
 - Scheduled behavior is structural. Never branch on `promptInstructions`; use `kind`, `trigger`, `shouldFire`, `completionCheck`, `pipeline`, and related fields.
 - There is one scheduler and one entity/relationship graph. Extend their registries rather than creating parallel stores or runners.
+- Parenting-agreement bytes use `IFileStorageService` and retain an owner-private `DocumentService` record, never a package-local file store. Agreement versions are immutable; reviewed obligations cite source pages; pins affect discovery only; guest reads require both a resource binding and the exact still-active `knowledge.read` household grant.
 - Connector dispatch returns typed `DispatchResult` values. Do not reduce transport outcomes to booleans.
 - External sends, signatures, and other consequential operations pass through owner policy and approval boundaries.
 - Add domain logic to the owning plugin. Keep this package focused on orchestration, normalized owner projections, and cross-domain policy.

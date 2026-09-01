@@ -17,7 +17,11 @@ import { CheckCircle2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
-import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
+import {
+  hasCloudAuthCompleted,
+  isCloudAuthHandoffSurface,
+  subscribeCloudAuthComplete,
+} from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
@@ -104,18 +108,20 @@ function PublicLoginPage(): React.JSX.Element {
 
   useEffect(() => {
     if (!handoffSessionId) return;
+    if (hasCloudAuthCompleted(handoffSessionId)) {
+      setHandoffComplete(true);
+      if (isCloudAuthHandoffSurface()) window.close();
+      return;
+    }
     return subscribeCloudAuthComplete((message) => {
       if (message.sessionId !== handoffSessionId) return;
       setHandoffComplete(true);
-      try {
-        window.close();
-      } catch (error) {
-        void error;
-      }
+      if (isCloudAuthHandoffSurface()) window.close();
     });
   }, [handoffSessionId]);
 
   if (handoffComplete) {
+    const canClose = isCloudAuthHandoffSurface();
     return (
       <LoginBackground>
         <div className="space-y-6 text-center">
@@ -133,18 +139,25 @@ function PublicLoginPage(): React.JSX.Element {
               })}
             </p>
           </div>
-          <Button
-            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-            onClick={() => {
-              try {
-                window.close();
-              } catch (error) {
-                void error;
-              }
-            }}
-          >
-            {t("cloud.login.closeWindow", { defaultValue: "Close window" })}
-          </Button>
+          {canClose ? (
+            <Button
+              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+              onClick={() => window.close()}
+            >
+              {t("cloud.login.closeWindow", { defaultValue: "Close window" })}
+            </Button>
+          ) : (
+            <Button
+              asChild
+              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+            >
+              <Link to="/">
+                {t("cloud.authSuccess.returnToAppCta", {
+                  defaultValue: "Return to App",
+                })}
+              </Link>
+            </Button>
+          )}
         </div>
       </LoginBackground>
     );

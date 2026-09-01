@@ -40,10 +40,14 @@ const memory = vi.hoisted(() => {
     identities,
     sessions,
     audits,
+    sessionLookupError: null as Error | null,
+    identityLookupError: null as Error | null,
     reset(): void {
       identities.clear();
       sessions.clear();
       audits.length = 0;
+      this.sessionLookupError = null;
+      this.identityLookupError = null;
     },
   };
 });
@@ -64,6 +68,7 @@ vi.mock("../services/auth-store", () => {
     }
 
     async findIdentity(id: string): Promise<MemoryIdentity | null> {
+      if (memory.identityLookupError) throw memory.identityLookupError;
       const row = memory.identities.get(id);
       return row ? { ...row } : null;
     }
@@ -124,6 +129,7 @@ vi.mock("../services/auth-store", () => {
       id: string,
       now: number = Date.now(),
     ): Promise<MemorySession | null> {
+      if (memory.sessionLookupError) throw memory.sessionLookupError;
       const row = memory.sessions.get(id);
       if (!row) return null;
       if (row.revokedAt !== null) return null;
@@ -887,6 +893,53 @@ describe("auth session routes", () => {
     expect(authedBody.access.mode).toBe("session");
     expect(authedBody.access.role).toBe("OWNER");
   });
+
+  it.each(["session", "identity"] as const)(
+    "returns retryable 503 when the auth %s lookup fails without changing invalid-token 401s",
+    async (failingLookup) => {
+      await seedOwner();
+      seedSession({ id: "paired-session", identityId: "owner-1" });
+      if (failingLookup === "session") {
+        memory.sessionLookupError = new Error("auth store is starting");
+      } else {
+        memory.identityLookupError = new Error("auth store is starting");
+      }
+
+      const unavailable = fakeRes();
+      await handleAuthSessionRoutes(
+        fakeReq({
+          method: "GET",
+          pathname: "/api/auth/me",
+          bearer: "paired-session",
+        }),
+        unavailable.res,
+        STATE_WITH_DB,
+      );
+
+      expect(unavailable.status()).toBe(503);
+      expect(unavailable.body()).toEqual({
+        error: "db_unavailable",
+        reason: "db_unavailable",
+      });
+
+      memory.sessionLookupError = null;
+      memory.identityLookupError = null;
+      const invalid = fakeRes();
+      await handleAuthSessionRoutes(
+        fakeReq({
+          method: "GET",
+          pathname: "/api/auth/me",
+          bearer: "not-a-session",
+        }),
+        invalid.res,
+        STATE_WITH_DB,
+      );
+      expect(invalid.status()).toBe(401);
+      expect((invalid.body() as { reason: string }).reason).toBe(
+        "remote_auth_required",
+      );
+    },
+  );
 
   it("password change uses the sensitive bucket, rejects weak/new-missing identity, and updates the hash", async () => {
     const weak = fakeRes();

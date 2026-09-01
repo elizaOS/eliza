@@ -3,6 +3,7 @@
  */
 
 import { execFile } from "node:child_process";
+import crypto from "node:crypto";
 import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
 import { homedir, platform, tmpdir } from "node:os";
 import { extname, isAbsolute, join } from "node:path";
@@ -15,6 +16,7 @@ import {
   checkPairingAllowed,
   createUniqueUuid,
   DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
+  ElizaError,
   type Entity,
   type EventPayload,
   EventType,
@@ -44,6 +46,11 @@ import {
   DEFAULT_ACCOUNT_ID as IMESSAGE_LOCAL_ACCOUNT_ID,
   normalizeAccountId as normalizeIMessageAccountId,
 } from "./accounts.js";
+import {
+  parseBlooioInbound,
+  sendBlooioMessage,
+  verifyBlooioSignature,
+} from "./blooio-transport.js";
 import {
   type ChatDbMessage,
   type ChatDbReader,
@@ -94,6 +101,67 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 60_000;
 // Keep the recurring-task value portable to runtimes that ultimately schedule
 // with a JavaScript timer, even though current TaskService compares timestamps.
 const MAX_HEARTBEAT_INTERVAL_MS = 2_147_483_647;
+const BLOOIO_RECEIPT_CACHE_NAMESPACE = "imessage:blooio-receipt:v1";
+const BLOOIO_RECEIPT_CLEANUP_TASK_NAME = "IMESSAGE_BLOOIO_RECEIPT_CLEANUP";
+export const BLOOIO_RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const BLOOIO_RECEIPT_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
+
+interface BlooioDispatchReceipt {
+  version: 1;
+  acceptedAt: number;
+  cleanupTaskId?: string;
+}
+
+type BlooioReceiptState =
+  | { kind: "absent" }
+  | { kind: "processed"; receipt: BlooioDispatchReceipt }
+  | { kind: "expired"; receipt: BlooioDispatchReceipt }
+  | { kind: "future-version"; version: number }
+  | { kind: "malformed" };
+
+function blooioReceiptCacheKey(channelId: string, messageId: string): string {
+  const digest = crypto
+    .createHash("sha256")
+    .update(channelId)
+    .update("\0")
+    .update(messageId)
+    .digest("hex");
+  return `${BLOOIO_RECEIPT_CACHE_NAMESPACE}:${digest}`;
+}
+
+function classifyBlooioDispatchReceipt(value: unknown, now: number): BlooioReceiptState {
+  if (value === undefined) return { kind: "absent" };
+  if (!value || typeof value !== "object") return { kind: "malformed" };
+  const candidate = value as Partial<BlooioDispatchReceipt>;
+  if (
+    typeof candidate.version === "number" &&
+    Number.isSafeInteger(candidate.version) &&
+    candidate.version > 1
+  ) {
+    // A newer node owns the receipt schema and its lifecycle. Older nodes in a
+    // rolling deploy must treat it as processed without rewriting or deleting it.
+    return { kind: "future-version", version: candidate.version };
+  }
+  if (
+    candidate.version !== 1 ||
+    typeof candidate.acceptedAt !== "number" ||
+    !Number.isSafeInteger(candidate.acceptedAt) ||
+    candidate.acceptedAt <= 0 ||
+    candidate.acceptedAt > now + BLOOIO_RECEIPT_MAX_FUTURE_SKEW_MS ||
+    (candidate.cleanupTaskId !== undefined &&
+      (typeof candidate.cleanupTaskId !== "string" || !candidate.cleanupTaskId.trim()))
+  ) {
+    return { kind: "malformed" };
+  }
+  const receipt: BlooioDispatchReceipt = {
+    version: 1,
+    acceptedAt: candidate.acceptedAt,
+    ...(candidate.cleanupTaskId ? { cleanupTaskId: candidate.cleanupTaskId } : {}),
+  };
+  return now - receipt.acceptedAt >= BLOOIO_RECEIPT_RETENTION_MS
+    ? { kind: "expired", receipt }
+    : { kind: "processed", receipt };
+}
 
 export function resolveHeartbeatIntervalMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return DEFAULT_HEARTBEAT_INTERVAL_MS;
@@ -309,6 +377,7 @@ function firstAttachmentUrl(content: Content): string | undefined {
 
 function statusMetadata(status: IMessageServiceStatus): Record<string, string | boolean | null> {
   return {
+    transport: status.transport,
     available: status.available,
     connected: status.connected,
     chatDbAvailable: status.chatDbAvailable,
@@ -316,6 +385,8 @@ function statusMetadata(status: IMessageServiceStatus): Record<string, string | 
     chatDbPath: status.chatDbPath,
     reason: status.reason,
     permissionAction: status.permissionAction?.label ?? null,
+    webhookPath: status.webhookPath,
+    channelId: status.channelId,
   };
 }
 
@@ -547,7 +618,7 @@ async function resolveIMessageChatId(
 export class IMessageService extends Service implements IIMessageService {
   static serviceType: string = IMESSAGE_SERVICE_NAME;
 
-  capabilityDescription = "iMessage service for sending and receiving messages on macOS";
+  capabilityDescription = "iMessage service using native Messages or a Blooio gateway";
 
   private settings: IMessageSettings | null = null;
   private connected: boolean = false;
@@ -606,6 +677,10 @@ export class IMessageService extends Service implements IIMessageService {
   private contacts: ContactsMap = new Map();
   /** Whether the lazy contact load has been attempted this session. */
   private contactsLoadAttempted = false;
+  /** Message ids currently dispatching, preventing concurrent webhook re-entry. */
+  private blooioMessagesInFlight = new Set<string>();
+  /** Whether this service has installed the durable receipt cleanup worker. */
+  private blooioCleanupWorkerRegistered = false;
 
   /**
    * Start the iMessage service.
@@ -615,13 +690,11 @@ export class IMessageService extends Service implements IIMessageService {
 
     const service = new IMessageService(runtime);
 
-    // Check if running on macOS
-    if (!service.isMacOS()) {
-      throw new IMessageNotSupportedError();
-    }
-
     // Load settings
     service.settings = service.loadSettings();
+    if (service.settings.transport === "native" && !service.isMacOS()) {
+      throw new IMessageNotSupportedError();
+    }
     const settingFromRuntime =
       typeof service.runtime.getSetting === "function"
         ? service.runtime.getSetting("IMESSAGE_BACKFILL")
@@ -634,13 +707,17 @@ export class IMessageService extends Service implements IIMessageService {
     // external resource. A typo must fail startup, not silently alter replay.
     const backfill = resolveBackfillRows(resolvedBackfillRaw);
     await service.validateSettings();
+    if (service.settings.transport === "blooio") {
+      service.registerBlooioReceiptCleanupWorker();
+    }
 
     // Open chat.db for inbound polling. A null return here is non-fatal —
     // the service degrades to send-only and logs its own warning. We seed
     // the polling cursor from the current tip of the database so a freshly
     // started agent doesn't re-process its entire message backlog.
     service.chatDbPath = service.settings.dbPath || DEFAULT_CHAT_DB_PATH;
-    service.chatDb = await openChatDb(service.chatDbPath);
+    service.chatDb =
+      service.settings.transport === "native" ? await openChatDb(service.chatDbPath) : null;
     if (service.chatDb) {
       const tip = service.chatDb.getLatestRowId();
 
@@ -687,23 +764,30 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   static registerSendHandlers(runtime: IAgentRuntime, service: IMessageService): void {
+    const status = service.getStatus();
+    const isBlooio = status.transport === "blooio";
     const registration = {
       source: IMESSAGE_SERVICE_NAME,
       label: "iMessage",
-      capabilities: ["send_message", "attachments", "contact_resolution", "chat_context"],
+      capabilities: isBlooio
+        ? ["send_message", "chat_context"]
+        : ["send_message", "attachments", "contact_resolution", "chat_context"],
       supportedTargetKinds: ["phone", "email", "contact", "user", "group", "room"],
       contexts: ["phone", "social", "connectors"],
-      description:
-        "Send SMS/iMessage through macOS Messages using phone numbers, emails, contacts, or chat ids.",
+      description: isBlooio
+        ? "Send and receive iMessage through the configured Blooio channel."
+        : "Send SMS/iMessage through macOS Messages using phone numbers, emails, contacts, or chat ids.",
       metadata: {
         // `sms` is the canonical source owned by the Android Messages plugin.
         // Keeping the local bridge on its iMessage/Messages names makes source
         // selection deterministic when both first-party plugins are loaded.
         aliases: ["imessage", "messages"],
         accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
-        bridge: "macos-messages",
-        accountSemantics: "local-macos-messages-single-account",
-        status: statusMetadata(service.getStatus()),
+        bridge: isBlooio ? "blooio" : "macos-messages",
+        accountSemantics: isBlooio
+          ? "blooio-channel-single-account"
+          : "local-macos-messages-single-account",
+        status: statusMetadata(status),
       },
       sendHandler: async (_runtime: IAgentRuntime, target: TargetInfo, content: Content) => {
         const accountId = assertLocalIMessageAccount(readTargetAccountId(target));
@@ -993,17 +1077,25 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   getStatus(): IMessageServiceStatus {
+    const transport = this.settings?.transport ?? "native";
     const chatDbAvailable = this.chatDb !== null;
-    const accessIssue = chatDbAvailable ? null : getLastChatDbAccessIssue(this.chatDbPath);
+    const accessIssue =
+      transport === "native" && !chatDbAvailable ? getLastChatDbAccessIssue(this.chatDbPath) : null;
 
     return {
+      transport,
       available: true,
       connected: this.connected,
       chatDbAvailable,
-      sendOnly: this.connected && !chatDbAvailable,
+      sendOnly: transport === "native" && this.connected && !chatDbAvailable,
       chatDbPath: this.chatDbPath,
-      reason: accessIssue?.reason ?? (chatDbAvailable ? null : "chat.db reader not available"),
+      reason:
+        transport === "blooio"
+          ? null
+          : (accessIssue?.reason ?? (chatDbAvailable ? null : "chat.db reader not available")),
       permissionAction: accessIssue?.permissionAction ?? null,
+      webhookPath: transport === "blooio" ? "/api/imessage/webhook/blooio" : null,
+      channelId: transport === "blooio" ? (this.settings?.blooioChannelId ?? null) : null,
     };
   }
 
@@ -1025,6 +1117,14 @@ export class IMessageService extends Service implements IIMessageService {
     const accountId = assertLocalIMessageAccount(options?.accountId);
     if (!this.settings) {
       return { success: false, error: "Service not initialized" };
+    }
+
+    if (this.settings.transport === "blooio" && options?.mediaUrl) {
+      return {
+        success: false,
+        error:
+          "Blooio media sends require a public attachment URL and are not supported by this endpoint yet",
+      };
     }
 
     // Format phone number if needed
@@ -1111,6 +1211,344 @@ export class IMessageService extends Service implements IIMessageService {
       messageId: Date.now().toString(),
       chatId: target,
     };
+  }
+
+  private registerBlooioReceiptCleanupWorker(): void {
+    if (this.blooioCleanupWorkerRegistered) return;
+    if (
+      typeof this.runtime.registerTaskWorker !== "function" ||
+      typeof this.runtime.createTask !== "function"
+    ) {
+      const error = new ElizaError(
+        "Blooio durable receipt cleanup requires the runtime task system",
+        {
+          code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_UNAVAILABLE",
+          severity: "fatal",
+        }
+      );
+      this.runtime.reportError("IMessageService.blooioReceiptCleanup", error);
+      throw error;
+    }
+    const existing =
+      typeof this.runtime.getTaskWorker === "function"
+        ? this.runtime.getTaskWorker(BLOOIO_RECEIPT_CLEANUP_TASK_NAME)
+        : undefined;
+    if (!existing) {
+      this.runtime.registerTaskWorker({
+        name: BLOOIO_RECEIPT_CLEANUP_TASK_NAME,
+        execute: async (runtime, options, task) => {
+          const completeCleanupTask = async (): Promise<void> => {
+            if (task.id) await runtime.deleteTask(task.id);
+          };
+          const receiptKey = options.receiptKey;
+          const acceptedAt = options.acceptedAt;
+          if (
+            typeof receiptKey !== "string" ||
+            !receiptKey.startsWith(`${BLOOIO_RECEIPT_CACHE_NAMESPACE}:`) ||
+            typeof acceptedAt !== "number" ||
+            !Number.isSafeInteger(acceptedAt) ||
+            acceptedAt <= 0
+          ) {
+            throw new ElizaError("Blooio receipt cleanup task metadata is invalid", {
+              code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_TASK_INVALID",
+              severity: "fatal",
+            });
+          }
+          const receiptDigest = receiptKey.slice(receiptKey.lastIndexOf(":") + 1);
+          let storedReceipt: unknown;
+          try {
+            storedReceipt = await runtime.getCache<unknown>(receiptKey);
+          } catch (cause) {
+            // error-policy:J2 TaskService owns retry/backoff for durable cleanup failures.
+            const error = new ElizaError("Blooio receipt cleanup could not read durable state", {
+              code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_READ_FAILED",
+              cause,
+              context: { receiptDigest },
+              severity: "ephemeral",
+            });
+            runtime.reportError("IMessageService.blooioReceiptCleanup", error, {
+              receiptDigest,
+            });
+            throw error;
+          }
+          const state = classifyBlooioDispatchReceipt(storedReceipt, Date.now());
+          if (state.kind === "absent" || state.kind === "future-version") {
+            await completeCleanupTask();
+            return undefined;
+          }
+          if (
+            (state.kind === "processed" || state.kind === "expired") &&
+            state.receipt.acceptedAt !== acceptedAt
+          ) {
+            await completeCleanupTask();
+            return undefined;
+          }
+          try {
+            const deleted = await runtime.deleteCache(receiptKey);
+            if (!deleted && (await runtime.getCache<unknown>(receiptKey)) !== undefined) {
+              throw new Error("runtime rejected receipt cleanup");
+            }
+          } catch (cause) {
+            // error-policy:J2 TaskService owns retry/backoff for durable cleanup failures.
+            const error = new ElizaError("Blooio durable dispatch receipt cleanup failed", {
+              code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_FAILED",
+              cause,
+              context: { receiptDigest },
+              severity: "ephemeral",
+            });
+            runtime.reportError("IMessageService.blooioReceiptCleanup", error, {
+              receiptDigest,
+            });
+            throw error;
+          }
+          await completeCleanupTask();
+          return undefined;
+        },
+      });
+    }
+    this.blooioCleanupWorkerRegistered = true;
+  }
+
+  private async deleteBlooioReceipt(receiptKey: string, receiptDigest: string): Promise<void> {
+    try {
+      const deleted = await this.runtime.deleteCache(receiptKey);
+      if (!deleted && (await this.runtime.getCache<unknown>(receiptKey)) !== undefined) {
+        throw new Error("runtime rejected receipt cleanup");
+      }
+    } catch (cause) {
+      // error-policy:J2 Do not dispatch while stale or malformed dedupe state remains durable.
+      const error = new ElizaError("Blooio durable dispatch receipt cleanup failed", {
+        code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_FAILED",
+        cause,
+        context: { receiptDigest },
+        severity: "ephemeral",
+      });
+      this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+      throw error;
+    }
+  }
+
+  private async scheduleBlooioReceiptCleanup(
+    receiptKey: string,
+    receiptDigest: string,
+    acceptedAt: number
+  ): Promise<string> {
+    this.registerBlooioReceiptCleanupWorker();
+    let taskId: UUID;
+    try {
+      taskId = await this.runtime.createTask({
+        name: BLOOIO_RECEIPT_CLEANUP_TASK_NAME,
+        description: "Delete one expired durable Blooio inbound-dispatch receipt.",
+        agentId: this.runtime.agentId,
+        tags: ["queue", "repeat", "imessage", "blooio", "receipt-cleanup"],
+        metadata: {
+          receiptKey,
+          acceptedAt,
+          updateInterval: 60 * 60 * 1000,
+          maxFailures: 0,
+          blocking: true,
+        },
+        dueAt: acceptedAt + BLOOIO_RECEIPT_RETENTION_MS,
+      });
+    } catch (cause) {
+      // error-policy:J2 The webhook must retry until the durable receipt has bounded cleanup.
+      const error = new ElizaError("Blooio receipt cleanup task could not be scheduled", {
+        code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_SCHEDULE_FAILED",
+        cause,
+        context: { receiptDigest },
+        severity: "ephemeral",
+      });
+      this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+      throw error;
+    }
+    const receipt: BlooioDispatchReceipt = {
+      version: 1,
+      acceptedAt,
+      cleanupTaskId: taskId,
+    };
+    let updated: boolean;
+    try {
+      updated = await this.runtime.setCache(receiptKey, receipt);
+    } catch (cause) {
+      // error-policy:J2 The scheduled task remains safe, but the receipt update must be retried.
+      const error = new ElizaError("Blooio cleanup task receipt could not be recorded", {
+        code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_RECORD_FAILED",
+        cause,
+        context: { receiptDigest },
+        severity: "ephemeral",
+      });
+      this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+      throw error;
+    }
+    if (!updated) {
+      const error = new ElizaError("Blooio cleanup task receipt was not recorded", {
+        code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_RECORD_REJECTED",
+        context: { receiptDigest },
+        severity: "ephemeral",
+      });
+      this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+      throw error;
+    }
+    return taskId;
+  }
+
+  async handleBlooioWebhook(
+    rawBody: string,
+    signature: string | undefined
+  ): Promise<"accepted" | "ignored" | "unauthorized"> {
+    const settings = this.settings;
+    if (
+      settings?.transport !== "blooio" ||
+      !settings.blooioWebhookSecret ||
+      !settings.blooioChannelId
+    ) {
+      return "ignored";
+    }
+    if (!verifyBlooioSignature(settings.blooioWebhookSecret, signature, rawBody)) {
+      logger.warn(
+        {
+          src: "plugin:imessage:blooio",
+          rawBodyBytes: Buffer.byteLength(rawBody),
+          rawBodySha256: crypto.createHash("sha256").update(rawBody).digest("hex"),
+          signaturePresent: Boolean(signature),
+          signatureLength: signature?.length ?? 0,
+          signatureSegmentCount: signature?.split(",").length ?? 0,
+          signatureContainsWhitespace: /\s/.test(signature ?? ""),
+        },
+        "[imessage] Rejected a Blooio webhook with an invalid signature"
+      );
+      return "unauthorized";
+    }
+    const inbound = parseBlooioInbound(rawBody, settings.blooioChannelId);
+    if (!inbound) return "ignored";
+
+    const receiptKey = blooioReceiptCacheKey(settings.blooioChannelId, inbound.messageId);
+    const receiptDigest = receiptKey.slice(receiptKey.lastIndexOf(":") + 1);
+    if (this.blooioMessagesInFlight.has(inbound.messageId)) {
+      const error = new ElizaError("Blooio message dispatch is already in progress", {
+        code: "IMESSAGE_BLOOIO_DISPATCH_IN_FLIGHT",
+        context: { receiptDigest },
+        severity: "ephemeral",
+      });
+      this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+      throw error;
+    }
+
+    this.blooioMessagesInFlight.add(inbound.messageId);
+    try {
+      let storedReceipt: unknown;
+      try {
+        storedReceipt = await this.runtime.getCache<unknown>(receiptKey);
+      } catch (cause) {
+        // error-policy:J2 The webhook must fail so Blooio retries when durable dedupe is unavailable.
+        const error = new ElizaError("Blooio durable dispatch receipt could not be read", {
+          code: "IMESSAGE_BLOOIO_RECEIPT_READ_FAILED",
+          cause,
+          context: { receiptDigest },
+          severity: "ephemeral",
+        });
+        this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+        throw error;
+      }
+      const receiptState = classifyBlooioDispatchReceipt(storedReceipt, Date.now());
+      if (receiptState.kind === "future-version") {
+        return "ignored";
+      }
+      if (receiptState.kind === "processed") {
+        if (!receiptState.receipt.cleanupTaskId) {
+          await this.scheduleBlooioReceiptCleanup(
+            receiptKey,
+            receiptDigest,
+            receiptState.receipt.acceptedAt
+          );
+        }
+        return "ignored";
+      }
+      if (receiptState.kind === "expired") {
+        await this.deleteBlooioReceipt(receiptKey, receiptDigest);
+      } else if (receiptState.kind === "malformed") {
+        const error = new ElizaError("Blooio durable dispatch receipt was malformed", {
+          code: "IMESSAGE_BLOOIO_RECEIPT_INVALID",
+          context: { receiptDigest },
+          severity: "ephemeral",
+        });
+        this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+        await this.deleteBlooioReceipt(receiptKey, receiptDigest);
+      }
+
+      const access: { allowed: boolean; pairingReplyMessage?: string } = inbound.isGroup
+        ? this.checkGroupAccess(inbound.sender)
+        : await this.checkDmAccess(inbound.sender);
+      if (!access.allowed) {
+        if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
+          await this.sendSingleMessage(inbound.sender, access.pairingReplyMessage);
+        }
+        return "ignored";
+      }
+
+      const media: Media[] = inbound.mediaUrls.map((url, index) => ({
+        id: `${inbound.messageId}-${index}`,
+        url,
+        source: "imessage",
+        title: "Blooio attachment",
+        description: "Inbound Blooio attachment",
+      }));
+      const row: ChatDbMessage = {
+        rowId: inbound.timestamp,
+        guid: inbound.messageId,
+        text: inbound.text,
+        kind: "text",
+        handle: inbound.sender,
+        chatId: inbound.chatId,
+        chatType: inbound.isGroup ? "group" : "direct",
+        displayName: null,
+        timestamp: inbound.timestamp,
+        isFromMe: false,
+        service: "iMessage",
+        isSent: false,
+        isDelivered: true,
+        isRead: false,
+        dateRead: 0,
+        dateEdited: 0,
+        dateRetracted: 0,
+        replyToGuid: inbound.replyToMessageId ?? null,
+        reaction: null,
+        attachments: [],
+      };
+      await this.dispatchInboundMessage(row, media);
+
+      const acceptedAt = Date.now();
+      let receiptStored: boolean;
+      try {
+        receiptStored = await this.runtime.setCache<BlooioDispatchReceipt>(receiptKey, {
+          version: 1,
+          acceptedAt,
+        });
+      } catch (cause) {
+        // error-policy:J2 Dispatch succeeded, but fail the webhook because dedupe was not durable.
+        const error = new ElizaError("Blooio durable dispatch receipt could not be written", {
+          code: "IMESSAGE_BLOOIO_RECEIPT_WRITE_FAILED",
+          cause,
+          context: { receiptDigest },
+          severity: "ephemeral",
+        });
+        this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+        throw error;
+      }
+      if (!receiptStored) {
+        const error = new ElizaError("Blooio durable dispatch receipt was not stored", {
+          code: "IMESSAGE_BLOOIO_RECEIPT_WRITE_REJECTED",
+          context: { receiptDigest },
+          severity: "ephemeral",
+        });
+        this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+        throw error;
+      }
+      await this.scheduleBlooioReceiptCleanup(receiptKey, receiptDigest, acceptedAt);
+      return "accepted";
+    } finally {
+      this.blooioMessagesInFlight.delete(inbound.messageId);
+    }
   }
 
   /**
@@ -1205,6 +1643,7 @@ export class IMessageService extends Service implements IIMessageService {
       return;
     }
     this.contactsLoadAttempted = true;
+    if (this.settings?.transport === "blooio") return;
     try {
       this.contacts = await loadContacts();
       this.recordContactsPermissionBlock("contacts.resolve");
@@ -1301,6 +1740,15 @@ export class IMessageService extends Service implements IIMessageService {
     };
 
     const dbPath = getStringSetting("IMESSAGE_DB_PATH", "IMESSAGE_DB_PATH") || undefined;
+    const transportRaw = getStringSetting("IMESSAGE_TRANSPORT", "IMESSAGE_TRANSPORT", "native")
+      .trim()
+      .toLowerCase();
+    if (transportRaw !== "native" && transportRaw !== "blooio") {
+      throw new IMessageConfigurationError(
+        "IMESSAGE_TRANSPORT must be native or blooio",
+        "IMESSAGE_TRANSPORT"
+      );
+    }
 
     const pollIntervalRaw = getStringSetting(
       "IMESSAGE_POLL_INTERVAL_MS",
@@ -1343,6 +1791,7 @@ export class IMessageService extends Service implements IIMessageService {
     const enabled = enabledRaw !== "false";
 
     return {
+      transport: transportRaw,
       dbPath,
       pollIntervalMs,
       heartbeatIntervalMs,
@@ -1350,12 +1799,41 @@ export class IMessageService extends Service implements IIMessageService {
       groupPolicy,
       allowFrom,
       enabled,
+      blooioApiKey:
+        getStringSetting("IMESSAGE_BLOOIO_API_KEY", "IMESSAGE_BLOOIO_API_KEY") ||
+        getStringSetting("BLOOIO_API_KEY", "BLOOIO_API_KEY") ||
+        undefined,
+      blooioWebhookSecret:
+        getStringSetting("IMESSAGE_BLOOIO_WEBHOOK_SECRET", "IMESSAGE_BLOOIO_WEBHOOK_SECRET") ||
+        getStringSetting("BLOOIO_WEBHOOK_SECRET", "BLOOIO_WEBHOOK_SECRET") ||
+        undefined,
+      blooioFromNumber:
+        getStringSetting("IMESSAGE_BLOOIO_FROM_NUMBER", "IMESSAGE_BLOOIO_FROM_NUMBER") ||
+        getStringSetting("BLOOIO_FROM_NUMBER", "BLOOIO_FROM_NUMBER") ||
+        undefined,
+      blooioChannelId:
+        getStringSetting("IMESSAGE_BLOOIO_CHANNEL_ID", "IMESSAGE_BLOOIO_CHANNEL_ID") || undefined,
     };
   }
 
   private async validateSettings(): Promise<void> {
     if (!this.settings) {
       throw new IMessageConfigurationError("Settings not loaded");
+    }
+
+    if (this.settings.transport === "blooio") {
+      for (const [setting, value] of [
+        ["IMESSAGE_BLOOIO_API_KEY", this.settings.blooioApiKey],
+        ["IMESSAGE_BLOOIO_WEBHOOK_SECRET", this.settings.blooioWebhookSecret],
+        ["IMESSAGE_BLOOIO_FROM_NUMBER", this.settings.blooioFromNumber],
+        ["IMESSAGE_BLOOIO_CHANNEL_ID", this.settings.blooioChannelId],
+      ] as const) {
+        if (!value)
+          throw new IMessageConfigurationError(
+            `${setting} is required for the Blooio transport`,
+            setting
+          );
+      }
     }
 
     // Do not probe Messages.app during service startup. Sending is gated by
@@ -1365,6 +1843,15 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   private async sendSingleMessage(to: string, text: string): Promise<IMessageSendResult> {
+    if (this.settings?.transport === "blooio") {
+      return await sendBlooioMessage({
+        apiKey: this.settings.blooioApiKey as string,
+        from: this.settings.blooioChannelId ?? (this.settings.blooioFromNumber as string),
+        to,
+        text,
+        idempotencyKey: `imessage-${crypto.randomUUID()}`,
+      });
+    }
     // Outbound delivery stays on Apple's local Messages automation surface.
     // No third-party CLI, daemon, network service, or fallback transport is
     // invoked from the native connector.
@@ -1600,7 +2087,7 @@ export class IMessageService extends Service implements IIMessageService {
         // follows the same IMESSAGE_AUTO_REPLY consent gate as agent replies.
         // Only the DM pairing path produces one; group denials never do.
         if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
-          const sendResult = await this.sendViaAppleScript(row.handle, access.pairingReplyMessage);
+          const sendResult = await this.sendSingleMessage(row.handle, access.pairingReplyMessage);
           if (!sendResult.success) {
             logger.warn(
               `[imessage] Pairing reply send failed for handle=${row.handle}: ${sendResult.error}`
@@ -1719,7 +2206,10 @@ export class IMessageService extends Service implements IIMessageService {
    * `source: "imessage"` tag on content, same HandlerCallback signature
    * for the reply path.
    */
-  private async dispatchInboundMessage(row: ChatDbMessage): Promise<void> {
+  private async dispatchInboundMessage(
+    row: ChatDbMessage,
+    externalMedia: Media[] = []
+  ): Promise<void> {
     if (!this.runtime) return;
     const accountId = IMESSAGE_LOCAL_ACCOUNT_ID;
 
@@ -1860,7 +2350,10 @@ export class IMessageService extends Service implements IIMessageService {
       ? createUniqueUuid(this.runtime, `imessage-guid-${row.replyToGuid}`)
       : undefined;
 
-    const rehostedAttachments = await this.rehostInboundAttachments(row.attachments);
+    const rehostedAttachments = [
+      ...(await this.rehostInboundAttachments(row.attachments)),
+      ...externalMedia,
+    ];
     const memoryContent: Content = {
       text: row.text,
       source: "imessage",
@@ -1942,7 +2435,7 @@ export class IMessageService extends Service implements IIMessageService {
         return [];
       }
 
-      const sendResult = await this.sendViaAppleScript(replyTarget, replyText);
+      const sendResult = await this.sendSingleMessage(replyTarget, replyText);
       if (!sendResult.success) {
         logger.error(`[imessage] Reply send failed for ROWID=${row.rowId}: ${sendResult.error}`);
         return [];
@@ -2228,7 +2721,10 @@ export class IMessageService extends Service implements IIMessageService {
         let tip = 0;
         let contactsCount = 0;
         try {
-          if (!this.chatDb) {
+          if (this.settings?.transport === "blooio") {
+            ok = this.connected;
+            reason = ok ? "" : "Blooio transport disconnected";
+          } else if (!this.chatDb) {
             ok = false;
             reason = "chat.db reader not available (send-only mode)";
           } else {
@@ -2288,8 +2784,7 @@ export class IMessageService extends Service implements IIMessageService {
       try {
         await this.runtime.createTask({
           name: "IMESSAGE_HEARTBEAT",
-          description:
-            "Periodic health probe for the iMessage connector (chat.db reader, contacts, polling cursor).",
+          description: "Periodic health probe for the active iMessage connector transport.",
           metadata: {
             updatedAt: Date.now(),
             updateInterval: heartbeatIntervalMs,

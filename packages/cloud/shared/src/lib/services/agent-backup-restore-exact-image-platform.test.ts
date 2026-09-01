@@ -201,6 +201,7 @@ async function expectErrorCode(
   try {
     await promise;
   } catch (error) {
+    // error-policy:J1 the test assertion boundary observes the exact typed rejection.
     expect(error).toBeInstanceOf(AgentBackupRestoreExactImagePlatformError);
     expect((error as AgentBackupRestoreExactImagePlatformError).code).toBe(code);
     return error as AgentBackupRestoreExactImagePlatformError;
@@ -291,6 +292,21 @@ describe("resolveAgentBackupRestoreExactImagePlatform — exact success", () => 
     expect(registry.calls[1]?.url).toBe(registry.calls[2]?.url);
   });
 
+  test("accepts a matching tagged digest locator and canonicalizes it without the tag", async () => {
+    const source = fixture({ platform: "linux/amd64" });
+    const registry = queueFetch(successResponses(source));
+
+    const result = await resolveFixture(
+      source,
+      registry.fetchFn,
+      `ghcr.io/${REPOSITORY}:restore-generation@${source.top.digest}`,
+    );
+
+    expect(result.imageReference).toBe(`ghcr.io/${REPOSITORY}@${source.top.digest}`);
+    expect(registry.calls.some((call) => call.url.includes("restore-generation"))).toBe(false);
+    expect(registry.calls[1]?.url).toEndWith(`/manifests/${encodeURIComponent(source.top.digest)}`);
+  });
+
   test("does not cache verified authorities", async () => {
     const source = fixture({ platform: "linux/amd64" });
     const registry = queueFetch([...successResponses(source), ...successResponses(source)]);
@@ -339,7 +355,13 @@ describe("resolveAgentBackupRestoreExactImagePlatform — reference authority", 
       ["elizaos/eliza:latest", "IMAGE_REFERENCE_INVALID"],
       ["ghcr.io/elizaos/eliza", "IMAGE_REFERENCE_INVALID"],
       ["ghcr.io/ElizaOS/eliza:latest", "IMAGE_REFERENCE_INVALID"],
+      [`ghcr.io/${REPOSITORY}:bad!tag@${source.top.digest}`, "IMAGE_REFERENCE_INVALID"],
+      [`ghcr.io/${REPOSITORY}:@${source.top.digest}`, "IMAGE_REFERENCE_INVALID"],
       [`ghcr.io/${REPOSITORY}@${sha256("different")}`, "IMAGE_AUTHORITY_MISMATCH"],
+      [
+        `ghcr.io/${REPOSITORY}:restore-generation@${sha256("different")}`,
+        "IMAGE_AUTHORITY_MISMATCH",
+      ],
     ];
 
     for (const [imageReference, code] of cases) {
@@ -449,38 +471,54 @@ describe("resolveAgentBackupRestoreExactImagePlatform — registry proof failure
     await expectErrorCode(resolveFixture(source, bodyMismatch.fetchFn), "REGISTRY_DIGEST_MISMATCH");
   });
 
-  test("rejects arbitrary, mismatched, unsafe, or chained config blob redirects", async () => {
+  test("rejects every malformed config CDN redirect before fetching it", async () => {
     const source = fixture({ platform: "linux/amd64" });
-    const arbitraryHost = queueFetch([
-      ...successResponses(source).slice(0, 3),
-      () => configRedirectResponse("https://attacker.invalid/ghcr1/blobs/config?sig=fixture"),
-    ]);
-    await expectErrorCode(
-      resolveFixture(source, arbitraryHost.fetchFn),
-      "REGISTRY_RESPONSE_INVALID",
-    );
-    expect(arbitraryHost.calls).toHaveLength(4);
-
-    const mismatchedDigest = queueFetch([
-      ...successResponses(source).slice(0, 3),
-      () => configRedirectResponse(configCdnUrl(sha256("other-config"))),
-    ]);
-    await expectErrorCode(
-      resolveFixture(source, mismatchedDigest.fetchFn),
-      "REGISTRY_RESPONSE_INVALID",
-    );
-
-    const unsafeSegment = queueFetch([
-      ...successResponses(source).slice(0, 3),
-      () =>
-        configRedirectResponse(
-          `https://pkg-containers.githubusercontent.com/ghcr%2fescape/blobs/${source.config.digest}?sig=fixture`,
+    const exactLocation = configCdnUrl(source.config.digest);
+    const malformedLocations = [
+      ["non-HTTPS protocol", exactLocation.replace("https://", "http://")],
+      [
+        "foreign hostname",
+        exactLocation.replace("pkg-containers.githubusercontent.com", "attacker.invalid"),
+      ],
+      [
+        "explicit port",
+        exactLocation.replace(
+          "pkg-containers.githubusercontent.com",
+          "pkg-containers.githubusercontent.com:444",
         ),
-    ]);
-    await expectErrorCode(
-      resolveFixture(source, unsafeSegment.fetchFn),
-      "REGISTRY_RESPONSE_INVALID",
-    );
+      ],
+      ["username credential", exactLocation.replace("https://", "https://reader@")],
+      ["password credential", exactLocation.replace("https://", "https://:secret@")],
+      ["fragment", `${exactLocation}#unexpected`],
+      [
+        "missing object path prefix",
+        `https://pkg-containers.githubusercontent.com/blobs/${source.config.digest}?sig=fixture`,
+      ],
+      [
+        "unsafe path segment",
+        `https://pkg-containers.githubusercontent.com/ghcr%2fescape/blobs/${source.config.digest}?sig=fixture`,
+      ],
+      ["mismatched digest path", configCdnUrl(sha256("other-config"))],
+    ] as const;
+
+    for (const [_clause, location] of malformedLocations) {
+      const registry = queueFetch([
+        ...successResponses(source).slice(0, 3),
+        () => configRedirectResponse(location),
+      ]);
+
+      await expectErrorCode(resolveFixture(source, registry.fetchFn), "REGISTRY_RESPONSE_INVALID");
+      expect(registry.calls).toHaveLength(4);
+      expect(registry.calls[3]?.url).toEndWith(
+        `/blobs/${encodeURIComponent(source.config.digest)}`,
+      );
+      expect(registry.calls[3]?.init?.redirect).toBe("manual");
+      expect(registry.calls.some((call) => call.url === new URL(location).toString())).toBe(false);
+    }
+  });
+
+  test("rejects chained config blob redirects without forwarding registry authorization", async () => {
+    const source = fixture({ platform: "linux/amd64" });
 
     const chained = queueFetch([
       ...successResponses(source).slice(0, 4),
@@ -671,6 +709,7 @@ describe("resolveAgentBackupRestoreExactImagePlatform — cancellation and trans
       await resolution;
       throw new Error("Expected caller cancellation");
     } catch (error) {
+      // error-policy:J1 the test assertion boundary observes the caller's abort reason.
       expect(error).toBe(abortReason);
     }
     expect(observedSignal?.aborted).toBe(true);
@@ -699,6 +738,7 @@ describe("resolveAgentBackupRestoreExactImagePlatform — cancellation and trans
       );
       throw new Error("Expected final-body caller cancellation");
     } catch (error) {
+      // error-policy:J1 the test assertion boundary observes the caller's abort reason.
       expect(error).toBe(abortReason);
     }
     expect(controller.signal.aborted).toBe(true);

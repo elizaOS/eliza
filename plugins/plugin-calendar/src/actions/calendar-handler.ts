@@ -4489,10 +4489,13 @@ const calendarAction: CalendarHandlerAction = {
             operation: "create",
             payload: requestToApprove,
           });
-          const createdEvent = await service.createCalendarEvent(INTERNAL_URL, {
-            ...requestToApprove,
-            idempotencyKey,
-          });
+          const { startAt, endAt, ...dateOnlyRequest } = requestToApprove;
+          const createdEvent = await service.createCalendarEvent(
+            INTERNAL_URL,
+            requestToApprove.allDay
+              ? { ...dateOnlyRequest, idempotencyKey }
+              : { ...requestToApprove, startAt, endAt, idempotencyKey },
+          );
           if (travelBuffer && travel) {
             await travel.reserveTravelBuffer({
               runtime,

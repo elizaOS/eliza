@@ -47,6 +47,20 @@ export interface SchedulingApprovalCorrelation {
   readonly contentSha256: string;
 }
 
+/** Immutable bytes and capability identity approved for one calendar card. */
+export interface CalendarCardApprovalCorrelation {
+  readonly kind: "calendar_card";
+  readonly version: 1;
+  readonly cardId: string;
+  readonly recipientEntityId: string;
+  readonly date: string;
+  readonly timeZone: string;
+  readonly privacyMode: "full" | "times_only" | "busy_only";
+  readonly textSha256: string;
+  readonly htmlSha256: string;
+  readonly envelopeSha256: string;
+}
+
 export type ApprovalRequestState =
   | "pending"
   | "approved"
@@ -115,6 +129,11 @@ export interface CalendarApprovalAttendee {
   readonly optional?: boolean;
 }
 
+export interface CalendarApprovalAllDayRange {
+  readonly startDate: string;
+  readonly endDateExclusive: string;
+}
+
 /** String entries remain readable for approvals persisted before attendee metadata was retained. */
 export type CalendarApprovalAttendeeInput = string | CalendarApprovalAttendee;
 
@@ -143,6 +162,7 @@ export type ApprovalPayload =
       body: string;
       replyToMessageId: string | null;
       scheduling?: SchedulingApprovalCorrelation;
+      calendarCard?: CalendarCardApprovalCorrelation;
     }
   | {
       action: "send_email";
@@ -161,6 +181,7 @@ export type ApprovalPayload =
       title: string;
       startsAtMs: number;
       endsAtMs: number;
+      allDay?: CalendarApprovalAllDayRange | null;
       timeZone?: string | null;
       durationMinutes?: number | null;
       windowPreset?:
@@ -203,6 +224,7 @@ export type ApprovalPayload =
         title: string | null;
         startsAtMs: number | null;
         endsAtMs: number | null;
+        allDay?: CalendarApprovalAllDayRange | null;
         timeZone?: string | null;
         attendees: ReadonlyArray<CalendarApprovalAttendeeInput> | null;
         location: string | null;

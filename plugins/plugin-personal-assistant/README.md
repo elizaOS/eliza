@@ -170,6 +170,39 @@ src/lifeops/
                                   subscriptions, assistant workflows, etc.)
 ```
 
+## Parenting-agreement knowledge
+
+Parenting agreements upload through resumable, independently hashed 4 MiB
+requests with their staging bytes in the runtime's canonical private
+`IFileStorageService`; the complete document has no semantic size ceiling.
+Commit requires every ordered chunk and verifies the reassembled byte length
+and optional whole-file SHA-256 before immutable storage. The server—not the
+form—parses the page count. `PdfService.extractCompleteDocument` then accounts
+for every page with native text plus rendered-page vision transcription for
+images or text-empty pages. One failed page fails ingestion; partial content is
+never published as a complete owner-private `DocumentService` record. LifeOps
+persists the media SHA-256, handle, document id, byte size, MIME type, filename,
+parser-derived page count, complete extracted text, and version chain; it does
+not create another permanent file store.
+
+Owner- or agent-extracted obligations begin as `proposed` and must carry an
+in-range page citation plus the cited source text. Only the owner can make the terminal
+`approved` or `rejected` decision. Agent and chat pins are independent
+discovery records and never confer access.
+
+The owner is the only implicit reader. A guest read requires a resource grant
+bound to one exact household grant with `knowledge.read`; the guest entity must
+have a verified identity, and both grants must remain unrevoked and unexpired.
+Guest views expose approved obligations only. Revoking the relationship-backed
+household grant immediately invalidates every agreement binding that relies on
+it.
+
+The owner surface is available through `OWNER_AGREEMENT_KNOWLEDGE` and the
+authenticated `/api/lifeops/agreements/*` routes. Grant previews enumerate the
+exact read effects and exclusions before issuance. Active agent/chat pins feed
+only approved, page-cited obligations into owner planner context; uploading a
+PDF remains on the document/API surface so chat actions never invent bytes.
+
 ## Default packs
 
 Default packs are bundles of typed scheduled-item definitions compiled into

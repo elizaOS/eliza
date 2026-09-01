@@ -178,10 +178,24 @@ export async function runIsolatedScriptTests(options) {
         runOne(file, options, fragmentPath, active),
       options.concurrency,
     );
-    const failures = results.filter(
-      (result) =>
-        !result.ok || result.value.exitCode !== 0 || result.value.timedOut,
-    );
+    const failures = results
+      .map((result, index) => ({ file: fragments[index].file, result }))
+      .filter(
+        ({ result }) =>
+          !result.ok || result.value.exitCode !== 0 || result.value.timedOut,
+      );
+    for (const failure of failures) {
+      const detail = failure.result.ok
+        ? failure.result.value.timedOut
+          ? "timed out"
+          : `exit ${failure.result.value.exitCode}${failure.result.value.signal ? ` (${failure.result.value.signal})` : ""}`
+        : failure.result.error instanceof Error
+          ? failure.result.error.message
+          : String(failure.result.error);
+      process.stderr.write(
+        `[script-tests] failed: ${failure.file} (${detail})\n`,
+      );
+    }
     if (failures.length === 0 && options.junit)
       mergeJunit(fragments, options.junit);
     return failures.length === 0 ? 0 : 1;
