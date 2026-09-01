@@ -2794,7 +2794,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       {/* Mobile overflow (#29261): the toolbar stays one 44px row, so the
           secondary actions live behind one touch-sized menu instead of a
           second row. */}
-      <span className="inline-flex shrink-0 md:hidden">
+      <span className="shrink-0 max-md:inline-flex md:hidden">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
