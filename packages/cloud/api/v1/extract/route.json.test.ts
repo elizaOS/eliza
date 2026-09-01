@@ -13,10 +13,18 @@ import type {
 const USER_ID = "00000000-0000-4000-8000-0000000000aa";
 const ORG_ID = "00000000-0000-4000-8000-0000000000bb";
 
-const requireUserOrApiKeyWithOrg = mock(async () => ({
-  id: USER_ID,
-  organization_id: ORG_ID,
+const requireGenerativeRouteCaller = mock(async () => ({
+  user: { id: USER_ID, organization_id: ORG_ID },
+  apiKeyId: "key-1",
+  authSource: "combined_cache",
+  appScopeId: null,
 }));
+const operationContext = {
+  organizationId: ORG_ID,
+  userId: USER_ID,
+  apiKeyId: "key-1",
+  requestId: "request-1",
+};
 
 const extractHostedPage = mock(
   async (
@@ -34,8 +42,10 @@ const failureResponse = mock(
     c.json({ success: false, error: "An unexpected error occurred" }, 500),
 );
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({
-  requireUserOrApiKeyWithOrg,
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  asGenerativeCacheApiError: () => null,
+  requireGenerativeRouteCaller,
+  getGenerativeOperationContext: () => operationContext,
 }));
 
 mock.module("@/lib/services/browser-tools", () => ({
@@ -71,7 +81,7 @@ function post(raw: string) {
 
 describe("POST /api/v1/extract JSON body", () => {
   beforeEach(() => {
-    requireUserOrApiKeyWithOrg.mockClear();
+    requireGenerativeRouteCaller.mockClear();
     extractHostedPage.mockClear();
     logHostedBrowserFailure.mockClear();
     failureResponse.mockClear();
@@ -90,7 +100,7 @@ describe("POST /api/v1/extract JSON body", () => {
         success: false,
         error: "Invalid JSON body",
       });
-      expect(requireUserOrApiKeyWithOrg).toHaveBeenCalled();
+      expect(requireGenerativeRouteCaller).toHaveBeenCalled();
       expect(extractHostedPage).not.toHaveBeenCalled();
       expect(logHostedBrowserFailure).not.toHaveBeenCalled();
       expect(failureResponse).not.toHaveBeenCalled();
@@ -104,6 +114,19 @@ describe("POST /api/v1/extract JSON body", () => {
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("Invalid extract request");
     expect(extractHostedPage).not.toHaveBeenCalled();
+  });
+
+  test("never dispatches extraction when account-standing admission fails", async () => {
+    requireGenerativeRouteCaller.mockRejectedValueOnce(
+      new Error("account not in good standing"),
+    );
+
+    const res = await post(JSON.stringify({ url: "https://example.com" }));
+
+    expect(res.status).toBe(500);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(extractHostedPage).not.toHaveBeenCalled();
+    expect(failureResponse).toHaveBeenCalledTimes(1);
   });
 
   test("still extracts a canonical object body", async () => {

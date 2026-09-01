@@ -70,6 +70,7 @@ mock.module("./credits", () => ({
       if (deductResult.success) {
         return {
           ...deductResult,
+          balanceRevision: "2",
           transaction: {
             organization_id: args.organizationId,
             amount: String(-args.amount),
@@ -395,12 +396,11 @@ describe("createOptimisticDebitSettler", () => {
   test("on debit success republishes the org-balance hint the credit mutation evicted", async () => {
     const input = chargeInput();
     deductResult = { success: true, newBalance: 7.5, transaction: { id: "debit-2" } };
-    // Authoritative post-debit balance the republish must pick up.
-    freshBalanceUsd = 7.5;
     await writeOrgBalanceHint(input.organizationId, 10, Date.now(), "1");
     await writePendingInferenceCharge(input, Date.now());
     await createOptimisticDebitSettler(input)(0.02);
     expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(7.5);
+    expect(freshBalanceCalls).toBe(0);
   });
 
   // REGRESSION (staging 2026-08-05): every settled turn left the gate hint
@@ -412,7 +412,6 @@ describe("createOptimisticDebitSettler", () => {
   test("leaves a warm hint so the NEXT turn does not fail closed on a cacheOnly read", async () => {
     const input = chargeInput();
     deductResult = { success: true, newBalance: 4.25, transaction: { id: "debit-flap" } };
-    freshBalanceUsd = 4.25;
     await writeOrgBalanceHint(input.organizationId, 9, Date.now(), "1");
     await writePendingInferenceCharge(input, Date.now());
 
@@ -449,9 +448,8 @@ describe("createOptimisticDebitSettler", () => {
   test("republished hint carries authoritative balance AND revision, not the stale pre-debit ones", async () => {
     const input = chargeInput();
     deductResult = { success: true, newBalance: 3, transaction: { id: "debit-rev" } };
-    freshBalanceUsd = 3;
-    // Stale entry: higher balance, older revision "1". The credits seam reports
-    // revision "2" as authoritative.
+    // Stale entry: higher balance, older revision "1". The atomic debit result
+    // carries revision "2" alongside its committed balance.
     await writeOrgBalanceHint(input.organizationId, 42, Date.now(), "1");
     await writePendingInferenceCharge(input, Date.now());
 
@@ -670,30 +668,23 @@ describe("#9899 hardening: backstop durability, lower-only hint, claim atomicity
     expect(isOptimisticBackstopAvailable()).toBe(true);
   });
 
-  // The gate must never be raised above authoritative state by an out-of-order
-  // debit (#9899 over-admit bound). The settler no longer trusts the debit's
-  // own `newBalance` for this at all: the committed debit's `onCreditMutation`
-  // evicts the hint, so the settler re-reads AUTHORITATIVE state and republishes
-  // that. A transaction reporting a stale-high balance therefore cannot raise
-  // the gate, because its reported number is never written.
-  test("a stale-high debit report never raises the gate; authoritative state wins", async () => {
+  // The atomic debit statement returns balance + revision from one committed
+  // mutation. Republication must use that pair without a second primary read.
+  test("republishes each atomic debit snapshot without a primary readback", async () => {
     const input = chargeInput();
     await writeOrgBalanceHint(input.organizationId, 10, Date.now(), "1");
-    // Out-of-order: the debit claims 20, but the database says 6.
-    deductResult = { success: true, newBalance: 20, transaction: { id: "debit-high" } };
-    freshBalanceUsd = 6;
+    deductResult = { success: true, newBalance: 6, transaction: { id: "debit-high" } };
     await writePendingInferenceCharge(input, Date.now());
     await createOptimisticDebitSettler(input)(0.01);
-    // The stale-high 20 is never published; the authoritative 6 is.
     expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(6);
 
     // A subsequent debit lowers it further, still from authoritative state.
     const input2 = chargeInput({ organizationId: input.organizationId });
     deductResult = { success: true, newBalance: 4, transaction: { id: "debit-low" } };
-    freshBalanceUsd = 4;
     await writePendingInferenceCharge(input2, Date.now());
     await createOptimisticDebitSettler(input2)(0.01);
     expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(4);
+    expect(freshBalanceCalls).toBe(0);
   });
 
   test("republish issues one direct authoritative write without a cache read", async () => {

@@ -1,9 +1,7 @@
 /**
  * iMessage Plugin for elizaOS
  *
- * Provides iMessage integration for Eliza agents on macOS. Inbound messages
- * come from the local Messages database and outbound messages use Messages.app
- * automation, without an auxiliary CLI, relay, or network service.
+ * Provides iMessage integration through native macOS Messages or Blooio.
  */
 
 import { platform } from "node:os";
@@ -85,7 +83,7 @@ export {
  */
 const imessagePlugin: Plugin = {
   name: "imessage",
-  description: "iMessage plugin for Eliza agents (macOS only)",
+  description: "iMessage plugin for Eliza agents using native Messages or Blooio",
   connectorSources: [
     {
       source: "imessage",
@@ -105,6 +103,7 @@ const imessagePlugin: Plugin = {
   // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
   // in plugin-auto-enable-engine.ts still serves as a fallback.
   autoEnable: {
+    envKeys: ["IMESSAGE_TRANSPORT", "IMESSAGE_ENABLED"],
     connectorKeys: ["imessage"],
   },
 
@@ -132,16 +131,23 @@ const imessagePlugin: Plugin = {
     registerIMessageDmSensitiveRequestAdapter(runtime);
 
     const isMacOS = platform() === "darwin";
+    const transport = (
+      config.IMESSAGE_TRANSPORT ||
+      process.env.IMESSAGE_TRANSPORT ||
+      "native"
+    ).toLowerCase();
 
     logger.info("iMessage plugin configuration:");
     logger.info(`  - Platform: ${platform()}`);
     logger.info(`  - macOS: ${isMacOS ? "Yes" : "No"}`);
-    logger.info("  - Bridge: native macOS Messages (chat.db + Apple Automation)");
+    logger.info(
+      `  - Bridge: ${transport === "blooio" ? "Blooio webhook + API" : "native macOS Messages (chat.db + Apple Automation)"}`
+    );
     logger.info(
       `  - DM policy: ${config.IMESSAGE_DM_POLICY || process.env.IMESSAGE_DM_POLICY || "pairing"}`
     );
 
-    if (!isMacOS) {
+    if (!isMacOS && transport !== "blooio") {
       logger.warn(
         "iMessage plugin is only supported on macOS. The plugin will be inactive on this platform."
       );

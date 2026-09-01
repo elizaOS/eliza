@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { AGENT_READY_EVENT } from "../events";
+import { useIsAuthenticated } from "../hooks/useAuthStatus";
 import {
   fetchServerFavoriteApps,
   loadFavoriteApps,
@@ -35,6 +36,7 @@ interface UseAppShellStateOptions {
 export function useAppShellState({
   syncServerFavorites = true,
 }: UseAppShellStateOptions = {}) {
+  const authenticated = useIsAuthenticated();
   const [ownerName, setOwnerNameState] = useState<string | null>(null);
   const [appsSubTab, setAppsSubTabRaw] = useState<
     "browse" | "running" | "games"
@@ -85,7 +87,7 @@ export function useAppShellState({
   }, []);
 
   useEffect(() => {
-    if (!syncServerFavorites) return;
+    if (!syncServerFavorites || !authenticated) return;
     if (!supportsFullAppShellRoutes(client.getBaseUrl())) return;
     let cancelled = false;
     let hydrated = false;
@@ -122,7 +124,7 @@ export function useAppShellState({
       cancelled = true;
       document.removeEventListener(AGENT_READY_EVENT, onAgentReady);
     };
-  }, [syncServerFavorites]);
+  }, [authenticated, syncServerFavorites]);
 
   const setRecentApps = useCallback((apps: string[]) => {
     setRecentAppsRaw(apps);

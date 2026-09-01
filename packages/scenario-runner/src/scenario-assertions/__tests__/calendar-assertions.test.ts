@@ -118,6 +118,25 @@ describe("expectCalendarResultData", () => {
     expect(result).toContain('"note":"alpha"');
   });
 
+  it("preserves the complete payload when an assertion fails", () => {
+    const distinguishingTail = "calendar-evidence-tail";
+    const check = expectCalendarResultData({
+      description: "event created",
+      includesAll: ["missing"],
+    });
+    const result = check(
+      ctx([
+        action({
+          result: {
+            success: true,
+            data: { note: `${"x".repeat(700)}${distinguishingTail}` },
+          },
+        }),
+      ]),
+    );
+    expect(result).toContain(distinguishingTail);
+  });
+
   it("checks includesAll before includesAny", () => {
     const check = expectCalendarResultData({
       description: "event created",

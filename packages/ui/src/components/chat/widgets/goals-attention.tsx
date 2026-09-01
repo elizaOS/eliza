@@ -13,6 +13,7 @@ import type { ComponentType } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
+import { useRole } from "../../../hooks/useRole";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
@@ -47,13 +48,14 @@ export function GoalsAttentionWidget({
   // Auth gate (#11084): the widget mounts before the auth probe resolves, so
   // the 20s goals poll must stay dormant until the session is authenticated.
   const authenticated = useIsAuthenticated();
+  const { isOwner } = useRole();
 
   const load = useCallback(
     (background = false) => {
       activeLoadRef.current?.abort();
       const controller = new AbortController();
       activeLoadRef.current = controller;
-      void loadGoalsForGlance(authenticated, controller.signal)
+      void loadGoalsForGlance(authenticated && isOwner, controller.signal)
         .then((next) => {
           if (controller.signal.aborted) return;
           if (next == null) {
@@ -68,7 +70,7 @@ export function GoalsAttentionWidget({
           }
         });
     },
-    [authenticated],
+    [authenticated, isOwner],
   );
 
   useEffect(() => {

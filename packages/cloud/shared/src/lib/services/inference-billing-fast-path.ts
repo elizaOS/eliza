@@ -443,7 +443,11 @@ export async function debitInferenceCost(
     // Durable Object remains the Worker dispatch authority if concurrent cache
     // writers arrive out of order.
     try {
-      await republishOrgBalanceHintAfterDebit(ctx.organizationId);
+      await republishOrgBalanceHintAfterDebit(
+        ctx.organizationId,
+        result.newBalance,
+        result.balanceRevision,
+      );
     } catch (cause) {
       markOrgAdmissionRefused(ctx.organizationId);
       try {

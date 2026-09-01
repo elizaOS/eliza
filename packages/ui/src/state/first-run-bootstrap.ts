@@ -173,8 +173,19 @@ export async function detectExistingFirstRunConnection(args: {
         status = await args.client.getFirstRunStatus();
       } catch (err) {
         if (!args.waitForBootingAgent) {
-          // error-policy:J4 fresh-install probe — an unreachable agent means
-          // "no existing install detected" and first-run proceeds normally.
+          const api = asApiLikeError(err);
+          if (api?.status === 401 || api?.status === 403) {
+            // error-policy:J4 an auth-gated same-origin response proves that a
+            // standalone agent exists. Restore that authority so the normal
+            // backend poll can render pairing instead of misclassifying a
+            // fresh browser as a new Cloud install.
+            return {
+              activeServer: LOCAL_ACTIVE_SERVER,
+              detectedExistingInstall: true,
+            } satisfies ExistingFirstRunProbeResult;
+          }
+          // error-policy:J4 a transport failure on a genuinely fresh install
+          // means "no existing install detected" and first-run proceeds.
           return null;
         }
         // The committed on-device agent is still booting only when the probe

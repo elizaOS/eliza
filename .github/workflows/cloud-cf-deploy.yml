@@ -103,6 +103,25 @@ permissions:
   actions: read
 
 jobs:
+  bind-telegram-release-attempt:
+    name: Bind Telegram release attempt
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      run_attempt: ${{ steps.attempt.outputs.run_attempt }}
+    steps:
+      - name: Bind Telegram release attempt
+        id: attempt
+        env:
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Unable to resolve Telegram configuration authority run attempt"
+            exit 1
+          }
+          printf 'run_attempt=%s\n' "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
   validate-deploy-source:
     name: Validate Canonical Deploy Source
     # A manual dispatch can select an invalid ref, so reject it before any
@@ -664,7 +683,7 @@ jobs:
           set -euo pipefail
           umask 077
           evidence_dir="$RUNNER_TEMP/production-binding-recovery-authority"
-          mkdir -m 0700 "$evidence_dir"
+          install -d -m 0700 "$evidence_dir"
           candidate_id="$(
             bun -e '
               const source = await Bun.file("packages/cloud/api/wrangler.toml").text();
@@ -728,7 +747,7 @@ jobs:
           set -euo pipefail
           umask 077
           evidence_dir="$RUNNER_TEMP/production-binding-recovery-authority"
-          mkdir -m 0700 "$evidence_dir"
+          install -d -m 0700 "$evidence_dir"
           capture() {
             local label="$1"
             local output="$2"
@@ -828,8 +847,8 @@ jobs:
 
   release:
     name: Mutate and verify Cloud CF release
-    needs: [validate-deploy-source, admit-staging, validate-staging-certification, authorize-production]
-    if: ${{ always() && github.event_name != 'pull_request' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.admit-staging.outputs.should_deploy == 'true') }}
+    needs: [bind-telegram-release-attempt, validate-deploy-source, admit-staging, validate-staging-certification, authorize-production]
+    if: ${{ always() && github.event_name != 'pull_request' && needs.bind-telegram-release-attempt.result == 'success' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.admit-staging.outputs.should_deploy == 'true') }}
     # One critical section for migrate + API + Pages + routing proof.
     # `queue: max` is GitHub's production-deploy contract: up to 100 approved
     # releases wait instead of the default one-pending eviction. FIFO is by
@@ -840,11 +859,71 @@ jobs:
       cancel-in-progress: false
       queue: max
     uses: ./.github/workflows/cloud-cf-release.yml
-    secrets: inherit
+    # Explicitly forward every caller-scope secret consumed by the reusable
+    # release except TELEGRAM_IDENTITY_AUTHORITY_SHA256. That receipt must come
+    # only from the protected job Environment in the called workflow; `inherit`
+    # would also admit a repository/organization secret with the same name.
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELIZACLOUD_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+      ELIZA_APNS_KEY: ${{ secrets.ELIZA_APNS_KEY }}
+      ELIZA_APNS_KEY_ID: ${{ secrets.ELIZA_APNS_KEY_ID }}
+      ELIZA_APNS_TEAM_ID: ${{ secrets.ELIZA_APNS_TEAM_ID }}
+      ELIZA_APP_BLOOIO_API_KEY: ${{ secrets.ELIZA_APP_BLOOIO_API_KEY }}
+      ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER }}
+      ELIZA_APP_BLOOIO_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_BLOOIO_WEBHOOK_SECRET }}
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
+      ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+      ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
+      ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+      ELIZA_SERVICE_JWT_SECRET: ${{ secrets.ELIZA_SERVICE_JWT_SECRET }}
+      ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 }}
+      ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 }}
+      FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
+      FAL_KEY: ${{ secrets.FAL_KEY }}
+      FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
+      FISH_AUDIO_REFERENCE_ID: ${{ secrets.FISH_AUDIO_REFERENCE_ID }}
+      GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+      INFERENCE_AUTH_PROBE_TOKEN: ${{ secrets.INFERENCE_AUTH_PROBE_TOKEN }}
+      LOCAL_EMBEDDINGS_API_KEY: ${{ secrets.LOCAL_EMBEDDINGS_API_KEY }}
+      NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      OIDC_CLIENTS: ${{ secrets.OIDC_CLIENTS }}
+      OIDC_SIGNING_JWKS: ${{ secrets.OIDC_SIGNING_JWKS }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      RAILWAY_DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      SECRETS_MASTER_KEY: ${{ secrets.SECRETS_MASTER_KEY }}
+      STAGING_SESSION_EXCHANGE_SIGNING_SECRET: ${{ secrets.STAGING_SESSION_EXCHANGE_SIGNING_SECRET }}
+      STEWARD_API_URL: ${{ secrets.STEWARD_API_URL }}
+      STEWARD_JWT_SECRET: ${{ secrets.STEWARD_JWT_SECRET }}
+      STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+      STEWARD_REQUEST_SIGNING_SECRET: ${{ secrets.STEWARD_REQUEST_SIGNING_SECRET }}
+      STEWARD_SESSION_SECRET: ${{ secrets.STEWARD_SESSION_SECRET }}
+      STEWARD_TENANT_API_KEY: ${{ secrets.STEWARD_TENANT_API_KEY }}
+      TUNNEL_HOSTNAME_SIGNING_SECRET: ${{ secrets.TUNNEL_HOSTNAME_SIGNING_SECRET }}
+      VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+      VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: ${{ secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION }}
     with:
       target_environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+      telegram_authority_run_attempt: ${{ needs.bind-telegram-release-attempt.outputs.run_attempt }}
       force: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
-      run_deployed_renderer_staging: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true }}
+      # Resolve the proof request at the entry workflow boundary. A live-ready
+      # automatic release is a Develop effect reconciliation with a bound
+      # digest; an ordinary manual dispatch must honor its explicit false.
+      run_deployed_renderer_staging: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' && (inputs.run_deployed_renderer_staging == true || (inputs.effect_digest != '' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1')) }}
       production_binding_only_recovery: ${{ github.event_name == 'workflow_dispatch' && inputs.production_binding_only_recovery == true }}
       certified_production_base_sha: ${{ inputs.certified_production_base_sha }}
       certified_recovery_policy_sha: ${{ inputs.certified_recovery_policy_sha }}

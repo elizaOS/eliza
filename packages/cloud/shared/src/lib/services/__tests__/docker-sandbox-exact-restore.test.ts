@@ -109,7 +109,11 @@ function exactRestoreConfig(overrides: Partial<SandboxCreateConfig> = {}): Sandb
 
 function installExactRestoreSsh(
   options: {
+    containerRunning?: boolean;
     createFailure?: Error;
+    dockerClientApiVersion?: string;
+    dockerDriverStatus?: unknown;
+    dockerServerApiVersion?: string;
     imagePlatform?: "linux/amd64" | "linux/arm64";
     manifestDigest?: string;
     manifestPlatform?: "linux/amd64" | "linux/arm64";
@@ -129,11 +133,16 @@ function installExactRestoreSsh(
   const ssh = {
     exec: mock(async (command: string) => {
       commands.push(command);
+      if (command.includes("docker version --format")) {
+        return `${options.dockerClientApiVersion ?? "1.51"}|${options.dockerServerApiVersion ?? "1.51"}\n${JSON.stringify(
+          options.dockerDriverStatus ?? [["driver-type", "io.containerd.snapshotter.v1"]],
+        )}\n`;
+      }
       if (command.includes("docker image inspect --format")) {
         return `${IMAGE_CONFIG_DIGEST}|${imagePlatform}|${JSON.stringify(repoDigests)}\n`;
       }
       if (command.includes("docker inspect --format")) {
-        return `${CONTAINER_ID}|/${CONTAINER_NAME}|false|created|none|no|{}|${IMAGE_PLATFORM_REFERENCE}|${IMAGE_CONFIG_DIGEST}|linux|${manifestDigest}|${manifestPlatform}\n`;
+        return `${CONTAINER_ID}|/${CONTAINER_NAME}|${options.containerRunning ?? false}|created|none|no|{}|${IMAGE_PLATFORM_REFERENCE}|${IMAGE_CONFIG_DIGEST}|linux|${manifestDigest}|${manifestPlatform}\n`;
       }
       if (command.includes('candidate_id=$(cat -- "$attempt_candidate_id")')) {
         return `${CONTAINER_ID}\n`;
@@ -161,6 +170,28 @@ describe("DockerSandboxProvider exact restore quarantine", () => {
     expect(command).toContain("/proc/sys/kernel/random/boot_id");
     expect(command).toContain(`!= '${NODE_INCARNATION}'`);
     expect(command).toEndWith("; seed-vault-bytes");
+  });
+
+  test("rejects a different boot occurrence before executing the exact command", async () => {
+    const root = mkdtempSync(join(tmpdir(), "eliza-exact-boot-fence-"));
+    const bootId = join(root, "boot-id");
+    const marker = join(root, "inner-command-ran");
+    try {
+      writeFileSync(bootId, "88888888-8888-4888-8888-888888888888\n", { mode: 0o600 });
+      const command = buildExactRestoreBootFencedCommand(
+        NODE_INCARNATION,
+        `touch '${marker}'`,
+      ).replace("/proc/sys/kernel/random/boot_id", bootId);
+      const child = Bun.spawn(["/bin/sh", "-c", command], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      expect(await child.exited).toBe(78);
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("pins exact Docker commands to the local daemon despite hostile client environment", async () => {
@@ -312,6 +343,10 @@ describe("DockerSandboxProvider exact restore quarantine", () => {
     const ssh = {
       exec: mock(async (command: string) => {
         commands.push(command);
+        if (command.includes("docker version --format")) {
+          events.push("manifest-proof-capability");
+          return '1.51|1.51\n[["driver-type","io.containerd.snapshotter.v1"]]\n';
+        }
         if (command.includes("stat -c '%a'")) events.push("preseed-proof");
         if (
           command.includes(`docker pull --platform 'linux/amd64' '${IMAGE_PLATFORM_REFERENCE}'`)
@@ -396,6 +431,10 @@ describe("DockerSandboxProvider exact restore quarantine", () => {
 
     expect(events.indexOf("started")).toBeLessThan(events.indexOf("intent"));
     expect(events.indexOf("intent")).toBeLessThan(events.indexOf("ssh-client"));
+    expect(events.indexOf("ssh-client")).toBeLessThan(events.indexOf("manifest-proof-capability"));
+    expect(events.indexOf("manifest-proof-capability")).toBeLessThan(
+      events.indexOf("docker-create"),
+    );
     expect(events.indexOf("intent")).toBeLessThan(events.indexOf("preseed-proof"));
     expect(events.indexOf("intent")).toBeLessThan(events.indexOf("registry"));
     expect(events.indexOf("intent")).toBeLessThan(events.indexOf("docker-create"));
@@ -463,15 +502,15 @@ describe("DockerSandboxProvider exact restore quarantine", () => {
       'docker() { command docker --host unix:///var/run/docker.sock --config "$exact_docker_config" "$@"; }',
     );
     expect(dockerPull).not.toContain("docker logout");
-    expect(commands.some((command) => command.includes("docker start"))).toBe(false);
-    expect(commands.some((command) => command.includes("tailscale"))).toBe(false);
-    expect(commands.some((command) => command.includes("headscale"))).toBe(false);
-    expect(commands.some((command) => command.includes("curl"))).toBe(false);
-    expect(commands.every((command) => command.includes(NODE_INCARNATION))).toBe(true);
     const remoteWire = [
       ...commands,
       ...stdinCommands.flatMap(({ command, input }) => [command, input.toString("utf8")]),
     ].join("\n");
+    expect(remoteWire).not.toContain("docker start");
+    expect(remoteWire).not.toContain("tailscale");
+    expect(remoteWire).not.toContain("headscale");
+    expect(remoteWire).not.toContain("curl");
+    expect(commands.every((command) => command.includes(NODE_INCARNATION))).toBe(true);
     for (const forbidden of [
       "SANDBOX_REGISTRY_REDIS_URL",
       "SANDBOX_REGISTRY_REDIS_TOKEN",
@@ -691,6 +730,73 @@ describe("DockerSandboxProvider exact restore quarantine", () => {
     expect(stdinCommands[0]).toContain("--platform 'linux/arm64'");
   });
 
+  test("rejects an old Docker client API before exact restore effects", async () => {
+    spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(NODE);
+    const created = mock(async () => {});
+    const settled = mock(async () => {});
+    const { commands, stdinCommands } = installExactRestoreSsh({
+      dockerClientApiVersion: "1.47",
+      dockerServerApiVersion: "1.51",
+    });
+
+    const error = await new DockerSandboxProvider()
+      .create(
+        exactRestoreConfig({
+          onReplacementCreated: created,
+          onReplacementCreateSettled: settled,
+        }),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+    expect((error as Error).cause).toMatchObject({
+      code: "SANDBOX_EXACT_RESTORE_IMAGE_PROOF_UNSUPPORTED",
+      context: {
+        dockerClientApiVersion: "1.47",
+        dockerServerApiVersion: "1.51",
+        containerdImageStore: true,
+      },
+    });
+    expect(commands.some((command) => command.includes("docker pull"))).toBe(false);
+    expect(commands.some((command) => command.includes("stat -c '%a'"))).toBe(false);
+    expect(stdinCommands).toHaveLength(0);
+    expect(created).not.toHaveBeenCalled();
+    expect(settled).not.toHaveBeenCalled();
+  });
+
+  test("rejects the legacy Docker image store before exact restore effects", async () => {
+    spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(NODE);
+    const created = mock(async () => {});
+    const settled = mock(async () => {});
+    const { commands, stdinCommands } = installExactRestoreSsh({
+      dockerDriverStatus: [["Backing Filesystem", "extfs"]],
+    });
+
+    const error = await new DockerSandboxProvider()
+      .create(
+        exactRestoreConfig({
+          onReplacementCreated: created,
+          onReplacementCreateSettled: settled,
+        }),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+    expect((error as Error).cause).toMatchObject({
+      code: "SANDBOX_EXACT_RESTORE_IMAGE_PROOF_UNSUPPORTED",
+      context: {
+        dockerClientApiVersion: "1.51",
+        dockerServerApiVersion: "1.51",
+        containerdImageStore: false,
+      },
+    });
+    expect(commands.some((command) => command.includes("docker pull"))).toBe(false);
+    expect(commands.some((command) => command.includes("stat -c '%a'"))).toBe(false);
+    expect(stdinCommands).toHaveLength(0);
+    expect(created).not.toHaveBeenCalled();
+    expect(settled).not.toHaveBeenCalled();
+  });
+
   test("fails closed when image inspect reports a different runtime platform", async () => {
     spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(NODE);
     const settled = mock(async () => {});
@@ -703,6 +809,27 @@ describe("DockerSandboxProvider exact restore quarantine", () => {
     expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
     expect((error as Error).cause).toMatchObject({
       code: "SANDBOX_EXACT_RESTORE_IMAGE_PROOF_MISMATCH",
+    });
+    expect(settled).not.toHaveBeenCalled();
+  });
+
+  test("preserves the exact locator when Docker proves the candidate is running", async () => {
+    spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(NODE);
+    const settled = mock(async () => {});
+    installExactRestoreSsh({ containerRunning: true });
+
+    const error = await new DockerSandboxProvider()
+      .create(exactRestoreConfig({ onReplacementCreateSettled: settled }))
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+    expect(error).toMatchObject({
+      containerId: CONTAINER_ID,
+      replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+    });
+    expect((error as Error).cause).toMatchObject({
+      code: "SANDBOX_EXACT_RESTORE_QUARANTINE_PROOF_MISMATCH",
     });
     expect(settled).not.toHaveBeenCalled();
   });

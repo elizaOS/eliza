@@ -20,6 +20,10 @@ import {
   canonicalizeAgentBackupManifestV3,
   createAgentBackupManifestV3,
 } from "@elizaos/shared";
+import {
+  AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+  buildRestoreVolumeVaultSeedReceiptV1,
+} from "../../../lib/services/agent-backup-restore-vault-seed";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -36,19 +40,24 @@ import {
   agentBackupRestoreLeases,
   agentBackupRestoreOperations,
 } from "../../schemas/agent-backup-catalog";
-import { agentNodeIncarnationHistories } from "../../schemas/agent-backup-restore-history";
+import {
+  agentNodeIncarnationHistories,
+  agentVaultKeySeedReceipts,
+} from "../../schemas/agent-backup-restore-history";
 import { agentSandboxReplacementAttempts } from "../../schemas/agent-sandbox-replacement-attempts";
 import { agentSandboxBackups, agentSandboxes } from "../../schemas/agent-sandboxes";
 import {
   AGENT_VAULT_KEY_AUTHORITY_FORMAT,
   AGENT_VAULT_KEY_AUTHORITY_RECEIPT_DERIVATION,
   AGENT_VAULT_KEY_KMS_CONTEXT_DERIVATION,
+  agentVaultKeyBackupBindings,
   agentVaultKeyGenerations,
 } from "../../schemas/agent-vault-key-authority";
 import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
+import { recordAgentVaultKeySeedReceipt } from "../agent-backup-restore-history";
 import type { AgentBackupRestoreLeaseAuthorityReceipt } from "../agent-backup-restore-lease";
 import {
   advanceAgentBackupRestoreOperation,
@@ -58,6 +67,7 @@ import {
   markAgentSandboxExactRestoreProviderStarted,
   openAgentBackupRestoreOperation,
   recordAgentBackupRestoreExactImagePlatformAuthority,
+  reserveAgentBackupRestoreTargetAndStartReplacementIntent,
   reserveAgentBackupRestoreTarget as reserveAgentBackupRestoreTargetRepository,
 } from "../agent-backup-restore-operations";
 import { dockerNodesRepository } from "../docker-nodes";
@@ -85,6 +95,16 @@ const TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f011";
 const OTHER_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f012";
 const OTHER_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f013";
 const REPLAY_ONLY_CLAIM_GENERATION = "00000000-0000-4000-8000-00000000f014";
+const USER_ID = "00000000-0000-4000-8000-00000000f020";
+const REPLACEMENT_ATTEMPT_ID = "00000000-0000-4000-8000-00000000f021";
+const VAULT_SEED_RECEIPT_ID = "00000000-0000-4000-8000-00000000f022";
+const ACTIVE_RECEIPT_ID = "00000000-0000-4000-8000-00000000f023";
+const VAULT_SEED_RECEIPT_DIGEST = buildRestoreVolumeVaultSeedReceiptV1({
+  agentId: AGENT_ID,
+  restoreAttemptId: ATTEMPT_ID,
+  replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+  passphraseByteLength: AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+}).receiptDigest;
 let schemaFailure = "";
 let manifestFixture: Readonly<{ canonicalDraft: string; digest: string }>;
 
@@ -335,6 +355,80 @@ async function openAndClaim(): Promise<{
   return { operationId: operation.id, claimGeneration: claim.claimGeneration };
 }
 
+async function startExactRestoreReplacementIntentFixture(
+  operationId: string,
+  claimGeneration: string,
+) {
+  const targetNodeHistoryId = await currentTargetNodeHistoryId(TARGET_NODE_RECORD_ID);
+  await dbWrite.execute(
+    sql.raw(`
+      CREATE FUNCTION test_restore_ops_advance_sandbox_lifecycle_revision()
+      RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        NEW.lifecycle_revision := OLD.lifecycle_revision + 1;
+        RETURN NEW;
+      END;
+      $$
+    `),
+  );
+  await dbWrite.execute(
+    sql.raw(`
+      CREATE TRIGGER test_restore_ops_lifecycle_revision_trigger
+      BEFORE UPDATE ON agent_sandboxes
+      FOR EACH ROW EXECUTE FUNCTION test_restore_ops_advance_sandbox_lifecycle_revision()
+    `),
+  );
+  try {
+    const intent = await reserveAgentBackupRestoreTargetAndStartReplacementIntent({
+      operationId,
+      ownerId: "restore-worker",
+      claimGeneration,
+      targetNodeRecordId: TARGET_NODE_RECORD_ID,
+      targetNodeId: "restore-target-a",
+      targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      targetNodeHistoryId,
+      replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      activationTokenSha256: SHA,
+      activationTokenCiphertext: "sealed-restore-operation-quarantine-token",
+    });
+    return intent;
+  } finally {
+    await dbWrite.execute(
+      sql.raw("DROP TRIGGER test_restore_ops_lifecycle_revision_trigger ON agent_sandboxes"),
+    );
+    await dbWrite.execute(
+      sql.raw("DROP FUNCTION test_restore_ops_advance_sandbox_lifecycle_revision()"),
+    );
+  }
+}
+
+async function recordVaultSeedReceiptFixture(
+  operationId: string,
+  claimGeneration: string,
+  targetNodeHistoryId: string,
+) {
+  return recordAgentVaultKeySeedReceipt({
+    receiptId: VAULT_SEED_RECEIPT_ID,
+    receiptDigest: VAULT_SEED_RECEIPT_DIGEST,
+    organizationId: ORG_ID,
+    agentId: AGENT_ID,
+    backupId: BACKUP_ID,
+    restoreAttemptId: ATTEMPT_ID,
+    replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+    leaseId: LEASE_ID,
+    leaseOwnerId: "restore-worker",
+    leaseFencingToken: FENCE,
+    restoreOperationId: operationId,
+    restoreClaimGeneration: claimGeneration,
+    targetActivationGeneration: ATTEMPT_ID,
+    targetNodeRecordId: TARGET_NODE_RECORD_ID,
+    targetNodeIncarnation: TARGET_NODE_INCARNATION,
+    targetNodeHistoryId,
+    targetImageDigest: `sha256:${SHA}`,
+    expectedActivationTokenSha256: SHA,
+  });
+}
+
 /**
  * Test-only stand-in for the separately proven quarantine writer. Keeping this
  * as a direct fixture lets this suite exercise later generic phases without
@@ -368,7 +462,6 @@ async function recordQuarantinedContainerFixture(
 /** Walks the machine one adjacent step at a time, re-claiming per phase. */
 async function walkTo(operationId: string, target: AgentBackupRestorePhase): Promise<void> {
   const order: AgentBackupRestorePhase[] = [
-    "reserved",
     "vault_seeded",
     "container_created",
     "restoring",
@@ -378,38 +471,26 @@ async function walkTo(operationId: string, target: AgentBackupRestorePhase): Pro
     "published",
   ];
   await seedTargetNode();
-  let claim = await claimAgentBackupRestoreOperation({
+  const reservedClaim = await claimAgentBackupRestoreOperation({
     operationId,
     ownerId: "restore-worker",
     claimMs: 60_000,
   });
-  await reserveAgentBackupRestoreTarget({
+  const intent = await startExactRestoreReplacementIntentFixture(
     operationId,
-    ownerId: "restore-worker",
-    claimGeneration: claim.claimGeneration,
-    targetNodeRecordId: TARGET_NODE_RECORD_ID,
-    targetNodeIncarnation: TARGET_NODE_INCARNATION,
-  });
+    reservedClaim.claimGeneration,
+  );
+  await recordVaultSeedReceiptFixture(
+    operationId,
+    reservedClaim.claimGeneration,
+    intent.target.nodeHistoryId,
+  );
   for (let index = 0; order[index] !== target; index += 1) {
-    if (index > 0) {
-      claim = await claimAgentBackupRestoreOperation({
-        operationId,
-        ownerId: "restore-worker",
-        claimMs: 60_000,
-      });
-    }
-    if (order[index + 1] === "vault_seeded") {
-      await dbWrite
-        .update(agentBackupRestoreOperations)
-        .set({
-          phase: "vault_seeded",
-          claim_owner: null,
-          claim_generation: null,
-          claim_expires_at: null,
-        })
-        .where(eq(agentBackupRestoreOperations.id, operationId));
-      continue;
-    }
+    const claim = await claimAgentBackupRestoreOperation({
+      operationId,
+      ownerId: "restore-worker",
+      claimMs: 60_000,
+    });
     if (order[index + 1] === "container_created") {
       await recordQuarantinedContainerFixture(operationId, claim.claimGeneration);
       continue;
@@ -438,7 +519,9 @@ beforeAll(async () => {
         agentBackupRestoreLeases,
         agentBackupRestoreOperations,
         agentSandboxReplacementAttempts,
+        agentVaultKeySeedReceipts,
         agentVaultKeyGenerations,
+        agentVaultKeyBackupBindings,
         dockerNodes,
         agentNodeIncarnationHistories,
       } as never,
@@ -455,20 +538,77 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(schemaFailure).toBe("");
+  await dbWrite.delete(agentVaultKeySeedReceipts);
   await dbWrite.delete(agentSandboxReplacementAttempts);
   await dbWrite.delete(agentBackupRestoreOperations);
   await dbWrite.delete(agentBackupRestoreLeases);
   await dbWrite.delete(dockerNodes);
   await dbWrite.delete(agentNodeIncarnationHistories);
+  await dbWrite.delete(agentVaultKeyBackupBindings);
   await dbWrite.delete(agentSandboxBackups);
   await dbWrite.delete(agentVaultKeyGenerations);
   await dbWrite.delete(agentBackupCatalogAuthorities);
+  await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(userCharacters);
   await dbWrite.delete(users);
   await dbWrite.delete(organizations);
   await dbWrite
     .insert(organizations)
     .values({ id: ORG_ID, name: "Restore ops", slug: "restore-ops" });
+  await dbWrite.insert(users).values({
+    id: USER_ID,
+    steward_user_id: "restore-operation-user",
+    organization_id: ORG_ID,
+  });
+  await dbWrite.insert(agentSandboxes).values({
+    id: AGENT_ID,
+    organization_id: ORG_ID,
+    user_id: USER_ID,
+    agent_name: "Restore operation agent",
+    status: "running",
+    execution_tier: "dedicated-always",
+    docker_image: "registry.invalid/eliza-agent:restore-source",
+    sandbox_id: "restore-operation-provider-handle",
+    node_id: "restore-source-node",
+    image_digest: `sha256:${SHA}`,
+    lifecycle_revision: 7,
+    activation_generation: ACTIVATION_GENERATION,
+    activation_lifecycle_revision: 7n,
+    activation_purpose: "provision",
+    activation_phase: "active",
+    activation_receipt: {
+      schemaVersion: 1,
+      generation: ACTIVATION_GENERATION,
+      purpose: "provision",
+      agentId: AGENT_ID,
+      organizationId: ORG_ID,
+      lifecycleRevision: "7",
+      backupId: null,
+      backupHash: null,
+      manifestHash: null,
+      componentHashes: null,
+      freshAuthorization: null,
+      containerId: "c".repeat(64),
+      imageDigest: `sha256:${SHA}`,
+      receiptId: ACTIVE_RECEIPT_ID,
+      receiptHash: RECEIPT_SHA,
+      receiptMac: SHA,
+      appliedAt: "2026-08-20T00:00:02.000Z",
+      restored: true,
+      requiresRestart: false,
+    },
+    activation_receipt_hash: RECEIPT_SHA,
+    activation_container_id: "c".repeat(64),
+    activation_node_id: "restore-source-node",
+    activation_image_digest: `sha256:${SHA}`,
+    activation_token_hash: SHA,
+    activation_token_ciphertext: "sealed-restore-operation-source-token",
+    activation_boot_id: "00000000-0000-4000-8000-00000000f00b",
+    activation_funding_revision: 1n,
+    activation_authority_published_at: new Date("2026-08-20T00:00:00.000Z"),
+    activation_dispatched_at: new Date("2026-08-20T00:00:01.000Z"),
+    activation_completed_at: new Date("2026-08-20T00:00:02.000Z"),
+  });
   await dbWrite
     .insert(agentBackupCatalogAuthorities)
     .values({ organization_id: ORG_ID, agent_id: AGENT_ID, catalog_revision: 3n });
@@ -542,6 +682,17 @@ beforeEach(async () => {
     operation_key_bundle_local_receipt_derivation:
       "elizaos.kms-aead-operation-key-bundle.local-receipt.v1",
     operation_key_bundle_local_receipt_digest: SHA,
+    vault_key_generation_id: VAULT_GENERATION,
+    vault_key_authority_receipt_digest: RECEIPT_SHA,
+  });
+  await dbWrite.insert(agentVaultKeyBackupBindings).values({
+    organization_id: ORG_ID,
+    agent_id: AGENT_ID,
+    backup_id: BACKUP_ID,
+    operation_id: OPERATION_ID,
+    source_activation_generation: ACTIVATION_GENERATION,
+    source_lifecycle_revision: 7n,
+    manifest_sha256: manifestFixture.digest,
     vault_key_generation_id: VAULT_GENERATION,
     vault_key_authority_receipt_digest: RECEIPT_SHA,
   });
@@ -643,26 +794,30 @@ describe("restore operation spine", () => {
     async () => {
       await seedTargetNode();
       const authority = await openAndClaim();
-      const reserved = await reserveAgentBackupRestoreTarget({
-        ...authority,
-        ownerId: "restore-worker",
-        targetNodeRecordId: TARGET_NODE_RECORD_ID,
-        targetNodeIncarnation: TARGET_NODE_INCARNATION,
-      });
-      expect(reserved.target).toMatchObject({
+      const intent = await startExactRestoreReplacementIntentFixture(
+        authority.operationId,
+        authority.claimGeneration,
+      );
+      expect(intent.target).toMatchObject({
         platform: "linux/amd64",
         imageReference: null,
         imagePlatformDigest: null,
       });
-      await dbWrite
-        .update(agentBackupRestoreOperations)
-        .set({ phase: "vault_seeded" })
-        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
+      await recordVaultSeedReceiptFixture(
+        authority.operationId,
+        authority.claimGeneration,
+        intent.target.nodeHistoryId,
+      );
+      const imageClaim = await claimAgentBackupRestoreOperation({
+        operationId: authority.operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
 
       const input = {
         operationId: authority.operationId,
         ownerId: "restore-worker",
-        claimGeneration: authority.claimGeneration,
+        claimGeneration: imageClaim.claimGeneration,
         imageReference: IMAGE_REFERENCE,
         imagePlatformDigest: IMAGE_PLATFORM_DIGEST,
       } as const;
@@ -688,10 +843,15 @@ describe("restore operation spine", () => {
         "claim is not live",
       );
 
-      await dbWrite
-        .update(agentBackupRestoreOperations)
-        .set({ phase: "container_created", expected_container_id: CONTAINER })
-        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
+      const settlementClaim = await claimAgentBackupRestoreOperation({
+        operationId: authority.operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      await recordQuarantinedContainerFixture(
+        authority.operationId,
+        settlementClaim.claimGeneration,
+      );
       const replay = await recordAgentBackupRestoreExactImagePlatformAuthority(input);
       expect(replay.replayed).toBe(true);
       expect(replay.operation.expected_image_reference).toBe(IMAGE_REFERENCE);
@@ -731,47 +891,30 @@ describe("restore operation spine", () => {
   test(
     "refuses provider start until the verified image platform bundle is bound",
     async () => {
-      const node = await seedTargetNode();
+      await seedTargetNode();
       const authority = await openAndClaim();
-      const reserved = await reserveAgentBackupRestoreTarget({
-        ...authority,
+      const intent = await startExactRestoreReplacementIntentFixture(
+        authority.operationId,
+        authority.claimGeneration,
+      );
+      await recordVaultSeedReceiptFixture(
+        authority.operationId,
+        authority.claimGeneration,
+        intent.target.nodeHistoryId,
+      );
+      const providerClaim = await claimAgentBackupRestoreOperation({
+        operationId: authority.operationId,
         ownerId: "restore-worker",
-        targetNodeRecordId: TARGET_NODE_RECORD_ID,
-        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+        claimMs: 60_000,
       });
-      await dbWrite
-        .update(agentBackupRestoreOperations)
-        .set({ phase: "vault_seeded" })
-        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
-      const replacementAttemptId = "00000000-0000-4000-8000-00000000f099";
-      const containerName = "agent-restore-" + AGENT_ID + "-" + ATTEMPT_ID;
 
       await expect(
         markAgentSandboxExactRestoreProviderStarted({
           operationId: authority.operationId,
           ownerId: "restore-worker",
-          claimGeneration: authority.claimGeneration,
-          replacementAttemptId,
-          locator: {
-            replacementAttemptId,
-            sandboxId: containerName,
-            nodeId: reserved.target.nodeId,
-            containerName,
-            nodeRecordId: TARGET_NODE_RECORD_ID,
-            nodeIncarnation: TARGET_NODE_INCARNATION,
-            nodeHistoryId: reserved.target.nodeHistoryId,
-            nodeHostname: node.hostname,
-            nodeSshPort: node.ssh_port,
-            nodeSshUser: node.ssh_user,
-            nodeHostKeyFingerprint: node.host_key_fingerprint!,
-            replacementSecretCleanupVersion: 1,
-            allocationCounted: true,
-            vpnNodeName: null,
-            vpnRegistrationStartedAt: null,
-            previousVpnNodeId: null,
-            containerId: null,
-            vpnNodeId: null,
-          },
+          claimGeneration: providerClaim.claimGeneration,
+          replacementAttemptId: intent.attempt.id,
+          locator: intent.locator,
         }),
       ).rejects.toThrow("requires verified image platform authority");
     },
@@ -1293,46 +1436,16 @@ describe("restore operation spine", () => {
         "agent_backup_restore_operations_expected_shape_check",
       );
 
-      await reserveAgentBackupRestoreTarget({
-        operationId: operation.id,
-        ownerId: "restore-worker",
-        claimGeneration: claim.claimGeneration,
-        targetNodeRecordId: TARGET_NODE_RECORD_ID,
-        targetNodeIncarnation: TARGET_NODE_INCARNATION,
-      });
-
-      const [beforeIdentityBypass] = await dbWrite
-        .select()
-        .from(agentBackupRestoreOperations)
-        .where(eq(agentBackupRestoreOperations.id, operation.id));
-      const legacyIdentityRequest = {
-        operationId: operation.id,
-        ownerId: "restore-worker",
-        claimGeneration: claim.claimGeneration,
-        fromPhase: "reserved",
-        toPhase: "vault_seeded",
-        recordedIdentity: { containerId: CONTAINER },
-      } as unknown as Parameters<typeof advanceAgentBackupRestoreOperation>[0];
-      await expect(advanceAgentBackupRestoreOperation(legacyIdentityRequest)).rejects.toThrow(
-        "Generic restore advance cannot record a container identity",
+      const intent = await startExactRestoreReplacementIntentFixture(
+        operation.id,
+        claim.claimGeneration,
       );
-      const [afterIdentityBypass] = await dbWrite
-        .select()
-        .from(agentBackupRestoreOperations)
-        .where(eq(agentBackupRestoreOperations.id, operation.id));
-      expect(afterIdentityBypass).toEqual(beforeIdentityBypass);
 
-      const [advanced] = await dbWrite
-        .update(agentBackupRestoreOperations)
-        .set({
-          phase: "vault_seeded",
-          claim_owner: null,
-          claim_generation: null,
-          claim_expires_at: null,
-        })
-        .where(eq(agentBackupRestoreOperations.id, operation.id))
-        .returning();
-      if (!advanced) throw new Error("vault-seeded fixture lost its operation");
+      const { operation: advanced } = await recordVaultSeedReceiptFixture(
+        operation.id,
+        claim.claimGeneration,
+        intent.target.nodeHistoryId,
+      );
       expect(advanced.phase).toBe("vault_seeded");
       expect(advanced.expected_container_id).toBeNull();
       expect(advanced.claim_owner).toBeNull();
@@ -1367,6 +1480,27 @@ describe("restore operation spine", () => {
         ownerId: "restore-worker",
         claimMs: 60_000,
       });
+      const [beforeIdentityBypass] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      const legacyIdentityRequest = {
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: postContainerClaim.claimGeneration,
+        fromPhase: "container_created",
+        toPhase: "restoring",
+        recordedIdentity: { containerId: CONTAINER },
+      } as unknown as Parameters<typeof advanceAgentBackupRestoreOperation>[0];
+      await expect(advanceAgentBackupRestoreOperation(legacyIdentityRequest)).rejects.toThrow(
+        "Generic restore advance cannot record a container identity",
+      );
+      const [afterIdentityBypass] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      expect(afterIdentityBypass).toEqual(beforeIdentityBypass);
+
       const restoring = await advanceAgentBackupRestoreOperation({
         operationId: operation.id,
         ownerId: "restore-worker",

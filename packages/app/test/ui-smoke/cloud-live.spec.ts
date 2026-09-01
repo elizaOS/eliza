@@ -26,6 +26,7 @@ import {
   type CloudLiveBindingReuse,
   type CloudLiveContinuityEvidenceInput,
   type CloudLiveHistoryObservation,
+  type CloudLiveNetworkAudit,
   type CloudLiveNetworkAuditSnapshot,
   type CloudLiveRuntimeBinding,
   compareCloudLiveRuntimeBindings,
@@ -40,9 +41,12 @@ import {
   installDedicatedAdoptionConsentProof,
 } from "../cloud-live-dedicated-adoption-consent";
 import {
+  CloudLiveDedicatedConfirmationRequiredError,
+  type CloudLiveDedicatedConsentGate,
   CloudLiveOptionalActionDeadlineError,
   type CloudLivePersonalIdentityRecovery,
   clickCloudLiveOptionalAction,
+  createCloudLiveDedicatedConsentGate,
   prepareCloudLivePersonalIdentity,
   waitForCloudLivePersonalIdentity,
 } from "../cloud-live-optional-action";
@@ -548,6 +552,8 @@ async function proveAnchoredTurnHistory(
 
 async function resolvePersonalIdentity(
   page: Page,
+  dedicatedConsentGate: CloudLiveDedicatedConsentGate,
+  dedicatedNetworkAudit: CloudLiveNetworkAudit,
   chooseRuntime = true,
   onRecovery?: (recovery: CloudLivePersonalIdentityRecovery) => Promise<void>,
   existingDedicatedAdoptionProof?: DedicatedAdoptionConsentProof,
@@ -562,8 +568,8 @@ async function resolvePersonalIdentity(
       chatOverlayTimeoutMs: 60_000,
       chooseRuntimeAction: () => chooseCloudRuntime(page),
     });
-    const dedicatedAdoptionConsent = page.getByTestId(
-      "choice-__first_run__:dedicated-adoption:confirm",
+    const confirmationChoices = page.locator(
+      '[data-testid="choice-__first_run__:dedicated-adoption:confirm"], [data-testid^="choice-__first_run__:dedicated-adoption:confirm:"], [data-testid="choice-__first_run__:dedicated-activation:confirm"], [data-testid^="choice-__first_run__:dedicated-activation:confirm:"]',
     );
     const binding = await waitForCloudLivePersonalIdentity({
       readBinding: () => readActiveBinding(page),
@@ -571,11 +577,53 @@ async function resolvePersonalIdentity(
         "choice-__first_run__:runtime:cloud",
       ),
       retryRecovery: page.getByTestId("choice-__first_run__:error:retry"),
-      dedicatedAdoptionConsent,
+      dedicatedConsent: {
+        gate: dedicatedConsentGate,
+        // #29622 generation-suffixes current choices so stale transcript turns
+        // cannot authorize a newer quote. Keep exact selectors during the merge
+        // window so this lane diagnoses either source revision.
+        confirmationChoices,
+        cancellationChoices: page.locator(
+          '[data-testid="choice-__first_run__:dedicated-adoption:cancel"], [data-testid^="choice-__first_run__:dedicated-adoption:cancel:"], [data-testid="choice-__first_run__:dedicated-activation:cancel"], [data-testid^="choice-__first_run__:dedicated-activation:cancel:"]',
+        ),
+        performConfirmation: async (confirmation) => {
+          const testId = await confirmation.getAttribute("data-testid");
+          if (
+            testId?.startsWith(
+              "choice-__first_run__:dedicated-adoption:confirm",
+            )
+          ) {
+            const approvalBinding =
+              await dedicatedAdoptionProof.confirmVisibleConsent(confirmation);
+            dedicatedNetworkAudit.setDedicatedApprovalBinding({
+              confirmationKind: "adoption",
+              ...approvalBinding,
+            });
+            return "adoption";
+          }
+          if (
+            !testId?.startsWith(
+              "choice-__first_run__:dedicated-activation:confirm",
+            )
+          ) {
+            throw new Error(
+              "[cloud-live] Dedicated confirmation control was not recognized",
+            );
+          }
+          const approvalBinding =
+            await dedicatedNetworkAudit.latestDedicatedActivationApprovalBinding();
+          if (!approvalBinding) {
+            throw new Error(
+              "[cloud-live] Dedicated activation quote binding was not observed",
+            );
+          }
+          dedicatedNetworkAudit.setDedicatedApprovalBinding(approvalBinding);
+          await confirmation.click({ timeout: 15_000 });
+          return "activation";
+        },
+      },
       timeoutMs: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS,
       runtimeCloudGraceMs: 15_000,
-      onDedicatedAdoptionConsent: () =>
-        dedicatedAdoptionProof.confirmVisibleConsent(dedicatedAdoptionConsent),
       onRecovery,
     });
     await clickIfVisible(
@@ -667,6 +715,9 @@ test.describe("real cloud login + personal identity + chat", () => {
       type: "named-warming-proof-required",
       description: String(REQUIRE_NAMED_WARMING),
     });
+    const dedicatedConsentGate = createCloudLiveDedicatedConsentGate(
+      process.env,
+    );
 
     const stagingLatencyEvidencePath =
       process.env.ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH?.trim() ??
@@ -787,6 +838,10 @@ test.describe("real cloud login + personal identity + chat", () => {
             audit.decodedDedicatedActivationReceiptCount,
           uninspectableDedicatedActivationResponseBodyCount:
             audit.uninspectableDedicatedActivationResponseBodyCount,
+          dedicatedActivationResponseStatus:
+            audit.dedicatedActivationResponseStatus,
+          dedicatedActivationResponseCode:
+            audit.dedicatedActivationResponseCode,
           dedicatedCutoverPostRequestCount:
             audit.dedicatedCutoverPostRequestCount,
           successfulDedicatedCutoverPostResponseCount:
@@ -811,6 +866,33 @@ test.describe("real cloud login + personal identity + chat", () => {
             audit.decodedDedicatedCutoverFinalResponseCount,
           uninspectableDedicatedCutoverResponseBodyCount:
             audit.uninspectableDedicatedCutoverResponseBodyCount,
+          dedicatedAdoptionQuoteGetRequestCount:
+            audit.dedicatedAdoptionQuoteGetRequestCount,
+          successfulDedicatedAdoptionQuoteGetResponseCount:
+            audit.successfulDedicatedAdoptionQuoteGetResponseCount,
+          clientErrorDedicatedAdoptionQuoteGetResponseCount:
+            audit.clientErrorDedicatedAdoptionQuoteGetResponseCount,
+          serverErrorDedicatedAdoptionQuoteGetResponseCount:
+            audit.serverErrorDedicatedAdoptionQuoteGetResponseCount,
+          otherDedicatedAdoptionQuoteGetResponseCount:
+            audit.otherDedicatedAdoptionQuoteGetResponseCount,
+          failedDedicatedAdoptionQuoteGetRequestCount:
+            audit.failedDedicatedAdoptionQuoteGetRequestCount,
+          pendingDedicatedAdoptionQuoteGetRequestCount:
+            audit.pendingDedicatedAdoptionQuoteGetRequestCount,
+          completedDedicatedAdoptionQuoteResponseBodyCount:
+            audit.completedDedicatedAdoptionQuoteResponseBodyCount,
+          parsedDedicatedAdoptionQuoteResponseBodyCount:
+            audit.parsedDedicatedAdoptionQuoteResponseBodyCount,
+          decodedAdoptableDedicatedAdoptionQuoteCount:
+            audit.decodedAdoptableDedicatedAdoptionQuoteCount,
+          decodedUnavailableDedicatedAdoptionQuoteCount:
+            audit.decodedUnavailableDedicatedAdoptionQuoteCount,
+          uninspectableDedicatedAdoptionQuoteResponseBodyCount:
+            audit.uninspectableDedicatedAdoptionQuoteResponseBodyCount,
+          dedicatedAdoptionConfirmationPostRequestCount:
+            audit.dedicatedAdoptionConfirmationPostRequestCount,
+          ...dedicatedConsentGate.snapshot(),
         };
       };
     const writePreIdentityDiagnostic = async (): Promise<void> => {
@@ -846,6 +928,8 @@ test.describe("real cloud login + personal identity + chat", () => {
         );
         return await resolvePersonalIdentity(
           page,
+          dedicatedConsentGate,
+          primaryAudit,
           false,
           async (recovery) => {
             if (recovery === "runtime-cloud") {
@@ -862,7 +946,9 @@ test.describe("real cloud login + personal identity + chat", () => {
         ).catch((cause: unknown) =>
           rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
             await enterTrajectoryPhase(
-              "personal-identity",
+              cause instanceof CloudLiveDedicatedConfirmationRequiredError
+                ? "dedicated-confirmation-required"
+                : "personal-identity",
               await readPreIdentityDiagnostic(),
             );
           }),
@@ -1205,7 +1291,19 @@ test.describe("real cloud login + personal identity + chat", () => {
           expect(freshDeployedRenderer).toEqual(deployedRenderer);
         }
         await enterTrajectoryPhase("fresh-context-identity");
-        const freshBinding = await resolvePersonalIdentity(freshPage);
+        const freshBinding = await resolvePersonalIdentity(
+          freshPage,
+          dedicatedConsentGate,
+          freshAudit,
+        ).catch((cause: unknown) =>
+          rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
+            await enterTrajectoryPhase(
+              cause instanceof CloudLiveDedicatedConfirmationRequiredError
+                ? "dedicated-confirmation-required"
+                : "fresh-context-identity",
+            );
+          }),
+        );
         const freshHistoryBefore = await freshAudit.snapshot();
         await openAppPath(freshPage, "/chat");
         await enterTrajectoryPhase("fresh-context-history");
@@ -1247,7 +1345,28 @@ test.describe("real cloud login + personal identity + chat", () => {
     const forbiddenAgentMutationCount =
       primarySnapshot.forbiddenAgentMutationCount +
       freshResult.audit.forbiddenAgentMutationCount;
-    expect(forbiddenAgentMutationCount).toBe(0);
+    const dedicatedConsentSnapshot = dedicatedConsentGate.snapshot();
+    const dedicatedMutationProof = {
+      approvalGrantedCount: dedicatedConsentSnapshot.approvalGrantedCount,
+      confirmationClickCount: dedicatedConsentSnapshot.confirmationClickCount,
+      confirmationKind: dedicatedConsentGate.confirmedKind(),
+      adoptionConfirmationPostCount:
+        primarySnapshot.dedicatedAdoptionConfirmationPostRequestCount +
+        freshResult.audit.dedicatedAdoptionConfirmationPostRequestCount,
+      activationPostCount:
+        primarySnapshot.dedicatedActivationPostRequestCount +
+        freshResult.audit.dedicatedActivationPostRequestCount,
+      cutoverPostCount:
+        primarySnapshot.dedicatedCutoverPostRequestCount +
+        freshResult.audit.dedicatedCutoverPostRequestCount,
+      forbiddenAgentMutationCount,
+      approvalBindingPresent:
+        primarySnapshot.dedicatedApprovalBindingPresent ||
+        freshResult.audit.dedicatedApprovalBindingPresent,
+      lifecycleBindingMismatchCount:
+        primarySnapshot.dedicatedLifecycleBindingMismatchCount +
+        freshResult.audit.dedicatedLifecycleBindingMismatchCount,
+    } as const;
     const bindingReuse: CloudLiveBindingReuse = {
       personalIdentityReused:
         reloadBindingReuse.personalIdentityReused &&
@@ -1270,7 +1389,7 @@ test.describe("real cloud login + personal identity + chat", () => {
       reload,
       freshContext: freshResult.history,
       bindingReuse,
-      forbiddenAgentMutationCount,
+      dedicatedMutationProof,
       cleanupDisposition: "no-test-owned-agent",
       conversationHistoryDisposition: "preserved",
     } satisfies CloudLiveContinuityEvidenceInput;

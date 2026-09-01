@@ -110,6 +110,22 @@ describe("describeCalls", () => {
     ]);
     expect(describeCalls(c)).toContain("go(success=true");
   });
+
+  it("preserves action result evidence beyond the former summary boundary", () => {
+    const distinguishingTail = "effect-evidence-tail";
+    const summary = describeCalls(
+      ctx([
+        action({
+          actionName: "go",
+          result: {
+            success: false,
+            data: { evidence: `${"x".repeat(600)}${distinguishingTail}` },
+          },
+        }),
+      ]),
+    );
+    expect(summary).toContain(distinguishingTail);
+  });
 });
 
 describe("expectNoActionCalled", () => {

@@ -32,6 +32,9 @@ function fakeRuntime(settings: Record<string, string>) {
             set: async (key: string, value: string) => {
               vaultStore.set(key, value);
             },
+            remove: async (key: string) => {
+              vaultStore.delete(key);
+            },
           }
         : null,
   } as unknown as IAgentRuntime;

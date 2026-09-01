@@ -425,6 +425,68 @@ export interface LifeOpsCalendarImportedDataPurgeReceipt {
   purgedAt: string;
 }
 
+export type LifeOpsLinkedCalendarState =
+  | "clean"
+  | "dirty"
+  | "conflicted"
+  | "quarantined"
+  | "paused";
+
+export interface LifeOpsLinkedCalendarLink {
+  id: string;
+  localEventId: string;
+  connectorAccountId: string;
+  providerCalendarId: string;
+  providerEventId: string | null;
+  providerEtag: string | null;
+  localRevision: number;
+  state: LifeOpsLinkedCalendarState;
+  pendingOperation: "create" | "update" | "delete" | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLifeOpsLinkedCalendarLinkRequest {
+  localEventId: string;
+  connectorAccountId: string;
+  providerCalendarId: string;
+  expectedLocalRevision: number;
+  idempotencyKey: string;
+}
+
+export interface RunLifeOpsLinkedCalendarReconciliationRequest {
+  expectedUpdatedAt: string;
+  idempotencyKey: string;
+}
+
+export interface ResolveLifeOpsLinkedCalendarConflictRequest
+  extends RunLifeOpsLinkedCalendarReconciliationRequest {
+  strategy: "keep_eliza" | "keep_google";
+}
+
+export interface DisconnectLifeOpsLinkedCalendarRequest {
+  expectedUpdatedAt: string;
+  idempotencyKey: string;
+  /** Both independently useful events are retained; only synchronization stops. */
+  retainEvents: true;
+}
+
+export interface LifeOpsLinkedCalendarMutationResponse {
+  link: LifeOpsLinkedCalendarLink;
+  outcome:
+    | "linked"
+    | "clean"
+    | "dirty"
+    | "pushed"
+    | "pulled"
+    | "conflicted"
+    | "quarantined"
+    | "paused"
+    | "disconnected";
+}
+
 export const LIFEOPS_CALENDAR_WINDOW_PRESETS = [
   "tomorrow_morning",
   "tomorrow_afternoon",
@@ -439,6 +501,12 @@ export interface CreateLifeOpsCalendarEventAttendee {
   optional?: boolean;
 }
 
+/** A provider-neutral all-day interval using an exclusive civil-date end. */
+export interface LifeOpsCalendarAllDayRange {
+  startDate: string;
+  endDateExclusive: string;
+}
+
 export interface CreateLifeOpsCalendarEventRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -449,6 +517,8 @@ export interface CreateLifeOpsCalendarEventRequest {
   location?: string;
   startAt?: string;
   endAt?: string;
+  /** Mutually exclusive with timed bounds and window presets. */
+  allDay?: LifeOpsCalendarAllDayRange;
   timeZone?: string;
   durationMinutes?: number;
   windowPreset?: LifeOpsCalendarWindowPreset;
@@ -530,6 +600,8 @@ export interface LifeOpsCalendarEventUpdate {
   title?: string;
   startAt?: string;
   endAt?: string;
+  /** Replaces timed bounds with one all-day civil-date interval. */
+  allDay?: LifeOpsCalendarAllDayRange;
   timeZone?: string;
   notes?: string;
   location?: string;

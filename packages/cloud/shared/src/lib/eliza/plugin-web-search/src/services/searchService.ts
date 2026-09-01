@@ -20,6 +20,37 @@ function getGoogleSearchApiKey(runtime: IAgentRuntime): string | null {
   return null;
 }
 
+async function resolveSearchOperationContext(runtime: IAgentRuntime) {
+  const cloudApiKey = runtime.getSetting("ELIZAOS_API_KEY");
+  if (typeof cloudApiKey !== "string" || !cloudApiKey.trim()) {
+    throw new Error("Hosted Google search requires an authenticated Eliza Cloud API key");
+  }
+  const { resolveInferenceAuthContext } = await import(
+    "../../../../services/inference-auth-context"
+  );
+  const resolution = await resolveInferenceAuthContext(
+    new Request("https://cloud.eliza.app/api/v1/search", {
+      headers: { "X-API-Key": cloudApiKey.trim() },
+    }),
+  );
+  if (resolution.kind !== "authorized") {
+    throw new Error(`Hosted Google search standing rejected: ${resolution.kind}`);
+  }
+  const expectedOrganizationId = runtime.getSetting("ORGANIZATION_ID");
+  const expectedUserId = runtime.getSetting("USER_ID");
+  if (resolution.ctx.orgId !== expectedOrganizationId || resolution.ctx.userId !== expectedUserId) {
+    throw new Error("Hosted Google search identity does not match the runtime owner");
+  }
+  return {
+    organizationId: resolution.ctx.orgId,
+    userId: resolution.ctx.userId,
+    apiKeyId: resolution.ctx.apiKeyId,
+    requestId: crypto.randomUUID(),
+    admissionSnapshot: resolution.ctx.admission,
+    requestSource: "action" as const,
+  };
+}
+
 function toSearchResponse(result: HostedSearchResult): SearchResponse {
   return {
     answer: result.answer,
@@ -88,6 +119,7 @@ export class WebSearchService extends Service implements IWebSearchService {
       // Lazy import: the Google-grounded path drags the cloud services/db
       // graph; keyless deployments never pay that module cost.
       const { executeHostedGoogleSearch } = await import("../../../../services/google-search");
+      const operationContext = await resolveSearchOperationContext(this.runtime);
       const result = await executeHostedGoogleSearch(
         {
           query,
@@ -100,13 +132,7 @@ export class WebSearchService extends Service implements IWebSearchService {
           startDate: options?.start_date,
           endDate: options?.end_date,
         },
-        {
-          organizationId:
-            (this.runtime.getSetting("ORGANIZATION_ID") as string | undefined) ?? undefined,
-          userId: (this.runtime.getSetting("USER_ID") as string | undefined) ?? undefined,
-          apiKey: (this.runtime.getSetting("ELIZAOS_API_KEY") as string | undefined) ?? null,
-          requestSource: "action",
-        },
+        operationContext,
       );
 
       return toSearchResponse(result);

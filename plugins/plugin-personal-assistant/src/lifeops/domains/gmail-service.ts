@@ -1046,18 +1046,17 @@ export class GmailDomain {
         "confirmDestructive",
       ) ?? false;
 
-    // Non-destructive execute calls (mark_read, archive, labels) keep working
-    // without confirmation so existing callers of /api/lifeops/gmail/manage
-    // are not broken; destructive operations accept either confirmation flag.
+    // Every execute call changes provider mailbox state and therefore requires
+    // confirmation immediately before dispatch. The legacy destructive flag
+    // remains accepted only for destructive operations.
     if (
       executionMode === "execute" &&
-      destructive &&
       !confirmAction &&
-      !confirmDestructive
+      !(destructive && confirmDestructive)
     ) {
       fail(
         409,
-        `${operation} requires explicit destructive confirmation immediately before execution.`,
+        `${operation} requires explicit confirmation immediately before execution.`,
       );
     }
     if (

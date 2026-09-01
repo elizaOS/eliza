@@ -87,6 +87,8 @@ const buttonVariants = cva(
         transparent: "bg-transparent hover:bg-transparent",
         chatGestureTarget:
           "rounded-none border-0 bg-transparent hover:bg-transparent",
+        homeWidget:
+          "group relative flex h-auto w-full overflow-hidden rounded-2xl border border-border-launcher-icon bg-bg-wallpaper-overlay text-left text-txt-launcher-icon hover:bg-bg-launcher-icon-hover",
         disclosureMuted:
           "w-full justify-between bg-transparent text-xs text-muted hover:bg-transparent hover:text-txt",
         overlayEdge:

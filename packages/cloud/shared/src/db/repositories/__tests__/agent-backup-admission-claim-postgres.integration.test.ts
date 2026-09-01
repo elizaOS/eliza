@@ -52,7 +52,7 @@ const MIGRATIONS = [
   "0363_agent_backup_admission_claim_guard",
   "0364_agent_backup_admission_claim_eligibility",
   "0365_agent_backup_admission_unsettled_schedule_index",
-  "0366_agent_backup_admission_recovery_cursor",
+  "0369_agent_backup_admission_recovery_cursor",
 ] as const;
 
 const ORIGINAL_ENV = {
@@ -248,6 +248,8 @@ async function createPreAdmissionSchema(client: Client): Promise<void> {
       status text NOT NULL,
       pool_status text,
       execution_tier text NOT NULL,
+      deletion_attempt_id uuid,
+      deleted_at timestamptz,
       sandbox_id text,
       node_id text,
       image_digest text,
@@ -867,6 +869,85 @@ describe("schedule-capture admission claims on real PostgreSQL", () => {
         if (transactionOpen) await locker.query("ROLLBACK").catch(() => undefined);
         await locker.end();
       }
+    },
+    TEST_TIMEOUT,
+  );
+
+  realPostgresTest(
+    "settles future-tier, soft-deleted, and deletion-owned sources before leasing",
+    async () => {
+      if (!control || !claimRepository) {
+        throw new Error("real PostgreSQL claim harness was not initialized");
+      }
+      const start = 460;
+      const validOrdinal = start + 3;
+      await seedScheduleSources({ start, count: 4, fixedShard: 0 });
+      await control.query(
+        `UPDATE agent_sandboxes
+        SET execution_tier = 'future-dedicated'
+        WHERE id = backup_claim_test_uuid(7, $1, 0)`,
+        [start],
+      );
+      await control.query(
+        `UPDATE agent_sandboxes
+        SET deleted_at = clock_timestamp()
+        WHERE id = backup_claim_test_uuid(7, $1, 0)`,
+        [start + 1],
+      );
+      await control.query(
+        `UPDATE agent_sandboxes
+        SET deletion_attempt_id = backup_claim_test_uuid(9, $1, 0)
+        WHERE id = backup_claim_test_uuid(7, $1, 0)`,
+        [start + 2],
+      );
+
+      const claims = await claimNextBatch({
+        ownerId: OWNER_A,
+        limit: 4,
+        leaseMs: 60_000,
+      });
+
+      expect(claims.map(({ workId: id }) => id)).toEqual([workId(validOrdinal)]);
+      const result = await control.query<{
+        id: string;
+        state: string;
+        attempts: number;
+        leaseOwner: string | null;
+        settledReason: string | null;
+      }>(`SELECT id::text AS id, state, attempts,
+          lease_owner AS "leaseOwner", settled_reason AS "settledReason"
+        FROM agent_backup_admission_work
+        ORDER BY id`);
+      expect(result.rows).toEqual([
+        {
+          id: workId(start),
+          state: "settled",
+          attempts: 0,
+          leaseOwner: null,
+          settledReason: "SOURCE_SUPERSEDED",
+        },
+        {
+          id: workId(start + 1),
+          state: "settled",
+          attempts: 0,
+          leaseOwner: null,
+          settledReason: "SOURCE_SUPERSEDED",
+        },
+        {
+          id: workId(start + 2),
+          state: "settled",
+          attempts: 0,
+          leaseOwner: null,
+          settledReason: "SOURCE_SUPERSEDED",
+        },
+        {
+          id: workId(validOrdinal),
+          state: "leased",
+          attempts: 1,
+          leaseOwner: OWNER_A,
+          settledReason: null,
+        },
+      ]);
     },
     TEST_TIMEOUT,
   );

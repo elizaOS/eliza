@@ -55,6 +55,56 @@ function gate(): CalendarHostGate {
   };
 }
 
+function connectedGoogleGate(): CalendarHostGate {
+  const timestamp = "2026-08-30T12:00:00.000Z";
+  const grant = {
+    id: "connector-account:shawgotbags",
+    agentId: AGENT_ID,
+    provider: "google",
+    connectorAccountId: "shawgotbags",
+    side: "owner",
+    identity: { email: "shawgotbags@gmail.com" },
+    identityEmail: "shawgotbags@gmail.com",
+    grantedScopes: ["https://www.googleapis.com/auth/calendar"],
+    capabilities: ["google.calendar.read", "google.calendar.write"],
+    tokenRef: null,
+    mode: "local",
+    executionTarget: "local",
+    sourceOfTruth: "connector_account",
+    preferredByAgent: true,
+    cloudConnectionId: null,
+    metadata: {},
+    lastRefreshAt: timestamp,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  } as const;
+  return {
+    ...gate(),
+    getGoogleConnectorAccounts: async () => [
+      {
+        provider: "google",
+        side: "owner",
+        mode: "local",
+        defaultMode: "local",
+        availableModes: ["local"],
+        executionTarget: "local",
+        sourceOfTruth: "connector_account",
+        configured: true,
+        connected: true,
+        reason: "connected",
+        preferredByAgent: true,
+        cloudConnectionId: null,
+        identity: grant.identity,
+        grantedCapabilities: [...grant.capabilities],
+        grantedScopes: [...grant.grantedScopes],
+        expiresAt: null,
+        hasRefreshToken: true,
+        grant,
+      },
+    ],
+  } as CalendarHostGate;
+}
+
 beforeAll(async () => {
   pg = new PGlite();
   const db = drizzle(pg);
@@ -79,10 +129,12 @@ beforeAll(async () => {
 }, 30_000);
 
 beforeEach(async () => {
+  await pg.query("DELETE FROM app_calendar.linked_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_sync_states");
   await pg.query("DELETE FROM app_calendar.life_calendar_feed_preferences");
   reminderPlans.length = 0;
+  service.setGate(gate());
 });
 
 afterAll(async () => {
@@ -211,6 +263,103 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       expectedProviderVersion: '"eliza-2"',
     });
     expect(await service.getCalendarEventById(event.id)).toBeNull();
+  });
+
+  it("durably queues built-in create, update, and delete for the preferred Google primary calendar", async () => {
+    service.setGate(connectedGoogleGate());
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "School pickup",
+      startAt: "2026-08-12T19:00:00.000Z",
+      endAt: "2026-08-12T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "school-pickup-linked",
+    });
+    const event = created.event;
+    if (!event) throw new Error("Built-in calendar create returned no event.");
+    await expect
+      .poll(async () => {
+        const row = await pg.query<{
+          connector_account_id: string;
+          provider_calendar_id: string;
+          pending_operation: string;
+        }>(
+          "SELECT connector_account_id, provider_calendar_id, pending_operation FROM app_calendar.linked_calendar_events",
+        );
+        return row.rows[0];
+      })
+      .toMatchObject({
+        connector_account_id: "shawgotbags",
+        provider_calendar_id: "primary",
+        pending_operation: "create",
+      });
+
+    await service.updateCalendarEvent(INTERNAL_URL, {
+      grantId: ELIZA_CALENDAR_GRANT_ID,
+      calendarId: ELIZA_CALENDAR_ID,
+      eventId: event.externalId,
+      title: "School pickup moved",
+      expectedProviderVersion: '"eliza-1"',
+    });
+    await expect
+      .poll(async () => {
+        const row = await pg.query<{ local_revision: number }>(
+          "SELECT local_revision FROM app_calendar.linked_calendar_events",
+        );
+        return row.rows[0]?.local_revision;
+      })
+      .toBe(2);
+
+    await service.deleteCalendarEvent(INTERNAL_URL, {
+      grantId: ELIZA_CALENDAR_GRANT_ID,
+      calendarId: ELIZA_CALENDAR_ID,
+      eventId: event.externalId,
+      expectedProviderVersion: '"eliza-2"',
+    });
+    await expect
+      .poll(async () => {
+        const row = await pg.query<{ pending_operation: string }>(
+          "SELECT pending_operation FROM app_calendar.linked_calendar_events",
+        );
+        return row.rows[0]?.pending_operation;
+      })
+      .toBe("delete");
+  });
+
+  it("bootstraps existing local events as soon as a writable Google gate connects", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Created before Google",
+      startAt: "2026-08-14T19:00:00.000Z",
+      endAt: "2026-08-14T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "created-before-google",
+    });
+    const event = created.event;
+    if (!event) throw new Error("Built-in calendar create returned no event.");
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.linked_calendar_events"))
+        .rows,
+    ).toHaveLength(0);
+
+    service.setGate(connectedGoogleGate());
+
+    await expect
+      .poll(async () => {
+        const row = await pg.query<{
+          local_event_id: string;
+          connector_account_id: string;
+          provider_calendar_id: string;
+          pending_operation: string;
+        }>(
+          "SELECT local_event_id, connector_account_id, provider_calendar_id, pending_operation FROM app_calendar.linked_calendar_events",
+        );
+        return row.rows[0];
+      })
+      .toMatchObject({
+        local_event_id: event.id,
+        connector_account_id: "shawgotbags",
+        provider_calendar_id: "primary",
+        pending_operation: "create",
+      });
   });
 
   it("resolves an unscoped mutation target to the built-in event without hijacking external grants", async () => {

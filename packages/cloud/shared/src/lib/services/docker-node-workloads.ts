@@ -5,9 +5,9 @@
  * and blue/green swaps can make either name differ from the sandbox row ID.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, inArray, or, sql } from "drizzle-orm";
 import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
-import { type Database, dbRead, dbWrite } from "../../db/helpers";
+import { type Database, dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
   AGENT_SANDBOX_REPLACEMENT_GLOBAL_FENCE_STATES,
@@ -33,16 +33,6 @@ import {
 } from "./orphan-container-reconciler";
 
 export type { OrphanReconcileResult } from "./orphan-container-reconciler";
-
-async function countRows(query: Promise<Array<{ count: number }>>): Promise<number> {
-  const [row] = await query;
-  if (!row) {
-    throw new ElizaError("Workload count query returned no aggregate row", {
-      code: "DOCKER_NODE_WORKLOAD_COUNT_MISSING",
-    });
-  }
-  return row.count;
-}
 
 /** Postgres `undefined_column` — the shape a pre-migration read takes. */
 const UNDEFINED_COLUMN = "42703";
@@ -94,7 +84,9 @@ export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<num
   // that was already failing rather than taking down placement wholesale.
   try {
     // Capacity is admission authority. Replica lag must never erase a slot that
-    // an exact-restore transaction has already reserved on the primary.
+    // an exact-restore transaction has already reserved on the primary. The
+    // counter composes its ledgers in one statement snapshot so a lifecycle
+    // transfer is counted on exactly one side.
     return await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId);
   } catch (error) {
     // error-policy:J2 context-adding rethrow — only the known pre-migration
@@ -382,37 +374,82 @@ export function reconcileOrphanContainersOnNodes(): Promise<OrphanReconcileResul
  * recreate them elsewhere — so they do NOT count as retained.
  */
 export async function countRetainedWorkloadsOnNode(nodeId: string): Promise<number> {
-  const [containerCount, agentCount, replacementCount] = await Promise.all([
-    countRows(
-      dbRead
-        .select({ count: sql<number>`count(*)::int` })
-        .from(containers)
-        .where(
-          and(
-            eq(containers.node_id, nodeId),
-            sql`${containers.status} not in ('failed','deleted')`,
-          ),
-        ),
-    ),
-    countRows(
-      dbRead
-        .select({ count: sql<number>`count(*)::int` })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.node_id, nodeId),
-            sql`${agentSandboxes.status} not in ('stopped','error')`,
-            sql`(${agentSandboxes.pool_status} is null or ${agentSandboxes.pool_status} <> 'unclaimed')`,
-          ),
-        ),
-    ),
-    countRows(
-      dbRead
-        .select({ count: sql<number>`count(*)::int` })
-        .from(agentSandboxes)
-        .where(eq(agentSandboxes.replacement_cleanup_node_id, nodeId)),
-    ),
-  ]);
+  // A zero here authorizes physical node deletion. Replica lag must never hide
+  // a committed workload or exact-restore reservation from that destructive
+  // decision, so every retained ledger is read from PRIMARY.
+  return countRetainedWorkloadsOnNodeWithDatabase(dbWrite, nodeId);
+}
 
-  return containerCount + agentCount + replacementCount;
+/** @internal Exported for real-database drain-safety proofs. */
+export async function countRetainedWorkloadsOnNodeWithDatabase(
+  database: Database,
+  nodeId: string,
+): Promise<number> {
+  const [replacementRelation] = await database
+    .select({
+      relation: sql<string | null>`to_regclass('public.agent_sandbox_replacement_attempts')::text`,
+    })
+    .from(sql`(VALUES (1)) AS retained_relation_probe(value)`)
+    .where(sql`TRUE`);
+  const includeExactRestoreReservations = replacementRelation?.relation !== null;
+
+  // Keep the lifecycle handoff in one statement snapshot: exact restore owns
+  // the slot while globally fenced, then the canonical sandbox owns it after
+  // lifecycle commitment. Separate statements could observe neither side of
+  // that atomic transfer under READ COMMITTED.
+  const commonSelection = {
+    containerCount: sql<number>`(
+        SELECT count(*)::int
+        FROM ${containers}
+        WHERE ${containers.node_id} = ${nodeId}
+          AND ${containers.status} not in ('failed','deleted')
+      )`,
+    agentCount: sql<number>`(
+        SELECT count(*)::int
+        FROM ${agentSandboxes}
+        WHERE ${agentSandboxes.node_id} = ${nodeId}
+          AND ${agentSandboxes.status} not in ('stopped','error')
+          AND (${agentSandboxes.pool_status} is null
+            OR ${agentSandboxes.pool_status} <> 'unclaimed')
+      )`,
+    replacementCount: sql<number>`(
+        SELECT count(*)::int
+        FROM ${agentSandboxes}
+        WHERE ${agentSandboxes.replacement_cleanup_node_id} = ${nodeId}
+      )`,
+  };
+  const source = sql`(VALUES (1)) AS retained_workload_count_source(value)`;
+  if (!includeExactRestoreReservations) {
+    const [row] = await database.select(commonSelection).from(source).where(sql`TRUE`);
+    if (!row) {
+      throw new ElizaError("Workload count query returned no aggregate row", {
+        code: "DOCKER_NODE_WORKLOAD_COUNT_MISSING",
+      });
+    }
+    return row.containerCount + row.agentCount + row.replacementCount;
+  }
+
+  const [row] = await database
+    .select({
+      ...commonSelection,
+      exactRestoreCount: sql<number>`(
+        SELECT count(*)::int
+        FROM ${agentSandboxReplacementAttempts}
+        WHERE ${agentSandboxReplacementAttempts.locator_node_id} = ${nodeId}
+          AND ${agentSandboxReplacementAttempts.locator_allocation_counted} IS TRUE
+          AND ${agentSandboxReplacementAttempts.restore_attempt_id} IS NOT NULL
+          AND ${agentSandboxReplacementAttempts.state} in (${sql.join(
+            AGENT_SANDBOX_REPLACEMENT_GLOBAL_FENCE_STATES.map((state) => sql`${state}`),
+            sql`, `,
+          )})
+      )`,
+    })
+    .from(source)
+    .where(sql`TRUE`);
+  if (!row) {
+    throw new ElizaError("Workload count query returned no aggregate row", {
+      code: "DOCKER_NODE_WORKLOAD_COUNT_MISSING",
+    });
+  }
+  return row.containerCount + row.agentCount + row.replacementCount + row.exactRestoreCount;
 }

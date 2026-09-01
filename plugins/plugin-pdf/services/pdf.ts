@@ -2,35 +2,39 @@
  * Implements local PDF input validation, text extraction, metadata parsing,
  * and content cleanup for the runtime PDF service.
  *
- * Declared page counts are fail-closed at {@link MAX_PDF_PAGES} before any
- * per-page `getPage` work. File-size already has {@link MAX_PDF_BUFFER_BYTES};
- * `numPages` is independent attacker-controlled work.
+ * Complete extraction accounts for every parser-declared page. Every page is
+ * rendered for strict vision transcription and reconciliation with native text,
+ * positioned parser evidence, and optional OCR; one failed page rejects the
+ * complete-document result.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { Service, ServiceType } from "@elizaos/core";
-import { getDocumentProxy } from "unpdf";
+import { ModelType, Service, ServiceType } from "@elizaos/core";
+import { getDocumentProxy, getResolvedPDFJS, renderPageAsImage } from "unpdf";
 import type {
+  PdfCompleteDocument,
+  PdfCompleteExtractionOptions,
+  PdfCompletePage,
   PdfConversionResult,
   PdfDocumentInfo,
   PdfExtractionOptions,
   PdfMetadata,
   PdfPageInfo,
+  PdfPositionedTextDocument,
+  PdfPositionedTextItem,
 } from "../types";
 import { parsePdfSpecDate } from "./pdf-date.js";
 
-type PdfTextItem = { str: string };
-
-export const MAX_PDF_BUFFER_BYTES = 100 * 1024 * 1024;
-/** Fail-closed page budget. `numPages` is attacker-declared, not a file size. */
-export const MAX_PDF_PAGES = 2_048;
+type PdfTextItem = {
+  str: string;
+  transform?: unknown;
+  width?: unknown;
+  height?: unknown;
+};
 
 function requirePdfPageCount(numPages: unknown): number {
   if (typeof numPages !== "number" || !Number.isSafeInteger(numPages) || numPages < 1) {
     throw new RangeError("PDF page count must be a positive safe integer");
-  }
-  if (numPages > MAX_PDF_PAGES) {
-    throw new RangeError(`PDF page count exceeds maximum of ${MAX_PDF_PAGES} pages`);
   }
   return numPages;
 }
@@ -61,6 +65,38 @@ function collectTextStrings(items: unknown): string[] {
   return textItems;
 }
 
+function collectPositionedTextItems(items: unknown, page: number): PdfPositionedTextItem[] {
+  if (!Array.isArray(items)) {
+    throw new TypeError("PDF text content items must be an array");
+  }
+
+  const positioned: PdfPositionedTextItem[] = [];
+  for (const item of items) {
+    if (!isTextItem(item) || item.str.trim().length === 0) continue;
+    const transform = item.transform;
+    if (
+      !Array.isArray(transform) ||
+      transform.length < 6 ||
+      !transform.every((value) => typeof value === "number" && Number.isFinite(value)) ||
+      typeof item.width !== "number" ||
+      !Number.isFinite(item.width) ||
+      typeof item.height !== "number" ||
+      !Number.isFinite(item.height)
+    ) {
+      continue;
+    }
+    positioned.push({
+      page,
+      text: item.str,
+      x: transform[4] as number,
+      y: transform[5] as number,
+      width: item.width,
+      height: item.height,
+    });
+  }
+  return positioned;
+}
+
 function hasPdfHeader(input: Uint8Array): boolean {
   const scanLength = Math.min(input.length, PDF_HEADER_SCAN_BYTES);
   for (let offset = 0; offset <= scanLength - PDF_HEADER_BYTES.length; offset++) {
@@ -87,15 +123,14 @@ function validatePdfInput(input: unknown): Uint8Array {
     throw new RangeError("PDF input is empty");
   }
 
-  if (input.byteLength > MAX_PDF_BUFFER_BYTES) {
-    throw new RangeError(`PDF input exceeds maximum size of ${MAX_PDF_BUFFER_BYTES} bytes`);
-  }
-
   if (!hasPdfHeader(input)) {
     throw new TypeError("PDF input is not a supported PDF document");
   }
 
-  return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  // PDF.js may transfer its input ArrayBuffer to a worker, which detaches that
+  // buffer. Keep the service boundary ownership-safe so callers can still hash,
+  // persist, or otherwise reuse the bytes after extraction completes.
+  return Uint8Array.from(input);
 }
 
 function validatePageOption(value: unknown, name: string): number | undefined {
@@ -183,6 +218,134 @@ export class PdfService extends Service {
 
   async stop(): Promise<void> {}
 
+  /**
+   * Extract every declared page by rendering and vision-transcribing each page,
+   * then reconciling that transcription with native text, positioned parser
+   * evidence, and optional OCR. Any failed required stage rejects the whole
+   * document; partial success is never returned under the complete contract.
+   */
+  async extractCompleteDocument(
+    pdfBuffer: Buffer | Uint8Array,
+    options: PdfCompleteExtractionOptions = {}
+  ): Promise<PdfCompleteDocument> {
+    const uint8Array = validatePdfInput(pdfBuffer);
+    const pdf = await getDocumentProxy(uint8Array);
+    const pageCount = requirePdfPageCount(pdf.numPages);
+    const pdfjs = await getResolvedPDFJS();
+    const ops = pdfjs.OPS as Record<string, number>;
+    const visualOps = new Set(
+      [
+        ops.paintImageXObject,
+        ops.paintInlineImageXObject,
+        ops.paintImageMaskXObject,
+        ops.paintSolidColorImageMask,
+      ].filter((value): value is number => typeof value === "number")
+    );
+    const pages: PdfCompletePage[] = [];
+    const renderScale = options.renderScale ?? 2;
+    if (!Number.isFinite(renderScale) || renderScale <= 0) {
+      throw new RangeError("renderScale must be a positive finite number");
+    }
+
+    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+      try {
+        const page = await pdf.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 1 });
+        const textContent = await page.getTextContent();
+        const nativeText = this.cleanUpContent(collectTextStrings(textContent.items).join(" "));
+        const nativePositionedText = collectPositionedTextItems(textContent.items, pageNumber);
+        const operatorList = await page.getOperatorList();
+        if (!Array.isArray(operatorList.fnArray)) {
+          throw new TypeError("PDF page operator list must contain fnArray");
+        }
+        const hasVisualContent = operatorList.fnArray.some(
+          (operator: unknown) => typeof operator === "number" && visualOps.has(operator)
+        );
+        const isParserBlank = nativeText.length === 0 && operatorList.fnArray.length === 0;
+        let ocrText: string | null = null;
+        const rendered = await renderPageAsImage(pdf, pageNumber, {
+          canvasImport: () => import("@napi-rs/canvas"),
+          scale: renderScale,
+          toDataURL: true,
+        });
+        if (typeof rendered !== "string" || !rendered.startsWith("data:image/")) {
+          throw new TypeError("Rendered PDF page did not produce an image data URL");
+        }
+        const encoded = rendered.slice(rendered.indexOf(",") + 1);
+        const binary = atob(encoded);
+        const pngBytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+        if (options.ocrPage) {
+          ocrText = this.cleanUpContent(await options.ocrPage({ pageNumber, pngBytes }));
+          if (!ocrText) ocrText = null;
+        }
+        const response = await this.runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+          imageUrl: rendered,
+          stream: false,
+          prompt: [
+            `Transcribe every visible word on PDF page ${pageNumber} exactly and in reading order.`,
+            "Preserve headings, labels, table cells, dates, handwriting, and meaningful layout relationships.",
+            "Do not summarize, omit repeated text, or infer text that is not visible.",
+            "Reconcile the rendered page against all parser and OCR evidence below; resolve disagreements from the image and explicitly note any unresolved ambiguity.",
+            "After the exact transcription, describe non-text visual information needed to understand the page.",
+            "If and only if the rendered page is completely blank, return exactly [BLANK PAGE].",
+            `Native flattened text evidence: ${JSON.stringify(nativeText)}`,
+            `Native positioned text evidence: ${JSON.stringify(nativePositionedText)}`,
+            `OCR evidence: ${JSON.stringify(ocrText)}`,
+            options.visionPrompt?.trim() ?? "",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        });
+        const visionText = response.description.trim();
+        if (!visionText) {
+          throw new Error("IMAGE_DESCRIPTION returned an empty page transcription");
+        }
+        const visionReportsBlank = visionText === "[BLANK PAGE]";
+        if (visionReportsBlank && (!isParserBlank || ocrText)) {
+          throw new Error(
+            "IMAGE_DESCRIPTION reported a blank page that conflicts with native or OCR evidence"
+          );
+        }
+        const isVerifiedBlank = isParserBlank && !ocrText && visionReportsBlank;
+
+        const text = [
+          nativeText,
+          ocrText ? `[Rendered-page OCR]\n${ocrText}` : null,
+          visionText ? `[Rendered-page transcription and visual context]\n${visionText}` : null,
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join("\n\n");
+        const result: PdfCompletePage = {
+          pageNumber,
+          width: viewport.width,
+          height: viewport.height,
+          method: isVerifiedBlank ? "blank" : nativeText ? "native+vision" : "vision",
+          nativeText,
+          nativePositionedText,
+          ocrText,
+          visionText,
+          text,
+          hasVisualContent,
+        };
+        pages.push(result);
+        await options.onPageComplete?.(result);
+      } catch (error) {
+        // error-policy:J2 add page provenance and preserve the original cause.
+        throw new Error(
+          `Complete PDF extraction failed on page ${pageNumber} of ${pageCount}: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error }
+        );
+      }
+    }
+
+    return {
+      complete: true,
+      pageCount,
+      pages,
+      text: pages.map((page) => `--- Page ${page.pageNumber} ---\n${page.text}`).join("\n\n"),
+    };
+  }
+
   async convertPdfToText(pdfBuffer: Buffer | Uint8Array): Promise<string> {
     const uint8Array = validatePdfInput(pdfBuffer);
     const pdf = await getDocumentProxy(uint8Array);
@@ -199,6 +362,50 @@ export class PdfService extends Service {
 
     const rawText = textPages.join("\n");
     return this.cleanUpContent(rawText);
+  }
+
+  async convertPdfToPositionedText(
+    pdfBuffer: Buffer | Uint8Array
+  ): Promise<PdfPositionedTextDocument> {
+    const uint8Array = validatePdfInput(pdfBuffer);
+    const pdf = await getDocumentProxy(uint8Array);
+    const pageCount = requirePdfPageCount(pdf.numPages);
+    const items: PdfPositionedTextDocument["items"] = [];
+    for (let page = 1; page <= pageCount; page += 1) {
+      const source = await (await pdf.getPage(page)).getTextContent();
+      if (!Array.isArray(source.items))
+        throw new TypeError("PDF text content items must be an array");
+      for (const candidate of source.items) {
+        if (!isTextItem(candidate) || candidate.str.trim().length === 0) continue;
+        const transform = candidate.transform;
+        if (
+          !Array.isArray(transform) ||
+          transform.length < 6 ||
+          !transform.every((value) => typeof value === "number" && Number.isFinite(value))
+        ) {
+          throw new TypeError("PDF positioned text item has an invalid transform");
+        }
+        const width = candidate.width;
+        const height = candidate.height;
+        if (
+          typeof width !== "number" ||
+          !Number.isFinite(width) ||
+          typeof height !== "number" ||
+          !Number.isFinite(height)
+        ) {
+          throw new TypeError("PDF positioned text item has invalid dimensions");
+        }
+        items.push({
+          page,
+          text: candidate.str,
+          x: transform[4] as number,
+          y: transform[5] as number,
+          width,
+          height,
+        });
+      }
+    }
+    return { pageCount, items };
   }
 
   async convertPdfToTextWithOptions(

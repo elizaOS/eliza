@@ -85,7 +85,7 @@ const MIGRATIONS = [
   "0363_agent_backup_admission_claim_guard",
   "0364_agent_backup_admission_claim_eligibility",
   "0365_agent_backup_admission_unsettled_schedule_index",
-  "0366_agent_backup_admission_recovery_cursor",
+  "0369_agent_backup_admission_recovery_cursor",
 ] as const;
 
 const ORIGINAL_ENV = {
@@ -102,7 +102,11 @@ const ORIGINAL_ENV = {
 type ClientModule = typeof import("../../client");
 type ClaimRepository = typeof import("../agent-backup-admission-claim");
 type ReservationRepository = typeof import("../agent-backup-admission-reservation");
+type SchedulerRepository = typeof import("../agent-backup-scheduler");
 type AdmissionClaim = Awaited<ReturnType<ClaimRepository["claimAgentBackupAdmissionWork"]>>[number];
+type LegacyScheduleClaim = Awaited<
+  ReturnType<SchedulerRepository["claimDueAgentBackupSchedules"]>
+>[number];
 
 interface ScaleWorkSeed {
   start: number;
@@ -176,6 +180,7 @@ let dbWrite: ClientModule["dbWrite"] | undefined;
 let closeDatabaseConnectionsForTests: ClientModule["closeDatabaseConnectionsForTests"] | undefined;
 let claimRepository: ClaimRepository | undefined;
 let reservationRepository: ReservationRepository | undefined;
+let schedulerRepository: SchedulerRepository | undefined;
 let cleanupPromise: Promise<void> | undefined;
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined): void {
@@ -245,6 +250,7 @@ async function cleanupHarnessOnce(): Promise<void> {
   dbWrite = undefined;
   claimRepository = undefined;
   reservationRepository = undefined;
+  schedulerRepository = undefined;
 
   if (acquiredPostgres && createdDatabase) {
     let admin: Client | null = null;
@@ -305,15 +311,17 @@ async function initializeHarness(): Promise<void> {
   process.env.MOCK_REDIS = "1";
   process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
-  const [clientModule, claimModule, reservationModule] = await Promise.all([
+  const [clientModule, claimModule, reservationModule, schedulerModule] = await Promise.all([
     import("../../client"),
     import("../agent-backup-admission-claim"),
     import("../agent-backup-admission-reservation"),
+    import("../agent-backup-scheduler"),
   ]);
   dbWrite = clientModule.dbWrite;
   closeDatabaseConnectionsForTests = clientModule.closeDatabaseConnectionsForTests;
   claimRepository = claimModule;
   reservationRepository = reservationModule;
+  schedulerRepository = schedulerModule;
   control = new Client({
     connectionString: isolated.dsn,
     application_name: `${APPLICATION_NAME}-control`,
@@ -746,6 +754,26 @@ async function claimOne(leaseMs: number): Promise<AdmissionClaim> {
   throw new Error("No backup admission claim after 128 bounded progress turns");
 }
 
+async function claimLegacySchedule(leaseMs: number): Promise<LegacyScheduleClaim> {
+  if (!schedulerRepository) {
+    throw new Error("real PostgreSQL legacy scheduler repository was not initialized");
+  }
+  const [claim] = await schedulerRepository.claimDueAgentBackupSchedules({
+    ownerId: `${OWNER}-legacy`,
+    limit: 1,
+    leaseMs,
+  });
+  if (!claim) throw new Error("Legacy backup scheduler did not claim the due sandbox");
+  if (
+    claim.organizationId !== ORGANIZATION_ID ||
+    claim.agentId !== SANDBOX_ID ||
+    claim.operationId === WORK_ID
+  ) {
+    throw new Error("Legacy backup scheduler returned an unexpected fair-lane identity");
+  }
+  return claim;
+}
+
 function fence(claim: AdmissionClaim) {
   return {
     workId: claim.workId,
@@ -782,6 +810,40 @@ async function waitForRepositoryLockWaiters(
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Timed out waiting for ${minimum} backup admission repository lock waiter(s)`);
+}
+
+async function waitForRepositoryBlockedPid(observer: Client, blockerPid: number): Promise<number> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const result = await observer.query<{ blockers: number[]; pid: number }>(
+      `SELECT pid, pg_blocking_pids(pid) AS blockers
+       FROM pg_stat_activity
+       WHERE datname = current_database()
+         AND application_name = $1
+         AND state = 'active'
+         AND wait_event_type = 'Lock'`,
+      [APPLICATION_NAME],
+    );
+    const blocked = result.rows.filter(({ blockers }) => blockers.includes(blockerPid));
+    if (blocked.length === 1 && blocked[0]) return blocked[0].pid;
+    if (blocked.length > 1) {
+      throw new Error(`More than one repository session is blocked by backend ${blockerPid}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for a repository session blocked by backend ${blockerPid}`);
+}
+
+function findPostgresErrorCode(cause: unknown): string | null {
+  const seen = new Set<unknown>();
+  let current = cause;
+  while (typeof current === "object" && current !== null && !seen.has(current)) {
+    seen.add(current);
+    const code = Reflect.get(current, "code");
+    if (typeof code === "string") return code;
+    current = Reflect.get(current, "cause");
+  }
+  return null;
 }
 
 async function waitForDatabaseTimeAfter(instant: Date): Promise<void> {
@@ -828,6 +890,85 @@ async function expectNoPartialReservation(): Promise<void> {
       state: "leased",
       lease_owner: OWNER,
       settled_reason: null,
+    },
+  ]);
+}
+
+async function expectOnlyLegacyReservation(legacyOperationId: string): Promise<void> {
+  if (!control) throw new Error("real PostgreSQL control session was not initialized");
+  const backups = await control.query<{
+    catalog_lease_owner: string | null;
+    catalog_state: string;
+    operation_id: string;
+  }>(
+    `SELECT backup_operation_id::text AS operation_id, catalog_state,
+       catalog_lease_owner
+     FROM agent_sandbox_backups
+     ORDER BY backup_operation_id`,
+  );
+  expect(backups.rows).toEqual([
+    {
+      catalog_lease_owner: null,
+      catalog_state: "scheduled",
+      operation_id: legacyOperationId,
+    },
+  ]);
+  const work = await control.query<{
+    lease_owner: string | null;
+    settled_reason: string | null;
+    state: string;
+  }>(
+    `SELECT state, lease_owner, settled_reason
+     FROM agent_backup_admission_work
+     WHERE id = $1::uuid`,
+    [WORK_ID],
+  );
+  expect(work.rows).toEqual([{ lease_owner: OWNER, settled_reason: null, state: "leased" }]);
+  const authority = await control.query<{ catalog_revision: string }>(
+    `SELECT catalog_revision::text
+     FROM agent_backup_catalog_authorities
+     WHERE organization_id = $1::uuid AND agent_id = $2::uuid`,
+    [ORGANIZATION_ID, SANDBOX_ID],
+  );
+  expect(authority.rows).toEqual([{ catalog_revision: "1" }]);
+}
+
+async function expectOnlyAdmissionReservation(): Promise<void> {
+  if (!control) throw new Error("real PostgreSQL control session was not initialized");
+  const backups = await control.query<{
+    catalog_lease_owner: string | null;
+    catalog_state: string;
+    operation_id: string;
+  }>(
+    `SELECT backup_operation_id::text AS operation_id, catalog_state,
+       catalog_lease_owner
+     FROM agent_sandbox_backups
+     ORDER BY backup_operation_id`,
+  );
+  expect(backups.rows).toEqual([
+    { catalog_lease_owner: null, catalog_state: "scheduled", operation_id: WORK_ID },
+  ]);
+  const work = await control.query<{
+    catalog_revision: string;
+    lease_owner: string | null;
+    settled_reason: string | null;
+    state: string;
+  }>(
+    `SELECT work.state, work.lease_owner, work.settled_reason,
+       authority.catalog_revision::text
+     FROM agent_backup_admission_work AS work
+     JOIN agent_backup_catalog_authorities AS authority
+       ON authority.organization_id = work.organization_id
+      AND authority.agent_id = work.sandbox_id
+     WHERE work.id = $1::uuid`,
+    [WORK_ID],
+  );
+  expect(work.rows).toEqual([
+    {
+      catalog_revision: "1",
+      lease_owner: null,
+      settled_reason: "CAPTURE_RESERVED",
+      state: "settled",
     },
   ]);
 }
@@ -1174,6 +1315,96 @@ describe("backup admission reservation on real PostgreSQL", () => {
   );
 
   realPostgresTest(
+    "rolls back a claimed admission when a legacy reservation wins the same fair lane",
+    async () => {
+      const reservation = reservationRepository;
+      const scheduler = schedulerRepository;
+      if (!reservation || !scheduler) {
+        throw new Error("real PostgreSQL reservation repositories were not initialized");
+      }
+      const admissionClaim = await claimOne(60_000);
+      const legacyClaim = await claimLegacySchedule(60_000);
+      const legacyReservation = await scheduler.reserveClaimedAgentBackupSchedule({
+        claim: legacyClaim,
+      });
+      expect(legacyReservation).toMatchObject({
+        organizationId: ORGANIZATION_ID,
+        agentId: SANDBOX_ID,
+        operationId: legacyClaim.operationId,
+      });
+
+      await expect(
+        reservation.reserveAndSettleAgentBackupAdmissionClaim({ claim: admissionClaim }),
+      ).rejects.toThrow(/fair-lane authority was superseded before settlement/i);
+      await expectOnlyLegacyReservation(legacyClaim.operationId);
+    },
+    TEST_TIMEOUT,
+  );
+
+  realPostgresTest(
+    "crosses new and legacy reservation attempts without a PostgreSQL deadlock",
+    async () => {
+      const reservation = reservationRepository;
+      const scheduler = schedulerRepository;
+      if (!reservation || !scheduler || !isolatedDsn || !control) {
+        throw new Error("real PostgreSQL reservation harness was not initialized");
+      }
+      const admissionClaim = await claimOne(60_000);
+      const legacyClaim = await claimLegacySchedule(60_000);
+      const locker = new Client({
+        connectionString: isolatedDsn,
+        application_name: `${APPLICATION_NAME}-crossing-blocker`,
+      });
+      const attempts: Promise<unknown>[] = [];
+      let outcomesPromise: Promise<PromiseSettledResult<unknown>[]> | undefined;
+      let outcomes: PromiseSettledResult<unknown>[] | undefined;
+      await locker.connect();
+      try {
+        await locker.query("BEGIN");
+        await locker.query(
+          "SELECT id FROM agent_backup_admission_work WHERE id = $1::uuid FOR UPDATE",
+          [WORK_ID],
+        );
+        const blocker = await locker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+        const blockerPid = blocker.rows[0]?.pid;
+        if (!blockerPid) throw new Error("PostgreSQL crossing blocker PID is unavailable");
+
+        attempts.push(
+          reservation.reserveAndSettleAgentBackupAdmissionClaim({ claim: admissionClaim }),
+        );
+        const admissionPid = await waitForRepositoryBlockedPid(control, blockerPid);
+        attempts.push(scheduler.reserveClaimedAgentBackupSchedule({ claim: legacyClaim }));
+        outcomesPromise = Promise.allSettled(attempts);
+        const legacyPid = await waitForRepositoryBlockedPid(control, admissionPid);
+        expect(legacyPid).not.toBe(admissionPid);
+        await locker.query("COMMIT");
+        outcomes = await outcomesPromise;
+      } finally {
+        await locker.query("ROLLBACK").catch(() => undefined);
+        await locker.end();
+        if (!outcomesPromise && attempts.length > 0) {
+          outcomesPromise = Promise.allSettled(attempts);
+        }
+        await outcomesPromise;
+      }
+
+      if (!outcomes) throw new Error("Concurrent reservation attempts returned no outcomes");
+      expect(outcomes.map(({ status }) => status)).toEqual(["fulfilled", "rejected"]);
+      const postgresCodes = outcomes.flatMap((outcome) =>
+        outcome.status === "rejected" ? [findPostgresErrorCode(outcome.reason)] : [],
+      );
+      expect(postgresCodes).not.toContain("40P01");
+      const legacyOutcome = outcomes[1];
+      if (legacyOutcome?.status !== "rejected") {
+        throw new Error("The admission reservation did not win the synchronized lock crossing");
+      }
+      expect(String(legacyOutcome.reason)).toMatch(/fair-lane authority was superseded/i);
+      await expectOnlyAdmissionReservation();
+    },
+    TEST_TIMEOUT,
+  );
+
+  realPostgresTest(
     "returns an exact committed replay after the account-deletion paid-work fence",
     async () => {
       if (!reservationRepository || !control) {
@@ -1214,6 +1445,65 @@ describe("backup admission reservation on real PostgreSQL", () => {
       expect(durable.rows).toEqual([
         { backups: 1, authorities: 1, state: "settled", settled_reason: "CAPTURE_RESERVED" },
       ]);
+    },
+    TEST_TIMEOUT,
+  );
+
+  realPostgresTest(
+    "fails closed when settled replay catalogue version, digest, or retention is altered",
+    async () => {
+      if (!reservationRepository || !control) {
+        throw new Error("real PostgreSQL reservation harness was not initialized");
+      }
+      const claim = await claimOne(60_000);
+      const first = await reservationRepository.reserveAndSettleAgentBackupAdmissionClaim({
+        claim,
+      });
+      const original = await control.query<{
+        catalog_payload_digest: string;
+        retention_until: Date;
+      }>(
+        `SELECT catalog_payload_digest, retention_until
+         FROM agent_sandbox_backups WHERE id = $1::uuid`,
+        [first.backupId],
+      );
+      const authority = original.rows[0];
+      if (!authority?.catalog_payload_digest || !(authority.retention_until instanceof Date)) {
+        throw new Error("Seeded reservation is missing its canonical payload authority");
+      }
+
+      await control.query(
+        `UPDATE agent_sandbox_backups SET catalog_payload_digest = $2 WHERE id = $1::uuid`,
+        [first.backupId, "f".repeat(64)],
+      );
+      await expect(
+        reservationRepository.reserveAndSettleAgentBackupAdmissionClaim({ claim }),
+      ).rejects.toThrow(/already reserved with a different payload/i);
+
+      await control.query(
+        `UPDATE agent_sandbox_backups
+         SET catalog_payload_digest = $2, retention_until = $3::timestamptz
+         WHERE id = $1::uuid`,
+        [
+          first.backupId,
+          authority.catalog_payload_digest,
+          new Date(authority.retention_until.getTime() + 1_000),
+        ],
+      );
+      await expect(
+        reservationRepository.reserveAndSettleAgentBackupAdmissionClaim({ claim }),
+      ).rejects.toThrow(/already reserved with a different payload/i);
+
+      await control.query(
+        `UPDATE agent_sandbox_backups
+         SET catalog_version = 1, catalog_state = 'legacy_unmigrated',
+             retention_until = $2::timestamptz
+         WHERE id = $1::uuid`,
+        [first.backupId, authority.retention_until],
+      );
+      await expect(
+        reservationRepository.reserveAndSettleAgentBackupAdmissionClaim({ claim }),
+      ).rejects.toThrow(/already reserved with a different payload/i);
     },
     TEST_TIMEOUT,
   );

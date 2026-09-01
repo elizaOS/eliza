@@ -4196,6 +4196,36 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Family Operations owns explicit empty states. Keep its four read models
+  // available so the visual audit reviews the real upload and workflow UI
+  // instead of the generic unavailable boundary.
+  if (req.method === "GET" && url.pathname === "/api/lifeops/agreements") {
+    sendJson(req, res, 200, { agreements: [] });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/lifeops/calendar/links") {
+    sendJson(req, res, 200, { links: [] });
+    return;
+  }
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/lifeops/family-workflows/school/status"
+  ) {
+    sendJson(req, res, 200, {
+      sourceId: "concord-public-schools",
+      config: null,
+      lastRun: null,
+    });
+    return;
+  }
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/lifeops/family-workflows/packets"
+  ) {
+    sendJson(req, res, 200, { packets: [], packetStates: [] });
+    return;
+  }
+
   // Meeting sessions (calendar view polls active sessions on mount). Return
   // 200-empty so the calendar view renders without the catch-all 501 the
   // page-error guard would otherwise flag.

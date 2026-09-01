@@ -19,6 +19,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { logger } from "@elizaos/core";
 import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
 import {
   appendAuditEvent,
@@ -512,10 +513,29 @@ async function handleMe(
     return true;
   }
 
-  const ctx = await ensureSessionForRequest(req, res, {
-    store,
-    allowBootstrapBearer: false,
-  });
+  let ctx: Awaited<ReturnType<typeof ensureSessionForRequest>>;
+  try {
+    ctx = await ensureSessionForRequest(req, res, {
+      store,
+      allowBootstrapBearer: false,
+      storeFailureMode: "throw",
+    });
+  } catch (error) {
+    // error-policy:J1 `/api/auth/me` is the transport boundary. A temporary
+    // store outage must remain retryable and must not masquerade as an invalid
+    // bearer, because clients intentionally scrub credentials after a 401.
+    logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[AuthSessionRoutes] Auth store unavailable during /api/auth/me",
+    );
+    sendJsonResponse(res, 503, {
+      error: "db_unavailable",
+      reason: "db_unavailable",
+    });
+    return true;
+  }
   if (!ctx?.session || !ctx.identity) {
     const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
     sendJsonResponse(res, 401, {
