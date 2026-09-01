@@ -379,6 +379,8 @@ describe("ConnectorAccountManager", () => {
 			state: secondFlow.state,
 			code: "code-2",
 		});
+		const secondRejection =
+			expect(second).rejects.toThrow(/completion failed/i);
 		await Promise.resolve();
 
 		expect(callbackCodes).toEqual(["code-1"]);
@@ -386,7 +388,7 @@ describe("ConnectorAccountManager", () => {
 		await expect(first).resolves.toMatchObject({
 			account: { id: "committed-oauth-account" },
 		});
-		await expect(second).rejects.toThrow(/completion failed/i);
+		await secondRejection;
 		expect(callbackCodes).toEqual(["code-1", "code-2"]);
 		await expect(
 			manager.getAccount("oauth-serialized-failure", "committed-oauth-account"),
