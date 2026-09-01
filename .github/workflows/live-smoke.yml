@@ -1087,8 +1087,8 @@ jobs:
                 --since '4 hours ago' \
                 -o cat \
                 --no-pager 2>/dev/null \
-                | grep -F "$CANARY_AGENT_ID" \
-                | tail -n 300 \
+                | grep -F -B 12 -A 12 "$CANARY_AGENT_ID" \
+                | tail -n 1200 \
                 || true
             )"
             lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
