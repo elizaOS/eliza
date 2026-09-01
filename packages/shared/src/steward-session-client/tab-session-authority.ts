@@ -1,0 +1,441 @@
+/**
+ * Origin-wide Steward session-authority coordinator.
+ *
+ * Same-realm queues cannot order cookie or canonical-token mutations across
+ * tabs. This module serializes those operations through one Web Lock, keeps a
+ * durable logout generation that is never reset, and revalidates captured
+ * token/generation before persistence, before cookie mutation, after response
+ * settlement, and before publishing markers.
+ */
+export const STEWARD_LOGOUT_GENERATION_KEY =
+  "steward_session_logout_generation";
+export const STEWARD_SESSION_AUTHORITY_LOCK_NAME =
+  "elizaos:steward-session-authority:v1";
+export const STEWARD_SESSION_AUTHORITY_TIMEOUT_MS = 10_000;
+
+export type StewardSessionAuthorityKind =
+  | "session-sync"
+  | "nonce-exchange"
+  | "refresh"
+  | "callback-restore"
+  | "passive-mirror"
+  | "logout"
+  | "cookie-delete"
+  | "token-write";
+
+export type StewardSessionAuthorityErrorCode =
+  | "STEWARD_SESSION_AUTHORITY_UNAVAILABLE"
+  | "STEWARD_SESSION_AUTHORITY_SUPERSEDED"
+  | "STEWARD_SESSION_AUTHORITY_TIMEOUT"
+  | "STEWARD_SESSION_AUTHORITY_STORAGE_FAILED";
+
+export class StewardSessionAuthorityError extends Error {
+  readonly code: StewardSessionAuthorityErrorCode;
+
+  constructor(
+    message: string,
+    code: StewardSessionAuthorityErrorCode,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = "StewardSessionAuthorityError";
+    this.code = code;
+  }
+}
+
+export interface StewardSessionAuthoritySnapshot {
+  token: string | null;
+  generation: string;
+}
+
+export interface StewardSessionAuthorityLockManager {
+  request<T>(
+    name: string,
+    options: { mode: "exclusive"; signal: AbortSignal },
+    callback: () => T | PromiseLike<T>,
+  ): Promise<T>;
+}
+
+export interface StewardSessionAuthorityStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+export interface StewardTabSessionAuthorityDependencies {
+  storage?: StewardSessionAuthorityStorage | null;
+  lockManager?: StewardSessionAuthorityLockManager | null;
+  tokenKey?: string;
+  now?: () => number;
+  randomId?: () => string;
+  timeoutMs?: number;
+}
+
+export interface StewardSessionAuthorityWorkContext {
+  kind: StewardSessionAuthorityKind;
+  signal: AbortSignal;
+  snapshot: StewardSessionAuthoritySnapshot;
+  revalidate: () => StewardSessionAuthoritySnapshot;
+  noteToken: (token: string | null) => void;
+  advanceLogoutGeneration: () => string;
+}
+
+export interface StewardSessionAuthorityRunOptions<T> {
+  kind: StewardSessionAuthorityKind;
+  expectedToken?: string | null;
+  expectedGeneration?: string;
+  requireTokenAbsent?: boolean;
+  requireOriginWide?: boolean;
+  timeoutMs?: number;
+  work: (ctx: StewardSessionAuthorityWorkContext) => Promise<T>;
+}
+
+export interface StewardTabSessionAuthorityCoordinator {
+  readonly originWide: boolean;
+  readGeneration(): string;
+  readSnapshot(): StewardSessionAuthoritySnapshot;
+  runExclusive<T>(options: StewardSessionAuthorityRunOptions<T>): Promise<T>;
+}
+
+const EMPTY_GENERATION = "0:none";
+
+function randomGenerationNonce(): string {
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
+function parseGeneration(raw: string | null): { seq: number; nonce: string } {
+  if (!raw) return { seq: 0, nonce: "none" };
+  const split = raw.indexOf(":");
+  if (split <= 0) return { seq: 0, nonce: "none" };
+  const seq = Number(raw.slice(0, split));
+  const nonce = raw.slice(split + 1);
+  if (!Number.isSafeInteger(seq) || seq < 0 || !nonce) {
+    return { seq: 0, nonce: "none" };
+  }
+  return { seq, nonce };
+}
+
+function formatGeneration(seq: number, nonce: string): string {
+  return `${seq}:${nonce}`;
+}
+
+function createFallbackLockManager(): StewardSessionAuthorityLockManager {
+  let busy = false;
+  const waiters: Array<() => void> = [];
+  return {
+    request<T>(
+      _name: string,
+      options: { mode: "exclusive"; signal: AbortSignal },
+      callback: () => T | PromiseLike<T>,
+    ): Promise<T> {
+      const run = (): Promise<T> => {
+        if (options.signal.aborted) {
+          return Promise.reject(
+            new StewardSessionAuthorityError(
+              "Steward session authority timed out waiting for the origin lock.",
+              "STEWARD_SESSION_AUTHORITY_TIMEOUT",
+            ),
+          );
+        }
+        busy = true;
+        try {
+          return Promise.resolve(callback()).finally(() => {
+            busy = false;
+            const next = waiters.shift();
+            if (next) next();
+          });
+        } catch (cause) {
+          busy = false;
+          const next = waiters.shift();
+          if (next) next();
+          return Promise.reject(cause);
+        }
+      };
+      if (!busy) return run();
+      return new Promise<T>((resolve, reject) => {
+        waiters.push(() => {
+          run().then(resolve, reject);
+        });
+      });
+    },
+  };
+}
+
+function resolveBrowserLockManager(): StewardSessionAuthorityLockManager | null {
+  if (typeof navigator === "undefined") return null;
+  try {
+    if (globalThis.isSecureContext === false) return null;
+    const browserLocks = navigator.locks;
+    if (!browserLocks?.request) return null;
+    return {
+      request: (name, options, callback) =>
+        browserLocks.request(name, options, callback),
+    };
+  } catch {
+    // error-policy:J4 missing Web Locks is unavailability, not a thrown lock.
+    return null;
+  }
+}
+
+function resolveBrowserStorage(): StewardSessionAuthorityStorage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    // error-policy:J4 storage access denial is unavailability.
+    return null;
+  }
+}
+
+export function isOriginWideStewardSessionAuthorityAvailable(): boolean {
+  return (
+    resolveBrowserLockManager() !== null && resolveBrowserStorage() !== null
+  );
+}
+
+export function createStewardTabSessionAuthorityCoordinator(
+  deps: StewardTabSessionAuthorityDependencies = {},
+): StewardTabSessionAuthorityCoordinator {
+  const tokenKey = deps.tokenKey ?? "steward_session_token";
+  const timeoutMs = deps.timeoutMs ?? STEWARD_SESSION_AUTHORITY_TIMEOUT_MS;
+  const getStorage = (): StewardSessionAuthorityStorage | null =>
+    deps.storage === undefined ? resolveBrowserStorage() : deps.storage;
+  const originWideLocks =
+    deps.lockManager === undefined
+      ? resolveBrowserLockManager()
+      : deps.lockManager;
+  const originWide = originWideLocks !== null && getStorage() !== null;
+  const locks = originWideLocks ?? createFallbackLockManager();
+  let holdDepth = 0;
+  const randomId = deps.randomId ?? randomGenerationNonce;
+
+  const readToken = (): string | null => {
+    const storage = getStorage();
+    if (!storage) return null;
+    return storage.getItem(tokenKey);
+  };
+
+  const readGeneration = (): string => {
+    const storage = getStorage();
+    if (!storage) return EMPTY_GENERATION;
+    try {
+      const raw = storage.getItem(STEWARD_LOGOUT_GENERATION_KEY);
+      const parsed = parseGeneration(raw);
+      return formatGeneration(parsed.seq, parsed.nonce);
+    } catch (cause) {
+      throw new StewardSessionAuthorityError(
+        "Could not read the Steward logout generation.",
+        "STEWARD_SESSION_AUTHORITY_STORAGE_FAILED",
+        { cause },
+      );
+    }
+  };
+
+  const persistGeneration = (value: string): void => {
+    const storage = getStorage();
+    if (!storage) {
+      throw new StewardSessionAuthorityError(
+        "Steward logout generation storage is unavailable.",
+        "STEWARD_SESSION_AUTHORITY_STORAGE_FAILED",
+      );
+    }
+    storage.setItem(STEWARD_LOGOUT_GENERATION_KEY, value);
+    if (storage.getItem(STEWARD_LOGOUT_GENERATION_KEY) !== value) {
+      throw new StewardSessionAuthorityError(
+        "Steward logout generation did not round-trip through storage.",
+        "STEWARD_SESSION_AUTHORITY_STORAGE_FAILED",
+      );
+    }
+  };
+
+  const advanceLogoutGeneration = (): string => {
+    const storage = getStorage();
+    const current = parseGeneration(
+      storage ? storage.getItem(STEWARD_LOGOUT_GENERATION_KEY) : null,
+    );
+    const next = formatGeneration(current.seq + 1, randomId());
+    persistGeneration(next);
+    return next;
+  };
+
+  const readSnapshot = (): StewardSessionAuthoritySnapshot => ({
+    token: readToken(),
+    generation: readGeneration(),
+  });
+
+  const assertExpectation = (expected: {
+    generation: string;
+    token?: string | null;
+    requireTokenAbsent?: boolean;
+  }): StewardSessionAuthoritySnapshot => {
+    const current = readSnapshot();
+    if (current.generation !== expected.generation) {
+      throw new StewardSessionAuthorityError(
+        "Steward session authority was superseded by a newer logout generation.",
+        "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+      );
+    }
+    if (expected.requireTokenAbsent === true && current.token !== null) {
+      throw new StewardSessionAuthorityError(
+        "Steward cookie cleanup was superseded by a newer token.",
+        "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+      );
+    }
+    if (expected.token !== undefined && current.token !== expected.token) {
+      throw new StewardSessionAuthorityError(
+        "Steward session authority was superseded by a different token.",
+        "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+      );
+    }
+    return current;
+  };
+
+  async function runExclusive<T>(
+    options: StewardSessionAuthorityRunOptions<T>,
+  ): Promise<T> {
+    if (options.requireOriginWide && !originWide) {
+      throw new StewardSessionAuthorityError(
+        "Origin-wide Steward session authority is unavailable.",
+        "STEWARD_SESSION_AUTHORITY_UNAVAILABLE",
+      );
+    }
+    const storage = getStorage();
+
+    const captured: {
+      generation: string;
+      token?: string | null;
+      requireTokenAbsent?: boolean;
+    } = {
+      generation: options.expectedGeneration ?? readGeneration(),
+      ...(options.expectedToken !== undefined
+        ? { token: options.expectedToken }
+        : {}),
+      ...(options.requireTokenAbsent ? { requireTokenAbsent: true } : {}),
+    };
+
+    const workTimeoutMs = options.timeoutMs ?? timeoutMs;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      controller.abort();
+    }, workTimeoutMs);
+
+    const runWork = async (): Promise<T> => {
+      if (controller.signal.aborted) {
+        throw new StewardSessionAuthorityError(
+          "Steward session authority timed out.",
+          "STEWARD_SESSION_AUTHORITY_TIMEOUT",
+        );
+      }
+      assertExpectation(captured);
+      const ctx: StewardSessionAuthorityWorkContext = {
+        kind: options.kind,
+        signal: controller.signal,
+        snapshot: readSnapshot(),
+        revalidate: () => assertExpectation(captured),
+        noteToken: (token) => {
+          captured.token = token;
+          if (token === null) captured.requireTokenAbsent = true;
+          else delete captured.requireTokenAbsent;
+        },
+        advanceLogoutGeneration: () => {
+          const next = advanceLogoutGeneration();
+          captured.generation = next;
+          return next;
+        },
+      };
+      const result = await options.work(ctx);
+      assertExpectation(captured);
+      return result;
+    };
+
+    try {
+      if (holdDepth > 0) {
+        holdDepth += 1;
+        try {
+          return await runWork();
+        } finally {
+          holdDepth -= 1;
+        }
+      }
+
+      if (!storage) {
+        holdDepth += 1;
+        try {
+          return await runWork();
+        } finally {
+          holdDepth -= 1;
+        }
+      }
+
+      const result = await locks.request(
+        STEWARD_SESSION_AUTHORITY_LOCK_NAME,
+        { mode: "exclusive", signal: controller.signal },
+        async () => {
+          holdDepth += 1;
+          try {
+            return await runWork();
+          } finally {
+            holdDepth -= 1;
+          }
+        },
+      );
+      return result;
+    } catch (cause) {
+      if (cause instanceof StewardSessionAuthorityError) throw cause;
+      if (controller.signal.aborted) {
+        throw new StewardSessionAuthorityError(
+          "Steward session authority timed out.",
+          "STEWARD_SESSION_AUTHORITY_TIMEOUT",
+          { cause },
+        );
+      }
+      throw cause;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return {
+    originWide,
+    readGeneration,
+    readSnapshot,
+    runExclusive,
+  };
+}
+
+let defaultCoordinator: StewardTabSessionAuthorityCoordinator | null = null;
+
+export function getStewardTabSessionAuthorityCoordinator(): StewardTabSessionAuthorityCoordinator {
+  defaultCoordinator ??= createStewardTabSessionAuthorityCoordinator();
+  return defaultCoordinator;
+}
+
+/** Test-only: replace the process-wide coordinator used by production wrappers. */
+export function resetStewardTabSessionAuthorityCoordinatorForTests(
+  coordinator?: StewardTabSessionAuthorityCoordinator | null,
+): void {
+  defaultCoordinator = coordinator ?? null;
+}
+
+export async function runStewardSessionAuthorityExclusive<T>(
+  options: StewardSessionAuthorityRunOptions<T>,
+): Promise<T> {
+  return getStewardTabSessionAuthorityCoordinator().runExclusive(options);
+}
+
+export function isStewardSessionAuthoritySuperseded(error: unknown): boolean {
+  return (
+    error instanceof StewardSessionAuthorityError &&
+    error.code === "STEWARD_SESSION_AUTHORITY_SUPERSEDED"
+  );
+}

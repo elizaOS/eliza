@@ -47,7 +47,10 @@
 
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import {
+  isOriginWideStewardSessionAuthorityAvailable,
+  isStewardSessionAuthoritySuperseded,
   readStoredStewardToken,
+  runStewardSessionAuthorityExclusive,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { shellLocalStorage } from "../../surface-realm-channel";
@@ -385,6 +388,7 @@ export function shouldAutoBridgeToSso(
   now: number = Date.now(),
 ): boolean {
   if (ssoBridgeRoleForHostname(hostname) !== "exchange") return false;
+  if (!isOriginWideStewardSessionAuthorityAvailable()) return false;
   if (isSsoLoggedOut()) return false;
   return shouldAttemptSsoBridge(now);
 }
@@ -400,6 +404,7 @@ export async function redirectToSsoBridge(
   returnTo: string,
   hostname: string = window.location.hostname,
 ): Promise<boolean> {
+  if (!isOriginWideStewardSessionAuthorityAvailable()) return false;
   const handshake = await createSsoBridgeHandshake();
   if (!handshake) return false;
   const url = buildBridgeMintUrl(
@@ -528,23 +533,34 @@ export async function performSsoExchange(
       return { ok: false, error: "Exchange returned no usable session" };
     }
 
-    await writeStoredStewardToken(token);
-
-    // Same call the login flow makes: sets the HttpOnly steward cookies + the
-    // authed marker for this environment. It stays best-effort for an ordinary
-    // bridge because AuthTokenSync retries. Account-link authority is never
-    // discovered here: a pending Telegram claim remains inert until the user
-    // returns to /get-started and confirms the preview explicitly.
     try {
-      await fetchFn(configuredSessionEndpoint(), {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+      await runStewardSessionAuthorityExclusive({
+        kind: "callback-restore",
+        work: async (ctx) => {
+          ctx.revalidate();
+          await writeStoredStewardToken(token);
+          ctx.noteToken(token);
+          ctx.revalidate();
+          try {
+            await fetchFn(configuredSessionEndpoint(), {
+              method: "POST",
+              credentials: "include",
+              signal: ctx.signal,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token }),
+            });
+          } catch {
+            // error-policy:J6 best-effort cookie sync; the localStorage session is
+            // established and AuthTokenSync re-syncs on its own cadence.
+          }
+          ctx.revalidate();
+        },
       });
-    } catch {
-      // error-policy:J6 best-effort cookie sync; the localStorage session is
-      // established and AuthTokenSync re-syncs on its own cadence.
+    } catch (error) {
+      if (isStewardSessionAuthoritySuperseded(error)) {
+        return { ok: false, error: "Session was superseded in another tab" };
+      }
+      throw error;
     }
 
     clearSsoBridgeAttempt();

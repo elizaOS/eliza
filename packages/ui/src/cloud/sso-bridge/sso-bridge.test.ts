@@ -82,7 +82,22 @@ function clearCookies(): void {
   }
 }
 
+function installOriginWideLocks(): void {
+  Object.defineProperty(globalThis, "isSecureContext", {
+    configurable: true,
+    value: true,
+  });
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: {
+      request: (_name: string, _options: unknown, callback: () => unknown) =>
+        Promise.resolve(callback()),
+    },
+  });
+}
+
 beforeEach(() => {
+  installOriginWideLocks();
   invalidateStewardServerCookieSyncMarker();
   localStorage.clear();
   sessionStorage.clear();
@@ -284,6 +299,14 @@ describe("shouldAutoBridgeToSso", () => {
 
   it("honors the loop guard", () => {
     markSsoBridgeAttempt();
+    expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
+  });
+
+  it("fails closed to ordinary login when origin-wide locks are unavailable", () => {
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: undefined,
+    });
     expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
   });
 });

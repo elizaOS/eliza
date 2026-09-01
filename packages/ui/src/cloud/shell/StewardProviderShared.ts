@@ -5,6 +5,7 @@
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
+  runStewardSessionAuthorityExclusive,
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
   StewardTokenRemovalError,
@@ -127,15 +128,26 @@ export function clearServerStewardSessionCookies(): void {
   // Invalidate before issuing any best-effort DELETE: a rejected request must
   // never leave a proof that can suppress a later session-establishing POST.
   invalidateStewardServerCookieSyncMarker();
-  for (const url of stewardSessionClearUrls()) {
-    // error-policy:J6 best-effort sign-out cookie clear across session hosts;
-    // the local token is already cleared and an expired cookie self-heals.
-    fetch(url, {
-      method: "DELETE",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-    }).catch(() => undefined);
-  }
+  void runStewardSessionAuthorityExclusive({
+    kind: "cookie-delete",
+    requireTokenAbsent: true,
+    work: async (ctx) => {
+      ctx.revalidate();
+      await Promise.all(
+        stewardSessionClearUrls().map((url) =>
+          // error-policy:J6 best-effort sign-out cookie clear across session hosts;
+          // the local token is already cleared and an expired cookie self-heals.
+          fetch(url, {
+            method: "DELETE",
+            credentials: "include",
+            signal: ctx.signal,
+            headers: { "Content-Type": "application/json" },
+          }).catch(() => undefined),
+        ),
+      );
+      ctx.revalidate();
+    },
+  }).catch(() => undefined);
 }
 
 export function readStoredToken(): string | null {
