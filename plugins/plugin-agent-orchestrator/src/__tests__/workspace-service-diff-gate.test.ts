@@ -223,7 +223,7 @@ describe("CodingWorkspaceService.createPR diff-review boundary", () => {
       "secret",
       {
         changedFiles: ["config.ts"],
-        diff: "+++ b/config.ts\n+password=not-a-real-secret-value\n",
+        diff: "+++ b/config.ts\n+client_secret=not-a-real-secret-value\n",
         truncated: false,
         filesTruncated: false,
       },

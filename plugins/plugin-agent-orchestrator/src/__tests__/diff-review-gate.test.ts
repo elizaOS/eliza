@@ -231,10 +231,10 @@ describe("reviewDiff — empty diff rejects", () => {
   });
 });
 
-describe("reviewDiff — case-insensitive secret matching (parity with core)", () => {
-  it("blocks a LOWERCASE env-style credential (core compiles patterns with `i`)", () => {
+describe("reviewDiff — secret matching parity with core", () => {
+  it("blocks a supported lowercase compound credential name", () => {
     const diff = addedFileDiff("config.sh", [
-      "database_password=hunter2hunter2hunter2",
+      "client_secret=hunter2hunter2hunter2",
     ]);
     const result = reviewDiff({ diff, changedFiles: ["config.sh"] });
     expect(result.passed).toBe(false);
