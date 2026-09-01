@@ -26,6 +26,11 @@ export const SUBSCRIPTION_ALLOWANCE_CONFLICT = "SUBSCRIPTION_ALLOWANCE_CONFLICT"
 export const SUBSCRIPTION_ALLOWANCE_NOT_FOUND = "SUBSCRIPTION_ALLOWANCE_NOT_FOUND";
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
 
+/** Treats the exact expiry instant as expired for both reserve and settlement decisions. */
+export function isAllowanceExpired(databaseNow: Date, expiresAt: Date): boolean {
+  return databaseNow.getTime() >= expiresAt.getTime();
+}
+
 function conflict(message: string, context: Record<string, unknown>): never {
   throw new ElizaError(message, {
     code: SUBSCRIPTION_ALLOWANCE_CONFLICT,
@@ -189,7 +194,7 @@ export class SubscriptionAllowanceRepository {
       return { ...replay, period, replayed: true, databaseNow };
     }
     const period = await lockPeriod(tx, input.organizationId, input.periodId);
-    if (period.state !== "open" || databaseNow.getTime() >= period.expires_at.getTime()) {
+    if (period.state !== "open" || isAllowanceExpired(databaseNow, period.expires_at)) {
       conflict("Allowance is expired at post-lock database time", { periodId: period.id });
     }
     const available = moneyToMicros(period.available_amount, "period.availableAmount");
@@ -316,7 +321,7 @@ export class SubscriptionAllowanceRepository {
         reservationId: locked.reservation.id,
       });
     const released = reserved - actual;
-    const expiredRelease = databaseNow.getTime() >= period.expires_at.getTime();
+    const expiredRelease = isAllowanceExpired(databaseNow, period.expires_at);
     const availableBefore = moneyToMicros(period.available_amount, "period.availableAmount");
     const reservedBefore = moneyToMicros(period.reserved_amount, "period.reservedAmount");
     const settledBefore = moneyToMicros(period.settled_amount, "period.settledAmount");
