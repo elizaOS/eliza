@@ -2474,17 +2474,17 @@
       "breakpoints": true
     },
     {
-      "idx": 350,
+      "idx": 353,
       "version": "7",
-      "when": 1794254400058,
-      "tag": "0367_agent_sandbox_replacement_restore_locator",
+      "when": 1794254400061,
+      "tag": "0370_agent_sandbox_replacement_restore_locator",
       "breakpoints": true
     },
     {
-      "idx": 351,
+      "idx": 354,
       "version": "7",
-      "when": 1794254400059,
-      "tag": "0368_agent_vault_key_seed_receipts_per_replacement",
+      "when": 1794254400062,
+      "tag": "0371_agent_vault_key_seed_receipts_per_replacement",
       "breakpoints": true
     }
   ]

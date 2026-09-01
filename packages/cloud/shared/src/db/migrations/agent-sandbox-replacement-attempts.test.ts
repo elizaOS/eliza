@@ -18,8 +18,8 @@ const migrationUrls = [
   "0326_agent_sandbox_replacement_attempt_identity_guard.sql",
   "0327_agent_sandbox_replacement_attempt_locator_guard.sql",
   "0328_agent_sandbox_replacement_attempt_state_guard.sql",
-  "0367_agent_sandbox_replacement_restore_locator.sql",
-  "0368_agent_vault_key_seed_receipts_per_replacement.sql",
+  "0370_agent_sandbox_replacement_restore_locator.sql",
+  "0371_agent_vault_key_seed_receipts_per_replacement.sql",
 ].map((migration) => new URL(`./${migration}`, import.meta.url));
 const journalUrl = new URL("./meta/_journal.json", import.meta.url);
 const databases: PGlite[] = [];
@@ -517,14 +517,14 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0321-0328 and 0367-0368 agent sandbox replacement attempts", () => {
+describe("0321-0328 and 0370-0371 agent sandbox replacement attempts", () => {
   test("occupies one ordered journal range and matches the merged schema surface", async () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
     };
     expect(journal.entries.at(-1)).toMatchObject({
-      idx: 351,
-      tag: "0368_agent_vault_key_seed_receipts_per_replacement",
+      idx: 354,
+      tag: "0371_agent_vault_key_seed_receipts_per_replacement",
     });
     const expectedTags = migrationUrls.map(migrationTag);
     const initialRangeTags = expectedTags.slice(0, 8);
