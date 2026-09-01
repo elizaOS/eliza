@@ -1,10 +1,7 @@
 /** Tests the deployment-time Telegram identity gate with no live provider calls. */
 
 import { describe, expect, mock, test } from "bun:test";
-import {
-  TelegramIdentityVerificationError,
-  verifyTelegramBotIdentity,
-} from "../verify-telegram-bot-identity.mjs";
+import { verifyTelegramBotIdentity } from "../verify-telegram-bot-identity.mjs";
 
 const expected = {
   botToken: "123456789:test-credential",
@@ -12,6 +9,17 @@ const expected = {
   expectedBotUsername: "ElizaTestBot",
   webhookSecret: "test-webhook-secret",
 };
+
+async function captureFailure<T>(promise: Promise<T>): Promise<unknown> {
+  try {
+    await promise;
+    throw new Error("Expected Telegram identity verification to reject");
+  } catch (error) {
+    // error-policy:J1 the test assertion boundary observes the exact
+    // deployment-preflight rejection instead of suppressing it.
+    return error;
+  }
+}
 
 function providerIdentity(overrides: Record<string, unknown> = {}): Response {
   return Response.json({
@@ -42,10 +50,13 @@ describe("verifyTelegramBotIdentity", () => {
       { ...expected, webhookSecret: "" },
       { ...expected, botToken: "987654321:test-credential" },
     ]) {
-      const error = await verifyTelegramBotIdentity(input, {
-        fetchImpl: provider,
-      }).catch((failure) => failure);
-      expect(error).toBeInstanceOf(TelegramIdentityVerificationError);
+      const error = await captureFailure(
+        verifyTelegramBotIdentity(input, { fetchImpl: provider }),
+      );
+      expect(error).toMatchObject({
+        code: "TELEGRAM_IDENTITY_VERIFICATION_FAILED",
+        name: "TelegramIdentityVerificationError",
+      });
     }
     expect(provider).not.toHaveBeenCalled();
   });
@@ -55,10 +66,14 @@ describe("verifyTelegramBotIdentity", () => {
       { id: 987654321 },
       { username: "AnotherManagedBot" },
     ]) {
-      const error = await verifyTelegramBotIdentity(expected, {
-        fetchImpl: mock(async () => providerIdentity(result)),
-      }).catch((failure) => failure);
+      const error = await captureFailure(
+        verifyTelegramBotIdentity(expected, {
+          fetchImpl: mock(async () => providerIdentity(result)),
+        }),
+      );
       expect(error).toMatchObject({
+        code: "TELEGRAM_IDENTITY_VERIFICATION_FAILED",
+        context: { reason: "identity_mismatch" },
         name: "TelegramIdentityVerificationError",
         reason: "identity_mismatch",
       });
@@ -66,17 +81,19 @@ describe("verifyTelegramBotIdentity", () => {
   });
 
   test("classifies provider failure without exposing credentials or payload", async () => {
-    const error = await verifyTelegramBotIdentity(expected, {
-      fetchImpl: mock(async () =>
-        Response.json(
-          {
-            ok: false,
-            description: "private-provider-payload",
-          },
-          { status: 503 },
+    const error = await captureFailure(
+      verifyTelegramBotIdentity(expected, {
+        fetchImpl: mock(async () =>
+          Response.json(
+            {
+              ok: false,
+              description: "private-provider-payload",
+            },
+            { status: 503 },
+          ),
         ),
-      ),
-    }).catch((failure) => failure);
+      }),
+    );
 
     expect(error).toMatchObject({
       message: "Telegram bot identity verification failed",

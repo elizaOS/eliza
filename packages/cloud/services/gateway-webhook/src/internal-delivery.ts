@@ -194,6 +194,8 @@ export async function deliverInternalMessage(
     try {
       await requireCanonicalTelegramIdentity(config);
     } catch (error) {
+      // error-policy:J1 the authenticated delivery boundary returns a
+      // value-safe failure before connector-account or provider work.
       return telegramIdentityNotReadyResponse(error);
     }
   }

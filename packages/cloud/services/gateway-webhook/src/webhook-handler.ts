@@ -567,6 +567,8 @@ export async function handleWebhook(
     try {
       await requireCanonicalTelegramIdentity(config);
     } catch (error) {
+      // error-policy:J1 the authenticated provider boundary returns a
+      // value-safe failure before parsing, deduplication, or provider work.
       return telegramIdentityNotReadyResponse(error);
     }
   }

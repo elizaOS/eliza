@@ -90,6 +90,8 @@ export function registerTelegramIdentityReadinessRoute(app: Hono): void {
         headers: JSON_HEADERS,
       });
     } catch (error) {
+      // error-policy:J1 the public readiness boundary exposes only the bounded
+      // attestation classification.
       return telegramIdentityNotReadyResponse(error);
     }
   });
