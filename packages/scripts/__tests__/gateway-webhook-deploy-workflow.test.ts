@@ -341,7 +341,7 @@ function assertExactForwarderAuthReadinessProbe(run: string): void {
     "--data '{}'",
     "/webhook/eliza-app/telegram",
   ]) {
-    if (forwarderBlock.includes(forbidden)) {
+    if (run.includes(forbidden)) {
       throw new Error("forwarder readiness probe entered a forbidden path");
     }
   }
@@ -789,6 +789,14 @@ describe("protected gateway-webhook deployment workflow", () => {
         verifyRun.replace(
           '--output "$forwarder_probe_path"',
           '--header X-Eliza-Webhook-Forwarder-Secret:guess --output "$forwarder_probe_path"',
+        ),
+      ),
+    ).toThrow("forwarder readiness probe entered a forbidden path");
+    expect(() =>
+      assertExactForwarderAuthReadinessProbe(
+        verifyRun.replace(
+          '--output "$telegram_probe_path"',
+          '--request POST --output "$telegram_probe_path"',
         ),
       ),
     ).toThrow("forwarder readiness probe entered a forbidden path");
