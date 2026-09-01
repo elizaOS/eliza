@@ -8,7 +8,7 @@
 // real state-changing interaction (channel/kind/status filters, calendar day
 // selection and month navigation). This is the interaction owner that closes
 
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -45,9 +45,7 @@ async function expectTopmostAtCenter(
   ).toBe(true);
 }
 
-test("calendar decomposed view: responsive modes and event creation", async ({
-  page,
-}) => {
+async function openPopulatedCalendar(page: Page): Promise<void> {
   await openAppPath(page, "/calendar");
   await expect(page.getByTestId("lifeops-calendar-section")).toBeVisible({
     timeout: 60_000,
@@ -55,6 +53,12 @@ test("calendar decomposed view: responsive modes and event creation", async ({
   await expect(page.getByText("Design sync").first()).toBeVisible({
     timeout: 15_000,
   });
+}
+
+test("calendar decomposed view: responsive modes and event creation", async ({
+  page,
+}) => {
+  await openPopulatedCalendar(page);
 
   const monthMode = page.getByRole("button", { name: "Month", exact: true });
   await expectTopmostAtCenter(monthMode, "Calendar Month mode");
@@ -67,6 +71,45 @@ test("calendar decomposed view: responsive modes and event creation", async ({
   await expect(page.getByTestId("event-editor-drawer")).toBeVisible({
     timeout: 15_000,
   });
+  await expect(
+    page.getByRole("button", { name: "Create event" }),
+  ).toBeVisible();
+});
+
+test("calendar mobile layout keeps navigation and editor inside 390px viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPopulatedCalendar(page);
+
+  const dayMode = page.getByRole("button", { name: "Day", exact: true });
+  await expectTopmostAtCenter(dayMode, "Calendar Day mode");
+  await dayMode.click();
+  await expect(dayMode).toHaveAttribute("aria-pressed", "true");
+
+  const newEvent = page.getByTestId("lifeops-calendar-new-event");
+  await expectTopmostAtCenter(newEvent, "Calendar New event");
+  await expect(newEvent).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Previous" })).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Today" })).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Next" })).toBeInViewport();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+    "Calendar mobile shell must not introduce page-level horizontal overflow",
+  ).toBe(390);
+
+  await newEvent.click();
+  const editor = page.getByTestId("event-editor-drawer");
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  const editorBounds = await editor.boundingBox();
+  expect(editorBounds).not.toBeNull();
+  expect(editorBounds?.x).toBeGreaterThanOrEqual(0);
+  expect(
+    (editorBounds?.x ?? 0) + (editorBounds?.width ?? 0),
+  ).toBeLessThanOrEqual(390);
+  await expect(page.getByLabel("Event title")).toBeInViewport();
+  await expect(page.getByLabel("Start time")).toBeInViewport();
+  await expect(page.getByLabel("End time")).toBeInViewport();
   await expect(
     page.getByRole("button", { name: "Create event" }),
   ).toBeVisible();
