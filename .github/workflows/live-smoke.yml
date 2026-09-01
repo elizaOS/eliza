@@ -712,6 +712,9 @@ jobs:
               organization_id,
               replacement_cleanup_created_at,
               replacement_cleanup_sandbox_id IS NOT NULL AS cleanup_fence_present,
+              deletion_attempt_id IS NOT NULL AS deletion_attempt_present,
+              lifecycle_job_id IS NOT NULL AS lifecycle_job_present,
+              lifecycle_execution_generation IS NOT NULL AS lifecycle_generation_present,
               (
                 COALESCE(
                   replacement_cleanup_container_id,
@@ -724,6 +727,24 @@ jobs:
               ) AS inspectable_candidate_present
             FROM agent_sandboxes
             WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
+          ),
+          latest_provision AS (
+            SELECT
+              jobs.id,
+              jobs.execution_generation IS NOT NULL AS execution_generation_present,
+              jobs.execution_quiesced_at IS NOT NULL AS execution_quiesced_present,
+              EXISTS (
+                SELECT 1
+                FROM job_execution_leases
+                WHERE job_execution_leases.job_id = jobs.id
+                  AND job_execution_leases.execution_generation = jobs.execution_generation
+                  AND job_execution_leases.expires_at > NOW()
+              ) AS live_execution_lease_present
+            FROM jobs
+            INNER JOIN target ON target.id::text = jobs.agent_id
+            WHERE jobs.type = 'agent_provision'
+            ORDER BY jobs.created_at DESC, jobs.id DESC
+            LIMIT 1
           ),
           eligible AS (
             SELECT candidate.replacement_cleanup_created_at
@@ -758,6 +779,9 @@ jobs:
             SELECT
               target.replacement_cleanup_created_at,
               target.cleanup_fence_present,
+              target.deletion_attempt_present,
+              target.lifecycle_job_present,
+              target.lifecycle_generation_present,
               target.inspectable_candidate_present,
               target.replacement_cleanup_created_at <= NOW() - INTERVAL '30 minutes'
                 AS grace_elapsed,
@@ -793,6 +817,12 @@ jobs:
             'targetCount', (SELECT count(*) FROM target),
             'agentId', (SELECT id FROM target),
             'cleanupFencePresent', COALESCE((SELECT cleanup_fence_present FROM facts), false),
+            'deletionAttemptPresent', COALESCE((SELECT deletion_attempt_present FROM facts), false),
+            'lifecycleJobPresent', COALESCE((SELECT lifecycle_job_present FROM facts), false),
+            'lifecycleGenerationPresent', COALESCE((SELECT lifecycle_generation_present FROM facts), false),
+            'provisionExecutionGenerationPresent', COALESCE((SELECT execution_generation_present FROM latest_provision), false),
+            'provisionExecutionQuiescedPresent', COALESCE((SELECT execution_quiesced_present FROM latest_provision), false),
+            'provisionLiveExecutionLeasePresent', COALESCE((SELECT live_execution_lease_present FROM latest_provision), false),
             'inspectableCandidatePresent', COALESCE((SELECT inspectable_candidate_present FROM facts), false),
             'cleanupCreatedAt', (SELECT replacement_cleanup_created_at FROM facts),
             'graceElapsed', COALESCE((SELECT grace_elapsed FROM facts), false),
@@ -804,7 +834,7 @@ jobs:
           SQL
           } | sed '/^[[:space:]]*$/d' | head -n 1)"
           jq -e '
-            keys == ["activeExclusiveJobs", "agentId", "cleanupCreatedAt", "cleanupFencePresent", "graceElapsed", "inspectableCandidatePresent", "olderEligibleFences", "targetCount", "totalEligibleFences"] and
+            keys == ["activeExclusiveJobs", "agentId", "cleanupCreatedAt", "cleanupFencePresent", "deletionAttemptPresent", "graceElapsed", "inspectableCandidatePresent", "lifecycleGenerationPresent", "lifecycleJobPresent", "olderEligibleFences", "provisionExecutionGenerationPresent", "provisionExecutionQuiescedPresent", "provisionLiveExecutionLeasePresent", "targetCount", "totalEligibleFences"] and
             .targetCount == 1 and
             (.agentId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")) and
             (.cleanupFencePresent | type == "boolean") and
@@ -818,6 +848,12 @@ jobs:
             ) and
             (.graceElapsed | type == "boolean") and
             (.inspectableCandidatePresent | type == "boolean") and
+            (.deletionAttemptPresent | type == "boolean") and
+            (.lifecycleJobPresent | type == "boolean") and
+            (.lifecycleGenerationPresent | type == "boolean") and
+            (.provisionExecutionGenerationPresent | type == "boolean") and
+            (.provisionExecutionQuiescedPresent | type == "boolean") and
+            (.provisionLiveExecutionLeasePresent | type == "boolean") and
             (.activeExclusiveJobs | type == "number") and
             (.olderEligibleFences | type == "number") and
             (.totalEligibleFences | type == "number")
@@ -834,6 +870,12 @@ jobs:
             "- cleanup fence present: `" + (.cleanupFencePresent | tostring) + "`\n" +
             "- cleanup fence created: `" + (.cleanupCreatedAt // "none") + "`\n" +
             "- inspectable candidate present: `" + (.inspectableCandidatePresent | tostring) + "`\n" +
+            "- deletion attempt present: `" + (.deletionAttemptPresent | tostring) + "`\n" +
+            "- lifecycle job present: `" + (.lifecycleJobPresent | tostring) + "`\n" +
+            "- lifecycle generation present: `" + (.lifecycleGenerationPresent | tostring) + "`\n" +
+            "- provision execution generation present: `" + (.provisionExecutionGenerationPresent | tostring) + "`\n" +
+            "- provision execution quiesced: `" + (.provisionExecutionQuiescedPresent | tostring) + "`\n" +
+            "- provision live execution lease: `" + (.provisionLiveExecutionLeasePresent | tostring) + "`\n" +
             "- grace elapsed: `" + (.graceElapsed | tostring) + "`\n" +
             "- active exclusive jobs: `" + (.activeExclusiveJobs | tostring) + "`\n" +
             "- older eligible fences: `" + (.olderEligibleFences | tostring) + "`\n" +
