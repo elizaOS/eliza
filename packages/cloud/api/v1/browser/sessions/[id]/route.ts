@@ -23,7 +23,9 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 async function handleGET(c: AppContext, context: RouteContext<{ id: string }>) {
   try {
-    const caller = await requireGenerativeRouteCaller(c);
+    const caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: true,
+    });
     const { id } = await context.params;
     const session = await getHostedBrowserSession(id, {
       apiKeyId: caller.apiKeyId,
@@ -44,7 +46,9 @@ async function handleDELETE(
   context: RouteContext<{ id: string }>,
 ) {
   try {
-    const caller = await requireGenerativeRouteCaller(c);
+    const caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: true,
+    });
     const { id } = await context.params;
     const result = await deleteHostedBrowserSession(id, {
       apiKeyId: caller.apiKeyId,

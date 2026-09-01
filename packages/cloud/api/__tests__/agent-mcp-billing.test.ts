@@ -78,6 +78,11 @@ const admitOrganizationInference = mock(
     };
   },
 );
+const inferenceCredential = {
+  kind: "api_key" as const,
+  credentialId: "key-1",
+  userId: USER_ID,
+};
 class InsufficientCreditsError extends Error {
   constructor(
     public readonly required: number,
@@ -97,11 +102,13 @@ mock.module("@/lib/services/organization-inference-admission", () => ({
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   getGenerativeExecutionContext: () => undefined,
+  resolveInferenceCredentialAdmissionDenial: () => null,
   requireGenerativeRouteCaller: async () => ({
     user: { id: USER_ID, organization_id: ORG_ID },
     apiKeyId: null,
     appScopeId: null,
     authSource: "compatibility",
+    credential: inferenceCredential,
   }),
 }));
 
@@ -138,6 +145,7 @@ function textStream(text: string) {
 function makeContext() {
   return {
     env: {},
+    get: () => undefined,
     json: (body: unknown, status?: number) =>
       Response.json(body, { status: status ?? 200 }),
   };
@@ -184,7 +192,11 @@ async function callChat() {
       arguments: { message: "hello", model: "gpt-5-mini" },
     },
     "rpc-1",
-    { id: USER_ID, organization_id: ORG_ID },
+    {
+      id: USER_ID,
+      organization_id: ORG_ID,
+      credential: inferenceCredential,
+    },
   );
 }
 
@@ -224,6 +236,9 @@ describe("Agent MCP billing", () => {
     const response = await callChat();
 
     expect(response.status).toBe(200);
+    expect(admitOrganizationInference).toHaveBeenCalledWith(
+      expect.objectContaining({ credential: inferenceCredential }),
+    );
     expect(reserve).toHaveBeenCalledTimes(1);
     const reserveParams = reserve.mock.calls[0]?.[0] as { amount: number };
     expect(reserveParams).toMatchObject({

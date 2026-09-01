@@ -40,6 +40,7 @@ async function __hono_POST(
   const config = rpcConfigForChain(normalized);
   const caller = await requireGenerativeRouteCaller(c, {
     rateLimitEndpoint: "standard",
+    deferStrongCredentialCheck: true,
   });
   const executionCtx = getGenerativeExecutionContext(c);
   if (executionCtx && !caller.admissionSnapshot) {
@@ -57,6 +58,7 @@ async function __hono_POST(
       ...(caller.apiKeyId ? { apiKey: { id: caller.apiKeyId } } : {}),
     },
     admissionSnapshot: caller.admissionSnapshot,
+    credential: caller.credential,
     executionCtx,
     requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
   });

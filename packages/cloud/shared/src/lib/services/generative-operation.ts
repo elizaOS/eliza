@@ -6,6 +6,7 @@
 import { logger } from "../utils/logger";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
+import type { InferenceCredentialCheck } from "./inference-credential-revocation";
 import { admitOrganizationInference } from "./organization-inference-admission";
 
 export interface GenerativeOperationContext {
@@ -14,6 +15,8 @@ export interface GenerativeOperationContext {
   apiKeyId: string | null;
   requestId: string;
   admissionSnapshot?: InferenceAdmissionSnapshot;
+  /** Strong standing proof consumed by the operation's admission lease. */
+  credential?: InferenceCredentialCheck;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
 
@@ -104,6 +107,7 @@ async function admitFlatCost(
         platformMarkup: 0,
       },
       admissionSnapshot: context.admissionSnapshot,
+      ...(context.credential ? { credential: context.credential } : {}),
       executionCtx: context.executionCtx,
     });
   } catch (error) {

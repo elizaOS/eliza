@@ -86,6 +86,11 @@ const admitOrganizationInference = mock(
     };
   },
 );
+const inferenceCredential = {
+  kind: "api_key" as const,
+  credentialId: "key-1",
+  userId: USER_ID,
+};
 const charactersGetById = mock();
 class InsufficientCreditsError extends Error {
   constructor(
@@ -106,11 +111,13 @@ mock.module("@/lib/services/organization-inference-admission", () => ({
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   getGenerativeExecutionContext: () => undefined,
+  resolveInferenceCredentialAdmissionDenial: () => null,
   requireGenerativeRouteCaller: async () => ({
     user: { id: USER_ID, organization_id: ORG_ID },
     apiKeyId: null,
     appScopeId: null,
     authSource: "compatibility",
+    credential: inferenceCredential,
   }),
 }));
 
@@ -322,6 +329,9 @@ describe("Agent A2A billing", () => {
     };
 
     expect(response.status).toBe(200);
+    expect(admitOrganizationInference).toHaveBeenCalledWith(
+      expect.objectContaining({ credential: inferenceCredential }),
+    );
     expect(reconcile).toHaveBeenCalledTimes(1);
     expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
     expect(recordCreatorEarnings).toHaveBeenCalledWith(

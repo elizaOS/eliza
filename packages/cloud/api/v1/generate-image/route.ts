@@ -31,8 +31,11 @@ export async function handleGenerateImagePOST(
   options: { requiredAppId?: string } = {},
 ): Promise<Response> {
   try {
-    const { user, apiKeyId, admissionSnapshot, appScopeId } =
-      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
+    const { user, apiKeyId, admissionSnapshot, credential, appScopeId } =
+      await requireGenerativeRouteCaller(c, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: true,
+      });
     const executionCtx = getGenerativeExecutionContext(c);
     let inferenceApp: Awaited<ReturnType<typeof appsService.getById>> | null =
       null;
@@ -113,6 +116,7 @@ export async function handleGenerateImagePOST(
             affiliateCode: context.affiliateCode,
             executionCtx,
             admissionSnapshot,
+            credential,
             metadata: {
               endpoint: "apps.generate-image",
               numImages: request.numImages,
@@ -126,6 +130,7 @@ export async function handleGenerateImagePOST(
           apiKeyId,
           cost,
           admissionSnapshot,
+          credential,
         });
         return { kind: "organization" as const, admission };
       },

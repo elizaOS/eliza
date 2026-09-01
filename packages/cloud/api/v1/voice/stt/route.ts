@@ -465,11 +465,12 @@ async function __hono_POST(c: AppContext) {
     }
     request = sizeCheckedRequest;
 
-    const { user, apiKeyId, admissionSnapshot } =
+    const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         awaitWarmingMs: 1500,
+        deferStrongCredentialCheck: true,
       });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;
@@ -591,6 +592,7 @@ async function __hono_POST(c: AppContext) {
           apiKeyId,
           cost: sttCost,
           admissionSnapshot,
+          credential,
         });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
@@ -1191,6 +1193,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: sttCost,
         admissionSnapshot,
+        credential,
       });
       reservation = admission.reservation;
       settleUnknown = admission.settleUnknown;

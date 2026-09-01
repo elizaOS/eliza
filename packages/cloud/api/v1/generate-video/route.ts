@@ -167,8 +167,11 @@ app.post("/", async (c) => {
   let activeBillingRequestId: string | null = null;
 
   try {
-    const { user, apiKeyId, admissionSnapshot } =
-      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
+    const { user, apiKeyId, admissionSnapshot, credential } =
+      await requireGenerativeRouteCaller(c, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: true,
+      });
     const request = videoRequestSchema.parse(await c.req.json());
     const requestedDefinition = request.model
       ? getSupportedVideoModelDefinition(request.model)
@@ -284,6 +287,7 @@ app.post("/", async (c) => {
           cost: candidate.cost,
           idempotencyKey: candidate.billingContext.requestId ?? undefined,
           admissionSnapshot,
+          credential,
         });
       } catch (error) {
         // error-policy:J1 the HTTP boundary translates insufficient-credit

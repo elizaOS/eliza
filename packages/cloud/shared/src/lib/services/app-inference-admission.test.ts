@@ -209,17 +209,24 @@ beforeEach(() => {
 
 describe("admitAppInferenceCacheOnly", () => {
   test("uses the Durable Object lease as the sole pre-dispatch WAL", async () => {
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
     const pending = deferred<Awaited<ReturnType<typeof reserveImpl>>>();
     reserveImpl = () => pending.promise;
     const background: Promise<unknown>[] = [];
-    const admission = await admitAppInferenceCacheOnly(
-      params({ waitUntil: (promise) => background.push(promise) }),
-    );
+    const admission = await admitAppInferenceCacheOnly({
+      ...params({ waitUntil: (promise) => background.push(promise) }),
+      credential,
+    });
     const leaseParams = acquireInferenceAdmissionLease.mock.calls.at(-1)?.[0] as
       | {
           requestId: string;
           estimatedCostUsd: number;
           recovery: unknown;
+          credential: unknown;
         }
       | undefined;
     if (!leaseParams) throw new Error("expected inference admission lease");
@@ -227,6 +234,7 @@ describe("admitAppInferenceCacheOnly", () => {
     expect(admission.mode).toBe("deferred_app_reservation");
     expect(admission.estimatedTotalCostUsd).toBeCloseTo(1.2);
     expect(leaseParams.estimatedCostUsd).toBeCloseTo(1.2);
+    expect(leaseParams.credential).toBe(credential);
     expect(leaseParams.recovery).toEqual({
       version: 1,
       kind: "app",

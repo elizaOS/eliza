@@ -149,8 +149,11 @@ app.post("/", async (c) => {
   let chargeSettled = false;
 
   try {
-    const { user, apiKeyId, admissionSnapshot } =
-      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
+    const { user, apiKeyId, admissionSnapshot, credential } =
+      await requireGenerativeRouteCaller(c, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: true,
+      });
     const decodedRawBody = await decodeRequestJson(c.req);
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is an explicit invalid request.
@@ -286,6 +289,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost,
         admissionSnapshot,
+        credential,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {

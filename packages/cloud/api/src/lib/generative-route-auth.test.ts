@@ -39,6 +39,17 @@ class AiPricingCacheUnavailableError extends Error {
   }
 }
 
+class InferenceCredentialRevokedError extends Error {
+  constructor(readonly reason: string) {
+    super(`Inference credential rejected: ${reason}`);
+    this.name = "InferenceCredentialRevokedError";
+  }
+}
+
+function inferenceCredentialRevocationReason(reason: string) {
+  return reason === "credential_revoked" ? "credential_inactive" : reason;
+}
+
 const resolveInferenceAuthContext = vi.fn();
 const requireAuthOrApiKeyWithOrg = vi.fn();
 const requireUserOrApiKeyWithOrg = vi.fn();
@@ -55,6 +66,10 @@ vi.mock("@/lib/services/ai-pricing/cache", () => ({
 }));
 vi.mock("@/lib/services/inference-auth-context", () => ({
   resolveInferenceAuthContext,
+}));
+vi.mock("@/lib/services/inference-credential-revocation", () => ({
+  InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
 }));
 vi.mock("@/lib/auth", () => ({ requireAuthOrApiKeyWithOrg }));
 vi.mock("@/lib/auth/workers-hono-auth", () => ({
@@ -81,6 +96,10 @@ if (typeof Bun !== "undefined") {
   }));
   bunTest.mock.module("@/lib/services/inference-auth-context", () => ({
     resolveInferenceAuthContext,
+  }));
+  bunTest.mock.module("@/lib/services/inference-credential-revocation", () => ({
+    InferenceCredentialRevokedError,
+    inferenceCredentialRevocationReason,
   }));
   bunTest.mock.module("@/lib/auth", () => ({ requireAuthOrApiKeyWithOrg }));
   bunTest.mock.module("@/lib/auth/workers-hono-auth", () => ({
@@ -110,8 +129,10 @@ const {
   admitFlatGenerativeOperation,
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,
+  getGenerativeOperationContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
+  resolveInferenceCredentialAdmissionDenial,
   resolveInferenceAuthStandingDenial,
 } = await import("./generative-route-auth");
 
@@ -285,6 +306,34 @@ describe("getGenerativePricingCacheOptions", () => {
 });
 
 describe("asGenerativeCacheApiError", () => {
+  test("maps a fused credential refusal without losing the standing reason", () => {
+    const error = new InferenceCredentialRevokedError("credential_revoked");
+    const denial = resolveInferenceCredentialAdmissionDenial(error, {
+      route: "generate-image",
+      traceId: "trace-1",
+    });
+    const mapped = asGenerativeCacheApiError(error);
+
+    expect(denial).toEqual({
+      status: 401,
+      type: "authentication_error",
+      code: "authentication_required",
+      message: "API key is inactive",
+      reason: "credential_inactive",
+    });
+    expect(mapped).toBeInstanceOf(ApiError);
+    expect(mapped?.status).toBe(401);
+    expect(mapped?.details).toEqual({ reason: "credential_inactive" });
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[InferenceAuth] blocked provider dispatch at route boundary",
+      expect.objectContaining({
+        route: "generate-image",
+        traceId: "trace-1",
+        reason: "credential_inactive",
+      }),
+    );
+  });
+
   test("maps AiPricingCacheWarmingError to a retryable 503", () => {
     const mapped = asGenerativeCacheApiError(new AiPricingCacheWarmingError());
     expect(mapped).toBeInstanceOf(ApiError);
@@ -529,6 +578,33 @@ describe("admitFlatGenerativeOperation", () => {
       flatCost: FLAT_COST,
       admissionSnapshot: snapshot,
     });
+  });
+
+  test("threads the exact deferred credential into Worker flat admission", async () => {
+    const { c, executionCtx } = workerContext();
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    admitOrganizationInference.mockResolvedValueOnce({
+      mode: "durable_object_debit",
+      settle: async () => null,
+      settleUnknown: async () => null,
+    });
+
+    await admitFlatGenerativeOperation({
+      c: c as never,
+      context: billingContext(),
+      apiKeyId: "key-1",
+      cost: FLAT_COST,
+      admissionSnapshot: admissionSnapshot(),
+      credential,
+    });
+
+    expect(admitOrganizationInference).toHaveBeenCalledWith(
+      expect.objectContaining({ executionCtx, credential }),
+    );
   });
 
   test("wraps Inference Warming failures from Worker admission as 503", async () => {
@@ -785,6 +861,41 @@ describe("requireGenerativeRouteCaller", () => {
     expect(store.get("apiKeyId")).toBe("key-1");
     expect(caller.apiKeyId).toBe("key-1");
     expect(caller.appScopeId).toBe("app-1");
+  });
+
+  test("defers only for a declared admission consumer and preserves the exact credential", async () => {
+    const { c } = workerContext({ requestId: "req-fused" });
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      ...apiKeyAuthorized,
+      credential,
+    });
+
+    const caller = await requireGenerativeRouteCaller(c as never, {
+      deferStrongCredentialCheck: true,
+    });
+    const operationContext = getGenerativeOperationContext(c as never, caller);
+
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      deferStrongCredentialCheck: true,
+    });
+    expect(caller.credential).toBe(credential);
+    expect(operationContext.credential).toBe(credential);
+  });
+
+  test("keeps standalone validation when no admission consumer is declared", async () => {
+    const { c } = workerContext();
+    resolveInferenceAuthContext.mockResolvedValueOnce(apiKeyAuthorized);
+
+    await requireGenerativeRouteCaller(c as never);
+
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).not.toHaveProperty(
+      "deferStrongCredentialCheck",
+    );
   });
 
   test("returns null appScopeId when the field is absent from ctx", async () => {

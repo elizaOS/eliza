@@ -12,6 +12,7 @@ import { withRateLimit } from "../../middleware/rate-limit";
 import { logger } from "../../utils/logger";
 import { creditsService, InsufficientCreditsError } from "../credits";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
+import type { InferenceCredentialCheck } from "../inference-credential-revocation";
 import { admitOrganizationInference } from "../organization-inference-admission";
 import { usageService } from "../usage";
 import { PricingNotFoundError } from "./pricing";
@@ -37,6 +38,7 @@ export interface ProxyCombinedAdmission {
     apiKey?: { id: string };
   };
   admissionSnapshot?: InferenceAdmissionSnapshot;
+  credential?: InferenceCredentialCheck;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   requestId: string;
 }
@@ -254,6 +256,7 @@ export function createHandler(
           },
           executionCtx: combinedAdmission.executionCtx,
           admissionSnapshot: combinedAdmission.admissionSnapshot,
+          ...(combinedAdmission.credential ? { credential: combinedAdmission.credential } : {}),
         });
       } else {
         const reservation = await creditsService.reserve({

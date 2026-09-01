@@ -9,25 +9,26 @@ let settleUnknown = mock(async () => {
   events.push("settleUnknown");
   return null;
 });
+const admitOrganizationInference = mock(async () => {
+  events.push("admit");
+  if (admissionError) throw admissionError;
+  return {
+    mode: "cache_admission",
+    affiliateAttribution: null,
+    markProviderDispatched: mock(async () => {
+      events.push("mark");
+    }),
+    settle: mock(async (cost: number) => {
+      events.push("settle");
+      settledCosts.push(cost);
+      return null;
+    }),
+    settleUnknown,
+  };
+});
 
 mock.module("./organization-inference-admission", () => ({
-  admitOrganizationInference: mock(async () => {
-    events.push("admit");
-    if (admissionError) throw admissionError;
-    return {
-      mode: "cache_admission",
-      affiliateAttribution: null,
-      markProviderDispatched: mock(async () => {
-        events.push("mark");
-      }),
-      settle: mock(async (cost: number) => {
-        events.push("settle");
-        settledCosts.push(cost);
-        return null;
-      }),
-      settleUnknown,
-    };
-  }),
+  admitOrganizationInference,
 }));
 
 const {
@@ -62,12 +63,18 @@ beforeEach(() => {
 
 describe("runFlatProviderOperation", () => {
   test("admits before marking and marks immediately before provider dispatch", async () => {
-    await runFlatProviderOperation(context, operation, async () => {
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    await runFlatProviderOperation({ ...context, credential }, operation, async () => {
       events.push("provider");
       return "ok";
     });
 
     expect(events).toEqual(["admit", "mark", "provider", "settle"]);
+    expect(admitOrganizationInference.mock.calls.at(-1)?.[0].credential).toBe(credential);
   });
 
   test("does not dispatch or mark when admission denies", async () => {

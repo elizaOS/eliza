@@ -25,7 +25,10 @@ import {
   type UserModelMessage,
 } from "ai";
 import { Hono } from "hono";
-import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -87,6 +90,7 @@ import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-sna
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import {
   isKnownPreDispatchProviderConfigurationError,
   isKnownUnacceptedProviderError,
@@ -575,11 +579,13 @@ app.post("/", async (c) => {
   // because their timestamped signatures are not reusable cache identities.
   let moderationAlreadyChecked = false;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  let admissionCredential: InferenceCredentialCheck | undefined;
   try {
     const resolution = await resolveInferenceAuthContext(c.req.raw, {
       executionCtx,
       traceId,
       cacheOnly: Boolean(executionCtx),
+      deferStrongCredentialCheck: Boolean(executionCtx),
     });
     if (resolution.kind === "warming") {
       return anthropicError(
@@ -616,6 +622,7 @@ app.post("/", async (c) => {
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
       admissionSnapshot = resolution.ctx.admission;
+      admissionCredential = resolution.credential;
       // The resolver already verified not-suspended (cache hit = at populate;
       // origin miss = just now), so the synchronous moderation read is skipped.
       moderationAlreadyChecked = true;
@@ -892,6 +899,7 @@ app.post("/", async (c) => {
           affiliateCode,
           executionCtx,
           admissionSnapshot,
+          credential: admissionCredential,
         });
         settleReservation = admission.settle;
         settleUnknownReservation = admission.settleUnknown;
@@ -913,6 +921,13 @@ app.post("/", async (c) => {
     } catch (error) {
       // error-policy:J1 admission failures become terminal Anthropic responses
       // before any provider dispatch.
+      const denial = resolveInferenceCredentialAdmissionDenial(error, {
+        route: "messages",
+        traceId,
+      });
+      if (denial) {
+        return anthropicError(denial.type, denial.message, denial.status);
+      }
       if (error instanceof InferenceAppAffiliateUnsupportedError) {
         return anthropicError(
           "invalid_request_error",
@@ -960,6 +975,7 @@ app.post("/", async (c) => {
         affiliateCode,
         executionCtx,
         admissionSnapshot,
+        credential: admissionCredential,
       });
       settleReservation = admission.settle;
       settleUnknownReservation = admission.settleUnknown;
@@ -968,6 +984,13 @@ app.post("/", async (c) => {
     } catch (error) {
       // error-policy:J1 admission failures become terminal Anthropic responses
       // before any provider dispatch.
+      const denial = resolveInferenceCredentialAdmissionDenial(error, {
+        route: "messages",
+        traceId,
+      });
+      if (denial) {
+        return anthropicError(denial.type, denial.message, denial.status);
+      }
       if (error instanceof InsufficientCreditsError) {
         return anthropicError(
           "billing_error",

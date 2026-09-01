@@ -32,6 +32,7 @@ app.post("/", async (c) => {
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       rateLimitEndpoint: "strict",
+      deferStrongCredentialCheck: true,
     });
 
     const body = ((await c.req.json().catch(() => ({}))) ?? {}) as {
@@ -93,6 +94,7 @@ Random seed: ${promptSeed}`;
       estimatedOutputTokens: 128,
       executionCtx,
       admissionSnapshot: caller.admissionSnapshot,
+      credential: caller.credential,
     });
     await admission.markProviderDispatched?.();
     providerDispatchStarted = true;

@@ -10,7 +10,10 @@
 
 import { APICallError, embed, embedMany, RetryError } from "ai";
 import { Hono } from "hono";
-import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -35,6 +38,7 @@ import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-sna
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import { isPassthroughEmbeddingsEnabled } from "@/lib/services/inference-passthrough";
 import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
 import {
@@ -69,6 +73,7 @@ app.post("/", async (c) => {
   let billingReservation: CreditReservation | undefined;
   let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  let admissionCredential: InferenceCredentialCheck | undefined;
   try {
     const candidate = c.executionCtx;
     executionCtx =
@@ -111,6 +116,7 @@ app.post("/", async (c) => {
     const resolution = await resolveInferenceAuthContext(c.req.raw, {
       executionCtx,
       cacheOnly: Boolean(executionCtx),
+      deferStrongCredentialCheck: Boolean(executionCtx),
     });
     if (resolution.kind === "warming") {
       return c.json(
@@ -168,6 +174,7 @@ app.post("/", async (c) => {
       };
       apiKeyId = resolution.ctx.apiKeyId;
       admissionSnapshot = resolution.ctx.admission;
+      admissionCredential = resolution.credential;
     } else {
       if (executionCtx) {
         return c.json(
@@ -320,6 +327,7 @@ app.post("/", async (c) => {
         affiliateCode,
         executionCtx,
         admissionSnapshot,
+        credential: admissionCredential,
       });
       settleReservation = admission.settle;
       settleUnknown = admission.settleUnknown;
@@ -328,6 +336,23 @@ app.post("/", async (c) => {
     } catch (error) {
       // error-policy:J1 the route boundary exposes cached credit decisions and
       // cache readiness without falling through to authoritative storage.
+      const denial = resolveInferenceCredentialAdmissionDenial(error, {
+        route: "embeddings",
+        traceId: c.get("traceId") ?? c.get("requestId"),
+      });
+      if (denial) {
+        return c.json(
+          {
+            error: {
+              message: denial.message,
+              type: denial.type,
+              code: denial.code,
+              details: { reason: denial.reason },
+            },
+          },
+          denial.status,
+        );
+      }
       if (error instanceof InsufficientCreditsError) {
         return c.json(
           {

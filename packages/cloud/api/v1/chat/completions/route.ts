@@ -1773,6 +1773,7 @@ export async function handleChatCompletionsPOST(
             affiliateCode,
             executionCtx: options.executionCtx,
             admissionSnapshot,
+            credential: admissionCredential,
           });
           settleReservation = admission.settle;
           settleUnknown = admission.settleUnknown;

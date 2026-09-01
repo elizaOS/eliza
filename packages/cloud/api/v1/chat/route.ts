@@ -9,7 +9,10 @@
 import { assertModelOutputComplete } from "@elizaos/core";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { Hono } from "hono";
-import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
@@ -64,6 +67,7 @@ import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-sna
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
 import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { usageService } from "@/lib/services/usage";
@@ -242,11 +246,13 @@ app.post("/", async (c) => {
     let anonymousCredential: AnonymousChatGateCredential | null = null;
     let moderationAlreadyChecked = false;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+    let admissionCredential: InferenceCredentialCheck | undefined;
 
     if (executionCtx) {
       const authResolution = await resolveInferenceAuthContext(c.req.raw, {
         executionCtx,
         cacheOnly: true,
+        deferStrongCredentialCheck: true,
       });
       if (authResolution.kind === "warming") {
         return retryableWarmingResponse(c, "Authentication");
@@ -292,6 +298,7 @@ app.post("/", async (c) => {
           : undefined;
         moderationAlreadyChecked = true;
         admissionSnapshot = authResolution.ctx.admission;
+        admissionCredential = authResolution.credential;
       } else {
         const anonymousResolution = await resolveAnonymousChatContext(
           c.req.raw,
@@ -599,12 +606,27 @@ app.post("/", async (c) => {
           affiliateCode,
           executionCtx,
           admissionSnapshot,
+          credential: admissionCredential,
         });
         settleReservation = admission.settle;
         settleUnknownReservation = admission.settleUnknown;
         markProviderDispatched = admission.markProviderDispatched;
         billingReservation = admission.reservation;
       } catch (error) {
+        const denial = resolveInferenceCredentialAdmissionDenial(error, {
+          route: "chat",
+          traceId: c.get("traceId") ?? c.get("requestId"),
+        });
+        if (denial) {
+          return c.json(
+            {
+              error: denial.message,
+              code: denial.code,
+              reason: denial.reason,
+            },
+            denial.status,
+          );
+        }
         if (error instanceof InsufficientCreditsError) {
           return c.json(
             { error: "Insufficient balance", details: error.message },

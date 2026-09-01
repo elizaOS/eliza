@@ -179,11 +179,12 @@ async function __hono_POST(c: AppContext) {
   const timings: TtsTimings = {};
 
   try {
-    const { user, apiKeyId, admissionSnapshot } =
+    const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         awaitWarmingMs: 1500,
+        deferStrongCredentialCheck: true,
       });
     timings.authMs = Date.now() - requestStart;
     const admissionStart = Date.now();
@@ -600,6 +601,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: billingCost,
         admissionSnapshot,
+        credential,
         idempotencyKey: ttsIdempotencyKey ?? undefined,
       });
       reservation = admission.reservation;

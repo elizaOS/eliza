@@ -20,6 +20,11 @@ import type {
   InferenceAdmissionSnapshot,
   InferenceAuthRejectionReason,
 } from "@/lib/services/inference-auth-cache";
+import {
+  type InferenceCredentialCheck,
+  InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
+} from "@/lib/services/inference-credential-revocation";
 import type { EndpointType } from "@/lib/services/org-rate-limits";
 import type { OrganizationInferenceAdmission } from "@/lib/services/organization-inference-admission";
 import { logger } from "@/lib/utils/logger";
@@ -33,6 +38,8 @@ export interface GenerativeRouteCaller {
   apiKeyId: string | null;
   authSource: "combined_cache" | "compatibility";
   admissionSnapshot?: InferenceAdmissionSnapshot;
+  /** Strong proof that the next paid admission must consume atomically. */
+  credential?: InferenceCredentialCheck;
   appScopeId: string | null;
 }
 
@@ -134,6 +141,23 @@ export function resolveInferenceAuthStandingDenial(
   return denial;
 }
 
+/** Maps a combined admission-gate credential refusal to the same route contract. */
+export function resolveInferenceCredentialAdmissionDenial(
+  error: unknown,
+  logContext?: { route: string; traceId?: string },
+): InferenceAuthStandingDenial | null {
+  if (!(error instanceof InferenceCredentialRevokedError)) return null;
+  const reason = inferenceCredentialRevocationReason(error.reason);
+  return resolveInferenceAuthStandingDenial(
+    {
+      kind: "rejected",
+      status: reason === "credential_inactive" ? 401 : 403,
+      reason,
+    },
+    logContext,
+  );
+}
+
 export function getGenerativeExecutionContext(
   c: AppContext,
 ): { waitUntil(promise: Promise<unknown>): void } | undefined {
@@ -157,6 +181,7 @@ export function getGenerativeOperationContext(
     apiKeyId: caller.apiKeyId,
     requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
     admissionSnapshot: caller.admissionSnapshot,
+    credential: caller.credential,
     executionCtx: getGenerativeExecutionContext(c),
   };
 }
@@ -233,6 +258,17 @@ export async function requireGenerativeKnownIdentity(
 }
 
 export function asGenerativeCacheApiError(error: unknown): ApiError | null {
+  const admissionDenial = resolveInferenceCredentialAdmissionDenial(error);
+  if (admissionDenial) {
+    return new ApiError(
+      admissionDenial.status,
+      admissionDenial.code,
+      admissionDenial.message,
+      {
+        reason: admissionDenial.reason,
+      },
+    );
+  }
   if (
     error instanceof AiPricingCacheWarmingError ||
     error instanceof AiPricingCacheUnavailableError ||
@@ -257,6 +293,7 @@ export async function admitFlatGenerativeOperation(params: {
   cost: FlatBillingCost;
   idempotencyKey?: string;
   admissionSnapshot?: InferenceAdmissionSnapshot;
+  credential?: InferenceCredentialCheck;
 }): Promise<OrganizationInferenceAdmission> {
   const executionCtx = getGenerativeExecutionContext(params.c);
   const { provider, billingSource, requestId } = params.context;
@@ -309,6 +346,7 @@ export async function admitFlatGenerativeOperation(params: {
       executionCtx,
       flatCost: params.cost,
       admissionSnapshot: params.admissionSnapshot,
+      ...(params.credential ? { credential: params.credential } : {}),
     });
   } catch (error) {
     if (
@@ -344,6 +382,11 @@ export async function requireGenerativeRouteCaller(
      * Zero preserves an immediate retryable warming response.
      */
     awaitWarmingMs?: number;
+    /**
+     * This route has a mandatory paid admission before provider dispatch and
+     * will thread the returned credential into that admission consumer.
+     */
+    deferStrongCredentialCheck?: boolean;
   } = {},
 ): Promise<GenerativeRouteCaller> {
   const executionCtx = getGenerativeExecutionContext(c);
@@ -377,6 +420,9 @@ export async function requireGenerativeRouteCaller(
       cacheOnly: Boolean(executionCtx),
       executionCtx,
       inlineContinuationDeadlineMs: options.awaitWarmingMs,
+      ...(options.deferStrongCredentialCheck === true
+        ? { deferStrongCredentialCheck: true }
+        : {}),
     });
   const resolution = await resolveCallerAuth();
 
@@ -429,6 +475,7 @@ export async function requireGenerativeRouteCaller(
       apiKeyId: resolution.ctx.apiKeyId,
       authSource: "combined_cache",
       admissionSnapshot: resolution.ctx.admission,
+      credential: resolution.credential,
       appScopeId:
         "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null,
     };

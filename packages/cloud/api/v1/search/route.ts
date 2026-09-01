@@ -54,6 +54,7 @@ async function handlePOST(c: AppContext) {
     const caller = await requireGenerativeRouteCaller(c, {
       compatibility: "raw",
       rateLimitEndpoint: "standard",
+      deferStrongCredentialCheck: true,
     });
     const result = await executeHostedGoogleSearch(
       {

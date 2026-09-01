@@ -250,6 +250,7 @@ __hono_app.post("/", async (c) => {
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       rateLimitEndpoint: "strict",
+      deferStrongCredentialCheck: true,
     });
     return await __hono_POST(
       c.req.raw,

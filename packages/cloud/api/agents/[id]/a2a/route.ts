@@ -17,6 +17,7 @@ import { z } from "zod";
 import {
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
+  resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
 import { UntrustedA2AChatMessagesSchema } from "@/lib/api/a2a/chat-messages";
 import {
@@ -55,6 +56,7 @@ import {
 } from "@/lib/services/characters/characters";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -258,12 +260,15 @@ app.post("/", async (c) => {
   }
 
   const { method, params, id: rpcId } = validation.data;
+  const willAdmitInference =
+    method === "chat" && A2AChatParamsSchema.safeParse(params ?? {}).success;
 
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
     caller = await requireGenerativeRouteCaller(c, {
       compatibility: "hono",
       rateLimitEndpoint: "standard",
+      deferStrongCredentialCheck: willAdmitInference,
     });
   } catch (error) {
     // error-policy:J1 the public JSON-RPC boundary preserves retryable
@@ -314,6 +319,7 @@ app.post("/", async (c) => {
       organization_id: caller.user.organization_id,
       apiKeyId: caller.apiKeyId,
       admissionSnapshot: caller.admissionSnapshot,
+      credential: caller.credential,
       executionCtx,
     });
   }
@@ -363,6 +369,7 @@ async function handleChat(
     organization_id: string;
     apiKeyId: string | null;
     admissionSnapshot?: InferenceAdmissionSnapshot;
+    credential?: InferenceCredentialCheck;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   },
 ): Promise<Response> {
@@ -438,10 +445,29 @@ async function handleChat(
       },
       executionCtx: authUser.executionCtx,
       admissionSnapshot: authUser.admissionSnapshot,
+      credential: authUser.credential,
     });
   } catch (error) {
     // error-policy:J1 the route boundary translates the expected credit
     // refusal and lets unexpected reservation failures reach the owner path.
+    const denial = resolveInferenceCredentialAdmissionDenial(error, {
+      route: "agent_a2a",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    });
+    if (denial) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: {
+            code: -32002,
+            message: denial.message,
+            data: { reason: denial.reason },
+          },
+          id: rpcId,
+        },
+        denial.status,
+      );
+    }
     if (error instanceof InsufficientCreditsError) {
       return c.json({
         jsonrpc: "2.0",

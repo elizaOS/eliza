@@ -36,6 +36,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       rateLimitEndpoint: "strict",
+      deferStrongCredentialCheck: true,
     });
     const { user } = caller;
     const appId = c.req.param("id");

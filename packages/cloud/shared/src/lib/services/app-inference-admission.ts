@@ -38,6 +38,7 @@ import {
   getGateBalanceHint,
   InferenceBalanceCacheWarmingError,
 } from "./inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "./inference-credential-revocation";
 
 export interface AppInferenceAdmissionExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
@@ -60,6 +61,8 @@ export interface AppInferenceAdmissionParams {
   executionCtx: AppInferenceAdmissionExecutionContext;
   /** Combined auth-cache projection; skips the separate balance KV read. */
   admissionSnapshot?: InferenceAdmissionSnapshot;
+  /** Strong standing proof consumed atomically by the app balance lease. */
+  credential?: InferenceCredentialCheck;
 }
 
 export interface AppInferenceAdmission {
@@ -223,6 +226,7 @@ export async function admitAppInferenceCacheOnly(
           inferenceMarkupPercentage: params.app.inference_markup_percentage ?? null,
         },
       },
+      ...(params.credential ? { credential: params.credential } : {}),
       executionCtx: params.executionCtx,
     });
   } catch (error) {

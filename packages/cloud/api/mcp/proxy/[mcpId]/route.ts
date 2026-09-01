@@ -278,7 +278,9 @@ app.post("/", async (c) => {
 
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
-    caller = await requireGenerativeRouteCaller(c);
+    caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: true,
+    });
   } catch (error) {
     logger.warn("[MCP Proxy] Caller admission denied", {
       mcpId,
@@ -566,6 +568,7 @@ app.post("/", async (c) => {
         },
         apiKeyId: caller.apiKeyId,
         admissionSnapshot: caller.admissionSnapshot,
+        credential: caller.credential,
         cost: {
           baseTotalCost: chargeReceipt.baseAmountUsd,
           platformMarkup:

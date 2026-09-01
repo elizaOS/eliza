@@ -171,6 +171,8 @@ async function priceFalMutation(c: Context<AppEnv>): Promise<{
 
 const handle: Handler<AppEnv> = async (c) => {
   const isMutation = c.req.method === "POST" || c.req.method === "PUT";
+  const willAdmitMutation =
+    isMutation && Boolean(c.req.header(TARGET_URL_HEADER));
   let admission: Awaited<
     ReturnType<typeof admitFlatGenerativeOperation>
   > | null = null;
@@ -181,6 +183,7 @@ const handle: Handler<AppEnv> = async (c) => {
   try {
     caller = await requireGenerativeRouteCaller(c, {
       rateLimitEndpoint: "strict",
+      deferStrongCredentialCheck: willAdmitMutation,
     });
   } catch (error) {
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
@@ -205,6 +208,7 @@ const handle: Handler<AppEnv> = async (c) => {
         apiKeyId: caller.apiKeyId,
         cost: pricedMutation.cost,
         admissionSnapshot: caller.admissionSnapshot,
+        credential: caller.credential,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {

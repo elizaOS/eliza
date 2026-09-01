@@ -37,7 +37,9 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {
   try {
-    const caller = await requireGenerativeRouteCaller(c);
+    const caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: true,
+    });
     const { user } = caller;
     const sessions = await listHostedBrowserSessions({
       apiKeyId: null,
@@ -55,7 +57,9 @@ app.get("/", async (c) => {
 
 app.post("/", async (c) => {
   try {
-    const caller = await requireGenerativeRouteCaller(c);
+    const caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: true,
+    });
     const { user } = caller;
     const decodedBody = await decodeRequestJson(c.req);
     if (!decodedBody.ok) {

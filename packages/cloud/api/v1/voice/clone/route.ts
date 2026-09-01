@@ -110,7 +110,9 @@ app.post("/", async (c) => {
 
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
-    caller = await requireGenerativeRouteCaller(c);
+    caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: true,
+    });
   } catch (error) {
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
@@ -237,6 +239,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost: cloneCost,
         admissionSnapshot: caller.admissionSnapshot,
+        credential: caller.credential,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {

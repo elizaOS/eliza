@@ -58,6 +58,11 @@ afterAll(() => {
 });
 
 test("combined RPC admission orders mark before dispatch and defers settlement", async () => {
+  const credential = {
+    kind: "api_key" as const,
+    credentialId: "key-1",
+    userId: "user-1",
+  };
   const order: string[] = [];
   let finishSettlement: (() => void) | undefined;
   const settlement = new Promise<void>((resolve) => {
@@ -87,6 +92,7 @@ test("combined RPC admission orders mark before dispatch and defers settlement",
       apiKey: { id: "key-1" },
     },
     admissionSnapshot: snapshot,
+    credential,
     executionCtx: { waitUntil: (promise) => retained.push(promise) },
     requestId: "rpc-1",
   });
@@ -103,6 +109,7 @@ test("combined RPC admission orders mark before dispatch and defers settlement",
   expect(legacyAuth).not.toHaveBeenCalled();
   expect(admit).toHaveBeenCalledTimes(1);
   expect(admit.mock.calls[0]?.[0].admissionSnapshot).toBe(snapshot);
+  expect(admit.mock.calls[0]?.[0].credential).toBe(credential);
   expect(retained).toHaveLength(1);
   finishSettlement?.();
   await Promise.all(retained);

@@ -39,7 +39,9 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {
-    const caller = await requireGenerativeRouteCaller(c);
+    const caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: true,
+    });
     const { user } = caller;
     const decodedBody = await decodeRequestJson(c.req);
     if (!decodedBody.ok) {
