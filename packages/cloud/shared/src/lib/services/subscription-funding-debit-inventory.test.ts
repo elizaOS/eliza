@@ -46,6 +46,17 @@ describe("subscription funding production debit inventory", () => {
     ).toEqual({ raw_credit_balance_decrement: 1 });
   });
 
+  test("ignores debit-shaped prose and quoted strings", () => {
+    expect(
+      scanSubscriptionDebitSignals(`
+        // credit_balance = organizations.credit_balance - amount;
+        /* await renamedOrganizationsRepository.deductCreditsWithTransaction({ amount: 3 }); */
+        /** type: "debit" */
+        const example = "credit_balance = organizations.credit_balance - amount";
+      `),
+    ).toEqual({});
+  });
+
   test("detects renamed credit-service receivers", () => {
     expect(
       scanSubscriptionDebitSignals(`

@@ -5,6 +5,7 @@
 
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, relative, resolve, sep } from "node:path";
+import ts from "typescript";
 import type { SubscriptionDebitSignal } from "../src/lib/services/subscription-funding-policy";
 
 export const CLOUD_ROOT = resolve(import.meta.dirname, "../..");
@@ -51,16 +52,39 @@ function listProductionTypeScript(directory: string): string[] {
   return files.sort();
 }
 
+function maskCommentsAndNonSignalStrings(source: string): string {
+  const masked = [...source];
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.Latest,
+    false,
+    ts.LanguageVariant.Standard,
+    source,
+  );
+  for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
+    const isComment =
+      token === ts.SyntaxKind.SingleLineCommentTrivia ||
+      token === ts.SyntaxKind.MultiLineCommentTrivia;
+    const isNonSignalString =
+      token === ts.SyntaxKind.StringLiteral && scanner.getTokenValue() !== "debit";
+    if (!isComment && !isNonSignalString) continue;
+    for (let index = scanner.getTokenPos(); index < scanner.getTextPos(); index += 1) {
+      if (masked[index] !== "\n" && masked[index] !== "\r") masked[index] = " ";
+    }
+  }
+  return masked.join("");
+}
+
 export function scanSubscriptionDebitSignals(
   source: string,
 ): Partial<Record<SubscriptionDebitSignal, number>> {
+  const scannableSource = maskCommentsAndNonSignalStrings(source);
   const signals: Partial<Record<SubscriptionDebitSignal, number>> = {};
   for (const [signal, pattern] of Object.entries(SIGNAL_PATTERNS) as [
     SubscriptionDebitSignal,
     RegExp,
   ][]) {
     pattern.lastIndex = 0;
-    const count = Array.from(source.matchAll(pattern)).length;
+    const count = Array.from(scannableSource.matchAll(pattern)).length;
     if (count > 0) signals[signal] = count;
   }
   return signals;
