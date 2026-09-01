@@ -71,12 +71,6 @@ class AgreementTestPdfService extends Service {
   }
 }
 
-const pdfPlugin: Plugin = {
-  name: "agreement-knowledge-test-pdf",
-  description: "Complete deterministic PDF extraction for agreement tests.",
-  services: [AgreementTestPdfService],
-};
-
 function pdf(label: string): Buffer {
   return Buffer.from(`%PDF-1.7\n${label}\n%%EOF\n`, "utf8");
 }
@@ -95,9 +89,12 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     );
     process.env.ELIZA_STATE_DIR = mediaStateDir;
     runtimeResult = await createLifeOpsTestRuntime({
-      plugins: [fileStoragePlugin, documentsPluginCore, pdfPlugin],
+      plugins: [fileStoragePlugin, documentsPluginCore],
     });
     runtime = runtimeResult.runtime;
+    runtime.services.set(ServiceType.PDF, [
+      new AgreementTestPdfService(runtime),
+    ]);
     const graph = resolveKnowledgeGraphService(runtime);
     if (!graph) throw new Error("knowledge graph unavailable");
     const entities = graph.getEntityStore(runtime.agentId);
