@@ -55,52 +55,87 @@ export default defineConfig({
       // prefix match, so `@elizaos/ui` alone would swallow every subpath and
       // rewrite it to `<stub>.tsx/<subpath>`, which cannot resolve).
       {
-        find: "@elizaos/ui/agent-surface",
+        find: /^@elizaos\/ui\/agent-surface$/,
         replacement: path.join(here, "stubs/elizaos-ui-agent-surface.ts"),
       },
       {
-        find: "@elizaos/ui/events",
+        find: /^@elizaos\/ui\/events$/,
         replacement: path.join(here, "stubs/elizaos-ui-events.ts"),
       },
       // The spatial primitives are pure React (no network, no renderer
       // barrel) — resolve them for real so spatial views (Inbox, Focus)
       // screenshot their actual layout instead of a stub.
       {
-        find: "@elizaos/ui/spatial",
+        find: /^@elizaos\/ui\/spatial$/,
         replacement: path.join(elizaRoot, "packages/ui/src/spatial/index.ts"),
       },
       {
-        find: "@elizaos/ui/state",
+        find: /^@elizaos\/ui\/state$/,
         replacement: path.join(here, "stubs/elizaos-ui-state.ts"),
       },
       {
-        find: "@elizaos/ui/components/composites/page-panel",
+        find: /^@elizaos\/ui\/hooks\/resource-cache$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages/ui/src/hooks/resource-cache.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/hooks\/runtime-capability-retry$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages/ui/src/hooks/runtime-capability-retry.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/hooks\/useActiveAgentAuthority$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages/ui/src/hooks/useActiveAgentAuthority.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/components\/shared\/confirm-delete-control$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages/ui/src/components/shared/confirm-delete-control.tsx",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/components\/shared\/SectionNav$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages/ui/src/components/shared/SectionNav.tsx",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/components\/composites\/page-panel$/,
         replacement: path.join(
           elizaRoot,
           "packages/ui/src/components/composites/page-panel/index.ts",
         ),
       },
       {
-        find: "@elizaos/ui/components/shared/ViewHeader",
+        find: /^@elizaos\/ui\/components\/shared\/ViewHeader$/,
         replacement: path.join(here, "stubs/elizaos-ui.tsx"),
       },
       // The components/hooks/api subpath surfaces the views touch are the
       // same primitives the bare-stub exports (Button, Popover*, Spinner,
       // SegmentedControl, useMediaQuery, client).
       {
-        find: "@elizaos/ui/components",
+        find: /^@elizaos\/ui\/components$/,
         replacement: path.join(here, "stubs/elizaos-ui.tsx"),
       },
       {
-        find: "@elizaos/ui/hooks",
+        find: /^@elizaos\/ui\/hooks$/,
         replacement: path.join(here, "stubs/elizaos-ui.tsx"),
       },
       {
-        find: "@elizaos/ui/api",
+        find: /^@elizaos\/ui\/api$/,
         replacement: path.join(here, "stubs/elizaos-ui.tsx"),
       },
       {
-        find: "@elizaos/ui",
+        find: /^@elizaos\/ui$/,
         replacement: path.join(here, "stubs/elizaos-ui.tsx"),
       },
     ],
