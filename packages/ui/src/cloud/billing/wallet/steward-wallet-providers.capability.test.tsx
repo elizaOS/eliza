@@ -128,8 +128,16 @@ describe("StewardWalletProviders capability gating", () => {
     cleanup();
   });
 
-  it("preserves the full provider tree by default for billing callers", () => {
+  it("fails closed when a caller omits capability flags", () => {
     renderProviders();
+
+    expect(screen.getByTestId("provider-child")).toBeTruthy();
+    expectNoEvmInitialization();
+    expectNoSolanaInitialization();
+  });
+
+  it("preserves the full provider tree for an explicit billing caller", () => {
+    renderProviders({ enableEvm: true, enableSolana: true });
 
     expect(screen.getByTestId("provider-child")).toBeTruthy();
     expect(screen.getByTestId("wagmi-provider")).toBeTruthy();

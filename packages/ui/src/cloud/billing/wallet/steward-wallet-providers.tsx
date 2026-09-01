@@ -108,8 +108,8 @@ export function buildStewardEvmConfig(options: {
 
 export function StewardWalletProviders({
   children,
-  enableEvm = true,
-  enableSolana = true,
+  enableEvm = false,
+  enableSolana = false,
 }: {
   children: ReactNode;
   enableEvm?: boolean;

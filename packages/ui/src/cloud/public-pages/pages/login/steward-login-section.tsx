@@ -549,6 +549,9 @@ function loadStewardProviders(auth: {
   getProviders: () => Promise<StewardProviders>;
 }): Promise<StewardProviders> {
   const requestGeneration = stewardProvidersRequestGeneration;
+  // Cached capabilities may paint non-wallet controls early, but they are not
+  // current authorization. Always query Steward so wallet providers remain
+  // gated on this document's live tenant configuration.
   stewardProvidersPromise ??= auth.getProviders().then(
     (loadedProviders) => {
       // error-policy:J3 SDK response data is an untrusted transport boundary.

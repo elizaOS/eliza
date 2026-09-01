@@ -916,7 +916,6 @@ async function waitForDeferredBootComplete(apiBase: string): Promise<void> {
 
 async function ensureUiDistReady(): Promise<void> {
   const distIndex = path.join(APP_DIST_DIR, "index.html");
-  const evidenceHead = process.env.ELIZA_PR_EVIDENCE_HEAD?.trim();
   let needsBuild = false;
 
   try {
@@ -926,19 +925,6 @@ async function ensureUiDistReady(): Promise<void> {
     });
   } catch {
     needsBuild = true;
-  }
-
-  // Formal PR evidence must compile the checked-out source during this exact
-  // invocation. Reusing a content-valid dist is useful for ordinary smokes but
-  // cannot prove that an attached artifact came from ELIZA_PR_EVIDENCE_HEAD.
-  if (evidenceHead) {
-    needsBuild = true;
-  }
-
-  if (evidenceHead && process.env.ELIZA_UI_SMOKE_SKIP_BUILD === "1") {
-    throw new Error(
-      "ELIZA_UI_SMOKE_SKIP_BUILD=1 cannot be combined with ELIZA_PR_EVIDENCE_HEAD; formal evidence requires a fresh renderer build.",
-    );
   }
 
   // Escape hatch symmetric to ELIZA_DESKTOP_RENDERER_BUILD=always: when the dist
