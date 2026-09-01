@@ -53,6 +53,7 @@ import {
   type InboundClaimState,
   tryClaim,
 } from "./inbound-claim";
+import { type BaileysParticipantDelta, WhatsAppMembershipPublisher } from "./membership-publisher";
 import {
   chunkWhatsAppText,
   isWhatsAppGroupJid,
@@ -707,6 +708,7 @@ export class WhatsAppConnectorService extends Service {
   private clients: Map<string, BaileysClient | WhatsAppClient> = new Map();
   private configs: Map<string, RuntimeServiceConfig> = new Map();
   private phoneNumbers: Map<string, string> = new Map();
+  private membershipPublishers: Map<string, WhatsAppMembershipPublisher> = new Map();
   private client: BaileysClient | WhatsAppClient | null = null;
   config: RuntimeServiceConfig | undefined = undefined;
   private knownTargets: Map<string, KnownWhatsAppTarget> = new Map();
@@ -1055,6 +1057,12 @@ export class WhatsAppConnectorService extends Service {
       }
 
       this.bindClientEvents(client, config.accountId);
+      if (client instanceof BaileysClient) {
+        this.membershipPublishers.set(
+          config.accountId,
+          new WhatsAppMembershipPublisher(this.runtime, config.accountId)
+        );
+      }
       await client.start();
 
       if (config.transport === "cloudapi") {
@@ -1067,6 +1075,10 @@ export class WhatsAppConnectorService extends Service {
     for (const client of this.clients.values()) {
       await client.stop();
     }
+    for (const publisher of this.membershipPublishers.values()) {
+      await publisher.terminate();
+    }
+    this.membershipPublishers.clear();
     this.clients.clear();
     this.configs.clear();
     this.phoneNumbers.clear();
@@ -1194,6 +1206,18 @@ export class WhatsAppConnectorService extends Service {
     client.on("connection", (status: ConnectionStatus) => {
       if (status === "open") {
         this.connected = true;
+        if (client instanceof BaileysClient) {
+          void this.membershipPublishers
+            .get(accountId)
+            ?.beginSource()
+            .catch((error: unknown) => {
+              // error-policy:J7 Membership diagnostics cannot kill the connector event loop.
+              this.runtime.reportError("plugin:whatsapp:membership", error, {
+                accountId,
+                stage: "publisher-generation",
+              });
+            });
+        }
       }
       if (status === "open" && client instanceof BaileysClient) {
         const nextPhone = client.getPhoneNumber();
@@ -1206,6 +1230,18 @@ export class WhatsAppConnectorService extends Service {
         }
       }
       if (status === "close") {
+        if (client instanceof BaileysClient) {
+          void this.membershipPublishers
+            .get(accountId)
+            ?.markDisconnected()
+            .catch((error: unknown) => {
+              // error-policy:J7 Membership diagnostics cannot kill the connector event loop.
+              this.runtime.reportError("plugin:whatsapp:membership", error, {
+                accountId,
+                stage: "source-disconnected",
+              });
+            });
+        }
         this.phoneNumbers.delete(accountId);
         this.connected =
           this.phoneNumbers.size > 0 ||
@@ -1241,6 +1277,61 @@ export class WhatsAppConnectorService extends Service {
         });
       });
     });
+
+    if (client instanceof BaileysClient) {
+      const reportMembershipError = (stage: string, error: unknown): void => {
+        this.runtime.reportError("plugin:whatsapp:membership", error, { accountId, stage });
+      };
+      client.on("group-snapshot", (groups: import("@whiskeysockets/baileys").GroupMetadata[]) => {
+        void this.membershipPublishers
+          .get(accountId)
+          ?.publishReconnectSnapshot(groups)
+          .catch((error: unknown) => reportMembershipError("complete-snapshot", error));
+      });
+      client.on("group-snapshot-error", (error: unknown) => {
+        void this.membershipPublishers
+          .get(accountId)
+          ?.reportReconnectFailure("reconnect_snapshot_failed")
+          .catch((publicationError: unknown) =>
+            reportMembershipError("incomplete-reconnect-snapshot", publicationError)
+          );
+        reportMembershipError("group-fetch-all-participating", error);
+      });
+      client.on("groups-upsert", (groups: import("@whiskeysockets/baileys").GroupMetadata[]) => {
+        for (const group of groups) {
+          void this.membershipPublishers
+            .get(accountId)
+            ?.publishCompleteGroup(group)
+            .catch((error: unknown) => reportMembershipError("group-upsert", error));
+        }
+      });
+      client.on(
+        "groups-update",
+        (groups: Array<Partial<import("@whiskeysockets/baileys").GroupMetadata>>) => {
+          for (const group of groups) {
+            if (typeof group.id !== "string") continue;
+            void this.membershipPublishers
+              .get(accountId)
+              ?.publishGroupUpdate(group as { id: string }, () =>
+                client.getGroupMetadata(group.id as string)
+              )
+              .catch((error: unknown) => reportMembershipError("group-update", error));
+          }
+        }
+      );
+      client.on("group-participants", (update: BaileysParticipantDelta) => {
+        void this.membershipPublishers
+          .get(accountId)
+          ?.publishParticipantDelta(update, () => client.getGroupMetadata(update.id))
+          .catch((error: unknown) => reportMembershipError("participant-delta", error));
+      });
+      client.on("source-terminated", (reason: string) => {
+        void this.membershipPublishers
+          .get(accountId)
+          ?.terminate(`baileys_${reason}`)
+          .catch((error: unknown) => reportMembershipError("source-terminated", error));
+      });
+    }
 
     client.on("error", (error: unknown) => {
       // error-policy:J7 Baileys metadata and socket failures are diagnostic events, not loop exits.

@@ -7,6 +7,7 @@
  */
 import { EventEmitter } from "node:events";
 import { ElizaError } from "@elizaos/core";
+import type { GroupMetadata } from "@whiskeysockets/baileys";
 import { BaileysAuthManager } from "../baileys/auth";
 import { BaileysConnection } from "../baileys/connection";
 import { MessageAdapter } from "../baileys/message-adapter";
@@ -76,6 +77,30 @@ export class BaileysClient extends EventEmitter implements IWhatsAppClient {
           }
         }
       }
+    });
+
+    this.connection.on("group-snapshot", (groups: GroupMetadata[]) => {
+      this.emit("group-snapshot", groups);
+    });
+
+    this.connection.on("group-snapshot-error", (error: unknown) => {
+      this.emit("group-snapshot-error", error);
+    });
+
+    this.connection.on("groups-upsert", (groups: GroupMetadata[]) => {
+      this.emit("groups-upsert", groups);
+    });
+
+    this.connection.on("groups-update", (groups: Array<Partial<GroupMetadata>>) => {
+      this.emit("groups-update", groups);
+    });
+
+    this.connection.on("group-participants", (update: unknown) => {
+      this.emit("group-participants", update);
+    });
+
+    this.connection.on("source-terminated", (reason: string) => {
+      this.emit("source-terminated", reason);
     });
 
     this.connection.on("error", (error: unknown) => {
@@ -160,5 +185,9 @@ export class BaileysClient extends EventEmitter implements IWhatsAppClient {
 
   getPhoneNumber(): string | null {
     return this.connection.getSocket()?.user?.id?.split(":")[0] ?? null;
+  }
+
+  getGroupMetadata(groupId: string): Promise<GroupMetadata> {
+    return this.connection.getGroupMetadata(groupId);
   }
 }
