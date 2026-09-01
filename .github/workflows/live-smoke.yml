@@ -1114,8 +1114,31 @@ jobs:
                 signals="${signals:+$signals,}$signal"
               fi
             done
+            case "$lower" in
+              *'terminal database liveness'*) heartbeat_category='database_terminal' ;;
+              *'reconcileoutcome'*'container-dead'*) heartbeat_category='container_dead' ;;
+              *'reconcileoutcome'*'ip-unresolvable'*) heartbeat_category='tailnet_ip_unresolvable' ;;
+              *'reconcileoutcome'*'unrepairable'*) heartbeat_category='tailnet_unrepairable' ;;
+              *'api/health returned '*) heartbeat_category='health_http_status' ;;
+              *'connection refused'*|*'econnrefused'*) heartbeat_category='connection_refused' ;;
+              *'no route to host'*|*'network is unreachable'*) heartbeat_category='tailnet_route_unreachable' ;;
+              *'timed out'*|*'timeout'*) heartbeat_category='timeout' ;;
+              *'fetch failed'*) heartbeat_category='fetch_transport' ;;
+              *) heartbeat_category='unclassified' ;;
+            esac
+            case "$lower" in
+              *'inference revocation boundary is unavailable'*) delete_category='inference_revocation_unavailable' ;;
+              *'inference revocation durable object binding is missing'*) delete_category='inference_revocation_binding_missing' ;;
+              *'refusing to delete without a current backup'*) delete_category='pre_delete_capture_refused' ;;
+              *'failed to delete sandbox'*) delete_category='sandbox_stop_failed' ;;
+              *'agent deletion ownership changed'*|*'agent row delete lost its lifecycle ownership'*) delete_category='database_ownership_lost' ;;
+              *'marked sandbox as deletion_failed'*) delete_category='permanent_failure_unclassified' ;;
+              *) delete_category='none' ;;
+            esac
             unset block lower CANARY_AGENT_ID
             echo "dedicated_lifecycle_signals=${signals:-none}"
+            echo "dedicated_heartbeat_failure_category=$heartbeat_category"
+            echo "dedicated_delete_failure_category=$delete_category"
 
       - name: Upload privacy-safe provision diagnostic
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

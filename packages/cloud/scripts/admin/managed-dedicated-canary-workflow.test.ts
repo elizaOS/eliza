@@ -204,6 +204,12 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
       "dedicated_lifecycle_signals=",
     );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "dedicated_heartbeat_failure_category=",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "dedicated_delete_failure_category=",
+    );
 
     const cleanupFailure = diagnostic.steps.find(
       (step) =>
