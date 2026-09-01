@@ -2264,7 +2264,10 @@ export function createSharedRemindersEdgeAction(
             }
           }
           const appliedResults: ScheduledTaskApplyResult[] = [];
-          let failedCount = 0;
+          let failedCount =
+            operation === "delete" && deleteManifest
+              ? deleteManifest.taskIds.length - mutationTargets.length
+              : 0;
           for (const task of mutationTargets) {
             try {
               appliedResults.push(

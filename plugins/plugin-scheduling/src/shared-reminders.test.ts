@@ -2036,6 +2036,55 @@ describe("Shared reminders edge plugin", () => {
     );
   });
 
+  it("reports a partial replay when a durable delete manifest member is missing", async () => {
+    const { options, list, applyWithResult } = harness();
+    const requestId = "missing-member-delete";
+    const survivor = {
+      ...scheduledTask(
+        reminderInput("Stretch", {
+          kind: "once" as const,
+          atIso: "2026-08-28T01:06:00.000Z",
+        }),
+      ),
+      taskId: "delete-survivor",
+    };
+    const manifest = {
+      kind: "shared_reminder_mutation_manifest",
+      requestId,
+      operation: "delete",
+      taskIds: ["delete-missing", survivor.taskId],
+    } as const;
+    const intentKey = await applyIntentMetadataKey(
+      `shared-reminder:${requestId}:delete:manifest`,
+    );
+    list.mockResolvedValue([
+      {
+        ...survivor,
+        metadata: {
+          ...(survivor.metadata ?? {}),
+          schedulingApplyIntents: { [intentKey]: manifest },
+        },
+      },
+    ]);
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+
+    const result = await action?.handler(
+      {} as IAgentRuntime,
+      { id: requestId } as Memory,
+      undefined,
+      { parameters: { operation: "delete", target: "Stretch" } },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: { affectedCount: 1, failedCount: 1 },
+    });
+    expect(result?.text).toContain("Deleted 1 reminder");
+    expect(result?.text).toContain("couldn't verify 1 other matching reminder");
+    expect(applyWithResult).toHaveBeenCalledTimes(1);
+    expect(applyWithResult.mock.calls[0]?.[0]).toBe(survivor.taskId);
+  });
+
   it("asks for schedule clarification when the same visible title is not an exact duplicate", async () => {
     const { options, list, applyWithResult } = harness();
     list.mockResolvedValue([
