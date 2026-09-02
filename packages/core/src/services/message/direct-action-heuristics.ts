@@ -315,18 +315,23 @@ export function findAvailableActionName(
 	names: readonly string[],
 ): string | undefined {
 	// Resolve in `names` PRIORITY order, not action-registration order: for each
-	// wanted name in turn, return the first action whose name or simile matches.
-	// The leading preference wins regardless of registration order.
+	// wanted name in turn, prefer its canonical action name before falling back
+	// to a simile. The leading preference wins regardless of registration order,
+	// while an umbrella action cannot shadow a promoted child merely by listing
+	// that child's canonical name as a legacy simile.
 	for (const want of names) {
 		const wanted = normalizeActionIdentifier(want);
-		const match = actions.find((action) => {
-			if (normalizeActionIdentifier(action.name) === wanted) return true;
+		const exact = actions.find(
+			(action) => normalizeActionIdentifier(action.name) === wanted,
+		);
+		if (exact) return exact.name;
+		const alias = actions.find((action) => {
 			const similes = Array.isArray(action.similes) ? action.similes : [];
 			return similes.some(
 				(simile) => normalizeActionIdentifier(String(simile)) === wanted,
 			);
 		});
-		if (match) return match.name;
+		if (alias) return alias.name;
 	}
 	return undefined;
 }
@@ -954,9 +959,10 @@ function detectOwnerItemDeleteDomain(text: string): OwnerLifeReadDomain | null {
 
 /**
  * Owner-life domains with a possessive read shape. Each maps to its reader
- * surface in preference order: the personal-assistant umbrella first, then the
- * standalone domain plugin's action names, so lean stacks (one todo owner per
- * deployment) resolve their reader too.
+ * surface in preference order. Most domains prefer the personal-assistant
+ * umbrella, while Calendar prefers its promoted read-only feed action to avoid
+ * a redundant nested planner; every domain retains standalone/umbrella
+ * fallbacks so lean stacks still resolve their reader.
  */
 type OwnerLifeReadDomain =
 	| "todos"
@@ -983,7 +989,7 @@ const OWNER_READ_ACTION_NAMES_BY_DOMAIN: Record<
 	// read deterministically keeps a plain "what is on my calendar?" out of the
 	// full planner catalog (observed live: the planner-path calendar read died
 	// on the model-context ceiling while todos reads ran direct).
-	calendar: ["CALENDAR", "CHECK_CALENDAR", "CALENDAR_FEED"],
+	calendar: ["CALENDAR_FEED", "CHECK_CALENDAR", "CALENDAR"],
 };
 
 const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [

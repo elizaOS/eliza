@@ -332,6 +332,17 @@ describe("findAvailableActionName", () => {
 		expect(findAvailableActionName(actions, ["reply"])).toBe("SEND_MESSAGE");
 		expect(findAvailableActionName(actions, ["nonexistent"])).toBeUndefined();
 	});
+
+	it("prefers a canonical action over an earlier registered legacy alias", () => {
+		const overlappingActions = [
+			{ name: "CALENDAR", similes: ["CALENDAR_FEED"] },
+			{ name: "CALENDAR_FEED", similes: [] },
+		] as unknown as ReadonlyArray<Pick<Action, "name" | "similes">>;
+
+		expect(findAvailableActionName(overlappingActions, ["CALENDAR_FEED"])).toBe(
+			"CALENDAR_FEED",
+		);
+	});
 });
 
 describe("findCodingDelegationActionName", () => {
@@ -742,6 +753,11 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			...viewsAction,
 			tags: [...(viewsAction.tags ?? []), "calendar"],
 		};
+		const calendarFeedAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "CALENDAR_FEED",
+			similes: [],
+			tags: [],
+		};
 		for (const message of [
 			"what is on my calendar this week",
 			"whats on my schedule today",
@@ -749,11 +765,11 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		]) {
 			expect(
 				inferDirectCurrentRequestCandidateInference(
-					[calendarTaggedViews, calendarAction],
+					[calendarTaggedViews, calendarAction, calendarFeedAction],
 					message,
 				),
 			).toEqual({
-				names: ["CALENDAR"],
+				names: ["CALENDAR_FEED"],
 				kind: "owner-reads",
 				// Calendar reads dispatch deterministically (skip the planner):
 				// the reader emits verified user-facing text, and the planner
@@ -762,6 +778,17 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 				deterministicDispatch: true,
 			});
 		}
+		// Lean stacks without the promoted feed retain the umbrella fallback.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[calendarTaggedViews, calendarAction],
+				"what is on my calendar this week",
+			),
+		).toEqual({
+			names: ["CALENDAR"],
+			kind: "owner-reads",
+			deterministicDispatch: true,
+		});
 		// Navigation stays navigation.
 		expect(
 			inferDirectCurrentRequestCandidateInference(

@@ -7622,9 +7622,7 @@ describe("verified read actions own the turn's single user-facing message", () =
 		// never reached it.
 		const surfaceLog = (
 			runtime.logger.debug as ReturnType<typeof vi.fn>
-		).mock.calls.find(
-			(call) => call[1] === "Built v5 planner action surface",
-		);
+		).mock.calls.find((call) => call[1] === "Built v5 planner action surface");
 		expect(surfaceLog).toBeDefined();
 		const summaryText = JSON.stringify(surfaceLog?.[0] ?? {});
 		expect(summaryText).toContain("CALENDAR");
