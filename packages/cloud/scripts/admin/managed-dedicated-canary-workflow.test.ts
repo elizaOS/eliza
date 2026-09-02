@@ -196,6 +196,12 @@ describe("managed dedicated live-smoke workflow contract", () => {
       (step) => step.name === "Classify private mesh observation failure",
     );
     expect(classifyMeshFailure).toBeDefined();
+    expect(classifyMeshFailure?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(classifyMeshFailure?.env?.CANARY_AGENT_ID).toBe(
+      githubExpression("steps.cleanup_reconciliation.outputs.agent_id"),
+    );
     expect(classifyMeshFailure?.with?.script).toContain(
       "docker candidate mesh observation before cleanup",
     );

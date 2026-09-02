@@ -981,22 +981,27 @@ jobs:
             echo "replacement_cleanup_failure_signals=${signals:-none}"
 
       - name: Classify private mesh observation failure
-        if: steps.cleanup_reconciliation.outputs.fence_present == 'true'
+        if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          CANARY_AGENT_ID: ${{ steps.cleanup_reconciliation.outputs.agent_id }}
         with:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 2m
+          envs: CANARY_AGENT_ID
           script: |
             set -euo pipefail
+            [[ "$CANARY_AGENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
             block="$(
               sudo journalctl \
                 -u eliza-provisioning-worker.service \
-                --since '25 minutes ago' \
+                --since '4 hours ago' \
                 -o cat \
                 --no-pager 2>/dev/null \
-                | tail -n 4000 \
+                | grep -F -B 12 -A 12 "$CANARY_AGENT_ID" \
+                | tail -n 1200 \
                 || true
             )"
             lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
@@ -1082,7 +1087,7 @@ jobs:
                 echo "private_mesh_observation_${field}=$value"
               done
             fi
-            unset observation observation_present
+            unset observation observation_present CANARY_AGENT_ID
 
       - name: Inspect exact private mesh candidate
         if: steps.cleanup_reconciliation.outputs.fence_present == 'true' || steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'
