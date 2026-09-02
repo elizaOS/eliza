@@ -6,12 +6,17 @@
  * honest provider failure.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CartesiaWebSocketFactory } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
 import {
+  makeWorkersCartesiaWebSocketFactory,
   synthesizeCartesiaBytes,
   synthesizeCartesiaWav,
 } from "../cartesia-synthesis";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 /** In-memory Cartesia socket: on the generation request, replay frames+done. */
 function scriptedFactory(
@@ -243,7 +248,116 @@ describe("synthesizeCartesiaWav", () => {
   });
 });
 
+describe("makeWorkersCartesiaWebSocketFactory", () => {
+  it("completes the dispatch callback exactly once before the upgrade fetch", async () => {
+    const events: string[] = [];
+    const upstreamSocket = {
+      accept() {
+        events.push("accept");
+      },
+      addEventListener() {},
+      close() {},
+      send() {},
+    };
+    const fetchImpl = vi.fn(async () => {
+      events.push("fetch");
+      expect(events).toEqual(["callback:start", "callback:done", "fetch"]);
+      return Object.assign(new Response(null), {
+        webSocket: upstreamSocket,
+      });
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    const beforeProviderDispatch = vi.fn(async () => {
+      events.push("callback:start");
+      await Promise.resolve();
+      events.push("callback:done");
+    });
+    const factory = makeWorkersCartesiaWebSocketFactory(beforeProviderDispatch);
+    const socket = factory("wss://api.cartesia.test/tts", { headers: {} });
+
+    await new Promise<void>((resolve, reject) => {
+      socket.addEventListener("open", resolve);
+      socket.addEventListener("error", reject);
+    });
+
+    expect(beforeProviderDispatch).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([
+      "callback:start",
+      "callback:done",
+      "fetch",
+      "accept",
+    ]);
+  });
+
+  it("does not attempt the upgrade when the dispatch callback rejects", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null));
+    vi.stubGlobal("fetch", fetchImpl);
+    const beforeProviderDispatch = vi.fn(async () => {
+      throw new Error("dispatch marker unavailable");
+    });
+    const factory = makeWorkersCartesiaWebSocketFactory(beforeProviderDispatch);
+    const socket = factory("wss://api.cartesia.test/tts", { headers: {} });
+
+    const event = await new Promise<{ readonly message?: string }>(
+      (resolve) => {
+        socket.addEventListener("error", resolve);
+      },
+    );
+
+    expect(event.message).toBe("dispatch marker unavailable");
+    expect(beforeProviderDispatch).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
 describe("synthesizeCartesiaBytes", () => {
+  it("completes the dispatch callback exactly once before REST fetch", async () => {
+    const events: string[] = [];
+    const fetchImpl = vi.fn(async () => {
+      events.push("fetch");
+      expect(events).toEqual(["callback:start", "callback:done", "fetch"]);
+      return new Response(new Uint8Array([1]), { status: 200 });
+    }) as unknown as typeof fetch;
+    const beforeProviderDispatch = vi.fn(async () => {
+      events.push("callback:start");
+      await Promise.resolve();
+      events.push("callback:done");
+    });
+
+    await synthesizeCartesiaBytes({
+      apiKey: "cartesia-key",
+      voiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+      text: "hello",
+      fetch: fetchImpl,
+      beforeProviderDispatch,
+    });
+
+    expect(beforeProviderDispatch).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call REST fetch when the dispatch callback rejects", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response(new Uint8Array([1])),
+    ) as unknown as typeof fetch;
+    const beforeProviderDispatch = vi.fn(async () => {
+      throw new Error("dispatch marker unavailable");
+    });
+
+    await expect(
+      synthesizeCartesiaBytes({
+        apiKey: "cartesia-key",
+        voiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+        text: "hello",
+        fetch: fetchImpl,
+        beforeProviderDispatch,
+      }),
+    ).rejects.toThrow("dispatch marker unavailable");
+    expect(beforeProviderDispatch).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("posts Sonic 3.5 MP3 requests with server auth and streams the response body", async () => {
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
