@@ -120,7 +120,7 @@ describe("WEB_FETCH action", () => {
     expect(result.text).toBe(huge);
   });
 
-  it("rejects a body over the transport safety limit instead of returning a prefix", async () => {
+  it("preserves a body larger than the retired transport safety limit", async () => {
     const huge = "x".repeat(256 * 1024 + 1);
     __setPinnedFetchImplForTests(
       async () => new Response(huge, { status: 200 }),
@@ -128,10 +128,8 @@ describe("WEB_FETCH action", () => {
 
     const { result } = await runHandler({ url: TEST_URL });
 
-    expect(result.success).toBe(false);
-    expect(result.text).toContain(
-      "HTTP response exceeds the configured 262144-character safety limit",
-    );
+    expect(result.success).toBe(true);
+    expect(result.text).toBe(huge);
   });
 
   it("extracts a JSON path when extract is provided", async () => {

@@ -53,6 +53,9 @@ vi.mock("@stwd/sdk", () => ({
 }));
 
 vi.mock("@elizaos/shared/steward-session-client", () => ({
+  STEWARD_TOKEN_KEY: "steward_session_token",
+  registerStewardTokenPersistence: vi.fn(),
+  registerStewardTokenRemoval: vi.fn(),
   buildStewardOAuthAuthorizeUrl: vi.fn(),
   generateStewardOAuthState: vi.fn(),
   hasStewardAuthedCookie: () => false,

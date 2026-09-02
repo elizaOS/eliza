@@ -86,6 +86,31 @@ vi.mock("@elizaos/ui", () => ({
       {children}
     </button>
   ),
+  DropdownMenu: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuContent: ({
+    children,
+    align: _align,
+    ...rest
+  }: { children: ReactNode; align?: string } & Record<string, unknown>) => (
+    <div {...rest}>{children}</div>
+  ),
+  DropdownMenuItem: ({
+    children,
+    onSelect,
+    ...rest
+  }: {
+    children: ReactNode;
+    onSelect?: () => void;
+  } & Record<string, unknown>) => (
+    <button type="button" onClick={() => onSelect?.()} {...rest}>
+      {children}
+    </button>
+  ),
 }));
 
 // Selector returns a stable no-i18n object so the fallback translate runs.

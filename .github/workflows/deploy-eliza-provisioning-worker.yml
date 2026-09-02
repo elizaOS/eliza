@@ -75,6 +75,7 @@ jobs:
         env:
           BRANCH: ${{ steps.env.outputs.branch }}
           EFFECT_DIGEST: ${{ inputs.effect_digest }}
+          GH_TOKEN: ${{ github.token }}
           PUSH_SHA: ${{ github.sha }}
           REQUESTED_SHA: ${{ github.event.inputs.deployment_sha }}
           TARGET_ENVIRONMENT: ${{ steps.env.outputs.environment }}
@@ -91,24 +92,25 @@ jobs:
               echo "::error::deployment_sha must be a lowercase 40-hex commit"
               exit 1
             }
-            verify_dir=$(mktemp -d)
-            trap 'rm -rf "$verify_dir"' EXIT
-            git -C "$verify_dir" init --quiet
-            git -C "$verify_dir" fetch --quiet --no-tags --depth=1 \
-              "https://github.com/${GITHUB_REPOSITORY}.git" "$REQUESTED_SHA"
-            deployment_sha=$(git -C "$verify_dir" rev-parse FETCH_HEAD)
+            deployment_sha=$(gh api \
+              "repos/${GITHUB_REPOSITORY}/commits/${REQUESTED_SHA}" \
+              --jq '.sha')
             [ "$deployment_sha" = "$REQUESTED_SHA" ] || {
-              echo "::error::Fetched commit does not match requested deployment_sha"
+              echo "::error::Resolved commit does not match requested deployment_sha"
               exit 1
             }
           else
-            deployment_sha=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/heads/$BRANCH" | awk 'NR == 1 { print $1 }')
+            deployment_sha=$(gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BRANCH}" \
+              --jq '.object.sha')
           fi
           [[ "$deployment_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Could not resolve immutable deployment SHA for $BRANCH"; exit 1; }
           if [ -n "$EFFECT_DIGEST" ]; then
             [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid reconciled effect digest"; exit 1; }
             [ -n "$REQUESTED_SHA" ] || { echo "::error::Reconciled deploy requires deployment_sha"; exit 1; }
-            current_sha="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/heads/$BRANCH" | awk 'NR == 1 { print $1 }')"
+            current_sha="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BRANCH}" \
+              --jq '.object.sha')"
             [ "$current_sha" = "$deployment_sha" ] || {
               echo "::error::$BRANCH is $current_sha, not reconciled source $deployment_sha"
               exit 1
@@ -147,6 +149,11 @@ jobs:
       # environment variable. Keeping the value here also lets a deploy repair
       # a missing/stale host entry when the GitHub variable inventory is empty.
       HEADSCALE_PUBLIC_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.eliza.app' || 'https://headscale-staging.eliza.app' }}
+      # The container entrypoint may spend up to 120s completing `tailscale up`.
+      # Keep the control-plane observer above that bound with margin. This must
+      # be repository-owned: an old hand-set short host value made the worker
+      # abandon pending joins before the entrypoint could finish.
+      VPN_REGISTRATION_TIMEOUT_MS: "180000"
       # Base64 private key used by the daemon to reach dedicated-agent nodes.
       # Keep this in the protected environment instead of relying on a
       # hand-copied file that can drift or disappear when the CP host is rebuilt.
@@ -252,6 +259,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
           STEWARD_API_URL: ${{ secrets.STEWARD_API_URL }}
           STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          AGENT_TOKEN_PRIVATE_KEY_PEM: ${{ secrets.AGENT_TOKEN_PRIVATE_KEY_PEM }}
         run: |
           set -euo pipefail
 
@@ -264,6 +272,7 @@ jobs:
             DATABASE_URL
             STEWARD_API_URL
             STEWARD_PLATFORM_KEYS
+            AGENT_TOKEN_PRIVATE_KEY_PEM
           )
           missing=()
           for name in "${required_deploy_settings[@]}"; do
@@ -307,6 +316,14 @@ jobs:
             resolved_headscale_api_url="http://127.0.0.1:8080"
           fi
 
+          encoded_agent_signing_key="$(printf '%s' "$AGENT_TOKEN_PRIVATE_KEY_PEM" | base64 | tr -d '\n')"
+          [ -n "$encoded_agent_signing_key" ] || {
+            echo "::error::Agent signing key transport encoding is empty"
+            exit 1
+          }
+          echo "::add-mask::$encoded_agent_signing_key"
+          printf 'AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64=%s\n' \
+            "$encoded_agent_signing_key" >> "$GITHUB_ENV"
           echo "HEADSCALE_API_URL=$resolved_headscale_api_url" >> "$GITHUB_ENV"
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
@@ -493,6 +510,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
           STEWARD_API_URL: ${{ secrets.STEWARD_API_URL }}
           STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64: ${{ env.AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64 }}
           SECRETS_MASTER_KEY: ${{ secrets.SECRETS_MASTER_KEY }}
           AGENT_BACKUP_R2_ACCESS_KEY_ID: ${{ secrets.AGENT_BACKUP_R2_ACCESS_KEY_ID }}
           AGENT_BACKUP_R2_SECRET_ACCESS_KEY: ${{ secrets.AGENT_BACKUP_R2_SECRET_ACCESS_KEY }}
@@ -507,7 +525,7 @@ jobs:
           # wait without weakening the preflight's own eight-minute fail-closed
           # fence near the end of this remote script.
           command_timeout: 40m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,BACKUP_SYSTEMD_UNIT_SHA256,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,STEWARD_API_URL,STEWARD_PLATFORM_KEYS,DATABASE_SSL_NO_VERIFY,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_R2_ACCESS_KEY_ID,AGENT_BACKUP_R2_SECRET_ACCESS_KEY,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_HETZNER_ACCESS_KEY_ID,AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_DATABASE_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_SCHEDULE_BATCH_SIZE,AGENT_BACKUP_SCHEDULE_LEASE_MS,AGENT_BACKUP_SCHEDULE_RETRY_MS,AGENT_BACKUP_OPERATION_BATCH_SIZE,AGENT_BACKUP_OPERATION_LEASE_MS,AGENT_BACKUP_OPERATION_RETRY_BASE_MS,AGENT_BACKUP_OPERATION_RETRY_MAX_MS,AGENT_BACKUP_GC_BATCH_SIZE,AGENT_BACKUP_GC_LEASE_MS,AGENT_BACKUP_GC_RETRY_BASE_MS,AGENT_BACKUP_GC_RETRY_MAX_MS,AGENT_BACKUP_DELETION_BATCH_SIZE,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,BACKUP_SYSTEMD_UNIT_SHA256,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,VPN_REGISTRATION_TIMEOUT_MS,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,STEWARD_API_URL,STEWARD_PLATFORM_KEYS,AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64,DATABASE_SSL_NO_VERIFY,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_R2_ACCESS_KEY_ID,AGENT_BACKUP_R2_SECRET_ACCESS_KEY,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_HETZNER_ACCESS_KEY_ID,AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_SCHEDULE_BATCH_SIZE,AGENT_BACKUP_SCHEDULE_LEASE_MS,AGENT_BACKUP_SCHEDULE_RETRY_MS,AGENT_BACKUP_OPERATION_BATCH_SIZE,AGENT_BACKUP_OPERATION_LEASE_MS,AGENT_BACKUP_OPERATION_RETRY_BASE_MS,AGENT_BACKUP_OPERATION_RETRY_MAX_MS,AGENT_BACKUP_GC_BATCH_SIZE,AGENT_BACKUP_GC_LEASE_MS,AGENT_BACKUP_GC_RETRY_BASE_MS,AGENT_BACKUP_GC_RETRY_MAX_MS,AGENT_BACKUP_DELETION_BATCH_SIZE,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
           script: |
             set -euo pipefail
 
@@ -825,6 +843,25 @@ jobs:
                 >> "$assignments_file"
             }
 
+            decode_agent_signing_key() {
+              local decoded
+              decoded="$(printf '%s' "$AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64" | base64 --decode)" || {
+                echo "::error::Agent signing key transport is not valid base64"
+                exit 1
+              }
+              case "$decoded" in
+                *"-----BEGIN PRIVATE KEY-----"*"-----END PRIVATE KEY-----"*) ;;
+                *)
+                  echo "::error::Agent signing key transport is not a PKCS8 PEM"
+                  exit 1
+                  ;;
+              esac
+              # EnvironmentFile values are deliberately single-line. The
+              # token signer canonicalizes literal backslash-n sequences back
+              # to PEM newlines before importing the key.
+              AGENT_TOKEN_PRIVATE_KEY_PEM="${decoded//$'\n'/\\n}"
+            }
+
             remove_environment_setting() {
               printf '%s\n' "$2" >> "$1"
             }
@@ -941,15 +978,18 @@ jobs:
             for name in "${shared_backup_only_names[@]}"; do
               remove_environment_setting "$ENV_REPLACEMENTS" "$name"
             done
+            decode_agent_signing_key
             for kv in \
               "HEADSCALE_API_URL=$HEADSCALE_API_URL" \
               "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
               "HEADSCALE_API_KEY=$HEADSCALE_API_KEY" \
+              "VPN_REGISTRATION_TIMEOUT_MS=$VPN_REGISTRATION_TIMEOUT_MS" \
               "CONTAINERS_SSH_KEY=$CONTAINERS_SSH_KEY" \
               "SANDBOX_REGISTRY_REDIS_URL=$SANDBOX_REGISTRY_REDIS_URL" \
               "DATABASE_URL=$DATABASE_URL" \
               "STEWARD_API_URL=$STEWARD_API_URL" \
               "STEWARD_PLATFORM_KEYS=$STEWARD_PLATFORM_KEYS" \
+              "AGENT_TOKEN_PRIVATE_KEY_PEM=$AGENT_TOKEN_PRIVATE_KEY_PEM" \
               "SECRETS_MASTER_KEY=$SECRETS_MASTER_KEY" \
               "ELIZA_AGENT_IMAGE=$ELIZA_AGENT_IMAGE" \
               "WARM_POOL_ENABLED=$WARM_POOL_ENABLED" \
@@ -1166,6 +1206,7 @@ jobs:
               DATABASE_URL
               STEWARD_API_URL
               STEWARD_PLATFORM_KEYS
+              AGENT_TOKEN_PRIVATE_KEY_PEM
               SECRETS_MASTER_KEY
               ELIZA_CLOUD_AGENT_BASE_DOMAIN
             )
@@ -1472,7 +1513,7 @@ jobs:
           # bounded build. Wait through that lease, then verify whether this
           # run's immutable SHA is still deployed before certifying health.
           command_timeout: 25m
-          envs: DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,WARM_POOL_ENABLED
+          envs: DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,WARM_POOL_ENABLED,VPN_REGISTRATION_TIMEOUT_MS
           script: |
             set -euo pipefail
 
@@ -1527,6 +1568,13 @@ jobs:
                   "$NODE_BIN" "$ENV_SERIALIZER" equals \
                   "$ENV_FILE" WARM_POOL_ENABLED; then
               echo "::error::Provisioning host warm-pool drift. Values were not printed."
+              exit 1
+            fi
+            if ! printf '%s' "$VPN_REGISTRATION_TIMEOUT_MS" \
+              | sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+                  "$NODE_BIN" "$ENV_SERIALIZER" equals \
+                  "$ENV_FILE" VPN_REGISTRATION_TIMEOUT_MS; then
+              echo "::error::Provisioning host VPN registration timeout drift. Values were not printed."
               exit 1
             fi
             # The worker logs to journald via systemd's stdout/stderr capture.

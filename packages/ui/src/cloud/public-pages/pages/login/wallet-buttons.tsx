@@ -13,6 +13,9 @@
  *   2. Once connected, auto-trigger the SIWE/SIWS signature.
  *   3. Call onSuccess(result) or onError(err).
  *
+ * The discovered SIWE/SIWS capabilities remain authoritative after this lazy
+ * stack mounts, so an unannounced chain never renders a sign-in control.
+ *
  * Must render inside `StewardWalletProviders` (wagmi + RainbowKit + Solana
  * adapter contexts — shared with the billing crypto top-up).
  */
@@ -161,6 +164,8 @@ export function WalletButtons({
   autoStart,
   auth,
   disabled,
+  siwe = false,
+  siws = false,
   onAutoStartHandled,
   onSuccess,
   onError,
@@ -170,6 +175,8 @@ export function WalletButtons({
   autoStart?: "ethereum" | "solana" | null;
   auth: StewardAuth;
   disabled: boolean;
+  siwe?: boolean;
+  siws?: boolean;
   onAutoStartHandled?: () => void;
   onSuccess: (result: StewardAuthResult) => void | Promise<void>;
   onError: (error: Error, kind: "ethereum" | "solana") => void;
@@ -178,26 +185,30 @@ export function WalletButtons({
 }) {
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <EthereumButton
-        autoStart={autoStart === "ethereum"}
-        auth={auth}
-        disabled={disabled}
-        onAutoStartHandled={onAutoStartHandled}
-        loading={loadingProvider === "ethereum"}
-        onSuccess={onSuccess}
-        onError={(err) => onError(err, "ethereum")}
-        onLoadingChange={(l) => onLoadingChange(l ? "ethereum" : null)}
-      />
-      <SolanaButton
-        autoStart={autoStart === "solana"}
-        auth={auth}
-        disabled={disabled}
-        onAutoStartHandled={onAutoStartHandled}
-        loading={loadingProvider === "solana"}
-        onSuccess={onSuccess}
-        onError={(err) => onError(err, "solana")}
-        onLoadingChange={(l) => onLoadingChange(l ? "solana" : null)}
-      />
+      {siwe && (
+        <EthereumButton
+          autoStart={autoStart === "ethereum"}
+          auth={auth}
+          disabled={disabled}
+          onAutoStartHandled={onAutoStartHandled}
+          loading={loadingProvider === "ethereum"}
+          onSuccess={onSuccess}
+          onError={(err) => onError(err, "ethereum")}
+          onLoadingChange={(l) => onLoadingChange(l ? "ethereum" : null)}
+        />
+      )}
+      {siws && (
+        <SolanaButton
+          autoStart={autoStart === "solana"}
+          auth={auth}
+          disabled={disabled}
+          onAutoStartHandled={onAutoStartHandled}
+          loading={loadingProvider === "solana"}
+          onSuccess={onSuccess}
+          onError={(err) => onError(err, "solana")}
+          onLoadingChange={(l) => onLoadingChange(l ? "solana" : null)}
+        />
+      )}
     </div>
   );
 }

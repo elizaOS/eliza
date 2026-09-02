@@ -5,7 +5,7 @@ import { jobsRepository } from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-import { provisioningJobService } from "./provisioning-jobs";
+import { ProvisioningJobService } from "./provisioning-jobs";
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -62,10 +62,10 @@ function makeDowngradeJob(): Job {
   };
 }
 
-function withClaimedDowngradeJob() {
+function withClaimedDowngradeJob(service: ProvisioningJobService) {
   const job = makeDowngradeJob();
   const conflictSpy = spyOn(
-    provisioningJobService as unknown as {
+    service as unknown as {
       assertNoConflictingLifecycleExecution(job: Job): Promise<void>;
     },
     "assertNoConflictingLifecycleExecution",
@@ -95,7 +95,11 @@ function withClaimedDowngradeJob() {
 
 describe("ProvisioningJobService agent_downgrade", () => {
   test("executes rollback through the daemon job and persists the swap result", async () => {
-    const ctx = withClaimedDowngradeJob();
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => true,
+      releaseProviderAdmission: async () => undefined,
+    });
+    const ctx = withClaimedDowngradeJob(service);
     const svcSpy = spyOn(elizaSandboxService, "executeDowngrade").mockResolvedValue({
       success: true,
       oldNodeId: "node-new",
@@ -106,7 +110,7 @@ describe("ProvisioningJobService agent_downgrade", () => {
     });
 
     try {
-      const result = await provisioningJobService.processPendingJobs(1, {
+      const result = await service.processPendingJobs(1, {
         jobTypes: [JOB_TYPES.AGENT_DOWNGRADE],
       });
 
@@ -128,14 +132,18 @@ describe("ProvisioningJobService agent_downgrade", () => {
   });
 
   test("treats rollback refusal as a failed attempt, not a silent no-op", async () => {
-    const ctx = withClaimedDowngradeJob();
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => true,
+      releaseProviderAdmission: async () => undefined,
+    });
+    const ctx = withClaimedDowngradeJob(service);
     const svcSpy = spyOn(elizaSandboxService, "executeDowngrade").mockResolvedValue({
       success: false,
       error: "No pre-upgrade snapshot found; refusing rollback without restore point",
     } as never);
 
     try {
-      const result = await provisioningJobService.processPendingJobs(1, {
+      const result = await service.processPendingJobs(1, {
         jobTypes: [JOB_TYPES.AGENT_DOWNGRADE],
       });
 
@@ -145,11 +153,14 @@ describe("ProvisioningJobService agent_downgrade", () => {
       expect(ctx.updateStatusSpy).not.toHaveBeenCalledWith(ctx.job, "completed", expect.anything());
       expect(ctx.incrementSpy).toHaveBeenCalledWith(
         ctx.job.id,
-        "No pre-upgrade snapshot found; refusing rollback without restore point",
+        expect.stringContaining(
+          "No pre-upgrade snapshot found; refusing rollback without restore point",
+        ),
         ctx.job.max_attempts,
         undefined,
         ctx.job.execution_generation,
         expect.any(String),
+        undefined,
       );
     } finally {
       svcSpy.mockRestore();

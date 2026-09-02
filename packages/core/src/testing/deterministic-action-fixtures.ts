@@ -75,25 +75,45 @@ export type StrictTerminalRouteFixture = {
  */
 export function finalMessageUserText(value: string): string {
 	const markerIndex = value.lastIndexOf(MESSAGE_USER_MARKER);
-	const messageText =
+	let messageText =
 		markerIndex === -1
 			? value
 			: value.slice(markerIndex + MESSAGE_USER_MARKER.length);
+	const withoutSuffix =
+		messageText.split(MESSAGE_USER_SUFFIX_BOUNDARY, 1)[0]?.trim() ?? "";
+	try {
+		const structured = JSON.parse(withoutSuffix) as unknown;
+		if (
+			structured &&
+			typeof structured === "object" &&
+			"text" in structured &&
+			typeof structured.text === "string"
+		) {
+			messageText = structured.text;
+		} else {
+			messageText = withoutSuffix;
+		}
+	} catch {
+		// error-policy:J3 Plain message text is the valid non-JSON representation.
+		messageText = withoutSuffix;
+	}
 	const envelopeStart = messageText.lastIndexOf(EXTERNAL_CONTENT_START);
 	const envelopeEnd = messageText.lastIndexOf(EXTERNAL_CONTENT_END);
-	if (envelopeStart === -1 || envelopeEnd <= envelopeStart) {
-		return messageText.split(MESSAGE_USER_SUFFIX_BOUNDARY, 1)[0]?.trim() ?? "";
-	}
-	const envelopeText = messageText.slice(
-		envelopeStart + EXTERNAL_CONTENT_START.length,
-		envelopeEnd,
-	);
-	const separatorIndex = envelopeText.indexOf(EXTERNAL_CONTENT_SEPARATOR);
-	return (
-		separatorIndex === -1
-			? envelopeText
-			: envelopeText.slice(separatorIndex + EXTERNAL_CONTENT_SEPARATOR.length)
-	).trim();
+	return (() => {
+		if (envelopeStart === -1 || envelopeEnd <= envelopeStart) {
+			return messageText.trim();
+		}
+		const envelopeText = messageText.slice(
+			envelopeStart + EXTERNAL_CONTENT_START.length,
+			envelopeEnd,
+		);
+		const separatorIndex = envelopeText.indexOf(EXTERNAL_CONTENT_SEPARATOR);
+		return (
+			separatorIndex === -1
+				? envelopeText
+				: envelopeText.slice(separatorIndex + EXTERNAL_CONTENT_SEPARATOR.length)
+		).trim();
+	})();
 }
 
 /** A text matcher that compares the normalized latest user text exactly. */

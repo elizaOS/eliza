@@ -31,6 +31,7 @@ describe("repository ruleset contract", () => {
     expect(Object.keys(admission.jobs)).toEqual([
       "source-smoke",
       "billing-payment-replay-e2e",
+      "subscription-authority-postgres",
       "browser-bridge-windows-security",
       "static-smoke",
     ]);
@@ -38,6 +39,7 @@ describe("repository ruleset contract", () => {
       "source-smoke",
       "browser-bridge-windows-security",
       "billing-payment-replay-e2e",
+      "subscription-authority-postgres",
     ]);
     expect(admission.jobs["billing-payment-replay-e2e"].needs).toBeUndefined();
     expect(admission.jobs["browser-bridge-windows-security"].uses).toBe(

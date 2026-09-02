@@ -48,15 +48,16 @@ function makeFakeLane(): {
     currentModelPath: () => "/fake/eliza-1.gguf",
     generate: async (args) => {
       const startedAt = Date.now();
-      await sleep(decodeMs);
       const record: RecordedGenerate = {
         name: args.prompt.slice(0, 24),
         prompt: args.prompt,
         maxTokens: args.maxTokens,
         startedAt,
-        endedAt: Date.now(),
+        endedAt: 0,
       };
       calls.push(record);
+      await sleep(decodeMs);
+      record.endedAt = Date.now();
       return `reply:${record.name}`;
     },
     embed: async () => ({ embedding: [0], tokens: 1 }),
@@ -116,14 +117,13 @@ describe("generateOnPriorityLane — lock priority (#11914)", () => {
       maxTokens: 64,
       priority: "background",
     });
-    await sleep(10); // bg1 holds the lane
+    while (lane.calls.length === 0) await sleep(1); // bg1 holds the lane
 
     const bg2 = generateOnPriorityLane(lane.loader, lane.lifecycle, {
       prompt: "bg2-next-firing",
       maxTokens: 64,
       priority: "background",
     });
-    await sleep(5);
 
     lane.setDecodeMs(20);
     const chatText = await generateOnPriorityLane(lane.loader, lane.lifecycle, {
@@ -149,24 +149,22 @@ describe("generateOnPriorityLane — lock priority (#11914)", () => {
     }
   });
 
-  it("rejects an unsupported background output request before the loader", async () => {
+  it("preserves a background output request once the lane is available", async () => {
     setInferencePriorityGate(new InferencePriorityGate());
     const lane = makeFakeLane();
     lane.setDecodeMs(1);
 
     await withEnv({ ELIZA_INFERENCE_RAM_CLASS: "constrained" }, async () => {
-      await expect(
-        generateOnPriorityLane(lane.loader, lane.lifecycle, {
-          prompt: "x".repeat(11_169),
-          maxTokens: 8_192,
-          priority: "background",
-        }),
-      ).rejects.toMatchObject({
-        code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_EXCEEDED",
+      await generateOnPriorityLane(lane.loader, lane.lifecycle, {
+        prompt: "x".repeat(11_169),
+        maxTokens: 8_192,
+        priority: "background",
       });
     });
 
-    expect(lane.calls).toHaveLength(0);
+    expect(lane.calls).toHaveLength(1);
+    expect(lane.calls[0].prompt).toBe("x".repeat(11_169));
+    expect(lane.calls[0].maxTokens).toBe(8_192);
   });
 
   it("never rewrites an interactive turn", async () => {

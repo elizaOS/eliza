@@ -436,6 +436,41 @@ describe("CalendarSection", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the selected calendar grid visible on an empty desktop feed", () => {
+    calendarState.current = makeResult({
+      events: [],
+      status: "empty",
+      viewMode: "month",
+    });
+
+    render(<CalendarSection {...noopProps} />);
+
+    expect(screen.getByTestId("calendar-month-grid")).toBeTruthy();
+    expect(
+      screen.queryByRole("status", { name: "No events in this range" }),
+    ).toBeNull();
+  });
+
+  it("defines the month columns inline for runtime plugin bundles", () => {
+    calendarState.current = makeResult({
+      events: [],
+      status: "empty",
+      viewMode: "month",
+    });
+
+    render(<CalendarSection {...noopProps} />);
+
+    const monthGrid = screen.getByTestId("calendar-month-grid");
+    const [weekdayHeader, dayCells] = Array.from(monthGrid.children);
+    expect((weekdayHeader as HTMLElement).style.gridTemplateColumns).toBe(
+      "repeat(7, minmax(0, 1fr))",
+    );
+    expect((dayCells as HTMLElement).style.gridTemplateColumns).toBe(
+      "repeat(7, minmax(0, 1fr))",
+    );
+    expect(dayCells?.children).toHaveLength(42);
+  });
+
   it("renders the error banner when the hook reports an error", () => {
     calendarState.current = makeResult({
       error: "Calendar failed to load.",

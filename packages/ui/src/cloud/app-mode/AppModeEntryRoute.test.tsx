@@ -5,7 +5,8 @@ import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { client } from "../../api";
 import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
@@ -79,6 +80,38 @@ let assignedUrls: string[];
 
 function stubNetwork(routes: StubRoutes): void {
   fetchLog = [];
+  vi.spyOn(client, "ensurePersonalDedicatedEliza").mockImplementation(
+    async ({ cloudApiBase }) => {
+      if (!routes.personal) {
+        throw new Error("personal identity endpoint unavailable");
+      }
+      fetchLog.push(`GET ${cloudApiBase}/api/v1/eliza/personal`);
+      const response = routes.personal();
+      if (!response.ok) {
+        throw new Error(
+          `personal identity endpoint returned ${response.status}`,
+        );
+      }
+      const body = (await response.json()) as {
+        data?: { identity?: { id?: unknown; displayName?: unknown } };
+      };
+      const id = body.data?.identity?.id;
+      if (typeof id !== "string" || !id.startsWith("personal:")) {
+        throw new Error("invalid personal Eliza identity");
+      }
+      return {
+        personalElizaId: id,
+        agentId: id,
+        activeAgentId: "00000000-0000-4000-8000-000000000002",
+        agentName:
+          typeof body.data?.identity?.displayName === "string"
+            ? body.data.identity.displayName
+            : "Eliza",
+        apiBase: "https://dedicated.eliza.test",
+        runtime: "dedicated" as const,
+      };
+    },
+  );
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     fetchLog.push(`${init?.method ?? "GET"} ${url}`);
@@ -179,6 +212,7 @@ function renderEntry(
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   localStorage.clear();
   globalThis.fetch = realFetch;
   appModeNavigation.assign = realAssign;

@@ -29,10 +29,12 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
 
 /** Current IAC schema version. Bump the key suffix in CacheKeys on a breaking change. */
-export const INFERENCE_AUTH_CONTEXT_VERSION = 2 as const;
+export const INFERENCE_AUTH_CONTEXT_VERSION = 3 as const;
 
 /** Admission state co-located with identity so a warm Worker performs one KV read. */
 export interface InferenceAdmissionSnapshot {
+  /** Paid-plan funding authority captured with the combined admission decision. */
+  subscriptionFunded: boolean;
   balance: {
     balanceUsd: number;
     balanceAt: number;
@@ -126,6 +128,7 @@ function isInferenceAdmissionSnapshot(value: unknown): value is InferenceAdmissi
   const balance = candidate.balance;
   const rateLimits = candidate.rateLimits;
   return (
+    typeof candidate.subscriptionFunded === "boolean" &&
     Boolean(balance) &&
     typeof balance?.balanceUsd === "number" &&
     Number.isFinite(balance.balanceUsd) &&

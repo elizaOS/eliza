@@ -224,6 +224,7 @@ async function postCreate(body: unknown) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+    { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "agents.example.test" },
   );
 }
 

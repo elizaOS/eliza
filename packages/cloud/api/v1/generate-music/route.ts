@@ -20,6 +20,7 @@ import {
 } from "@/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@/lib/services/content-safety";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@/lib/services/generations";
 import {
   checkGenerativeProviderHealth,
@@ -149,9 +150,42 @@ app.post("/", async (c) => {
   let chargeSettled = false;
 
   try {
-    const { user, apiKeyId, admissionSnapshot } =
-      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
     const decodedRawBody = await decodeRequestJson(c.req);
+    const preflight = decodedRawBody.ok
+      ? musicRequestSchema.safeParse(decodedRawBody.value)
+      : undefined;
+    const preflightRequest = preflight?.success ? preflight.data : undefined;
+    const preflightDefinition = preflightRequest
+      ? getSupportedMusicModelDefinition(preflightRequest.model)
+      : undefined;
+    const preflightProvider = preflightRequest
+      ? (preflightRequest.provider ?? preflightDefinition?.provider)
+      : undefined;
+    const willAdmit = Boolean(
+      preflightRequest &&
+        preflightDefinition &&
+        preflightProvider === preflightDefinition.provider &&
+        !(
+          preflightProvider === "fal" && preflightRequest.prompt.length > 2000
+        ) &&
+        !(
+          preflightDefinition.durationControl === "unsupported" &&
+          preflightRequest.durationSeconds !== undefined
+        ) &&
+        providerConfigured(c.env, preflightProvider) &&
+        !checkGenerativeProviderHealth(
+          `music:${preflightProvider}:${preflightRequest.model}`,
+        ).degraded,
+    );
+    const { user, apiKeyId, admissionSnapshot, credential } =
+      await requireGenerativeRouteCaller(c, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: willAdmit,
+      });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is an explicit invalid request.
       return c.json({ error: "Invalid JSON body" }, 400);
@@ -286,6 +320,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost,
         admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {

@@ -246,6 +246,16 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
   let workflow: SchoolCalendarWorkflow;
   let gateway: CalendarOwnerMutationGateway;
   let creates: number;
+  let createdRanges: Array<{
+    title: string;
+    startAt: string | undefined;
+    endAt: string | undefined;
+    allDay: { startDate: string; endDateExclusive: string } | undefined;
+  }>;
+  let updatedRanges: Array<{
+    eventId: string;
+    allDay: { startDate: string; endDateExclusive: string } | undefined;
+  }>;
   let clock: Date;
 
   beforeEach(async () => {
@@ -264,6 +274,8 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     pdfBytes = Buffer.from("%PDF-concord-fixture-a");
     text = twoColumnText;
     creates = 0;
+    createdRanges = [];
+    updatedRanges = [];
     clock = new Date("2026-08-30T12:00:00.000Z");
     const lookupFn = async () => [{ address: "93.184.216.34", family: 4 }];
     const pinnedFetchImpl = vi.fn(async ({ url }: { url: URL }) => {
@@ -292,6 +304,12 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     gateway = {
       async create(_url, request) {
         creates += 1;
+        createdRanges.push({
+          title: request.title,
+          startAt: request.startAt,
+          endAt: request.endAt,
+          allDay: request.allDay,
+        });
         return {
           outcome: "event",
           event: event(`provider-${creates}`, request.title),
@@ -299,6 +317,10 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
         };
       },
       async update(_url, request) {
+        updatedRanges.push({
+          eventId: request.eventId,
+          allDay: request.allDay,
+        });
         return event(request.eventId, request.title ?? "updated");
       },
       async cancel() {
@@ -365,6 +387,84 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     expect(creates).toBe(2);
   });
 
+  it("sends civil all-day ranges across standard and daylight time", async () => {
+    text = ["2026-01-15 | Winter event", "Summer event | 2026-07-15"].join(
+      "\n",
+    );
+    const first = await workflow.run();
+    if (first.state !== "awaiting_approval") throw new Error("expected plan");
+
+    await workflow.applyApprovedPlan({
+      runId: first.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+
+    expect(createdRanges).toEqual([
+      {
+        title: "Winter event",
+        startAt: undefined,
+        endAt: undefined,
+        allDay: {
+          startDate: "2026-01-15",
+          endDateExclusive: "2026-01-16",
+        },
+      },
+      {
+        title: "Summer event",
+        startAt: undefined,
+        endAt: undefined,
+        allDay: {
+          startDate: "2026-07-15",
+          endDateExclusive: "2026-07-16",
+        },
+      },
+    ]);
+  });
+
+  it("creates a reviewable one-time migration for legacy timed school rows, then returns to hash no-op", async () => {
+    const first = await workflow.run();
+    if (first.state !== "awaiting_approval") throw new Error("expected plan");
+    await workflow.applyApprovedPlan({
+      runId: first.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    await db.exec(
+      "UPDATE app_lifeops.life_school_calendar_sources SET calendar_contract_version = 1",
+    );
+
+    const migration = await workflow.run(undefined, "scheduled");
+    expect(migration.state).toBe("awaiting_approval");
+    if (migration.state !== "awaiting_approval") {
+      throw new Error("expected migration plan");
+    }
+    expect(migration.plan.calendarContractVersion).toBe(2);
+    expect(migration.plan.changes.map((change) => change.kind)).toEqual([
+      "update",
+      "update",
+    ]);
+    await workflow.applyApprovedPlan({
+      runId: migration.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    expect(updatedRanges).toEqual([
+      {
+        eventId: "provider-1",
+        allDay: { startDate: "2026-09-01", endDateExclusive: "2026-09-02" },
+      },
+      {
+        eventId: "provider-2",
+        allDay: { startDate: "2026-10-09", endDateExclusive: "2026-10-10" },
+      },
+    ]);
+    await expect(workflow.run(undefined, "scheduled")).resolves.toMatchObject({
+      state: "unchanged",
+      contentSha256: hash(pdfBytes),
+    });
+  });
+
   it("rejects a concurrent apply owner while the first lease is active", async () => {
     const first = await workflow.run();
     if (first.state !== "awaiting_approval") throw new Error("expected plan");
@@ -399,7 +499,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     await applying;
   });
 
-  it("resumes after a partial provider success without replaying completed operations", async () => {
+  it("releases a failed apply immediately and retries without replaying completed operations", async () => {
     const first = await workflow.run();
     if (first.state !== "awaiting_approval") throw new Error("expected plan");
     const successfulKeys: string[] = [];
@@ -424,10 +524,23 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     );
     expect(operationStates.rows.map((row) => row.state)).toEqual([
       "applied",
-      "executing",
+      "pending",
+    ]);
+    const failedRun = await db.query<{
+      state: string;
+      apply_lease_token: string | null;
+      error_code: string | null;
+    }>(
+      "SELECT state, apply_lease_token, error_code FROM app_lifeops.life_school_calendar_runs",
+    );
+    expect(failedRun.rows).toEqual([
+      {
+        state: "awaiting_approval",
+        apply_lease_token: null,
+        error_code: "SCHOOL_CALENDAR_APPLY_FAILED",
+      },
     ]);
 
-    clock = new Date("2026-08-30T12:06:00.000Z");
     gateway.create = vi.fn(async (_url, request) => {
       successfulKeys.push(request.idempotencyKey);
       return {
@@ -436,18 +549,18 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
         writeOnlyReceipt: null,
       };
     });
-    const restarted = new SchoolCalendarWorkflow(runtime, { now: () => clock });
-    await restarted.applyApprovedPlan({
+    await workflow.applyApprovedPlan({
       runId: first.runId,
       requestUrl: new URL("http://localhost"),
       gateway,
     });
     expect(gateway.create).toHaveBeenCalledTimes(1);
     expect(successfulKeys[1]).toBe(successfulKeys[2]);
-    const run = await db.query<{ state: string }>(
-      "SELECT state FROM app_lifeops.life_school_calendar_runs",
-    );
-    expect(run.rows[0]?.state).toBe("applied");
+    const run = await db.query<{
+      state: string;
+      error_code: string | null;
+    }>("SELECT state, error_code FROM app_lifeops.life_school_calendar_runs");
+    expect(run.rows[0]).toEqual({ state: "applied", error_code: null });
   });
 
   it("isolates source state by agent ownership", async () => {

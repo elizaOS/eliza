@@ -579,6 +579,37 @@ describe("OwnerCalendarMutationGatewayService — real PGlite", () => {
     });
   });
 
+  it("preserves civil all-day dates in the immutable approval", async () => {
+    const gateway = new OwnerCalendarMutationGatewayService(
+      runtime,
+      deps(readablePort()),
+    );
+    const {
+      startAt: _startAt,
+      endAt: _endAt,
+      ...allDayRequest
+    } = createRequest;
+    await gateway.create(new URL("http://internal.local"), {
+      ...allDayRequest,
+      allDay: {
+        startDate: "2027-03-14",
+        endDateExclusive: "2027-03-15",
+      },
+      timeZone: "America/Los_Angeles",
+      idempotencyKey: "owner-editor-all-day-1",
+    });
+    expect(executedApprovals[0]?.payload).toMatchObject({
+      action: "schedule_event",
+      startsAtMs: Date.parse("2027-03-14T00:00:00.000Z"),
+      endsAtMs: Date.parse("2027-03-15T00:00:00.000Z"),
+      allDay: {
+        startDate: "2027-03-14",
+        endDateExclusive: "2027-03-15",
+      },
+      timeZone: "America/Los_Angeles",
+    });
+  });
+
   it("resolves preset and duration into an exact immutable range", async () => {
     const gateway = new OwnerCalendarMutationGatewayService(
       runtime,

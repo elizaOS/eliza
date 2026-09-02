@@ -13,9 +13,11 @@ secrets, linting changed workflow definitions, performing a frozen install, and
 building plus linting and typechecking the affected workspace closure. When the
 Billing replay runtime workspace closure changes, it also runs the keyless,
 mock-backed payment replay Playwright proof and requires that job in the same
-aggregate. It does not run scenarios, live providers, devices, deployments, or
-destructive effects. New commits cancel stale work for the same pull request or
-merge group.
+aggregate. It also runs the subscription authority's organization-lock,
+post-lock expiry, live-subscription uniqueness, and allowance-accounting proof
+against PostgreSQL 16. It does not run scenarios, live providers, devices,
+deployments, or destructive effects. New commits cancel stale work for the same
+pull request or merge group.
 
 `develop-full.yml` is the sole develop-push workflow. Its stable concurrency
 group cancels the complete read-only graph for a superseded tip, delegates each
@@ -136,11 +138,11 @@ Representative examples:
   an explicit trusted caller.
   Artifact names include the run ID and attempt so reruns cannot overwrite or
   link a prior attempt's bundle. Both jobs initialize a revision-bound artifact
-  root after checkout, then run the bundle-owning runners with `--output`. A
-  started runner finalizes the full bundle (`inline/`, `logs/`, `summary.json`,
-  `junit.xml`) on success and failure; an earlier toolchain or device failure
-  retains the bootstrap record plus the Actions log. No job reads a repository
-  secret.
+  root after checkout, then run the bundle-owning runners with `--output`.
+  Android retains its bootstrap record under `android/logs/` and atomically
+  publishes its allowlisted proof under `android/evidence/`; iOS retains its
+  existing full bundle layout. An earlier toolchain or device failure retains
+  the bootstrap record plus the Actions log. No job reads a repository secret.
 - `android-arm64-local-e2e.yml` is the separate trusted repository-dispatch
   self-hosted physical-device lane for the embedded Bun + GGUF agent. Its
   `[self-hosted, Linux, ARM64, android-device]` labels are an infrastructure
@@ -355,18 +357,46 @@ Terraform domain workflow additionally requires zone-scoped DNS write and
 certificate packs. Prefer separate environment-scoped deploy and DNS/TLS
 tokens so staging automation cannot mutate production zones.
 
-The Cloud release resolves the public Telegram bot ID and username before
-database migration or API deployment. Staging consumes the complete
-repository-scoped `VITE_TELEGRAM_BOT_ID` / `VITE_TELEGRAM_BOT_USERNAME` pair
-and requires both components to differ from production. Production ignores
-that repository pair and derives its exact canonical identity from the checked
-out `packages/homepage/src/lib/contact.ts`. Missing, partial, malformed,
-out-of-range, or cross-environment staging values stop the release without
-printing either value. Do not expect same-named GitHub Environment variables
-to override the repository pair: GitHub makes Environment variables available
-after values in the `vars` context have already been resolved. Implicit Vite
-fallback use remains local/direct-only; protected production explicitly selects
-and validates the canonical source constants. Pull requests are validated by
+The Cloud deploy entry workflow resolves the public Telegram bot ID and
+username before it invokes the reusable release, database migration, or API
+deployment. Staging consumes the complete
+`VITE_TELEGRAM_BOT_ID` / `VITE_TELEGRAM_BOT_USERNAME` configuration-variable
+pair only when it matches the protected `staging` GitHub Environment secret
+`TELEGRAM_IDENTITY_AUTHORITY_SHA256`, and requires both components to differ
+from production. The receipt is the lowercase SHA-256 of the framed bytes
+`elizaOS/eliza\0staging\0telegram-public-identity\0v1\0<ID>\0<lowercase-username>\n`.
+The protected staging entry job reads the receipt directly and verifies that the
+existing Worker has both Telegram binding names before any release mutation. It
+emits only a safe staging preserve-authority result; the reusable release
+receives that result and the already-admitted public pair, never the receipt,
+bot token, or webhook secret. This keeps a repository or organization secret
+from substituting for Environment authority or crossing the reusable-workflow
+boundary. The `deploy-api` job preserves a staging binding whose GitHub source
+is blank, then verifies its name again after the atomic Worker deploy. For
+production, the already-approved `production` authorization job verifies the
+live bot token against the canonical public identity and the deploy hard-fails
+if either protected credential is blank. A repository/organization variable may
+resolve the same committed public pair, but cannot select a different pair.
+For a hosted, read-only authority proof on a ref allowed by the protected
+`staging` Environment policy, dispatch `cloud-cf-deploy.yml` with
+`environment=staging` and `telegram_authority_canary=true`. The canary rejects
+production, force, and deployed-renderer options, runs only the protected
+staging identity and runtime-binding preflight, and skips admission, the
+reusable release, every mutation, and certification.
+Because GitHub preserves successful job outputs during failed-job reruns, the
+migration, API deploy, Pages build, and Pages deploy jobs each repeat the bound
+attempt check as their first step; a partial rerun must be replaced with a full
+rerun before stale admitted values can reach a release mutation. Cancel and
+fully rerun any in-flight release when rotating the pair or receipt. Missing,
+partial, malformed, out-of-range, receipt-mismatched, or cross-environment
+staging configuration stops the release without printing either value or the
+receipt. Production continues to ignore every GitHub Telegram input, derives
+its exact canonical identity from the checked out
+`packages/homepage/src/lib/contact.ts`. Implicit Vite fallback use remains
+local/direct-only; its already-approved `production` authorization job verifies
+the live runtime identity before the reusable release begins, so no second
+Environment approval is introduced. Protected production explicitly selects and
+validates the canonical source constants. Pull requests are validated by
 `pr-static-smoke.yml`; there is no credentialed or artifact-only Pages preview
 path in `cloud-cf-deploy.yml`.
 

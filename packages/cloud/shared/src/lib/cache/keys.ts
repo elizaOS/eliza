@@ -65,15 +65,15 @@ export const CacheKeys = {
    * cache uses) so revoke/ban invalidation by `key_hash` is exact.
    */
   inference: {
-    authContext: (fullKeyHash: string) => `iac:auth:${fullKeyHash}:v2`,
+    authContext: (fullKeyHash: string) => `iac:auth:${fullKeyHash}:v3`,
     /**
      * Fully-authorized Steward session identity, keyed by a one-way hash of the
      * verified Steward subject. The subject—not the token—is stable across
      * refreshes and gives account/org lifecycle mutations one exact key to evict.
      */
-    sessionAuthContext: (stewardSubjectHash: string) => `iac:session-auth:${stewardSubjectHash}:v2`,
+    sessionAuthContext: (stewardSubjectHash: string) => `iac:session-auth:${stewardSubjectHash}:v3`,
     /** Shared-runtime balance + rate policy projection used as one cache read. */
-    orgAdmission: (orgId: string) => `iac:org-admission:${orgId}:v1`,
+    orgAdmission: (orgId: string) => `iac:org-admission:${orgId}:v2`,
     /** Org credit-balance snapshot used only as the optimistic fast-path gate hint. */
     orgBalance: (orgId: string) => `iac:org-balance:${orgId}:v1`,
     /** Durable pending-charge for Tier-2 optimistic billing; swept by cron backstop. */
@@ -318,7 +318,7 @@ export const CacheTTL = {
    */
   inference: {
     authContext: 60, // 1 min physical bound; active entries refresh off-response after 30s
-    orgAdmission: 30, // shared-runtime combined balance + rate policy projection
+    orgAdmission: 30, // shared-runtime combined funding, balance, and rate policy projection
     orgBalance: 15, // 15 seconds - FRESHNESS window: getGateBalanceUsd serves a hint older than this stale-while-revalidate (background refresh) instead of blocking on an authoritative read
     orgBalanceStale: 300, // 5 min - physical KV lifetime for stale-while-revalidate; authoritative admission is revisioned/serialized or synchronous
     pendingCharge: 3600, // 60 min - sweep window = TTL - grace(20m) = 40m, survives cron hiccups

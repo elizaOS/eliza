@@ -173,7 +173,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     // Retired My Apps deep link (#17031): lands on the consolidated Projects
     // surface with the Apps segment pre-selected. The launcher grid remains
     // available at `/views`.
-    readyChecks: [{ text: "Install, create, and run your elizaOS apps." }],
+    readyChecks: [{ text: "No apps installed yet" }],
     timeoutMs: 60_000,
     requireViewHeader: true,
     viewHeaderTitle: "Projects",
@@ -433,9 +433,8 @@ const SETTING_SECTIONS_TO_CLICK: readonly {
   { label: /^Capabilities$/, expectedHash: "capabilities" },
   { label: /^Apps$/, expectedHash: "apps" },
   { label: /^Connectors$/, expectedHash: "connectors" },
-  { label: /^My Runtimes$/, expectedHash: "my-runtimes" },
   { label: /^Runtime$/, expectedHash: "runtime" },
-  { label: /^Appearance$/, expectedHash: "appearance" },
+  { label: /^General$/, expectedHash: "appearance" },
   { label: /^Background$/, expectedHash: "background" },
   { label: /^Wallet & RPC\b/, expectedHash: "wallet-rpc" },
   { label: /^Updates$/, expectedHash: "updates" },
@@ -451,6 +450,7 @@ const SETTING_DEEP_LINKS: readonly {
   { hash: "background" },
   { hash: "wallet-rpc" },
   { hash: "advanced" },
+  { hash: "my-runtimes" },
   { hash: "cloud-agents" },
 ];
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";

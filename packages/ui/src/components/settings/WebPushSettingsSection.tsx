@@ -8,10 +8,13 @@
  * unconfigured VAPID).
  */
 
+import { ElizaError } from "@elizaos/core";
 import { BellRing } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import { invokeDesktopBridgeRequest } from "../../bridge";
+import { isDesktopPlatform } from "../../platform";
 import { useWebPush } from "../../state/notifications/useWebPush";
-import { SettingsSwitchRow } from "./settings-agent-rows";
+import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "./settings-layout";
 
 /** Human copy for each coarse state. */
@@ -65,6 +68,8 @@ function describeState(state: ReturnType<typeof useWebPush>["state"]): {
 
 export function WebPushSettingsSection() {
   const { state, busy, error, ready, subscribe, unsubscribe } = useWebPush();
+  const [testBusy, setTestBusy] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
   const view = describeState(state);
 
   const onToggle = useCallback(
@@ -76,6 +81,40 @@ export function WebPushSettingsSection() {
     },
     [subscribe, unsubscribe],
   );
+
+  const onTestNotification = useCallback(async () => {
+    setTestBusy(true);
+    setTestError(null);
+    try {
+      const acknowledgement = await invokeDesktopBridgeRequest<{ id: string }>({
+        rpcMethod: "desktopShowNotification",
+        ipcChannel: "desktop:showNotification",
+        params: {
+          title: "Eliza Test Notification",
+          body: "Notifications from the Eliza desktop app are working.",
+        },
+      });
+      if (
+        acknowledgement === null ||
+        typeof acknowledgement?.id !== "string" ||
+        acknowledgement.id.length === 0
+      ) {
+        throw new ElizaError(
+          "The desktop app cannot send a test notification.",
+          { code: "DESKTOP_NOTIFICATION_METHOD_UNAVAILABLE" },
+        );
+      }
+    } catch (cause) {
+      // error-policy:J4 the desktop test action renders a visible failure.
+      setTestError(
+        cause instanceof Error
+          ? cause.message
+          : "The desktop app cannot send a test notification.",
+      );
+    } finally {
+      setTestBusy(false);
+    }
+  }, []);
 
   return (
     <SettingsStack>
@@ -94,6 +133,32 @@ export function WebPushSettingsSection() {
           onCheckedChange={onToggle}
         />
       </SettingsGroup>
+      {isDesktopPlatform() ? (
+        <SettingsGroup
+          title="System notification"
+          footer="Verify that the desktop app can show system notifications."
+        >
+          <div className="px-5 py-3">
+            <SettingsActionButton
+              agentId="notifications-send-test"
+              agentLabel="Send test notification"
+              agentGroup="notifications"
+              variant="outline"
+              size="sm"
+              disabled={testBusy}
+              agentStatus={testError ? "error" : testBusy ? "sending" : "ready"}
+              onClick={() => void onTestNotification()}
+            >
+              Send test notification
+            </SettingsActionButton>
+            {testError ? (
+              <p className="mt-2 text-xs text-danger" role="alert">
+                {testError}
+              </p>
+            ) : null}
+          </div>
+        </SettingsGroup>
+      ) : null}
     </SettingsStack>
   );
 }

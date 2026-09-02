@@ -50,6 +50,7 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { drainPcm16ToWav } from "@/lib/services/pcm16-wav";
 import { recordCustomVoiceUsage } from "@/lib/services/tts-custom-voice-usage";
@@ -179,66 +180,59 @@ async function __hono_POST(c: AppContext) {
   const timings: TtsTimings = {};
 
   try {
-    const { user, apiKeyId, admissionSnapshot } =
-      await requireGenerativeRouteCaller(c, {
-        compatibility: "raw",
-        rateLimitEndpoint: "strict",
-        awaitWarmingMs: 1500,
-      });
-    timings.authMs = Date.now() - requestStart;
-    const admissionStart = Date.now();
-
     const decodedRawBody = await decodeRequestJson(request);
+    let pendingResponse: Response | undefined;
+    let body: z.infer<typeof TtsBody> | undefined;
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is an explicit invalid request.
-      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
-    const rawBody = decodedRawBody.value;
-    const parsed = TtsBody.safeParse(rawBody);
-    if (!parsed.success) {
-      return Response.json(
-        { error: "Invalid request body", details: parsed.error.flatten() },
+      pendingResponse = Response.json(
+        { error: "Invalid JSON body" },
         { status: 400 },
       );
+    } else {
+      const parsed = TtsBody.safeParse(decodedRawBody.value);
+      if (parsed.success) body = parsed.data;
+      else {
+        pendingResponse = Response.json(
+          { error: "Invalid request body", details: parsed.error.flatten() },
+          { status: 400 },
+        );
+      }
     }
-    const { text, voiceId, modelId } = parsed.data;
     const kokoroBaseUrl = env.KOKORO_TTS_URL?.trim();
     const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
     const cartesiaVoiceId = resolveCartesiaVoiceId(env);
-    const providerSelection = selectTtsProvider({
-      voiceId,
-      cartesiaConfigured: Boolean(cartesiaApiKey),
-      kokoroConfigured: Boolean(kokoroBaseUrl),
-    });
-    // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
-    // different codec); billing/usage are identical to the MP3 path.
-    const wantWav = parsed.data.format === "wav";
-
-    if (!text) {
-      return Response.json({ error: "No text provided" }, { status: 400 });
-    }
-
-    if (text.length === 0) {
-      return Response.json({ error: "Text cannot be empty" }, { status: 400 });
-    }
-
-    if (text.length > MAX_TEXT_LENGTH) {
-      return Response.json(
+    const providerSelection = body
+      ? selectTtsProvider({
+          voiceId: body.voiceId,
+          cartesiaConfigured: Boolean(cartesiaApiKey),
+          kokoroConfigured: Boolean(kokoroBaseUrl),
+        })
+      : undefined;
+    if (body && !body.text) {
+      pendingResponse = Response.json(
+        { error: "No text provided" },
+        { status: 400 },
+      );
+    } else if (body && body.text.length === 0) {
+      pendingResponse = Response.json(
+        { error: "Text cannot be empty" },
+        { status: 400 },
+      );
+    } else if (body && body.text.length > MAX_TEXT_LENGTH) {
+      pendingResponse = Response.json(
         {
           error: `Text too long. Maximum length is ${MAX_TEXT_LENGTH} characters`,
         },
         { status: 400 },
       );
-    }
-
-    if (!providerSelection.ok) {
-      timings.admissionMs = Date.now() - admissionStart;
+    } else if (providerSelection && !providerSelection.ok) {
       logger.warn?.("[Voice TTS API] TTS provider selection failed", {
         provider: providerSelection.provider,
         fallbackReason: providerSelection.fallbackReason,
         code: providerSelection.code,
       });
-      return Response.json(
+      pendingResponse = Response.json(
         {
           error: providerSelection.error,
           code: providerSelection.code,
@@ -252,6 +246,32 @@ async function __hono_POST(c: AppContext) {
         },
       );
     }
+
+    const willAdmit =
+      pendingResponse === undefined &&
+      providerSelection?.ok === true &&
+      providerSelection.provider !== "kokoro";
+    const { user, apiKeyId, admissionSnapshot, credential } =
+      await requireGenerativeRouteCaller(c, {
+        compatibility: "raw",
+        rateLimitEndpoint: "strict",
+        awaitWarmingMs: 1500,
+        deferStrongCredentialCheck: willAdmit,
+      });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
+    timings.authMs = Date.now() - requestStart;
+    const admissionStart = Date.now();
+    if (pendingResponse) return pendingResponse;
+    if (!body || !providerSelection?.ok) {
+      throw new Error("Validated TTS request was not retained");
+    }
+    const { text, voiceId, modelId } = body;
+    // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
+    // different codec); billing/usage are identical to the MP3 path.
+    const wantWav = body.format === "wav";
 
     await contentSafetyService.assertSafeForPublicUse({
       surface: "media_generation_prompt",
@@ -600,6 +620,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: billingCost,
         admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
         idempotencyKey: ttsIdempotencyKey ?? undefined,
       });
       reservation = admission.reservation;

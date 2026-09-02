@@ -3705,6 +3705,22 @@ export function isDirectCloudSharedAgentBase(
   return /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url.trim());
 }
 
+function isLoopbackCloudAgentBase(value: string | null | undefined): boolean {
+  if (!value?.trim()) return false;
+  try {
+    const host = new URL(value.trim()).hostname.toLowerCase();
+    return (
+      host === "127.0.0.1" ||
+      host === "localhost" ||
+      host === "::1" ||
+      host === "[::1]"
+    );
+  } catch {
+    // error-policy:J3 malformed bases cannot qualify for the local-only proxy.
+    return false;
+  }
+}
+
 ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   const { cloudApiBase, authToken, name, bio, onProgress } = options;
   const allowSharedRuntime = options.allowSharedRuntime === true;
@@ -5502,6 +5518,7 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
   // dedicated record we poll for readiness is a SEPARATE agent. Default to
   // `agentId` so the pre-shared-tier single-agent flow is unchanged.
   const readinessAgentId = dedicatedAgentId ?? agentId;
+  const sourceIsSharedAdapter = isDirectCloudSharedAgentBase(sharedApiBase);
 
   // Authed JSON fetch against a specific agent base (shared adapter OR the
   // dedicated container subdomain). Both accept the cloud session token —
@@ -5528,6 +5545,10 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
 
   const readiness: AgentReadinessProbe = {
     resolveReadyBase: async () => {
+      // A shared adapter never becomes a dedicated runtime in place. Without
+      // a separately provisioned target there is nowhere safe to switch, even
+      // if an older control-plane detail response omits `executionTier`.
+      if (!dedicatedAgentId && sourceIsSharedAdapter) return null;
       // Handoff already carries an explicit Cloud API base and credential.
       // Read the target through that canonical route instead of asking the
       // client to infer direct-vs-proxy mode from its ambient configuration.
@@ -5555,22 +5576,32 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
         agent = compatDetail?.success ? compatDetail.data : null;
       }
       if (!agent) return null;
-      // The container is "ready" only once the record exposes a dedicated base
-      // (bridge/web-ui subdomain) AND reports running — until then the user is
-      // served by the shared adapter.
-      const hasDedicatedUrl = Boolean(
-        agent.bridge_url || agent.web_ui_url || agent.webUiUrl,
-      );
-      if (!hasDedicatedUrl) return null;
-      if (agent.status && agent.status !== "running") return null;
+      // A shared control-plane row is never a migration target. Local stacks
+      // expose both shared and dedicated agents through the same UUID-scoped
+      // proxy shape, so URL classification alone cannot distinguish them.
+      if (agent.execution_tier === "shared") return null;
       const base = resolveCloudAgentApiBase({
         bridgeUrl: agent.bridge_url,
         webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
         agentId: readinessAgentId,
         cloudApiBase: resolvedCloudApiBase,
       });
+      const isLocalDedicatedProxy =
+        isDedicatedCloudAgentBase(base) && isLoopbackCloudAgentBase(base);
+      // Hosted agents expose a public URL. The local Cloud harness deliberately
+      // does not; its UUID-scoped Worker proxy is the dedicated runtime route.
+      const hasDedicatedUrl = Boolean(
+        agent.bridge_url ||
+          agent.web_ui_url ||
+          agent.webUiUrl ||
+          isLocalDedicatedProxy,
+      );
+      if (!hasDedicatedUrl) return null;
+      if (agent.status && agent.status !== "running") return null;
       // Never "switch" onto the shared adapter (no migration target there).
-      if (isDirectCloudSharedAgentBase(base)) return null;
+      if (isDirectCloudSharedAgentBase(base) && !isLocalDedicatedProxy) {
+        return null;
+      }
       // Control-plane `running` precedes actual routability: the runtime proxy
       // can keep 404ing the subdomain for minutes after the record flips
       // (#15901). Probe the base itself and only report ready once the proxy

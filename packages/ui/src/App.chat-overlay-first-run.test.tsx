@@ -136,7 +136,15 @@ vi.mock("./hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => false,
   subscribeAuthStatus: () => () => undefined,
   useAuthStatus: () => ({
-    state: { phase: appState.authPhase },
+    state:
+      appState.authPhase === "authenticated"
+        ? {
+            phase: "authenticated",
+            identity: { id: "test-user" },
+            session: { id: "test-session" },
+            access: {},
+          }
+        : { phase: appState.authPhase },
     refetch: vi.fn(),
   }),
 }));

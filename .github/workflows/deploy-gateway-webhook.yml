@@ -58,6 +58,51 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Resolve protected Telegram public identity
+        env:
+          STAGING_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          STAGING_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            printf '%s\n' "::error::$1" >&2
+            exit 1
+          }
+          valid_bot_id() {
+            local candidate="$1"
+            [[ "$candidate" =~ ^[1-9][0-9]{0,15}$ ]] || return 1
+            (( 10#$candidate <= 4503599627370495 ))
+          }
+
+          canonical_source="packages/homepage/src/lib/contact.ts"
+          canonical_bot_id="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_ID = "([^"]+)";$/\1/p' "$canonical_source")"
+          canonical_bot_username="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_USERNAME = "([^"]+)";$/\1/p' "$canonical_source")"
+          valid_bot_id "$canonical_bot_id" || fail "The homepage canonical Telegram bot ID is missing or invalid"
+          [[ "$canonical_bot_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] || fail "The homepage canonical Telegram username is missing or invalid"
+          canonical_username_key="$(printf '%s' "$canonical_bot_username" | tr '[:upper:]' '[:lower:]')"
+          [[ "$canonical_username_key" == *bot ]] || fail "The homepage canonical Telegram username must use the managed bot suffix"
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            resolved_id="$canonical_bot_id"
+            resolved_username="$canonical_bot_username"
+          else
+            valid_bot_id "$STAGING_TELEGRAM_BOT_ID" || fail "Protected staging VITE_TELEGRAM_BOT_ID is missing or invalid"
+            [[ "$STAGING_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] || fail "Protected staging VITE_TELEGRAM_BOT_USERNAME is missing or invalid"
+            staging_username_key="$(printf '%s' "$STAGING_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]')"
+            [[ "$staging_username_key" == *bot ]] || fail "Protected staging Telegram username must use the managed bot suffix"
+            if [ "$STAGING_TELEGRAM_BOT_ID" = "$canonical_bot_id" ] || \
+              [ "$staging_username_key" = "$canonical_username_key" ]; then
+              fail "Staging Telegram identity must be fully distinct from production"
+            fi
+            resolved_id="$STAGING_TELEGRAM_BOT_ID"
+            resolved_username="$STAGING_TELEGRAM_BOT_USERNAME"
+          fi
+
+          printf 'TELEGRAM_EXPECTED_BOT_ID=%s\n' "$resolved_id" >> "$GITHUB_ENV"
+          printf 'TELEGRAM_EXPECTED_BOT_USERNAME=%s\n' "$resolved_username" >> "$GITHUB_ENV"
+          echo "Resolved the protected $TARGET_ENVIRONMENT Telegram identity without printing its values."
+
       - name: Validate protected canonical configuration
         shell: bash
         run: |
@@ -76,6 +121,8 @@ jobs:
             RAILWAY_ENVIRONMENT_ID
             RAILWAY_SERVICE_ID
             RAILWAY_TOKEN
+            TELEGRAM_EXPECTED_BOT_ID
+            TELEGRAM_EXPECTED_BOT_USERNAME
           )
           missing=()
           for name in "${required_settings[@]}"; do
@@ -205,6 +252,8 @@ jobs:
           WORKER_ELIZA_APP_BLOOIO_API_KEY: ${{ secrets.ELIZA_APP_BLOOIO_API_KEY }}
           WORKER_ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER }}
           WORKER_ELIZA_APP_BLOOIO_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_BLOOIO_WEBHOOK_SECRET }}
+          WORKER_ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
+          WORKER_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
           umask 077
@@ -219,13 +268,22 @@ jobs:
             canonical: {
               ELIZA_CLOUD_URL: .ELIZA_CLOUD_URL,
               AGENT_ROUTER_ORIGIN_HOST: .AGENT_ROUTER_ORIGIN_HOST,
-              ELIZA_CLOUD_AGENT_BASE_DOMAIN: .ELIZA_CLOUD_AGENT_BASE_DOMAIN
+              ELIZA_CLOUD_AGENT_BASE_DOMAIN: .ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+              ELIZA_APP_TELEGRAM_BOT_ID: .ELIZA_APP_TELEGRAM_BOT_ID,
+              ELIZA_APP_TELEGRAM_BOT_USERNAME: .ELIZA_APP_TELEGRAM_BOT_USERNAME
             },
             blooio_nonblank_names: [
               to_entries[] |
               select(.key == "ELIZA_APP_BLOOIO_API_KEY" or
                      .key == "ELIZA_APP_BLOOIO_PHONE_NUMBER" or
                      .key == "ELIZA_APP_BLOOIO_WEBHOOK_SECRET") |
+              select((.value | type) == "string" and (.value | test("\\S"))) |
+              .key
+            ],
+            telegram_nonblank_names: [
+              to_entries[] |
+              select(.key == "ELIZA_APP_TELEGRAM_BOT_TOKEN" or
+                     .key == "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET") |
               select((.value | type) == "string" and (.value | test("\\S"))) |
               .key
             ],
@@ -239,10 +297,10 @@ jobs:
           # A per-run salt makes every digest useless outside this process, so
           # an equality proof never becomes an offline guessing oracle even if
           # a digest were to escape into a log.
-          blooio_match_salt="$(openssl rand -hex 32)"
-          blooio_digest() {
+          protected_match_salt="$(openssl rand -hex 32)"
+          protected_digest() {
             printf '%s' "${1:-}" |
-              openssl dgst -sha256 -hmac "$blooio_match_salt" -r |
+              openssl dgst -sha256 -hmac "$protected_match_salt" -r |
               cut -d' ' -f1
           }
           declare -A railway_blooio_digests=()
@@ -253,9 +311,31 @@ jobs:
             railway_value="$(jq -r --arg name "$name" \
               'if (.[$name] | type) == "string" then .[$name] else "" end' \
               "$variables_raw_path")"
-            railway_blooio_digests["$name"]="$(blooio_digest "$railway_value")"
+            railway_blooio_digests["$name"]="$(protected_digest "$railway_value")"
             railway_value=""
           done
+
+          declare -A railway_telegram_digests=()
+          for name in \
+            ELIZA_APP_TELEGRAM_BOT_TOKEN \
+            ELIZA_APP_TELEGRAM_WEBHOOK_SECRET; do
+            railway_value="$(jq -r --arg name "$name" \
+              'if (.[$name] | type) == "string" then .[$name] else "" end' \
+              "$variables_raw_path")"
+            railway_telegram_digests["$name"]="$(protected_digest "$railway_value")"
+            printf -v "railway_$name" '%s' "$railway_value"
+            railway_value=""
+          done
+
+          env \
+            "TELEGRAM_BOT_TOKEN=${railway_ELIZA_APP_TELEGRAM_BOT_TOKEN:-}" \
+            "TELEGRAM_WEBHOOK_SECRET=${railway_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET:-}" \
+            "TELEGRAM_EXPECTED_BOT_ID=$TELEGRAM_EXPECTED_BOT_ID" \
+            "TELEGRAM_EXPECTED_BOT_USERNAME=$TELEGRAM_EXPECTED_BOT_USERNAME" \
+            "TELEGRAM_ATTESTATION_CONTEXT=$TARGET_ENVIRONMENT" \
+            node packages/cloud/scripts/verify-telegram-bot-identity.mjs
+          railway_ELIZA_APP_TELEGRAM_BOT_TOKEN=""
+          railway_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET=""
           shred -u "$variables_raw_path"
 
           require_exact_variable() {
@@ -285,10 +365,21 @@ jobs:
               exit 1
             fi
           }
+          require_telegram_name() {
+            local name="$1"
+            if ! jq -e --arg name "$name" \
+              '.telegram_nonblank_names | index($name) != null' \
+              "$variables_path" >/dev/null; then
+              echo "::error::Required protected $TARGET_ENVIRONMENT Telegram Railway variable name is absent or blank: $name"
+              exit 1
+            fi
+          }
 
           require_exact_variable ELIZA_CLOUD_URL "$EXPECTED_CLOUD_URL"
           require_exact_variable AGENT_ROUTER_ORIGIN_HOST "$EXPECTED_ROUTER_ORIGIN"
           require_exact_variable ELIZA_CLOUD_AGENT_BASE_DOMAIN "$EXPECTED_AGENT_BASE_DOMAIN"
+          require_exact_variable ELIZA_APP_TELEGRAM_BOT_ID "$TELEGRAM_EXPECTED_BOT_ID"
+          require_exact_variable ELIZA_APP_TELEGRAM_BOT_USERNAME "$TELEGRAM_EXPECTED_BOT_USERNAME"
           for name in \
             GATEWAY_BOOTSTRAP_SECRET \
             GATEWAY_INTERNAL_SECRET \
@@ -301,6 +392,11 @@ jobs:
             ELIZA_APP_BLOOIO_PHONE_NUMBER \
             ELIZA_APP_BLOOIO_WEBHOOK_SECRET; do
             require_blooio_name "$name"
+          done
+          for name in \
+            ELIZA_APP_TELEGRAM_BOT_TOKEN \
+            ELIZA_APP_TELEGRAM_WEBHOOK_SECRET; do
+            require_telegram_name "$name"
           done
           # Name presence on both sides still permits Worker secret A and
           # Railway secret B, which passes every names-only check and then
@@ -317,13 +413,29 @@ jobs:
               echo "::error::Required protected $TARGET_ENVIRONMENT Blooio GitHub environment secret is absent or blank: $name"
               exit 1
             fi
-            if [ "$(blooio_digest "$worker_value")" != "${railway_blooio_digests[$name]:-}" ]; then
+            if [ "$(protected_digest "$worker_value")" != "${railway_blooio_digests[$name]:-}" ]; then
               echo "::error::Protected $TARGET_ENVIRONMENT Blooio value differs between the Cloudflare Worker GitHub environment secret and the Railway variable: $name (compared by salted digest; values were not printed)"
               exit 1
             fi
             worker_value=""
           done
           echo "Verified 3 protected $TARGET_ENVIRONMENT Blooio Worker/Railway value matches by salted digest; values were not printed."
+          for name in \
+            ELIZA_APP_TELEGRAM_BOT_TOKEN \
+            ELIZA_APP_TELEGRAM_WEBHOOK_SECRET; do
+            worker_name="WORKER_$name"
+            worker_value="${!worker_name:-}"
+            if [ -z "${worker_value//[[:space:]]/}" ]; then
+              echo "::error::Required protected $TARGET_ENVIRONMENT Telegram GitHub environment secret is absent or blank: $name"
+              exit 1
+            fi
+            if [ "$(protected_digest "$worker_value")" != "${railway_telegram_digests[$name]:-}" ]; then
+              echo "::error::Protected $TARGET_ENVIRONMENT Telegram value differs between the Cloudflare Worker GitHub environment secret and the Railway variable: $name (compared by salted digest; values were not printed)"
+              exit 1
+            fi
+            worker_value=""
+          done
+          echo "Verified the protected $TARGET_ENVIRONMENT Telegram credential pair, selected identity, and getMe attestation; values were not printed."
           if ! jq -e '.nonblank_sensitive_names as $names |
             (($names | index("REDIS_URL")) != null or
              ((($names | index("KV_REST_API_URL")) != null) and
@@ -531,16 +643,22 @@ jobs:
           jq '{
             ELIZA_CLOUD_URL,
             AGENT_ROUTER_ORIGIN_HOST,
-            ELIZA_CLOUD_AGENT_BASE_DOMAIN
+            ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+            ELIZA_APP_TELEGRAM_BOT_ID,
+            ELIZA_APP_TELEGRAM_BOT_USERNAME
           }' "$variables_raw_path" > "$variables_path"
           shred -u "$variables_raw_path"
           jq -e \
             --arg cloud "$EXPECTED_CLOUD_URL" \
             --arg router "$EXPECTED_ROUTER_ORIGIN" \
             --arg domain "$EXPECTED_AGENT_BASE_DOMAIN" \
+            --arg telegram_id "$TELEGRAM_EXPECTED_BOT_ID" \
+            --arg telegram_username "$TELEGRAM_EXPECTED_BOT_USERNAME" \
             '.ELIZA_CLOUD_URL == $cloud and
              .AGENT_ROUTER_ORIGIN_HOST == $router and
-             .ELIZA_CLOUD_AGENT_BASE_DOMAIN == $domain' \
+             .ELIZA_CLOUD_AGENT_BASE_DOMAIN == $domain and
+             .ELIZA_APP_TELEGRAM_BOT_ID == $telegram_id and
+             .ELIZA_APP_TELEGRAM_BOT_USERNAME == $telegram_username' \
             "$variables_path" >/dev/null || {
             echo "::error::Postdeploy canonical cloud/fallback routing pair does not match the selected environment"
             exit 1
@@ -568,8 +686,30 @@ jobs:
             echo "::error::Gateway did not prove the exact enforced eliza-app forwarder-auth contract"
             exit 1
           fi
+
+          telegram_probe_path="$RUNNER_TEMP/gateway-webhook-telegram-identity-readiness.json"
+          if ! telegram_probe_status=$(curl \
+            --silent \
+            --show-error \
+            --max-time 15 \
+            --output "$telegram_probe_path" \
+            --write-out '%{http_code}' \
+            "$GATEWAY_WEBHOOK_URL/ready/telegram-identity/eliza-app"); then
+            echo "::error::Telegram identity readiness probe failed to complete"
+            exit 1
+          fi
+          if [ "$telegram_probe_status" != "200" ] || \
+            ! jq -e \
+              'type == "object" and
+               keys == ["project", "status"] and
+               .project == "eliza-app" and
+               .status == "attested"' \
+              "$telegram_probe_path" >/dev/null; then
+            echo "::error::Gateway did not prove the selected Telegram identity"
+            exit 1
+          fi
           assert_active_deployment after
-          echo "Exact manifest, active deployment identity, live health, canonical fallback, and forwarder-auth readiness passed."
+          echo "Exact manifest, active deployment identity, live health, canonical fallback, Telegram identity, and forwarder-auth readiness passed."
 
       - name: Write exact deployment receipt
         shell: bash
@@ -588,7 +728,8 @@ jobs:
               sourceSha: $sourceSha,
               environment: $environment,
               deploymentId: $deploymentId,
-              service: $service
+              service: $service,
+              telegramIdentity: "attested"
             }' > "$receipt_dir/gateway-webhook-deployment.json"
 
       - name: Publish exact deployment receipt
@@ -615,6 +756,7 @@ jobs:
             echo "- Canonical health: passed"
             echo "- Canonical fallback pair: verified"
             echo "- Forwarder-auth readiness: enforced for eliza-app with exact headerless 401"
+            echo "- Telegram identity: attested for the selected protected environment"
             echo "- Root Railway manifest: verified"
             echo "- Active deployment identity: verified before and after probes"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -636,6 +778,7 @@ jobs:
             "$RUNNER_TEMP/gateway-webhook-postdeploy-deployment.json" \
             "$RUNNER_TEMP/gateway-webhook-active-deployment.json" \
             "$RUNNER_TEMP/gateway-webhook-forwarder-auth-readiness.json" \
+            "$RUNNER_TEMP/gateway-webhook-telegram-identity-readiness.json" \
             "$RUNNER_TEMP/gateway-webhook-postdeploy-variables-raw.json" \
             "$RUNNER_TEMP/gateway-webhook-postdeploy-canonical.json" \
             "$RUNNER_TEMP/gateway-webhook-deployment-receipt/gateway-webhook-deployment.json"; do

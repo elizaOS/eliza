@@ -43,6 +43,59 @@ function expectRestoreWriterOrder(body: string, label: string): void {
 }
 
 describe("agent backup global lock order", () => {
+  test("exact restore settlement and cleanup preserve the full authority order", () => {
+    const operations = source("agent-backup-restore-operations.ts");
+    const boundaryStart = operations.indexOf(
+      "async function runAgentSandboxExactRestoreProviderBoundary",
+    );
+    const boundaryEnd = operations.indexOf(
+      "export async function markAgentSandboxExactRestoreProviderStarted",
+      boundaryStart,
+    );
+    expect(boundaryStart).toBeGreaterThanOrEqual(0);
+    expect(boundaryEnd).toBeGreaterThan(boundaryStart);
+    const boundary = operations.slice(boundaryStart, boundaryEnd);
+    const anchors = [
+      ".from(organizations)",
+      ".from(agentSandboxBackups)",
+      ".from(agentBackupRestoreOperations)",
+      ".from(agentBackupRestoreLeases)",
+      ".from(agentSandboxes)",
+      ".from(dockerNodes)",
+      "proveExactAgentNodeOccurrenceForLockedNode(",
+      "lockAgentBackupCatalogAuthority(",
+      ".from(agentSandboxReplacementAttempts)",
+      "readPostLockDatabaseNow(tx)",
+    ];
+    let previous = -1;
+    for (const anchor of anchors) {
+      const index = boundary.indexOf(anchor, previous + 1);
+      expect(
+        index,
+        `exact restore boundary: missing ordered lock anchor ${anchor}`,
+      ).toBeGreaterThan(previous);
+      previous = index;
+    }
+
+    const cleanupClaim = exportedFunction(
+      operations,
+      "claimAgentSandboxExactRestoreCleanup",
+      "releaseAgentSandboxExactRestoreCleanupClaim",
+    );
+    expectOrder(
+      cleanupClaim,
+      ".from(agentBackupRestoreOperations)",
+      ".from(agentSandboxReplacementAttempts)",
+      "cleanup claim",
+    );
+    expectOrder(
+      cleanupClaim,
+      ".from(agentSandboxReplacementAttempts)",
+      "readPostLockDatabaseNow(tx)",
+      "cleanup claim clock",
+    );
+  });
+
   test("restore publication follows backup-to-catalogue lock order", () => {
     const history = source("agent-backup-restore-history.ts");
     const start = history.indexOf("async function recordRestoreActivationPublication");
@@ -59,13 +112,53 @@ describe("agent backup global lock order", () => {
       "recordAgentVaultKeySeedReceipt",
       "commitAgentBackupRestore",
     );
-    expectRestoreWriterOrder(seed, "vault-seed receipt");
+    const anchors = [
+      ".from(agentSandboxBackups)",
+      ".from(agentBackupRestoreOperations)",
+      ".from(agentBackupRestoreLeases)",
+      ".from(agentSandboxes)",
+      ".from(dockerNodes)",
+      "proveExactAgentNodeOccurrenceForLockedNode(",
+      "lockAgentBackupCatalogAuthority(",
+      "lockExactVaultSeedReplacementIntent(",
+      "readPostLockDatabaseNow(tx)",
+    ];
+    let previous = -1;
+    for (const anchor of anchors) {
+      const index = seed.indexOf(anchor, previous + 1);
+      expect(index, `vault-seed receipt: missing ordered lock anchor ${anchor}`).toBeGreaterThan(
+        previous,
+      );
+      previous = index;
+    }
+    const attemptLockStart = history.indexOf("async function lockExactVaultSeedReplacementIntent");
+    const attemptLockEnd = history.indexOf(
+      "function hasCommonAgentBackupRestoreQuarantineAuthority",
+      attemptLockStart,
+    );
+    expect(attemptLockStart).toBeGreaterThanOrEqual(0);
+    expect(attemptLockEnd).toBeGreaterThan(attemptLockStart);
+    const attemptLock = history.slice(attemptLockStart, attemptLockEnd);
+    expect(attemptLock).toContain(".from(agentSandboxReplacementAttempts)");
+    expect(attemptLock).toContain('.for("update")');
   });
 
   test("restore finalizer follows backup-to-catalogue lock order", () => {
     const history = source("agent-backup-restore-history.ts");
     const finalizer = exportedFunction(history, "commitAgentBackupRestore");
     expectRestoreWriterOrder(finalizer, "restore finalizer");
+    expectOrder(
+      finalizer,
+      "lockAgentBackupCatalogAuthority(",
+      "lockExactAdoptedRestoreReplacement(tx",
+      "restore finalizer adopted replacement",
+    );
+    expectOrder(
+      finalizer,
+      "lockExactAdoptedRestoreReplacement(tx",
+      "readPostLockDatabaseNow(tx)",
+      "restore finalizer clock",
+    );
   });
 
   test("reservation, capture, and vault rotation preserve the same order", () => {
@@ -102,7 +195,7 @@ describe("agent backup global lock order", () => {
     );
   });
 
-  test("scheduler reservation joins backup order before its outer sandbox lock", () => {
+  test("scheduler reservation locks replay then organization before its outer sandbox lock", () => {
     const scheduler = source("agent-backup-scheduler.ts");
     const reservation = exportedFunction(
       scheduler,
@@ -113,8 +206,20 @@ describe("agent backup global lock order", () => {
     expectOrder(
       reservation,
       "lockAgentBackupReservationReplayInTransaction(tx",
+      ".from(organizations)",
+      "scheduler reservation replay/organization",
+    );
+    expectOrder(
+      reservation,
+      ".from(organizations)",
+      '.for("update")',
+      "scheduler reservation organization lock",
+    );
+    expectOrder(
+      reservation,
+      '.for("update")',
       "lockClaimedSandbox(tx",
-      "scheduler reservation",
+      "scheduler reservation organization/sandbox",
     );
   });
 });

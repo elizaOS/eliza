@@ -56,7 +56,7 @@
       "behavioralTest": "packages/ui/src/components/settings/settings-layout.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/components/settings/settings-agent-rows.tsx",
-        "packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx"
+        "packages/ui/src/components/settings/DesktopShortcutsSection.tsx"
       ],
       "minimumMaintainedReferences": 10,
       "responsibility": "Label, description, control, and navigation alignment for settings."

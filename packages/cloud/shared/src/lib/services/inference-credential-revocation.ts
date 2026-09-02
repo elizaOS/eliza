@@ -13,12 +13,13 @@ import type {
   RuntimeDurableObjectStub,
 } from "../../types/cloud-worker-env";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
+import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
 const OPERATION_TIMEOUT_MS = 1_500;
 
-type CredentialCheck =
+export type InferenceCredentialCheck =
   | { kind: "api_key"; credentialId: string; userId: string }
   | { kind: "steward_session"; userId: string; stewardUserId: string; issuedAt: number };
 
@@ -51,6 +52,26 @@ export class InferenceCredentialRevokedError extends ElizaError {
       code: "INFERENCE_CREDENTIAL_REVOKED",
       context: { reason },
     });
+  }
+}
+
+/** Map the strong-boundary reason onto the bounded public standing taxonomy. */
+export function inferenceCredentialRevocationReason(reason: string): InferenceAuthRejectionReason {
+  switch (reason) {
+    case "organization_disabled":
+      return "organization_inactive";
+    case "subject_account_disabled":
+      return "account_inactive";
+    case "subject_membership_disabled":
+      return "membership_missing";
+    case "subject_moderation_disabled":
+      return "moderation_blocked";
+    case "credential_revoked":
+    case "session_revoked":
+    case "session_binding_revoked":
+      return "credential_inactive";
+    default:
+      return "credential_invalid";
   }
 }
 
@@ -131,7 +152,7 @@ async function gateRequest(
 /** Fail closed unless the strong boundary confirms this credential is active. */
 export async function assertInferenceCredentialActive(
   organizationId: string,
-  credential: CredentialCheck,
+  credential: InferenceCredentialCheck,
 ): Promise<void> {
   if (!isInferenceStrongRevocationEnabled()) return;
   const result = await gateRequest(organizationId, "/credential/check", credential, true);

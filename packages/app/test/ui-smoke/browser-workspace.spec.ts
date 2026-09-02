@@ -53,6 +53,32 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
+test("mobile browser actions close across the desktop breakpoint", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 600, height: 800 });
+  await resetBrowserWorkspaceTabs(request);
+  await openAppPath(page, "/browser");
+
+  const mobileMoreButton = page.getByTestId("browser-workspace-mobile-more");
+  await expect(mobileMoreButton).toBeVisible({ timeout: 60_000 });
+  await mobileMoreButton.click();
+
+  const newTabItem = page.getByRole("menuitem", {
+    name: "New tab",
+    exact: true,
+  });
+  await expect(newTabItem).toBeVisible();
+
+  // The menu content is portaled outside the responsive trigger wrapper, so
+  // it must carry its own desktop visibility guard when an open mobile menu is
+  // resized or rotated across the breakpoint.
+  await page.setViewportSize({ width: 900, height: 800 });
+  await expect(mobileMoreButton).toBeHidden();
+  await expect(newTabItem).toBeHidden();
+});
+
 test("browser workspace can create, navigate, switch, and close tabs", async ({
   page,
   request,
@@ -79,7 +105,6 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   const newTabButton = browserWorkspaceView.getByTestId(
     "browser-workspace-nav-new-tab",
   );
-  await expect(newTabButton).toBeVisible({ timeout: 120_000 });
   const addressInput = browserWorkspaceView.getByTestId(
     "browser-workspace-address-input",
   );
@@ -88,12 +113,74 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   const closeAllButton = browserWorkspaceView.getByTestId(
     "browser-workspace-close-all-tabs",
   );
+  const mobileMoreButton = browserWorkspaceView.getByTestId(
+    "browser-workspace-mobile-more",
+  );
   const foldControl = browserWorkspaceView.getByTestId(
     "browser-workspace-tab-fold-control",
   );
   await expect(goButton).toBeVisible({ timeout: 120_000 });
-  await expect(closeAllButton).toBeVisible({ timeout: 120_000 });
   await expect(foldControl).toBeVisible({ timeout: 120_000 });
+  const compactToolbar = await mobileMoreButton.isVisible();
+  if (compactToolbar) {
+    await expect(newTabButton).toBeHidden();
+    await expect(closeAllButton).toBeHidden();
+  } else {
+    await expect(newTabButton).toBeVisible({ timeout: 120_000 });
+    await expect(closeAllButton).toBeVisible({ timeout: 120_000 });
+  }
+
+  const mobileMenuItem = async (name: string) => {
+    await mobileMoreButton.click();
+    const item = page.getByRole("menuitem", { name, exact: true });
+    await expect(item).toBeVisible();
+    return item;
+  };
+  const clickMobileMenuItem = async (name: string) => {
+    const item = page.getByRole("menuitem", { name, exact: true });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (!(await item.isVisible().catch(() => false))) {
+        await mobileMoreButton.click();
+        await expect(item).toBeVisible();
+      }
+      try {
+        await item.click({ timeout: 10_000 });
+        return;
+      } catch (error) {
+        if (attempt === 2) throw error;
+      }
+    }
+  };
+  const expectCloseAllDisabled = async () => {
+    if (!compactToolbar) {
+      await expect(closeAllButton).toBeDisabled();
+      return;
+    }
+    await expect(await mobileMenuItem("Close all tabs")).toBeDisabled();
+    await page.keyboard.press("Escape");
+  };
+  const expectCloseAllEnabled = async () => {
+    if (!compactToolbar) {
+      await expect(closeAllButton).toBeEnabled();
+      return;
+    }
+    await expect(await mobileMenuItem("Close all tabs")).toBeEnabled();
+    await page.keyboard.press("Escape");
+  };
+  const createNewTab = async () => {
+    if (!compactToolbar) {
+      await newTabButton.click();
+      return;
+    }
+    await clickMobileMenuItem("New tab");
+  };
+  const closeAllTabs = async () => {
+    if (!compactToolbar) {
+      await closeAllButton.click();
+      return;
+    }
+    await clickMobileMenuItem("Close all tabs");
+  };
 
   // The folded tab switcher is the only multi-tab surface (no permanent strip).
   // Opening it and reading its cards is how we assert tab state.
@@ -146,8 +233,8 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   expect(floatingLayerContract?.clearanceAware).toBe("true");
   await closeSwitcher();
   await expect(addressInput).toHaveValue("");
-  await expect(newTabButton).toBeEnabled();
-  await expect(closeAllButton).toBeDisabled();
+  if (!compactToolbar) await expect(newTabButton).toBeEnabled();
+  await expectCloseAllDisabled();
 
   await addressInput.fill("");
   await addressInput.pressSequentially("example.com");
@@ -159,7 +246,7 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
     browserWorkspaceView.getByTestId("browser-workspace-tab-count"),
   ).toHaveText("1");
   await expect(addressInput).toHaveValue("https://example.com/");
-  await expect(closeAllButton).toBeEnabled();
+  await expectCloseAllEnabled();
 
   switcher = await openSwitcher();
   const exampleCard = switcher.locator(
@@ -170,7 +257,7 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
 
   // New Tab always creates a fresh Google home context rather than cloning the
   // active page or treating an address-bar draft as an implicit destination.
-  await newTabButton.click();
+  await createNewTab();
   await expect(
     browserWorkspaceView.getByTestId("browser-workspace-tab-count"),
   ).toHaveText("2");
@@ -217,8 +304,8 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   // the fold control keeps naming an active tab. Assert the closable set is
   // gone (close-all disabled) rather than a fixed count, since the re-seed is
   // server-owned.
-  await closeAllButton.click();
-  await expect(closeAllButton).toBeDisabled({ timeout: 60_000 });
+  await closeAllTabs();
+  await expectCloseAllDisabled();
   expect(walletOriginMismatchWarnings).toEqual([]);
 });
 

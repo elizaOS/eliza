@@ -1,14 +1,9 @@
 /**
- * Direct API-proxy refund-on-failure (#10269).
+ * Direct free-upstream API-proxy refund-on-failure (#10269).
  *
- * The birdeye + dexscreener direct handlers debit the per-call cost up front,
- * then return the upstream response. They must mirror the engine routes' refund
- * policy so the same failure isn't charged here while being refunded there:
- *   - birdeye (PAID upstream): refund on >=500 (server outage, no usable
- *     response), but KEEP the charge on 4xx (the customer's own bad request
- *     still consumed our Birdeye quota);
- *   - dexscreener (FREE upstream): refund on ANY non-ok (the failed call cost us
- *     nothing).
+ * Dexscreener's direct handler debits the per-call cost up front and refunds
+ * any non-ok response because the upstream is free. Paid Birdeye traffic now
+ * uses the shared combined-admission proxy engine and is covered separately.
  *
  * The refund must happen EXACTLY ONCE for the cost that was debited. Only the
  * credits, pricing, auth, and `fetch` boundaries are mocked; the handlers'
@@ -54,7 +49,6 @@ mock.module("../../auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg: async () => ({ organization_id: ORG_ID }),
 }));
 
-const { handleBirdeyeMarketDataProxyGet } = await import("./birdeye-handler");
 const { handleDexscreenerProxyGet } = await import("./dexscreener-handler");
 
 const originalFetch = globalThis.fetch;
@@ -98,51 +92,6 @@ afterAll(() => {
   mock.module("../credits", () => realCredits);
   mock.module("./pricing", () => realPricing);
   mock.module("../../auth/workers-hono-auth", () => realAuth);
-});
-
-describe("birdeye proxy refund-on-failure", () => {
-  test("upstream 500 refunds the upfront cost exactly once", async () => {
-    mockUpstream(500, '{"error":"upstream down"}');
-
-    const res = await handleBirdeyeMarketDataProxyGet(
-      makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
-    );
-
-    // Status is passed through (the customer sees the upstream failure).
-    expect(res.status).toBe(500);
-    expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(refundCredits).toHaveBeenCalledTimes(1);
-    const refundArg = refundCredits.mock.calls[0]?.[0] as {
-      organizationId: string;
-      amount: number;
-    };
-    expect(refundArg.organizationId).toBe(ORG_ID);
-    expect(refundArg.amount).toBeCloseTo(COST, 12);
-  });
-
-  test("upstream 4xx does NOT refund (paid API, customer's bad request)", async () => {
-    mockUpstream(400, '{"error":"bad request"}');
-
-    const res = await handleBirdeyeMarketDataProxyGet(
-      makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
-    );
-
-    expect(res.status).toBe(400);
-    expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(refundCredits).not.toHaveBeenCalled();
-  });
-
-  test("upstream 200 does NOT refund (successful call)", async () => {
-    mockUpstream(200, '{"data":{"value":1}}');
-
-    const res = await handleBirdeyeMarketDataProxyGet(
-      makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
-    );
-
-    expect(res.status).toBe(200);
-    expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(refundCredits).not.toHaveBeenCalled();
-  });
 });
 
 describe("dexscreener proxy refund-on-failure", () => {

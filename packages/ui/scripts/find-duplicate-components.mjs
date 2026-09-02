@@ -117,6 +117,7 @@ export function isMaintainedSource(file) {
   const maintained =
     /^(packages|plugins)\//.test(rel) &&
     /\.[jt]sx?$/.test(rel) &&
+    !/(^|\/)\.eliza(\/|$)/.test(rel) &&
     !/(^|\/)(node_modules|dist|build|coverage|generated)(\/|$)/.test(rel) &&
     !/\.(stories|test|spec)\.[jt]sx?$/.test(rel) &&
     !/(^|\/)(test|__tests__|__e2e__|__fixtures__|fixtures|stubs|templates)(\/|$)/.test(

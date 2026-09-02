@@ -32,6 +32,7 @@ import { generations } from "../../db/schemas/generations";
 import { jobExecutionLeases } from "../../db/schemas/job-execution-leases";
 import { jobs } from "../../db/schemas/jobs";
 import { organizations } from "../../db/schemas/organizations";
+import { providerAdmissions } from "../../db/schemas/provider-admissions";
 import { usageRecords } from "../../db/schemas/usage-records";
 import { userCharacters } from "../../db/schemas/user-characters";
 import { users } from "../../db/schemas/users";
@@ -339,6 +340,7 @@ beforeAll(async () => {
       agentSandboxes,
       jobs,
       jobExecutionLeases,
+      providerAdmissions,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();

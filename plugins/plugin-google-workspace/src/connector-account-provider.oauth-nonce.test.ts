@@ -84,7 +84,7 @@ describe("Google OAuth OIDC nonce binding", () => {
             },
           },
         },
-        {} as ConnectorAccountManager
+        { listAccounts: async () => [] } as unknown as ConnectorAccountManager
       )
     ).rejects.toMatchObject({ code: "GOOGLE_OAUTH_NONCE_MISMATCH" });
   });

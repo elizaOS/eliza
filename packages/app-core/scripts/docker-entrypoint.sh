@@ -34,8 +34,7 @@ TS_UP_TIMEOUT_SECONDS="${TS_UP_TIMEOUT_SECONDS:-120}"
 ts_interactive_auth_required() {
   case "$1" in
     *'"authurl": "http'*|*'"authurl":"http'*|*"authurl=true"*|*"authurl is http"*) return 0 ;;
-    *"needslogin"*|*"needsmachineauth"*) return 0 ;;
-    *"machineauthorized=false"*|*'"machineauthorized":false'*) return 0 ;;
+    *"needsmachineauth"*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -47,6 +46,23 @@ ts_authkey_permanent_failure() {
     *"authkey already used"*|*"auth key already used"*) return 0 ;;
     *"invalid key"*|*"invalid authkey"*|*"invalid auth key"*) return 0 ;;
     *) ts_interactive_auth_required "$1" ;;
+  esac
+}
+
+ts_daemon_running_with_ip() {
+  if command -v timeout >/dev/null 2>&1; then
+    ts_status_snapshot="$(timeout 2 tailscale --socket="$ts_socket" status --json 2>/dev/null || true)"
+  else
+    ts_status_snapshot="$(tailscale --socket="$ts_socket" status --json 2>/dev/null || true)"
+  fi
+  ts_status_compact="$(printf '%s' "$ts_status_snapshot" | tr -d '[:space:]')"
+  case "$ts_status_compact" in
+    *'"BackendState":"Running"'*) ;;
+    *) return 1 ;;
+  esac
+  case "$ts_status_compact" in
+    *'"TailscaleIPs":["'*) return 0 ;;
+    *) return 1 ;;
   esac
 }
 
@@ -91,7 +107,8 @@ ts_try_fetch_fresh_authkey() {
 # Run `tailscale up`, capturing combined output so we can classify auth failures.
 # JSON mode exposes the daemon's otherwise-interactive AuthURL / NeedsLogin
 # state. Watch that output while the command is running so an unusable key fails
-# immediately; the CLI's own timeout remains the hard bound for silent stalls.
+# immediately; the entrypoint's independent deadline remains the hard bound for
+# a CLI that ignores its own timeout after the daemon is already ready.
 # Args after the function name are passed through verbatim to `tailscale up`.
 ts_up() {
   # Globals: ts_socket, ts_up_output (set here), ts_up_rc (set here).
@@ -102,8 +119,10 @@ ts_up() {
 
   # `up --json` intentionally suppresses its interactive URL when --auth-key
   # is present, so also inspect tailscaled's private log for the RegisterReq
-  # machineAuthorized=false / authURL=true response. That evidence is never
-  # copied to container logs because the URL itself is an authorization secret.
+  # authURL=true response. A fresh daemon normally passes through NeedsLogin
+  # and may report machineAuthorized=false before the auth-key exchange
+  # completes; neither transient signal is terminal by itself. That evidence
+  # is never copied to container logs because the URL is an authorization secret.
   # shellcheck disable=SC2086
   tailscale --socket="$ts_socket" up \
     --json \
@@ -113,6 +132,10 @@ ts_up() {
   ts_up_pid=$!
   ts_up_auth_required=0
   ts_up_interactive_auth=0
+  ts_up_daemon_ready=0
+  ts_up_outer_timeout=0
+  ts_up_outer_deadline=$(( $(date +%s) + TS_UP_TIMEOUT_SECONDS + 2 ))
+  ts_up_probe_iteration=1
 
   while kill -0 "$ts_up_pid" 2>/dev/null; do
     ts_up_snapshot="$(cat "$ts_up_output_file" 2>/dev/null || true)"
@@ -126,6 +149,21 @@ ts_up() {
       kill "$ts_up_pid" 2>/dev/null || true
       break
     fi
+    if [ "$ts_up_probe_iteration" -eq 0 ] && ts_daemon_running_with_ip; then
+      ts_up_daemon_ready=1
+      kill "$ts_up_pid" 2>/dev/null || true
+      sleep 0.1
+      kill -KILL "$ts_up_pid" 2>/dev/null || true
+      break
+    fi
+    if [ "$(date +%s)" -ge "$ts_up_outer_deadline" ]; then
+      ts_up_outer_timeout=1
+      kill "$ts_up_pid" 2>/dev/null || true
+      sleep 0.1
+      kill -KILL "$ts_up_pid" 2>/dev/null || true
+      break
+    fi
+    ts_up_probe_iteration=$(( (ts_up_probe_iteration + 1) % 10 ))
     sleep 0.1
   done
 
@@ -136,6 +174,13 @@ ts_up() {
   fi
   ts_up_output="$(cat "$ts_up_output_file" 2>/dev/null || true)"
   rm -f "$ts_up_output_file"
+  if [ "$ts_up_daemon_ready" -eq 1 ]; then
+    ts_up_rc=0
+    echo "[docker-entrypoint] tailscale daemon reached Running with a mesh address; continuing after the CLI did not exit" >&2
+  elif [ "$ts_up_outer_timeout" -eq 1 ]; then
+    ts_up_rc=124
+    echo "[docker-entrypoint] tailscale up exceeded its outer bootstrap deadline" >&2
+  fi
   ts_daemon_snapshot="$(tail -n +"$ts_daemon_log_start_line" /tmp/tailscaled.log 2>/dev/null || true)"
   ts_up_output_lower="$(printf '%s\n%s' "$ts_up_output" "$ts_daemon_snapshot" | tr '[:upper:]' '[:lower:]')"
   if [ -n "$ts_up_output_lower" ] && ts_authkey_permanent_failure "$ts_up_output_lower"; then
@@ -260,7 +305,7 @@ start_tailscale_if_configured() {
     #    Surface a machine-readable status the control plane can act on
     #    (re-key + recreate) instead of an unbounded restart loop on a dead key.
     if [ "$ts_up_interactive_auth" -eq 1 ]; then
-      echo "[docker-entrypoint] tailscale requires interactive authorization (AuthURL/NeedsLogin); unattended mesh join rejected" >&2
+      echo "[docker-entrypoint] tailscale requires interactive authorization (AuthURL/NeedsMachineAuth); unattended mesh join rejected" >&2
     fi
     echo "[docker-entrypoint] FATAL: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying" >&2
     printf 'auth_expired hostname=%s\n' "$ts_hostname" > "$ts_authkey_expired_marker" 2>/dev/null || true

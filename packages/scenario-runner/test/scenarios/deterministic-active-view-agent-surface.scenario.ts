@@ -222,71 +222,6 @@ function promptHasActiveViewElements(value: string): boolean {
   ].every((needle) => value.includes(needle));
 }
 
-function postTurnEvaluatorFixture({
-  capability,
-  elementId,
-  input,
-}: {
-  capability: "agent-click" | "agent-fill";
-  elementId: string;
-  input: string;
-}) {
-  const expectedEvaluatorNames = [
-    "factMemory",
-    "preferences",
-    "relationships",
-    "identities",
-    "success",
-    "ftu_goal_discovery",
-    capability === "agent-fill" ? "experiencePatterns" : "skillProposal",
-  ];
-  return {
-    name: `active-view-post-turn-${capability}-${elementId}`,
-    match: (call: DeterministicModelCall) => {
-      if (call.modelType !== ModelType.TEXT_SMALL) return false;
-      const promptText =
-        call.params.prompt ??
-        (Array.isArray(call.params.messages)
-          ? call.params.messages
-              .map((m: { content?: string }) => m.content ?? "")
-              .join("\n")
-          : "");
-      const schema = call.params.responseSchema as
-        | { properties?: Record<string, unknown> }
-        | undefined;
-      const evaluatorNames = Object.keys(schema?.properties ?? {});
-      return (
-        promptText.includes("# Task: Post-turn evaluation") &&
-        promptText.includes(input) &&
-        promptText.includes(capability) &&
-        promptText.includes(elementId) &&
-        evaluatorNames.length === expectedEvaluatorNames.length &&
-        expectedEvaluatorNames.every((name) => evaluatorNames.includes(name))
-      );
-    },
-    response: {
-      factMemory: { ops: [] },
-      preferences: { ops: [] },
-      relationships: { relationships: [] },
-      identities: { identities: [] },
-      success: {
-        completed: true,
-        reason: "The requested active-view interaction completed successfully.",
-      },
-      ftu_goal_discovery: { goalFound: false, goal: "", confidence: 0 },
-      ...(capability === "agent-fill"
-        ? { experiencePatterns: { experiences: [] } }
-        : {
-            skillProposal: {
-              extract: false,
-              reason: "This one-off view interaction is not a reusable skill.",
-            },
-          }),
-    },
-    times: 1,
-  };
-}
-
 function plannerFixture({
   capability,
   elementId,
@@ -304,7 +239,9 @@ function plannerFixture({
     name: `active-view-planner-${capability}-${elementId}`,
     match: (call: DeterministicModelCall) => {
       if (call.modelType !== ModelType.ACTION_PLANNER) return false;
-      if (!call.toolNames.includes("VIEWS")) return false;
+      if (call.toolNames.length > 0 && !call.toolNames.includes("VIEWS")) {
+        return false;
+      }
       // On the messages-path planner, Active View is prepended into the last
       // user message content, so latestUserText is no longer an exact match
       // for the bare scenario input. Accept exact or suffix match.
@@ -318,31 +255,41 @@ function plannerFixture({
         `${call.params.prompt ?? ""}\n${call.latestUserText}`,
       );
     },
-    response: {
-      text: "",
-      thought: `Use the active-view element id ${elementId}.`,
-      messageToUser,
-      completed: true,
-      finishReason: "tool-calls",
-      toolCalls: [
-        {
-          id: `call-${capability}-${elementId}`,
-          name: "VIEWS",
-          type: "function",
-          arguments: {
-            action: "interact",
-            capability,
-            params: {
-              id: elementId,
-              ...(value ? { value } : {}),
-            },
-            view: VIEW_ID,
-            viewType: "gui",
+    resolve: (call: DeterministicModelCall) =>
+      call.toolNames.includes("VIEWS")
+        ? {
+            text: "",
+            thought: `Use the active-view element id ${elementId}.`,
+            messageToUser,
+            completed: true,
+            finishReason: "tool-calls",
+            toolCalls: [
+              {
+                id: `call-${capability}-${elementId}`,
+                name: "VIEWS",
+                type: "function",
+                arguments: {
+                  action: "interact",
+                  capability,
+                  params: {
+                    id: elementId,
+                    ...(value ? { value } : {}),
+                  },
+                  view: VIEW_ID,
+                  viewType: "gui",
+                },
+              },
+            ],
+          }
+        : {
+            text: messageToUser,
+            thought: `Report the completed ${capability} interaction.`,
+            messageToUser,
+            completed: true,
+            finishReason: "stop",
+            toolCalls: [],
           },
-        },
-      ],
-    },
-    times: 1,
+    times: { min: 1, max: 2 },
   };
 }
 
@@ -464,11 +411,6 @@ export default scenario({
             messageToUser: "Filled the active ledger title.",
             value: "Close Issue 11355",
           }),
-          postTurnEvaluatorFixture({
-            capability: "agent-fill",
-            elementId: "ledger-title",
-            input: FILL_TEXT,
-          }),
           stage1ResponseHandlerFixture({
             actionName: "VIEWS",
             contextIds: ["active-view", "views"],
@@ -487,11 +429,6 @@ export default scenario({
             elementId: "save-ledger",
             input: CLICK_TEXT,
             messageToUser: "Saved the active ledger.",
-          }),
-          postTurnEvaluatorFixture({
-            capability: "agent-click",
-            elementId: "save-ledger",
-            input: CLICK_TEXT,
           }),
         );
         return undefined;

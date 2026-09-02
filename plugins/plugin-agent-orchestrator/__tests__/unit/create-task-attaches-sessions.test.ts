@@ -371,11 +371,11 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
     expect(taskId.length).toBeGreaterThan(0);
 
     // The task_complete bridge does real work (change-set capture via git
-    // subprocesses, completion-evidence assembly) before promoting to
-    // `validating`; the default 1s waitFor bound flakes on loaded runners.
+    // subprocesses and completion-evidence assembly) before closing the
+    // one-shot task; the default 1s waitFor bound flakes on loaded runners.
     await vi.waitFor(
       async () => {
-        expect((await taskService.getTask(taskId))?.status).toBe("validating");
+        expect((await taskService.getTask(taskId))?.status).toBe("done");
       },
       { timeout: 15_000, interval: 250 },
     );
@@ -383,10 +383,10 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
     expect(detail?.sessionCount).toBe(1);
     // The finished single-turn session is indexed for history/attribution but
     // is no longer live. Its task_complete event advances the durable task to
-    // validating, the same state the real ACP terminal event produces.
+    // done, the same terminal state the real ACP terminal event produces.
     expect(detail?.activeSessionCount).toBe(0);
     expect(detail?.status).not.toBe("active");
-    expect(detail?.status).toBe("validating");
+    expect(detail?.status).toBe("done");
     expect(detail?.sessions[0]?.status).toBe("stopped");
     expect(detail?.sessions[0]?.stoppedAt).toBeTypeOf("number");
   });

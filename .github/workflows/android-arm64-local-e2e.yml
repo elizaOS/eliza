@@ -32,7 +32,7 @@ env:
   ELIZA_ANDROID_BACKEND: "local"
   ELIZA_ANDROID_REQUIRE_AGENT: "1"
   ELIZA_PAIRING_DISABLED: "1"
-  ELIZA_DEVICE_BUNDLE_ROOT: ${{ github.workspace }}/device-e2e-artifacts
+  ELIZA_DEVICE_BUNDLE_ROOT: ${{ github.workspace }}/device-e2e-artifacts/${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
   android-arm64-local-runtime:
@@ -46,9 +46,14 @@ jobs:
 
       - name: Fail-closed ARM64 device preflight
         run: |
-          mkdir -p "$ELIZA_DEVICE_BUNDLE_ROOT/android-arm64-local/logs"
-          bash .github/scripts/device-e2e/arm64-local-preflight.sh 2>&1 \
-            | tee "$ELIZA_DEVICE_BUNDLE_ROOT/android-arm64-local/logs/arm64-preflight.log"
+          mkdir -p "$ELIZA_DEVICE_BUNDLE_ROOT/preflight"
+          if bash .github/scripts/device-e2e/arm64-local-preflight.sh \
+            > "$ELIZA_DEVICE_BUNDLE_ROOT/preflight/arm64-preflight.log" 2>&1; then
+            cat "$ELIZA_DEVICE_BUNDLE_ROOT/preflight/arm64-preflight.log"
+          else
+            cat "$ELIZA_DEVICE_BUNDLE_ROOT/preflight/arm64-preflight.log"
+            exit 1
+          fi
 
       - name: Install pinned workspace
         run: bun install --frozen-lockfile
@@ -59,13 +64,13 @@ jobs:
           --build
           --no-emulator-boot
           --arm64-local-probes
-          --output "$ELIZA_DEVICE_BUNDLE_ROOT/android-arm64-local"
+          --output "$ELIZA_DEVICE_BUNDLE_ROOT/runtime"
 
       - name: Upload ARM64 local-runtime bundle
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: android-arm64-local-runtime-bundle-${{ github.run_id }}-${{ github.run_attempt }}
-          path: device-e2e-artifacts/android-arm64-local/**
+          path: device-e2e-artifacts/${{ github.run_id }}-${{ github.run_attempt }}/**
           if-no-files-found: error
           retention-days: 14

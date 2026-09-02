@@ -4,6 +4,7 @@ export * from "./agent-backup-capture-v2.js";
 export * from "./agent-backup-manifest.js";
 export * from "./agent-backup-manifest-v3.js";
 export * from "./agent-backup-record-stream-v1.js";
+export * from "./agent-backup-restore-v3-stream.js";
 export * from "./agent-routes.js";
 export * from "./app-permissions.js";
 export * from "./app-permissions-routes.js";

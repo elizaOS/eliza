@@ -4,6 +4,7 @@
  * Worker lifetime; warm requests consume the projection from their single KV read.
  */
 
+import { subscriptionEntitlementsRepository } from "../../db/repositories/subscription-entitlements";
 import { cache } from "../cache/client";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -44,11 +45,14 @@ export async function loadInferenceAdmissionSnapshot(
   organizationId: string,
 ): Promise<InferenceAdmissionSnapshot> {
   const balanceAt = Date.now();
-  const [balance, tier] = await Promise.all([
+  const [balance, tier, entitlement] = await Promise.all([
     creditsService.getOrganizationBalanceSnapshot(organizationId),
     recalculateOrgTier(organizationId),
+    subscriptionEntitlementsRepository.find(organizationId),
   ]);
+  const subscriptionFunded = entitlement !== undefined && entitlement.plan_key !== "free";
   return {
+    subscriptionFunded,
     balance: {
       balanceUsd: balance.balanceUsd,
       balanceAt,

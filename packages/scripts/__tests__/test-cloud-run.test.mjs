@@ -101,6 +101,21 @@ describe("chunkByBudget", () => {
 
     expect(batches.map((batch) => batch.length)).toEqual([16, 16, 8]);
   });
+
+  it("gives resource-sensitive suites a fresh process without dropping neighbors", () => {
+    const files = ["a", "b", "memory", "c", "d"];
+    const batches = chunkByBudget(files, 3, 100000, new Set(["memory"]));
+
+    expect(batches).toEqual([["a", "b"], ["memory"], ["c", "d"]]);
+    expect(batches.flat()).toEqual(files);
+  });
+
+  it("preserves later budget boundaries after extracting a singleton", () => {
+    const files = ["a", "memory", "b", "c", "d", "e"];
+    const batches = chunkByBudget(files, 3, 100000, new Set(["memory"]));
+
+    expect(batches).toEqual([["a"], ["memory"], ["b"], ["c", "d", "e"]]);
+  });
 });
 
 describe("formatBatchFiles", () => {

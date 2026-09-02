@@ -46,6 +46,7 @@ import {
 } from "@/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@/lib/services/content-safety";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@/lib/services/generations";
 import { persistPendingVideoSettlement } from "@/lib/services/pending-video-settlement";
 import { logger } from "@/lib/utils/logger";
@@ -167,38 +168,51 @@ app.post("/", async (c) => {
   let activeBillingRequestId: string | null = null;
 
   try {
-    const { user, apiKeyId, admissionSnapshot } =
-      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
-    const request = videoRequestSchema.parse(await c.req.json());
-    const requestedDefinition = request.model
+    const requestResult = videoRequestSchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    const request = requestResult.success ? requestResult.data : undefined;
+    const requestedDefinition = request?.model
       ? getSupportedVideoModelDefinition(request.model)
       : undefined;
-    if (request.model && !requestedDefinition) {
-      return jsonError(
-        c,
-        400,
-        `Unsupported video model: ${request.model}`,
-        "validation_error",
-        {
-          supportedModels: SUPPORTED_VIDEO_MODEL_IDS,
-        },
-      );
-    }
-
-    const definitions = requestedDefinition
-      ? [requestedDefinition]
-      : requireDefaultVideoModelDefinitions();
+    const definitions = requestResult.success
+      ? requestedDefinition
+        ? [requestedDefinition]
+        : requireDefaultVideoModelDefinitions()
+      : [];
     const apiKeys = collectVideoProviderApiKeys(c.env);
     const providerCandidates = getConfiguredVideoProviderCandidates(
       definitions,
       apiKeys,
     );
-    if (providerCandidates.length === 0) {
+    let pendingResponse: Response | undefined;
+    if (!requestResult.success) {
+      pendingResponse = failureResponse(c, requestResult.error);
+    } else if (requestResult.data.model && !requestedDefinition) {
+      pendingResponse = jsonError(
+        c,
+        400,
+        `Unsupported video model: ${requestResult.data.model}`,
+        "validation_error",
+        { supportedModels: SUPPORTED_VIDEO_MODEL_IDS },
+      );
+    } else if (providerCandidates.length === 0) {
       const message = requestedDefinition
         ? `${providerDisplayName(requestedDefinition)} video generation is not configured`
         : "Video generation is not configured";
-      return jsonError(c, 503, message, "internal_error");
+      pendingResponse = jsonError(c, 503, message, "internal_error");
     }
+    const { user, apiKeyId, admissionSnapshot, credential } =
+      await requireGenerativeRouteCaller(c, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: pendingResponse === undefined,
+      });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
+    if (pendingResponse) return pendingResponse;
+    if (!request) throw new Error("Validated video request was not retained");
 
     await contentSafetyService.assertSafeForPublicUse({
       surface: "media_generation_prompt",
@@ -284,6 +298,7 @@ app.post("/", async (c) => {
           cost: candidate.cost,
           idempotencyKey: candidate.billingContext.requestId ?? undefined,
           admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
         });
       } catch (error) {
         // error-policy:J1 the HTTP boundary translates insufficient-credit

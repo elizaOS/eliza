@@ -157,7 +157,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: voice-platform-matrix-index
-          path: ${{ runner.temp }}/voice-platform-matrix
+          path: |
+            ${{ runner.temp }}/voice-platform-matrix/voice-matrix.json
+            ${{ runner.temp }}/voice-platform-matrix/voice-matrix.md
+            ${{ runner.temp }}/voice-platform-matrix/index.html
           if-no-files-found: error
 
   # Live contract against the two Railway voice services (Kokoro TTS + Whisper
@@ -192,7 +195,14 @@ jobs:
       - name: Run live Railway voice contract
         run: |
           set -euo pipefail
-          bun test packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-railway-contract.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if bun test packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts > "$PRIVATE_LOG" 2>&1; then
+            echo "phase=railway-contract status=passed code=VOICE_CONTRACT_PASSED"
+          else
+            echo "phase=railway-contract status=failed code=VOICE_CONTRACT_FAILED" >&2
+            exit 1
+          fi
 
   # The service contract above does not exercise the shipped browser surface.
   # This separately gated job runs the exact live matrix cell from #16937 only
@@ -208,6 +218,7 @@ jobs:
       E2E_RECORD: "1"
       ELIZA_UI_SMOKE_LIVE_STACK: "1"
       ELIZA_VOICE_LIVE_RAILWAY: "1"
+      ELIZA_VOICE_MATRIX_SESSION_ID: ${{ github.run_id }}-${{ github.run_attempt }}-web-live
       ELIZA_PROVIDER: "cerebras"
       KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
       WHISPER_STT_URL: ${{ vars.ELIZA_VOICE_WHISPER_STT_URL }}
@@ -301,7 +312,8 @@ jobs:
           ffmpeg -y -v error \
             -f pulse -i eliza_voice_evidence.monitor \
             -ac 2 -ar 48000 \
-            "$RUNNER_TEMP/voice-web-live/system-loopback.wav" &
+            "$RUNNER_TEMP/voice-web-live/system-loopback.wav" \
+            > "$RUNNER_TEMP/voice-web-live/loopback-recorder.log" 2>&1 &
           echo "VOICE_LOOPBACK_PID=$!" >> "$GITHUB_ENV"
           sleep 1
           if ! kill -0 "$!" 2>/dev/null; then
@@ -311,7 +323,7 @@ jobs:
 
       - name: Run the provisioned live browser matrix cell
         env:
-          ELIZA_UI_SMOKE_BACKEND_LOG_PATH: ${{ runner.temp }}/voice-web-live/backend.log
+          ELIZA_UI_SMOKE_BACKEND_LOG_PATH: ${{ runner.temp }}/voice-web-live/private-backend.log
         run: |
           set -euo pipefail
           bun run voice:matrix -- \
@@ -354,7 +366,7 @@ jobs:
             --failures "$RUNNER_TEMP/voice-web-failure-results" \
             --loopback "$RUNNER_TEMP/voice-web-live/system-loopback.wav" \
             --loopback-clock "$RUNNER_TEMP/voice-web-live/system-loopback-clock.json" \
-            --backend "$RUNNER_TEMP/voice-web-live/backend.log" \
+            --backend "$RUNNER_TEMP/voice-web-live/private-backend.log" \
             --matrix "$RUNNER_TEMP/voice-web-live-matrix/voice-matrix.json" \
             --out "$RUNNER_TEMP/voice-web-final"
 
@@ -363,16 +375,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: voice-web-live-railway
-          path: |
-            ${{ runner.temp }}/voice-web-live-ungated
-            ${{ runner.temp }}/voice-web-live-matrix
-            ${{ runner.temp }}/voice-web-live
-            ${{ runner.temp }}/voice-web-final
-            ${{ runner.temp }}/voice-web-failures-matrix
-            ${{ runner.temp }}/voice-web-failure-results
-            packages/app/playwright-report/
-            packages/app/test-results/
-            e2e-recordings/app/test-results/
+          path: ${{ runner.temp }}/voice-web-final
           if-no-files-found: ignore
           retention-days: 14
 
@@ -507,14 +510,32 @@ jobs:
           fused-lib-dir: ${{ runner.temp }}/fused-lib
 
       - name: Pre-Gemma ASR compatibility FFI smoke (bun:ffi)
-        run: bun run --cwd plugins/plugin-local-inference test:asr:real
+        run: |
+          set -euo pipefail
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-asr-smoke.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if bun run --cwd plugins/plugin-local-inference test:asr:real > "$PRIVATE_LOG" 2>&1; then
+            echo "phase=asr-compatibility status=passed code=ASR_COMPATIBILITY_PASSED"
+          else
+            echo "phase=asr-compatibility status=failed code=ASR_COMPATIBILITY_FAILED" >&2
+            exit 1
+          fi
 
       # Designed key-gated step: the mixed round-trip crosses two external
       # paid services. Absence of the keys is surfaced loudly below instead of
       # a silent skip.
       - name: Optional mixed real round-trip test
         if: env.ELEVENLABS_API_KEY != '' && env.CEREBRAS_API_KEY != ''
-        run: bun run --cwd plugins/plugin-local-inference roundtrip:real
+        run: |
+          set -euo pipefail
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-mixed-roundtrip.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if bun run --cwd plugins/plugin-local-inference roundtrip:real > "$PRIVATE_LOG" 2>&1; then
+            echo "phase=mixed-roundtrip status=passed code=MIXED_ROUNDTRIP_PASSED"
+          else
+            echo "phase=mixed-roundtrip status=failed code=MIXED_ROUNDTRIP_FAILED" >&2
+            exit 1
+          fi
 
       - name: Note skipped mixed round-trip (keys absent)
         if: env.ELEVENLABS_API_KEY == '' || env.CEREBRAS_API_KEY == ''
@@ -552,23 +573,16 @@ jobs:
       - name: Prepare matrix output dir + environment probe
         run: |
           set -euo pipefail
-          VOICE_REAL_MATRIX_OUT="$RUNNER_TEMP/voice-real-matrix"
+          VOICE_REAL_MATRIX_OUT="$RUNNER_TEMP/voice-real-private"
+          VOICE_REAL_MATRIX_PROOF="$RUNNER_TEMP/voice-real-proof"
           echo "VOICE_REAL_MATRIX_OUT=$VOICE_REAL_MATRIX_OUT" >> "$GITHUB_ENV"
-          mkdir -p "$VOICE_REAL_MATRIX_OUT"
-          {
-            echo "runner=$(hostname)"
-            echo "workspace=$GITHUB_WORKSPACE"
-            echo "runnerTemp=$RUNNER_TEMP"
-            # Keyless by design (#9577): the owner/impostor/agent corpus is
-            # synthesized locally with distinct fused Kokoro voice packs, so no
-            # ElevenLabs secret is required. The key only upgrades the
-            # human-turn rows to real voices.
-            if [ -z "${ELEVENLABS_API_KEY:-}" ]; then
-              echo "ELEVENLABS_API_KEY not set — keyless local-Kokoro corpus (#9577)"
-            else
-              echo "ELEVENLABS_API_KEY present — human-turn rows use real ElevenLabs voices"
-            fi
-          } 2>&1 | tee "$VOICE_REAL_MATRIX_OUT/probe.log"
+          echo "VOICE_REAL_MATRIX_PROOF=$VOICE_REAL_MATRIX_PROOF" >> "$GITHUB_ENV"
+          mkdir -p "$VOICE_REAL_MATRIX_OUT" "$VOICE_REAL_MATRIX_PROOF"
+          if [ -n "${ELEVENLABS_API_KEY:-}" ]; then credential_ready=true; else credential_ready=false; fi
+          jq -n --argjson credentialReady "$credential_ready" \
+            '{phase:"environment",status:"passed",code:"VOICE_ENVIRONMENT_READY",credentialReady:$credentialReady}' \
+            > "$VOICE_REAL_MATRIX_PROOF/environment.json"
+          echo "phase=environment status=passed code=VOICE_ENVIRONMENT_READY"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -604,36 +618,62 @@ jobs:
       - name: Record provisioning evidence
         run: |
           set -euo pipefail
-          {
-            echo "bundle=$ELIZA_ASR_BUNDLE"
-            echo "fusedLib=$ELIZA_INFERENCE_LIBRARY"
-            find "$ELIZA_ASR_BUNDLE" -type f -printf '%P %s bytes\n' | sort
-            sha256sum "$ELIZA_INFERENCE_LIBRARY"
-          } | tee "$VOICE_REAL_MATRIX_OUT/provisioning.txt"
+          PRIVATE_QUERY_LOG=$(mktemp "$RUNNER_TEMP/voice-assets-query.XXXXXX")
+          trap 'rm -f "$PRIVATE_QUERY_LOG"' EXIT
+          if bundle_file_count=$(find "$ELIZA_ASR_BUNDLE" -type f 2> "$PRIVATE_QUERY_LOG" | wc -l | tr -d ' '); then
+            rm -f "$PRIVATE_QUERY_LOG"
+          else
+            rm -f "$PRIVATE_QUERY_LOG"
+            echo "phase=provisioning status=failed code=VOICE_ASSETS_QUERY_FAILED" >&2
+            exit 1
+          fi
+          if [ -f "$ELIZA_INFERENCE_LIBRARY" ]; then library_ready=true; else library_ready=false; fi
+          jq -n --argjson bundleFileCount "$bundle_file_count" --argjson libraryReady "$library_ready" \
+            '{phase:"provisioning",status:"passed",code:"VOICE_ASSETS_READY",bundleFileCount:$bundleFileCount,libraryReady:$libraryReady}' \
+            > "$VOICE_REAL_MATRIX_PROOF/provisioning.json"
+          echo "phase=provisioning status=passed code=VOICE_ASSETS_READY bundleFileCount=$bundle_file_count"
 
       - name: Real Kokoro GGUF synth smoke
         run: |
           set -euo pipefail
-          bun run --cwd plugins/plugin-local-inference test:kokoro:real \
-            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/kokoro-real-smoke.log"
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-kokoro.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if bun run --cwd plugins/plugin-local-inference test:kokoro:real > "$PRIVATE_LOG" 2>&1; then
+            jq -n '{phase:"kokoro",status:"passed",code:"KOKORO_SMOKE_PASSED"}' > "$VOICE_REAL_MATRIX_PROOF/kokoro.json"
+            echo "phase=kokoro status=passed code=KOKORO_SMOKE_PASSED"
+          else
+            echo "phase=kokoro status=failed code=KOKORO_SMOKE_FAILED" >&2
+            exit 1
+          fi
 
       - name: Real fused attribution smoke
         run: |
           set -euo pipefail
-          bun packages/app-core/scripts/voice-attribution-smoke.ts \
-            --models "$ELIZA_VOICE_REAL_MODEL_DIR" \
-            --require-real \
-            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-attribution-smoke.log"
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-attribution.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if bun packages/app-core/scripts/voice-attribution-smoke.ts \
+            --models "$ELIZA_VOICE_REAL_MODEL_DIR" --require-real > "$PRIVATE_LOG" 2>&1; then
+            jq -n '{phase:"attribution",status:"passed",code:"ATTRIBUTION_SMOKE_PASSED"}' > "$VOICE_REAL_MATRIX_PROOF/attribution.json"
+            echo "phase=attribution status=passed code=ATTRIBUTION_SMOKE_PASSED"
+          else
+            echo "phase=attribution status=failed code=ATTRIBUTION_SMOKE_FAILED" >&2
+            exit 1
+          fi
 
       - name: Real plugin voice stack matrix
         run: |
           set -euo pipefail
-          bun run --cwd plugins/plugin-local-inference voicestack:real \
-            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voicestack-real.log"
-          bun run --cwd plugins/plugin-local-inference agentvoice:real \
-            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/agentvoice-real.log"
-          bun run --cwd plugins/plugin-local-inference robustness:real \
-            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/robustness-real.log"
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-plugin-stack.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if bun run --cwd plugins/plugin-local-inference voicestack:real > "$PRIVATE_LOG" 2>&1 \
+            && bun run --cwd plugins/plugin-local-inference agentvoice:real >> "$PRIVATE_LOG" 2>&1 \
+            && bun run --cwd plugins/plugin-local-inference robustness:real >> "$PRIVATE_LOG" 2>&1; then
+            jq -n '{phase:"plugin-stack",status:"passed",code:"PLUGIN_STACK_PASSED",cellCount:3}' > "$VOICE_REAL_MATRIX_PROOF/plugin-stack.json"
+            echo "phase=plugin-stack status=passed code=PLUGIN_STACK_PASSED cellCount=3"
+          else
+            echo "phase=plugin-stack status=failed code=PLUGIN_STACK_FAILED" >&2
+            exit 1
+          fi
 
       # Hard-real authority (#16972): the workbench consumes provider-produced
       # diarization boundaries across the full stream and fails closed when an
@@ -642,9 +682,16 @@ jobs:
       - name: Real voice workbench scenario matrix
         run: |
           set -euo pipefail
-          bun run --cwd plugins/plugin-local-inference voice:workbench --real \
-            --out "$VOICE_REAL_MATRIX_OUT/voice-workbench-real" \
-            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-workbench-real.log"
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-workbench.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if bun run --cwd plugins/plugin-local-inference voice:workbench --real \
+            --out "$VOICE_REAL_MATRIX_OUT/voice-workbench-real" > "$PRIVATE_LOG" 2>&1; then
+            jq -n '{phase:"workbench",status:"passed",code:"VOICE_WORKBENCH_PASSED"}' > "$VOICE_REAL_MATRIX_PROOF/workbench.json"
+            echo "phase=workbench status=passed code=VOICE_WORKBENCH_PASSED"
+          else
+            echo "phase=workbench status=failed code=VOICE_WORKBENCH_FAILED" >&2
+            exit 1
+          fi
 
       # bun test, NOT vitest: these suites need bun:ffi, and vitest's node
       # workers make every one of them skip — a green-skip lie this lane bans.
@@ -653,27 +700,42 @@ jobs:
       - name: Fused component compatibility FFI test lanes (bun:ffi)
         run: |
           set -euo pipefail
-          bun test \
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-fused-ffi.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if ! bun test \
             plugins/plugin-local-inference/src/services/voice/speaker/encoder-fused.real.test.ts \
             plugins/plugin-local-inference/src/services/voice/speaker/diarizer-fused.real.test.ts \
             plugins/plugin-local-inference/src/services/voice/asr-timed.real.test.ts \
             plugins/plugin-local-inference/src/services/voice/kokoro/__tests__/kokoro-engine-bridge.real.test.ts \
-            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log"
+            > "$PRIVATE_LOG" 2>&1; then
+            echo "phase=fused-ffi status=failed code=FUSED_FFI_FAILED" >&2
+            exit 1
+          fi
           # Per-cell accounting: ANY nonzero skip count means some matrix cell
           # did not execute against the staged lib — a partial skip is as much
           # a green-skip lie as a full-lane skip, so it fails the same way.
-          if grep -Eq "(^| )0 pass" "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log" \
-            || grep -Eq "(^| )[1-9][0-9]* skip" "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log"; then
-            echo "::error title=Fused FFI lanes skipped::one or more compatibility FFI suite cells did not execute — staging or bun:ffi is broken"
+          if grep -Eq "(^| )0 pass" "$PRIVATE_LOG" \
+            || grep -Eq "(^| )[1-9][0-9]* skip" "$PRIVATE_LOG"; then
+            echo "phase=fused-ffi status=failed code=FUSED_FFI_INCOMPLETE" >&2
             exit 1
           fi
+          jq -n '{phase:"fused-ffi",status:"passed",code:"FUSED_FFI_PASSED"}' > "$VOICE_REAL_MATRIX_PROOF/fused-ffi.json"
+          echo "phase=fused-ffi status=passed code=FUSED_FFI_PASSED"
 
-      - name: Upload real voice matrix logs
+      - name: Remove private voice matrix diagnostics
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "${VOICE_REAL_MATRIX_OUT:-}" = "$RUNNER_TEMP/voice-real-private" ]; then
+            rm -rf -- "$RUNNER_TEMP/voice-real-private"
+          fi
+
+      - name: Upload privacy-safe real voice matrix proof
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: voice-real-acoustic-matrix
-          path: ${{ runner.temp }}/voice-real-matrix
+          path: ${{ runner.temp }}/voice-real-proof
           if-no-files-found: error
 
   voice-macos-electrobun-matrix:
@@ -720,10 +782,18 @@ jobs:
       - name: Run macOS Electrobun matrix inside synchronized hardware capture
         run: |
           set -euo pipefail
-          bun run --cwd packages/app voice:evidence:desktop:capture -- \
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-macos-capture.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if bun run --cwd packages/app voice:evidence:desktop:capture -- \
             --platform darwin \
             --out "$RUNNER_TEMP/voice-macos-hardware-capture" \
-            -- bun run voice:matrix -- --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix"
+            -- bun run voice:matrix -- --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix" \
+            > "$PRIVATE_LOG" 2>&1; then
+            echo "phase=macos-capture status=passed code=DESKTOP_CAPTURE_PASSED"
+          else
+            echo "phase=macos-capture status=failed code=DESKTOP_CAPTURE_FAILED" >&2
+            exit 1
+          fi
 
       - name: Finalize real macOS microphone and speaker evidence
         env:
@@ -749,10 +819,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: voice-macos-electrobun-matrix
-          path: |
-            ${{ runner.temp }}/voice-macos-electrobun-matrix
-            ${{ runner.temp }}/voice-macos-hardware-capture
-            ${{ runner.temp }}/voice-macos-electrobun-final
+          path: ${{ runner.temp }}/voice-macos-electrobun-final
           if-no-files-found: error
 
   voice-windows-electrobun-matrix:
@@ -797,10 +864,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bun run --cwd packages/app voice:evidence:desktop:capture -- \
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-windows-capture.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          if bun run --cwd packages/app voice:evidence:desktop:capture -- \
             --platform win32 \
             --out "$RUNNER_TEMP/voice-windows-hardware-capture" \
-            -- bun run voice:matrix -- --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix"
+            -- bun run voice:matrix -- --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix" \
+            > "$PRIVATE_LOG" 2>&1; then
+            echo "phase=windows-capture status=passed code=DESKTOP_CAPTURE_PASSED"
+          else
+            echo "phase=windows-capture status=failed code=DESKTOP_CAPTURE_FAILED" >&2
+            exit 1
+          fi
 
       - name: Finalize real Windows microphone and speaker evidence
         shell: bash
@@ -827,10 +902,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: voice-windows-electrobun-matrix
-          path: |
-            ${{ runner.temp }}/voice-windows-electrobun-matrix
-            ${{ runner.temp }}/voice-windows-hardware-capture
-            ${{ runner.temp }}/voice-windows-electrobun-final
+          path: ${{ runner.temp }}/voice-windows-electrobun-final
           if-no-files-found: error
 
   voice-ios-matrix:
@@ -874,7 +946,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: voice-ios-matrix
-          path: ${{ runner.temp }}/voice-ios-matrix
+          path: |
+            ${{ runner.temp }}/voice-ios-matrix/voice-matrix.json
+            ${{ runner.temp }}/voice-ios-matrix/voice-matrix.md
+            ${{ runner.temp }}/voice-ios-matrix/index.html
           if-no-files-found: error
 
   voice-android-matrix:
@@ -922,5 +997,8 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: voice-android-matrix
-          path: ${{ runner.temp }}/voice-android-matrix
+          path: |
+            ${{ runner.temp }}/voice-android-matrix/voice-matrix.json
+            ${{ runner.temp }}/voice-android-matrix/voice-matrix.md
+            ${{ runner.temp }}/voice-android-matrix/index.html
           if-no-files-found: error

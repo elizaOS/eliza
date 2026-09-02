@@ -67,4 +67,18 @@ describe("isolated script-test runner arguments", () => {
     expect(result.stderr).not.toContain("timed out");
     expect(result.stderr).not.toContain("TimeoutOverflowWarning");
   });
+
+  test("the CLI names a failing test file", () => {
+    const missingTestFile = "packages/scripts/__tests__/missing-script-test.ts";
+    const result = spawnSync(
+      process.execPath,
+      [driver, "--concurrency=1", "--", missingTestFile],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `[script-tests] failed: ${missingTestFile} (exit 1)`,
+    );
+  });
 });

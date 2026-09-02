@@ -56,6 +56,11 @@ import {
 } from "../../schemas/apps";
 import { mobileAppAuthGrants } from "../../schemas/mobile-app-auth-grants";
 import { organizations } from "../../schemas/organizations";
+import {
+  personalSharedGroupBindings,
+  personalSharedGroupJoinChallenges,
+  personalSharedGroupParticipants,
+} from "../../schemas/personal-shared-groups";
 import { users } from "../../schemas/users";
 import { apiKeysRepository } from "../api-keys";
 import { type App, appsRepository } from "../apps";
@@ -139,6 +144,9 @@ beforeAll(async () => {
       appReviewStatusEnum,
       userDatabaseStatusEnum,
       mobileAppAuthGrants,
+      personalSharedGroupBindings,
+      personalSharedGroupJoinChallenges,
+      personalSharedGroupParticipants,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();

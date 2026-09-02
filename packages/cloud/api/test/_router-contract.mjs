@@ -11,6 +11,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import {
+  assertNoUnmountedRouteFiles,
   collectRouteEntries,
   compareMountPaths,
 } from "../src/_generate-router.mjs";
@@ -47,9 +48,23 @@ function assertBefore(routes, first, second) {
   );
 }
 
-const { entries } = await collectRouteEntries(API_ROOT);
+const { entries, unmountedFiles } = await collectRouteEntries(API_ROOT);
 const expectedRoutes = entries.map((entry) => entry.path);
 const actualRoutes = generatedRoutes();
+const requiredLiveRoutes = [
+  "/api/v1/cron/remote-host-managed-cleanup",
+  "/api/v1/remote/hosts/:id/managed-network/activate",
+  "/api/v1/remote/sessions/activate",
+];
+
+assertNoUnmountedRouteFiles(unmountedFiles, API_ROOT);
+for (const path of requiredLiveRoutes) {
+  assert.ok(expectedRoutes.includes(path), `${path} must be Hono-converted`);
+  assert.ok(
+    actualRoutes.includes(path),
+    `${path} must be mounted in production`,
+  );
+}
 
 assert.deepEqual(
   actualRoutes,
@@ -138,6 +153,7 @@ console.log(
       "named catch-all conversion",
       "method dispatch",
       "trailing slash compatibility",
+      "all Hono leaves mounted",
     ],
   }),
 );

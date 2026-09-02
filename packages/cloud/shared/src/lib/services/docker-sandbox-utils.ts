@@ -39,6 +39,7 @@ const REPLACEMENT_ATTEMPT_CONTROL_ROOT = "/var/lib/eliza/replacement-attempts";
 const REPLACEMENT_ARTIFACT_PURGE_RECEIPT = "ELIZA_REPLACEMENT_SECRET_PURGED_V1";
 const REPLACEMENT_CANDIDATE_OBSERVED_RECEIPT = "ELIZA_REPLACEMENT_CANDIDATE_OBSERVED_V1";
 const REPLACEMENT_DOCKER_CREATE_QUIESCENT_RECEIPT = "ELIZA_REPLACEMENT_DOCKER_CREATE_QUIESCENT_V1";
+const EXACT_RESTORE_STAGING_VOLUME_PURGE_RECEIPT = "ELIZA_EXACT_RESTORE_STAGING_VOLUME_PURGED_V1";
 const REPLACEMENT_ATTEMPT_LOCK_TIMEOUT_SECONDS = 30;
 
 export type DockerNodeArchitecture = "amd64" | "arm64";
@@ -139,7 +140,15 @@ export function shellQuote(value: string): string {
  */
 export function buildEnsureNetworkCmd(network: string): string {
   const net = shellQuote(network);
-  return `docker network inspect ${net} >/dev/null 2>&1 || docker network create --driver bridge ${net} >/dev/null 2>&1 || docker network inspect ${net} >/dev/null`;
+  return [
+    "set -eu",
+    `if docker network inspect ${net} >/dev/null 2>&1; then exit 0; fi`,
+    `if docker network create --driver bridge ${net} >/dev/null 2>&1; then exit 0; fi`,
+    `if docker network inspect ${net} >/dev/null 2>&1; then exit 0; fi`,
+    'if ! docker info >/dev/null 2>&1; then echo "[docker-network] daemon-unavailable" >&2; exit 70; fi',
+    'echo "[docker-network] ensure-failed" >&2',
+    "exit 71",
+  ].join("; ");
 }
 
 // ---------------------------------------------------------------------------
@@ -735,6 +744,58 @@ function assertCanonicalReplacementPathAttemptId(replacementAttemptId: string): 
   }
 }
 
+function getReplacementAttemptControlDirectory(replacementAttemptId: string): string {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  return `${REPLACEMENT_ATTEMPT_CONTROL_ROOT}/${replacementAttemptId}`;
+}
+
+/**
+ * Root-only host path used for one exact replacement's transient Docker env.
+ *
+ * The agent volume is intentionally not used: a prior runtime can write that
+ * mount and could retain secret bytes through a symlink or hardlink even after
+ * the provisioner's nominal cleanup succeeds.
+ */
+export function getReplacementControlSecretEnvPath(replacementAttemptId: string): string {
+  return `${getReplacementAttemptControlDirectory(replacementAttemptId)}/container-env`;
+}
+
+/** Root-only snapshot consumed by one exact replacement's Docker create. */
+export function getReplacementControlVaultPassphrasePath(replacementAttemptId: string): string {
+  return `${getReplacementAttemptControlDirectory(replacementAttemptId)}/vault-passphrase`;
+}
+
+function getReplacementControlVaultArtifactPath(
+  replacementAttemptId: string,
+  kind: "stdin" | "override" | "generated" | "normalized",
+): string {
+  return `${getReplacementAttemptControlDirectory(replacementAttemptId)}/vault-${kind}`;
+}
+
+function secureFileShellPrelude(expectedUid: "0" | "$(id -u)"): string[] {
+  return [
+    "command -v stat >/dev/null 2>&1",
+    ...(expectedUid === "$(id -u)" ? ["command -v id >/dev/null 2>&1"] : []),
+    `secure_expected_uid=${expectedUid}`,
+    "secure_stat_uid() { stat -c '%u' -- \"$1\" 2>/dev/null || stat -f '%u' \"$1\"; }",
+    "secure_stat_links() { stat -c '%h' -- \"$1\" 2>/dev/null || stat -f '%l' \"$1\"; }",
+    "secure_stat_mode() { stat -c '%a' -- \"$1\" 2>/dev/null || stat -f '%Lp' \"$1\"; }",
+    "secure_stat_identity() { stat -c '%d:%i' -- \"$1\" 2>/dev/null || stat -f '%d:%i' \"$1\"; }",
+    // Exact secret transport runs only on GNU/Linux Docker nodes. BSD stat on
+    // /dev/fd reports fdescfs metadata rather than the opened inode, so the
+    // FD-bound proof must fail closed instead of advertising a false fallback.
+    "secure_fd_stat_uid() { stat -Lc '%u' -- \"/dev/fd/$1\"; }",
+    "secure_fd_stat_links() { stat -Lc '%h' -- \"/dev/fd/$1\"; }",
+    "secure_fd_stat_mode() { stat -Lc '%a' -- \"/dev/fd/$1\"; }",
+    "secure_fd_stat_identity() { stat -Lc '%d:%i' -- \"/dev/fd/$1\"; }",
+    "secure_fd_stat_fingerprint() { stat -Lc '%d:%i:%s:%y:%z' -- \"/dev/fd/$1\"; }",
+    'secure_regular_file_proof() { secure_path=$1; secure_code=${2:-70}; test -f "$secure_path" && test ! -L "$secure_path" || exit "$secure_code"; test "$(secure_stat_uid "$secure_path")" = "$secure_expected_uid" || exit "$secure_code"; test "$(secure_stat_links "$secure_path")" = 1 || exit "$secure_code"; }',
+    'secure_private_regular_file_proof() { secure_path=$1; secure_code=${2:-70}; secure_regular_file_proof "$secure_path" "$secure_code"; test "$(secure_stat_mode "$secure_path")" = 600 || exit "$secure_code"; }',
+    'secure_private_regular_fd_proof() { secure_fd=$1; secure_code=${2:-70}; test -f "/dev/fd/$secure_fd" || exit "$secure_code"; test "$(secure_fd_stat_uid "$secure_fd")" = "$secure_expected_uid" || exit "$secure_code"; test "$(secure_fd_stat_links "$secure_fd")" = 1 || exit "$secure_code"; test "$(secure_fd_stat_mode "$secure_fd")" = 600 || exit "$secure_code"; }',
+    'secure_reset_file() { secure_path=$1; if ! rm -f -- "$secure_path"; then exit 70; fi; if ! (set -C; : > "$secure_path") 2>/dev/null; then exit 70; fi; secure_regular_file_proof "$secure_path"; chmod 600 "$secure_path"; secure_private_regular_file_proof "$secure_path"; }',
+  ];
+}
+
 function getReplacementVolumePath(containerName: string): string {
   validateContainerName(containerName);
   if (!containerName.startsWith(AGENT_CONTAINER_NAME_PREFIX)) {
@@ -758,18 +819,29 @@ function getReplacementVolumePath(containerName: string): string {
 
 function replacementAttemptControlPrelude(replacementAttemptId: string): string[] {
   assertCanonicalReplacementPathAttemptId(replacementAttemptId);
-  const attemptDirectory = `${REPLACEMENT_ATTEMPT_CONTROL_ROOT}/${replacementAttemptId}`;
+  const attemptDirectory = getReplacementAttemptControlDirectory(replacementAttemptId);
   return [
     "command -v flock >/dev/null 2>&1",
+    ...secureFileShellPrelude("0"),
     `attempt_root=${shellQuote(REPLACEMENT_ATTEMPT_CONTROL_ROOT)}`,
     `attempt_dir=${shellQuote(attemptDirectory)}`,
     'attempt_lock="$attempt_dir/lock"',
     'attempt_cancelled="$attempt_dir/cancelled"',
     'attempt_active="$attempt_dir/active"',
     'attempt_candidate_id="$attempt_dir/candidate-id"',
-    'mkdir -p -- "$attempt_root" "$attempt_dir"',
-    'chmod 700 -- "$attempt_root" "$attempt_dir"',
-    'exec 9>"$attempt_lock"',
+    'attempt_docker_error="$attempt_dir/docker-error"',
+    'secure_parent_directory_proof() { secure_path=$1; test -d "$secure_path" && test ! -L "$secure_path" || exit 70; test "$(secure_stat_uid "$secure_path")" = 0 || exit 70; secure_mode=$(secure_stat_mode "$secure_path"); case "$secure_mode" in *[2367][0-7]|*[0-7][2367]) exit 70 ;; esac; }',
+    'secure_private_directory_proof() { secure_parent_directory_proof "$1"; test "$(secure_stat_mode "$1")" = 700 || exit 70; }',
+    'secure_prepare_control_parent() { secure_path=$1; if test -e "$secure_path" || test -L "$secure_path"; then secure_parent_directory_proof "$secure_path"; else mkdir -p -- "$secure_path"; secure_parent_directory_proof "$secure_path"; fi; }',
+    'secure_prepare_private_directory() { secure_path=$1; if test -e "$secure_path" || test -L "$secure_path"; then secure_parent_directory_proof "$secure_path"; else mkdir -p -- "$secure_path"; secure_parent_directory_proof "$secure_path"; fi; chmod 700 -- "$secure_path"; secure_private_directory_proof "$secure_path"; }',
+    'secure_existing_control_file() { secure_path=$1; if test -e "$secure_path" || test -L "$secure_path"; then secure_regular_file_proof "$secure_path"; else if ! (set -C; : > "$secure_path") 2>/dev/null; then secure_regular_file_proof "$secure_path"; fi; fi; secure_regular_file_proof "$secure_path"; chmod 600 -- "$secure_path"; secure_private_regular_file_proof "$secure_path"; }',
+    'secure_reset_control_file() { secure_reset_file "$1"; }',
+    "control_parent=${attempt_root%/*}",
+    'secure_prepare_control_parent "$control_parent"',
+    'secure_prepare_private_directory "$attempt_root"',
+    'secure_prepare_private_directory "$attempt_dir"',
+    'secure_existing_control_file "$attempt_lock"',
+    'exec 9>>"$attempt_lock"',
     `flock -w ${REPLACEMENT_ATTEMPT_LOCK_TIMEOUT_SECONDS} 9`,
   ];
 }
@@ -806,6 +878,16 @@ export function getReplacementDockerCreateQuiescentReceipt(replacementAttemptId:
   return `${REPLACEMENT_DOCKER_CREATE_QUIESCENT_RECEIPT} ${replacementAttemptId}`;
 }
 
+/** Exact non-secret receipt proving one abandoned restore staging path is absent. */
+export function getExactRestoreStagingVolumeCleanupReceipt(
+  replacementAttemptId: string,
+  restoreAttemptId: string,
+): string {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  assertCanonicalReplacementPathAttemptId(restoreAttemptId);
+  return `${EXACT_RESTORE_STAGING_VOLUME_PURGE_RECEIPT} ${replacementAttemptId} ${restoreAttemptId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Durable per-agent vault state (#18080 / #19225)
 // ---------------------------------------------------------------------------
@@ -820,12 +902,21 @@ export function getReplacementDockerCreateQuiescentReceipt(replacementAttemptId:
  */
 export const CONTAINER_DURABLE_STATE_DIR = "/root/.eliza";
 
-const VOLUME_VAULT_STDIN_FRAME_VERSION = "ELIZA_VAULT_STDIN_V1";
-const VOLUME_VAULT_STDIN_FRAME_END = "ELIZA_VAULT_STDIN_V1_END";
+/** Stable public labels for byte-native producers of the vault stdin frame. */
+export const VOLUME_VAULT_STDIN_FRAME_VERSION = "ELIZA_VAULT_STDIN_V1";
+export const VOLUME_VAULT_STDIN_FRAME_END = "ELIZA_VAULT_STDIN_V1_END";
 
 /** Host-side path of the persisted per-agent vault master passphrase. */
 export function getVolumeVaultPassphrasePath(volumePath: string): string {
   return `${volumePath}/.vault-passphrase`;
+}
+
+function getVolumeVaultPassphrasePublicationCandidatePath(
+  volumePath: string,
+  replacementAttemptId: string,
+): string {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  return `${getVolumeVaultPassphrasePath(volumePath)}.candidate.${replacementAttemptId}`;
 }
 
 /**
@@ -839,6 +930,7 @@ export function buildVolumeVaultPassphraseCommand(
   volumePath: string,
   overrideByteLength = 0,
   replacementAttemptId?: string,
+  fencedPreparationCommands: readonly string[] = [],
 ): string {
   if (!Number.isSafeInteger(overrideByteLength) || overrideByteLength < 0) {
     throw new Error("Vault passphrase override byte length must be a non-negative integer.");
@@ -847,18 +939,51 @@ export function buildVolumeVaultPassphraseCommand(
   if (replacementAttemptId !== undefined) {
     assertCanonicalReplacementPathAttemptId(replacementAttemptId);
   }
-  const fenced = replacementAttemptId !== undefined;
-  const attemptSuffix = replacementAttemptId ? `.${replacementAttemptId}` : "";
+  if (fencedPreparationCommands.length > 0 && replacementAttemptId === undefined) {
+    throw new Error("Vault preparation commands require a fenced replacement attempt.");
+  }
   const keyFile = shellQuote(keyPath);
-  const processSuffix = fenced ? "" : ".$$";
-  const stdinFile = `${shellQuote(`${keyPath}.stdin${attemptSuffix}`)}${processSuffix}`;
-  const overrideFile = `${shellQuote(`${keyPath}.override${attemptSuffix}`)}${processSuffix}`;
-  const generatedFile = `${shellQuote(`${keyPath}.generated${attemptSuffix}`)}${processSuffix}`;
-  const normalizedFile = `${shellQuote(`${keyPath}.normalized${attemptSuffix}`)}${processSuffix}`;
-  const cleanupTargets = '"$stdin_file" "$override_file" "$generated_file" "$normalized_file"';
+  const transientPath = (kind: "stdin" | "override" | "generated" | "normalized"): string =>
+    replacementAttemptId
+      ? shellQuote(getReplacementControlVaultArtifactPath(replacementAttemptId, kind))
+      : `${shellQuote(`${keyPath}.${kind}`)}.$$`;
+  const stdinFile = transientPath("stdin");
+  const overrideFile = transientPath("override");
+  const generatedFile = transientPath("generated");
+  const normalizedFile = transientPath("normalized");
+  const vaultSnapshotFile = replacementAttemptId
+    ? shellQuote(getReplacementControlVaultPassphrasePath(replacementAttemptId))
+    : undefined;
+  // The publication candidate must share the durable key's filesystem: `ln`
+  // is the atomic first-writer primitive and cannot cross a mount boundary.
+  // Other plaintext temporaries remain in the root-only control directory.
+  const keyCandidateFile = replacementAttemptId
+    ? shellQuote(getVolumeVaultPassphrasePublicationCandidatePath(volumePath, replacementAttemptId))
+    : undefined;
+  const cleanupTargets = [
+    '"$stdin_file"',
+    '"$override_file"',
+    '"$generated_file"',
+    '"$normalized_file"',
+    ...(keyCandidateFile ? ['"$key_candidate_file"'] : []),
+  ].join(" ");
+  const cleanupAbsenceProof = [
+    'test -e "$stdin_file"',
+    'test -L "$stdin_file"',
+    'test -e "$override_file"',
+    'test -L "$override_file"',
+    'test -e "$generated_file"',
+    'test -L "$generated_file"',
+    'test -e "$normalized_file"',
+    'test -L "$normalized_file"',
+    ...(keyCandidateFile ? ['test -e "$key_candidate_file"', 'test -L "$key_candidate_file"'] : []),
+  ].join(" || ");
   const cleanupFunction =
     `cleanup_vault_temp_files() { cleanup_status=$?; if ! rm -f -- ${cleanupTargets}; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ` +
-    'if test -e "$stdin_file" || test -L "$stdin_file" || test -e "$override_file" || test -L "$override_file" || test -e "$generated_file" || test -L "$generated_file" || test -e "$normalized_file" || test -L "$normalized_file"; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ' +
+    `if ${cleanupAbsenceProof}; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ` +
+    (vaultSnapshotFile
+      ? 'if test "$cleanup_status" -ne 0 || test "$vault_snapshot_ready" -ne 1; then if ! rm -f -- "$vault_snapshot_file"; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; if test -e "$vault_snapshot_file" || test -L "$vault_snapshot_file"; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; fi; '
+      : "") +
     'trap - EXIT; exit "$cleanup_status"; }';
   const expectedHeader = `${VOLUME_VAULT_STDIN_FRAME_VERSION} ${overrideByteLength}`;
   const expectedFrameByteLength =
@@ -868,52 +993,173 @@ export function buildVolumeVaultPassphraseCommand(
     1 +
     Buffer.byteLength(VOLUME_VAULT_STDIN_FRAME_END) +
     1;
+  const createFencedDurableKeyCommand = [
+    'if test -e "$key_file" || test -L "$key_file"; then',
+    'secure_private_regular_file_proof "$key_file";',
+    "else",
+    // Generate under the root-only control tree first, then copy through
+    // verified descriptors into an exclusively-created candidate beside the
+    // durable key. Only that final candidate crosses into the agent volume.
+    'secure_reset_file "$generated_file";',
+    'exec 8>>"$generated_file";',
+    'if test -s "$override_file"; then secure_private_regular_file_proof "$override_file"; exec 7<"$override_file"; secure_private_regular_fd_proof 7; cat <&7 >&8; exec 7<&-; else head -c 32 /dev/urandom | od -An -tx1 | tr -d \' \\n\' >&8; fi;',
+    "exec 8>&-;",
+    'secure_private_regular_file_proof "$generated_file";',
+    'if ! rm -f -- "$key_candidate_file"; then exit 70; fi;',
+    "set -C;",
+    'if exec 8>"$key_candidate_file"; then set +C; else set +C; exit 70; fi;',
+    "secure_private_regular_fd_proof 8;",
+    "key_candidate_fd_identity=$(secure_fd_stat_identity 8);",
+    'secure_private_regular_file_proof "$key_candidate_file";',
+    'test "$(secure_stat_identity "$key_candidate_file")" = "$key_candidate_fd_identity" || exit 70;',
+    'exec 7<"$generated_file";',
+    "secure_private_regular_fd_proof 7;",
+    "generated_fd_identity=$(secure_fd_stat_identity 7);",
+    "generated_fd_fingerprint_before=$(secure_fd_stat_fingerprint 7);",
+    'test "$(secure_stat_identity "$generated_file")" = "$generated_fd_identity" || exit 70;',
+    "cat <&7 >&8;",
+    "generated_fd_fingerprint_after=$(secure_fd_stat_fingerprint 7);",
+    'test "$generated_fd_fingerprint_before" = "$generated_fd_fingerprint_after" || exit 70;',
+    "exec 7<&-;",
+    "secure_private_regular_fd_proof 8;",
+    'test "$(secure_fd_stat_identity 8)" = "$key_candidate_fd_identity" || exit 70;',
+    'secure_private_regular_file_proof "$key_candidate_file";',
+    'test "$(secure_stat_identity "$key_candidate_file")" = "$key_candidate_fd_identity" || exit 70;',
+    "exec 8>&-;",
+    'secure_private_regular_file_proof "$key_candidate_file";',
+    'test "$(secure_stat_identity "$key_candidate_file")" = "$key_candidate_fd_identity" || exit 70;',
+    "created_key_identity=$key_candidate_fd_identity;",
+    'if ln "$key_candidate_file" "$key_file" 2>/dev/null; then rm -f -- "$key_candidate_file"; test ! -e "$key_candidate_file" && test ! -L "$key_candidate_file" || exit 70; elif test -e "$key_file" || test -L "$key_file"; then created_key_identity=; secure_private_regular_file_proof "$key_file"; else exit 43; fi;',
+    "fi",
+  ].join(" ");
+  const durableKeyCommands = replacementAttemptId
+    ? [
+        `key_file=${keyFile}`,
+        "created_key_identity=",
+        createFencedDurableKeyCommand,
+        'secure_private_regular_file_proof "$key_file"',
+        'key_identity_before=$(secure_stat_identity "$key_file")',
+        'if test -n "$created_key_identity"; then test "$key_identity_before" = "$created_key_identity" || exit 70; fi',
+        'exec 7<"$key_file"',
+        "secure_private_regular_fd_proof 7",
+        "key_fd_identity=$(secure_fd_stat_identity 7)",
+        "key_fd_fingerprint_before=$(secure_fd_stat_fingerprint 7)",
+        'secure_private_regular_file_proof "$key_file"',
+        'test "$(secure_stat_identity "$key_file")" = "$key_fd_identity" || exit 70',
+        'test "$key_identity_before" = "$key_fd_identity" || exit 70',
+        'secure_reset_file "$vault_snapshot_file"',
+        'exec 8>>"$vault_snapshot_file"',
+        "cat <&7 >&8",
+        "key_fd_fingerprint_after=$(secure_fd_stat_fingerprint 7)",
+        'secure_private_regular_file_proof "$key_file"',
+        'test "$(secure_stat_identity "$key_file")" = "$key_fd_identity" || exit 70',
+        'test "$key_fd_fingerprint_before" = "$key_fd_fingerprint_after" || exit 70',
+        "exec 7<&-",
+        "exec 8>&-",
+        'secure_private_regular_file_proof "$vault_snapshot_file"',
+        'secure_private_regular_file_proof "$vault_snapshot_file"',
+        "line_count=$(awk 'END { print NR }' \"$vault_snapshot_file\")",
+        'if test "$line_count" != 1; then exit 43; fi',
+        'secure_reset_file "$normalized_file"',
+        'exec 8>>"$normalized_file"',
+        'secure_private_regular_file_proof "$vault_snapshot_file"',
+        "tr -d '\\n' < \"$vault_snapshot_file\" >&8",
+        "exec 8>&-",
+        'secure_private_regular_file_proof "$normalized_file"',
+        'secure_private_regular_file_proof "$normalized_file"',
+        "key_length=$(wc -c < \"$normalized_file\" | tr -d ' ')",
+        'secure_private_regular_file_proof "$normalized_file"',
+        "safe_length=$(LC_ALL=C tr -d '[:space:][:cntrl:]' < \"$normalized_file\" | wc -c | tr -d ' ')",
+        'if test "$key_length" -lt 12 || test "$key_length" != "$safe_length"; then exit 43; fi',
+        'secure_private_regular_file_proof "$normalized_file"',
+        'secure_private_regular_file_proof "$vault_snapshot_file"',
+        'if ! cmp -s "$normalized_file" "$vault_snapshot_file"; then mv -- "$normalized_file" "$vault_snapshot_file"; fi',
+        'secure_private_regular_file_proof "$vault_snapshot_file"',
+        'if test -s "$override_file"; then secure_private_regular_file_proof "$override_file"; secure_private_regular_file_proof "$vault_snapshot_file"; if ! cmp -s "$override_file" "$vault_snapshot_file"; then exit 42; fi; fi',
+        "vault_snapshot_ready=1",
+      ]
+    : [
+        `key_file=${keyFile}`,
+        'if test -e "$key_file" || test -L "$key_file"; then secure_regular_file_proof "$key_file"; else secure_reset_file "$generated_file"; exec 8>>"$generated_file"; if test -s "$override_file"; then secure_private_regular_file_proof "$override_file"; exec 7<"$override_file"; cat <&7 >&8; exec 7<&-; else head -c 32 /dev/urandom | od -An -tx1 | tr -d \' \\n\' >&8; fi; exec 8>&-; secure_private_regular_file_proof "$generated_file"; if ln "$generated_file" "$key_file" 2>/dev/null; then rm -f -- "$generated_file"; elif test -e "$key_file" || test -L "$key_file"; then secure_regular_file_proof "$key_file"; else exit 43; fi; fi',
+        'secure_regular_file_proof "$key_file"',
+        'chmod 600 "$key_file"',
+        'secure_private_regular_file_proof "$key_file"',
+        'secure_private_regular_file_proof "$key_file"',
+        "line_count=$(awk 'END { print NR }' \"$key_file\")",
+        'if test "$line_count" != 1; then exit 43; fi',
+        'secure_reset_file "$normalized_file"',
+        'exec 8>>"$normalized_file"',
+        'secure_private_regular_file_proof "$key_file"',
+        "tr -d '\\n' < \"$key_file\" >&8",
+        "exec 8>&-",
+        'secure_private_regular_file_proof "$normalized_file"',
+        'secure_private_regular_file_proof "$normalized_file"',
+        "key_length=$(wc -c < \"$normalized_file\" | tr -d ' ')",
+        'secure_private_regular_file_proof "$normalized_file"',
+        "safe_length=$(LC_ALL=C tr -d '[:space:][:cntrl:]' < \"$normalized_file\" | wc -c | tr -d ' ')",
+        'if test "$key_length" -lt 12 || test "$key_length" != "$safe_length"; then exit 43; fi',
+        'secure_private_regular_file_proof "$normalized_file"',
+        'secure_private_regular_file_proof "$key_file"',
+        'if ! cmp -s "$normalized_file" "$key_file"; then mv "$normalized_file" "$key_file"; fi',
+        'secure_regular_file_proof "$key_file"',
+        'chmod 600 "$key_file"',
+        'secure_private_regular_file_proof "$key_file"',
+        'if test -s "$override_file"; then secure_private_regular_file_proof "$override_file"; secure_private_regular_file_proof "$key_file"; if ! cmp -s "$override_file" "$key_file"; then exit 42; fi; fi',
+      ];
   return [
     "set -eu",
     `stdin_file=${stdinFile}`,
     `override_file=${overrideFile}`,
     `generated_file=${generatedFile}`,
     `normalized_file=${normalizedFile}`,
+    ...(keyCandidateFile ? [`key_candidate_file=${keyCandidateFile}`] : []),
+    ...(vaultSnapshotFile
+      ? [`vault_snapshot_file=${vaultSnapshotFile}`, "vault_snapshot_ready=0"]
+      : []),
     "umask 077",
     ...(replacementAttemptId
       ? [
           ...replacementAttemptControlPrelude(replacementAttemptId),
           'test ! -e "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
           'chmod 600 -- "$attempt_lock"',
+          ...fencedPreparationCommands,
         ]
-      : []),
+      : secureFileShellPrelude("$(id -u)")),
     cleanupFunction,
     "trap cleanup_vault_temp_files EXIT",
     "trap 'exit 1' HUP INT TERM",
-    'cat > "$stdin_file"',
+    'secure_reset_file "$stdin_file"',
+    'exec 8>>"$stdin_file"',
+    "cat >&8",
+    "exec 8>&-",
+    'secure_private_regular_file_proof "$stdin_file"',
+    'secure_private_regular_file_proof "$stdin_file"',
     `stdin_length=$(wc -c < "$stdin_file" | tr -d ' ')`,
     `if test "$stdin_length" != ${expectedFrameByteLength}; then exit 44; fi`,
+    'secure_private_regular_file_proof "$stdin_file"',
     `frame_header=$(sed -n '1p' "$stdin_file")`,
     `if test "$frame_header" != ${shellQuote(expectedHeader)}; then exit 44; fi`,
+    'secure_private_regular_file_proof "$stdin_file"',
     "frame_lines=$(awk 'END { print NR }' \"$stdin_file\")",
     'if test "$frame_lines" != 3; then exit 44; fi',
+    'secure_private_regular_file_proof "$stdin_file"',
     `if test "$(tail -n 1 "$stdin_file")" != ${shellQuote(VOLUME_VAULT_STDIN_FRAME_END)}; then exit 44; fi`,
-    'sed \'1d;$d\' "$stdin_file" > "$override_file"',
+    'secure_reset_file "$override_file"',
+    'exec 8>>"$override_file"',
+    'secure_private_regular_file_proof "$stdin_file"',
+    "sed '1d;$d' \"$stdin_file\" >&8",
+    "exec 8>&-",
+    'secure_private_regular_file_proof "$override_file"',
+    'secure_private_regular_file_proof "$override_file"',
     "override_framed_length=$(wc -c < \"$override_file\" | tr -d ' ')",
     'if test "$override_framed_length" -lt 1; then exit 44; fi',
+    'secure_private_regular_file_proof "$override_file"',
     'truncate -s -1 "$override_file"',
+    'secure_private_regular_file_proof "$override_file"',
     "override_length=$(wc -c < \"$override_file\" | tr -d ' ')",
     `if test "$override_length" != ${overrideByteLength}; then exit 44; fi`,
-    'if test -s "$override_file"; then override_safe_length=$(LC_ALL=C tr -d \'[:space:][:cntrl:]\' < "$override_file" | wc -c | tr -d \' \'); if test "$override_length" -lt 12 || test "$override_length" != "$override_safe_length"; then exit 43; fi; fi',
-    `if test ! -s ${keyFile}; then if test -s "$override_file"; then candidate_file="$override_file"; else head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > "$generated_file"; candidate_file="$generated_file"; fi; if ln "$candidate_file" ${keyFile} 2>/dev/null; then :; elif test -s ${keyFile}; then :; else exit 43; fi; fi`,
-    // A shell variable cannot represent NUL bytes: command substitution would
-    // silently delete them and rewrite the durable key. Validate the raw file
-    // before normalization, accepting at most one trailing newline from an
-    // operator-provisioned text file and rejecting every other control byte.
-    `line_count=$(awk 'END { print NR }' ${keyFile})`,
-    'if test "$line_count" != 1; then exit 43; fi',
-    `tr -d '\\n' < ${keyFile} > "$normalized_file"`,
-    `key_length=$(wc -c < "$normalized_file" | tr -d ' ')`,
-    `safe_length=$(LC_ALL=C tr -d '[:space:][:cntrl:]' < "$normalized_file" | wc -c | tr -d ' ')`,
-    'if test "$key_length" -lt 12 || test "$key_length" != "$safe_length"; then exit 43; fi',
-    `if ! cmp -s "$normalized_file" ${keyFile}; then mv "$normalized_file" ${keyFile}; fi`,
-    `chmod 600 ${keyFile}`,
-    `if test -s "$override_file" && ! cmp -s "$override_file" ${keyFile}; then exit 42; fi`,
+    'if test -s "$override_file"; then secure_private_regular_file_proof "$override_file"; override_safe_length=$(LC_ALL=C tr -d \'[:space:][:cntrl:]\' < "$override_file" | wc -c | tr -d \' \'); if test "$override_length" -lt 12 || test "$override_length" != "$override_safe_length"; then exit 43; fi; fi',
+    ...durableKeyCommands,
   ].join("; ");
 }
 
@@ -1041,19 +1287,38 @@ export function getContainerSecretEnvPath(
 export function buildReplacementSecretArtifactsCleanupCommand(
   containerName: string,
   replacementAttemptId: string,
+  exactVolumePath?: string,
 ): string {
   assertCanonicalReplacementPathAttemptId(replacementAttemptId);
-  const volumePath = getReplacementVolumePath(containerName);
-  const secretEnvPath = getContainerSecretEnvPath(volumePath, replacementAttemptId);
+  const volumePath = exactVolumePath ?? getReplacementVolumePath(containerName);
+  if (exactVolumePath !== undefined) {
+    validateContainerName(containerName);
+    validateVolumePath(exactVolumePath);
+  }
+  const secretEnvPath = getReplacementControlSecretEnvPath(replacementAttemptId);
   const secretEnvBodyPath = `${secretEnvPath}.body`;
-  const vaultPassphrasePath = getVolumeVaultPassphrasePath(volumePath);
+  const legacySecretEnvPath = getContainerSecretEnvPath(volumePath, replacementAttemptId);
+  const legacyVaultPassphrasePath = getVolumeVaultPassphrasePath(volumePath);
   const artifactPaths = [
     secretEnvPath,
     secretEnvBodyPath,
-    ...["stdin", "override", "generated", "normalized"].map(
-      (kind) => `${vaultPassphrasePath}.${kind}.${replacementAttemptId}`,
+    getReplacementControlVaultPassphrasePath(replacementAttemptId),
+    ...(["stdin", "override", "generated", "normalized"] as const).map((kind) =>
+      getReplacementControlVaultArtifactPath(replacementAttemptId, kind),
     ),
+    legacySecretEnvPath,
+    `${legacySecretEnvPath}.body`,
+    ...(["stdin", "override", "generated", "normalized"] as const).map(
+      (kind) => `${legacyVaultPassphrasePath}.${kind}.${replacementAttemptId}`,
+    ),
+    getVolumeVaultPassphrasePublicationCandidatePath(volumePath, replacementAttemptId),
   ];
+  const existingArtifactProof = artifactPaths
+    .map(
+      (path) =>
+        `if test -e ${shellQuote(path)}; then secure_private_regular_file_proof ${shellQuote(path)}; fi`,
+    )
+    .join("; ");
   const cleanupTargets = artifactPaths.map(shellQuote).join(" ");
   const absenceProof = artifactPaths
     .map(
@@ -1067,15 +1332,100 @@ export function buildReplacementSecretArtifactsCleanupCommand(
     "set -eu",
     "umask 077",
     ...replacementAttemptControlPrelude(replacementAttemptId),
-    'printf "%s\\n" cancelled > "$attempt_cancelled"',
-    'chmod 600 -- "$attempt_lock" "$attempt_cancelled"',
-    `rm -f -- ${cleanupTargets}`,
+    'secure_reset_control_file "$attempt_cancelled"',
+    'exec 8>>"$attempt_cancelled"',
+    'printf "%s\\n" cancelled >&8',
+    "exec 8>&-",
+    'secure_private_regular_file_proof "$attempt_cancelled"',
+    'chmod 600 -- "$attempt_lock"',
+    existingArtifactProof,
+    `rm -f -- ${cleanupTargets} "$attempt_docker_error"`,
     absenceProof,
     `printf '%s\\n' ${shellQuote(receipt)}`,
-    'if test -e "$attempt_active" || test -L "$attempt_active"; then test -f "$attempt_active" && test ! -L "$attempt_active" || exit 70; else ' +
+    'if test -e "$attempt_active" || test -L "$attempt_active"; then secure_private_regular_file_proof "$attempt_active"; else ' +
       `printf '%s\\n' ${shellQuote(quiescentReceipt)}; fi`,
-    'if test -e "$attempt_candidate_id" || test -L "$attempt_candidate_id"; then test -f "$attempt_candidate_id" && test ! -L "$attempt_candidate_id" || exit 70; candidate_id=$(cat -- "$attempt_candidate_id"); case "$candidate_id" in ""|*[!0-9a-f]*) exit 70 ;; esac; candidate_id_length=${#candidate_id}; if test "$candidate_id_length" -lt 12 || test "$candidate_id_length" -gt 64; then exit 70; fi; ' +
+    'if test -e "$attempt_candidate_id" || test -L "$attempt_candidate_id"; then secure_private_regular_file_proof "$attempt_candidate_id"; candidate_id=$(cat -- "$attempt_candidate_id"); case "$candidate_id" in ""|*[!0-9a-f]*) exit 70 ;; esac; candidate_id_length=${#candidate_id}; if test "$candidate_id_length" -lt 12 || test "$candidate_id_length" -gt 64; then exit 70; fi; ' +
       `printf '%s %s\\n' ${shellQuote(candidateReceiptPrefix)} "$candidate_id"; fi`,
+  ].join("; ");
+}
+
+/**
+ * Delete only the canonical staging directory of one abandoned exact restore.
+ *
+ * The caller must boot-fence this command and run it only after attempting to
+ * remove the exact Docker candidate. The attempt flock serializes this proof
+ * with vault seeding and Docker create; the durable tombstone remains in the
+ * control directory so a response-lost replay cannot recreate the volume.
+ */
+export function buildExactRestoreStagingVolumeCleanupCommand(
+  containerName: string,
+  replacementAttemptId: string,
+  exactVolumePath: string,
+): string {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  validateContainerName(containerName);
+  validateVolumePath(exactVolumePath);
+  const match = /^agent-restore-([0-9a-f-]{36})-([0-9a-f-]{36})$/.exec(containerName);
+  if (!match) {
+    throw new ElizaError("Exact restore staging cleanup requires a canonical container name.", {
+      code: "SANDBOX_EXACT_RESTORE_STAGING_CLEANUP_IDENTITY_INVALID",
+      severity: "fatal",
+    });
+  }
+  const agentId = match[1]!;
+  const restoreAttemptId = match[2]!;
+  assertCanonicalReplacementPathAttemptId(agentId);
+  assertCanonicalReplacementPathAttemptId(restoreAttemptId);
+  const expectedVolumePath = `/data/agents/.restore/${agentId}/${restoreAttemptId}`;
+  if (exactVolumePath !== expectedVolumePath) {
+    throw new ElizaError(
+      "Exact restore staging cleanup path differs from its container identity.",
+      {
+        code: "SANDBOX_EXACT_RESTORE_STAGING_CLEANUP_PATH_INVALID",
+        severity: "fatal",
+      },
+    );
+  }
+
+  const restoreRoot = "/data/agents/.restore";
+  const agentRoot = `${restoreRoot}/${agentId}`;
+  const receipt = getExactRestoreStagingVolumeCleanupReceipt(
+    replacementAttemptId,
+    restoreAttemptId,
+  );
+  const safeDirectoryProof = (path: string, optional: boolean): string => {
+    const quoted = shellQuote(path);
+    const proof =
+      `test -d ${quoted} && test ! -L ${quoted} || exit 76; ` +
+      `test "$(stat -c '%u' -- ${quoted})" = 0 || exit 76; ` +
+      `directory_mode=$(stat -c '%a' -- ${quoted}); ` +
+      'case "$directory_mode" in *[2367][0-7]|*[0-7][2367]) exit 76 ;; esac';
+    return optional ? `if test -e ${quoted} || test -L ${quoted}; then ${proof}; fi` : proof;
+  };
+  const volume = shellQuote(exactVolumePath);
+  return [
+    "set -eu",
+    "umask 077",
+    "command -v docker >/dev/null 2>&1",
+    "command -v stat >/dev/null 2>&1",
+    "command -v findmnt >/dev/null 2>&1",
+    ...replacementAttemptControlPrelude(replacementAttemptId),
+    'secure_private_regular_file_proof "$attempt_cancelled" 75',
+    'if test -e "$attempt_active" || test -L "$attempt_active"; then secure_private_regular_file_proof "$attempt_active" 76; secure_private_regular_file_proof "$attempt_candidate_id" 76; fi',
+    'if test -e "$attempt_candidate_id" || test -L "$attempt_candidate_id"; then secure_private_regular_file_proof "$attempt_candidate_id" 76; candidate_id=$(cat -- "$attempt_candidate_id"); case "$candidate_id" in ""|*[!0-9a-f]*) exit 76 ;; esac; test "${#candidate_id}" = 64 || exit 76; candidate_matches=$(docker container ls -aq --no-trunc --filter "id=$candidate_id"); test -z "$candidate_matches" || exit 76; fi',
+    `name_matches=$(docker container ls -aq --no-trunc --filter ${shellQuote(`name=^/${containerName}$`)}); test -z "$name_matches" || exit 76`,
+    `all_container_ids=$(docker container ls -aq --no-trunc); for existing_id in $all_container_ids; do mount_sources=$(docker inspect --format '{{range .Mounts}}{{println .Source}}{{end}}' "$existing_id"); if printf '%s\n' "$mount_sources" | awk -v root=${volume} 'length($0) > 0 && ($0 == root || index($0, root "/") == 1 || $0 == "/" || index(root, $0 "/") == 1) { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi; done`,
+    safeDirectoryProof("/data", false),
+    safeDirectoryProof("/data/agents", false),
+    safeDirectoryProof(restoreRoot, false),
+    safeDirectoryProof(agentRoot, true),
+    `if test -L ${volume}; then exit 76; fi`,
+    `if test -e ${volume}; then ${safeDirectoryProof(exactVolumePath, false)}; mount_inventory=$(findmnt -rn -o FSROOT,TARGET) || exit 76; if printf '%s\n' "$mount_inventory" | awk -v root=${volume} '$1 == root || index($1, root "/") == 1 || $2 == root || index($2, root "/") == 1 { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi; rm -rf --one-file-system -- ${volume}; fi`,
+    `if test -e ${volume} || test -L ${volume}; then exit 76; fi`,
+    `if test -e ${shellQuote(agentRoot)} && test ! -L ${shellQuote(agentRoot)}; then rmdir -- ${shellQuote(agentRoot)} 2>/dev/null || :; fi`,
+    'secure_private_regular_file_proof "$attempt_cancelled" 75',
+    'if test -e "$attempt_active" || test -L "$attempt_active"; then secure_private_regular_file_proof "$attempt_active" 76; secure_private_regular_file_proof "$attempt_candidate_id" 76; fi',
+    `printf '%s\n' ${shellQuote(receipt)}`,
   ].join("; ");
 }
 
@@ -1096,12 +1446,29 @@ export function buildReplacementCandidateObservedCommand(
     "set -eu",
     "umask 077",
     ...replacementAttemptControlPrelude(replacementAttemptId),
-    'test -f "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
-    'if test -e "$attempt_candidate_id" || test -L "$attempt_candidate_id"; then test -f "$attempt_candidate_id" && test ! -L "$attempt_candidate_id" || exit 70; test "$(cat -- "$attempt_candidate_id")" = ' +
-      `${shellQuote(containerId)} || exit 70; else candidate_tmp="$attempt_dir/candidate-id.tmp"; rm -f -- "$candidate_tmp"; printf '%s\\n' ${shellQuote(containerId)} > "$candidate_tmp"; chmod 600 -- "$candidate_tmp"; mv -- "$candidate_tmp" "$attempt_candidate_id"; fi`,
-    'test -f "$attempt_candidate_id" && test ! -L "$attempt_candidate_id"',
+    'secure_private_regular_file_proof "$attempt_cancelled" 75',
+    'if test -e "$attempt_candidate_id" || test -L "$attempt_candidate_id"; then secure_private_regular_file_proof "$attempt_candidate_id"; test "$(cat -- "$attempt_candidate_id")" = ' +
+      `${shellQuote(containerId)} || exit 70; else candidate_tmp="$attempt_dir/candidate-id.tmp"; secure_reset_control_file "$candidate_tmp"; exec 8>>"$candidate_tmp"; printf '%s\\n' ${shellQuote(containerId)} >&8; exec 8>&-; secure_private_regular_file_proof "$candidate_tmp"; mv -- "$candidate_tmp" "$attempt_candidate_id"; fi`,
+    'secure_private_regular_file_proof "$attempt_candidate_id"',
     `test "$(cat -- "$attempt_candidate_id")" = ${shellQuote(containerId)}`,
     `printf '%s\\n' ${shellQuote(receipt)}`,
+  ].join("; ");
+}
+
+/** Read the full Docker ID durably recorded by one fenced create producer. */
+export function buildReplacementCreatedContainerIdProofCommand(
+  replacementAttemptId: string,
+): string {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  return [
+    "set -eu",
+    ...replacementAttemptControlPrelude(replacementAttemptId),
+    'test ! -e "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
+    'secure_private_regular_file_proof "$attempt_candidate_id"',
+    'candidate_id=$(cat -- "$attempt_candidate_id")',
+    'case "$candidate_id" in ""|*[!0-9a-f]*) exit 70 ;; esac',
+    'test "${#candidate_id}" = 64',
+    'printf "%s\\n" "$candidate_id"',
   ].join("; ");
 }
 
@@ -1116,12 +1483,22 @@ export function buildDockerCreateWithSecretEnvCommand(options: {
   dockerCreateCommand: string;
   secretEnvPath: string;
   vaultPassphrasePath: string;
-  exactReplacement?: { containerName: string; replacementAttemptId: string };
+  exactReplacement?: {
+    containerName: string;
+    replacementAttemptId: string;
+    /** Alternate exact volume derivation used only by restore staging. */
+    volumePath?: string;
+    /** Persist the full Docker ID before the secret-bearing channel settles. */
+    recordContainerId?: true;
+  };
 }): string {
   const replacementAttemptId = options.exactReplacement?.replacementAttemptId;
   if (options.exactReplacement) {
-    const expectedPath = getContainerSecretEnvPath(
-      getReplacementVolumePath(options.exactReplacement.containerName),
+    const exactVolumePath =
+      options.exactReplacement.volumePath ??
+      getReplacementVolumePath(options.exactReplacement.containerName);
+    validateVolumePath(exactVolumePath);
+    const expectedPath = getReplacementControlSecretEnvPath(
       options.exactReplacement.replacementAttemptId,
     );
     if (options.secretEnvPath !== expectedPath) {
@@ -1134,44 +1511,129 @@ export function buildDockerCreateWithSecretEnvCommand(options: {
         severity: "fatal",
       });
     }
+    const expectedVaultPath = getReplacementControlVaultPassphrasePath(
+      options.exactReplacement.replacementAttemptId,
+    );
+    if (options.vaultPassphrasePath !== expectedVaultPath) {
+      throw new ElizaError("Exact replacement vault snapshot path is not canonical.", {
+        code: "SANDBOX_REPLACEMENT_VAULT_SNAPSHOT_PATH_NONCANONICAL",
+        context: {
+          containerName: options.exactReplacement.containerName,
+          replacementAttemptId: options.exactReplacement.replacementAttemptId,
+        },
+        severity: "fatal",
+      });
+    }
   }
   const envFile = shellQuote(options.secretEnvPath);
   const envBodyFile = shellQuote(`${options.secretEnvPath}.body`);
   const vaultFile = shellQuote(options.vaultPassphrasePath);
   const fenced = replacementAttemptId !== undefined;
-  const cleanupTargets = '"$env_file" "$env_body_file"';
+  const cleanupTargets = fenced
+    ? '"$env_file" "$env_body_file" "$vault_file"'
+    : '"$env_file" "$env_body_file"';
   const cleanupFunction =
     `cleanup_secret_env_files() { cleanup_status=$?; if ! rm -f -- ${cleanupTargets}; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ` +
-    'if test -e "$env_file" || test -L "$env_file" || test -e "$env_body_file" || test -L "$env_body_file"; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ' +
+    'if test -e "$env_file" || test -L "$env_file" || test -e "$env_body_file" || test -L "$env_body_file"' +
+    (fenced ? ' || test -e "$vault_file" || test -L "$vault_file"' : "") +
+    '; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ' +
     (fenced
       ? 'if test "$cleanup_status" -eq 0; then if ! rm -f -- "$attempt_active"; then cleanup_status=70; elif test -e "$attempt_active" || test -L "$attempt_active"; then cleanup_status=70; fi; fi; '
       : "") +
     'trap - EXIT; exit "$cleanup_status"; }';
+  const definitiveDockerFailurePatterns = [
+    "Conflict. The container name",
+    "is already in use by container",
+    "invalid reference format",
+    "No such image",
+    "invalid mount config",
+    "invalid volume specification",
+    "unknown flag:",
+  ]
+    .map((marker) => `-e ${shellQuote(marker)}`)
+    .join(" ");
+  const clearDefinitiveDockerFailure = fenced
+    ? `secure_private_regular_file_proof "$attempt_docker_error"; if grep -F ${definitiveDockerFailurePatterns} -- "$attempt_docker_error" >/dev/null 2>&1; then rm -f -- "$attempt_active" || exit 70; test ! -e "$attempt_active" && test ! -L "$attempt_active" || exit 70; fi`
+    : ":";
+  const dockerCreateCommand = options.exactReplacement?.recordContainerId
+    ? [
+        'exec 8>>"$attempt_docker_error"',
+        `if candidate_id=$(${options.dockerCreateCommand} 2>&8); then docker_status=0; else docker_status=$?; fi`,
+        "exec 8>&-",
+        'secure_private_regular_file_proof "$attempt_docker_error"',
+        `if test "$docker_status" -ne 0; then ${clearDefinitiveDockerFailure}; rm -f -- "$attempt_docker_error"; exit "$docker_status"; fi`,
+        'rm -f -- "$attempt_docker_error"',
+        'test ! -e "$attempt_docker_error" && test ! -L "$attempt_docker_error" || exit 70',
+        'case "$candidate_id" in ""|*[!0-9a-f]*) exit 70 ;; esac',
+        'test "${#candidate_id}" = 64',
+        'candidate_tmp="$attempt_dir/candidate-id.tmp"',
+        'secure_reset_control_file "$candidate_tmp"',
+        'exec 8>>"$candidate_tmp"',
+        'printf "%s\\n" "$candidate_id" >&8',
+        "exec 8>&-",
+        'secure_private_regular_file_proof "$candidate_tmp"',
+        'mv -- "$candidate_tmp" "$attempt_candidate_id"',
+        'secure_private_regular_file_proof "$attempt_candidate_id"',
+      ].join("; ")
+    : fenced
+      ? [
+          'exec 8>>"$attempt_docker_error"',
+          `if ${options.dockerCreateCommand} 2>&8; then docker_status=0; else docker_status=$?; fi`,
+          "exec 8>&-",
+          'secure_private_regular_file_proof "$attempt_docker_error"',
+          `if test "$docker_status" -ne 0; then ${clearDefinitiveDockerFailure}; rm -f -- "$attempt_docker_error"; exit "$docker_status"; fi`,
+          'rm -f -- "$attempt_docker_error"',
+          'test ! -e "$attempt_docker_error" && test ! -L "$attempt_docker_error" || exit 70',
+        ].join("; ")
+      : options.dockerCreateCommand;
   return [
     "set -eu",
     `env_file=${envFile}`,
     `env_body_file=${envBodyFile}`,
+    `vault_file=${vaultFile}`,
     "umask 077",
     ...(replacementAttemptId
       ? [
           ...replacementAttemptControlPrelude(replacementAttemptId),
           'test ! -e "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
-          ': > "$attempt_active"',
-          'chmod 600 -- "$attempt_lock" "$attempt_active"',
+          'chmod 600 -- "$attempt_lock"',
         ]
-      : []),
+      : secureFileShellPrelude("$(id -u)")),
     cleanupFunction,
     "trap cleanup_secret_env_files EXIT",
     "trap 'exit 1' HUP INT TERM",
-    'cat > "$env_file"',
+    'secure_reset_file "$env_file"',
+    'exec 8>>"$env_file"',
+    "cat >&8",
+    "exec 8>&-",
+    'secure_private_regular_file_proof "$env_file"',
+    'secure_private_regular_file_proof "$env_file"',
     `test "$(tail -n 1 "$env_file")" = ${shellQuote(CONTAINER_SECRET_ENV_STDIN_SENTINEL)}`,
-    'sed \'$d\' "$env_file" > "$env_body_file"',
+    'secure_reset_file "$env_body_file"',
+    'exec 8>>"$env_body_file"',
+    'secure_private_regular_file_proof "$env_file"',
+    "sed '$d' \"$env_file\" >&8",
+    "exec 8>&-",
+    'secure_private_regular_file_proof "$env_body_file"',
     'mv "$env_body_file" "$env_file"',
+    'secure_private_regular_file_proof "$env_file"',
     'truncate -s -1 "$env_file"',
-    `cat ${vaultFile} >> "$env_file"`,
-    "printf '\\n' >> \"$env_file\"",
-    'chmod 600 "$env_file"',
-    options.dockerCreateCommand,
+    'secure_private_regular_file_proof "$env_file"',
+    'secure_private_regular_file_proof "$vault_file"',
+    'exec 7<"$vault_file"',
+    'exec 8>>"$env_file"',
+    "cat <&7 >&8",
+    "printf '\\n' >&8",
+    "exec 7<&-",
+    "exec 8>&-",
+    'secure_private_regular_file_proof "$env_file"',
+    ...(replacementAttemptId
+      ? [
+          'secure_reset_control_file "$attempt_docker_error"',
+          'secure_reset_control_file "$attempt_active"',
+        ]
+      : []),
+    dockerCreateCommand,
   ].join("; ");
 }
 

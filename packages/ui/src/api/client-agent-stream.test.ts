@@ -5,8 +5,68 @@
 import { describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client";
 import { StreamGenerationError } from "./client-base";
+import type { AgentRequestTransport } from "./transport";
 
 describe("ElizaClient agent streaming transport", () => {
+  it("strips caller telemetry and invalid traces before a dedicated raw request", async () => {
+    const request = vi.fn<AgentRequestTransport["request"]>(async () =>
+      Response.json({ ok: true }),
+    );
+    const client = new ElizaClient(
+      "https://82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb.cloud.eliza.app",
+      "token",
+    );
+    client.setRequestTransport({ request });
+
+    await client.rawRequest("/api/status", {
+      headers: {
+        "X-Eliza-Telemetry": "caller-controlled",
+        "X-ElizaOS-Turn-Correlation": "caller-controlled",
+        "X-ElizaOS-Turn-Attempt": "99",
+        "X-Eliza-Trace-Id": "0123456789ABCDEF0123456789ABCDEF",
+      },
+    });
+
+    const headers = new Headers(request.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer token");
+    expect(headers.has("X-Eliza-Telemetry")).toBe(false);
+    expect(headers.has("X-ElizaOS-Turn-Correlation")).toBe(false);
+    expect(headers.has("X-ElizaOS-Turn-Attempt")).toBe(false);
+    expect(headers.has("X-Eliza-Trace-Id")).toBe(false);
+  });
+
+  it("sends one closed-schema trace on the literal dedicated browser wire", async () => {
+    const request = vi.fn<AgentRequestTransport["request"]>(async () => {
+      return new Response(
+        'data: {"type":"done","fullText":"ok","agentName":"Eliza"}\n\n',
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    });
+    const client = new ElizaClient(
+      "https://82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb.cloud.eliza.app",
+      "token",
+    );
+    client.setRequestTransport({ request });
+
+    await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "private model input",
+      vi.fn(),
+    );
+
+    const headers = new Headers(request.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer token");
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get("Accept")).toBe("text/event-stream");
+    expect(headers.get("X-Eliza-Trace-Id")).toMatch(/^[0-9a-f]{32}$/);
+    expect(headers.has("X-Eliza-Telemetry")).toBe(false);
+    expect(headers.has("X-ElizaOS-Turn-Correlation")).toBe(false);
+    expect(headers.has("X-ElizaOS-Turn-Attempt")).toBe(false);
+    expect(JSON.stringify(Object.fromEntries(headers))).not.toContain(
+      "private model input",
+    );
+  });
+
   it("resolves chat streams immediately after a terminal done event", async () => {
     const encoder = new TextEncoder();
     const read = vi

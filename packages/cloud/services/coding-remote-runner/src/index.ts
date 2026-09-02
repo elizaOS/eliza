@@ -60,25 +60,6 @@ type CodingRemoteRunnerRouteHandler = (
   url: URL,
   context: RunnerContext,
 ) => Promise<Response> | Response;
-type BunSpawnedProcess = {
-  exited: Promise<number>;
-  kill(signal?: string): void;
-  stderr: ReadableStream<Uint8Array>;
-  stdout: ReadableStream<Uint8Array>;
-};
-type BunRuntime = {
-  spawn(
-    command: string[],
-    options: {
-      cwd: string;
-      env: NodeJS.ProcessEnv;
-      stderr: "pipe";
-      stdin: "ignore";
-      stdout: "pipe";
-    },
-  ): BunSpawnedProcess;
-};
-
 const DEFAULT_PORT = 3000;
 const DEFAULT_WORKSPACE_ROOT = "/workspace";
 const DEFAULT_MAX_READ_BYTES = 5 * 1024 * 1024;
@@ -438,53 +419,7 @@ async function runCommand(
   payload: CommandPayload,
   config: RunnerConfig,
 ): Promise<CommandResult> {
-  const bun = getBunRuntime();
-  return bun
-    ? await runCommandWithBun(payload, config, bun)
-    : await runCommandWithNode(payload, config);
-}
-
-function getBunRuntime(): BunRuntime | null {
-  const runtime = (globalThis as typeof globalThis & { Bun?: BunRuntime }).Bun;
-  return typeof runtime?.spawn === "function" ? runtime : null;
-}
-
-async function runCommandWithBun(
-  payload: CommandPayload,
-  config: RunnerConfig,
-  bun: BunRuntime,
-): Promise<CommandResult> {
-  const child = bun.spawn([payload.command, ...payload.args], {
-    cwd: payload.cwd,
-    env: buildCommandEnv(payload.envs, config),
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const stdout = new BoundedOutput(config.maxCommandOutputBytes);
-  const stderr = new BoundedOutput(config.maxCommandOutputBytes);
-  let timedOut = false;
-
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    child.kill("SIGTERM");
-  }, payload.timeoutMs);
-
-  try {
-    const [exitCode] = await Promise.all([
-      child.exited,
-      collectOutput(child.stdout, stdout),
-      collectOutput(child.stderr, stderr),
-    ]);
-    return {
-      stdout: stdout.toString(),
-      stderr: stderr.toString(),
-      exitCode: timedOut ? 124 : exitCode,
-      timedOut,
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
+  return runCommandWithNode(payload, config);
 }
 
 async function runCommandWithNode(
@@ -515,22 +450,6 @@ async function runCommandWithNode(
     };
   } finally {
     clearTimeout(timeout);
-  }
-}
-
-async function collectOutput(
-  stream: ReadableStream<Uint8Array>,
-  output: BoundedOutput,
-): Promise<void> {
-  const reader = stream.getReader();
-  try {
-    while (true) {
-      const read = await reader.read();
-      if (read.done) return;
-      output.append(read.value);
-    }
-  } finally {
-    reader.releaseLock();
   }
 }
 

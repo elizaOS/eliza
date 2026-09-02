@@ -8,7 +8,7 @@ This plugin adds two capabilities to an Eliza agent running on Android:
 
 1. **Address-book context** — a dynamic provider (`androidContacts`) reads all contacts from the device and injects them into the agent's planning context when a conversation involves contacts or messaging. Each entry includes id, display name, phone numbers, email addresses, and starred status.
 
-2. **Full-screen Contacts overlay app** — a React UI registered with the elizaOS overlay-app system. Supports:
+2. **Full-screen Contacts app-shell page** — a React UI registered with the elizaOS app-shell system. Supports:
    - Browsing and searching the address book
    - Viewing contact details (phone numbers, email addresses)
    - Creating new contacts (display name, phone, email)
@@ -21,7 +21,7 @@ The plugin is **Android-only**. On other platforms the overlay app is not regist
 | Surface | Name | What it does |
 |---------|------|-------------|
 | Provider | `androidContacts` | Injects the complete read-only address book into the planner for `contacts` and `messaging` conversation contexts. Requires ADMIN role session. |
-| Overlay app (UI) | Contacts | Full-screen address-book UI: list, detail, create, import vCard. |
+| App-shell page (UI) | Contacts | Full-screen address-book UI: list, detail, create, import vCard. |
 
 Note: live dialling is not part of this plugin. Placing a call remains in the Phone app (`PLACE_CALL` action).
 
@@ -38,12 +38,12 @@ const agent = new AgentRuntime({
 });
 ```
 
-The `./plugin` export is the runtime adapter entry point. The full package entry (`@elizaos/plugin-contacts`) additionally exports the UI components and the overlay-app registration helper.
+The `./plugin` export is the runtime adapter entry point. The full package entry (`@elizaos/plugin-contacts`) additionally exports the UI components and a legacy overlay-app registration helper for explicit consumers.
 
-To register the overlay app (done automatically via the side-effect import on elizaOS):
+To register the canonical app-shell page (done automatically by the host on elizaOS):
 
 ```ts
-import "@elizaos/plugin-contacts/register"; // leaves the catalog unchanged on non-elizaOS
+import "@elizaos/plugin-contacts/register"; // leaves the app shell unchanged on non-elizaOS
 ```
 
 ## Required permissions

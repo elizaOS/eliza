@@ -1,8 +1,9 @@
-/** Static gate: dormant restore authority has no production caller or publication writer. */
+/** Static gate: restore authority has only the explicitly activated production callers. */
 
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import * as ts from "typescript";
 
 const MIGRATIONS_DIR = join(import.meta.dir, "migrations");
 const REPOSITORY_ROOT = join(import.meta.dir, "../../../../..");
@@ -30,8 +31,8 @@ function productionSources(directory = REPOSITORY_ROOT): string[] {
   });
 }
 
-describe("dormant restore API boundary", () => {
-  test("keeps restore histories and receipt writers definition-only", () => {
+describe("disabled-first restore API boundary", () => {
+  test("keeps post-quarantine APIs dormant and active calls narrowly allowlisted", () => {
     const sources = productionSources().map((path) => ({
       path,
       source: readFileSync(path, "utf8"),
@@ -47,6 +48,95 @@ describe("dormant restore API boundary", () => {
         forbidden,
       );
     }
+    const approvedProductionSources: Readonly<Record<string, readonly string[]>> = {
+      acquireAgentBackupRestoreLease: ["/db/repositories/agent-backup-restore-lease.ts"],
+      renewAgentBackupRestoreLease: ["/db/repositories/agent-backup-restore-lease.ts"],
+      releaseAgentBackupRestoreLease: ["/db/repositories/agent-backup-restore-lease.ts"],
+      loadAgentBackupRestoreSourceV3: [
+        "/db/repositories/agent-backup-restore.ts",
+        "/db/repositories/agent-vault-key-authority.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      createOrRotateAgentVaultKeyGeneration: ["/db/repositories/agent-vault-key-authority.ts"],
+      loadCurrentAgentVaultKeyAuthority: [
+        "/db/repositories/agent-vault-key-authority.ts",
+        "/lib/services/agent-backup-capture-v3-vault-authority.ts",
+      ],
+      bindAgentBackupVaultKeyGeneration: ["/db/repositories/agent-vault-key-authority.ts"],
+      withAgentBackupRestoreVaultPassphrase: [
+        "/db/repositories/agent-vault-key-authority.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      openAgentBackupRestoreOperation: ["/db/repositories/agent-backup-restore-operations.ts"],
+      claimAgentBackupRestoreOperation: [
+        "/db/repositories/agent-backup-restore-operations.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      releaseAgentBackupRestoreOperationClaim: [
+        "/db/repositories/agent-backup-restore-operations.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      reserveAgentBackupRestoreTargetAndStartReplacementIntent: [
+        "/db/repositories/agent-backup-restore-operations.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      recordAgentBackupRestoreExactImagePlatformAuthority: [
+        "/db/repositories/agent-backup-restore-operations.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      resolveAgentBackupRestoreExactImagePlatform: [
+        "/lib/services/agent-backup-restore-exact-image-platform.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      markAgentSandboxExactRestoreProviderStarted: [
+        "/db/repositories/agent-backup-restore-operations.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      recordAgentSandboxExactRestoreProviderCreated: [
+        "/db/repositories/agent-backup-restore-operations.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      recordAgentSandboxExactRestoreProviderSucceeded: [
+        "/db/repositories/agent-backup-restore-operations.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      claimAgentSandboxExactRestoreCleanup: [
+        "/db/repositories/agent-backup-restore-operations.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      beginAgentSandboxExactRestoreCleanup: [
+        "/db/repositories/agent-backup-restore-operations.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      finishAgentSandboxExactRestoreCleanup: [
+        "/db/repositories/agent-backup-restore-operations.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      releaseAgentSandboxExactRestoreCleanupClaim: [
+        "/db/repositories/agent-backup-restore-operations.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      reserveAgentBackupRestoreTarget: ["/db/repositories/agent-backup-restore-operations.ts"],
+      advanceAgentBackupRestoreOperation: ["/db/repositories/agent-backup-restore-operations.ts"],
+      openAgentBackupRestoreQuarantine: ["/db/repositories/agent-backup-restore-quarantine.ts"],
+      recordAgentBackupRestoreQuarantinedContainer: [
+        "/db/repositories/agent-backup-restore-quarantine.ts",
+      ],
+      recordAgentBackupRestoreQuarantinedContainerAndReplacementCreated: [
+        "/db/repositories/agent-backup-restore-quarantine.ts",
+      ],
+      verifyAgentSandboxExactRestoreReplacementIntent: [
+        "/db/repositories/agent-sandbox-replacement-attempts.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      recordAgentActivationPublication: ["/db/repositories/agent-backup-restore-history.ts"],
+      authorizeAgentActivationDispatch: ["/db/repositories/agent-backup-restore-history.ts"],
+      recordAgentVaultKeySeedReceipt: [
+        "/db/repositories/agent-backup-restore-history.ts",
+        "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ],
+      commitAgentBackupRestore: ["/db/repositories/agent-backup-restore-history.ts"],
+    };
     for (const symbol of [
       "acquireAgentBackupRestoreLease",
       "renewAgentBackupRestoreLease",
@@ -58,39 +148,212 @@ describe("dormant restore API boundary", () => {
       "withAgentBackupRestoreVaultPassphrase",
       "openAgentBackupRestoreOperation",
       "claimAgentBackupRestoreOperation",
+      "releaseAgentBackupRestoreOperationClaim",
+      "reserveAgentBackupRestoreTargetAndStartReplacementIntent",
+      "recordAgentBackupRestoreExactImagePlatformAuthority",
+      "resolveAgentBackupRestoreExactImagePlatform",
+      "markAgentSandboxExactRestoreProviderStarted",
+      "recordAgentSandboxExactRestoreProviderCreated",
+      "recordAgentSandboxExactRestoreProviderSucceeded",
+      "claimAgentSandboxExactRestoreCleanup",
+      "beginAgentSandboxExactRestoreCleanup",
+      "finishAgentSandboxExactRestoreCleanup",
+      "releaseAgentSandboxExactRestoreCleanupClaim",
       "reserveAgentBackupRestoreTarget",
       "advanceAgentBackupRestoreOperation",
       "openAgentBackupRestoreQuarantine",
       "recordAgentBackupRestoreQuarantinedContainer",
+      "recordAgentBackupRestoreQuarantinedContainerAndReplacementCreated",
+      "verifyAgentSandboxExactRestoreReplacementIntent",
       "recordAgentActivationPublication",
       "authorizeAgentActivationDispatch",
       "recordAgentVaultKeySeedReceipt",
       "commitAgentBackupRestore",
     ]) {
+      const symbolBoundary = new RegExp(`\\b${symbol}\\b`);
       const occurrences = sources.flatMap(({ path, source }) =>
-        source.includes(symbol) ? [path] : [],
+        symbolBoundary.test(source) ? [path] : [],
       );
-      const expectedOccurrences = symbol === "loadAgentBackupRestoreSourceV3" ? 2 : 1;
-      expect(occurrences, `${symbol} must remain definition-only`).toHaveLength(
-        expectedOccurrences,
-      );
+      const allowedSuffixes = approvedProductionSources[symbol];
+      expect(allowedSuffixes, `${symbol} must have an explicit source allowlist`).toBeDefined();
       expect(
-        occurrences.every((path) => path.includes("/db/repositories/")),
-        `${symbol} must remain inside the dormant repository layer`,
-      ).toBe(true);
+        occurrences
+          .map((path) => allowedSuffixes?.find((suffix) => path.endsWith(suffix)) ?? path)
+          .sort(),
+        `${symbol} gained an unapproved production source`,
+      ).toEqual([...(allowedSuffixes ?? [])].sort());
       const invocationLikeOccurrences = production.match(
         new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g"),
       );
-      const expectedInvocationLikeOccurrences = symbol === "loadAgentBackupRestoreSourceV3" ? 2 : 1;
+      const expectedInvocationLikeOccurrences =
+        symbol === "loadCurrentAgentVaultKeyAuthority"
+          ? 3
+          : symbol === "loadAgentBackupRestoreSourceV3"
+            ? 2
+            : 1;
       expect(
         invocationLikeOccurrences ?? [],
         `${symbol} gained a production call site`,
       ).toHaveLength(expectedInvocationLikeOccurrences);
     }
+
+    const lockedExactHelperCallSites = {
+      startOrReplayExactRestoreReplacementIntentInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      recordAgentSandboxReplacementCreatedInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-quarantine.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      markAgentSandboxExactRestoreProviderStartedForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      recordAgentSandboxExactRestoreProviderSucceededForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      rearmAgentBackupRestoreQuarantineAfterExactProviderCleanupForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-quarantine.ts",
+      ],
+      beginAgentSandboxExactRestoreCleanupForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      finishAgentSandboxExactRestoreCleanupForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      openAgentBackupRestoreQuarantineForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-quarantine.ts",
+      ],
+      recordAgentBackupRestoreQuarantinedContainerForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-quarantine.ts",
+      ],
+    } as const;
+    for (const [symbol, expectedPaths] of Object.entries(lockedExactHelperCallSites)) {
+      const symbolBoundary = new RegExp(`\\b${symbol}\\b`);
+      const actualPaths = sources
+        .flatMap(({ path, source }) =>
+          symbolBoundary.test(source) ? [path.slice(REPOSITORY_ROOT.length + 1)] : [],
+        )
+        .sort();
+      expect(actualPaths, `${symbol} gained a production import or call site`).toEqual(
+        [...expectedPaths].sort(),
+      );
+      const invocationLikeOccurrences = production.match(
+        new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g"),
+      );
+      expect(
+        invocationLikeOccurrences ?? [],
+        `${symbol} gained a production invocation`,
+      ).toHaveLength(
+        symbol === "openAgentBackupRestoreQuarantineForLockedAuthoritiesInTransaction"
+          ? 3
+          : expectedPaths.length,
+      );
+    }
     expect(readFileSync(join(import.meta.dir, "index.ts"), "utf8")).not.toMatch(
       /agent-backup-restore|agent-vault-key-authority/,
     );
-  }, 15_000);
+    const runtimeSource = readFileSync(
+      join(import.meta.dir, "../lib/services/agent-backup-restore-quarantined-create-runtime.ts"),
+      "utf8",
+    );
+    expect(runtimeSource).toContain('exactRestoreCreateCapability !== "stopped-quarantine-v1"');
+    expect(runtimeSource).not.toContain("resolveImageDigest");
+    expect(runtimeSource).not.toMatch(
+      /recordAgentActivationPublication|authorizeAgentActivationDispatch|commitAgentBackupRestore|SandboxRegistry|headscaleClient|mintAgentToken|ensureStewardTenant/,
+    );
+    for (const entrypoint of [
+      "runAgentBackupRestoreQuarantinedCreate",
+      "reconcileAgentBackupRestoreQuarantinedCreate",
+    ]) {
+      const paths = sources
+        .flatMap(({ path, source }) => (source.includes(entrypoint) ? [path] : []))
+        .map((path) => path.slice(REPOSITORY_ROOT.length))
+        .sort();
+      expect(paths, `${entrypoint} must remain definition-only`).toEqual([
+        "/packages/cloud/shared/src/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+      ]);
+    }
+    const runtimeAst = ts.createSourceFile(
+      "agent-backup-restore-quarantined-create-runtime.ts",
+      runtimeSource,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const runtimeFunctions = new Map<string, ts.FunctionDeclaration>();
+    const runtimeFunctionCounts = new Map<string, number>();
+    const entrypointCalls = new Map<string, number>();
+    for (const entrypoint of [
+      "runAgentBackupRestoreQuarantinedCreate",
+      "reconcileAgentBackupRestoreQuarantinedCreate",
+    ]) {
+      entrypointCalls.set(entrypoint, 0);
+    }
+    const visitRuntime = (node: ts.Node): void => {
+      if (ts.isFunctionDeclaration(node) && node.name) {
+        runtimeFunctions.set(node.name.text, node);
+        runtimeFunctionCounts.set(
+          node.name.text,
+          (runtimeFunctionCounts.get(node.name.text) ?? 0) + 1,
+        );
+      }
+      if (ts.isCallExpression(node)) {
+        const calledName = ts.isIdentifier(node.expression)
+          ? node.expression.text
+          : ts.isPropertyAccessExpression(node.expression)
+            ? node.expression.name.text
+            : null;
+        if (calledName && entrypointCalls.has(calledName)) {
+          entrypointCalls.set(calledName, (entrypointCalls.get(calledName) ?? 0) + 1);
+        }
+      }
+      ts.forEachChild(node, visitRuntime);
+    };
+    visitRuntime(runtimeAst);
+    for (const [entrypoint, calls] of entrypointCalls) {
+      expect(
+        runtimeFunctionCounts.get(entrypoint) ?? 0,
+        `${entrypoint} must have one production declaration`,
+      ).toBe(1);
+      expect(calls, `${entrypoint} gained a production invocation`).toBe(0);
+    }
+    const countDependencyCalls = (functionName: string, methodName: string): number => {
+      const declaration = runtimeFunctions.get(functionName);
+      if (!declaration?.body) return -1;
+      let count = 0;
+      const visit = (node: ts.Node): void => {
+        if (
+          ts.isCallExpression(node) &&
+          ts.isPropertyAccessExpression(node.expression) &&
+          ts.isIdentifier(node.expression.expression) &&
+          node.expression.expression.text === "dependencies" &&
+          node.expression.name.text === methodName
+        ) {
+          count += 1;
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(declaration.body);
+      return count;
+    };
+    expect(
+      countDependencyCalls("runAgentBackupRestoreQuarantinedCreate", "resolveImagePlatform"),
+      "create must resolve one exact platform only before provider start",
+    ).toBe(1);
+    expect(
+      countDependencyCalls("reconcileAgentBackupRestoreQuarantinedCreate", "resolveImagePlatform"),
+      "cleanup reconciliation must never read mutable registry state",
+    ).toBe(0);
+  }, 60_000);
 
   test("keeps target reservation free of remote effects and generic identity bypasses", () => {
     const operationSource = readFileSync(
@@ -109,7 +372,7 @@ describe("dormant restore API boundary", () => {
       advanceMutationStart,
       genericAdvance.indexOf(".where(", advanceMutationStart),
     );
-    expect(advanceMutation).not.toMatch(/expected_node_|expected_image_digest/);
+    expect(advanceMutation).not.toMatch(/expected_node_|expected_image_/);
     expect(genericAdvance).toContain(
       "Restore operation cannot leave target reservation without complete target authority",
     );
@@ -142,10 +405,12 @@ describe("dormant restore API boundary", () => {
       );
     }
 
+    const reserveDeclaration = "export async function reserveAgentBackupRestoreTarget(params:";
     const reserveSource = operationSource.slice(
-      operationSource.indexOf("export async function reserveAgentBackupRestoreTarget"),
+      operationSource.indexOf(reserveDeclaration),
       operationSource.indexOf("export async function advanceAgentBackupRestoreOperation"),
     );
+    expect(operationSource.indexOf(reserveDeclaration)).toBeGreaterThanOrEqual(0);
     const transactionalReserve = reserveSource.slice(
       reserveSource.indexOf("return await dbWrite.transaction"),
     );
@@ -219,7 +484,7 @@ describe("dormant restore API boundary", () => {
     expect(targetProof.indexOf("return await dbWrite.transaction")).toBeGreaterThanOrEqual(0);
     expect(vaultSource).toContain("MAX_RESTORE_VAULT_HANDOFF_TIMEOUT_MS = 60_000");
     expect(vaultSource).toContain("RESTORE_VAULT_HANDOFF_AUTHORITY_MARGIN_MS = 1_000");
-    expect(vaultSource).toContain("return await Promise.race([");
+    expect(vaultSource).toContain("await Promise.race([");
     expect(vaultSource).toContain("controller.abort(timeoutError)");
 
     const historySource = readFileSync(
@@ -307,16 +572,19 @@ describe("dormant restore API boundary", () => {
     );
     expect(quarantineSource).toContain("activation_generation: operation.restore_attempt_id");
 
-    const functions = [
+    const lockOwningFunctions = [
       quarantineSource.slice(
         quarantineSource.indexOf("export async function openAgentBackupRestoreQuarantine"),
         quarantineSource.indexOf(
-          "export async function recordAgentBackupRestoreQuarantinedContainer",
+          "async function recordAgentBackupRestoreQuarantinedContainerBoundary",
         ),
       ),
       quarantineSource.slice(
         quarantineSource.indexOf(
-          "export async function recordAgentBackupRestoreQuarantinedContainer",
+          "async function recordAgentBackupRestoreQuarantinedContainerBoundary",
+        ),
+        quarantineSource.indexOf(
+          "\nexport async function recordAgentBackupRestoreQuarantinedContainer(\n",
         ),
       ),
     ];
@@ -330,13 +598,24 @@ describe("dormant restore API boundary", () => {
       "lockAgentBackupCatalogAuthority(",
       "readPostLockDatabaseNow(tx)",
     ];
-    for (const source of functions) {
+    for (const source of lockOwningFunctions) {
       const transactional = source.slice(source.indexOf("return dbWrite.transaction"));
       for (let index = 1; index < lockAnchors.length; index += 1) {
         expect(transactional.indexOf(lockAnchors[index - 1] as string)).toBeLessThan(
           transactional.indexOf(lockAnchors[index] as string),
         );
       }
+    }
+    const sandboxMutations = [
+      quarantineSource.slice(
+        quarantineSource.indexOf(
+          "export async function openAgentBackupRestoreQuarantineForLockedAuthoritiesInTransaction",
+        ),
+        quarantineSource.indexOf("export async function openAgentBackupRestoreQuarantine"),
+      ),
+      lockOwningFunctions[1] as string,
+    ];
+    for (const source of sandboxMutations) {
       const sandboxMutationStart = source.indexOf(".update(agentSandboxes)");
       const sandboxMutation = source.slice(
         source.indexOf(".set({", sandboxMutationStart),

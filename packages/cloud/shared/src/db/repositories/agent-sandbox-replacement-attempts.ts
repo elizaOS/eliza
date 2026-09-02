@@ -7,7 +7,7 @@
 
 import { Buffer } from "node:buffer";
 import { ElizaError } from "@elizaos/core";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { isUniqueConstraintError } from "../../lib/utils/db-errors";
 import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
@@ -97,6 +97,38 @@ export interface AgentSandboxReplacementAttemptWriteResult {
   readonly replayed: boolean;
 }
 
+export interface StartOrReplayExactRestoreReplacementIntentInput
+  extends AgentSandboxReplacementAttemptReference {
+  readonly lifecycleRevision: string;
+  readonly activationGeneration: string;
+  readonly lifecycleJobId: string | null;
+  readonly lifecycleExecutionGeneration: string | null;
+  readonly restoreAuthority: AgentSandboxReplacementRestoreAuthority;
+  readonly locator: AgentSandboxReplacementLocatorInput;
+  /** Primary-database clock read after the caller acquired every authority lock. */
+  readonly databaseNow: Date;
+}
+
+/** Caller-locked exact restore boundary immediately before the provider effect. */
+export interface MarkAgentSandboxExactRestoreProviderStartedForLockedAuthoritiesInput
+  extends StartOrReplayExactRestoreReplacementIntentInput {}
+
+/** Caller-locked exact restore boundary after Docker identity is durably composed. */
+export interface RecordAgentSandboxExactRestoreProviderSucceededForLockedAuthoritiesInput
+  extends StartOrReplayExactRestoreReplacementIntentInput {
+  readonly receiptDigest: string;
+}
+
+/** Caller-locked transition that fences every late provider callback before remote cleanup. */
+export interface BeginAgentSandboxExactRestoreCleanupForLockedAuthoritiesInput
+  extends StartOrReplayExactRestoreReplacementIntentInput {}
+
+/** Caller-locked final cleanup proof; lease expiry cannot strand retained capacity. */
+export interface FinishAgentSandboxExactRestoreCleanupForLockedAuthoritiesInput
+  extends StartOrReplayExactRestoreReplacementIntentInput {
+  readonly receiptDigest: string;
+}
+
 interface ValidatedReference {
   attemptId: string;
   organizationId: string;
@@ -148,7 +180,7 @@ interface ValidatedLocator {
   vpnNodeId: string | null;
 }
 
-type LocatorStage = "intent" | "created" | "vpn" | "final";
+type LocatorStage = "intent" | "created" | "vpn" | "final" | "cleanup";
 
 function invalidInput(message: string, field?: string): ElizaError {
   return new ElizaError(message, {
@@ -350,18 +382,33 @@ function validateStart(input: unknown): ValidatedStart {
       "lifecycleJobId",
     );
   }
+  const operationKind = record.operationKind as AgentSandboxReplacementOperationKind;
+  const activationGeneration = requireCanonicalUuid(
+    record.activationGeneration,
+    "activationGeneration",
+  );
+  const restoreAuthority = validateRestoreAuthority(record.restoreAuthority);
+  if (
+    restoreAuthority !== null &&
+    (operationKind !== "provision" || activationGeneration !== restoreAuthority.restoreAttemptId)
+  ) {
+    throw invalidInput(
+      "restoreAuthority requires provision and its restore attempt as activation generation",
+      "restoreAuthority",
+    );
+  }
   return {
     ...reference,
-    operationKind: record.operationKind as AgentSandboxReplacementOperationKind,
+    operationKind,
     lifecycleRevision: requireCanonicalInteger(
       record.lifecycleRevision,
       "lifecycleRevision",
       MAX_UNSIGNED_INT64,
     ),
-    activationGeneration: requireCanonicalUuid(record.activationGeneration, "activationGeneration"),
+    activationGeneration,
     lifecycleJobId,
     lifecycleExecutionGeneration,
-    restoreAuthority: validateRestoreAuthority(record.restoreAuthority),
+    restoreAuthority,
   };
 }
 
@@ -369,6 +416,7 @@ function validateLocator(
   input: unknown,
   reference: ValidatedReference,
   stage: LocatorStage,
+  restoreAttemptId: string | null = null,
 ): ValidatedLocator {
   const locator = requireObject(input, "locator");
   const replacementAttemptId = requireAttemptId(
@@ -387,14 +435,16 @@ function validateLocator(
     "locator.containerName",
     128,
   );
-  const expectedContainerName = `agent-${reference.agentId}`;
+  const expectedContainerName = restoreAttemptId
+    ? `agent-restore-${reference.agentId}-${restoreAttemptId}`
+    : `agent-${reference.agentId}`;
   if (
     sandboxId !== containerName ||
     containerName !== expectedContainerName ||
     !/^agent-[a-zA-Z0-9_-]+$/.test(containerName)
   ) {
     throw invalidInput(
-      "locator sandbox and container names must equal the deterministic agent container",
+      "locator sandbox and container names must equal the deterministic replacement container",
       "locator.containerName",
     );
   }
@@ -465,7 +515,12 @@ function validateLocator(
     ((stage === "created" || stage === "vpn" || stage === "final") && containerId === null) ||
     (stage === "created" && vpnNodeId !== null) ||
     (stage === "vpn" && vpnNodeId === null) ||
-    (stage === "final" && vpnNodeName !== null && vpnNodeId === null)
+    (stage === "final" && vpnNodeName !== null && vpnNodeId === null) ||
+    (stage === "cleanup" &&
+      (vpnNodeName !== null ||
+        vpnRegistrationStartedAt !== null ||
+        previousVpnNodeId !== null ||
+        vpnNodeId !== null))
   ) {
     throw invalidInput(`locator enrichment does not match the ${stage} stage`, "locator");
   }
@@ -525,9 +580,23 @@ function assertCallbackStageOpen(
   attempt: AgentSandboxReplacementAttempt,
   reference: ValidatedReference,
 ): void {
-  if (isTerminal(attempt)) {
+  if (isTerminal(attempt) || attempt.state === "cleanup_in_progress") {
     throw conflict(
       "Terminal replacement attempt cannot accept provider callbacks",
+      reference,
+      attempt.state,
+    );
+  }
+}
+
+function assertOptionalContainerMatches(
+  attempt: AgentSandboxReplacementAttempt,
+  containerId: string | null,
+  reference: ValidatedReference,
+): void {
+  if (attempt.locator_container_id !== containerId) {
+    throw conflict(
+      "Replacement Docker enrichment conflicts with immutable authority",
       reference,
       attempt.state,
     );
@@ -863,16 +932,191 @@ export async function startAgentSandboxReplacementAttemptInTransaction(
   }
 }
 
+/**
+ * Insert or exactly replay the pre-effect restore attempt and its complete S0
+ * locator. The caller owns the transaction and must already hold organization,
+ * backup, restore-operation, lease, sandbox, node-occurrence, and catalogue
+ * authority in that order. Keeping this helper lock-free is what lets the
+ * combined restore writer commit quarantine, capacity, and this fence together.
+ *
+ * Unlike the legacy start API, exact replay is intentional here: the caller has
+ * not crossed the provider boundary yet, and a lost database response must not
+ * allocate another slot or mint another locator. A cleanup-proven attempt stays
+ * one-shot and cannot be reopened.
+ */
+export async function startOrReplayExactRestoreReplacementIntentInTransaction(
+  tx: DbTransaction,
+  input: StartOrReplayExactRestoreReplacementIntentInput,
+): Promise<AgentSandboxReplacementAttemptWriteResult> {
+  if (!(input.databaseNow instanceof Date) || !Number.isFinite(input.databaseNow.getTime())) {
+    throw invalidInput("databaseNow must be a valid primary-database Date", "databaseNow");
+  }
+  const validated = validateStart({
+    attemptId: input.attemptId,
+    organizationId: input.organizationId,
+    agentId: input.agentId,
+    operationKind: "provision",
+    lifecycleRevision: input.lifecycleRevision,
+    activationGeneration: input.activationGeneration,
+    lifecycleJobId: input.lifecycleJobId,
+    lifecycleExecutionGeneration: input.lifecycleExecutionGeneration,
+    restoreAuthority: input.restoreAuthority,
+  });
+  const restore = validated.restoreAuthority;
+  if (!restore || validated.activationGeneration !== restore.restoreAttemptId) {
+    throw conflict(
+      "Exact restore replacement must use its restore attempt as activation generation",
+      validated,
+    );
+  }
+  const locator = validateLocator(input.locator, validated, "intent", restore.restoreAttemptId);
+  if (restore.expiresAt <= input.databaseNow) {
+    throw conflict("Restore lease is expired or released", validated);
+  }
+
+  try {
+    const [existing] = await tx
+      .select()
+      .from(agentSandboxReplacementAttempts)
+      .where(
+        and(
+          eq(agentSandboxReplacementAttempts.id, validated.attemptId),
+          eq(agentSandboxReplacementAttempts.organization_id, validated.organizationId),
+          eq(agentSandboxReplacementAttempts.agent_id, validated.agentId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (existing) {
+      assertStartAuthorityMatches(existing, validated);
+      assertLocatorCoreMatches(existing, locator, validated);
+      if (existing.state === "cleanup_proven") {
+        throw conflict(
+          "Cleanup-proven replacement attempt cannot be reused for another provider effect",
+          validated,
+          existing.state,
+        );
+      }
+      if (existing.state === "lifecycle_committed") {
+        throw conflict(
+          "Lifecycle-committed replacement attempt cannot restart provider work",
+          validated,
+          existing.state,
+        );
+      }
+      return frozenResult(existing, true);
+    }
+
+    const [created] = await tx
+      .insert(agentSandboxReplacementAttempts)
+      .values({
+        id: validated.attemptId,
+        organization_id: validated.organizationId,
+        agent_id: validated.agentId,
+        operation_kind: "provision",
+        lifecycle_revision: validated.lifecycleRevision,
+        activation_generation: validated.activationGeneration,
+        lifecycle_job_id: validated.lifecycleJobId,
+        lifecycle_execution_generation: validated.lifecycleExecutionGeneration,
+        restore_lease_id: restore.leaseId,
+        restore_backup_id: restore.backupId,
+        restore_attempt_id: restore.restoreAttemptId,
+        restore_lease_owner_id: restore.ownerId,
+        restore_lease_generation: restore.fencingToken,
+        restore_catalog_epoch: restore.catalogEpoch,
+        restore_copy_role: restore.copyRole,
+        restore_operation_id: restore.operationId,
+        restore_source_activation_generation: restore.sourceActivationGeneration,
+        restore_source_lifecycle_revision: restore.sourceLifecycleRevision,
+        restore_manifest_sha256: restore.expectedManifestSha256,
+        restore_lease_expires_at: restore.expiresAt,
+        created_at: input.databaseNow,
+        updated_at: input.databaseNow,
+      })
+      .returning({ id: agentSandboxReplacementAttempts.id });
+    if (!created) {
+      throw conflict("Exact restore replacement intent insert returned no row", validated);
+    }
+
+    // The admission trigger intentionally requires an empty start row. Bind
+    // the complete S0 locator in the immediately following statement; the
+    // caller's transaction still makes start + locator one atomic intent.
+    const [recorded] = await tx
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        locator_sandbox_id: locator.sandboxId,
+        locator_node_id: locator.nodeId,
+        locator_container_name: locator.containerName,
+        locator_node_record_id: locator.nodeRecordId,
+        locator_node_incarnation: locator.nodeIncarnation,
+        locator_node_history_id: locator.nodeHistoryId,
+        locator_node_hostname: locator.nodeHostname,
+        locator_node_ssh_port: locator.nodeSshPort,
+        locator_node_ssh_user: locator.nodeSshUser,
+        locator_node_host_key_fingerprint: locator.nodeHostKeyFingerprint,
+        locator_secret_cleanup_version: locator.replacementSecretCleanupVersion,
+        locator_allocation_counted: locator.allocationCounted,
+        locator_vpn_node_name: null,
+        locator_vpn_registration_started_at: null,
+        locator_previous_vpn_node_id: null,
+        locator_recorded_at: input.databaseNow,
+        updated_at: input.databaseNow,
+      })
+      .where(
+        and(
+          eq(agentSandboxReplacementAttempts.id, validated.attemptId),
+          eq(agentSandboxReplacementAttempts.organization_id, validated.organizationId),
+          eq(agentSandboxReplacementAttempts.agent_id, validated.agentId),
+          eq(agentSandboxReplacementAttempts.state, "in_flight_unresolved"),
+          isNull(agentSandboxReplacementAttempts.locator_recorded_at),
+        ),
+      )
+      .returning();
+    if (!recorded) {
+      throw conflict("Exact restore replacement locator write lost its CAS", validated);
+    }
+    return frozenResult(recorded, false);
+  } catch (error) {
+    if (error instanceof ElizaError) throw error;
+    if (isUniqueConstraintError(error)) {
+      throw conflict(
+        "Exact restore replacement ID, agent-wide effect, or activation generation is already owned",
+        validated,
+      );
+    }
+    throw error;
+  }
+}
+
 async function recordLocatorStageInTransaction(
   tx: DbTransaction,
   referenceInput: AgentSandboxReplacementAttemptReference,
   locatorInput: AgentSandboxReplacementLocatorInput,
   stage: "intent" | "created" | "vpn",
+  exactRestorePolicy: "allow" | "reject" = "allow",
 ): Promise<AgentSandboxReplacementAttemptWriteResult> {
   const reference = validateReference(referenceInput);
-  const locator = validateLocator(locatorInput, reference, stage);
   const current = await lockAttempt(tx, reference);
+  if (exactRestorePolicy === "reject" && current.restore_attempt_id !== null) {
+    throw conflict(
+      "Exact restore provider callbacks require the locked restore settlement boundary",
+      reference,
+      current.state,
+    );
+  }
+  const locator = validateLocator(locatorInput, reference, stage, current.restore_attempt_id);
   assertCallbackStageOpen(current, reference);
+  if (
+    stage === "created" &&
+    current.restore_attempt_id !== null &&
+    current.provider_started_at === null
+  ) {
+    throw conflict(
+      "Exact restore Docker enrichment requires its durable provider-start marker",
+      reference,
+      current.state,
+    );
+  }
   const databaseNow = await readPostLockDatabaseNow(tx);
 
   if (stage === "intent") {
@@ -1001,23 +1245,300 @@ export async function recordAgentSandboxReplacementIntentInTransaction(
   return await recordLocatorStageInTransaction(tx, reference, locator, "intent");
 }
 
-/** Write-once Docker ID enrichment for the exact intent. */
+/**
+ * Prove that an exact-restore S0 callback is a byte-identical replay. Unlike
+ * the legacy intent recorder this verifier never fills an absent locator, so a
+ * provider callback cannot become the authority that chooses placement.
+ */
+export async function verifyAgentSandboxExactRestoreReplacementIntent(
+  referenceInput: AgentSandboxReplacementAttemptReference,
+  locatorInput: AgentSandboxReplacementLocatorInput,
+): Promise<AgentSandboxReplacementAttemptWriteResult> {
+  const reference = validateReference(referenceInput);
+  return await dbWrite.transaction(async (tx) => {
+    const current = await lockAttempt(tx, reference);
+    if (current.restore_attempt_id === null) {
+      throw conflict("Exact restore intent verifier requires restore authority", reference);
+    }
+    const locator = validateLocator(locatorInput, reference, "intent", current.restore_attempt_id);
+    assertCallbackStageOpen(current, reference);
+    if (!hasLocator(current)) {
+      throw conflict(
+        "Exact restore intent verifier cannot create missing S0 authority",
+        reference,
+        current.state,
+      );
+    }
+    assertLocatorCoreMatches(current, locator, reference);
+    return frozenResult(current, true);
+  });
+}
+
+function validateLockedExactRestoreProviderBoundary(
+  input: StartOrReplayExactRestoreReplacementIntentInput,
+  stage: "intent" | "final" | "cleanup",
+  requireLiveRestoreAuthority = true,
+): {
+  expected: ValidatedStart & { restoreAuthority: ValidatedRestoreAuthority };
+  locator: ValidatedLocator;
+} {
+  if (!(input.databaseNow instanceof Date) || !Number.isFinite(input.databaseNow.getTime())) {
+    throw invalidInput("databaseNow must be a valid primary-database Date", "databaseNow");
+  }
+  const expected = validateStart({
+    attemptId: input.attemptId,
+    organizationId: input.organizationId,
+    agentId: input.agentId,
+    operationKind: "provision",
+    lifecycleRevision: input.lifecycleRevision,
+    activationGeneration: input.activationGeneration,
+    lifecycleJobId: input.lifecycleJobId,
+    lifecycleExecutionGeneration: input.lifecycleExecutionGeneration,
+    restoreAuthority: input.restoreAuthority,
+  });
+  const restore = expected.restoreAuthority;
+  if (!restore || expected.activationGeneration !== restore.restoreAttemptId) {
+    throw conflict("Exact restore provider boundary requires restore authority", expected);
+  }
+  if (requireLiveRestoreAuthority && restore.expiresAt <= input.databaseNow) {
+    throw conflict("Restore lease is expired or released", expected);
+  }
+  return {
+    expected: { ...expected, restoreAuthority: restore },
+    locator: validateLocator(input.locator, expected, stage, restore.restoreAttemptId),
+  };
+}
+
+/**
+ * Write the immutable one-shot provider-start marker after the caller has
+ * locked and re-proved the restore operation, lease, sandbox, target occurrence,
+ * and catalogue. A replay proves the same S0 bytes but can never authorize a
+ * second remote call.
+ */
+export async function markAgentSandboxExactRestoreProviderStartedForLockedAuthoritiesInTransaction(
+  tx: DbTransaction,
+  input: MarkAgentSandboxExactRestoreProviderStartedForLockedAuthoritiesInput,
+): Promise<AgentSandboxReplacementAttemptWriteResult> {
+  const { expected, locator } = validateLockedExactRestoreProviderBoundary(input, "intent");
+  const current = await lockAttempt(tx, expected);
+  assertStartAuthorityMatches(current, expected);
+  assertLocatorCoreMatches(current, locator, expected);
+  if (current.state !== "in_flight_unresolved" || current.locator_container_id !== null) {
+    throw conflict(
+      "Exact restore provider start requires an unresolved pre-create intent",
+      expected,
+      current.state,
+    );
+  }
+  if (current.provider_started_at !== null) {
+    return frozenResult(current, true);
+  }
+
+  const [recorded] = await tx
+    .update(agentSandboxReplacementAttempts)
+    .set({ provider_started_at: input.databaseNow, updated_at: input.databaseNow })
+    .where(
+      and(
+        eq(agentSandboxReplacementAttempts.id, expected.attemptId),
+        eq(agentSandboxReplacementAttempts.organization_id, expected.organizationId),
+        eq(agentSandboxReplacementAttempts.agent_id, expected.agentId),
+        eq(agentSandboxReplacementAttempts.state, "in_flight_unresolved"),
+        isNotNull(agentSandboxReplacementAttempts.locator_recorded_at),
+        isNull(agentSandboxReplacementAttempts.locator_container_id),
+        isNull(agentSandboxReplacementAttempts.provider_started_at),
+      ),
+    )
+    .returning();
+  if (!recorded) {
+    throw conflict("Exact restore provider-start marker lost its CAS", expected, current.state);
+  }
+  return frozenResult(recorded, false);
+}
+
+/**
+ * Settle provider success only after a caller-locked restore operation and its
+ * exact node/SSH locator have been re-proved. The receipt digest is immutable,
+ * and response-loss replay never rewrites the settlement timestamp.
+ */
+export async function recordAgentSandboxExactRestoreProviderSucceededForLockedAuthoritiesInTransaction(
+  tx: DbTransaction,
+  input: RecordAgentSandboxExactRestoreProviderSucceededForLockedAuthoritiesInput,
+): Promise<AgentSandboxReplacementAttemptWriteResult> {
+  // A provider-success response may be lost just before the lease expires. The
+  // already-settled immutable receipt remains replayable, but lease expiry must
+  // still fence the first transition into provider_succeeded.
+  const { expected, locator } = validateLockedExactRestoreProviderBoundary(input, "final", false);
+  const receiptDigest = requireSha256(input.receiptDigest, "receiptDigest");
+  const current = await lockAttempt(tx, expected);
+  assertStartAuthorityMatches(current, expected);
+  assertLocatorCoreMatches(current, locator, expected);
+  assertContainerMatches(current, locator.containerId!, expected);
+  assertVpnMatches(current, locator.vpnNodeId, expected);
+  if (current.provider_started_at === null) {
+    throw conflict(
+      "Exact restore provider success requires its durable start marker",
+      expected,
+      current.state,
+    );
+  }
+  if (current.state === "provider_succeeded" || current.state === "lifecycle_committed") {
+    if (current.provider_receipt_digest !== receiptDigest) {
+      throw conflict("Provider-success receipt replay mismatch", expected, current.state);
+    }
+    return frozenResult(current, true);
+  }
+  if (expected.restoreAuthority.expiresAt <= input.databaseNow) {
+    throw conflict("Restore lease is expired or released", expected, current.state);
+  }
+  if (current.state !== "in_flight_unresolved") {
+    throw conflict("Provider success cannot advance a terminal attempt", expected, current.state);
+  }
+
+  const [recorded] = await tx
+    .update(agentSandboxReplacementAttempts)
+    .set({
+      state: "provider_succeeded",
+      provider_succeeded_at: input.databaseNow,
+      provider_receipt_digest: receiptDigest,
+      updated_at: input.databaseNow,
+    })
+    .where(
+      and(
+        eq(agentSandboxReplacementAttempts.id, expected.attemptId),
+        eq(agentSandboxReplacementAttempts.organization_id, expected.organizationId),
+        eq(agentSandboxReplacementAttempts.agent_id, expected.agentId),
+        eq(agentSandboxReplacementAttempts.state, "in_flight_unresolved"),
+        isNotNull(agentSandboxReplacementAttempts.provider_started_at),
+      ),
+    )
+    .returning();
+  if (!recorded) {
+    throw conflict(
+      "Exact restore provider-success settlement lost its CAS",
+      expected,
+      current.state,
+    );
+  }
+  return frozenResult(recorded, false);
+}
+
+/**
+ * Commit a durable cleanup fence before any remote tombstone or removal. Once
+ * this CAS wins, both Docker enrichment and provider-success settlement reject,
+ * so a delayed callback cannot resurrect a remotely removed candidate.
+ */
+export async function beginAgentSandboxExactRestoreCleanupForLockedAuthoritiesInTransaction(
+  tx: DbTransaction,
+  input: BeginAgentSandboxExactRestoreCleanupForLockedAuthoritiesInput,
+): Promise<AgentSandboxReplacementAttemptWriteResult> {
+  const { expected, locator } = validateLockedExactRestoreProviderBoundary(input, "cleanup", false);
+  const current = await lockAttempt(tx, expected);
+  assertStartAuthorityMatches(current, expected);
+  assertLocatorCoreMatches(current, locator, expected);
+  assertOptionalContainerMatches(current, locator.containerId, expected);
+  if (current.state === "cleanup_in_progress" || current.state === "cleanup_proven") {
+    return frozenResult(current, true);
+  }
+  if (current.state !== "in_flight_unresolved" && current.state !== "provider_succeeded") {
+    throw conflict(
+      "Exact restore cleanup requires an unresolved or unadopted provider effect",
+      expected,
+      current.state,
+    );
+  }
+
+  const [recorded] = await tx
+    .update(agentSandboxReplacementAttempts)
+    .set({ state: "cleanup_in_progress", updated_at: input.databaseNow })
+    .where(
+      and(
+        eq(agentSandboxReplacementAttempts.id, expected.attemptId),
+        eq(agentSandboxReplacementAttempts.organization_id, expected.organizationId),
+        eq(agentSandboxReplacementAttempts.agent_id, expected.agentId),
+        eq(agentSandboxReplacementAttempts.state, current.state),
+      ),
+    )
+    .returning();
+  if (!recorded) {
+    throw conflict("Exact restore cleanup-begin lost its state CAS", expected, current.state);
+  }
+  return frozenResult(recorded, false);
+}
+
+/** Finalize a previously fenced exact cleanup after the provider returned proof. */
+export async function finishAgentSandboxExactRestoreCleanupForLockedAuthoritiesInTransaction(
+  tx: DbTransaction,
+  input: FinishAgentSandboxExactRestoreCleanupForLockedAuthoritiesInput,
+): Promise<AgentSandboxReplacementAttemptWriteResult> {
+  const { expected, locator } = validateLockedExactRestoreProviderBoundary(input, "cleanup", false);
+  const receiptDigest = requireSha256(input.receiptDigest, "receiptDigest");
+  const current = await lockAttempt(tx, expected);
+  assertStartAuthorityMatches(current, expected);
+  assertLocatorCoreMatches(current, locator, expected);
+  assertOptionalContainerMatches(current, locator.containerId, expected);
+  if (current.state === "cleanup_proven") {
+    if (current.cleanup_receipt_digest !== receiptDigest) {
+      throw conflict("Cleanup receipt replay mismatch", expected, current.state);
+    }
+    return frozenResult(current, true);
+  }
+  if (current.state !== "cleanup_in_progress") {
+    throw conflict(
+      "Exact restore cleanup proof requires its durable cleanup-begin fence",
+      expected,
+      current.state,
+    );
+  }
+
+  const [recorded] = await tx
+    .update(agentSandboxReplacementAttempts)
+    .set({
+      state: "cleanup_proven",
+      cleanup_proven_at: input.databaseNow,
+      cleanup_receipt_digest: receiptDigest,
+      updated_at: input.databaseNow,
+    })
+    .where(
+      and(
+        eq(agentSandboxReplacementAttempts.id, expected.attemptId),
+        eq(agentSandboxReplacementAttempts.organization_id, expected.organizationId),
+        eq(agentSandboxReplacementAttempts.agent_id, expected.agentId),
+        eq(agentSandboxReplacementAttempts.state, "cleanup_in_progress"),
+      ),
+    )
+    .returning();
+  if (!recorded) {
+    throw conflict("Exact restore cleanup settlement lost its state CAS", expected, current.state);
+  }
+  return frozenResult(recorded, false);
+}
+
+/** Enrich Docker identity inside a caller-owned restore/quarantine transaction. */
+export async function recordAgentSandboxReplacementCreatedInTransaction(
+  tx: DbTransaction,
+  reference: AgentSandboxReplacementAttemptReference,
+  locator: AgentSandboxReplacementLocatorInput,
+): Promise<AgentSandboxReplacementAttemptWriteResult> {
+  return await recordLocatorStageInTransaction(tx, reference, locator, "created");
+}
+
+/** Legacy provider callback; exact restore must use its fully locked boundary. */
 export async function recordAgentSandboxReplacementCreated(
   reference: AgentSandboxReplacementAttemptReference,
   locator: AgentSandboxReplacementLocatorInput,
 ): Promise<AgentSandboxReplacementAttemptWriteResult> {
   return await dbWrite.transaction((tx) =>
-    recordLocatorStageInTransaction(tx, reference, locator, "created"),
+    recordLocatorStageInTransaction(tx, reference, locator, "created", "reject"),
   );
 }
 
-/** Write-once Headscale ID enrichment for the exact created container. */
+/** Legacy VPN callback; exact restore never admits this unlocked wrapper. */
 export async function recordAgentSandboxReplacementVpnRegistered(
   reference: AgentSandboxReplacementAttemptReference,
   locator: AgentSandboxReplacementLocatorInput,
 ): Promise<AgentSandboxReplacementAttemptWriteResult> {
   return await dbWrite.transaction((tx) =>
-    recordLocatorStageInTransaction(tx, reference, locator, "vpn"),
+    recordLocatorStageInTransaction(tx, reference, locator, "vpn", "reject"),
   );
 }
 
@@ -1031,10 +1552,17 @@ export async function recordAgentSandboxReplacementProviderSucceeded(
   receiptDigestInput: string,
 ): Promise<AgentSandboxReplacementAttemptWriteResult> {
   const reference = validateReference(referenceInput);
-  const locator = validateLocator(locatorInput, reference, "final");
   const receiptDigest = requireSha256(receiptDigestInput, "receiptDigest");
   return await dbWrite.transaction(async (tx) => {
     const current = await lockAttempt(tx, reference);
+    if (current.restore_attempt_id !== null) {
+      throw conflict(
+        "Exact restore provider callbacks require the locked restore settlement boundary",
+        reference,
+        current.state,
+      );
+    }
+    const locator = validateLocator(locatorInput, reference, "final", current.restore_attempt_id);
     if (current.state === "provider_succeeded") {
       assertLocatorCoreMatches(current, locator, reference);
       assertContainerMatches(current, locator.containerId!, reference);
@@ -1089,7 +1617,12 @@ export async function commitAgentSandboxReplacementLifecycleAdoptionInTransactio
   input: CommitAgentSandboxReplacementLifecycleAdoptionInput,
 ): Promise<AgentSandboxReplacementAttemptWriteResult> {
   const expected = validateStart(input);
-  const locator = validateLocator(input.locator, expected, "final");
+  const locator = validateLocator(
+    input.locator,
+    expected,
+    "final",
+    expected.restoreAuthority?.restoreAttemptId ?? null,
+  );
   const providerReceiptDigest = requireSha256(input.providerReceiptDigest, "providerReceiptDigest");
   const lifecycleReceiptDigest = requireSha256(
     input.lifecycleReceiptDigest,
@@ -1157,13 +1690,24 @@ export async function recordAgentSandboxReplacementCleanupProvenInTransaction(
   // attempt so a concurrent start follows the same sandbox -> fence order.
   await lockAgentSandboxAuthority(tx, reference);
   const current = await lockAttempt(tx, reference);
+  if (current.restore_attempt_id !== null) {
+    throw conflict(
+      "Exact restore cleanup must use its claim-fenced settlement boundary",
+      reference,
+      current.state,
+    );
+  }
   if (current.state === "cleanup_proven") {
     if (current.cleanup_receipt_digest !== receiptDigest) {
       throw conflict("Cleanup receipt replay mismatch", reference, current.state);
     }
     return frozenResult(current, true);
   }
-  if (current.state !== "in_flight_unresolved" && current.state !== "provider_succeeded") {
+  if (
+    current.state !== "in_flight_unresolved" &&
+    current.state !== "provider_succeeded" &&
+    current.state !== "cleanup_in_progress"
+  ) {
     throw conflict("Cleanup proof cannot replace lifecycle commitment", reference, current.state);
   }
   const databaseNow = await readPostLockDatabaseNow(tx);

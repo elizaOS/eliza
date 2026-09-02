@@ -36,16 +36,16 @@ const SLASH_CATALOG = {
       source: "builtin",
     },
     {
-      key: "clear",
-      nativeName: "clear",
-      description: "Clear the current chat",
-      textAliases: ["/clear"],
+      key: "fullscreen",
+      nativeName: "fullscreen",
+      description: "Toggle fullscreen chat",
+      textAliases: ["/fullscreen"],
       scope: "both",
       acceptsArgs: false,
       args: [],
       requiresAuth: false,
       requiresElevated: false,
-      target: { kind: "client", clientAction: "clear-chat" },
+      target: { kind: "client", clientAction: "toggle-fullscreen" },
       source: "builtin",
     },
     {
@@ -69,7 +69,10 @@ const SLASH_CATALOG = {
 
 test.beforeEach(async ({ page }) => {
   // Opt out of the first-run tour so its spotlight doesn't cover the composer.
-  await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
+  await seedAppStorage(page, {
+    "eliza:developerMode": "1",
+    "eliza:tutorial-autolaunched": "1",
+  });
   await installDefaultAppRoutes(page);
   // Override the empty default catalog with a representative one. Registered
   // after the defaults so this handler wins (Playwright matches LIFO).
@@ -98,7 +101,7 @@ test("slash menu: typing / lists the catalog commands and filters by token", asy
   const menu = page.getByTestId("slash-command-menu");
   await expect(menu).toBeVisible({ timeout: 15_000 });
   await expect(menu).toContainText("/settings");
-  await expect(menu).toContainText("/clear");
+  await expect(menu).toContainText("/fullscreen");
   await expect(menu).toContainText("/help");
 
   // The typed token narrows the menu to the matching command.
@@ -159,9 +162,9 @@ test("slash menu: a client command runs locally without sending a message", asyn
   const composer = page.getByTestId("chat-composer-textarea");
   await expect(composer).toBeVisible({ timeout: 60_000 });
 
-  await composer.fill("/clear");
+  await composer.fill("/fullscreen");
   await expect(page.getByTestId("slash-command-menu")).toBeVisible();
-  // A client command (clear-chat) consumes the draft and runs locally — it must
+  // A client command (toggle-fullscreen) consumes the draft and runs locally — it must
   // NOT post a chat message.
   await composer.press("Enter");
   await expect(page.getByTestId("slash-command-menu")).toBeHidden();
@@ -210,10 +213,10 @@ test("slash menu pointer: a real mouse click picks the option and the composer k
   const composer = page.getByTestId("chat-composer-textarea");
   await expect(composer).toBeVisible({ timeout: 60_000 });
 
-  await composer.fill("/cl");
+  await composer.fill("/full");
   const menu = page.getByTestId("slash-command-menu");
   await expect(menu).toBeVisible();
-  await expect(page.getByTestId("slash-option-0")).toContainText("/clear");
+  await expect(page.getByTestId("slash-option-0")).toContainText("/fullscreen");
 
   // Real mouse click on the option row: the client command executes (menu
   // closes, draft consumed, no chat send) and — because pointer-down only
@@ -250,7 +253,7 @@ test("slash menu pointer: a mouse press that drags off the option and releases e
   // Handler-liveness gate (kills the hydration race): the hover highlight is
   // driven by a React handler, so data-active proves listeners are attached
   // before the press — a press into un-hydrated UI would vacuously "not pick".
-  await expect(option).toHaveAttribute("data-active", "true");
+  await expect(option).toHaveAttribute("aria-selected", "true");
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2, box.y - 160, { steps: 8 });
   await page.mouse.up();
@@ -296,15 +299,17 @@ test.describe("slash menu real-touch gestures (#10722)", () => {
     const composer = page.getByTestId("chat-composer-textarea");
     await expect(composer).toBeVisible({ timeout: 60_000 });
 
-    await composer.fill("/cl");
+    await composer.fill("/full");
     const menu = page.getByTestId("slash-command-menu");
     await expect(menu).toBeVisible();
-    await expect(page.getByTestId("slash-option-0")).toContainText("/clear");
+    await expect(page.getByTestId("slash-option-0")).toContainText(
+      "/fullscreen",
+    );
 
     // Handler-liveness gate (see the mouse drag-off test).
     await page.getByTestId("slash-option-0").hover();
     await expect(page.getByTestId("slash-option-0")).toHaveAttribute(
-      "data-active",
+      "aria-selected",
       "true",
     );
 
@@ -358,7 +363,7 @@ test.describe("slash menu real-touch gestures (#10722)", () => {
     // Handler-liveness gate (see the mouse drag-off test).
     await page.getByTestId("slash-option-1").hover();
     await expect(page.getByTestId("slash-option-1")).toHaveAttribute(
-      "data-active",
+      "aria-selected",
       "true",
     );
 

@@ -47,6 +47,7 @@ import type {
   DisconnectLifeOpsLinkedCalendarRequest,
   FeatureResult,
   GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarAllDayRange,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsCalendarImportedDataPurgeReceipt,
@@ -5531,10 +5532,8 @@ export class CalendarService extends Service {
     // Validate recurrence up front so an invalid rule fails the request
     // instead of silently creating a one-off event.
     const recurrence = normalizeRecurrence(request.recurrence);
-    const { startAt, endAt, timeZone } = resolveCalendarEventRange(
-      request,
-      now,
-    );
+    const range = resolveCalendarEventRange(request, now);
+    const { startAt, endAt, timeZone, isAllDay } = range;
     if (!request.grantId || isElizaCalendarGrant(request.grantId)) {
       if (calendarId !== ELIZA_CALENDAR_ID) {
         fail(
@@ -5554,6 +5553,7 @@ export class CalendarService extends Service {
         startAt,
         endAt,
         timeZone,
+        isAllDay,
         attendees: normalizeCalendarAttendees(request.attendees),
         now,
       });
@@ -5607,6 +5607,7 @@ export class CalendarService extends Service {
         location: normalizeOptionalString(request.location),
         startAt,
         endAt,
+        isAllDay,
         attendees: normalizeCalendarAttendees(request.attendees),
         notifyAttendees: request.notifyAttendees === true,
         idempotencyKey: requireNonEmptyString(
@@ -5692,8 +5693,8 @@ export class CalendarService extends Service {
           accountId: accountIdForGrant(grant),
           calendarId,
           title: requireNonEmptyString(request.title, "title"),
-          startAt,
-          endAt,
+          startAt: range.startDate ?? startAt,
+          endAt: range.endDateExclusive ?? endAt,
           timeZone,
           description: normalizeOptionalString(request.description),
           location: normalizeOptionalString(request.location),
@@ -5843,6 +5844,7 @@ export class CalendarService extends Service {
       location?: string;
       startAt?: string;
       endAt?: string;
+      allDay?: LifeOpsCalendarAllDayRange;
       timeZone?: string;
       attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
       recurrence?: string[] | null;
@@ -5888,6 +5890,11 @@ export class CalendarService extends Service {
       ...(args.request.endAt !== undefined
         ? { endAt: args.request.endAt }
         : {}),
+      ...(args.request.allDay !== undefined
+        ? { isAllDay: true }
+        : args.request.startAt !== undefined || args.request.endAt !== undefined
+          ? { isAllDay: false }
+          : {}),
       ...(args.request.timeZone !== undefined
         ? { timeZone: args.request.timeZone }
         : {}),
@@ -5994,6 +6001,7 @@ export class CalendarService extends Service {
       location?: string;
       startAt?: string;
       endAt?: string;
+      allDay?: LifeOpsCalendarAllDayRange;
       timeZone?: string;
       attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
       recurrence?: string[] | null;
@@ -6025,26 +6033,52 @@ export class CalendarService extends Service {
       ? normalizeCalendarTimeZone(request.timeZone)
       : undefined;
     const parseTimeZone = timeZone ?? normalizeCalendarTimeZone(undefined);
+    const allDayRange = request.allDay
+      ? resolveCalendarEventRange(
+          {
+            title: request.title ?? "Calendar event",
+            allDay: request.allDay,
+            timeZone,
+          },
+          new Date(),
+        )
+      : null;
+    if (
+      allDayRange &&
+      (request.startAt !== undefined || request.endAt !== undefined)
+    ) {
+      fail(400, "allDay cannot be combined with timed bounds");
+    }
     const nativePatch = {
       calendarId: request.calendarId ?? undefined,
       title: request.title,
       description: request.description,
       location: request.location,
-      startAt: request.startAt
-        ? normalizeCalendarDateTimeInTimeZone(
-            request.startAt,
-            "startAt",
-            parseTimeZone,
-          )
-        : undefined,
-      endAt: request.endAt
-        ? normalizeCalendarDateTimeInTimeZone(
-            request.endAt,
-            "endAt",
-            parseTimeZone,
-          )
-        : undefined,
+      startAt:
+        allDayRange?.startAt ??
+        (request.startAt
+          ? normalizeCalendarDateTimeInTimeZone(
+              request.startAt,
+              "startAt",
+              parseTimeZone,
+            )
+          : undefined),
+      endAt:
+        allDayRange?.endAt ??
+        (request.endAt
+          ? normalizeCalendarDateTimeInTimeZone(
+              request.endAt,
+              "endAt",
+              parseTimeZone,
+            )
+          : undefined),
       timeZone,
+      isAllDay:
+        allDayRange !== null
+          ? true
+          : request.startAt !== undefined || request.endAt !== undefined
+            ? false
+            : undefined,
       attendees:
         request.attendees === undefined
           ? undefined
@@ -6058,6 +6092,7 @@ export class CalendarService extends Service {
         request: {
           ...request,
           ...nativePatch,
+          allDay: request.allDay,
           recurrence,
           recurrenceScope,
         },
@@ -6127,20 +6162,24 @@ export class CalendarService extends Service {
           title: request.title,
           description: request.description,
           location: request.location,
-          startAt: request.startAt
-            ? normalizeCalendarDateTimeInTimeZone(
-                request.startAt,
-                "startAt",
-                parseTimeZone,
-              )
-            : undefined,
-          endAt: request.endAt
-            ? normalizeCalendarDateTimeInTimeZone(
-                request.endAt,
-                "endAt",
-                parseTimeZone,
-              )
-            : undefined,
+          startAt:
+            allDayRange?.startDate ??
+            (request.startAt
+              ? normalizeCalendarDateTimeInTimeZone(
+                  request.startAt,
+                  "startAt",
+                  parseTimeZone,
+                )
+              : undefined),
+          endAt:
+            allDayRange?.endDateExclusive ??
+            (request.endAt
+              ? normalizeCalendarDateTimeInTimeZone(
+                  request.endAt,
+                  "endAt",
+                  parseTimeZone,
+                )
+              : undefined),
           timeZone,
           attendees:
             request.attendees === undefined

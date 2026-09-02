@@ -36,6 +36,87 @@ import {
 } from "./_helpers/api";
 import { approveAppInDb, hasReviewModel } from "./_helpers/review";
 
+const MAX_COLD_ADMISSION_ATTEMPTS = 3;
+const MAX_ASYNC_CACHE_PROJECTION_ATTEMPTS = 5;
+
+async function submitReviewAfterColdAdmission(
+  appId: string,
+): Promise<Response> {
+  for (let attempt = 1; attempt <= MAX_COLD_ADMISSION_ATTEMPTS; attempt += 1) {
+    const response = await api.post(
+      `/api/v1/apps/${appId}/review`,
+      {},
+      { headers: bearerHeaders() },
+    );
+    if (response.status !== 503) {
+      return response;
+    }
+
+    const body = (await response.clone().json()) as {
+      success?: boolean;
+      error?: string;
+      code?: string;
+      details?: { retryable?: boolean; retryAfterSeconds?: number };
+    };
+    expect(body).toEqual({
+      success: false,
+      error: "Generative admission cache is warming; retry shortly",
+      code: "service_unavailable",
+      details: { retryable: true, retryAfterSeconds: 1 },
+    });
+
+    if (attempt < MAX_COLD_ADMISSION_ATTEMPTS) {
+      const retryAfterHeader = response.headers.get("Retry-After");
+      const retryAfterSeconds = retryAfterHeader
+        ? Number(retryAfterHeader)
+        : body.details?.retryAfterSeconds;
+      expect(Number.isFinite(retryAfterSeconds)).toBe(true);
+      expect(retryAfterSeconds).toBeGreaterThan(0);
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.ceil((retryAfterSeconds ?? 1) * 1_000)),
+      );
+    }
+  }
+
+  throw new Error("Cold admission retry loop exited without a response");
+}
+
+async function enableMonetizationAfterCacheProjection(
+  appId: string,
+): Promise<Response> {
+  for (
+    let attempt = 1;
+    attempt <= MAX_ASYNC_CACHE_PROJECTION_ATTEMPTS;
+    attempt += 1
+  ) {
+    const response = await api.put(
+      `/api/v1/apps/${appId}/monetization`,
+      { monetizationEnabled: true },
+      { headers: bearerHeaders() },
+    );
+    if (response.status !== 403) {
+      return response;
+    }
+
+    const body = (await response.clone().json()) as {
+      success?: boolean;
+      error?: string;
+      review_status?: string;
+    };
+    expect(body.success).toBe(false);
+    expect(body.error).toBe(
+      "App must pass compliance review before monetization can be enabled. Submit it for review and reach 'approved' status first.",
+    );
+    expect(body.review_status).toBe("draft");
+
+    if (attempt < MAX_ASYNC_CACHE_PROJECTION_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  throw new Error("Async app-cache projection did not become visible");
+}
+
 const serverReachable = await isServerReachable();
 const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
 if (!serverReachable) {
@@ -227,11 +308,7 @@ describeE2E("App compliance-review gate", () => {
         "PixelPad",
         "A collaborative pixel-art drawing canvas for hobbyists.",
       );
-      const res = await api.post(
-        `/api/v1/apps/${appId}/review`,
-        {},
-        { headers: bearerHeaders() },
-      );
+      const res = await submitReviewAfterColdAdmission(appId);
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         review?: {
@@ -244,11 +321,7 @@ describeE2E("App compliance-review gate", () => {
       expect(body.review?.review_status).toBe("approved");
 
       // The gate is now open for a real (model-approved) app.
-      const mon = await api.put(
-        `/api/v1/apps/${appId}/monetization`,
-        { monetizationEnabled: true },
-        { headers: bearerHeaders() },
-      );
+      const mon = await enableMonetizationAfterCacheProjection(appId);
       expect(mon.status).toBe(200);
     },
   );

@@ -36,10 +36,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import {
-  agreementUploadSizeMessage,
-  MAX_AGREEMENT_PDF_BYTES,
-} from "../../lifeops/household/agreement-upload-limits.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
 import type {
   FamilyOperationsAdapter,
@@ -125,20 +121,16 @@ function AgreementUploadCard({
 }) {
   const [agreementKey, setAgreementKey] = useState("parenting-plan");
   const [title, setTitle] = useState("Parenting agreement");
-  const [pageCount, setPageCount] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const validPageCount = Number(pageCount);
   const canUpload =
     file?.type === "application/pdf" &&
     file.size > 0 &&
-    file.size <= MAX_AGREEMENT_PDF_BYTES &&
     title.trim().length > 0 &&
-    agreementKey.trim().length > 0 &&
-    Number.isSafeInteger(validPageCount) &&
-    validPageCount > 0;
+    agreementKey.trim().length > 0;
 
   const upload = async () => {
     if (!file || !canUpload) return;
@@ -148,10 +140,17 @@ function AgreementUploadCard({
       await adapter.uploadAgreement({
         agreementKey: agreementKey.trim(),
         title: title.trim(),
-        pageCount: validPageCount,
         file,
+        onProgress: ({ uploadedBytes, totalBytes, phase }) => {
+          setProgress(
+            phase === "processing"
+              ? "Upload verified. Reading every PDF page…"
+              : `Uploading ${Math.round((uploadedBytes / totalBytes) * 100)}%`,
+          );
+        },
       });
       setNotice("Immutable agreement version uploaded.");
+      setProgress(null);
       setFile(null);
       await refresh();
     } catch (cause) {
@@ -162,7 +161,7 @@ function AgreementUploadCard({
   return (
     <Card
       title="Upload signed agreement"
-      detail="Signed PDFs stay immutable and owner-private. Confirm the page count for citation review."
+      detail="Signed PDFs upload in resumable chunks. Eliza reads every page and derives the citation page count."
     >
       <Button variant="outline" onClick={() => setExpanded((value) => !value)}>
         {expanded ? "Close PDF form" : "Choose a signed PDF"}
@@ -200,22 +199,6 @@ function AgreementUploadCard({
                 }
               />
             </label>
-            <label
-              htmlFor="agreement-pages"
-              style={{ display: "grid", gap: 6 }}
-            >
-              <span>PDF page count</span>
-              <Input
-                id="agreement-pages"
-                type="number"
-                min={1}
-                step={1}
-                value={pageCount}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setPageCount(event.target.value)
-                }
-              />
-            </label>
             <label htmlFor="agreement-pdf" style={{ display: "grid", gap: 6 }}>
               <span>Signed PDF</span>
               <Input
@@ -228,16 +211,15 @@ function AgreementUploadCard({
                   setFile(selected);
                   setNotice(null);
                   setError(
-                    selected && selected.size > MAX_AGREEMENT_PDF_BYTES
-                      ? agreementUploadSizeMessage()
-                      : selected && selected.size < 1
-                        ? "Agreement PDF must not be empty."
-                        : null,
+                    selected && selected.size < 1
+                      ? "Agreement PDF must not be empty."
+                      : null,
                   );
                 }}
               />
               <small style={{ color: "var(--muted)" }}>
-                Maximum size: 20 MiB
+                Large PDFs are split into verified chunks and resumed after
+                interruption.
               </small>
             </label>
           </div>
@@ -247,6 +229,7 @@ function AgreementUploadCard({
             </Button>
           </div>
           {notice ? <p role="status">{notice}</p> : null}
+          {progress ? <p role="status">{progress}</p> : null}
           {error ? <Unavailable message={error} /> : null}
         </div>
       ) : null}

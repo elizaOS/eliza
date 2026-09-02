@@ -19,6 +19,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -38,6 +39,7 @@ export const AGENT_SANDBOX_REPLACEMENT_ATTEMPT_STATES = [
   "in_flight_unresolved",
   "provider_succeeded",
   "lifecycle_committed",
+  "cleanup_in_progress",
   "cleanup_proven",
 ] as const;
 export type AgentSandboxReplacementAttemptState =
@@ -47,6 +49,7 @@ export type AgentSandboxReplacementAttemptState =
 export const AGENT_SANDBOX_REPLACEMENT_GLOBAL_FENCE_STATES = [
   "in_flight_unresolved",
   "provider_succeeded",
+  "cleanup_in_progress",
 ] as const satisfies readonly AgentSandboxReplacementAttemptState[];
 
 /** States that fence one generation; lifecycle commitment retains that fence permanently. */
@@ -135,6 +138,8 @@ export const agentSandboxReplacementAttempts = pgTable(
     cleanup_receipt_digest: text("cleanup_receipt_digest"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Immutable one-shot boundary proving an exact-restore provider call may have begun. */
+    provider_started_at: timestamp("provider_started_at", { withTimezone: true }),
   },
   (table) => ({
     restore_lease_authority_fk: foreignKey({
@@ -186,17 +191,23 @@ export const agentSandboxReplacementAttempts = pgTable(
     organization_idx: index("agent_sandbox_replacement_attempts_organization_idx").on(
       table.organization_id,
     ),
+    seed_receipt_authority_unique: unique(
+      "agent_sandbox_replacement_attempts_seed_authority_unique",
+    ).on(table.id, table.organization_id, table.agent_id, table.restore_attempt_id),
     one_active_effect_per_agent_uidx: uniqueIndex(
       "agent_sandbox_replacement_attempts_active_agent_uidx",
     )
       .on(table.organization_id, table.agent_id)
-      .where(sql`${table.state} IN ('in_flight_unresolved', 'provider_succeeded')`),
+      .where(
+        sql`${table.state} IN ('in_flight_unresolved', 'provider_succeeded', 'cleanup_in_progress')`,
+      ),
     one_attempt_per_generation_uidx: uniqueIndex(
       "agent_sandbox_replacement_attempts_active_generation_uidx",
     )
       .on(table.organization_id, table.agent_id, table.activation_generation)
       .where(
-        sql`${table.state} IN ('in_flight_unresolved', 'provider_succeeded', 'lifecycle_committed')`,
+        sql`${table.state} IN ('in_flight_unresolved', 'provider_succeeded', 'lifecycle_committed',
+          'cleanup_in_progress')`,
       ),
     operation_kind_check: check(
       "agent_sandbox_replacement_attempts_operation_kind_check",
@@ -233,6 +244,8 @@ export const agentSandboxReplacementAttempts = pgTable(
           AND ${table.restore_source_lifecycle_revision}
             BETWEEN 0 AND 18446744073709551615
           AND ${table.restore_manifest_sha256} ~ '^[0-9a-f]{64}$'
+          AND ${table.operation_kind} = 'provision'
+          AND ${table.activation_generation} = ${table.restore_attempt_id}
           AND ${table.restore_lease_expires_at} > ${table.created_at})) IS TRUE`,
     ),
     locator_shape_check: check(
@@ -264,7 +277,24 @@ export const agentSandboxReplacementAttempts = pgTable(
           AND ${table.locator_allocation_counted} = TRUE
           AND ${table.locator_recorded_at} IS NOT NULL
           AND ${table.locator_sandbox_id} = ${table.locator_container_name}
-          AND ${table.locator_container_name} = 'agent-' || ${table.agent_id}::text
+          AND ((num_nonnulls(
+              ${table.restore_lease_id}, ${table.restore_backup_id}, ${table.restore_attempt_id},
+              ${table.restore_lease_owner_id}, ${table.restore_lease_generation},
+              ${table.restore_catalog_epoch}, ${table.restore_copy_role},
+              ${table.restore_operation_id}, ${table.restore_source_activation_generation},
+              ${table.restore_source_lifecycle_revision}, ${table.restore_manifest_sha256},
+              ${table.restore_lease_expires_at}) = 0
+            AND ${table.locator_container_name} = 'agent-' || ${table.agent_id}::text)
+          OR (num_nonnulls(
+              ${table.restore_lease_id}, ${table.restore_backup_id}, ${table.restore_attempt_id},
+              ${table.restore_lease_owner_id}, ${table.restore_lease_generation},
+              ${table.restore_catalog_epoch}, ${table.restore_copy_role},
+              ${table.restore_operation_id}, ${table.restore_source_activation_generation},
+              ${table.restore_source_lifecycle_revision}, ${table.restore_manifest_sha256},
+              ${table.restore_lease_expires_at}) = 12
+            AND ${table.locator_container_name} =
+              'agent-restore-' || ${table.agent_id}::text || '-' ||
+              ${table.restore_attempt_id}::text))
           AND btrim(${table.locator_node_id}) <> ''
           AND octet_length(${table.locator_node_id}) <= 255
           AND btrim(${table.locator_node_hostname}) <> ''
@@ -309,6 +339,26 @@ export const agentSandboxReplacementAttempts = pgTable(
               END))
         )) IS TRUE`,
     ),
+    provider_start_shape_check: check(
+      "agent_sandbox_replacement_attempts_provider_start_shape_check",
+      sql`(((${table.restore_attempt_id} IS NULL AND ${table.provider_started_at} IS NULL)
+          OR (${table.restore_attempt_id} IS NOT NULL
+            AND (${table.provider_started_at} IS NULL
+              OR (${table.locator_recorded_at} IS NOT NULL
+                AND ${table.provider_started_at} >= ${table.locator_recorded_at}))))
+        AND (${table.restore_attempt_id} IS NULL
+          OR ${table.locator_container_id} IS NULL
+          OR ${table.provider_started_at} IS NOT NULL)
+        AND (${table.restore_attempt_id} IS NULL
+          OR ${table.provider_succeeded_at} IS NULL
+          OR ${table.provider_started_at} IS NOT NULL)
+        AND (${table.provider_started_at} IS NULL
+          OR ${table.provider_succeeded_at} IS NULL
+          OR ${table.provider_succeeded_at} >= ${table.provider_started_at})
+        AND (${table.provider_started_at} IS NULL
+          OR ${table.cleanup_proven_at} IS NULL
+          OR ${table.cleanup_proven_at} >= ${table.provider_started_at})) IS TRUE`,
+    ),
     settlement_shape_check: check(
       "agent_sandbox_replacement_attempts_settlement_shape_check",
       sql`((${table.state} = 'in_flight_unresolved'
@@ -333,6 +383,19 @@ export const agentSandboxReplacementAttempts = pgTable(
           AND ${table.lifecycle_committed_at} IS NOT NULL
           AND ${table.lifecycle_committed_at} >= ${table.provider_succeeded_at}
           AND ${table.lifecycle_receipt_digest} ~ '^[0-9a-f]{64}$'
+          AND ${table.cleanup_proven_at} IS NULL
+          AND ${table.cleanup_receipt_digest} IS NULL)
+        OR (${table.state} = 'cleanup_in_progress'
+          AND ${table.restore_attempt_id} IS NOT NULL
+          AND ${table.locator_recorded_at} IS NOT NULL
+          AND (${table.provider_succeeded_at} IS NULL)
+            = (${table.provider_receipt_digest} IS NULL)
+          AND (${table.provider_succeeded_at} IS NULL
+            OR (${table.locator_container_id} IS NOT NULL
+              AND ${table.provider_succeeded_at} >= ${table.locator_container_recorded_at}
+              AND ${table.provider_receipt_digest} ~ '^[0-9a-f]{64}$'))
+          AND ${table.lifecycle_committed_at} IS NULL
+          AND ${table.lifecycle_receipt_digest} IS NULL
           AND ${table.cleanup_proven_at} IS NULL
           AND ${table.cleanup_receipt_digest} IS NULL)
         OR (${table.state} = 'cleanup_proven'

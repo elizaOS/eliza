@@ -980,9 +980,11 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
     }
 
     const manager = {
+      listAccounts: async () => [],
       getAccount: async () => ({
         id: ACCOUNT_ID,
         provider: "google",
+        externalId: "google-calendar-watch-owner",
         role: "OWNER",
         purpose: ["calendar"],
         accessGate: "open",

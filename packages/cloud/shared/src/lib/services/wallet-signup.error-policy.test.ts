@@ -101,7 +101,7 @@ describe("wallet-signup fail-closed error policy", () => {
   });
 
   test("org create conflict is a DESIGNED race recovery to the winning org", async () => {
-    const racedOrg = { id: "org-raced", slug: "wallet-slug" };
+    const racedOrg = { id: "org-raced", slug: "wallet-slug", credit_balance: "5.000000" };
     getByWallet = async () => null;
     findBySlug = async () => racedOrg;
     let organizationInput: unknown;

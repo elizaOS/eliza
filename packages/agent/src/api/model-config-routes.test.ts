@@ -183,7 +183,7 @@ describe("POST /api/models/config validation", () => {
   it("rejects effort on backends without an effort seam", async () => {
     const { ctx, json } = makeHarness("POST", {
       target: "coding",
-      backend: "opencode",
+      backend: "eliza-code",
       model: "cerebras/gpt-oss-120b",
       effort: "high",
     });
@@ -463,20 +463,18 @@ describe("POST /api/models/config coding writes", () => {
     expect(body).toMatchObject({ applied: true, restart: false });
   });
 
-  it("accepts a free-form opencode model and a defaultBackend switch", async () => {
-    const { ctx, config } = makeHarness("POST", {
+  it("rejects the removed opencode backend without mutating config", async () => {
+    const { ctx, config, json } = makeHarness("POST", {
       target: "coding",
       backend: "opencode",
       model: "cerebras/gpt-oss-120b",
       defaultBackend: "opencode",
     });
     await handleModelConfigRoutes(ctx as never);
-    const env = (config as Record<string, unknown>).env as Record<
-      string,
-      unknown
-    >;
-    expect(env.ELIZA_OPENCODE_MODEL_POWERFUL).toBe("cerebras/gpt-oss-120b");
-    expect(env.ELIZA_DEFAULT_AGENT_TYPE).toBe("opencode");
+    const { status, body } = responseOf(json);
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain('Unknown backend "opencode"');
+    expect((config as Record<string, unknown>).env).toBeUndefined();
   });
 
   it("persists defaultBackend eliza-code under the orchestrator's elizaos spelling", async () => {
@@ -685,13 +683,13 @@ describe("GET /api/models/config activeChat", () => {
       Record<string, { value: string; source: string } | null>
     >;
     // Unpinned cloud tiers report the plugin's code defaults so the operator
-    // sees what actually serves — small gemma, large GLM (genuinely larger).
+    // sees what actually serves from the plugin's current defaults.
     expect(targets.small?.ELIZAOS_CLOUD_SMALL_MODEL).toEqual({
       value: "gemma-4-31b",
       source: "default",
     });
     expect(targets.large?.ELIZAOS_CLOUD_LARGE_MODEL).toEqual({
-      value: "zai-glm-4.7",
+      value: "gemma-4-31b",
       source: "default",
     });
   });

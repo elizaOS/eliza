@@ -241,7 +241,7 @@ describe("generic Docker env-file stdin transport", () => {
     const readyPath = join(temporaryDirectory, "ready");
     const transport = buildDockerEnvFileStdinTransport(
       { API_TOKEN: "stdin-only-sentinel" },
-      () => `touch ${shellQuote(readyPath)}; sleep 30`,
+      () => `touch ${shellQuote(readyPath)}; while :; do sleep 0.1; done`,
       { temporaryDirectory },
     );
     const child = spawn("/bin/sh", ["-c", transport.command], { detached: true });
@@ -254,9 +254,15 @@ describe("generic Docker env-file stdin transport", () => {
       expect(existsSync(readyPath)).toBe(true);
       expect(readdirSync(temporaryDirectory).length).toBeGreaterThan(1);
 
-      const closePromise = new Promise<void>((resolve) => child.on("close", () => resolve()));
+      const exitPromise =
+        child.exitCode !== null || child.signalCode !== null
+          ? Promise.resolve()
+          : new Promise<void>((resolve, reject) => {
+              child.once("exit", () => resolve());
+              child.once("error", reject);
+            });
       process.kill(-child.pid!, "SIGTERM");
-      await closePromise;
+      await exitPromise;
 
       expect(readdirSync(temporaryDirectory)).toEqual(["ready"]);
     } finally {

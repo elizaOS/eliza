@@ -21,6 +21,10 @@ import {
   createAgentBackupManifestV3,
 } from "@elizaos/shared";
 import { eq, sql } from "drizzle-orm";
+import {
+  AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+  buildRestoreVolumeVaultSeedReceiptV1,
+} from "../../../lib/services/agent-backup-restore-vault-seed";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -42,6 +46,7 @@ import {
   agentNodeIncarnationHistories,
   agentVaultKeySeedReceipts,
 } from "../../schemas/agent-backup-restore-history";
+import { agentSandboxReplacementAttempts } from "../../schemas/agent-sandbox-replacement-attempts";
 import { agentSandboxBackups, agentSandboxes } from "../../schemas/agent-sandboxes";
 import {
   AGENT_VAULT_KEY_AUTHORITY_FORMAT,
@@ -73,8 +78,10 @@ import {
 } from "../agent-backup-restore-lease";
 import {
   claimAgentBackupRestoreOperation,
+  failAgentBackupRestoreOperation,
   openAgentBackupRestoreOperation,
   reserveAgentBackupRestoreTarget,
+  reserveAgentBackupRestoreTargetAndStartReplacementIntent,
 } from "../agent-backup-restore-operations";
 import {
   AgentVaultKeySecretHandle,
@@ -107,11 +114,18 @@ const ACTIVATION_PUBLICATION_ID = "00000000-0000-4000-8000-00000000d045";
 const SEED_RECEIPT_ID = "00000000-0000-4000-8000-00000000d046";
 const FINAL_RECEIPT_ID = "00000000-0000-4000-8000-00000000d047";
 const RESTORE_ATTEMPT_ID = "00000000-0000-4000-8000-00000000d048";
+const REPLACEMENT_ATTEMPT_ID = "00000000-0000-4000-8000-00000000d066";
 const RESTORE_CONTAINER_ID = "e".repeat(64);
 const SHA = "a".repeat(64);
 const RECEIPT_SHA = "b".repeat(64);
 const CONTENT_SHA = "c".repeat(64);
 const CIPHERTEXT_SHA = "d".repeat(64);
+const VAULT_SEED_RECEIPT_DIGEST = buildRestoreVolumeVaultSeedReceiptV1({
+  agentId: AGENT_ID,
+  restoreAttemptId: RESTORE_ATTEMPT_ID,
+  replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+  passphraseByteLength: AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+}).receiptDigest;
 const KEY_BUNDLE = Buffer.alloc(92, 0x42).toString("base64");
 let schemaFailure = "";
 
@@ -137,7 +151,7 @@ function captureVaultRawKeyAtRelease(): {
   const releaseSpy = spyOn(AgentVaultKeySecretHandle.prototype, "release").mockImplementation(
     function (this: AgentVaultKeySecretHandle) {
       const rawKey = Reflect.get(this, "rawKey");
-      capturedRawKey = rawKey instanceof Uint8Array ? rawKey : null;
+      if (rawKey instanceof Uint8Array) capturedRawKey = rawKey;
       originalRelease.call(this);
     },
   );
@@ -165,6 +179,8 @@ async function insertActiveSandbox(): Promise<void> {
     user_id: USER_ID,
     agent_name: "Restore authority agent",
     status: "running",
+    execution_tier: "dedicated-always",
+    docker_image: "registry.invalid/eliza-agent:restore-source",
     sandbox_id: "provider-handle",
     node_id: "restore-source-node",
     image_digest: `sha256:${SHA}`,
@@ -622,9 +638,46 @@ async function insertExactProtectedSource(vaultAuthority: {
   return { exact, binding };
 }
 
+async function setVaultPassphraseQuarantineFixture(manifestSha256: string): Promise<void> {
+  const [sandbox] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, AGENT_ID));
+  if (!sandbox) throw new Error("vault restore sandbox fixture is missing");
+  const lifecycleRevision = sandbox.lifecycle_revision + 1;
+  await dbWrite
+    .update(agentSandboxes)
+    .set({
+      lifecycle_revision: lifecycleRevision,
+      activation_generation: RESTORE_ATTEMPT_ID,
+      activation_previous_generation: sandbox.activation_generation,
+      activation_lifecycle_revision: BigInt(lifecycleRevision),
+      activation_purpose: "restore",
+      activation_phase: "container_pending",
+      activation_backup_id: BACKUP_ID,
+      activation_backup_hash: manifestSha256,
+      activation_receipt: null,
+      activation_receipt_hash: null,
+      activation_container_id: null,
+      activation_node_id: null,
+      activation_image_digest: null,
+      activation_token_hash: SHA,
+      activation_token_ciphertext: "sealed-vault-restore-quarantine-token",
+      activation_boot_id: null,
+      activation_authority_published_at: null,
+      activation_funding_revision: null,
+      activation_dispatched_at: null,
+      activation_completed_at: null,
+      activation_consent_lifecycle_revision: null,
+      activation_consent_head_backup_id: null,
+      activation_consent_head_backup_hash: null,
+    })
+    .where(eq(agentSandboxes.id, AGENT_ID));
+}
+
 async function acquireVaultPassphraseFixture(
   entropyByte = 0x43,
-  options: Readonly<{ reserveTarget?: boolean }> = {},
+  options: Readonly<{ reserveTarget?: boolean; openQuarantine?: boolean }> = {},
 ) {
   const kms = new MemoryKmsAdapter({ seed: () => new Uint8Array(32).fill(0x93) });
   const generation = await createOrRotateAgentVaultKeyGeneration(
@@ -676,7 +729,7 @@ async function acquireVaultPassphraseFixture(
     infrastructure_provider: "hetzner",
     provider_server_id: null,
     node_incarnation: TARGET_NODE_INCARNATION,
-    metadata: {},
+    metadata: { architecture: "amd64" },
     created_at: TARGET_NODE_CREATED_AT,
   });
   const targetNodeHistoryId = targetNode.current_node_history_id;
@@ -690,6 +743,9 @@ async function acquireVaultPassphraseFixture(
       targetNodeIncarnation: TARGET_NODE_INCARNATION,
       targetNodeHistoryId,
     });
+    if (options.openQuarantine !== false) {
+      await setVaultPassphraseQuarantineFixture(exact.manifest.integrity.manifestSha256);
+    }
   }
   return {
     kms,
@@ -702,6 +758,7 @@ async function acquireVaultPassphraseFixture(
       targetNodeRecordId: TARGET_NODE_RECORD_ID,
       targetNodeIncarnation: TARGET_NODE_INCARNATION,
       targetNodeHistoryId,
+      expectedActivationTokenSha256: SHA,
       vaultKeyGenerationId: generation.authority.generationId,
       vaultKeyAuthorityReceiptDigest: generation.authority.receiptDigest,
     },
@@ -747,6 +804,7 @@ beforeAll(async () => {
         agentBackupObjects,
         agentBackupRestoreLeases,
         agentBackupRestoreOperations,
+        agentSandboxReplacementAttempts,
         dockerNodes,
         agentNodeIncarnationHistories,
         agentActivationPublications,
@@ -774,6 +832,7 @@ beforeEach(async () => {
   await dbWrite.delete(agentVaultKeySeedReceipts);
   await dbWrite.delete(agentActivationPublications);
   await dbWrite.delete(agentVaultKeyBackupBindings);
+  await dbWrite.delete(agentSandboxReplacementAttempts);
   await dbWrite.delete(agentBackupRestoreOperations);
   await dbWrite.delete(agentBackupRestoreLeases);
   await dbWrite.delete(agentBackupObjects);
@@ -1267,6 +1326,212 @@ describe("strict restore catalogue authority", () => {
     expect(releaseReplay.released_at).toEqual(released.released_at);
   });
 
+  test("records a fresh vault-seed receipt after exact cleanup opens a new replacement attempt", async () => {
+    const secondReplacementAttemptId = "00000000-0000-4000-8000-00000000d069";
+    const secondSeedReceiptId = "00000000-0000-4000-8000-00000000d070";
+    const kms = new MemoryKmsAdapter({ seed: () => new Uint8Array(32).fill(0x95) });
+    const generation = await createOrRotateAgentVaultKeyGeneration(
+      {
+        organizationId: ORG_ID,
+        agentId: AGENT_ID,
+        generationId: VAULT_GENERATION,
+        sourceActivationGeneration: ACTIVATION_GENERATION,
+        expectedCurrentGenerationId: null,
+      },
+      {
+        kmsClient: kms,
+        randomBytes: (size) => new Uint8Array(size).fill(0x45),
+      },
+    );
+    generation.secret.release();
+    const { exact } = await insertExactProtectedSource(generation.authority);
+    const targetNode = await dockerNodesRepository.create({
+      id: TARGET_NODE_RECORD_ID,
+      node_id: "restore-target-node",
+      hostname: "restore-target-node.internal",
+      capacity: 2,
+      enabled: true,
+      placement_state: "open",
+      status: "healthy",
+      host_key_fingerprint: `SHA256:${SHA}`,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      node_incarnation: TARGET_NODE_INCARNATION,
+      metadata: { architecture: "amd64" },
+    });
+    const targetNodeHistoryId = targetNode.current_node_history_id;
+    if (!targetNodeHistoryId) throw new Error("restore target occurrence token is missing");
+    const acquired = await acquireAgentBackupRestoreLease({
+      organizationId: ORG_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      sourceActivationGeneration: ACTIVATION_GENERATION,
+      sourceLifecycleRevision: "7",
+      expectedManifestSha256: exact.manifest.integrity.manifestSha256,
+      copyRole: "primary",
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      ownerId: "seed-retry-restore-worker",
+      fencingToken: "00000000-0000-4000-8000-00000000d071",
+      leaseMs: 60_000,
+    });
+    const opened = await openAgentBackupRestoreOperation({
+      authority: acquired.authority,
+      leaseId: acquired.authority.leaseId,
+    });
+
+    const reserveIntent = async (claimGeneration: string, replacementAttemptId: string) => {
+      await dbWrite.execute(
+        sql.raw(`
+        CREATE FUNCTION test_seed_retry_advance_sandbox_lifecycle_revision()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          NEW.lifecycle_revision := OLD.lifecycle_revision + 1;
+          RETURN NEW;
+        END;
+        $$
+      `),
+      );
+      await dbWrite.execute(
+        sql.raw(`
+        CREATE TRIGGER test_seed_retry_sandbox_lifecycle_revision_trigger
+        BEFORE UPDATE ON agent_sandboxes
+        FOR EACH ROW EXECUTE FUNCTION test_seed_retry_advance_sandbox_lifecycle_revision()
+      `),
+      );
+      try {
+        return await reserveAgentBackupRestoreTargetAndStartReplacementIntent({
+          operationId: opened.operation.id,
+          ownerId: acquired.authority.ownerId,
+          claimGeneration,
+          targetNodeRecordId: TARGET_NODE_RECORD_ID,
+          targetNodeId: "restore-target-node",
+          targetNodeIncarnation: TARGET_NODE_INCARNATION,
+          targetNodeHistoryId,
+          replacementAttemptId,
+          activationTokenSha256: SHA,
+          activationTokenCiphertext: "sealed-vault-restore-quarantine-token",
+        });
+      } finally {
+        await dbWrite.execute(
+          sql.raw(
+            "DROP TRIGGER test_seed_retry_sandbox_lifecycle_revision_trigger ON agent_sandboxes",
+          ),
+        );
+        await dbWrite.execute(
+          sql.raw("DROP FUNCTION test_seed_retry_advance_sandbox_lifecycle_revision()"),
+        );
+      }
+    };
+    const firstClaim = await claimAgentBackupRestoreOperation({
+      operationId: opened.operation.id,
+      ownerId: acquired.authority.ownerId,
+      claimMs: 60_000,
+    });
+    const firstIntent = await reserveIntent(firstClaim.claimGeneration, REPLACEMENT_ATTEMPT_ID);
+    expect(firstIntent.attempt.id).toBe(REPLACEMENT_ATTEMPT_ID);
+    const seedInput = {
+      receiptId: SEED_RECEIPT_ID,
+      receiptDigest: VAULT_SEED_RECEIPT_DIGEST,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      backupId: BACKUP_ID,
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      leaseId: acquired.authority.leaseId,
+      leaseOwnerId: acquired.authority.ownerId,
+      leaseFencingToken: acquired.authority.fencingToken,
+      restoreOperationId: opened.operation.id,
+      restoreClaimGeneration: firstClaim.claimGeneration,
+      targetActivationGeneration: RESTORE_ATTEMPT_ID,
+      targetNodeRecordId: TARGET_NODE_RECORD_ID,
+      targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      targetNodeHistoryId,
+      targetImageDigest: `sha256:${SHA}`,
+      expectedActivationTokenSha256: SHA,
+    } as const;
+    const firstSeed = await recordAgentVaultKeySeedReceipt(seedInput);
+    expect(firstSeed.receipt.replacement_attempt_id).toBe(REPLACEMENT_ATTEMPT_ID);
+
+    const cleanupAt = new Date(Date.now() + 1_000);
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        state: "cleanup_proven",
+        cleanup_proven_at: cleanupAt,
+        cleanup_receipt_digest: CIPHERTEXT_SHA,
+        updated_at: cleanupAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 0 })
+      .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+
+    const secondClaim = await claimAgentBackupRestoreOperation({
+      operationId: opened.operation.id,
+      ownerId: acquired.authority.ownerId,
+      claimMs: 60_000,
+    });
+    const secondIntent = await reserveIntent(
+      secondClaim.claimGeneration,
+      secondReplacementAttemptId,
+    );
+    expect(secondIntent).toMatchObject({
+      attempt: { id: secondReplacementAttemptId },
+      replayed: { replacementIntent: false },
+    });
+    const secondReceiptDigest = buildRestoreVolumeVaultSeedReceiptV1({
+      agentId: AGENT_ID,
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      replacementAttemptId: secondReplacementAttemptId,
+      passphraseByteLength: AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+    }).receiptDigest;
+    const secondSeedInput = {
+      ...seedInput,
+      receiptId: secondSeedReceiptId,
+      receiptDigest: secondReceiptDigest,
+      replacementAttemptId: secondReplacementAttemptId,
+      restoreClaimGeneration: secondClaim.claimGeneration,
+    } as const;
+    const secondSeed = await recordAgentVaultKeySeedReceipt(secondSeedInput);
+    expect(secondSeed).toMatchObject({
+      replayed: false,
+      receipt: {
+        id: secondSeedReceiptId,
+        replacement_attempt_id: secondReplacementAttemptId,
+      },
+      operation: { phase: "vault_seeded" },
+    });
+    const secondReplay = await recordAgentVaultKeySeedReceipt({
+      ...secondSeedInput,
+      receiptId: "00000000-0000-4000-8000-00000000d072",
+    });
+    expect(secondReplay).toMatchObject({
+      replayed: true,
+      receipt: { id: secondSeedReceiptId },
+    });
+    const receipts = await dbWrite.select().from(agentVaultKeySeedReceipts);
+    expect(
+      receipts.map(({ replacement_attempt_id, receipt_digest }) => ({
+        replacementAttemptId: replacement_attempt_id,
+        receiptDigest: receipt_digest,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+          receiptDigest: VAULT_SEED_RECEIPT_DIGEST,
+        },
+        {
+          replacementAttemptId: secondReplacementAttemptId,
+          receiptDigest: secondReceiptDigest,
+        },
+      ]),
+    );
+    expect(receipts).toHaveLength(2);
+  });
+
   test("replays one immutable seed-to-activation receipt chain and fences current boot drift", async () => {
     const kms = new MemoryKmsAdapter({ seed: () => new Uint8Array(32).fill(0x94) });
     const generation = await createOrRotateAgentVaultKeyGeneration(
@@ -1297,6 +1562,7 @@ describe("strict restore catalogue authority", () => {
       infrastructure_provider: "hetzner",
       provider_server_id: null,
       node_incarnation: TARGET_NODE_INCARNATION,
+      metadata: { architecture: "amd64" },
     });
     const restoreTargetHistoryId = restoreTargetNode.current_node_history_id;
     if (!restoreTargetHistoryId) throw new Error("restore target occurrence token is missing");
@@ -1322,25 +1588,246 @@ describe("strict restore catalogue authority", () => {
       ownerId: acquired.authority.ownerId,
       claimMs: 60_000,
     });
-    await reserveAgentBackupRestoreTarget({
-      operationId: opened.operation.id,
-      ownerId: acquired.authority.ownerId,
-      claimGeneration: claimed.claimGeneration,
+    const intent = await (async () => {
+      // pushSchema omits deployed trigger functions. Install the real lifecycle
+      // behavior around this active -> restore transition so the CAS proof does
+      // not accidentally exercise a triggerless database.
+      await dbWrite.execute(
+        sql.raw(`
+        CREATE FUNCTION test_seed_advance_sandbox_lifecycle_revision()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          NEW.lifecycle_revision := OLD.lifecycle_revision + 1;
+          RETURN NEW;
+        END;
+        $$
+      `),
+      );
+      await dbWrite.execute(
+        sql.raw(`
+        CREATE TRIGGER test_seed_sandbox_lifecycle_revision_trigger
+        BEFORE UPDATE ON agent_sandboxes
+        FOR EACH ROW EXECUTE FUNCTION test_seed_advance_sandbox_lifecycle_revision()
+      `),
+      );
+      try {
+        return await reserveAgentBackupRestoreTargetAndStartReplacementIntent({
+          operationId: opened.operation.id,
+          ownerId: acquired.authority.ownerId,
+          claimGeneration: claimed.claimGeneration,
+          targetNodeRecordId: TARGET_NODE_RECORD_ID,
+          targetNodeId: "restore-target-node",
+          targetNodeIncarnation: TARGET_NODE_INCARNATION,
+          targetNodeHistoryId: restoreTargetHistoryId,
+          replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+          activationTokenSha256: SHA,
+          activationTokenCiphertext: "sealed-vault-restore-quarantine-token",
+        });
+      } finally {
+        await dbWrite.execute(
+          sql.raw("DROP TRIGGER test_seed_sandbox_lifecycle_revision_trigger ON agent_sandboxes"),
+        );
+        await dbWrite.execute(
+          sql.raw("DROP FUNCTION test_seed_advance_sandbox_lifecycle_revision()"),
+        );
+      }
+    })();
+    expect(intent.attempt.id).toBe(REPLACEMENT_ATTEMPT_ID);
+    const seedInput = {
+      receiptId: SEED_RECEIPT_ID,
+      receiptDigest: VAULT_SEED_RECEIPT_DIGEST,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      backupId: BACKUP_ID,
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      leaseId: acquired.authority.leaseId,
+      leaseOwnerId: acquired.authority.ownerId,
+      leaseFencingToken: acquired.authority.fencingToken,
+      restoreOperationId: opened.operation.id,
+      restoreClaimGeneration: claimed.claimGeneration,
+      targetActivationGeneration: RESTORE_ATTEMPT_ID,
       targetNodeRecordId: TARGET_NODE_RECORD_ID,
       targetNodeIncarnation: TARGET_NODE_INCARNATION,
       targetNodeHistoryId: restoreTargetHistoryId,
-    });
+      targetImageDigest: `sha256:${SHA}`,
+      expectedActivationTokenSha256: SHA,
+    } as const;
+    await expect(
+      recordAgentVaultKeySeedReceipt({
+        ...seedInput,
+        receiptId: "00000000-0000-4000-8000-00000000d056",
+        receiptDigest: SHA,
+      }),
+    ).rejects.toThrow("differs from the canonical V1 transport receipt");
+    const alternatePathReceiptDigest = buildRestoreVolumeVaultSeedReceiptV1({
+      agentId: AGENT_ID,
+      restoreAttemptId: "00000000-0000-4000-8000-00000000d057",
+      replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      passphraseByteLength: AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+    }).receiptDigest;
+    await expect(
+      recordAgentVaultKeySeedReceipt({
+        ...seedInput,
+        receiptId: "00000000-0000-4000-8000-00000000d058",
+        receiptDigest: alternatePathReceiptDigest,
+      }),
+    ).rejects.toThrow("differs from the canonical V1 transport receipt");
+    expect(await dbWrite.select().from(agentVaultKeySeedReceipts)).toHaveLength(0);
+    const wrongReplacementAttemptId = "00000000-0000-4000-8000-00000000d067";
+    const wrongReplacementReceiptDigest = buildRestoreVolumeVaultSeedReceiptV1({
+      agentId: AGENT_ID,
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      replacementAttemptId: wrongReplacementAttemptId,
+      passphraseByteLength: AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+    }).receiptDigest;
+    await expect(
+      recordAgentVaultKeySeedReceipt({
+        ...seedInput,
+        receiptId: "00000000-0000-4000-8000-00000000d068",
+        replacementAttemptId: wrongReplacementAttemptId,
+        receiptDigest: wrongReplacementReceiptDigest,
+      }),
+    ).rejects.toThrow("replacement attempt differs from its exact pre-provider intent");
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({ locator_node_hostname: "drifted-restore-target.internal" })
+      .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+    await expect(recordAgentVaultKeySeedReceipt(seedInput)).rejects.toThrow(
+      "replacement attempt differs from its exact pre-provider intent",
+    );
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({ locator_node_hostname: "restore-target-node.internal" })
+      .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({ provider_started_at: new Date() })
+      .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+    await expect(recordAgentVaultKeySeedReceipt(seedInput)).rejects.toThrow(
+      "replacement attempt differs from its exact pre-provider intent",
+    );
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({ provider_started_at: null })
+      .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+    await expect(
+      recordAgentVaultKeySeedReceipt({
+        ...seedInput,
+        receiptId: "00000000-0000-4000-8000-00000000d052",
+        targetNodeIncarnation: "00000000-0000-4000-8000-00000000d050",
+      }),
+    ).rejects.toThrow("operation differs from its exact source, lease, or target authority");
+    // The seed receipt is append-only (0250), so a stale catalogue epoch must be
+    // refused BEFORE the row exists rather than left as an unremovable record.
+    const [epochBefore] = await dbWrite
+      .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
+      .from(agentBackupCatalogAuthorities)
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    if (!epochBefore) throw new Error("Expected vault-created catalogue authority");
+    await dbWrite
+      .update(agentBackupCatalogAuthorities)
+      .set({ catalog_revision: epochBefore.revision + 1n })
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    await expect(recordAgentVaultKeySeedReceipt(seedInput)).rejects.toThrow(
+      "invalidated by a catalogue revision",
+    );
+    expect(await dbWrite.select().from(agentVaultKeySeedReceipts)).toHaveLength(0);
+    await dbWrite
+      .update(agentBackupCatalogAuthorities)
+      .set({ catalog_revision: epochBefore.revision })
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+
     await dbWrite
       .update(agentBackupRestoreOperations)
-      .set({ expected_container_id: RESTORE_CONTAINER_ID })
+      .set({ phase: "failed_retryable", resume_phase: "vault_seeded" })
       .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+    await expect(recordAgentVaultKeySeedReceipt(seedInput)).rejects.toThrow(
+      "advanced without its immutable receipt",
+    );
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ phase: "reserved", resume_phase: null })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+
+    const [seedFirst, seedReplay] = await Promise.all([
+      recordAgentVaultKeySeedReceipt(seedInput),
+      recordAgentVaultKeySeedReceipt(seedInput),
+    ]);
+    expect([seedFirst.replayed, seedReplay.replayed].sort()).toEqual([false, true]);
+    expect(seedFirst.receipt.lease_expires_at).toEqual(acquired.authority.expiresAt);
+    expect(seedFirst.operation).toMatchObject({ phase: "vault_seeded", claim_generation: null });
+    const exactPostClearReplay = await recordAgentVaultKeySeedReceipt(seedInput);
+    expect(exactPostClearReplay).toMatchObject({
+      replayed: true,
+      operation: { phase: "vault_seeded", claim_generation: null },
+    });
+    const responseLossReplay = await recordAgentVaultKeySeedReceipt({
+      ...seedInput,
+      receiptId: "00000000-0000-4000-8000-00000000d059",
+    });
+    expect(responseLossReplay).toMatchObject({
+      replayed: true,
+      receipt: { id: SEED_RECEIPT_ID },
+      operation: { phase: "vault_seeded", claim_generation: null },
+    });
+
+    const failureClaim = await claimAgentBackupRestoreOperation({
+      operationId: opened.operation.id,
+      ownerId: acquired.authority.ownerId,
+      claimMs: 60_000,
+    });
+    await failAgentBackupRestoreOperation({
+      operationId: opened.operation.id,
+      ownerId: acquired.authority.ownerId,
+      claimGeneration: failureClaim.claimGeneration,
+      retryable: true,
+      resumePhase: "vault_seeded",
+      errorCode: "TEST_SEED_RESPONSE_LOST",
+      error: "test-only lost vault-seed response",
+      failureDigest: CIPHERTEXT_SHA,
+      retryDelayMs: 0,
+    });
+    const resumeClaim = await claimAgentBackupRestoreOperation({
+      operationId: opened.operation.id,
+      ownerId: acquired.authority.ownerId,
+      claimMs: 60_000,
+    });
+    const resumedSeed = await recordAgentVaultKeySeedReceipt({
+      ...seedInput,
+      restoreClaimGeneration: resumeClaim.claimGeneration,
+    });
+    expect(resumedSeed).toMatchObject({
+      replayed: true,
+      operation: { phase: "vault_seeded", claim_generation: null },
+    });
+
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ phase: "container_created", expected_container_id: RESTORE_CONTAINER_ID })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+    const replacementCreatedAt = new Date();
+    const providerSucceededAt = new Date(replacementCreatedAt.getTime() + 1);
+    const lifecycleCommittedAt = new Date(replacementCreatedAt.getTime() + 2);
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        state: "provider_succeeded",
+        provider_started_at: replacementCreatedAt,
+        locator_container_id: RESTORE_CONTAINER_ID,
+        locator_container_recorded_at: replacementCreatedAt,
+        provider_succeeded_at: providerSucceededAt,
+        provider_receipt_digest: SHA,
+        updated_at: providerSucceededAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
     await dbWrite
       .update(agentSandboxes)
       .set({
-        lifecycle_revision: 8,
+        lifecycle_revision: 9,
         activation_generation: TARGET_ACTIVATION_GENERATION,
         activation_previous_generation: ACTIVATION_GENERATION,
-        activation_lifecycle_revision: 8n,
+        activation_lifecycle_revision: 9n,
         activation_purpose: "restore",
         activation_phase: "restart_attested",
         activation_backup_id: BACKUP_ID,
@@ -1351,7 +1838,7 @@ describe("strict restore catalogue authority", () => {
           purpose: "restore",
           agentId: AGENT_ID,
           organizationId: ORG_ID,
-          lifecycleRevision: "8",
+          lifecycleRevision: "9",
           backupId: BACKUP_ID,
           backupHash: exact.manifest.integrity.manifestSha256,
           manifestHash: exact.manifest.integrity.manifestSha256,
@@ -1379,6 +1866,13 @@ describe("strict restore catalogue authority", () => {
         activation_completed_at: null,
       })
       .where(eq(agentSandboxes.id, AGENT_ID));
+
+    const enrichedSeedReplay = await recordAgentVaultKeySeedReceipt(seedInput);
+    expect(enrichedSeedReplay).toMatchObject({
+      replayed: true,
+      receipt: { id: SEED_RECEIPT_ID },
+      operation: { phase: "container_created", expected_container_id: RESTORE_CONTAINER_ID },
+    });
 
     const publicationInput = {
       publicationId: ACTIVATION_PUBLICATION_ID,
@@ -1411,58 +1905,6 @@ describe("strict restore catalogue authority", () => {
       .update(agentSandboxes)
       .set({ activation_boot_id: TARGET_NODE_INCARNATION })
       .where(eq(agentSandboxes.id, AGENT_ID));
-    const seedInput = {
-      receiptId: SEED_RECEIPT_ID,
-      receiptDigest: CONTENT_SHA,
-      organizationId: ORG_ID,
-      agentId: AGENT_ID,
-      backupId: BACKUP_ID,
-      restoreAttemptId: RESTORE_ATTEMPT_ID,
-      leaseId: acquired.authority.leaseId,
-      leaseOwnerId: acquired.authority.ownerId,
-      leaseFencingToken: acquired.authority.fencingToken,
-      targetActivationGeneration: TARGET_ACTIVATION_GENERATION,
-      targetNodeRecordId: TARGET_NODE_RECORD_ID,
-      targetNodeIncarnation: TARGET_NODE_INCARNATION,
-      targetNodeHistoryId: restoreTargetHistoryId,
-    } as const;
-    await expect(
-      recordAgentVaultKeySeedReceipt({
-        ...seedInput,
-        receiptId: "00000000-0000-4000-8000-00000000d052",
-        targetNodeIncarnation: "00000000-0000-4000-8000-00000000d050",
-      }),
-    ).rejects.toThrow("durable operation target");
-    // The seed receipt is append-only (0250), so a stale catalogue epoch must be
-    // refused BEFORE the row exists rather than left as an unremovable record.
-    const [epochBefore] = await dbWrite
-      .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
-      .from(agentBackupCatalogAuthorities)
-      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
-    if (!epochBefore) throw new Error("Expected vault-created catalogue authority");
-    await dbWrite
-      .update(agentBackupCatalogAuthorities)
-      .set({ catalog_revision: epochBefore.revision + 1n })
-      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
-    await expect(recordAgentVaultKeySeedReceipt(seedInput)).rejects.toThrow(
-      "lost its exact live restore lease",
-    );
-    const [seedAfterStaleEpoch] = await dbWrite
-      .select({ id: agentVaultKeySeedReceipts.id })
-      .from(agentVaultKeySeedReceipts)
-      .where(eq(agentVaultKeySeedReceipts.id, SEED_RECEIPT_ID));
-    expect(seedAfterStaleEpoch).toBeUndefined();
-    await dbWrite
-      .update(agentBackupCatalogAuthorities)
-      .set({ catalog_revision: epochBefore.revision })
-      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
-
-    const [seedFirst, seedReplay] = await Promise.all([
-      recordAgentVaultKeySeedReceipt(seedInput),
-      recordAgentVaultKeySeedReceipt(seedInput),
-    ]);
-    expect([seedFirst.replayed, seedReplay.replayed].sort()).toEqual([false, true]);
-    expect(seedFirst.receipt.lease_expires_at).toEqual(acquired.authority.expiresAt);
 
     const dispatchedAt = new Date(publicationFirst.publication.published_at.getTime() + 1_000);
     const activatedAt = new Date(dispatchedAt.getTime() + 1_000);
@@ -1487,12 +1929,73 @@ describe("strict restore catalogue authority", () => {
       agentId: AGENT_ID,
       backupId: BACKUP_ID,
       restoreAttemptId: RESTORE_ATTEMPT_ID,
+      replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
       seedReceiptId: SEED_RECEIPT_ID,
-      seedReceiptDigest: CONTENT_SHA,
+      seedReceiptDigest: VAULT_SEED_RECEIPT_DIGEST,
       activationPublicationId: ACTIVATION_PUBLICATION_ID,
       targetActivationGeneration: TARGET_ACTIVATION_GENERATION,
       expectedActivationReceiptSha256: RECEIPT_SHA,
     } as const;
+
+    await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
+      "exact adopted replacement authority",
+    );
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        state: "lifecycle_committed",
+        lifecycle_committed_at: lifecycleCommittedAt,
+        lifecycle_receipt_digest: CIPHERTEXT_SHA,
+        updated_at: lifecycleCommittedAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+
+    const cleanedReplacementAttemptId = "00000000-0000-4000-8000-00000000d073";
+    const cleanedSeedReceiptId = "00000000-0000-4000-8000-00000000d074";
+    const cleanedSeedReceiptDigest = buildRestoreVolumeVaultSeedReceiptV1({
+      agentId: AGENT_ID,
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      replacementAttemptId: cleanedReplacementAttemptId,
+      passphraseByteLength: AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+    }).receiptDigest;
+    const cleanedAt = new Date(lifecycleCommittedAt.getTime() + 1);
+    await dbWrite.insert(agentSandboxReplacementAttempts).values({
+      ...intent.attempt,
+      id: cleanedReplacementAttemptId,
+      state: "cleanup_proven",
+      provider_started_at: null,
+      locator_container_id: null,
+      locator_container_recorded_at: null,
+      provider_succeeded_at: null,
+      provider_receipt_digest: null,
+      lifecycle_committed_at: null,
+      lifecycle_receipt_digest: null,
+      cleanup_proven_at: cleanedAt,
+      cleanup_receipt_digest: CIPHERTEXT_SHA,
+      updated_at: cleanedAt,
+    });
+    await dbWrite.insert(agentVaultKeySeedReceipts).values({
+      ...seedFirst.receipt,
+      id: cleanedSeedReceiptId,
+      replacement_attempt_id: cleanedReplacementAttemptId,
+      receipt_digest: cleanedSeedReceiptDigest,
+      seeded_at: cleanedAt,
+    });
+    await expect(
+      commitAgentBackupRestore({
+        ...finalInput,
+        seedReceiptId: cleanedSeedReceiptId,
+        seedReceiptDigest: cleanedSeedReceiptDigest,
+      }),
+    ).rejects.toThrow("Final restore chain differs from source, seed, or activation publication");
+    await expect(
+      commitAgentBackupRestore({
+        ...finalInput,
+        replacementAttemptId: cleanedReplacementAttemptId,
+        seedReceiptId: cleanedSeedReceiptId,
+        seedReceiptDigest: cleanedSeedReceiptDigest,
+      }),
+    ).rejects.toThrow("exact adopted replacement authority");
 
     const originalLeaseExpiry = acquired.authority.expiresAt;
     await dbWrite
@@ -1621,6 +2124,7 @@ describe("strict restore catalogue authority", () => {
       infrastructure_provider: "hetzner",
       provider_server_id: null,
       node_incarnation: TARGET_NODE_INCARNATION,
+      metadata: { architecture: "amd64" },
     });
     if (!targetA1.current_node_history_id) throw new Error("target A1 token is missing");
     const acquired = await acquireAgentBackupRestoreLease({
@@ -1652,6 +2156,26 @@ describe("strict restore catalogue authority", () => {
       targetNodeRecordId: TARGET_NODE_RECORD_ID,
       targetNodeIncarnation: TARGET_NODE_INCARNATION,
       targetNodeHistoryId: targetA1.current_node_history_id,
+    });
+    await dbWrite.insert(agentSandboxReplacementAttempts).values({
+      id: REPLACEMENT_ATTEMPT_ID,
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      operation_kind: "provision",
+      lifecycle_revision: 8n,
+      activation_generation: RESTORE_ATTEMPT_ID,
+      restore_lease_id: acquired.authority.leaseId,
+      restore_backup_id: BACKUP_ID,
+      restore_attempt_id: RESTORE_ATTEMPT_ID,
+      restore_lease_owner_id: acquired.authority.ownerId,
+      restore_lease_generation: acquired.authority.fencingToken,
+      restore_catalog_epoch: BigInt(acquired.authority.catalogEpoch),
+      restore_copy_role: "primary",
+      restore_operation_id: OPERATION_ID,
+      restore_source_activation_generation: ACTIVATION_GENERATION,
+      restore_source_lifecycle_revision: 7n,
+      restore_manifest_sha256: exact.manifest.integrity.manifestSha256,
+      restore_lease_expires_at: acquired.authority.expiresAt,
     });
     await dbWrite
       .update(agentBackupRestoreOperations)
@@ -1724,21 +2248,26 @@ describe("strict restore catalogue authority", () => {
     );
     const seedInput = {
       receiptId: SEED_RECEIPT_ID,
-      receiptDigest: CONTENT_SHA,
+      receiptDigest: VAULT_SEED_RECEIPT_DIGEST,
       organizationId: ORG_ID,
       agentId: AGENT_ID,
       backupId: BACKUP_ID,
       restoreAttemptId: RESTORE_ATTEMPT_ID,
+      replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
       leaseId: acquired.authority.leaseId,
       leaseOwnerId: acquired.authority.ownerId,
       leaseFencingToken: acquired.authority.fencingToken,
+      restoreOperationId: opened.operation.id,
+      restoreClaimGeneration: claimed.claimGeneration,
       targetActivationGeneration: TARGET_ACTIVATION_GENERATION,
       targetNodeRecordId: TARGET_NODE_RECORD_ID,
       targetNodeIncarnation: TARGET_NODE_INCARNATION,
       targetNodeHistoryId: a2HistoryId,
+      targetImageDigest: `sha256:${SHA}`,
+      expectedActivationTokenSha256: SHA,
     } as const;
     await expect(recordAgentVaultKeySeedReceipt(seedInput)).rejects.toThrow(
-      "durable operation target",
+      "operation differs from its exact source, lease, or target authority",
     );
 
     const [publication] = await dbWrite
@@ -1768,7 +2297,7 @@ describe("strict restore catalogue authority", () => {
     if (!publication) throw new Error("adversarial A2 publication fixture is missing");
     await dbWrite.insert(agentVaultKeySeedReceipts).values({
       id: SEED_RECEIPT_ID,
-      receipt_digest: CONTENT_SHA,
+      receipt_digest: VAULT_SEED_RECEIPT_DIGEST,
       organization_id: ORG_ID,
       agent_id: AGENT_ID,
       backup_id: BACKUP_ID,
@@ -1781,6 +2310,7 @@ describe("strict restore catalogue authority", () => {
       source_activation_generation: ACTIVATION_GENERATION,
       source_lifecycle_revision: 7n,
       manifest_sha256: exact.manifest.integrity.manifestSha256,
+      replacement_attempt_id: REPLACEMENT_ATTEMPT_ID,
       vault_key_generation_id: generation.authority.generationId,
       vault_key_authority_receipt_digest: generation.authority.receiptDigest,
       target_activation_generation: TARGET_ACTIVATION_GENERATION,
@@ -1810,8 +2340,9 @@ describe("strict restore catalogue authority", () => {
         agentId: AGENT_ID,
         backupId: BACKUP_ID,
         restoreAttemptId: RESTORE_ATTEMPT_ID,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
         seedReceiptId: SEED_RECEIPT_ID,
-        seedReceiptDigest: CONTENT_SHA,
+        seedReceiptDigest: VAULT_SEED_RECEIPT_DIGEST,
         activationPublicationId: ACTIVATION_PUBLICATION_ID,
         targetActivationGeneration: TARGET_ACTIVATION_GENERATION,
         expectedActivationReceiptSha256: RECEIPT_SHA,
@@ -1876,6 +2407,7 @@ describe("strict restore catalogue authority", () => {
       ".from(agentSandboxBackups)",
       ".from(agentBackupRestoreOperations)",
       ".from(agentBackupRestoreLeases)",
+      ".from(agentSandboxes)",
       ".from(dockerNodes)",
       "proveExactAgentNodeOccurrenceForLockedNode(",
       "lockAgentBackupCatalogAuthority(",
@@ -1884,7 +2416,7 @@ describe("strict restore catalogue authority", () => {
   });
 
   test("unwraps the manifest-retained vault generation after current authority rotates", async () => {
-    const fixture = await acquireVaultPassphraseFixture(0x47);
+    const fixture = await acquireVaultPassphraseFixture(0x47, { openQuarantine: false });
     const rotated = await createOrRotateAgentVaultKeyGeneration(
       {
         organizationId: ORG_ID,
@@ -1899,6 +2431,7 @@ describe("strict restore catalogue authority", () => {
       },
     );
     rotated.secret.release();
+    await setVaultPassphraseQuarantineFixture(fixture.input.expectedManifestSha256);
     let borrowedPassphrase: Uint8Array | null = null;
 
     const passphraseText = await withAgentBackupRestoreVaultPassphrase(
@@ -1935,6 +2468,7 @@ describe("strict restore catalogue authority", () => {
       { ...fixture.input, targetNodeRecordId: "00000000-0000-4000-8000-00000000d062" },
       { ...fixture.input, targetNodeIncarnation: "00000000-0000-4000-8000-00000000d063" },
       { ...fixture.input, targetNodeHistoryId: "00000000-0000-4000-8000-00000000d064" },
+      { ...fixture.input, expectedActivationTokenSha256: "f".repeat(64) },
     ] as const;
     try {
       for (const input of mismatches) {
@@ -1951,6 +2485,64 @@ describe("strict restore catalogue authority", () => {
       expect(useCalls).toBe(0);
     } finally {
       decryptSpy.mockRestore();
+    }
+  });
+
+  test("rejects vault material before the container-pending quarantine is open", async () => {
+    const fixture = await acquireVaultPassphraseFixture(0x43, { openQuarantine: false });
+    const decryptSpy = spyOn(fixture.kms, "decrypt");
+    let useCalls = 0;
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          () => {
+            useCalls += 1;
+          },
+          { kmsClient: fixture.kms },
+        ),
+      ).rejects.toThrow("container-pending quarantine authority");
+      expect(decryptSpy).toHaveBeenCalledTimes(0);
+      expect(useCalls).toBe(0);
+    } finally {
+      decryptSpy.mockRestore();
+    }
+  });
+
+  test("revalidates quarantine after KMS and zeroizes when mutable authority drifts", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    const secretRelease = captureVaultRawKeyAtRelease();
+    const originalDecrypt = fixture.kms.decrypt.bind(fixture.kms);
+    let borrowedPlaintext: Uint8Array | null = null;
+    let useCalls = 0;
+    const decryptSpy = spyOn(fixture.kms, "decrypt").mockImplementation(
+      async (keyId, ciphertext, nonce, authTag, aad, keyVersion) => {
+        const plaintext = await originalDecrypt(keyId, ciphertext, nonce, authTag, aad, keyVersion);
+        borrowedPlaintext = plaintext;
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ activation_token_hash: RECEIPT_SHA })
+          .where(eq(agentSandboxes.id, AGENT_ID));
+        return plaintext;
+      },
+    );
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          () => {
+            useCalls += 1;
+          },
+          { kmsClient: fixture.kms },
+        ),
+      ).rejects.toThrow("container-pending quarantine authority");
+      expect(decryptSpy).toHaveBeenCalledTimes(1);
+      expect(useCalls).toBe(0);
+      expect(isZeroized(borrowedPlaintext)).toBe(true);
+      expect(isZeroized(secretRelease.rawKey)).toBe(true);
+    } finally {
+      decryptSpy.mockRestore();
+      secretRelease.restore();
     }
   });
 
@@ -2315,6 +2907,59 @@ describe("strict restore catalogue authority", () => {
       expect(isZeroized(borrowedPassphrase)).toBe(true);
       expect(isZeroized(secretRelease.rawKey)).toBe(true);
     } finally {
+      secretRelease.restore();
+    }
+  });
+
+  test("keeps restore authority locked after timeout until the aborted handoff settles", async () => {
+    const fixture = await acquireVaultPassphraseFixture(0x4c);
+    const secretRelease = captureVaultRawKeyAtRelease();
+    const callbackStarted = Promise.withResolvers<void>();
+    const abortObserved = Promise.withResolvers<void>();
+    const allowLateSettlement = Promise.withResolvers<void>();
+    let borrowedPassphrase: Uint8Array | null = null;
+    let releaseSettled = false;
+    let releasePromise: Promise<unknown> | undefined;
+    const handoffOutcome = withAgentBackupRestoreVaultPassphrase(
+      fixture.input,
+      async (passphrase, signal) => {
+        borrowedPassphrase = passphrase;
+        signal.addEventListener("abort", () => abortObserved.resolve(), { once: true });
+        callbackStarted.resolve();
+        await allowLateSettlement.promise;
+        return "late-success-must-not-escape";
+      },
+      { kmsClient: fixture.kms, handoffTimeoutMs: 10 },
+    ).then(
+      (value) => ({ status: "fulfilled" as const, value }),
+      (error: unknown) => ({ status: "rejected" as const, error }),
+    );
+    try {
+      await callbackStarted.promise;
+      await abortObserved.promise;
+      releasePromise = releaseAgentBackupRestoreLease(fixture.input).then((value) => {
+        releaseSettled = true;
+        return value;
+      });
+      await Bun.sleep(25);
+      expect(releaseSettled).toBe(false);
+      expect(isZeroized(borrowedPassphrase)).toBe(true);
+      expect(isZeroized(secretRelease.rawKey)).toBe(true);
+
+      allowLateSettlement.resolve();
+      const outcome = await handoffOutcome;
+      expect(outcome.status).toBe("rejected");
+      if (outcome.status !== "rejected") {
+        throw new Error(`timed-out handoff unexpectedly returned ${outcome.value}`);
+      }
+      expect(outcome.error).toMatchObject({ code: "AGENT_VAULT_KEY_HANDOFF_TIMEOUT" });
+      await releasePromise;
+      expect(releaseSettled).toBe(true);
+      expect(isZeroized(borrowedPassphrase)).toBe(true);
+      expect(isZeroized(secretRelease.rawKey)).toBe(true);
+    } finally {
+      allowLateSettlement.resolve();
+      await Promise.allSettled([handoffOutcome, ...(releasePromise ? [releasePromise] : [])]);
       secretRelease.restore();
     }
   });

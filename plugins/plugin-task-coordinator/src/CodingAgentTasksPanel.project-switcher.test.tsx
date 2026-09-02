@@ -66,6 +66,39 @@ vi.mock("@elizaos/ui", () => ({
       {children}
     </button>
   ),
+  Card: ({
+    children,
+    ...rest
+  }: { children: ReactNode } & Record<string, unknown>) => (
+    <div {...rest}>{children}</div>
+  ),
+  Input: (props: Record<string, unknown>) => <input {...props} />,
+  Separator: (props: Record<string, unknown>) => <div {...props} />,
+  StatusPulseDot: (props: Record<string, unknown>) => <span {...props} />,
+  DropdownMenu: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuContent: ({
+    children,
+    ...rest
+  }: { children: ReactNode } & Record<string, unknown>) => (
+    <div {...rest}>{children}</div>
+  ),
+  DropdownMenuItem: ({
+    children,
+    onSelect,
+    ...rest
+  }: {
+    children: ReactNode;
+    onSelect?: () => void;
+  } & Record<string, unknown>) => (
+    <button type="button" onClick={() => onSelect?.()} {...rest}>
+      {children}
+    </button>
+  ),
   ChatEmptyStateWithRecommendations: ({
     title,
     testId,

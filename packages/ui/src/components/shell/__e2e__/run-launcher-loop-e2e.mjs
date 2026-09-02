@@ -231,6 +231,14 @@ const stubElizaCore = {
                 : priority === "low"
                   ? "silent"
                   : "digest",
+            roleRank: (role) => ({
+              NONE: 0,
+              GUEST: 1,
+              USER: 2,
+              MEMBER: 2,
+              ADMIN: 3,
+              OWNER: 4,
+            })[String(role).trim().toUpperCase()] ?? 0,
           },
           { get: (t, p) => (p in t ? t[p] : noop) },
         );

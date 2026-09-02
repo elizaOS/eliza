@@ -380,7 +380,7 @@ describeLocalWorker("Group D — /api/v1/voice/session/ws", () => {
 });
 
 describeE2E("Group D — /api/v1/responses", () => {
-  const traceId = "16098110-0000-4000-8000-000000000110";
+  const traceId = "16098110000040008000000000000110";
 
   test("auth gate: missing credentials → 401", async () => {
     const res = await api.post(

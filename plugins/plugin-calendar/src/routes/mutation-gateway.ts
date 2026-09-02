@@ -10,6 +10,7 @@ import type {
   CreateLifeOpsCalendarEventResponse,
   CreateLifeOpsLinkedCalendarLinkRequest,
   DisconnectLifeOpsLinkedCalendarRequest,
+  LifeOpsCalendarAllDayRange,
   LifeOpsCalendarCancellationMode,
   LifeOpsCalendarEvent,
   LifeOpsCalendarEventCancellationResult,
@@ -42,6 +43,7 @@ export interface CalendarOwnerMutationGateway {
       location?: string;
       startAt?: string;
       endAt?: string;
+      allDay?: LifeOpsCalendarAllDayRange;
       timeZone?: string;
       attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
       recurrence?: string[] | null;

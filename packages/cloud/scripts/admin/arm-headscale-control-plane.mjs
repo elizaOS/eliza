@@ -1122,9 +1122,12 @@ echo "public Headscale overlap is healthy on one exact dual-SAN leaf"
 // The CP enrolls ITSELF against its local headscale as cp-<env>-router with
 // tag:eliza-proxy (owned by the 'tunnel' user in acl.hujson). This is what lets
 // the daemon on the CP reach agent tag:agent 100.64.x IPs. Previously a manual
-// `tailscale up` per CP (the DR gap). Idempotent: skips if a node with this
-// hostname is already enrolled. headscale v0.28's `preauthkeys create -u` takes
-// a numeric USER ID, not a username, so we resolve tunnel→id from users list.
+// `tailscale up` per CP (the DR gap). Idempotence requires BOTH the durable
+// Headscale node and the local daemon's live identity/control URL: a database
+// row alone can survive while tailscaled remains signed into a retired server,
+// producing a split tailnet where agents register but the CP has no route to
+// them. headscale v0.28's `preauthkeys create -u` takes a numeric USER ID, not a
+// username, so we resolve tunnel→id from users list.
 const cpRouterSteps = skipCpRouter
   ? `echo "skip-cp-router set: leaving CP tailscale enrollment untouched"`
   : `
@@ -1135,41 +1138,94 @@ LOGIN_SERVER=${shellQuote(publicUrl)}
 command -v tailscale >/dev/null 2>&1 || curl -fsSL https://tailscale.com/install.sh | sh
 sudo systemctl enable --now tailscaled
 
-# Already enrolled under this hostname? (matches the live cp-router node by
-# headscale node 'name'). If so, this whole step is a no-op.
-if sudo headscale nodes list -o json 2>/dev/null \\
-    | jq -e --arg h "$CP_ROUTER_HOST" 'any(.[]; .name == $h)' >/dev/null 2>&1; then
-  echo "CP router enrollment already present (category=cp-router-already-enrolled)"
+NODE_ROWS=$(sudo headscale nodes list -o json 2>/dev/null \\
+  | jq -c --arg h "$CP_ROUTER_HOST" '[.[] | select(.name == $h)]')
+NODE_COUNT=$(jq -r 'length' <<<"$NODE_ROWS")
+[ "$NODE_COUNT" -le 1 ] || { echo "CP router durable identity is ambiguous (category=cp-router-identity-ambiguous)"; exit 1; }
+
+STATUS_JSON=$(sudo tailscale status --json 2>/dev/null || true)
+PREFS_JSON=$(sudo tailscale debug prefs 2>/dev/null || true)
+LOCAL_IDENTITY_READY=false
+CONTROL_URL_MATCH=false
+if jq -e --arg h "$CP_ROUTER_HOST" '
+    .BackendState == "Running" and
+    ((.Self.HostName // "") == $h or ((.Self.DNSName // "") | rtrimstr(".")) == $h)
+  ' <<<"$STATUS_JSON" >/dev/null 2>&1; then
+  LOCAL_IDENTITY_READY=true
+fi
+CONTROL_URL=$(jq -r '.ControlURL // ""' <<<"$PREFS_JSON" 2>/dev/null || true)
+if [ "\${CONTROL_URL%/}" = "\${LOGIN_SERVER%/}" ]; then
+  CONTROL_URL_MATCH=true
+fi
+
+# A database row is necessary but not sufficient. Skip only when the local
+# daemon proves it is running as the reviewed hostname against this exact
+# environment's canonical Headscale origin.
+if [ "$NODE_COUNT" -eq 1 ] \\
+    && [ "$LOCAL_IDENTITY_READY" = true ] \\
+    && [ "$CONTROL_URL_MATCH" = true ]; then
+  echo "CP router enrollment already converged (category=cp-router-already-enrolled)"
 else
   # Resolve the 'tunnel' user id (preauthkeys create -u wants a uint in v0.28).
   TUNNEL_UID=$(sudo headscale users list -o json 2>/dev/null \\
     | jq -r '.[] | select(.name == "tunnel") | .id')
   [ -n "$TUNNEL_UID" ] || { echo "required Headscale role is absent (category=cp-router-role-missing)"; exit 1; }
 
-  # Short-lived, single-use, pre-tagged preauth key. Tagged tag:eliza-proxy so
-  # the node lands tagged at join (ownership enforced by acl.hujson tagOwners).
+  # Short-lived, single-use, pre-tagged preauth key. The key is the sole tag
+  # authority for this non-interactive join: Headscale rejects a client-side
+  # --advertise-tags request when a preauth key already supplies the tags.
   PREAUTH_KEY=$(sudo headscale preauthkeys create -u "$TUNNEL_UID" \\
     --tags tag:eliza-proxy --expiration 1h -o json 2>/dev/null | jq -r '.key')
   [ -n "$PREAUTH_KEY" ] || { echo "CP router enrollment credential could not be minted (category=cp-router-key-failed)"; exit 1; }
 
-  # This branch already proved the expected router is absent and minted a
-  # fresh, single-use key. Force reauthentication so a daemon still signed in
-  # to the legacy login server can move to the canonical Headscale origin.
-  sudo tailscale up \\
-    --force-reauth \\
-    --login-server="$LOGIN_SERVER" \\
-    --authkey="$PREAUTH_KEY" \\
-    --hostname="$CP_ROUTER_HOST" \\
-    --advertise-tags=tag:eliza-proxy \\
-    --accept-routes >/dev/null 2>&1
+  # Retire only the exact reviewed hostname on the current Headscale authority.
+  # The row is allowed to exist while the local daemon is stale, but leaving it
+  # behind lets a replacement acquire an ambiguous name/identity. NODE_COUNT is
+  # bounded above, and the numeric identifier is validated before deletion.
+  if [ "$NODE_COUNT" -eq 1 ]; then
+    STALE_NODE_ID=$(jq -r '.[0].id' <<<"$NODE_ROWS")
+    [[ "$STALE_NODE_ID" =~ ^[1-9][0-9]*$ ]] || { echo "CP router node identifier is invalid (category=cp-router-node-id-invalid)"; exit 1; }
+    sudo headscale nodes delete --identifier "$STALE_NODE_ID" --force >/dev/null
+    echo "CP router stale durable identity retired (category=cp-router-stale-node-retired)"
+  fi
+
+  # Force reauthentication so a daemon still signed in to the legacy login
+  # server moves to the canonical Headscale origin with the fresh single-use
+  # credential. Logout is best-effort because an unreachable retired control
+  # server must not prevent the forced local reauthentication below.
+  sudo tailscale logout >/dev/null 2>&1 || true
+  if ! sudo tailscale up \\
+      --reset \\
+      --force-reauth \\
+      --login-server="$LOGIN_SERVER" \\
+      --authkey="$PREAUTH_KEY" \\
+      --hostname="$CP_ROUTER_HOST" \\
+      --accept-routes >/dev/null 2>&1; then
+    echo "CP router forced reauthentication failed (category=cp-router-reauth-failed)"
+    exit 1
+  fi
   echo "CP router enrollment completed (category=cp-router-enrolled)"
 fi
 
-if sudo tailscale status 2>/dev/null | grep -F "$CP_ROUTER_HOST" >/dev/null; then
-  echo "CP router visibility check passed (category=cp-router-visible)"
-else
-  echo "WARN: CP router visibility is pending (category=cp-router-visibility-pending)"
-fi
+FINAL_STATUS_JSON=$(sudo tailscale status --json 2>/dev/null || true)
+FINAL_PREFS_JSON=$(sudo tailscale debug prefs 2>/dev/null || true)
+FINAL_CONTROL_URL=$(jq -r '.ControlURL // ""' <<<"$FINAL_PREFS_JSON" 2>/dev/null || true)
+jq -e --arg h "$CP_ROUTER_HOST" '
+  .BackendState == "Running" and
+  ((.Self.HostName // "") == $h or ((.Self.DNSName // "") | rtrimstr(".")) == $h) and
+  ((.Self.TailscaleIPs // []) | length > 0)
+' <<<"$FINAL_STATUS_JSON" >/dev/null 2>&1 \\
+  || { echo "CP router live identity proof failed (category=cp-router-live-proof-failed)"; exit 1; }
+[ "\${FINAL_CONTROL_URL%/}" = "\${LOGIN_SERVER%/}" ] \\
+  || { echo "CP router control URL proof failed (category=cp-router-control-url-mismatch)"; exit 1; }
+FINAL_NODE_COUNT=$(sudo headscale nodes list -o json 2>/dev/null \\
+  | jq -r --arg h "$CP_ROUTER_HOST" '[.[] | select(.name == $h)] | length')
+[ "$FINAL_NODE_COUNT" -eq 1 ] \\
+  || { echo "CP router durable identity proof failed (category=cp-router-durable-proof-failed)"; exit 1; }
+echo "CP router live identity and canonical control URL verified (category=cp-router-visible)"
+unset NODE_ROWS NODE_COUNT STATUS_JSON PREFS_JSON LOCAL_IDENTITY_READY CONTROL_URL_MATCH \\
+  CONTROL_URL TUNNEL_UID PREAUTH_KEY STALE_NODE_ID FINAL_STATUS_JSON FINAL_PREFS_JSON \\
+  FINAL_CONTROL_URL FINAL_NODE_COUNT
 `;
 
 const legacyVhostInspectionRemote = `

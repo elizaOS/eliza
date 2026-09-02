@@ -17,6 +17,7 @@ import {
   test,
 } from "bun:test";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { decodeJwt, decodeProtectedHeader, jwtVerify, SignJWT } from "jose";
@@ -534,6 +535,23 @@ beforeAll(async () => {
     dbWrite as never,
   );
   await apply();
+  // The origin session path loads the admission snapshot, which reads the
+  // entitlement projection. Apply the real subscription authority migrations
+  // rather than a schema push: their composite foreign keys depend on unique
+  // indexes that drizzle-kit orders after the constraints.
+  const { getPgliteClientForTests } = await import("@/db/client");
+  for (const name of [
+    "0373_subscription_authority.sql",
+    "0374_subscription_funding_transaction_uniqueness.sql",
+  ]) {
+    const migration = await readFile(
+      new URL(`../../shared/src/db/migrations/${name}`, import.meta.url),
+      "utf8",
+    );
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await getPgliteClientForTests().exec(statement);
+    }
+  }
 
   app = (await import("../auth/staging-session-exchange/route")).default;
   legacySsoApp = (await import("../auth/sso-bridge/route")).default;
@@ -961,6 +979,7 @@ describe("mint authentication and existing-subject eligibility", () => {
           .update(schemas.apiKeys)
           .set({ deleted_at: new Date() })
           .where(eq(schemas.apiKeys.id, API_KEY_ID)),
+      expectedStatus: 401,
     },
     {
       name: "inactive user",
@@ -1519,6 +1538,7 @@ describe("full/thin verifier env and outer cookie-cache revocation", () => {
         apiKeyId: null,
         stewardUserId: STEWARD_USER_ID,
         admission: {
+          subscriptionFunded: false,
           balance: {
             balanceUsd: 100,
             balanceAt: Date.now(),

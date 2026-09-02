@@ -10,7 +10,9 @@ import {
   buildAgentContainerLabelFlags,
   buildDockerContainerEnvTransport,
   buildDockerCreateWithSecretEnvCommand,
+  buildExactRestoreStagingVolumeCleanupCommand,
   buildReplacementCandidateObservedCommand,
+  buildReplacementCreatedContainerIdProofCommand,
   buildReplacementSecretArtifactsCleanupCommand,
   buildVolumeVaultPassphraseCommand,
   CONTAINER_DURABLE_STATE_DIR,
@@ -19,7 +21,10 @@ import {
   extractDockerCreateContainerId,
   getContainerName,
   getContainerSecretEnvPath,
+  getExactRestoreStagingVolumeCleanupReceipt,
   getReplacementCandidateObservedReceipt,
+  getReplacementControlSecretEnvPath,
+  getReplacementControlVaultPassphrasePath,
   getReplacementDockerCreateQuiescentReceipt,
   getReplacementSecretArtifactsCleanupReceipt,
   getVolumePath,
@@ -35,6 +40,8 @@ import {
   resolveStewardContainerUrl,
   resolveVpnTeardown,
   shellQuote,
+  VOLUME_VAULT_STDIN_FRAME_END,
+  VOLUME_VAULT_STDIN_FRAME_VERSION,
   validateAgentId,
   validateContainerName,
   validateEnvKey,
@@ -310,12 +317,13 @@ describe("secret container environment transport (#22060)", () => {
     const containerName = getContainerName(agentId);
     const volumePath = getVolumePath(agentId);
     const attemptId = "33333333-3333-4333-8333-333333333333";
-    const secretEnvPath = getContainerSecretEnvPath(volumePath, attemptId);
+    const secretEnvPath = getReplacementControlSecretEnvPath(attemptId);
+    const vaultSnapshotPath = getReplacementControlVaultPassphrasePath(attemptId);
     const vaultCommand = buildVolumeVaultPassphraseCommand(volumePath, 0, attemptId);
     const dockerCommand = buildDockerCreateWithSecretEnvCommand({
       dockerCreateCommand: `docker create --env-file ${shellQuote(secretEnvPath)} image:latest`,
       secretEnvPath,
-      vaultPassphrasePath: getVolumeVaultPassphrasePath(volumePath),
+      vaultPassphrasePath: vaultSnapshotPath,
       exactReplacement: { containerName, replacementAttemptId: attemptId },
     });
     const cleanupCommand = buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId);
@@ -324,18 +332,21 @@ describe("secret container environment transport (#22060)", () => {
     for (const producer of [vaultCommand, dockerCommand]) {
       expect(producer).toContain("flock -w 30 9");
       expect(producer).toContain('test ! -e "$attempt_cancelled"');
-      expect(producer.indexOf("attempt_cancelled")).toBeLessThan(producer.indexOf("cat >"));
+      expect(producer).not.toMatch(/cat >\s*["']?\$/);
+      expect(producer).not.toMatch(/sed [^;]+ > /);
     }
-    expect(vaultCommand).not.toContain(': > "$attempt_active"');
-    expect(dockerCommand).toContain(': > "$attempt_active"');
-    expect(vaultCommand).toContain(`.vault-passphrase.stdin.${attemptId}`);
+    expect(vaultCommand).not.toContain('secure_reset_control_file "$attempt_active"');
+    expect(dockerCommand).toContain('secure_reset_control_file "$attempt_active"');
+    expect(dockerCommand).not.toContain("stat -Lf");
+    expect(vaultCommand).toContain(`/replacement-attempts/${attemptId}/vault-stdin`);
     expect(vaultCommand).not.toContain(".$$;");
-    expect(cleanupCommand.indexOf("attempt_cancelled")).toBeLessThan(
-      cleanupCommand.indexOf("rm -f --"),
+    expect(cleanupCommand.indexOf('secure_reset_control_file "$attempt_cancelled"')).toBeLessThan(
+      cleanupCommand.indexOf(`rm -f -- '${secretEnvPath}'`),
     );
     expect(cleanupCommand).toContain(secretEnvPath);
+    expect(cleanupCommand).toContain(vaultSnapshotPath);
     for (const kind of ["stdin", "override", "generated", "normalized"]) {
-      expect(cleanupCommand).toContain(`.vault-passphrase.${kind}.${attemptId}`);
+      expect(cleanupCommand).toContain(`/replacement-attempts/${attemptId}/vault-${kind}`);
     }
     expect(cleanupCommand).toContain("if test -e");
     expect(cleanupCommand).toContain("|| test -L");
@@ -345,10 +356,179 @@ describe("secret container environment transport (#22060)", () => {
     expect(candidateCommand).toContain(
       getReplacementCandidateObservedReceipt(attemptId, "a".repeat(64)),
     );
-    expect(candidateCommand).toContain('test -f "$attempt_cancelled"');
+    expect(candidateCommand).toContain('secure_private_regular_file_proof "$attempt_cancelled" 75');
   });
 
-  test("executes the exact tombstone protocol and keeps Docker ambiguity fail-closed", async () => {
+  test("fences restore-staging env input and durably records the full Docker ID", () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const restoreAttemptId = "22222222-2222-4222-8222-222222222222";
+    const replacementAttemptId = "33333333-3333-4333-8333-333333333333";
+    const containerName = `agent-restore-${agentId}-${restoreAttemptId}`;
+    const volumePath = `/data/agents/.restore/${agentId}/${restoreAttemptId}`;
+    const secretEnvPath = getReplacementControlSecretEnvPath(replacementAttemptId);
+    const createCommand = buildDockerCreateWithSecretEnvCommand({
+      dockerCreateCommand: "docker create image@sha256:deadbeef",
+      secretEnvPath,
+      vaultPassphrasePath: getReplacementControlVaultPassphrasePath(replacementAttemptId),
+      exactReplacement: {
+        containerName,
+        replacementAttemptId,
+        volumePath,
+        recordContainerId: true,
+      },
+    });
+    const cleanupCommand = buildReplacementSecretArtifactsCleanupCommand(
+      containerName,
+      replacementAttemptId,
+      volumePath,
+    );
+    const proofCommand = buildReplacementCreatedContainerIdProofCommand(replacementAttemptId);
+    const volumeCleanupCommand = buildExactRestoreStagingVolumeCleanupCommand(
+      containerName,
+      replacementAttemptId,
+      volumePath,
+    );
+
+    expect(createCommand).toContain('secure_reset_control_file "$attempt_active"');
+    expect(createCommand).toContain("candidate_id=$(docker create");
+    expect(createCommand).toContain('test "${#candidate_id}" = 64');
+    expect(createCommand).toContain('mv -- "$candidate_tmp" "$attempt_candidate_id"');
+    expect(cleanupCommand).toContain(secretEnvPath);
+    expect(cleanupCommand).not.toContain(getVolumePath(agentId));
+    expect(proofCommand).toContain('secure_private_regular_file_proof "$attempt_candidate_id"');
+    expect(proofCommand).toContain('test "${#candidate_id}" = 64');
+    expect(volumeCleanupCommand).toContain(
+      'secure_private_regular_file_proof "$attempt_cancelled" 75',
+    );
+    expect(volumeCleanupCommand).toContain("flock -w 30 9");
+    expect(volumeCleanupCommand).toContain("docker container ls -aq --no-trunc");
+    expect(volumeCleanupCommand).toContain("docker inspect --format");
+    expect(volumeCleanupCommand).toContain(
+      "mount_inventory=$(findmnt -rn -o FSROOT,TARGET) || exit 76",
+    );
+    expect(volumeCleanupCommand).toContain(`printf '%s\n' "$mount_inventory" | awk`);
+    expect(volumeCleanupCommand).toContain('index($0, root "/") == 1');
+    expect(volumeCleanupCommand).toContain('index(root, $0 "/") == 1');
+    expect(volumeCleanupCommand).toContain("rm -rf --one-file-system --");
+    expect(volumeCleanupCommand).toContain(`test -L '${volumePath}'`);
+    expect(volumeCleanupCommand).toContain(
+      getExactRestoreStagingVolumeCleanupReceipt(replacementAttemptId, restoreAttemptId),
+    );
+    expect(volumeCleanupCommand.indexOf("docker container ls")).toBeLessThan(
+      volumeCleanupCommand.indexOf("rm -rf"),
+    );
+    expect(volumeCleanupCommand).not.toContain(getVolumePath(agentId));
+    expect(() =>
+      buildExactRestoreStagingVolumeCleanupCommand(
+        containerName,
+        replacementAttemptId,
+        `${volumePath}-wrong`,
+      ),
+    ).toThrow("differs from its container identity");
+  });
+
+  test("refuses descendant Docker binds and nested host mounts before staging deletion", async () => {
+    const { spawn } = await import("node:child_process");
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-restore-volume-cleanup-"));
+    const bin = path.join(root, "bin");
+    const relocatedData = path.join(root, "data");
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const restoreAttemptId = "22222222-2222-4222-8222-222222222222";
+    const replacementAttemptId = "33333333-3333-4333-8333-333333333333";
+    const containerName = `agent-restore-${agentId}-${restoreAttemptId}`;
+    const productionVolume = `/data/agents/.restore/${agentId}/${restoreAttemptId}`;
+    const volume = path.join(relocatedData, "agents", ".restore", agentId, restoreAttemptId);
+    const attempts = path.join(root, "attempts");
+    const attemptDirectory = path.join(attempts, replacementAttemptId);
+    const rmMarker = path.join(root, "rm-invoked");
+    const sentinel = path.join(volume, "must-survive");
+    fs.mkdirSync(bin, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(volume, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(attemptDirectory, "cancelled"), "cancelled\n", { mode: 0o600 });
+    fs.writeFileSync(sentinel, "durable-data", { mode: 0o600 });
+    fs.writeFileSync(path.join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+    fs.writeFileSync(
+      path.join(bin, "stat"),
+      '#!/bin/sh\ncase "$2" in "%u") printf 0 ;; "%a") if test -d "$4"; then printf 700; else printf 600; fi ;; "%h") printf 1 ;; *) exit 64 ;; esac\n',
+      { mode: 0o700 },
+    );
+    fs.writeFileSync(
+      path.join(bin, "docker"),
+      '#!/bin/sh\ncase "$*" in *"--filter"*) exit 0 ;; "container ls -aq --no-trunc") if test -n "$ELIZA_TEST_DOCKER_MOUNT_SOURCE" || test -n "$ELIZA_TEST_DOCKER_CONTAINER_PRESENT"; then printf "%s\\n" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; fi ;; inspect*) printf "%s\\n" "$ELIZA_TEST_DOCKER_MOUNT_SOURCE" ;; *) exit 64 ;; esac\n',
+      { mode: 0o700 },
+    );
+    fs.writeFileSync(
+      path.join(bin, "findmnt"),
+      '#!/bin/sh\nif test -n "$ELIZA_TEST_FINDMNT_FAILURE"; then exit 64; elif test -n "$ELIZA_TEST_HOST_MOUNT_SOURCE"; then printf "%s %s\\n" "$ELIZA_TEST_HOST_MOUNT_SOURCE" /outside-consumer; elif test -n "$ELIZA_TEST_HOST_MOUNT_TARGET"; then printf "%s %s\\n" / "$ELIZA_TEST_HOST_MOUNT_TARGET"; fi\n',
+      { mode: 0o700 },
+    );
+    fs.writeFileSync(
+      path.join(bin, "rm"),
+      '#!/bin/sh\nprintf invoked > "$ELIZA_TEST_RM_MARKER"\ncase "$*" in *"--one-file-system"*) if test -n "$ELIZA_TEST_RM_DELETE_VOLUME"; then /bin/rm -rf "$ELIZA_TEST_RM_DELETE_VOLUME"; fi ;; esac\nexit 0\n',
+      { mode: 0o700 },
+    );
+
+    const command = buildExactRestoreStagingVolumeCleanupCommand(
+      containerName,
+      replacementAttemptId,
+      productionVolume,
+    )
+      .replaceAll("/var/lib/eliza/replacement-attempts", attempts)
+      .replaceAll("/data", relocatedData)
+      .replaceAll("chmod 700 --", "chmod 700")
+      .replaceAll("chmod 600 --", "chmod 600");
+    const run = (env: NodeJS.ProcessEnv): Promise<number | null> =>
+      new Promise((resolve) => {
+        const child = spawn("/bin/sh", ["-c", command], {
+          env: {
+            ...process.env,
+            ...env,
+            PATH: `${bin}:${process.env.PATH ?? ""}`,
+            ELIZA_TEST_RM_MARKER: rmMarker,
+          },
+        });
+        child.on("close", resolve);
+      });
+
+    try {
+      expect(await run({ ELIZA_TEST_DOCKER_MOUNT_SOURCE: `${volume}/eliza` })).toBe(76);
+      expect(fs.existsSync(rmMarker)).toBe(false);
+      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
+
+      expect(await run({ ELIZA_TEST_DOCKER_MOUNT_SOURCE: path.dirname(volume) })).toBe(76);
+      expect(fs.existsSync(rmMarker)).toBe(false);
+      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
+
+      expect(await run({ ELIZA_TEST_HOST_MOUNT_TARGET: `${volume}/nested-bind` })).toBe(76);
+      expect(fs.existsSync(rmMarker)).toBe(false);
+      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
+
+      expect(await run({ ELIZA_TEST_HOST_MOUNT_SOURCE: `${volume}/eliza` })).toBe(76);
+      expect(fs.existsSync(rmMarker)).toBe(false);
+      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
+
+      expect(await run({ ELIZA_TEST_FINDMNT_FAILURE: "1" })).toBe(76);
+      expect(fs.existsSync(rmMarker)).toBe(false);
+      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
+
+      expect(
+        await run({
+          ELIZA_TEST_DOCKER_CONTAINER_PRESENT: "1",
+          ELIZA_TEST_RM_DELETE_VOLUME: volume,
+        }),
+      ).toBe(0);
+      expect(fs.existsSync(rmMarker)).toBe(true);
+      expect(fs.existsSync(volume)).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("distinguishes pre-effect, definitive, and ambiguous Docker-create failures", async () => {
     const { spawn } = await import("node:child_process");
     const fs = await import("node:fs");
     const os = await import("node:os");
@@ -366,6 +546,11 @@ describe("secret container environment transport (#22060)", () => {
     fs.mkdirSync(bin, { recursive: true });
     fs.mkdirSync(volume, { recursive: true });
     fs.writeFileSync(path.join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(
+      path.join(bin, "stat"),
+      '#!/bin/sh\ncase "$2" in "%u") printf 0 ;; "%a") if test -d "$4"; then printf 700; else printf 600; fi ;; "%h") if test -n "$ELIZA_TEST_HARDLINK_PATH" && test "$4" = "$ELIZA_TEST_HARDLINK_PATH"; then printf 2; else printf 1; fi ;; "%d:%i") printf "1:1" ;; *) exit 64 ;; esac\n',
+      { mode: 0o755 },
+    );
     fs.writeFileSync(path.join(volume, ".vault-passphrase"), "persisted-vault-value", {
       mode: 0o600,
     });
@@ -380,15 +565,24 @@ describe("secret container environment transport (#22060)", () => {
         .replaceAll("chmod 600 --", "chmod 600")
         .replaceAll("cat -- ", "cat ")
         .replaceAll("mv -- ", "mv ");
+    const seedControlVaultSnapshot = (replacementAttemptId: string): void => {
+      const attemptDirectory = path.join(attempts, replacementAttemptId);
+      fs.mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(path.join(attemptDirectory, "vault-passphrase"), "persisted-vault-value", {
+        mode: 0o600,
+      });
+    };
     const run = (
       command: string,
       input = "",
       extraPath?: string,
+      extraEnv: NodeJS.ProcessEnv = {},
     ): Promise<{ code: number | null; output: string }> =>
       new Promise((resolve) => {
         const child = spawn("/bin/sh", ["-c", remap(command)], {
           env: {
             ...process.env,
+            ...extraEnv,
             PATH: `${extraPath ? `${extraPath}:` : ""}${bin}:${process.env.PATH}`,
           },
         });
@@ -400,21 +594,134 @@ describe("secret container environment transport (#22060)", () => {
       });
 
     try {
-      const secretEnvPath = getContainerSecretEnvPath(productionVolume, attemptId);
-      const failedProducer = buildDockerCreateWithSecretEnvCommand({
-        dockerCreateCommand: "false",
-        secretEnvPath,
-        vaultPassphrasePath: getVolumeVaultPassphrasePath(productionVolume),
-        exactReplacement: { containerName, replacementAttemptId: attemptId },
-      });
       const secretInput = buildDockerContainerEnvTransport({
         API_KEY: "one-shot-secret-sentinel",
       }).secretInput;
+
+      const legacyAttemptId = "22222222-2222-4222-8222-222222222223";
+      const legacyVaultPath = path.join(volume, ".vault-passphrase");
+      const legacyArtifactPaths = [
+        path.join(volume, `.container-env-${legacyAttemptId}`),
+        path.join(volume, `.container-env-${legacyAttemptId}.body`),
+        ...["stdin", "override", "generated", "normalized"].map(
+          (kind) => `${legacyVaultPath}.${kind}.${legacyAttemptId}`,
+        ),
+      ];
+      for (const artifactPath of legacyArtifactPaths) {
+        fs.writeFileSync(artifactPath, "legacy-plaintext", { mode: 0o600 });
+      }
+      const legacyCleanup = await run(
+        buildReplacementSecretArtifactsCleanupCommand(containerName, legacyAttemptId),
+      );
+      expect(legacyCleanup).toEqual({
+        code: 0,
+        output: `${getReplacementSecretArtifactsCleanupReceipt(legacyAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(legacyAttemptId)}\n`,
+      });
+      for (const artifactPath of legacyArtifactPaths) {
+        expect(fs.existsSync(artifactPath)).toBe(false);
+      }
+
+      const hardlinkAttemptId = "22222222-2222-4222-8222-222222222224";
+      const hardlinkedLegacyEnv = path.join(volume, `.container-env-${hardlinkAttemptId}`);
+      const retainedHardlink = path.join(root, "retained-legacy-env-hardlink");
+      fs.writeFileSync(hardlinkedLegacyEnv, "hardlinked-plaintext", { mode: 0o600 });
+      fs.linkSync(hardlinkedLegacyEnv, retainedHardlink);
+      const hardlinkCleanup = await run(
+        buildReplacementSecretArtifactsCleanupCommand(containerName, hardlinkAttemptId),
+        "",
+        undefined,
+        { ELIZA_TEST_HARDLINK_PATH: hardlinkedLegacyEnv },
+      );
+      expect(hardlinkCleanup.code).toBe(70);
+      expect(hardlinkCleanup.output).not.toContain(
+        getReplacementSecretArtifactsCleanupReceipt(hardlinkAttemptId),
+      );
+      expect(fs.readFileSync(hardlinkedLegacyEnv, "utf8")).toBe("hardlinked-plaintext");
+      expect(fs.readFileSync(retainedHardlink, "utf8")).toBe("hardlinked-plaintext");
+
+      const symlinkAttemptId = "99999999-9999-4999-8999-999999999999";
+      const symlinkSecretPath = getReplacementControlSecretEnvPath(symlinkAttemptId);
+      const symlinkAttemptDirectory = path.join(attempts, symlinkAttemptId);
+      const externalEnvTarget = path.join(root, "external-env-target");
+      const externalBodyTarget = path.join(root, "external-env-body-target");
+      seedControlVaultSnapshot(symlinkAttemptId);
+      fs.writeFileSync(externalEnvTarget, "external-env-must-not-change", { mode: 0o640 });
+      fs.writeFileSync(externalBodyTarget, "external-body-must-not-change", { mode: 0o640 });
+      fs.symlinkSync(externalEnvTarget, path.join(symlinkAttemptDirectory, "container-env"));
+      fs.symlinkSync(externalBodyTarget, path.join(symlinkAttemptDirectory, "container-env.body"));
+      const symlinkProducer = buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand: "true",
+        secretEnvPath: symlinkSecretPath,
+        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(symlinkAttemptId),
+        exactReplacement: { containerName, replacementAttemptId: symlinkAttemptId },
+      });
+      expect(await run(symlinkProducer, secretInput)).toEqual({ code: 0, output: "" });
+      expect(fs.readFileSync(externalEnvTarget, "utf8")).toBe("external-env-must-not-change");
+      expect(fs.readFileSync(externalBodyTarget, "utf8")).toBe("external-body-must-not-change");
+      expect(fs.statSync(externalEnvTarget).mode & 0o777).toBe(0o640);
+      expect(fs.statSync(externalBodyTarget).mode & 0o777).toBe(0o640);
+      expect(fs.existsSync(path.join(symlinkAttemptDirectory, "container-env"))).toBe(false);
+      expect(fs.existsSync(path.join(symlinkAttemptDirectory, "container-env.body"))).toBe(false);
+
+      const malformedAttemptId = "77777777-7777-4777-8777-777777777777";
+      const malformedSecretPath = getReplacementControlSecretEnvPath(malformedAttemptId);
+      seedControlVaultSnapshot(malformedAttemptId);
+      const malformedProducer = buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand: `: > ${shellQuote(marker)}`,
+        secretEnvPath: malformedSecretPath,
+        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(malformedAttemptId),
+        exactReplacement: { containerName, replacementAttemptId: malformedAttemptId },
+      });
+      const malformed = await run(malformedProducer, "API_KEY=truncated-without-sentinel\n");
+      expect(malformed.code).not.toBe(0);
+      expect(fs.existsSync(marker)).toBe(false);
+      expect(fs.existsSync(path.join(attempts, malformedAttemptId, "active"))).toBe(false);
+      expect(fs.existsSync(path.join(attempts, malformedAttemptId, "container-env"))).toBe(false);
+      const malformedCleanup = await run(
+        buildReplacementSecretArtifactsCleanupCommand(containerName, malformedAttemptId),
+      );
+      expect(malformedCleanup).toEqual({
+        code: 0,
+        output: `${getReplacementSecretArtifactsCleanupReceipt(malformedAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(malformedAttemptId)}\n`,
+      });
+
+      const definitiveAttemptId = "88888888-8888-4888-8888-888888888888";
+      const definitiveSecretPath = getReplacementControlSecretEnvPath(definitiveAttemptId);
+      seedControlVaultSnapshot(definitiveAttemptId);
+      const definitiveProducer = buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand: `sh -c ${shellQuote(
+          "printf '%s\\n' 'docker: Error response from daemon: Conflict. The container name is already in use by container' >&2; exit 125",
+        )}`,
+        secretEnvPath: definitiveSecretPath,
+        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(definitiveAttemptId),
+        exactReplacement: { containerName, replacementAttemptId: definitiveAttemptId },
+      });
+      const definitive = await run(definitiveProducer, secretInput);
+      expect(definitive.code).toBe(125);
+      expect(definitive.output).not.toContain("Conflict. The container name");
+      expect(fs.existsSync(path.join(attempts, definitiveAttemptId, "active"))).toBe(false);
+      expect(fs.existsSync(path.join(attempts, definitiveAttemptId, "docker-error"))).toBe(false);
+      const definitiveCleanup = await run(
+        buildReplacementSecretArtifactsCleanupCommand(containerName, definitiveAttemptId),
+      );
+      expect(definitiveCleanup).toEqual({
+        code: 0,
+        output: `${getReplacementSecretArtifactsCleanupReceipt(definitiveAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(definitiveAttemptId)}\n`,
+      });
+
+      const secretEnvPath = getReplacementControlSecretEnvPath(attemptId);
+      seedControlVaultSnapshot(attemptId);
+      const failedProducer = buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand: "false",
+        secretEnvPath,
+        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(attemptId),
+        exactReplacement: { containerName, replacementAttemptId: attemptId },
+      });
       const failed = await run(failedProducer, secretInput);
       expect(failed.code).not.toBe(0);
       expect(failed.output).not.toContain("one-shot-secret-sentinel");
       expect(fs.existsSync(path.join(attempts, attemptId, "active"))).toBe(true);
-      expect(fs.existsSync(path.join(volume, path.basename(secretEnvPath)))).toBe(false);
+      expect(fs.existsSync(path.join(attempts, attemptId, "container-env"))).toBe(false);
 
       const cleanup = await run(
         buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId),
@@ -443,7 +750,7 @@ describe("secret container environment transport (#22060)", () => {
       const replay = buildDockerCreateWithSecretEnvCommand({
         dockerCreateCommand: `: > ${shellQuote(marker)}`,
         secretEnvPath,
-        vaultPassphrasePath: getVolumeVaultPassphrasePath(productionVolume),
+        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(attemptId),
         exactReplacement: { containerName, replacementAttemptId: attemptId },
       });
       const rejectedReplay = await run(replay, secretInput);
@@ -452,11 +759,12 @@ describe("secret container environment transport (#22060)", () => {
       expect(fs.existsSync(marker)).toBe(false);
 
       const successfulAttemptId = "66666666-6666-4666-8666-666666666666";
-      const successfulSecretPath = getContainerSecretEnvPath(productionVolume, successfulAttemptId);
+      const successfulSecretPath = getReplacementControlSecretEnvPath(successfulAttemptId);
+      seedControlVaultSnapshot(successfulAttemptId);
       const successfulProducer = buildDockerCreateWithSecretEnvCommand({
         dockerCreateCommand: `printf '%s\\n' ${shellQuote("a".repeat(64))}`,
         secretEnvPath: successfulSecretPath,
-        vaultPassphrasePath: getVolumeVaultPassphrasePath(productionVolume),
+        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(successfulAttemptId),
         exactReplacement: {
           containerName,
           replacementAttemptId: successfulAttemptId,
@@ -477,11 +785,15 @@ describe("secret container environment transport (#22060)", () => {
         ["44444444-4444-4444-8444-444444444444", "file"],
         ["55555555-5555-4555-8555-555555555555", "symlink"],
       ] as const) {
-        const survivingPath = path.join(volume, `.container-env-${suffix}`);
+        const attemptDirectory = path.join(attempts, suffix);
+        fs.mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
+        const survivingPath = path.join(attemptDirectory, "container-env");
+        const externalTarget = path.join(root, `external-cleanup-target-${suffix}`);
         if (kind === "file") {
           fs.writeFileSync(survivingPath, "must-survive-fake-rm", { mode: 0o600 });
         } else {
-          fs.symlinkSync(path.join(root, "missing-target"), survivingPath);
+          fs.writeFileSync(externalTarget, "external-target-must-survive", { mode: 0o640 });
+          fs.symlinkSync(externalTarget, survivingPath);
         }
         const fakeRmBin = path.join(root, `fake-rm-${kind}`);
         fs.mkdirSync(fakeRmBin);
@@ -493,11 +805,15 @@ describe("secret container environment transport (#22060)", () => {
         );
         expect(refused.code).toBe(70);
         expect(refused.output).not.toContain(getReplacementSecretArtifactsCleanupReceipt(suffix));
+        if (kind === "symlink") {
+          expect(fs.readFileSync(externalTarget, "utf8")).toBe("external-target-must-survive");
+          expect(fs.statSync(externalTarget).mode & 0o777).toBe(0o640);
+        }
       }
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 10_000);
 
   test("derives exact cleanup paths from the canonical container name only", () => {
     const attemptId = "33333333-3333-4333-8333-333333333333";
@@ -695,6 +1011,189 @@ describe("resolveVpnTeardown (#16565)", () => {
 });
 
 describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
+  test("keeps the exported V1 framing labels stable for byte-native producers", () => {
+    expect(VOLUME_VAULT_STDIN_FRAME_VERSION).toBe("ELIZA_VAULT_STDIN_V1");
+    expect(VOLUME_VAULT_STDIN_FRAME_END).toBe("ELIZA_VAULT_STDIN_V1_END");
+  });
+
+  test("places the fenced publication candidate on the durable key filesystem", () => {
+    const volume = "/data/agents/11111111-1111-4111-8111-111111111111";
+    const attemptId = "33333333-3333-4333-8333-333333333333";
+    const keyPath = getVolumeVaultPassphrasePath(volume);
+    const candidatePath = `${keyPath}.candidate.${attemptId}`;
+    const command = buildVolumeVaultPassphraseCommand(volume, 0, attemptId);
+    const cleanupCommand = buildReplacementSecretArtifactsCleanupCommand(
+      getContainerName("11111111-1111-4111-8111-111111111111"),
+      attemptId,
+    );
+
+    expect(command).toContain(
+      `generated_file='/var/lib/eliza/replacement-attempts/${attemptId}/vault-generated'`,
+    );
+    expect(command).toContain(`key_candidate_file='${candidatePath}'`);
+    expect(command).toContain('if exec 8>"$key_candidate_file"');
+    expect(command).toContain("secure_private_regular_fd_proof 8");
+    expect(command).toContain('ln "$key_candidate_file" "$key_file"');
+    expect(command).not.toContain('ln "$generated_file" "$key_file"');
+    expect(cleanupCommand).toContain(candidatePath);
+  });
+
+  test.skipIf(process.platform !== "linux")(
+    "publishes a fenced key when control and target paths are on distinct filesystems",
+    async () => {
+      const { spawn } = await import("node:child_process");
+      const fs = await import("node:fs");
+      const os = await import("node:os");
+      const path = await import("node:path");
+      const targetFilesystemRoot = ["/dev/shm", "/run/shm"].find((candidate) => {
+        try {
+          fs.accessSync(candidate, fs.constants.W_OK);
+          return fs.statSync(candidate).dev !== fs.statSync(os.tmpdir()).dev;
+        } catch {
+          return false;
+        }
+      });
+      if (!targetFilesystemRoot) return;
+
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-crossfs-control-"));
+      const volume = fs.mkdtempSync(path.join(targetFilesystemRoot, "eliza-crossfs-volume-"));
+      const bin = path.join(root, "bin");
+      const attempts = path.join(root, "attempts");
+      const productionVolume = "/data/agents/11111111-1111-4111-8111-111111111111";
+      const productionAttempts = "/var/lib/eliza/replacement-attempts";
+      const attemptId = "33333333-3333-4333-8333-333333333333";
+      const override = "cross-filesystem-vault-secret";
+      fs.mkdirSync(bin, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(path.join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+      fs.writeFileSync(
+        path.join(bin, "stat"),
+        '#!/bin/sh\ncase "$2" in "%u") printf 0 ;; "%a") if test -d "$4"; then printf 700; else printf 600; fi ;; "%h") printf 1 ;; "%d:%i") printf "1:1" ;; "%d:%i:%s:%y:%z") printf stable-fingerprint ;; *) exit 64 ;; esac\n',
+        { mode: 0o700 },
+      );
+
+      try {
+        expect(fs.statSync(root).dev).not.toBe(fs.statSync(volume).dev);
+        const command = buildVolumeVaultPassphraseCommand(
+          productionVolume,
+          Buffer.byteLength(override),
+          attemptId,
+        )
+          .replaceAll(productionVolume, volume)
+          .replaceAll(productionAttempts, attempts);
+        const frame = `${VOLUME_VAULT_STDIN_FRAME_VERSION} ${Buffer.byteLength(override)}\n${override}\n${VOLUME_VAULT_STDIN_FRAME_END}\n`;
+        const result = await new Promise<{ code: number | null; output: string }>((resolve) => {
+          const child = spawn("/bin/sh", ["-c", command], {
+            env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` },
+          });
+          let output = "";
+          child.stdout.on("data", (chunk) => (output += chunk.toString()));
+          child.stderr.on("data", (chunk) => (output += chunk.toString()));
+          child.on("close", (code) => resolve({ code, output }));
+          child.stdin.end(frame);
+        });
+
+        expect(result).toEqual({ code: 0, output: "" });
+        expect(fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf8")).toBe(override);
+        expect(fs.readdirSync(volume)).toEqual([".vault-passphrase"]);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+        fs.rmSync(volume, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("exact vault staging replaces control symlinks and rejects a durable-key symlink", async () => {
+    const { spawn } = await import("node:child_process");
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-exact-vault-symlink-"));
+    const bin = path.join(root, "bin");
+    const volume = path.join(root, "volume");
+    const attempts = path.join(root, "attempts");
+    const productionVolume = "/data/agents/11111111-1111-4111-8111-111111111111";
+    const productionAttempts = "/var/lib/eliza/replacement-attempts";
+    fs.mkdirSync(bin, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(volume, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+    fs.writeFileSync(
+      path.join(bin, "stat"),
+      '#!/bin/sh\ncase "$2" in "%u") printf 0 ;; "%a") if test -d "$4"; then printf 700; else printf 600; fi ;; "%h") printf 1 ;; "%d:%i") printf "1:1" ;; "%d:%i:%s:%y:%z") printf stable-fingerprint ;; *) exit 64 ;; esac\n',
+      { mode: 0o700 },
+    );
+    const remap = (command: string): string =>
+      command
+        .replaceAll(productionVolume, volume)
+        .replaceAll(productionAttempts, attempts)
+        .replaceAll("chmod 700 --", "chmod 700")
+        .replaceAll("chmod 600 --", "chmod 600")
+        .replaceAll("mv -- ", "mv ");
+    const run = (
+      command: string,
+      input: string,
+    ): Promise<{ code: number | null; output: string }> =>
+      new Promise((resolve) => {
+        const child = spawn("/bin/sh", ["-c", remap(command)], {
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` },
+        });
+        let output = "";
+        child.stdout.on("data", (chunk) => (output += chunk.toString()));
+        child.stderr.on("data", (chunk) => (output += chunk.toString()));
+        child.on("close", (code) => resolve({ code, output }));
+        child.stdin.end(input);
+      });
+    const frame = (override: string): string =>
+      `${VOLUME_VAULT_STDIN_FRAME_VERSION} ${Buffer.byteLength(override)}\n${override}\n${VOLUME_VAULT_STDIN_FRAME_END}\n`;
+
+    try {
+      const attemptId = "33333333-3333-4333-8333-333333333333";
+      const attemptDirectory = path.join(attempts, attemptId);
+      const externalTarget = path.join(root, "external-transient-target");
+      const override = "exact-vault-secret-value";
+      fs.mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(externalTarget, "external-transient-must-not-change", { mode: 0o640 });
+      for (const name of [
+        "vault-stdin",
+        "vault-override",
+        "vault-generated",
+        "vault-normalized",
+        "vault-passphrase",
+      ]) {
+        fs.symlinkSync(externalTarget, path.join(attemptDirectory, name));
+      }
+      const command = buildVolumeVaultPassphraseCommand(
+        productionVolume,
+        Buffer.byteLength(override),
+        attemptId,
+      );
+      const seeded = await run(command, frame(override));
+      expect(seeded).toEqual({ code: 0, output: "" });
+      expect(fs.readFileSync(externalTarget, "utf8")).toBe("external-transient-must-not-change");
+      expect(fs.statSync(externalTarget).mode & 0o777).toBe(0o640);
+      expect(fs.readFileSync(path.join(volume, ".vault-passphrase"), "utf8")).toBe(override);
+      expect(fs.readFileSync(path.join(attemptDirectory, "vault-passphrase"), "utf8")).toBe(
+        override,
+      );
+
+      const rejectedAttemptId = "44444444-4444-4444-8444-444444444444";
+      const externalKeyTarget = path.join(root, "external-durable-key-target");
+      fs.writeFileSync(externalKeyTarget, "external-key-must-not-change", { mode: 0o640 });
+      fs.unlinkSync(path.join(volume, ".vault-passphrase"));
+      fs.symlinkSync(externalKeyTarget, path.join(volume, ".vault-passphrase"));
+      const rejected = await run(
+        buildVolumeVaultPassphraseCommand(productionVolume, 0, rejectedAttemptId),
+        frame(""),
+      );
+      expect(rejected.code).toBe(70);
+      expect(rejected.output).not.toContain("external-key-must-not-change");
+      expect(fs.readFileSync(externalKeyTarget, "utf8")).toBe("external-key-must-not-change");
+      expect(fs.statSync(externalKeyTarget).mode & 0o777).toBe(0o640);
+      expect(fs.existsSync(path.join(attempts, rejectedAttemptId, "vault-passphrase"))).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   // The real-process cases run the exact shell program sent over SSH against
   // local /bin/sh and a temp agent volume. They cover shell mutation and trap
   // behavior, but not SSH channel or supported-node behavior.
@@ -741,10 +1240,7 @@ describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
       const temporaryFiles = fs
         .readdirSync(volume)
         .filter((name) => name.startsWith(".vault-passphrase."));
-      expect(temporaryFiles.length).toBeGreaterThan(0);
-      expect(
-        temporaryFiles.some((name) => fs.readFileSync(`${volume}/${name}`, "utf8") === override),
-      ).toBe(true);
+      expect(temporaryFiles).toEqual([]);
     } finally {
       fs.rmSync(volume, { recursive: true, force: true });
     }

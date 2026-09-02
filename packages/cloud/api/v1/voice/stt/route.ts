@@ -47,6 +47,7 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
@@ -461,16 +462,24 @@ async function __hono_POST(c: AppContext) {
       multipartBodyLimit,
     );
     if (sizeCheckedRequest instanceof Response) {
+      // Intentional transport-limit exception: reject and cancel oversized
+      // multipart bytes before any authentication cache, database, billing,
+      // or provider work. Route tests assert this pre-auth resource boundary.
       return sizeCheckedRequest;
     }
     request = sizeCheckedRequest;
 
-    const { user, apiKeyId, admissionSnapshot } =
+    const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         awaitWarmingMs: 1500,
+        deferStrongCredentialCheck: true,
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;
 
@@ -591,6 +600,7 @@ async function __hono_POST(c: AppContext) {
           apiKeyId,
           cost: sttCost,
           admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
         });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
@@ -1191,6 +1201,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: sttCost,
         admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
       });
       reservation = admission.reservation;
       settleUnknown = admission.settleUnknown;

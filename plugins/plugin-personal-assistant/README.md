@@ -172,12 +172,18 @@ src/lifeops/
 
 ## Parenting-agreement knowledge
 
-Parenting agreements are stored as immutable versions whose PDF bytes go
-through the runtime's single content-addressed `IFileStorageService` and retain
-an owner-private `DocumentService` record so knowledge search and media GC use
-the canonical document path. LifeOps persists the returned SHA-256, media
-handle, document id, byte size, MIME type, filename, page count, and version
-chain; it does not create another file store.
+Parenting agreements upload through resumable, independently hashed 4 MiB
+requests with their staging bytes in the runtime's canonical private
+`IFileStorageService`; the complete document has no semantic size ceiling.
+Commit requires every ordered chunk and verifies the reassembled byte length
+and optional whole-file SHA-256 before immutable storage. The server—not the
+form—parses the page count. `PdfService.extractCompleteDocument` then accounts
+for every page with native text plus rendered-page vision transcription for
+images or text-empty pages. One failed page fails ingestion; partial content is
+never published as a complete owner-private `DocumentService` record. LifeOps
+persists the media SHA-256, handle, document id, byte size, MIME type, filename,
+parser-derived page count, complete extracted text, and version chain; it does
+not create another permanent file store.
 
 Owner- or agent-extracted obligations begin as `proposed` and must carry an
 in-range page citation plus the cited source text. Only the owner can make the terminal

@@ -1175,6 +1175,7 @@ export const ChatMessage = memo(function ChatMessage({
             <ChatBubble
               appearance={bubbleAppearance}
               variant="glass"
+              source={normalizedSource}
               bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
               {...(holdHandlers ?? {})}
@@ -1201,6 +1202,7 @@ export const ChatMessage = memo(function ChatMessage({
             <ChatBubble
               appearance={bubbleAppearance}
               variant="glass"
+              source={normalizedSource}
               bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
               tabIndex={-1}

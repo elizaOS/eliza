@@ -7,10 +7,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { AgreementKnowledgeError } from "../lifeops/household/agreement-knowledge.js";
-import {
-  MAX_AGREEMENT_PDF_BYTES,
-  MAX_AGREEMENT_UPLOAD_JSON_BYTES,
-} from "../lifeops/household/agreement-upload-limits.js";
+import { AGREEMENT_UPLOAD_METADATA_BYTES } from "../lifeops/household/agreement-upload-limits.js";
 import { handleAgreementKnowledgeRoutes } from "./agreement-knowledge-routes.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
@@ -21,8 +18,14 @@ function context(input: {
   agreements: Record<string, unknown>;
 }) {
   const responses: Array<{ data: unknown; status: number }> = [];
+  const cache = new Map<string, unknown>();
   const runtime = {
     getService: vi.fn(() => ({ agreements: input.agreements })),
+    getCache: vi.fn(async (key: string) => cache.get(key)),
+    setCache: vi.fn(async (key: string, value: unknown) => {
+      cache.set(key, value);
+      return true;
+    }),
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
   const ctx = {
@@ -43,57 +46,49 @@ function context(input: {
 }
 
 describe("agreement knowledge routes", () => {
-  it("creates an immutable PDF version from the owner upload contract", async () => {
-    const artifact = { id: "artifact-1", version: 1 };
-    const createAgreementVersion = vi.fn(async () => artifact);
+  it("creates a resumable owner upload without trusting a page count", async () => {
     const harness = context({
       method: "POST",
-      pathname: "/api/lifeops/agreements",
+      pathname: "/api/lifeops/agreement-uploads",
       body: {
         agreementKey: "parenting-plan",
         title: "Parenting agreement",
         originalFilename: "agreement.pdf",
         mimeType: "application/pdf",
-        pageCount: 14,
-        bytesBase64: Buffer.from("%PDF-1.7").toString("base64"),
+        sizeBytes: 8,
       },
-      agreements: { createAgreementVersion },
+      agreements: {},
     });
 
     await expect(handleAgreementKnowledgeRoutes(harness.ctx)).resolves.toBe(
       true,
     );
-    expect(createAgreementVersion).toHaveBeenCalledWith({
-      householdId: undefined,
-      agreementKey: "parenting-plan",
-      title: "Parenting agreement",
-      originalFilename: "agreement.pdf",
-      mimeType: "application/pdf",
-      pageCount: 14,
-      bytes: Buffer.from("%PDF-1.7"),
-      uploadedByEntityId: "self",
+    expect(harness.responses[0]).toMatchObject({
+      status: 201,
+      data: {
+        upload: {
+          sizeBytes: 8,
+          chunkCount: 1,
+          receivedChunkIndexes: [],
+          status: "uploading",
+        },
+      },
     });
-    expect(harness.responses).toEqual([{ status: 201, data: { artifact } }]);
   });
 
-  it("accepts agreement PDF bytes above the default 1 MiB transport cap", async () => {
-    const createAgreementVersion = vi.fn(async () => ({
-      id: "artifact-large",
-    }));
-    const bytes = Buffer.alloc(1024 * 1024 + 1, 0x61);
-    bytes.write("%PDF-", 0, "ascii");
+  it("does not impose the former 20 MiB document ceiling", async () => {
+    const sizeBytes = 20 * 1024 * 1024 + 1;
     const harness = context({
       method: "POST",
-      pathname: "/api/lifeops/agreements",
+      pathname: "/api/lifeops/agreement-uploads",
       body: {
         agreementKey: "parenting-plan",
         title: "Parenting agreement",
         originalFilename: "agreement.pdf",
         mimeType: "application/pdf",
-        pageCount: 14,
-        bytesBase64: bytes.toString("base64"),
+        sizeBytes,
       },
-      agreements: { createAgreementVersion },
+      agreements: {},
     });
 
     await expect(handleAgreementKnowledgeRoutes(harness.ctx)).resolves.toBe(
@@ -102,72 +97,12 @@ describe("agreement knowledge routes", () => {
     expect(harness.ctx.readJsonBody).toHaveBeenCalledWith(
       harness.ctx.req,
       harness.ctx.res,
-      { maxBytes: MAX_AGREEMENT_UPLOAD_JSON_BYTES },
+      { maxBytes: AGREEMENT_UPLOAD_METADATA_BYTES },
     );
     expect(harness.responses[0]?.status).toBe(201);
-    const call = createAgreementVersion.mock.calls[0]?.[0] as {
-      bytes: Buffer;
-    };
-    expect(call.bytes.byteLength).toBe(bytes.byteLength);
-    expect(call.bytes.subarray(0, 5).toString("ascii")).toBe("%PDF-");
-  });
-
-  it("rejects oversized or non-PDF decoded bytes before storage", async () => {
-    const createAgreementVersion = vi.fn();
-    const oversized = Buffer.alloc(MAX_AGREEMENT_PDF_BYTES + 1, 0x61);
-    oversized.write("%PDF-", 0, "ascii");
-    const tooLarge = context({
-      method: "POST",
-      pathname: "/api/lifeops/agreements",
-      body: {
-        agreementKey: "parenting-plan",
-        title: "Parenting agreement",
-        originalFilename: "agreement.pdf",
-        mimeType: "application/pdf",
-        pageCount: 14,
-        bytesBase64: oversized.toString("base64"),
-      },
-      agreements: { createAgreementVersion },
+    expect(harness.responses[0]?.data).toMatchObject({
+      upload: { sizeBytes, chunkCount: 6 },
     });
-    await handleAgreementKnowledgeRoutes(tooLarge.ctx);
-    expect(tooLarge.responses).toEqual([
-      expect.objectContaining({
-        status: 400,
-        data: expect.objectContaining({
-          error: expect.objectContaining({
-            code: "AGREEMENT_INVALID_CONTRACT",
-            context: expect.objectContaining({
-              maxBytes: MAX_AGREEMENT_PDF_BYTES,
-            }),
-          }),
-        }),
-      }),
-    ]);
-
-    const badSignature = context({
-      method: "POST",
-      pathname: "/api/lifeops/agreements",
-      body: {
-        agreementKey: "parenting-plan",
-        title: "Parenting agreement",
-        originalFilename: "agreement.pdf",
-        mimeType: "application/pdf",
-        pageCount: 14,
-        bytesBase64: Buffer.from("not-a-pdf").toString("base64"),
-      },
-      agreements: { createAgreementVersion },
-    });
-    await handleAgreementKnowledgeRoutes(badSignature.ctx);
-    expect(badSignature.responses[0]).toMatchObject({
-      status: 400,
-      data: {
-        error: {
-          code: "AGREEMENT_INVALID_CONTRACT",
-          message: "Parenting agreement bytes do not have a PDF signature",
-        },
-      },
-    });
-    expect(createAgreementVersion).not.toHaveBeenCalled();
   });
 
   it("returns a stable forbidden error when the domain denies the read", async () => {

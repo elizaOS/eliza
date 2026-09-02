@@ -6,17 +6,17 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  CalendarPage,
   CalendarView,
   calendarPlugin,
   calendarSourcesAction,
-  SimpleCalendarView,
 } from "./index.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000901";
 
 describe("@elizaos/plugin-calendar root registration", () => {
   it("exports one canonical shipped Calendar implementation", () => {
-    expect(CalendarView).toBe(SimpleCalendarView);
+    expect(CalendarView).toBe(CalendarPage);
   });
 
   it("declares owner-gated server capabilities through server interaction", () => {

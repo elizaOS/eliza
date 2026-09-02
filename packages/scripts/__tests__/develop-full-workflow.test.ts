@@ -121,7 +121,7 @@ describe("Develop Full workflow authority", () => {
     for (const name of delegatedJobs) {
       const job = workflow.jobs?.[name];
       expect(job?.uses).toMatch(/^\.\/\.github\/workflows\/.+\.yml$/);
-      if (name === "platform-smoke") {
+      if (name === "platform-smoke" || name === "cloud-gateway-discord") {
         expect(job?.secrets).toBeUndefined();
       } else {
         expect(job?.secrets).toBe("inherit");
