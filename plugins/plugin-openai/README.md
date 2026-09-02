@@ -211,7 +211,7 @@ Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` 
 
 ## OpenZoo compatibility
 
-Run `npx openzoo` and point `OPENAI_BASE_URL` at `http://localhost:8402/v1` — the local gateway settles each request over x402. OpenZoo has no signup: set `OPENAI_API_KEY` to any value (e.g. `sk-openzoo`). The model list at `GET /v1/models` is free to fetch. (Pointing directly at `https://api.openzoo.fun/v1` requires an x402-capable client; this plugin sends only a bearer token, so the hosted endpoint answers `402` even for `:free` models.) Note: on builds without the `openzoo` usage-provider branch (elizaOS/eliza#30245), usage telemetry attributes these requests to `openai`; per-request billing attribution always remains available from the gateway's own receipts.
+Run `npx openzoo` and point `OPENAI_BASE_URL` at `http://localhost:8402/v1` — the local proxy pays each request over x402 from a local burner wallet (`npx openzoo address` / `npx openzoo balance`; fund with USDC on Solana or Base). OpenZoo has no signup, and the proxy ignores the key: set `OPENAI_API_KEY` to any non-empty value (e.g. `sk-openzoo`). The model list at `GET /v1/models` is free to fetch. The hosted endpoint `https://api.openzoo.fun/v1` answers `402` unless the caller pays x402 or presents an OpenZoo subscription key (`ozk_live_…` in `OPENAI_API_KEY`); this plugin sends only a bearer token, so without a subscription key use the local proxy. Note: on builds without the `openzoo` usage-provider branch (elizaOS/eliza#30245), usage telemetry attributes these requests to `openai`; per-request billing attribution always remains available from the gateway's own receipts.
 
 ## EvoLink compatibility
 
