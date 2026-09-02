@@ -196,6 +196,7 @@ function runReusableTelegramPreflight(
     botUsername: string;
     authorityRunAttempt: string;
     releaseRunAttempt: string;
+    runtimeAuthority: string;
     targetEnvironment: string;
   }> = {},
 ): TelegramExecution {
@@ -210,6 +211,7 @@ function runReusableTelegramPreflight(
   const summaryPath = path.join(fixtureRoot, "step-summary.md");
 
   try {
+    const targetEnvironment = overrides.targetEnvironment ?? "staging";
     const result = Bun.spawnSync(
       ["bash", "-c", admittedTelegramValidation.run],
       {
@@ -222,8 +224,13 @@ function runReusableTelegramPreflight(
           ADMITTED_TELEGRAM_BOT_USERNAME:
             overrides.botUsername ?? stagingTelegram.botUsername,
           RELEASE_RUN_ATTEMPT: overrides.releaseRunAttempt ?? "1",
-          TARGET_ENVIRONMENT: overrides.targetEnvironment ?? "staging",
+          TARGET_ENVIRONMENT: targetEnvironment,
           TELEGRAM_AUTHORITY_RUN_ATTEMPT: overrides.authorityRunAttempt ?? "1",
+          TELEGRAM_RUNTIME_AUTHORITY:
+            overrides.runtimeAuthority ??
+            (targetEnvironment === "production"
+              ? "production-live-attested"
+              : "staging-protected-receipt-and-existing-bindings"),
         },
         stderr: "pipe",
         stdout: "pipe",
@@ -470,11 +477,13 @@ describe("homepage deployment workflow", () => {
     ).toMatchObject({ required: true, type: "string" });
   });
 
-  it("reserves the Telegram authority receipt exclusively for the protected Environment", () => {
+  it("keeps Telegram authority and runtime credentials in protected Environment jobs", () => {
     const release = parsedWorkflow.jobs?.release;
     const callerSecrets = release?.secrets;
     const environmentOnlySecrets = [
       "TELEGRAM_IDENTITY_AUTHORITY_SHA256",
+      "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+      "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
     ] as const;
     const referencedSecrets = [
       ...releaseWorkflow.matchAll(/\bsecrets\.([A-Z0-9_]+)/g),
@@ -519,6 +528,31 @@ describe("homepage deployment workflow", () => {
     expect(releaseWorkflow).not.toContain(
       "secrets.TELEGRAM_IDENTITY_AUTHORITY_SHA256",
     );
+    expect(releaseWorkflow).not.toContain(
+      "secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN",
+    );
+    expect(releaseWorkflow).not.toContain(
+      "secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+    );
+
+    const apiDeploy = parsedReleaseWorkflow.jobs?.["deploy-api"];
+    const secretPreparation = namedStep(
+      apiDeploy,
+      "Prepare Worker secrets for atomic deploy",
+    );
+    expect(apiDeploy?.environment).toBe(
+      githubExpression("inputs.target_environment"),
+    );
+    expect(secretPreparation.env?.ELIZA_APP_TELEGRAM_BOT_TOKEN).toBe(
+      githubExpression(
+        "secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'BOT_TOKEN')]",
+      ),
+    );
+    expect(secretPreparation.env?.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET).toBe(
+      githubExpression(
+        "secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'WEBHOOK_SECRET')]",
+      ),
+    );
   });
 
   it("admits Telegram identity in the entry workflow before every release mutation", () => {
@@ -544,6 +578,9 @@ describe("homepage deployment workflow", () => {
       telegram_authority_run_attempt: githubExpression(
         "steps.telegram.outputs.run_attempt",
       ),
+      telegram_runtime_authority: githubExpression(
+        "steps.runtime_binding.outputs.runtime_authority",
+      ),
     });
     expect(telegramAuthorityResolver?.steps?.[0]?.uses).toContain(
       "actions/checkout@",
@@ -564,6 +601,25 @@ describe("homepage deployment workflow", () => {
         "secrets.TELEGRAM_IDENTITY_AUTHORITY_SHA256",
       ),
     });
+    const stagingRuntimeBinding = namedStep(
+      telegramAuthorityResolver,
+      "Verify protected staging Telegram Worker binding names",
+    );
+    expect(stagingRuntimeBinding.env).toEqual({
+      CLOUDFLARE_API_TOKEN: githubExpression("secrets.CLOUDFLARE_API_TOKEN"),
+      CLOUDFLARE_ACCOUNT_ID: githubExpression("secrets.CLOUDFLARE_ACCOUNT_ID"),
+    });
+    expect(stagingRuntimeBinding.run).toContain(
+      "wrangler@4.116.0 secret list --env staging --format json",
+    );
+    expect(stagingRuntimeBinding.run).toContain(
+      "verify-worker-secret-binding-names.mjs",
+    );
+    expect(stagingRuntimeBinding.run).toContain(
+      "runtime_authority=staging-protected-receipt-and-existing-bindings",
+    );
+    expect(stagingRuntimeBinding.run).not.toContain("TELEGRAM_BOT_TOKEN=");
+    expect(stagingRuntimeBinding.run).not.toContain("TELEGRAM_WEBHOOK_SECRET=");
     expect(jobNeeds(parsedWorkflow.jobs?.release)).toContain(
       "resolve-telegram-environment-authority",
     );
@@ -572,6 +628,54 @@ describe("homepage deployment workflow", () => {
     );
     expect(parsedWorkflow.jobs?.release?.if).toContain(
       "needs.resolve-telegram-environment-authority.result == 'skipped'",
+    );
+    expect(
+      parsedWorkflow.jobs?.release?.with?.telegram_runtime_authority,
+    ).toContain(
+      "needs.resolve-telegram-environment-authority.outputs.telegram_runtime_authority",
+    );
+    expect(
+      parsedWorkflow.jobs?.release?.with?.telegram_runtime_authority,
+    ).toContain(
+      "needs.authorize-production.outputs.telegram_runtime_authority",
+    );
+    expect(
+      parsedReleaseWorkflow.on?.workflow_call?.inputs
+        ?.telegram_runtime_authority,
+    ).toMatchObject({ required: true, type: "string" });
+
+    const productionAuthorization =
+      parsedWorkflow.jobs?.["authorize-production"];
+    const productionRuntimeAttestation = namedStep(
+      productionAuthorization,
+      "Attest protected production Telegram runtime identity",
+    );
+    expect(productionAuthorization?.environment).toBe("production");
+    expect(productionAuthorization?.outputs).toEqual({
+      telegram_runtime_authority: githubExpression(
+        "steps.runtime_attestation.outputs.runtime_authority",
+      ),
+    });
+    expect(productionRuntimeAttestation.env).toEqual({
+      TELEGRAM_BOT_TOKEN: githubExpression(
+        "secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN",
+      ),
+      TELEGRAM_WEBHOOK_SECRET: githubExpression(
+        "secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+      ),
+      TELEGRAM_ATTESTATION_CONTEXT: "production",
+    });
+    expect(productionRuntimeAttestation.run).toContain(
+      "packages/homepage/src/lib/contact.ts",
+    );
+    expect(productionRuntimeAttestation.run).toContain(
+      "packages/cloud/scripts/verify-telegram-bot-identity.mjs",
+    );
+    expect(productionRuntimeAttestation.run).toContain(
+      "runtime_authority=production-live-attested",
+    );
+    expect(jobNeeds(parsedWorkflow.jobs?.release)).toContain(
+      "authorize-production",
     );
 
     expect(jobNames.indexOf("resolve-pages-environment-config")).toBeLessThan(
@@ -590,6 +694,9 @@ describe("homepage deployment workflow", () => {
       TELEGRAM_AUTHORITY_RUN_ATTEMPT: githubExpression(
         "inputs.telegram_authority_run_attempt",
       ),
+      TELEGRAM_RUNTIME_AUTHORITY: githubExpression(
+        "inputs.telegram_runtime_authority",
+      ),
       ADMITTED_TELEGRAM_BOT_ID: githubExpression(
         "inputs.admitted_telegram_bot_id",
       ),
@@ -601,6 +708,9 @@ describe("homepage deployment workflow", () => {
     expect(releaseWorkflow).not.toContain("secrets.VITE_TELEGRAM_BOT_USERNAME");
 
     expect(jobNeeds(migration)).toEqual(["resolve-pages-environment-config"]);
+    expect(jobNeeds(parsedWorkflow.jobs?.release)).toContain(
+      "resolve-telegram-environment-authority",
+    );
     expect(migration?.if).toContain(
       "needs.resolve-pages-environment-config.result == 'success'",
     );
@@ -855,6 +965,44 @@ describe("homepage deployment workflow", () => {
       environmentTelegram.botId,
       environmentTelegram.botUsername,
     ]);
+  });
+
+  it("fails closed before release mutations when caller runtime authority is absent", () => {
+    const execution = runReusableTelegramPreflight({ runtimeAuthority: "" });
+
+    expect(execution.exitCode).toBe(1);
+    expect(execution.githubOutput).toBe("");
+    expect(execution.summary).toBe("");
+    expect(execution.stderr).toContain(
+      "Telegram runtime authority was not proven for the selected protected Environment; re-run all jobs",
+    );
+    assertNoPublicSurfaceLeak(execution, [
+      stagingTelegram.botId,
+      stagingTelegram.botUsername,
+    ]);
+  });
+
+  it("rejects a runtime-authority result for the wrong protected Environment", () => {
+    for (const invalid of [
+      {
+        label: "production live attestation passed to staging",
+        targetEnvironment: "staging",
+        runtimeAuthority: "production-live-attested",
+      },
+      {
+        label: "staging preserve authority passed to production",
+        targetEnvironment: "production",
+        runtimeAuthority: "staging-protected-receipt-and-existing-bindings",
+      },
+    ]) {
+      const execution = runReusableTelegramPreflight(invalid);
+      expect(execution.exitCode, invalid.label).toBe(1);
+      expect(execution.githubOutput, invalid.label).toBe("");
+      expect(execution.summary, invalid.label).toBe("");
+      expect(execution.stderr, invalid.label).toContain(
+        "Telegram runtime authority was not proven for the selected protected Environment; re-run all jobs",
+      );
+    }
   });
 
   it("derives production Telegram identity in the reusable release and ignores caller inputs", () => {
