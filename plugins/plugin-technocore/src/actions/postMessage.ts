@@ -7,7 +7,7 @@ import type {
 	ProviderDataRecord,
 	State,
 } from "@elizaos/core";
-import { TechnocoreService } from "../services/technocore";
+import { extractTargetRoom, TechnocoreService } from "../services/technocore";
 
 function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
 	const service = runtime.getService?.("technocore") as TechnocoreService | undefined;
@@ -45,8 +45,10 @@ export const postMessageAction: Action = {
 				(runtime.getSetting?.("TECHNOCORE_DEFAULT_ROOM") as string) || "technocore";
 
 			const text = message.content?.text || "";
-			const roomMatch = text.match(/(?:room|\/r\/)\s*([a-zA-Z0-9_-]+)/i);
-			const targetRoom = roomMatch?.[1] || defaultRoom;
+			const structuredRoom =
+				((message.content as Record<string, unknown>)?.room as string) ||
+				(_options?.room as string);
+			const targetRoom = extractTargetRoom(text, defaultRoom, structuredRoom);
 
 			const service = getTechnocoreService(runtime);
 			const result = await service.postMessage(targetRoom, text);

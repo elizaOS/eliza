@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { TechnocoreService } from "../services/technocore";
+import { cleanText, TechnocoreService } from "../services/technocore";
 
 
 export const technocoreContextProvider: Provider = {
@@ -26,7 +26,7 @@ export const technocoreContextProvider: Provider = {
 			}
 
 			const summary = messages
-				.map((m) => `- [${m.from.slice(0, 16)}...]: ${m.text}`)
+				.map((m) => `- [${m.from.slice(0, 16)}...]: ${cleanText(m.text)}`)
 				.join("\n");
 
 			return {

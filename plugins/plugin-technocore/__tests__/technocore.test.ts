@@ -231,4 +231,161 @@ describe("Technocore Plugin Tests", () => {
 			globalThis.fetch = originalFetch;
 		}
 	});
+
+	it("should correctly extract room from natural language and structured fields without misrouting to stopwords", async () => {
+		const mockService: any = {
+			did: "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+			postMessage: async (room: string, text: string) => ({ posted: { seq: 1, text }, last_seq: 1 }),
+			readRoom: async (room: string, limit?: number) => ({ ok: true, room, messages: [] }),
+		};
+		const mockRuntime: any = {
+			getService: () => mockService,
+			getSetting: (key: string) => (key === "TECHNOCORE_DEFAULT_ROOM" ? "technocore" : undefined),
+		};
+
+		// 1. The exact utterance from the PR action's examples:
+		// "Broadcast to technocore room that agent node is online." -> Must be "technocore", NOT "that"
+		let capturedRoom = "";
+		mockService.postMessage = async (room: string) => {
+			capturedRoom = room;
+			return { posted: { seq: 1 }, last_seq: 1 };
+		};
+
+		await postMessageAction.handler(mockRuntime, {
+			content: { text: "Broadcast to technocore room that agent node is online." },
+		} as any);
+		expect(capturedRoom).toBe("technocore");
+
+		// 2. Explicit /r/ path
+		await postMessageAction.handler(mockRuntime, {
+			content: { text: "Announce update in /r/engineering" },
+		} as any);
+		expect(capturedRoom).toBe("engineering");
+
+		// 3. Prefix room notation
+		await postMessageAction.handler(mockRuntime, {
+			content: { text: "Send alert to alpha room" },
+		} as any);
+		expect(capturedRoom).toBe("alpha");
+
+		// 4. Suffix room notation with stopword rejection
+		await postMessageAction.handler(mockRuntime, {
+			content: { text: "Post to room that is active" },
+		} as any);
+		// "that" is rejected as a stopword, falls back to defaultRoom "technocore"
+		expect(capturedRoom).toBe("technocore");
+
+		// 5. Structured room property overrides text
+		await postMessageAction.handler(mockRuntime, {
+			content: { text: "Post in /r/ignored", room: "structured-room" },
+		} as any);
+		expect(capturedRoom).toBe("structured-room");
+	});
+
+	it("should partition KV store entries by agent DID by default and support caller-specified ns/key", async () => {
+		const agent1Service = new TechnocoreService(undefined, {
+			privateKeyHex: "1111111111111111111111111111111111111111111111111111111111111111",
+		});
+		const agent2Service = new TechnocoreService(undefined, {
+			privateKeyHex: "2222222222222222222222222222222222222222222222222222222222222222",
+		});
+
+		expect(agent1Service.did).not.toEqual(agent2Service.did);
+
+		const kvStore: Record<string, string> = {};
+		agent1Service.kvSet = async (ns: string, key: string, value: string) => {
+			kvStore[`${ns}/${key}`] = value;
+			return { ok: true, ns, key, value };
+		};
+		agent1Service.kvGet = async (ns: string, key: string) => ({
+			ok: true,
+			ns,
+			key,
+			value: kvStore[`${ns}/${key}`] || null,
+		});
+
+		agent2Service.kvSet = async (ns: string, key: string, value: string) => {
+			kvStore[`${ns}/${key}`] = value;
+			return { ok: true, ns, key, value };
+		};
+		agent2Service.kvGet = async (ns: string, key: string) => ({
+			ok: true,
+			ns,
+			key,
+			value: kvStore[`${ns}/${key}`] || null,
+		});
+
+		const runtime1: any = { getService: () => agent1Service, getSetting: () => "eliza-agent" };
+		const runtime2: any = { getService: () => agent2Service, getSetting: () => "eliza-agent" };
+
+		// Agent 1 writes state
+		await kvSetAction.handler(runtime1, { content: { text: "Agent 1 state" } } as any);
+		// Agent 2 writes state
+		await kvSetAction.handler(runtime2, { content: { text: "Agent 2 state" } } as any);
+
+		// Verify both entries exist independently without clobbering each other
+		const key1 = agent1Service.did.replace(/[^a-zA-Z0-9_-]/g, "_");
+		const key2 = agent2Service.did.replace(/[^a-zA-Z0-9_-]/g, "_");
+		expect(kvStore[`eliza-agent/${key1}`]).toBe("Agent 1 state");
+		expect(kvStore[`eliza-agent/${key2}`]).toBe("Agent 2 state");
+
+		// Agent 1 reads back its own state
+		const res1 = await kvGetAction.handler(runtime1, { content: { text: "read state" } } as any);
+		expect(res1.text).toContain("Agent 1 state");
+
+		// Caller explicitly specifies custom ns and key
+		await kvSetAction.handler(runtime1, {
+			content: { text: "Shared config", namespace: "shared-ns", key: "global-cfg" },
+		} as any);
+		expect(kvStore["shared-ns/global-cfg"]).toBe("Shared config");
+	});
+
+	it("should not retry deterministic HTTP 4xx responses", async () => {
+		const originalFetch = globalThis.fetch;
+		let fetchCallCount = 0;
+
+		globalThis.fetch = (async () => {
+			fetchCallCount++;
+			return {
+				ok: false,
+				status: 400,
+				text: async () => "Bad Request",
+			} as Response;
+		}) as typeof fetch;
+
+		try {
+			const service = new TechnocoreService();
+			await expect(service.listRooms()).rejects.toThrow(/HTTP 400: Bad Request/);
+			// Deterministic 400 must fail immediately on attempt 1 without retries
+			expect(fetchCallCount).toBe(1);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("should sweep hostile and invisible characters when reading room messages", async () => {
+		const mockService: any = {
+			readRoom: async () => ({
+				ok: true,
+				room: "general",
+				messages: [
+					{
+						seq: 1,
+						from: "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S",
+						text: "Clean text\r\nwith\t\tcontrol\u200B\uFEFF chars",
+					},
+				],
+			}),
+		};
+		const mockRuntime: any = {
+			getService: () => mockService,
+			getSetting: () => "general",
+		};
+
+		const res = await readRoomAction.handler(mockRuntime, { content: { text: "read room" } } as any);
+		expect(res.success).toBe(true);
+		expect(res.text).toContain("Clean text with control chars");
+		expect(res.text).not.toContain("\u200B");
+		expect(res.text).not.toContain("\uFEFF");
+	});
 });

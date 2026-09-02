@@ -40,6 +40,43 @@ export function cleanText(input: string): string {
 		.trim();
 }
 
+export function extractTargetRoom(
+	text: string,
+	defaultRoom: string,
+	structuredRoom?: string
+): string {
+	if (structuredRoom && /^[a-zA-Z0-9_-]+$/.test(structuredRoom.trim())) {
+		return structuredRoom.trim();
+	}
+
+	const explicitSlash = text.match(/\/r\/([a-zA-Z0-9_-]+)/i);
+	if (explicitSlash?.[1]) {
+		return explicitSlash[1];
+	}
+
+	const prefixMatch = text.match(/\b([a-zA-Z0-9_-]+)\s+room\b/i);
+	if (
+		prefixMatch?.[1] &&
+		!/^(the|a|an|this|that|my|any|chat|our|to|in|at|from|into|on|of|current|main|default)$/i.test(
+			prefixMatch[1]
+		)
+	) {
+		return prefixMatch[1];
+	}
+
+	const suffixMatch = text.match(/\broom\s*[:=]?\s*([a-zA-Z0-9_-]+)/i);
+	if (
+		suffixMatch?.[1] &&
+		!/^(the|a|an|this|that|with|for|about|where|when|is|are|to|in|at|from|into|on|of)$/i.test(
+			suffixMatch[1]
+		)
+	) {
+		return suffixMatch[1];
+	}
+
+	return defaultRoom;
+}
+
 export class TechnocoreService extends Service {
 	static override serviceType = "technocore";
 	capabilityDescription =
@@ -167,7 +204,10 @@ export class TechnocoreService extends Service {
 				} catch {
 					return { success: true, message: textResp } as unknown as T;
 				}
-			} catch (err) {
+			} catch (err: any) {
+				if (err?.message?.startsWith("HTTP 4") && !err.message.startsWith("HTTP 429")) {
+					throw err;
+				}
 				if (attempt === maxRetries) {
 					throw err;
 				}

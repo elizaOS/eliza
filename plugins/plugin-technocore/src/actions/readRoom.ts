@@ -7,7 +7,7 @@ import type {
 	ProviderDataRecord,
 	State,
 } from "@elizaos/core";
-import { TechnocoreService } from "../services/technocore";
+import { cleanText, extractTargetRoom, TechnocoreService } from "../services/technocore";
 
 function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
 	const service = runtime.getService?.("technocore") as TechnocoreService | undefined;
@@ -22,10 +22,10 @@ function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
 export const readRoomAction: Action = {
 	name: "TECHNOCORE_READ_ROOM",
 	similes: [
-		"FETCH_TECHNOCORE_MESSAGES",
-		"GET_ROOM_HISTORY",
-		"SCAN_TECHNOCORE_ROOM",
-		"READ_TECHNOCORE",
+		"FETCH_TECHNOCORE_ROOM",
+		"GET_TECHNOCORE_MESSAGES",
+		"CHECK_TECHNOCORE_FEED",
+		"LIST_TECHNOCORE_CHAT",
 	],
 	description: "Fetches recent signed messages from a Technocore decentralized chat room.",
 	validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -44,8 +44,10 @@ export const readRoomAction: Action = {
 				(runtime.getSetting?.("TECHNOCORE_DEFAULT_ROOM") as string) || "technocore";
 
 			const text = message.content?.text || "";
-			const roomMatch = text.match(/(?:room|\/r\/)\s*([a-zA-Z0-9_-]+)/i);
-			const targetRoom = roomMatch?.[1] || defaultRoom;
+			const structuredRoom =
+				((message.content as Record<string, unknown>)?.room as string) ||
+				(_options?.room as string);
+			const targetRoom = extractTargetRoom(text, defaultRoom, structuredRoom);
 
 			const service = getTechnocoreService(runtime);
 			const result = await service.readRoom(targetRoom, 10);
@@ -53,7 +55,7 @@ export const readRoomAction: Action = {
 			const messages = result.messages || [];
 			const formatted = messages
 				.slice(-5)
-				.map((m) => `[Seq #${m.seq}] ${m.from.slice(0, 16)}...: ${m.text}`)
+				.map((m) => `[Seq #${m.seq}] ${m.from.slice(0, 16)}...: ${cleanText(m.text)}`)
 				.join("\n");
 
 			const responseText =

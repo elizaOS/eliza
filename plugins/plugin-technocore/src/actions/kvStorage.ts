@@ -19,6 +19,51 @@ function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
 	return service;
 }
 
+export function extractNamespace(
+	runtime: IAgentRuntime,
+	message?: Memory,
+	options?: Record<string, unknown>
+): string {
+	const content = message?.content as Record<string, unknown> | undefined;
+	const customNs =
+		(content?.namespace as string) ||
+		(content?.ns as string) ||
+		(options?.namespace as string) ||
+		(options?.ns as string);
+	if (typeof customNs === "string" && /^[a-zA-Z0-9_-]+$/.test(customNs.trim())) {
+		return customNs.trim();
+	}
+
+	const text = (content?.text as string) || "";
+	const match = text.match(/\b(?:namespace|ns)\s*[:=]\s*([a-zA-Z0-9_-]+)/i);
+	if (match?.[1]) {
+		return match[1];
+	}
+
+	return (runtime.getSetting?.("TECHNOCORE_DEFAULT_NS") as string) || "eliza-agent";
+}
+
+export function extractKey(
+	service: TechnocoreService,
+	message?: Memory,
+	options?: Record<string, unknown>
+): string {
+	const content = message?.content as Record<string, unknown> | undefined;
+	const customKey = (content?.key as string) || (options?.key as string);
+	if (typeof customKey === "string" && /^[a-zA-Z0-9_-]+$/.test(customKey.trim())) {
+		return customKey.trim();
+	}
+
+	const text = (content?.text as string) || "";
+	const match = text.match(/\bkey\s*[:=]\s*([a-zA-Z0-9_-]+)/i);
+	if (match?.[1]) {
+		return match[1];
+	}
+
+	// Default: partition by agent's unique DID to prevent multi-agent state collisions
+	return service.did.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
 export const kvSetAction: Action = {
 	name: "TECHNOCORE_KV_SET",
 	similes: [
@@ -40,11 +85,16 @@ export const kvSetAction: Action = {
 	): Promise<ActionResult> => {
 		try {
 			const text = message.content?.text || "";
-			const ns = "eliza-agent";
-			const key = "latest";
-			const service = getTechnocoreService(runtime);
+			const value =
+				typeof (message.content as Record<string, unknown>)?.value === "string"
+					? ((message.content as Record<string, unknown>).value as string)
+					: text;
 
-			const result = await service.kvSet(ns, key, text);
+			const service = getTechnocoreService(runtime);
+			const ns = extractNamespace(runtime, message, _options);
+			const key = extractKey(service, message, _options);
+
+			const result = await service.kvSet(ns, key, value);
 			const responseText = `Successfully stored decentralized memory at /kv/${ns}/${key}`;
 
 			if (callback) {
@@ -105,9 +155,12 @@ export const kvGetAction: Action = {
 	): Promise<ActionResult> => {
 		try {
 			const service = getTechnocoreService(runtime);
-			const result = await service.kvGet("eliza-agent", "latest");
+			const ns = extractNamespace(runtime, _message, _options);
+			const key = extractKey(service, _message, _options);
 
-			const responseText = `Retrieved Technocore KV memory: ${result.value || "None"}`;
+			const result = await service.kvGet(ns, key);
+
+			const responseText = `Retrieved Technocore KV memory from /kv/${ns}/${key}: ${result.value || "None"}`;
 
 			if (callback) {
 				callback({ text: responseText, action: "TECHNOCORE_KV_GET" });
