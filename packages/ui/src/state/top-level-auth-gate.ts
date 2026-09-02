@@ -88,12 +88,12 @@ export interface RemoteAuthGateAccess {
 export function shouldShowRemoteAgentPairingGate(args: {
   reason?: "remote_auth_required" | "remote_password_not_configured";
   access?: RemoteAuthGateAccess;
-  pairingEnabled: boolean;
 }): boolean {
   const access = args.access;
   return (
     args.reason === "remote_auth_required" &&
     access?.mode === "remote" &&
-    args.pairingEnabled
+    access.passwordConfigured === true &&
+    access.ownerConfigured === false
   );
 }

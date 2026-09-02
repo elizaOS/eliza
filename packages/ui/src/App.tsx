@@ -2551,7 +2551,6 @@ function AppContent() {
     gameOverlayEnabled,
     uiShellMode,
     uiLanguage,
-    pairingEnabled,
     t,
     elizaCloudConnected,
     elizaCloudLoginBusy,
@@ -2574,7 +2573,6 @@ function AppContent() {
     gameOverlayEnabled: s.gameOverlayEnabled,
     uiShellMode: s.uiShellMode,
     uiLanguage: s.uiLanguage,
-    pairingEnabled: s.pairingEnabled,
     t: s.t,
     elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudLoginBusy: s.elizaCloudLoginBusy,
@@ -3586,7 +3584,6 @@ function AppContent() {
         shouldShowRemoteAgentPairingGate({
           reason: authState.reason,
           access: authState.access,
-          pairingEnabled,
         })
       ) {
         return (

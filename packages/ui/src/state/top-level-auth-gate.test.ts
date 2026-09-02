@@ -121,25 +121,23 @@ describe("authProbeShouldHoldShell — pre-auth poll suppression", () => {
 });
 
 describe("shouldShowRemoteAgentPairingGate — LAN standalone agent auth", () => {
-  it("prefers enabled pairing for a standalone remote agent with an existing owner", () => {
+  it("uses the pairing contract synthesized by the auth client", () => {
     expect(
       shouldShowRemoteAgentPairingGate({
         reason: "remote_auth_required",
-        pairingEnabled: true,
         access: {
           mode: "remote",
           passwordConfigured: true,
-          ownerConfigured: true,
+          ownerConfigured: false,
         },
       }),
     ).toBe(true);
   });
 
-  it("retains password login when pairing is disabled", () => {
+  it("retains password login without the synthesized pairing contract", () => {
     expect(
       shouldShowRemoteAgentPairingGate({
         reason: "remote_auth_required",
-        pairingEnabled: false,
         access: {
           mode: "remote",
           passwordConfigured: true,
@@ -153,7 +151,6 @@ describe("shouldShowRemoteAgentPairingGate — LAN standalone agent auth", () =>
     expect(
       shouldShowRemoteAgentPairingGate({
         reason: "remote_password_not_configured",
-        pairingEnabled: true,
         access: {
           mode: "remote",
           passwordConfigured: false,
