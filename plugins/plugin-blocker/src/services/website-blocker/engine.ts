@@ -907,6 +907,7 @@ export async function stopSelfControlBlock(
       startedAt: null,
       endsAt: null,
       websites: [],
+      ...EMPTY_SELF_CONTROL_BLOCK_POLICY,
       managedBy: null,
       metadata: null,
       scheduledByAgentId: null,
