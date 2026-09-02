@@ -213,6 +213,11 @@ export async function executeResponseAttempts(
     }
     await sleep(retryDelayMs, options.signal);
   }
-  if (lastTransportError !== undefined) throw lastTransportError;
+  if (lastTransportError !== undefined) {
+    throw new Error(
+      `HTTP attempts ended without a response: ${lastTransportError instanceof Error ? lastTransportError.message : String(lastTransportError)}`,
+      { cause: lastTransportError },
+    );
+  }
   throw new Error("HTTP attempts ended without a response");
 }

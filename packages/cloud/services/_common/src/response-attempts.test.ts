@@ -135,12 +135,14 @@ describe("executeResponseAttempts", () => {
   });
 
   test("does not expand transport retries when no authentication refresh occurs", async () => {
+    const transportError = new TypeError("still unavailable");
     const request = mock(async () => {
-      throw new Error("still unavailable");
+      throw transportError;
     });
 
-    await expect(
-      executeResponseAttempts({
+    let failure: unknown;
+    try {
+      await executeResponseAttempts({
         maxAttempts: 3,
         replayPolicy: "idempotent",
         authRefreshAttemptsOutsideBudget: 1,
@@ -150,8 +152,13 @@ describe("executeResponseAttempts", () => {
         refreshAuth: async () => undefined,
         reportObservationError: () => undefined,
         observe: () => undefined,
-      }),
-    ).rejects.toThrow("still unavailable");
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toMatchObject({ cause: transportError });
+    expect((failure as Error).message).toContain("still unavailable");
     expect(request).toHaveBeenCalledTimes(3);
   });
 
