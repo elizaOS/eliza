@@ -108,9 +108,25 @@ describe("Technocore Plugin Tests", () => {
 		};
 		const msg: any = { content: { text: "post to room test" } };
 
-		const res = await postMessageAction.handler(mockRuntimeNoService, msg);
-		expect(res.success).toBe(false);
-		expect(res.error).toContain("TechnocoreService is not registered");
+		const resPost = await postMessageAction.handler(mockRuntimeNoService, msg);
+		expect(resPost.success).toBe(false);
+		expect(resPost.error).toContain("TechnocoreService is not registered");
+
+		const resRead = await readRoomAction.handler(mockRuntimeNoService, msg);
+		expect(resRead.success).toBe(false);
+		expect(resRead.error).toContain("TechnocoreService is not registered");
+
+		const resList = await listRoomsAction.handler(mockRuntimeNoService, msg);
+		expect(resList.success).toBe(false);
+		expect(resList.error).toContain("TechnocoreService is not registered");
+
+		const resKvSet = await kvSetAction.handler(mockRuntimeNoService, msg);
+		expect(resKvSet.success).toBe(false);
+		expect(resKvSet.error).toContain("TechnocoreService is not registered");
+
+		const resKvGet = await kvGetAction.handler(mockRuntimeNoService, msg);
+		expect(resKvGet.success).toBe(false);
+		expect(resKvGet.error).toContain("TechnocoreService is not registered");
 	});
 
 	it("should export full plugin structure with valid actions, provider, and service", () => {

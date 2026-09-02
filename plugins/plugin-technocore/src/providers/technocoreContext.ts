@@ -1,12 +1,6 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { TechnocoreService } from "../services/technocore";
 
-function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
-	return (
-		(runtime.getService?.("technocore") as TechnocoreService) ||
-		new TechnocoreService(runtime)
-	);
-}
 
 export const technocoreContextProvider: Provider = {
 	name: "technocoreContext",
