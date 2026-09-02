@@ -32,6 +32,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		// it must run against the real core implementations.
 		getUserMessageText: actual.getUserMessageText,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
+		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
+		completeUserReferenceView: actual.completeUserReferenceView,
 	};
 });
 

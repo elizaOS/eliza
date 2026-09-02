@@ -43,6 +43,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		...coreMock,
 		getUserMessageText: actual.getUserMessageText,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
+		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
+		completeUserReferenceView: actual.completeUserReferenceView,
 	};
 });
 
