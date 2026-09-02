@@ -230,12 +230,6 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     expectedSignals: { credit_service_reserve: 1 },
   },
   {
-    relativePath: "shared/src/lib/services/proxy/birdeye-handler.ts",
-    operation: "search",
-    fundingClass: "allowance_eligible",
-    expectedSignals: { credit_service_deduct: 1 },
-  },
-  {
     relativePath: "shared/src/lib/services/proxy/dexscreener-handler.ts",
     operation: "search",
     fundingClass: "allowance_eligible",
