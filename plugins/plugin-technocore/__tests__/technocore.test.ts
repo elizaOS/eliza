@@ -135,4 +135,61 @@ describe("Technocore Plugin Tests", () => {
 		expect(await postMessageAction.validate(mockRuntime, validMsg)).toBe(true);
 		expect(await postMessageAction.validate(mockRuntime, invalidMsg)).toBe(false);
 	});
+
+	it("should strictly reject invalid identifiers in postMessage, readRoom, kvSet, and kvGet", async () => {
+		const service = new TechnocoreService();
+		const invalidIds = ["a|b", "a?b", "a#b", "a/b", "a b", "a\nb", ""];
+
+		for (const invalid of invalidIds) {
+			await expect(service.postMessage(invalid, "hello")).rejects.toThrow(/Invalid technocore room/);
+			await expect(service.readRoom(invalid)).rejects.toThrow(/Invalid technocore room/);
+			await expect(service.kvSet(invalid, "key", "val")).rejects.toThrow(/Invalid technocore namespace/);
+			await expect(service.kvSet("ns", invalid, "val")).rejects.toThrow(/Invalid technocore key/);
+			await expect(service.kvGet(invalid, "key")).rejects.toThrow(/Invalid technocore namespace/);
+			await expect(service.kvGet("ns", invalid)).rejects.toThrow(/Invalid technocore key/);
+		}
+	});
+
+	it("should maintain exact URL path alignment across write and read round-trips without aliasing", async () => {
+		const originalFetch = globalThis.fetch;
+		const requestedUrls: string[] = [];
+
+		globalThis.fetch = (async (url: string | URL | Request) => {
+			requestedUrls.push(url.toString());
+			return {
+				ok: true,
+				status: 200,
+				headers: new Headers({ "content-type": "application/json" }),
+				json: async () => ({ success: true }),
+				text: async () => JSON.stringify({ success: true }),
+			} as Response;
+		}) as typeof fetch;
+
+		try {
+			const service = new TechnocoreService();
+			const ns = "agent-memory-v1";
+			const key = "checkpoint_001";
+			const room = "general-room_42";
+
+			await service.kvSet(ns, key, "some_value");
+			await service.kvGet(ns, key);
+
+			const writeKvUrl = new URL(requestedUrls[0]);
+			const readKvUrl = new URL(requestedUrls[1]);
+			expect(writeKvUrl.pathname).toBe(`/kv/${ns}/${key}`);
+			expect(readKvUrl.pathname).toBe(`/kv/${ns}/${key}`);
+			expect(writeKvUrl.pathname).toBe(readKvUrl.pathname);
+
+			await service.postMessage(room, "broadcast text");
+			await service.readRoom(room);
+
+			const writeRoomUrl = new URL(requestedUrls[2]);
+			const readRoomUrl = new URL(requestedUrls[3]);
+			expect(writeRoomUrl.pathname).toBe(`/r/${room}`);
+			expect(readRoomUrl.pathname).toBe(`/r/${room}`);
+			expect(writeRoomUrl.pathname).toBe(readRoomUrl.pathname);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
 });

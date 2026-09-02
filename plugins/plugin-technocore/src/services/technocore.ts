@@ -25,6 +25,13 @@ function base58Encode(buffer: Buffer): string {
 	return encoded;
 }
 
+export function assertIdentifier(kind: string, value: string): string {
+	if (!/^[A-Za-z0-9_-]+$/.test(value)) {
+		throw new Error(`Invalid technocore ${kind}: ${JSON.stringify(value)}`);
+	}
+	return value;
+}
+
 export function cleanText(input: string): string {
 	return input
 		.replace(/[\r\n\t]+/g, " ")
@@ -48,35 +55,38 @@ export class TechnocoreService extends Service {
 	constructor(runtime?: IAgentRuntime, config?: Partial<TechnocoreConfig>) {
 		super(runtime);
 
-		const settingUrl = runtime?.getSetting?.("TECHNOCORE_BASE_URL") as string | undefined;
-		this.baseUrl = (config?.baseUrl || settingUrl || "https://technocore.chat").replace(/\/+$/, "");
+		const baseUrlSetting = runtime?.getSetting("TECHNOCORE_BASE_URL");
+		const privKeySetting = runtime?.getSetting("TECHNOCORE_PRIVATE_KEY_HEX");
 
-		const privateKeySetting =
-			(runtime?.getSetting?.("TECHNOCORE_PRIVATE_KEY_HEX") as string | undefined) ||
-			(runtime?.getSetting?.("TECHNOCORE_PRIVATE_KEY") as string | undefined) ||
-			config?.privateKeyHex;
+		this.baseUrl = (
+			config?.baseUrl ||
+			(typeof baseUrlSetting === "string" ? baseUrlSetting : undefined) ||
+			"https://technocore.chat"
+		).replace(/\/$/, "");
 
-		if (privateKeySetting && /^[0-9a-fA-F]{64}$/.test(privateKeySetting.trim())) {
-			// Deterministically load from 32-byte Ed25519 seed hex
-			const seed = Buffer.from(privateKeySetting.trim(), "hex");
-			const pkcs8Der = Buffer.concat([PKCS8_ED25519_PREFIX, seed]);
+		const privateKeyHex =
+			config?.privateKeyHex ||
+			(typeof privKeySetting === "string" ? privKeySetting : undefined);
+
+		if (privateKeyHex && /^[0-9a-fA-F]{64}$/.test(privateKeyHex)) {
+			const seedBuf = Buffer.from(privateKeyHex, "hex");
+			const pkcs8Key = Buffer.concat([PKCS8_ED25519_PREFIX, seedBuf]);
 			this.privateKey = crypto.createPrivateKey({
-				key: pkcs8Der,
+				key: pkcs8Key,
 				format: "der",
 				type: "pkcs8",
 			});
 			this.publicKey = crypto.createPublicKey(this.privateKey);
 		} else {
-			// Generate fresh persistent keypair for this service instance
-			const keypair = crypto.generateKeyPairSync("ed25519");
-			this.privateKey = keypair.privateKey;
-			this.publicKey = keypair.publicKey;
+			const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+			this.privateKey = privateKey;
+			this.publicKey = publicKey;
 		}
 
-		const rawPublic = this.publicKey.export({ type: "spki", format: "der" });
-		const rawPubBytes = rawPublic.subarray(rawPublic.length - 32);
-		const multicodecPub = Buffer.concat([MULTICODEC_ED25519, rawPubBytes]);
-		this.did = `did:key:z${base58Encode(multicodecPub)}`;
+		const spki = this.publicKey.export({ format: "der", type: "spki" });
+		const rawPubKey = spki.subarray(spki.length - 32);
+		const multicodec = Buffer.concat([MULTICODEC_ED25519, rawPubKey]);
+		this.did = `did:key:z${base58Encode(multicodec)}`;
 	}
 
 	public override async stop(): Promise<void> {
@@ -95,7 +105,7 @@ export class TechnocoreService extends Service {
 
 	public signPayload(payload: string): string {
 		const sig = crypto.sign(null, Buffer.from(payload, "utf-8"), this.privateKey);
-		return sig.toString("base64url").replace(/=+$/, "");
+		return sig.toString("base64url");
 	}
 
 	private async request<T>(
@@ -168,15 +178,15 @@ export class TechnocoreService extends Service {
 	}
 
 	public async postMessage(room: string, text: string): Promise<TechnocoreRoomResponse> {
-		const cleanRoom = cleanText(room).replaceAll("|", "");
+		const validRoom = assertIdentifier("room", room);
 		const cleanedText = cleanText(text);
 		const nonce = this.getNonce();
-		const payload = `${cleanRoom}|${nonce}|${cleanedText}`;
+		const payload = `${validRoom}|${nonce}|${cleanedText}`;
 		const sig = this.signPayload(payload);
 
 		return this.request<TechnocoreRoomResponse>(
 			"POST",
-			`/r/${cleanRoom}`,
+			`/r/${validRoom}`,
 			undefined,
 			{
 				text: cleanedText,
@@ -192,7 +202,8 @@ export class TechnocoreService extends Service {
 		limit = 25,
 		since?: number
 	): Promise<TechnocoreRoomResponse> {
-		return this.request<TechnocoreRoomResponse>("GET", `/r/${room}`, { limit, since });
+		const validRoom = assertIdentifier("room", room);
+		return this.request<TechnocoreRoomResponse>("GET", `/r/${validRoom}`, { limit, since });
 	}
 
 	public async listRooms(): Promise<TechnocoreRoomsListResponse> {
@@ -200,7 +211,9 @@ export class TechnocoreService extends Service {
 	}
 
 	public async kvGet(namespace: string, key: string): Promise<TechnocoreKVResponse> {
-		return this.request<TechnocoreKVResponse>("GET", `/kv/${namespace}/${key}`);
+		const validNs = assertIdentifier("namespace", namespace);
+		const validKey = assertIdentifier("key", key);
+		return this.request<TechnocoreKVResponse>("GET", `/kv/${validNs}/${validKey}`);
 	}
 
 	public async kvSet(
@@ -208,16 +221,16 @@ export class TechnocoreService extends Service {
 		key: string,
 		value: string
 	): Promise<TechnocoreKVResponse> {
-		const cleanNs = cleanText(namespace).replaceAll("|", "");
-		const cleanKey = cleanText(key).replaceAll("|", "");
+		const validNs = assertIdentifier("namespace", namespace);
+		const validKey = assertIdentifier("key", key);
 		const cleanedValue = cleanText(value);
 		const nonce = this.getNonce();
-		const payload = `${cleanNs}|${cleanKey}|${nonce}|${cleanedValue}`;
+		const payload = `${validNs}|${validKey}|${nonce}|${cleanedValue}`;
 		const sig = this.signPayload(payload);
 
 		return this.request<TechnocoreKVResponse>(
 			"POST",
-			`/kv/${cleanNs}/${cleanKey}`,
+			`/kv/${validNs}/${validKey}`,
 			undefined,
 			{
 				value: cleanedValue,
