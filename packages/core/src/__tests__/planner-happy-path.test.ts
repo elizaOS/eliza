@@ -2632,6 +2632,28 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(text).toBe("Notes are open whenever you're ready.");
 	});
 
+	it("uses post-tool synthesis when the Stage 1 navigation reply omits the destination", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					viewId: "notes",
+					label: "Notes",
+					path: "/notes",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "On it.",
+				postToolReply: "Notes are open.",
+			},
+		);
+		expect(text).toBe("Notes are open.");
+	});
+
 	it("uses post-tool synthesis instead of releasing an unrelated mutation claim", async () => {
 		const text = await runDeterministicViewsTurn(
 			{

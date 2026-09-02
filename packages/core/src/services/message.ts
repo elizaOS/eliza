@@ -2271,6 +2271,25 @@ function structuredEffectFromToolResult(
 	};
 }
 
+function replyNamesStructuredEffectDestination(
+	reply: string,
+	effect: StructuredToolEffect,
+): boolean {
+	if (effect.effect !== "view_navigation" || !effect.label) return true;
+	const normalize = (value: string): string =>
+		value
+			.toLocaleLowerCase()
+			.replace(/[^\p{L}\p{N}]+/gu, " ")
+			.trim();
+	const normalizedReply = normalize(reply);
+	const normalizedLabel = normalize(effect.label);
+	return (
+		normalizedReply.length > 0 &&
+		normalizedLabel.length > 0 &&
+		normalizedReply.includes(normalizedLabel)
+	);
+}
+
 /**
  * Deterministic confirmation for the most recent successful tool result whose
  * receipt carries an accepted structured effect. An internal-visibility
@@ -10705,6 +10724,10 @@ export async function runV5MessageRuntimeStage1(args: {
 					if (
 						acceptedEffect?.status === "accepted" &&
 						groundedModelReply &&
+						replyNamesStructuredEffectDestination(
+							groundedModelReply,
+							acceptedEffect,
+						) &&
 						groundedModelReplyEgress?.verdict === "allow"
 					) {
 						return {
