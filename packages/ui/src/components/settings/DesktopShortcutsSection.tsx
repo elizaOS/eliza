@@ -9,6 +9,7 @@
  * `ChatHotkeySettingsGroup.syncChatOverlayShortcut`.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { AlertTriangle, Keyboard, RotateCcw } from "lucide-react";
 import * as React from "react";
 import { invokeDesktopBridgeRequest } from "../../bridge";
@@ -18,7 +19,7 @@ import {
   getPushToTalkAccelerator,
   setPushToTalkAccelerator,
 } from "../../state/push-to-talk-hotkey";
-import { Button } from "../ui/button";
+import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 /** Internal canonical combo form: lowercase modifier names + key, joined by `+`. */
@@ -127,10 +128,16 @@ async function syncShortcut(id: string, combo: Combo): Promise<void> {
     ipcChannel: "desktop:registerShortcut",
     params: { id, accelerator },
   });
-  if (result?.success === false) {
-    throw new Error(
-      `The operating system rejected ${accelerator}. Choose a different shortcut.`,
-    );
+  if (result?.success !== true) {
+    const message = result
+      ? `The operating system rejected ${accelerator}. Choose a different shortcut.`
+      : `The desktop app did not register ${accelerator}. Restart Eliza and try again.`;
+    throw new ElizaError(message, {
+      code: result
+        ? "DESKTOP_SHORTCUT_REJECTED"
+        : "DESKTOP_SHORTCUT_METHOD_UNAVAILABLE",
+      context: { id, accelerator },
+    });
   }
 }
 
@@ -166,6 +173,7 @@ export function DesktopShortcutsSection() {
   const [shortcutError, setShortcutError] = React.useState<string | null>(null);
   const [shortcutMutationPending, setShortcutMutationPending] =
     React.useState(false);
+  const mutationInFlight = React.useRef(false);
 
   const findConflict = React.useCallback(
     (id: string, combo: Combo): ShortcutBinding | undefined =>
@@ -195,6 +203,8 @@ export function DesktopShortcutsSection() {
 
   const commitCombo = React.useCallback(
     async (id: string, combo: Combo) => {
+      if (mutationInFlight.current) return;
+      mutationInFlight.current = true;
       setShortcutMutationPending(true);
       const previousCombo = shortcuts.find(
         (shortcut) => shortcut.id === id,
@@ -212,15 +222,26 @@ export function DesktopShortcutsSection() {
                 await syncShortcut(id, previousCombo);
               } catch (rollbackError) {
                 // error-policy:J2 rollback failure rethrows with both causes.
-                throw new Error(
-                  `The shortcut changed but could not be saved or restored. Restart Eliza to restore the saved shortcut. ${String(rollbackError)}`,
-                  { cause: persistenceError },
+                throw new ElizaError(
+                  "The shortcut changed but could not be saved or restored. Restart Eliza to restore the saved shortcut.",
+                  {
+                    code: "DESKTOP_SHORTCUT_PERSISTENCE_AND_ROLLBACK_FAILED",
+                    cause: new AggregateError([
+                      persistenceError,
+                      rollbackError,
+                    ]),
+                    context: { id, combo, previousCombo },
+                  },
                 );
               }
             }
-            throw new Error(
+            throw new ElizaError(
               "The shortcut could not be saved, so the previous shortcut was restored.",
-              { cause: persistenceError },
+              {
+                code: "DESKTOP_SHORTCUT_PERSISTENCE_FAILED",
+                cause: persistenceError,
+                context: { id, combo, previousCombo },
+              },
             );
           }
         }
@@ -236,6 +257,7 @@ export function DesktopShortcutsSection() {
           error instanceof Error ? error.message : String(error),
         );
       } finally {
+        mutationInFlight.current = false;
         setShortcutMutationPending(false);
       }
     },
@@ -257,6 +279,8 @@ export function DesktopShortcutsSection() {
       const current = shortcuts.find((shortcut) => shortcut.id === id);
       const conflictDef = DEFAULT_SHORTCUTS.find((s) => s.id === conflictId);
       if (!current || !conflictDef) return;
+      if (mutationInFlight.current) return;
+      mutationInFlight.current = true;
       setShortcutMutationPending(true);
       try {
         await syncShortcut(id, combo);
@@ -285,6 +309,7 @@ export function DesktopShortcutsSection() {
           error instanceof Error ? error.message : String(error),
         );
       } finally {
+        mutationInFlight.current = false;
         setShortcutMutationPending(false);
       }
     },
@@ -335,11 +360,14 @@ export function DesktopShortcutsSection() {
                     >
                       {isRecording ? "…" : formatCombo(shortcut.combo)}
                     </span>
-                    <Button
+                    <SettingsActionButton
+                      agentId={`shortcut-${shortcut.id}-record`}
+                      agentLabel={`${isRecording ? "Cancel recording" : "Record"} ${shortcut.label} shortcut`}
+                      agentDescription={`Capture a new keyboard shortcut for ${shortcut.label}.`}
+                      agentGroup="shortcuts"
                       type="button"
                       variant={isRecording ? "default" : "outline"}
                       size="sm"
-                      aria-label={`Record ${shortcut.label} shortcut`}
                       disabled={shortcutMutationPending}
                       onClick={() => {
                         setPending(null);
@@ -347,12 +375,15 @@ export function DesktopShortcutsSection() {
                       }}
                     >
                       <Keyboard className="size-4" aria-hidden />
-                    </Button>
-                    <Button
+                    </SettingsActionButton>
+                    <SettingsActionButton
+                      agentId={`shortcut-${shortcut.id}-reset`}
+                      agentLabel={`Reset ${shortcut.label} shortcut`}
+                      agentDescription={`Restore the default keyboard shortcut for ${shortcut.label}.`}
+                      agentGroup="shortcuts"
                       type="button"
                       variant="ghost"
                       size="sm"
-                      aria-label={`Reset ${shortcut.label} shortcut`}
                       disabled={
                         shortcut.combo === shortcut.defaultCombo ||
                         shortcutMutationPending
@@ -360,7 +391,7 @@ export function DesktopShortcutsSection() {
                       onClick={() => resetCombo(shortcut.id)}
                     >
                       <RotateCcw className="size-4" aria-hidden />
-                    </Button>
+                    </SettingsActionButton>
                   </div>
                   {isPending && conflictForThis ? (
                     <div
@@ -375,7 +406,11 @@ export function DesktopShortcutsSection() {
                         This combo is used by “{conflictForThis.label}”.
                         Override?
                       </span>
-                      <Button
+                      <SettingsActionButton
+                        agentId={`shortcut-${shortcut.id}-override`}
+                        agentLabel={`Override ${shortcut.label} shortcut conflict`}
+                        agentDescription={`Assign the captured shortcut to ${shortcut.label} and restore the conflicting action to its default.`}
+                        agentGroup="shortcuts"
                         type="button"
                         variant="default"
                         size="sm"
@@ -389,15 +424,19 @@ export function DesktopShortcutsSection() {
                         disabled={shortcutMutationPending}
                       >
                         Override
-                      </Button>
-                      <Button
+                      </SettingsActionButton>
+                      <SettingsActionButton
+                        agentId={`shortcut-${shortcut.id}-cancel`}
+                        agentLabel={`Cancel ${shortcut.label} shortcut change`}
+                        agentDescription={`Discard the captured shortcut for ${shortcut.label}.`}
+                        agentGroup="shortcuts"
                         type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => setPending(null)}
                       >
                         Cancel
-                      </Button>
+                      </SettingsActionButton>
                     </div>
                   ) : null}
                 </div>

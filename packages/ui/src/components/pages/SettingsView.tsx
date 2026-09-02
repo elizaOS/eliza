@@ -571,6 +571,9 @@ export function SettingsView({
       >
         <div
           data-testid="settings-shell"
+          data-settings-presentation={
+            isNativeCompactSettings ? "compact-native" : "workspace"
+          }
           className={cn(
             "flex h-full min-h-0 w-full overflow-hidden",
             isWideSettings ? "flex-row" : "flex-col",

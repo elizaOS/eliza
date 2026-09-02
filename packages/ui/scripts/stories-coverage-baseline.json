@@ -1,6 +1,6 @@
 {
   "componentFiles": 395,
-  "withStories": 255,
+  "withStories": 257,
   "missing": [
     "src/components/accounts/AccountListShell.tsx",
     "src/components/accounts/AccountManagementPanel.tsx",
@@ -93,9 +93,7 @@
     "src/components/settings/ChatHotkeySettingsGroup.tsx",
     "src/components/settings/CloudAgentsSection.tsx",
     "src/components/settings/CloudOverviewSection.tsx",
-    "src/components/settings/DesktopIntegrationSection.tsx",
     "src/components/settings/DesktopSettingsNavigation.tsx",
-    "src/components/settings/DesktopShortcutsSection.tsx",
     "src/components/settings/DevicesRuntimesContainer.tsx",
     "src/components/settings/DevicesRuntimesSection.tsx",
     "src/components/settings/IntelligenceServingSummary.tsx",

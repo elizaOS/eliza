@@ -77,11 +77,74 @@ describe("DesktopIntegrationSection", () => {
     await waitFor(() => {
       expect(toggle.getAttribute("data-state")).toBe("unchecked");
       expect(screen.getByText("Desktop service unavailable")).toBeTruthy();
+      expect(toggle.disabled).toBe(false);
     });
     expect(bridge.request).toHaveBeenLastCalledWith({
       rpcMethod: "desktopSetAutoLaunch",
       ipcChannel: "desktop:setAutoLaunch",
       params: { enabled: true, openAsHidden: false },
     });
+  });
+
+  it("keeps launch at sign-in unavailable when the native status method is missing", async () => {
+    bridge.request.mockResolvedValueOnce(null);
+    seedState();
+
+    render(<DesktopIntegrationSection />);
+
+    const toggle = screen.getByTestId<HTMLButtonElement>(
+      "desktop-launch-at-login",
+    );
+    await waitFor(() => {
+      expect(toggle.disabled).toBe(true);
+      expect(
+        screen.getByText("Unable to read the desktop setting."),
+      ).toBeTruthy();
+    });
+  });
+
+  it("reverts when the native setter returns no acknowledgement", async () => {
+    bridge.request
+      .mockResolvedValueOnce({ enabled: false, openAsHidden: false })
+      .mockResolvedValueOnce(null);
+    seedState();
+
+    render(<DesktopIntegrationSection />);
+    const toggle = screen.getByTestId<HTMLButtonElement>(
+      "desktop-launch-at-login",
+    );
+    await waitFor(() => expect(toggle.disabled).toBe(false));
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(toggle.getAttribute("data-state")).toBe("unchecked");
+      expect(
+        screen.getByText("Unable to update the desktop setting."),
+      ).toBeTruthy();
+    });
+  });
+
+  it("serializes launch mutations triggered before React rerenders", async () => {
+    let resolveMutation: (() => void) | undefined;
+    bridge.request
+      .mockResolvedValueOnce({ enabled: false, openAsHidden: false })
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          resolveMutation = resolve;
+        }),
+      );
+    seedState();
+
+    render(<DesktopIntegrationSection />);
+    const toggle = screen.getByTestId<HTMLButtonElement>(
+      "desktop-launch-at-login",
+    );
+    await waitFor(() => expect(toggle.disabled).toBe(false));
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+
+    expect(bridge.request).toHaveBeenCalledTimes(2);
+    resolveMutation?.();
+    await waitFor(() => expect(toggle.disabled).toBe(false));
   });
 });
