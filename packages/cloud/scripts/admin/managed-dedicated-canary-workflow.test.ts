@@ -207,6 +207,20 @@ describe("managed dedicated live-smoke workflow contract", () => {
     );
     expect(headscaleExchange?.with?.script).not.toContain('echo "$block"');
 
+    const headscaleIngress = diagnostic.steps.find(
+      (step) => step.name === "Summarize Headscale ingress protocol",
+    );
+    expect(headscaleIngress?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(headscaleIngress?.with?.script).toContain("headscale version");
+    expect(headscaleIngress?.with?.script).toContain("/var/log/nginx/access.log");
+    expect(headscaleIngress?.with?.script).toContain("ts2021_total=");
+    expect(headscaleIngress?.with?.script).toContain("machine_register_total=");
+    expect(headscaleIngress?.with?.script).toContain("response[1]");
+    expect(headscaleIngress?.with?.script).not.toContain("response[2]");
+    expect(headscaleIngress?.with?.script).not.toContain('echo "$version_raw"');
+
     const headscaleKeys = diagnostic.steps.find(
       (step) => step.name === "Summarize recent agent pre-auth key state",
     );

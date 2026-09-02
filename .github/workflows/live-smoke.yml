@@ -1300,6 +1300,65 @@ jobs:
             echo "headscale_registration_timeout_seen=$timed_out"
             echo "headscale_tag_rejection_seen=$tag_rejected"
 
+      - name: Summarize Headscale ingress protocol
+        if: steps.cleanup_reconciliation.outputs.agent_id != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            version_raw="$(sudo headscale version 2>/dev/null || true)"
+            version="$(printf '%s' "$version_raw" | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
+            if [[ ! "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              version='unknown'
+            fi
+            unset version_raw
+
+            # Default nginx access logs contain remote addresses and user
+            # agents. Reduce the bounded tail on-host to exact method/path/status
+            # counters and emit only those closed aggregate fields.
+            summary="$({
+              sudo tail -n 20000 /var/log/nginx/access.log 2>/dev/null || true
+              sudo zcat -f /var/log/nginx/access.log.1 2>/dev/null || true
+            } | awk '
+              function count_path(method, path, status) {
+                if (method == "GET" && path ~ /^\/key([?]|$)/) key[status] += 1
+                if (path == "/ts2021") {
+                  ts2021[status] += 1
+                  if (method == "POST") ts2021_post += 1
+                  if (method == "GET") ts2021_get += 1
+                }
+                if (method == "POST" && path == "/machine/register") machine_register[status] += 1
+              }
+              {
+                split($0, quoted, "\"")
+                split(quoted[2], request, " ")
+                split(quoted[3], response, " ")
+                if (length(request) >= 2 && response[1] ~ /^[0-9][0-9][0-9]$/) {
+                  count_path(request[1], request[2], response[1])
+                }
+              }
+              END {
+                key_total = ts_total = machine_total = 0
+                for (status in key) key_total += key[status]
+                for (status in ts2021) ts_total += ts2021[status]
+                for (status in machine_register) machine_total += machine_register[status]
+                printf "key_total=%d\n", key_total
+                printf "ts2021_total=%d\n", ts_total
+                printf "ts2021_post=%d\n", ts2021_post + 0
+                printf "ts2021_get=%d\n", ts2021_get + 0
+                printf "machine_register_total=%d\n", machine_total
+                for (status in ts2021) printf "ts2021_status_%s=%d\n", status, ts2021[status]
+                for (status in machine_register) printf "machine_register_status_%s=%d\n", status, machine_register[status]
+              }
+            ')"
+            echo "headscale_version=$version"
+            printf '%s\n' "$summary"
+            unset version summary
+
       - name: Summarize recent agent pre-auth key state
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
