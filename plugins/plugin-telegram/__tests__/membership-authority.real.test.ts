@@ -1849,4 +1849,177 @@ describe("telegram membership authority vertical (real PGlite)", () => {
     (harnessRuntime as { createMemory: unknown }).createMemory =
       originalCreateMemory;
   }, 120_000);
+
+  it.each([
+    // A bare UUID string iterates per character under the pre-fix code: the
+    // overlay never contains the principal's UUID and the empty-overlay
+    // outcome re-authorizes them off still-valid active evidence.
+    { label: "uuid-string", payload: "__OVERLAY__" },
+    // An empty string is falsy, so the pre-fix truthiness check skipped the
+    // merge entirely — corruption read as a definitive empty fence.
+    { label: "empty-string", payload: "" },
+    // An array containing one invalid entry must fail the WHOLE payload:
+    // keeping the valid prefix would under-deny the corrupted tail.
+    {
+      label: "array-with-invalid-entry",
+      payload: ["not-a-uuid", "__OVERLAY__"],
+    },
+    // A stored JSON null reaches hydration as JS null (present row, raw
+    // JSONB value — NOT the adapter's undefined cache miss). The SQL schema's
+    // value NOT NULL constraint only rejects SQL NULL; the JSONB literal
+    // 'null' lands fine via a direct write, so this case corrupts the row
+    // through drizzle sql, exactly like a migration or manual repair would.
+    { label: "stored-json-null", payload: "__JSON_NULL__" },
+  ])(
+    "fails admission closed when the persisted pending-revocation payload is malformed ($label)",
+    async ({ payload }) => {
+      const dir = await import("node:fs/promises").then((fs) =>
+        fs.mkdtemp("/tmp/tg-membership-pending-corrupt-"),
+      );
+      const first = await bootMembershipHarness({ pgliteDir: dir });
+      const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+        m.resolveTelegramRuntimeEntityId(
+          first.harness.runtime,
+          "default",
+          String(MEMBER_TG_ID),
+        ),
+      );
+      await ensurePrincipal(first.harness, entityId);
+      const runtimeMap = { worldId: null, roomId: null, entityId };
+
+      // Land a durable pending-revocation fence the normal way (revocation
+      // write fails; setCache persists the overlay), then commit fresh
+      // active evidence for the SAME principal so the fence clears, the
+      // scope returns to current, and the principal is genuinely admitted —
+      // the exact preconditions under which only the durable overlay stands
+      // between a restarted process and a fail-open.
+      await first.authority.recordEvent({
+        chatId: String(CHAT_ID),
+        chatRoomKey: String(CHAT_ID),
+        canonicalPrincipalId: entityId,
+        state: "active",
+        reason: "joined",
+        messageId: 1,
+        telegramUserId: String(MEMBER_TG_ID),
+        runtime: runtimeMap,
+        observedAt: new Date(Date.now() - 10_000).toISOString(),
+      });
+      first.faults.failApplyMembership = true;
+      await first.authority.recordEvent({
+        chatId: String(CHAT_ID),
+        chatRoomKey: String(CHAT_ID),
+        canonicalPrincipalId: entityId,
+        state: "revoked",
+        reason: "left",
+        messageId: 2,
+        telegramUserId: String(MEMBER_TG_ID),
+        runtime: runtimeMap,
+        observedAt: new Date(Date.now() - 5_000).toISOString(),
+      });
+      first.faults.failApplyMembership = false;
+
+      // Restart: stop the first runtime WITHOUT removing the PGlite dir, so
+      // the durable overlay row survives into the restarted process.
+      const cleanupIndex = cleanups.indexOf(first.harness.cleanup);
+      if (cleanupIndex >= 0) cleanups.splice(cleanupIndex, 1);
+      await first.harness.runtime.stop().catch(() => {});
+      const second = await bootMembershipHarness({ pgliteDir: dir });
+
+      // Corrupt the REAL persisted overlay row (arbitrary JSON is legal
+      // under the SQL cache contract) with the class under test.
+      const { telegramMembershipScope } = await import(
+        "@elizaos/plugin-telegram"
+      );
+      const scope = telegramMembershipScope({
+        agentId: second.harness.runtime.agentId,
+        connectorAccountId: (
+          second.authority as unknown as {
+            connectorAccountId: UUID;
+          }
+        ).connectorAccountId,
+        chatId: String(CHAT_ID),
+        chatRoomKey: String(CHAT_ID),
+      });
+      const cacheKey = `telegram:membership:pending-revocations:${scope.connectorAccountId}:${scope.externalWorldId}:${scope.externalRoomId}`;
+      if (payload === "__JSON_NULL__") {
+        // The JSONB literal 'null' satisfies value NOT NULL (only SQL NULL
+        // violates it) but cannot pass setCache's JS-value path — write it
+        // through the raw drizzle connection, exactly like a direct
+        // migration or manual row repair would.
+        const db = (await second.harness.runtime.adapter.getConnection()) as {
+          execute: (query: string) => Promise<unknown>;
+        };
+        await db.execute(
+          `insert into cache (key, agent_id, value) values ('${cacheKey}', '${second.harness.runtime.agentId}', 'null'::jsonb) on conflict (key, agent_id) do update set value = 'null'::jsonb`,
+        );
+      } else {
+        const storedPayload =
+          typeof payload === "string"
+            ? payload === "__OVERLAY__"
+              ? entityId
+              : payload
+            : payload.map((entry) =>
+                entry === "__OVERLAY__" ? entityId : entry,
+              );
+        await second.harness.runtime.setCache(cacheKey, storedPayload);
+      }
+
+      // Restore scope health the way production would (unrelated evidence),
+      // so the overlay is the ONLY denial source: without validation the
+      // malformed payload reads as an empty/absent fence and authorize
+      // re-admits off still-valid active evidence (the fail-open bug).
+      const otherId = await import("@elizaos/plugin-telegram").then((m) =>
+        m.resolveTelegramRuntimeEntityId(
+          second.harness.runtime,
+          "default",
+          String(MEMBER_TG_ID + 9),
+        ),
+      );
+      await ensurePrincipal(second.harness, otherId);
+      await second.authority.recordEvent({
+        chatId: String(CHAT_ID),
+        chatRoomKey: String(CHAT_ID),
+        canonicalPrincipalId: otherId,
+        state: "active",
+        reason: "joined",
+        messageId: 3,
+        telegramUserId: String(MEMBER_TG_ID + 9),
+        runtime: { worldId: null, roomId: null, entityId: otherId },
+        observedAt: new Date().toISOString(),
+      });
+
+      // FAIL CLOSED: the corrupted overlay must deny the principal whose
+      // revocation could not be committed, exactly like an unreadable one.
+      const decision = await second.authority.authorize({
+        chatId: String(CHAT_ID),
+        chatRoomKey: String(CHAT_ID),
+        canonicalPrincipalId: entityId,
+      });
+      expect(
+        decision.decision,
+        "a malformed persisted overlay must fail closed, not read as an empty fence",
+      ).toBe("denied");
+      expect(decision.reason).toBe("membership_revoked");
+
+      // Recovery: repair the row to the honest empty overlay; hydration
+      // retries (the fail-closed state is not sticky) and the committed
+      // active evidence authorizes again.
+      await second.harness.runtime.deleteCache(cacheKey);
+      const recovered = await second.authority.authorize({
+        chatId: String(CHAT_ID),
+        chatRoomKey: String(CHAT_ID),
+        canonicalPrincipalId: entityId,
+      });
+      expect(
+        recovered.decision,
+        "a repaired overlay row must resume normal authoritative decisions",
+      ).toBe("allowed");
+      cleanups.push(async () => {
+        await import("node:fs/promises").then((fs) =>
+          fs.rm(dir, { recursive: true, force: true }),
+        );
+      });
+    },
+    120_000,
+  );
 });
