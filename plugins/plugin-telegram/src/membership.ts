@@ -144,7 +144,8 @@ function scopeKey(scope: MembershipScope): string {
   return `${scope.connectorAccountId}:${scope.externalWorldId}:${scope.externalRoomId}`;
 }
 
-function authorityErrorCode(error: unknown): string {
+/** Typed code of an authority/membership error, or "" for untyped errors. */
+export function authorityErrorCode(error: unknown): string {
   const code = (error as { code?: unknown } | null | undefined)?.code;
   return typeof code === "string" ? code : "";
 }
@@ -987,7 +988,11 @@ export class TelegramMembershipAuthority {
   /**
    * getChatMember point-query reconcile. Returns the mapped
    * (state, reason) and applies it as evidence, or null when the provider
-   * query itself failed (stay denied; report once per call).
+   * query itself failed (stay denied; report once per call). THROWS
+   * TELEGRAM_MEMBERSHIP_REVOCATION_UNSAFE when a revoked reconcile could be
+   * neither committed nor degraded fail-closed — the admission-gate caller
+   * must break the connector gate so later messages cannot be authorized by
+   * still-current prior active evidence (mirrors recordEvent's escalation).
    */
   async reconcile(input: {
     chatId: string;
@@ -1119,6 +1124,41 @@ export class TelegramMembershipAuthority {
         idempotencyKey: `tg:${this.connectorAccountId}:${input.chatId}:reconcile:${input.telegramUserId}:${input.nonce}`,
       });
     } catch (error) {
+      if (
+        authorityErrorCode(error) === "TELEGRAM_MEMBERSHIP_REVOCATION_DEGRADED"
+      ) {
+        // error-policy:J7 The fail-closed protections (scope stale degrade +
+        // durable pending-revocation overlay) landed INSIDE applyEvidence's
+        // serialized chain link, atomically with the failed write. The
+        // security state is already fail-closed; reporting suffices.
+        this.runtime.reportError("telegram:membership-reconcile", error, {
+          chatId: input.chatId,
+          telegramUserId: input.telegramUserId,
+          degraded: true,
+        });
+        return null;
+      }
+      if (mapped.state === "revoked") {
+        // error-policy:J2 The revocation could be neither committed nor
+        // degraded fail-closed (e.g. the stale-degrade itself failed): no
+        // durable fence landed, so prior active evidence may still authorize
+        // the departed principal on a later message. Propagate a typed error
+        // so the admission-gate caller marks the connector gate broken (every
+        // group admission then fails closed) — mirroring recordEvent's
+        // escalation path for the identical failure class.
+        throw new ElizaError(
+          "Telegram membership revocation could not be committed or degraded",
+          {
+            code: "TELEGRAM_MEMBERSHIP_REVOCATION_UNSAFE",
+            context: {
+              chatId: input.chatId,
+              telegramUserId: input.telegramUserId,
+              source: "reconcile",
+            },
+            cause: error,
+          },
+        );
+      }
       this.runtime.reportError("telegram:membership-reconcile", error, {
         chatId: input.chatId,
         telegramUserId: input.telegramUserId,

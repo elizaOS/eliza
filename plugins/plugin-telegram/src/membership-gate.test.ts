@@ -166,4 +166,68 @@ describe("TelegramMembershipMessageGate without an authority service", () => {
       gate.authorizeMessage(decisionInput({ telegramUserId: "900001" })),
     ).resolves.toBe(true);
   });
+
+  it("breaks the gate (fail-closed thereafter) when a revoked reconcile escalates REVOCATION_UNSAFE", async () => {
+    delete process.env.TELEGRAM_MEMBERSHIP_ENFORCE;
+    const runtime = gateRuntime();
+    // A deterministic authority double whose authorize returns a
+    // reconcile-miss denial and whose revoked reconcile fails UNSAFE — the
+    // class the real authority throws when neither the evidence write nor
+    // the fail-closed stale-degrade can land.
+    const reconcile = vi.fn(async () => {
+      throw new (await import("@elizaos/core")).ElizaError(
+        "Telegram membership revocation could not be committed or degraded",
+        { code: "TELEGRAM_MEMBERSHIP_REVOCATION_UNSAFE" },
+      );
+    });
+    const authorize = vi.fn(async () => ({
+      decision: "denied",
+      reason: "no_scope_evidence",
+      generation: null,
+      health: null,
+    }));
+    const gate = new TelegramMembershipMessageGate({
+      runtime,
+      authority: { reconcile, authorize } as unknown as never,
+      botTelegramUserId: "900001",
+    });
+
+    // First message: denied through the UNSAFE escalation, gate marked broken.
+    await expect(gate.authorizeMessage(decisionInput())).resolves.toBe(false);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(
+      runtime.reportError,
+      "the unsafe escalation is reported at the connector boundary",
+    ).toHaveBeenCalledTimes(1);
+
+    // Later messages from the same principal fail closed at the broken
+    // short-circuit — neither authorize nor reconcile runs again.
+    await expect(gate.authorizeMessage(decisionInput())).resolves.toBe(false);
+    expect(authorize).toHaveBeenCalledTimes(1);
+    expect(
+      reconcile,
+      "a broken gate must not reconsult reconcile",
+    ).toHaveBeenCalledTimes(1);
+
+    // A non-UNSAFE reconcile failure is NOT a gate-break: it propagates so
+    // the poll-loop boundary observes it (same boundary as authorize).
+    const propagating = new TelegramMembershipMessageGate({
+      runtime,
+      authority: {
+        reconcile: vi.fn(async () => {
+          throw new Error("provider transport failed");
+        }),
+        authorize,
+      } as unknown as never,
+      botTelegramUserId: "900001",
+    });
+    await expect(propagating.authorizeMessage(decisionInput())).rejects.toThrow(
+      "provider transport failed",
+    );
+    // The transport-failure gate was never marked broken: admission (which
+    // would hit reconcile again) still runs its authority path.
+    await expect(propagating.authorizeMessage(decisionInput())).rejects.toThrow(
+      "provider transport failed",
+    );
+  });
 });
