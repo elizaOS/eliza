@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 const mocks = {
   existsSync: mock((_path: string) => false),
   config: mock(
-    (_options: { path?: string; override?: boolean; quiet: boolean }) => undefined,
+    (_options: { path?: string; override?: boolean; quiet: boolean }) =>
+      undefined,
   ),
 };
 
