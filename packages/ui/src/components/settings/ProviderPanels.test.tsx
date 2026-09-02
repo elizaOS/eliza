@@ -81,6 +81,7 @@ describe("ProviderPanels", () => {
         cloudCallsDisabled={false}
         routingModeSaving={false}
         onSelectLocalOnly={local}
+        runtime="local"
       />,
     );
     expect(container.firstElementChild?.className).toContain("min-h-[28rem]");
@@ -264,11 +265,25 @@ describe("ProviderPanels", () => {
         cloudCallsDisabled={false}
         routingModeSaving={false}
         onSelectLocalOnly={vi.fn()}
+        runtime="local"
         servingFallback
       />,
     );
     expect(
       screen.getByText("Answering chat because Eliza Cloud isn't signed in."),
     ).toBeTruthy();
+  });
+
+  it("keeps on-device model management out of a remote runtime panel", () => {
+    render(
+      <LocalProviderPanel
+        cloudCallsDisabled
+        routingModeSaving={false}
+        onSelectLocalOnly={vi.fn()}
+        runtime="remote"
+      />,
+    );
+    expect(screen.getByText("Ready on your remote host.")).toBeTruthy();
+    expect(screen.queryByText("local inference")).toBeNull();
   });
 });

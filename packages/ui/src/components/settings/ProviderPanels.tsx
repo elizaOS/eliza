@@ -100,17 +100,24 @@ export function LocalProviderPanel({
   cloudCallsDisabled,
   routingModeSaving,
   onSelectLocalOnly,
+  runtime,
   servingFallback = false,
 }: {
   cloudCallsDisabled: boolean;
   routingModeSaving: boolean;
   onSelectLocalOnly: () => void;
+  runtime: ServingAxes["runtime"];
   /** Cloud is configured but unsigned-in, so Local is answering chat. */
   servingFallback?: boolean;
 }) {
   const t = useAppSelector((s) => s.t);
+  const remoteRuntime = runtime === "remote";
   return (
-    <div className="min-h-[28rem] min-w-0 sm:min-h-[32rem]">
+    <div
+      className={
+        remoteRuntime ? "min-w-0" : "min-h-[28rem] min-w-0 sm:min-h-[32rem]"
+      }
+    >
       <ProviderPanelHeader
         icon={Cpu}
         title={t("providerpanels.localProvider", {
@@ -148,7 +155,15 @@ export function LocalProviderPanel({
             })}
           </div>
         ) : null}
-        <LocalInferencePanel />
+        {remoteRuntime ? (
+          <p className="text-sm text-muted">
+            {t("providerpanels.remoteHostReady", {
+              defaultValue: "Ready on your remote host.",
+            })}
+          </p>
+        ) : (
+          <LocalInferencePanel />
+        )}
       </div>
     </div>
   );

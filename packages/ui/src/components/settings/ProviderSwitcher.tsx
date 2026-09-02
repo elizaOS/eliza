@@ -15,7 +15,10 @@ import {
 } from "../../providers";
 import { useAppSelectorShallow } from "../../state";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
-import { isRealtimeVoiceForceEnabled } from "../../voice/realtime-voice-build-flags";
+import {
+  isRealtimeVoiceForceEnabled,
+  isRealtimeVoiceSelfHostedEnabled,
+} from "../../voice/realtime-voice-build-flags";
 import { AccountManagementPanel } from "../accounts/AccountManagementPanel";
 import { ProvidersList } from "../local-inference/ProvidersList";
 import { RoutingMatrix } from "../local-inference/RoutingMatrix";
@@ -96,7 +99,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const setActionNotice = app.setActionNotice;
   const handleInteractiveCloudLogin = app.handleInteractiveCloudLogin;
   const realtimeVoiceConfigured =
-    props.realtimeVoiceConfigured ?? isRealtimeVoiceForceEnabled();
+    props.realtimeVoiceConfigured ??
+    (isRealtimeVoiceForceEnabled() || isRealtimeVoiceSelfHostedEnabled());
 
   const notifySelectionFailure = useCallback(
     (prefix: string, err: unknown) => {
@@ -333,6 +337,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             }
             routingModeSaving={selection.routingModeSaving}
             onSelectLocalOnly={() => void selection.handleSelectLocalOnly()}
+            runtime={servingAxes.runtime}
             servingFallback={Boolean(servingLocalFallback)}
           />
         ) : null}
