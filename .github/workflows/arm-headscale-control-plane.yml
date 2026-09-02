@@ -207,17 +207,20 @@ jobs:
             # The remote script's category tokens are a closed diagnostic
             # channel. Never print its free-form stdout/stderr: those streams
             # may contain host configuration or command diagnostics.
+            # Match only the categories the remote script emits immediately
+            # before exiting. The progress tokens it also prints — notably
+            # `cp-router-visible` and `headscale-unit-state`, the latter
+            # printed after the health-failure line — are the newest match on
+            # most failing runs, so accepting any category reports the step
+            # that succeeded rather than the one that failed.
             safe_category=$(
-              grep -hEo 'category=(headscale|cp-router)-[a-z0-9-]+' \
+              grep -hEo 'category=(headscale-local-health-failed|cp-router-(key|reauth|live-proof|durable-proof)-failed|cp-router-role-missing|cp-router-node-id-invalid|cp-router-identity-ambiguous|cp-router-control-url-mismatch)' \
                 "$arm_stdout" "$arm_stderr" \
                 | tail -n 1 \
                 | cut -d= -f2 \
                 || true
             )
-            case "$safe_category" in
-              headscale-*|cp-router-*) ;;
-              *) safe_category="headscale-remote-failed" ;;
-            esac
+            [ -n "$safe_category" ] || safe_category="headscale-remote-failed"
             echo "::error::Headscale remote operation failed (category=$safe_category; exit=$arm_status; raw-output=suppressed)."
             exit "$arm_status"
           fi
