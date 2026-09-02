@@ -7567,6 +7567,71 @@ describe("verified read actions own the turn's single user-facing message", () =
 		];
 	}
 
+	it("narrows the planner surface to the selected deterministic action despite distractors", async () => {
+		// A possessive calendar read installs a deterministic CALENDAR call and
+		// never dispatches the outer planner. The surface build must narrow to
+		// that one action: with keyword-adjacent distractors registered, a wide
+		// tier would otherwise assemble (and budget-estimate) a huge tool
+		// surface only to discard it — observed live as 19-31s calendar turns
+		// against a ~590K-token estimated surface.
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["calendar"],
+				candidateActionNames: ["CALENDAR"],
+				replyText: "",
+			}),
+		]);
+		const calendarHandler = vi.fn(async () => ({
+			success: true,
+			text: CALENDAR_ANSWER,
+			userFacingText: CALENDAR_ANSWER,
+			verifiedUserFacing: true,
+			turnComplete: true,
+		}));
+		const distractor = (name: string): Action =>
+			({
+				name,
+				similes: [],
+				tags: ["domain:calendar"],
+				description: `${name} distractor sharing calendar schedule week event keywords.`,
+				contexts: ["calendar"],
+				parameters: [],
+				validate: async () => true,
+				handler: async () => ({ success: true, text: name }),
+			}) as Action;
+		runtime.actions = [
+			makeCalendarReadAction(calendarHandler),
+			distractor("SCHEDULED_HOUSEHOLD_DISTRACTOR"),
+			distractor("WEEKLY_BRIEF_DISTRACTOR"),
+		] as never;
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "whats on my calendar tomorrow" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000021" as UUID,
+		});
+
+		// Deterministic dispatch: stage-1 is the turn's only model call and the
+		// selected action ran exactly once.
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(calendarHandler).toHaveBeenCalledTimes(1);
+		// The built surface exposed exactly the selected action; the distractors
+		// never reached it.
+		const surfaceLog = (
+			runtime.logger.debug as ReturnType<typeof vi.fn>
+		).mock.calls.find(
+			(call) => call[1] === "Built v5 planner action surface",
+		);
+		expect(surfaceLog).toBeDefined();
+		const summaryText = JSON.stringify(surfaceLog?.[0] ?? {});
+		expect(summaryText).toContain("CALENDAR");
+		expect(summaryText).not.toContain("SCHEDULED_HOUSEHOLD_DISTRACTOR");
+		expect(summaryText).not.toContain("WEEKLY_BRIEF_DISTRACTOR");
+	});
+
 	it("delivers a turnComplete verified read answer exactly once with no model paraphrase", async () => {
 		const runtime = makeRuntime(calendarPlannerResponses());
 		const calendarHandler = vi.fn(

@@ -10150,8 +10150,27 @@ export async function runV5MessageRuntimeStage1(args: {
 					recentMessage: getUserMessageText(args.message),
 				})
 			: null;
+		// A deterministic tool call executes exactly one pre-selected action and
+		// never dispatches the outer planner, so the planner surface (and the
+		// context tool payload the sub-planner inherits) narrows to that action.
+		// Without this, a wide keyword tier builds and re-estimates a
+		// multi-hundred-K-token surface only to discard it (observed live:
+		// deterministic calendar turns spent seconds on a ~590K-token build plus
+		// overflow recovery and fed the CALENDAR sub-planner an 82K prompt).
+		// An unresolvable selection falls back to the full surface unchanged;
+		// the deterministic invoker below owns that failure path.
+		const deterministicPlanSelection =
+			messageHandler.plan.deterministicToolCall;
+		const deterministicSurfaceAction = deterministicPlanSelection
+			? resolveRuntimeAction(
+					buildRuntimeActionLookup(args.runtime),
+					deterministicPlanSelection.name,
+				)
+			: undefined;
 		const actionSurface = buildV5PlannerActionSurface({
-			actions: plannerCandidateActions,
+			actions: deterministicSurfaceAction
+				? [deterministicSurfaceAction]
+				: plannerCandidateActions,
 			forceFullSurface: args.codingMode === true,
 			codingActionProfile,
 			message: args.message,
