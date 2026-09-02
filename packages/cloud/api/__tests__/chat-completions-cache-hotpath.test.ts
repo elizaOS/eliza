@@ -481,7 +481,10 @@ test("cold rate-limit policy returns a bounded retry contract", async () => {
   expect(await response.json()).toMatchObject({
     error: { code: "rate_limit_cache_warming" },
   });
-  expect(cacheOnlyAppLookup).not.toHaveBeenCalled();
+  expect(cacheOnlyAppLookup).toHaveBeenCalledTimes(1);
+  expect(response.headers.get("server-timing")).toContain(
+    "gateway_middle;dur=",
+  );
   expect(generateText).not.toHaveBeenCalled();
 });
 

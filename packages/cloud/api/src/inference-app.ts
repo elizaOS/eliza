@@ -12,11 +12,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { runWithDbCacheAsync } from "@/db/client";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
-import {
-  getIpKey,
-  getRequestIp,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { httpTelemetryMiddleware } from "@/lib/observability/http-telemetry-hono";
@@ -26,6 +22,7 @@ import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { inferenceIngressRateLimit } from "./inference-ingress-rate-limit";
 import { cookieMutationGuardMiddleware } from "./middleware/cookie-mutation-guard";
 
 /**
@@ -136,21 +133,14 @@ export function createInferenceApp(
       },
     );
   });
+  // The machine-local Cloudflare counter runs before route auth with a bounded
+  // deadline and isolate-local outage fallback. Organization policy remains
+  // authoritative in the admission gate; this layer only protects auth CPU.
+  // Request observability wraps it so a flood's 429 verdicts remain visible.
+  app.use("*", inferenceIngressRateLimit());
 
-  app.use(
-    "*",
-    rateLimit(
-      {
-        windowMs: 60_000,
-        maxRequests: 600,
-        keyGenerator: (c) => `global:${getIpKey(c)}`,
-      },
-      { bindingName: "GLOBAL_RATE_LIMITER" },
-    ),
-  );
-
-  // CSRF: same mount point as bootstrap-app (immediately before the routes,
-  // after the global limiter). See middleware/cookie-mutation-guard.ts.
+  // CSRF: same mount point as bootstrap-app (immediately before the routes).
+  // See middleware/cookie-mutation-guard.ts.
   app.use("*", cookieMutationGuardMiddleware);
 
   app.route(mountPath, route);

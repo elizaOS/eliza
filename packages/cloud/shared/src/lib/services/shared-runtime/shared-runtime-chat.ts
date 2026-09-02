@@ -66,7 +66,10 @@ import {
   isKnownPreDispatchProviderConfigurationError,
   isKnownUnacceptedProviderError,
 } from "../inference-provider-outcome";
-import { admitOrganizationInference } from "../organization-inference-admission";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+} from "../organization-inference-admission";
 import { isCanonicalPersonalSharedAgent } from "./personal-shared-identity";
 import {
   estimatePersonalSharedSeedanceCostUsd,
@@ -1103,7 +1106,10 @@ async function admitTurn(
   } catch (error) {
     // error-policy:J1 translate the billing-cache boundary into the shared
     // runtime's retryable cache-warming signal.
-    if (error instanceof InferenceBalanceCacheWarmingError) {
+    if (
+      error instanceof InferenceAdmissionUnavailableError ||
+      error instanceof InferenceBalanceCacheWarmingError
+    ) {
       throw new SharedRuntimeCacheWarmingError("Billing authorization is warming. Retry shortly.");
     }
     throw error;

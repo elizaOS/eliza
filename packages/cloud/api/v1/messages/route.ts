@@ -96,7 +96,10 @@ import {
   isKnownPreDispatchProviderConfigurationError,
   isKnownUnacceptedProviderError,
 } from "@/lib/services/inference-provider-outcome";
-import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+} from "@/lib/services/organization-inference-admission";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
@@ -952,6 +955,7 @@ app.post("/", async (c) => {
           );
         }
         if (
+          error instanceof InferenceAdmissionUnavailableError ||
           error instanceof InferenceBalanceCacheWarmingError ||
           error instanceof AiPricingCacheWarmingError ||
           error instanceof AiPricingCacheUnavailableError
@@ -1007,7 +1011,10 @@ app.post("/", async (c) => {
             402,
           );
         }
-        if (error instanceof InferenceBalanceCacheWarmingError) {
+        if (
+          error instanceof InferenceAdmissionUnavailableError ||
+          error instanceof InferenceBalanceCacheWarmingError
+        ) {
           return anthropicError(
             "api_error",
             "Billing authorization is warming. Retry shortly.",

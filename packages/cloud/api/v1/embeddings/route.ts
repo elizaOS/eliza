@@ -372,9 +372,33 @@ app.post("/", async (c) => {
           402,
         );
       }
+      if (error instanceof InferenceAdmissionUnavailableError) {
+        logger.error(
+          "[Embeddings] inference admission transport failed closed",
+          {
+            traceId: c.get("traceId") ?? c.get("requestId"),
+            error: error.message,
+            cause:
+              error.cause instanceof Error
+                ? `${error.cause.name}: ${error.cause.message}`
+                : undefined,
+          },
+        );
+        return c.json(
+          {
+            error: {
+              message:
+                "Inference admission is temporarily unavailable. Retry shortly.",
+              type: "service_unavailable",
+              code: "inference_admission_unavailable",
+            },
+          },
+          503,
+          { "Retry-After": "1" },
+        );
+      }
       if (error instanceof InferenceBalanceCacheWarmingError) {
         const unavailable =
-          error instanceof InferenceAdmissionUnavailableError ||
           error instanceof InferencePricingCacheUnavailableError ||
           error instanceof InferenceAffiliateCacheUnavailableError;
         return c.json(
