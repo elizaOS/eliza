@@ -15,6 +15,7 @@ import {
 } from "../../providers";
 import { useAppSelectorShallow } from "../../state";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
+import { isRealtimeVoiceForceEnabled } from "../../voice/realtime-voice-build-flags";
 import { AccountManagementPanel } from "../accounts/AccountManagementPanel";
 import { ProvidersList } from "../local-inference/ProvidersList";
 import { RoutingMatrix } from "../local-inference/RoutingMatrix";
@@ -55,6 +56,8 @@ interface ProviderSwitcherProps {
     pluginId: string,
     values: Record<string, unknown>,
   ) => void | Promise<void>;
+  /** Test override; production derives this from the explicit realtime build flag. */
+  realtimeVoiceConfigured?: boolean;
 }
 
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
@@ -92,6 +95,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     props.handlePluginConfigSave ?? app.handlePluginConfigSave;
   const setActionNotice = app.setActionNotice;
   const handleInteractiveCloudLogin = app.handleInteractiveCloudLogin;
+  const realtimeVoiceConfigured =
+    props.realtimeVoiceConfigured ?? isRealtimeVoiceForceEnabled();
 
   const notifySelectionFailure = useCallback(
     (prefix: string, err: unknown) => {
@@ -382,9 +387,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         </SettingsGroup>
       ) : null}
 
-      {/* Voice folds into this section for MVP (the standalone Voice tab is
-          developer-only): speech is pinned to the bundled Kokoro TTS, so a
-          read-only status row is the whole story. */}
+      {/* Voice folds into this section for MVP. Keep the read-only row aligned
+          with the explicit realtime build path; normal builds retain the
+          bundled Kokoro serving truth. */}
       {settingsContentReady ? (
         <SettingsGroup
           title={t("providerswitcher.voiceGroupTitle", {
@@ -400,9 +405,13 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                   ? t("providerswitcher.cloudVoiceRowLabel", {
                       defaultValue: "Eliza Cloud voice",
                     })
-                  : t("providerswitcher.voiceRowLabel", {
-                      defaultValue: "Kokoro (on-device)",
-                    })}
+                  : realtimeVoiceConfigured
+                    ? t("providerswitcher.realtimeVoiceRowLabel", {
+                        defaultValue: "Cartesia (realtime)",
+                      })
+                    : t("providerswitcher.voiceRowLabel", {
+                        defaultValue: "Kokoro (on-device)",
+                      })}
               </span>
             }
             description={
@@ -411,16 +420,25 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                     defaultValue:
                       "Speech recognition and playback use your signed-in Eliza Cloud service. This app does not download a local voice model.",
                   })
-                : t("providerswitcher.voiceRowDescription", {
-                    defaultValue:
-                      "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
-                  })
+                : realtimeVoiceConfigured
+                  ? t("providerswitcher.realtimeVoiceRowDescription", {
+                      defaultValue:
+                        "Talk is set to use Cartesia for speech recognition and playback when the configured voice gateway is available. The agent model stays on this device.",
+                    })
+                  : t("providerswitcher.voiceRowDescription", {
+                      defaultValue:
+                        "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
+                    })
             }
             control={
               <span className="text-xs text-accent">
-                {t("providerswitcher.activeProvider", {
-                  defaultValue: "Active",
-                })}
+                {realtimeVoiceConfigured && !selection.cloudRuntimeLocked
+                  ? t("providerswitcher.configuredProvider", {
+                      defaultValue: "Configured",
+                    })
+                  : t("providerswitcher.activeProvider", {
+                      defaultValue: "Active",
+                    })}
               </span>
             }
           />

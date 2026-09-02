@@ -259,6 +259,21 @@ describe("ProviderSwitcher", () => {
     );
   });
 
+  it("shows Cartesia as configured when the realtime QA build flag is on", async () => {
+    render(<ProviderSwitcher realtimeVoiceConfigured />);
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "This device",
+      );
+    });
+    expect(screen.getByText("Cartesia (realtime)")).toBeTruthy();
+    expect(
+      screen.getByText(/when the configured voice gateway is available/),
+    ).toBeTruthy();
+    expect(screen.getByText("Configured")).toBeTruthy();
+    expect(screen.queryByText("Kokoro (on-device)")).toBeNull();
+  });
+
   it("withholds provider detail panels until saved routing is resolved", async () => {
     bootstrapState.routingConfigResolved = false;
     render(<ProviderSwitcher />);
