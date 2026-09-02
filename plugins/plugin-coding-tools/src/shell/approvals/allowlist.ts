@@ -1,8 +1,10 @@
 /**
- * Allowlist Management
+ * File-backed exec-approval allowlist and per-agent resolution.
  *
- * Functions for managing the exec approval allowlist.
- * Handles loading, saving, and modifying allowlist entries.
+ * `agents.default` is the canonical DEFAULT_AGENT_ID slot that
+ * `resolveApprovals(undefined)` and persist helpers write. Normalization must
+ * keep that key; treating it as a disposable legacy alias deletes operator
+ * security/allowlist config on every load and persist.
  */
 
 import crypto from "node:crypto";
@@ -133,14 +135,18 @@ export function normalizeApprovals(file: ExecApprovalsFile): ExecApprovalsFile {
   const token = file.socket?.token?.trim();
   const agents = { ...file.agents };
 
-  // Handle legacy "default" agent
-  const legacyDefault = agents.default;
-  if (legacyDefault) {
-    const main = agents[DEFAULT_AGENT_ID];
-    agents[DEFAULT_AGENT_ID] = main
-      ? mergeLegacyAgent(main, legacyDefault)
-      : legacyDefault;
-    delete agents.default;
+  // Older trees used `agents.default` as a fallback while the canonical id
+  // was a different string. Here DEFAULT_AGENT_ID is already "default", so
+  // deleting that key would drop the config resolveApprovals(undefined) reads.
+  if (DEFAULT_AGENT_ID !== "default") {
+    const legacyDefault = agents.default;
+    if (legacyDefault) {
+      const main = agents[DEFAULT_AGENT_ID];
+      agents[DEFAULT_AGENT_ID] = main
+        ? mergeLegacyAgent(main, legacyDefault)
+        : legacyDefault;
+      delete agents.default;
+    }
   }
 
   // Ensure all allowlist entries have IDs
