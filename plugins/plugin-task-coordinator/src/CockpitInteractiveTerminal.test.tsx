@@ -75,7 +75,12 @@ vi.mock("@elizaos/ui/api", () => ({
   },
 }));
 
-vi.mock("@elizaos/ui/components/ui/button", () => ({
+vi.mock("@elizaos/ui", () => ({
+  client: {
+    spawnPtySession: mocks.spawnPtySession,
+    stopPtySession: mocks.stopPtySession,
+    onWsEvent: mocks.onWsEvent,
+  },
   Button: (props: ButtonMockProps) => {
     const {
       children,

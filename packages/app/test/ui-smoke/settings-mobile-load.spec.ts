@@ -69,7 +69,7 @@ test.describe("settings sections load at mobile width", () => {
         consoleErrors.push(text);
       });
 
-      await seedAppStorage(page);
+      await seedAppStorage(page, { "eliza:developerMode": "1" });
       await installDefaultAppRoutes(page);
       await openAppPath(page, "/settings");
 

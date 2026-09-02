@@ -119,6 +119,7 @@ describe("buildSceneDescriptionPrompt — detector fusion", () => {
     // First Alice kept, duplicate dropped.
     expect(labels.filter((l) => l === "Alice")).toHaveLength(1);
     expect(labels[0]).toBe("Alice");
+    expect(labels.at(-1)).toBe("Person-14");
   });
 
   it("skips blank face labels", () => {

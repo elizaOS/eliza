@@ -237,8 +237,10 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Basics", "identity"],
   ["Models & Providers", "ai-model"],
   ["Runtime", "runtime"],
+  ["General", "appearance"],
   ["Appearance", "appearance"],
   ["Background", "background"],
+  ["Notifications", "notifications"],
   ["Voice", "voice"],
   ["Capabilities", "capabilities"],
   ["Apps", "apps"],
@@ -253,6 +255,9 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Updates", "updates"],
   ["Backups", "advanced"],
   ["Backup & Reset", "advanced"],
+  ["My Runtimes", "my-runtimes"],
+  ["Desktop app", "desktop-integration"],
+  ["Shortcuts", "shortcuts"],
 ]);
 
 const DEFAULT_APP_STORAGE: Record<string, string> = {
@@ -3136,14 +3141,17 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   await page.route(
     "**/api/lifeops/family-workflows/packets**",
     async (route) => {
-      if (route.request().method() !== "GET") {
+      const method = route.request().method();
+      if (method !== "GET" && method !== "POST") {
         await route.fallback();
         return;
       }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ packets: [], packetStates: [] }),
+        body: JSON.stringify(
+          method === "GET" ? { packets: [], packetStates: [] } : {},
+        ),
       });
     },
   );
@@ -3582,6 +3590,97 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(emptyWalletTradingProfile(new URL(request.url()))),
+    });
+  });
+
+  // Settings, Voice, and Vault mount these local-runtime panels eagerly. The
+  // smoke server has no native inference or secrets backends, so expose their
+  // real healthy-empty envelopes instead of leaking its generic 501 response
+  // into otherwise unrelated route and interaction coverage.
+  await page.route("**/api/local-inference/voice-models/preferences", async (route) => {
+    const method = route.request().method();
+    if (method !== "GET" && method !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const preferences = {
+      autoUpdateOnWifi: true,
+      autoUpdateOnCellular: false,
+      autoUpdateOnMetered: false,
+      quietHours: [{ start: "22:00", end: "08:00" }],
+    };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        method === "GET" ? { preferences } : { ok: true, preferences },
+      ),
+    });
+  });
+
+  await page.route("**/api/local-inference/voice-models", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ installations: [] }),
+    });
+  });
+
+  await page.route("**/api/accounts/consumer-keys", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ keys: [] }),
+    });
+  });
+
+  await page.route("**/api/secrets/manager/protection", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        protection: {
+          localVault: {
+            encryptedAtRest: true,
+            cipher: "AES-256-GCM",
+            masterKey: { backend: "test", available: true },
+          },
+          nativeSessionState: {
+            policy: "platform-protected-store",
+            synchronized: false,
+            plaintextFallback: false,
+          },
+          connectorSessions: {
+            telegramPersonal: "vault-master-key-encrypted",
+          },
+          cloudTrustDomain: "separate-organization-kms",
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/secrets/logins", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, logins: [], failures: [] }),
     });
   });
 }

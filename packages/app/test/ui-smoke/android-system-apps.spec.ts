@@ -33,7 +33,7 @@ const ANDROID_SYSTEM_APP_CASES: readonly AndroidSystemRouteCase[] = [
   {
     name: "contacts",
     path: "/contacts",
-    readyChecks: [{ selector: '[data-agent-id="contacts-refresh"]' }],
+    readyChecks: [{ selector: '[data-agent-id="refresh"]' }],
   },
   {
     name: "wifi",
@@ -78,11 +78,67 @@ function getAndroidSystemRoute(name: string): AndroidSystemRouteCase {
 
 function installAndroidPlatformShim(page: Page): Promise<void> {
   return page.addInitScript(() => {
+    const secureStore = new Map<string, string>();
     let capacitorValue: unknown = Reflect.get(window, "Capacitor");
     const patchCapacitor = (value: unknown) => {
       if (value && typeof value === "object") {
         Reflect.set(value, "getPlatform", () => "android");
         Reflect.set(value, "isNativePlatform", () => false);
+        const headers = Array.isArray(Reflect.get(value, "PluginHeaders"))
+          ? (Reflect.get(value, "PluginHeaders") as Array<{
+              name: string;
+              methods: Array<{ name: string; rtype: "promise" }>;
+            }>)
+          : [];
+        if (!headers.some((header) => header.name === "ElizaSecureStore")) {
+          headers.push({
+            name: "ElizaSecureStore",
+            methods: ["get", "set", "remove", "status"].map((name) => ({
+              name,
+              rtype: "promise" as const,
+            })),
+          });
+        }
+        Reflect.set(value, "PluginHeaders", headers);
+        Reflect.set(value, "isPluginAvailable", (name: string) =>
+          headers.some((header) => header.name === name),
+        );
+        const nativePromise = Reflect.get(value, "nativePromise");
+        Reflect.set(
+          value,
+          "nativePromise",
+          async (
+            pluginName: string,
+            methodName: string,
+            options: Record<string, unknown> = {},
+          ) => {
+            if (pluginName !== "ElizaSecureStore") {
+              return typeof nativePromise === "function"
+                ? nativePromise.call(value, pluginName, methodName, options)
+                : {};
+            }
+            const key = String(options.key ?? "");
+            if (methodName === "get") {
+              const stored = secureStore.get(key);
+              return stored === undefined
+                ? { ok: false, error: "not_found" }
+                : { ok: true, value: stored };
+            }
+            if (methodName === "set") {
+              secureStore.set(key, String(options.value ?? ""));
+              return { ok: true };
+            }
+            if (methodName === "remove") {
+              secureStore.delete(key);
+              return { ok: true };
+            }
+            return {
+              available: true,
+              hardwareBacked: false,
+              authenticationRequired: false,
+            };
+          },
+        );
       }
       return value;
     };
@@ -207,16 +263,10 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
     context,
     getAndroidSystemRoute("phone"),
   );
-  await page.locator('[data-agent-id="dialpad-1"]').click();
-  await page.locator('[data-agent-id="dialpad-2"]').click();
-  const dialerNumber = page.locator('[data-agent-id="dialer-number"]');
-  await expect(dialerNumber).toHaveValue("12");
-  await page.locator('[data-agent-id="phone-tab-recents"]').click();
-  await expect(page.getByText("No calls returned by Android.")).toBeVisible();
-  await page.locator('[data-agent-id="phone-tab-contacts"]').click();
-  await expect(
-    page.getByText("No contacts returned by Android."),
-  ).toBeVisible();
+  await page.locator('[data-agent-id="key-1"]').click();
+  await page.locator('[data-agent-id="key-2"]').click();
+  await expect(page.getByText("12", { exact: true })).toBeVisible();
+  await expect(page.getByText("None", { exact: true })).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "phone interactions");
   await page.close();
 
@@ -224,15 +274,10 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
     context,
     getAndroidSystemRoute("contacts"),
   ));
-  await page
-    .locator('[data-agent-id="contacts-create-display-name"]')
-    .fill("Ada Lovelace");
-  await page
-    .locator('[data-agent-id="contacts-create-phone-number"]')
-    .fill("+1 555 0100");
-  await expect(
-    page.locator('[data-agent-id="contacts-create-submit"]'),
-  ).toBeEnabled();
+  await page.locator('[data-agent-id="new"]').click();
+  await page.locator('[data-agent-id="name"]').fill("Ada Lovelace");
+  await page.locator('[data-agent-id="phone"]').fill("+1 555 0100");
+  await expect(page.locator('[data-agent-id="save"]')).toBeEnabled();
   await expectNoIssues(page, issues.splice(0), "contacts interactions");
   await page.close();
 
@@ -250,8 +295,8 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
     context,
     getAndroidSystemRoute("messages"),
   ));
-  await page.locator('[data-agent-id="messages-address"]').fill("+1 555 0101");
-  await page.locator('[data-agent-id="messages-body"]').fill("QA SMS draft");
+  await page.locator('[data-agent-id="compose-address"]').fill("+1 555 0101");
+  await page.locator('[data-agent-id="compose-body"]').fill("QA SMS draft");
   await expect(page.locator('[data-agent-id="messages-send"]')).toBeEnabled();
   await expectNoIssues(page, issues.splice(0), "messages interactions");
   await page.close();

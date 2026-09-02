@@ -46,7 +46,7 @@ const PLUGIN_VIEW_TARGETS: readonly {
     path: "/inventory",
     viewId: "wallet.inventory",
     ready: { testId: "wallet-shell" },
-    requiredIds: ["tab-tokens", "tab-defi", "account-rpc-settings"],
+    requiredIds: ["tab-tokens", "tab-defi", "tab-nfts"],
   },
   {
     label: "Orchestrator",

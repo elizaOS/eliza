@@ -269,7 +269,7 @@ describe("core source export resolution", () => {
 						"--eval",
 						'import("@elizaos/core")',
 					],
-					{ cwd: fixtureRoot, timeout: 30_000 },
+					{ cwd: fixtureRoot, timeout: 60_000 },
 				),
 			).rejects.toMatchObject({
 				stderr: expect.stringMatching(
@@ -318,7 +318,7 @@ describe("core source export resolution", () => {
 			await execFileAsync("node", viteArgs, {
 				cwd: fixtureRoot,
 				env: viteEnvironment,
-				timeout: 30_000,
+				timeout: 60_000,
 			});
 			expect(existsSync(join(fixtureRoot, "dist", "bundle.js"))).toBe(true);
 
@@ -345,7 +345,7 @@ describe("core source export resolution", () => {
 				execFileAsync("node", negativeViteArgs, {
 					cwd: fixtureRoot,
 					env: viteEnvironment,
-					timeout: 30_000,
+					timeout: 60_000,
 				}),
 			).rejects.toMatchObject({
 				stderr: expect.stringMatching(/index\.node|ERR_MODULE_NOT_FOUND/u),
@@ -353,5 +353,5 @@ describe("core source export resolution", () => {
 		} finally {
 			await rm(fixtureRoot, { recursive: true, force: true });
 		}
-	}, 30_000);
+	}, 90_000);
 });

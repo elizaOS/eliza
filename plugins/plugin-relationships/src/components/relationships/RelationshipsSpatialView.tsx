@@ -120,7 +120,11 @@ export function RelationshipsSpatialView({
   onAction,
 }: RelationshipsSpatialViewProps) {
   return (
-    <Card variant="transparentSquare" className="w-full min-w-0">
+    <Card
+      variant="transparentSquare"
+      className="w-full min-w-0"
+      data-testid="relationships-view"
+    >
       {snapshot.state === "loading" ? (
         <PagePanel.ContentState
           state="loading"

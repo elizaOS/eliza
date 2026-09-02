@@ -104,6 +104,7 @@ export const CLOUD_MANAGEMENT_COMPAT_REDIRECTS: ReadonlyArray<{
   from: string;
   to: string;
 }> = [
+  { from: "cloud/security", to: "/cloud/account" },
   { from: "cloud/earnings", to: "/cloud/monetization" },
   { from: "cloud/affiliates", to: "/cloud/monetization" },
 ];

@@ -82,6 +82,26 @@ describe("complete action surface", () => {
 		);
 	});
 
+	it("preserves retrieval rank when relevance scores are saturated", () => {
+		const catalog = buildActionCatalog(actions);
+		const music = catalog.parentByName.get("MUSIC");
+		const email = catalog.parentByName.get("EMAIL");
+		if (!music || !email) throw new Error("missing catalog parent");
+		const musicResult = resultFor(music, 1);
+		const emailResult = resultFor(email, 1);
+		musicResult.rank = 2;
+		emailResult.rank = 1;
+
+		const surface = tierActionResults({
+			catalog,
+			results: [musicResult, emailResult],
+		});
+
+		expect(
+			surface.tierAParents.slice(0, 2).map((parent) => parent.name),
+		).toEqual(["EMAIL", "MUSIC"]);
+	});
+
 	it("ignores legacy parent, child, threshold, and candidate caps", () => {
 		const manyChildren = Array.from({ length: 24 }, (_, index) => ({
 			name: `CHILD_${String(index).padStart(2, "0")}`,

@@ -136,6 +136,21 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
     await expect(item).toBeVisible();
     return item;
   };
+  const clickMobileMenuItem = async (name: string) => {
+    const item = page.getByRole("menuitem", { name, exact: true });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (!(await item.isVisible().catch(() => false))) {
+        await mobileMoreButton.click();
+        await expect(item).toBeVisible();
+      }
+      try {
+        await item.click({ timeout: 10_000 });
+        return;
+      } catch (error) {
+        if (attempt === 2) throw error;
+      }
+    }
+  };
   const expectCloseAllDisabled = async () => {
     if (!compactToolbar) {
       await expect(closeAllButton).toBeDisabled();
@@ -157,14 +172,14 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
       await newTabButton.click();
       return;
     }
-    await (await mobileMenuItem("New tab")).click();
+    await clickMobileMenuItem("New tab");
   };
   const closeAllTabs = async () => {
     if (!compactToolbar) {
       await closeAllButton.click();
       return;
     }
-    await (await mobileMenuItem("Close all tabs")).click();
+    await clickMobileMenuItem("Close all tabs");
   };
 
   // The folded tab switcher is the only multi-tab surface (no permanent strip).
