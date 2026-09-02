@@ -140,6 +140,27 @@ const CALENDAR_ID_PLACEHOLDER_TOKENS = new Set([
   "unknown",
   "any",
   "auto",
+  // Synthetic "the calendar" spellings models invent when no real id is in
+  // context (observed live: a create with calendarId "cal_primary" excluded
+  // every source and died with CALENDAR_MUTATION_CONTEXT_INCOMPLETE while the
+  // aggregated feed was complete). "primary" itself is a REAL Google/eliza id
+  // and must keep passing through.
+  "cal_primary",
+  "primary_calendar",
+  "default_calendar",
+  "cal_default",
+  "my_calendar",
+  "main_calendar",
+  "cal_main",
+  "calendar",
+  "cal",
+  "cal_1",
+  "calendar_1",
+  "calendar_id",
+  "cal_id",
+  "id",
+  "example",
+  "placeholder",
 ]);
 
 export function sanitizeCalendarId(
