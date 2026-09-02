@@ -6,6 +6,11 @@
  * must stay flush so horizontal and top spacing have exactly one owner.
  */
 
+import {
+  resolveBuiltinPageLayout,
+  resolveBuiltinRoutedViewManifest,
+} from "./builtin-tab-registry";
+
 const CANVAS_OWNED_ROUTE_TABS = new Set([
   "apps",
   "background",
@@ -26,7 +31,13 @@ const CANVAS_OWNED_ROUTE_TABS = new Set([
  * its fullscreen manifest bypasses the routed shell before this helper runs.
  */
 export function routedShellMainClass(tab: string): string {
-  const pagePadding = CANVAS_OWNED_ROUTE_TABS.has(tab)
+  const layout = resolveBuiltinPageLayout(tab);
+  const fullscreen =
+    resolveBuiltinRoutedViewManifest(tab)?.header === "fullscreen";
+  const pageOwnsGutter =
+    CANVAS_OWNED_ROUTE_TABS.has(tab) ||
+    (layout?.gutter === "none" && !fullscreen);
+  const pagePadding = pageOwnsGutter
     ? ""
     : "px-2 sm:px-3 pt-[var(--view-pad-top)]";
   return `flex flex-1 min-h-0 min-w-0 overflow-hidden ${pagePadding}`;
