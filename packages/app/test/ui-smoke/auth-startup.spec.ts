@@ -85,7 +85,7 @@ test("remote auth requirement renders pairing instead of password sign-in", asyn
       access: {
         mode: "remote",
         passwordConfigured: true,
-        ownerConfigured: false,
+        ownerConfigured: true,
       },
     });
   });

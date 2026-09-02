@@ -121,23 +121,25 @@ describe("authProbeShouldHoldShell — pre-auth poll suppression", () => {
 });
 
 describe("shouldShowRemoteAgentPairingGate — LAN standalone agent auth", () => {
-  it("prefers pairing for a standalone remote agent with a configured bearer", () => {
+  it("prefers enabled pairing for a standalone remote agent with an existing owner", () => {
     expect(
       shouldShowRemoteAgentPairingGate({
         reason: "remote_auth_required",
+        pairingEnabled: true,
         access: {
           mode: "remote",
           passwordConfigured: true,
-          ownerConfigured: false,
+          ownerConfigured: true,
         },
       }),
     ).toBe(true);
   });
 
-  it("does not replace app-core password login or password-not-configured screens", () => {
+  it("retains password login when pairing is disabled", () => {
     expect(
       shouldShowRemoteAgentPairingGate({
         reason: "remote_auth_required",
+        pairingEnabled: false,
         access: {
           mode: "remote",
           passwordConfigured: true,
@@ -145,9 +147,13 @@ describe("shouldShowRemoteAgentPairingGate — LAN standalone agent auth", () =>
         },
       }),
     ).toBe(false);
+  });
+
+  it("does not replace the password-not-configured screen", () => {
     expect(
       shouldShowRemoteAgentPairingGate({
         reason: "remote_password_not_configured",
+        pairingEnabled: true,
         access: {
           mode: "remote",
           passwordConfigured: false,
