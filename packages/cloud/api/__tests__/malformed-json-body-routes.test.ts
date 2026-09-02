@@ -106,7 +106,7 @@ beforeEach(() => {
       authExecutionCtx = options?.executionCtx;
       options?.onTelemetry?.({
         v: 1,
-        traceId: "01890f47-6c4a-7b2d-8f31-123456789abc",
+        traceId: "01890f476c4a7b2d8f31123456789abc",
         authSource: "other",
         controlledProbe: "off",
         cacheAvailability: "not_checked",
@@ -168,8 +168,9 @@ describe("malformed JSON body handling", () => {
     };
     expect(body.error?.type).toBe("invalid_request_error");
     expect(body.error?.code).toBe("missing_required_parameter");
-    expect(res.headers.get("X-Eliza-Auth-Trace")).toContain("result=slow_path");
-    expect(res.headers.get("Server-Timing")).toContain("auth_resolve;dur=0.1");
+    expect(res.headers.get("X-Eliza-Auth-Trace")).toBeNull();
+    expect(res.headers.get("Server-Timing")).toBeNull();
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
     expect(authExecutionCtx).toBe(executionCtx);
   });
 
