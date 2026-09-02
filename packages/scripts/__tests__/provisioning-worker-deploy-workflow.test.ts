@@ -308,6 +308,8 @@ describe("provisioning worker deployment contract", () => {
       ["Fence current develop SHA before database mutation", 1],
       ["Run exact-SHA canonical database migrations", 10],
       ["Recheck current develop SHA before host deployment", 1],
+      ["Prepare exact incremental source bundle", 5],
+      ["Transfer exact incremental source bundle", 5],
     ]);
     let totalPreSshMinutes = 0;
     for (const [name, expectedMinutes] of expectedBounds) {
@@ -325,10 +327,10 @@ describe("provisioning worker deployment contract", () => {
       expect(timeout).toMatch(/^\d+m$/);
       return Number.parseInt(timeout ?? "", 10);
     });
-    expect(remoteBounds).toEqual([5, 40, 25]);
+    expect(remoteBounds).toEqual([5, 1, 40, 25]);
 
     const jobBound = parsedWorkflow.jobs?.deploy?.["timeout-minutes"];
-    expect(jobBound).toBe(125);
+    expect(jobBound).toBe(140);
     expect(
       totalPreSshMinutes + remoteBounds.reduce((sum, n) => sum + n, 0),
     ).toBeLessThan(jobBound ?? 0);
@@ -372,28 +374,32 @@ describe("provisioning worker deployment contract", () => {
       workflow.indexOf("cd /opt/eliza"),
     );
     expect(workflow).toContain("command_timeout: 40m");
-    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(125);
+    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(140);
   });
 
-  it("repairs the service-owned checkout to the canonical public remote before fetching", () => {
+  it("imports an exact runner-verified source bundle without host GitHub credentials", () => {
     const script = deployStep("Deploy and restart worker").with?.script ?? "";
     const setCanonicalRemote = script.indexOf(
       "git remote set-url origin https://github.com/elizaOS/eliza.git",
     );
-    const fetchExactSha = script.indexOf('fetch --no-recurse-submodules');
+    const verifyBundle = script.indexOf('git bundle verify "$SOURCE_BUNDLE"');
+    const fetchExactSha = script.indexOf(
+      '--no-recurse-submodules "$SOURCE_BUNDLE" HEAD',
+    );
 
     expect(setCanonicalRemote).toBeGreaterThan(-1);
-    expect(fetchExactSha).toBeGreaterThan(setCanonicalRemote);
-    expect(script).toContain("GIT_CONFIG_GLOBAL=/dev/null");
-    expect(script).toContain("GIT_CONFIG_SYSTEM=/dev/null");
-    expect(script).toContain("GIT_TERMINAL_PROMPT=0");
-    expect(script).toContain("-c credential.helper=");
-    expect(script).toContain("-c http.https://github.com/.extraheader=");
-    expect(script).toContain(
-      'https://github.com/elizaOS/eliza.git "$DEPLOY_SHA"',
+    expect(verifyBundle).toBeGreaterThan(setCanonicalRemote);
+    expect(fetchExactSha).toBeGreaterThan(verifyBundle);
+    expect(script).toContain("SOURCE_BUNDLE_SHA256");
+    expect(script).toContain("actual_source_bundle_sha256");
+    expect(script).not.toContain(
+      'fetch --no-recurse-submodules origin "$DEPLOY_SHA"',
     );
     expect(script).not.toContain("x-access-token");
     expect(script).not.toContain("github.token");
+    expect(workflow).toContain(
+      'if [ "$deployed_sha" = "$DEPLOY_SHA" ]; then',
+    );
   });
 
   it("regenerates before deploy and self-heals every service", () => {
