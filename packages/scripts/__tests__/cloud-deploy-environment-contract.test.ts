@@ -3,6 +3,7 @@
  * host-inventory, and shared-secret drift without inspecting protected values.
  */
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const repoRoot = new URL("../../../", import.meta.url);
@@ -101,6 +102,30 @@ const requiredAuthWorkerSecretNames = [
   "STEWARD_TENANT_API_KEY",
   "GATEWAY_INTERNAL_SECRET",
 ] as const;
+
+/**
+ * Executes the Infrastructure canonical-source guard so the environment/ref
+ * pairing is covered by behaviour rather than by matching the step's text.
+ * Every Terraform operation in this workflow is gated on `validate-source`,
+ * so which ref may drive which environment is the contract worth running.
+ */
+function runCanonicalInfraSource(options: {
+  environment: string;
+  sourceRef: string;
+}) {
+  return spawnSync(
+    "bash",
+    ["-c", step(infra, "validate-source", "Validate canonical source ref").run],
+    {
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH ?? "",
+        SOURCE_REF: options.sourceRef,
+        TARGET_ENVIRONMENT: options.environment,
+      },
+    },
+  );
+}
 
 describe("canonical cloud deployment environment contract", () => {
   test("records the staging certificate with the upload action digest shape", () => {
@@ -334,6 +359,45 @@ describe("canonical cloud deployment environment contract", () => {
     expect(validate.run).toContain('expected_ref="refs/heads/main"');
     expect(validate.run).toContain('expected_ref="refs/heads/develop"');
     expect(validate.run).toContain('if [ "$SOURCE_REF" != "$expected_ref" ]');
+  });
+
+  test("executes the canonical source-ref pairing for both environments", () => {
+    // Admitted: each protected environment driven from its own canonical
+    // branch. `environment` is a two-option choice input, so these are the
+    // only selections that may reach Terraform.
+    for (const admitted of [
+      { environment: "production", sourceRef: "refs/heads/main" },
+      { environment: "staging", sourceRef: "refs/heads/develop" },
+    ]) {
+      const result = runCanonicalInfraSource(admitted);
+      expect(result.status, JSON.stringify(admitted)).toBe(0);
+      // This step annotates with a plain `echo`, so the error would land on
+      // stdout rather than stderr — assert across both streams.
+      expect(
+        `${result.stdout}${result.stderr}`,
+        JSON.stringify(admitted),
+      ).not.toContain("::error::");
+    }
+
+    // Rejected: the crossed pairing in both directions, plus refs that are
+    // neither canonical branch.
+    for (const rejected of [
+      { environment: "production", sourceRef: "refs/heads/develop" },
+      { environment: "staging", sourceRef: "refs/heads/main" },
+      { environment: "production", sourceRef: "refs/heads/feature/infra" },
+      { environment: "staging", sourceRef: "refs/heads/feature/infra" },
+      { environment: "production", sourceRef: "refs/tags/v1.0.0" },
+      { environment: "staging", sourceRef: "refs/pull/1/merge" },
+      { environment: "production", sourceRef: "main" },
+      { environment: "staging", sourceRef: "" },
+    ]) {
+      const result = runCanonicalInfraSource(rejected);
+      expect(result.status, JSON.stringify(rejected)).toBe(1);
+      expect(
+        `${result.stdout}${result.stderr}`,
+        JSON.stringify(rejected),
+      ).toContain("::error::");
+    }
   });
 
   test("validates quoted Terraform state addresses through the executable parser", () => {
