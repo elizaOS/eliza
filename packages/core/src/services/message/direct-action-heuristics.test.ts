@@ -752,7 +752,15 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 					[calendarTaggedViews, calendarAction],
 					message,
 				),
-			).toEqual({ names: ["CALENDAR"], kind: "owner-reads" });
+			).toEqual({
+				names: ["CALENDAR"],
+				kind: "owner-reads",
+				// Calendar reads dispatch deterministically (skip the planner):
+				// the reader emits verified user-facing text, and the planner
+				// alternative tier-matches the whole lifeops suite past small
+				// provider context windows.
+				deterministicDispatch: true,
+			});
 		}
 		// Navigation stays navigation.
 		expect(

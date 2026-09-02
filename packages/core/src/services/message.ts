@@ -9851,6 +9851,21 @@ export async function runV5MessageRuntimeStage1(args: {
 							...getMessageHandlerCandidateActions(messageHandler),
 							...directPlannerCandidateActions,
 						]);
+			// An owner-read whose resolved reader emits its own verified
+			// user-facing text (deterministicDispatch) skips the planner
+			// entirely — the deterministic executor runs the single reader
+			// directly. Evaluator-installed deterministic calls (e.g. view
+			// navigation) stay authoritative over this text-inference route.
+			if (
+				directPlannerInference.kind === "owner-reads" &&
+				directPlannerInference.deterministicDispatch === true &&
+				directPlannerCandidateActions.length === 1 &&
+				!messageHandler.plan.deterministicToolCall
+			) {
+				messageHandler.plan.deterministicToolCall = {
+					name: directPlannerCandidateActions[0],
+				};
+			}
 		}
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 		let earlyReplyText = actionOwnsResponseHandlerEarlyReply(
