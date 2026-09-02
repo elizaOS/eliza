@@ -96,6 +96,7 @@ mock.module("@/lib/services/credits", () => ({
   COST_BUFFER: 1.5,
   InsufficientCreditsError: class InsufficientCreditsError extends Error {},
   MIN_RESERVATION: 0.000001,
+  RESERVATION_SWEEP_GRACE_MS: 0,
   ReservationNotFoundError: class ReservationNotFoundError extends Error {},
   creditsService: {
     deductCredits,
