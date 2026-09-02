@@ -113,7 +113,12 @@ function float32ToBase64(pcm: Float32Array): string {
 }
 
 const JNI_VOICE_PCM_TURN_TIMEOUT_MS = 15_000;
-const localAgentClient = new ElizaClient(MOBILE_LOCAL_AGENT_API_BASE);
+let localAgentClient: ElizaClient | null = null;
+
+function getLocalAgentClient(): ElizaClient {
+  localAgentClient ??= new ElizaClient(MOBILE_LOCAL_AGENT_API_BASE);
+  return localAgentClient;
+}
 
 async function drainResponseBody(
   response: Response,
@@ -164,7 +169,7 @@ async function forwardCompletedPcmTurnToLocalAgent(
   }, JNI_VOICE_PCM_TURN_TIMEOUT_MS);
 
   try {
-    const response = await localAgentClient.rawRequest(
+    const response = await getLocalAgentClient().rawRequest(
       "/api/voice/native-pcm-turn",
       {
         method: "POST",

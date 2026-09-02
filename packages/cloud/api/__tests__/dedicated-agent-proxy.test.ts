@@ -379,6 +379,43 @@ describe("dedicated-agent-proxy — scoped voice conversation transport", () => 
   });
 });
 
+describe("dedicated-agent-proxy — trace ingress", () => {
+  test("forwards only a strict trace and no caller telemetry instrumentation", async () => {
+    const request = makeRequest("agent-local-token", undefined, {
+      "X-Eliza-Telemetry": "caller-controlled",
+      "X-ElizaOS-Turn-Correlation": "caller-controlled",
+      "X-ElizaOS-Turn-Attempt": "99",
+      "X-Eliza-Trace-Id": "0123456789abcdef0123456789abcdef",
+    });
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(200);
+    const upstream = requireCapturedRequest();
+    expect(upstream.headers.get("x-eliza-trace-id")).toBe(
+      "0123456789abcdef0123456789abcdef",
+    );
+    expect(upstream.headers.get("x-eliza-telemetry")).toBeNull();
+    expect(upstream.headers.get("x-elizaos-turn-correlation")).toBeNull();
+    expect(upstream.headers.get("x-elizaos-turn-attempt")).toBeNull();
+  });
+
+  test("drops an invalid trace before the agent mints its replacement", async () => {
+    const request = makeRequest("agent-local-token", undefined, {
+      "X-Eliza-Trace-Id": "0123456789ABCDEF0123456789ABCDEF",
+    });
+
+    await handleDedicatedAgentProxy(request, ENV, urlOf(request), AGENT);
+
+    expect(requireCapturedRequest().headers.get("x-eliza-trace-id")).toBeNull();
+  });
+});
+
 function executePairHandoff(html: string): {
   localValues: Map<string, string>;
   replaceCalls: string[];
@@ -1331,6 +1368,15 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "x-eliza-trace-id",
+    );
+    expect(res.headers.get("access-control-allow-headers")).not.toContain(
+      "x-eliza-telemetry",
+    );
+    expect(res.headers.get("access-control-expose-headers")).toContain(
+      "x-eliza-trace-id",
+    );
     expect(res.headers.get("access-control-max-age")).toBe("600");
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(captured).toBeNull(); // preflight is answered at the edge

@@ -38,6 +38,24 @@ describe("finalMessageUserText", () => {
 		const value = "message:user:\nBuy 10 apples\n\nevent: user_message";
 		expect(finalMessageUserText(value)).toBe("Buy 10 apples");
 	});
+
+	it("extracts text from the structured current-message envelope", () => {
+		const value =
+			'message:user:\n{"text":"Buy 10 apples","source":"client_chat","metadata":{"safe":true}}';
+		expect(finalMessageUserText(value)).toBe("Buy 10 apples");
+	});
+
+	it("unwraps external content inside a structured current-message envelope", () => {
+		const text =
+			"SECURITY NOTICE\n\n<<<EXTERNAL_UNTRUSTED_CONTENT>>>\nSource: API\n---\nBuy 10 apples\n<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>";
+		const value = `message:user:\n${JSON.stringify({ text, source: "telegram" })}`;
+		expect(finalMessageUserText(value)).toBe("Buy 10 apples");
+	});
+
+	it("preserves JSON values that are not structured message envelopes", () => {
+		const value = 'message:user:\n{"query":"Buy 10 apples"}';
+		expect(finalMessageUserText(value)).toBe('{"query":"Buy 10 apples"}');
+	});
 });
 
 describe("matchesScenarioInput", () => {

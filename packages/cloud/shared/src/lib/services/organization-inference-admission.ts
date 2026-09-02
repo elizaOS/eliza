@@ -9,6 +9,7 @@
 
 import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
+import { logger } from "../utils/logger";
 import type { AffiliateBillingAttribution } from "./affiliate-billing-attribution";
 import { AFFILIATE_PAYOUT_CONTRACT_VERSION } from "./affiliate-payout-outbox";
 import type { BillingContext, FlatBillingCost } from "./ai-billing";
@@ -60,7 +61,10 @@ import {
   createLedgerDebitSettler,
   resolveInferenceBillingLedger,
 } from "./inference-billing-ledger";
-import type { InferenceCredentialCheck } from "./inference-credential-revocation";
+import {
+  type InferenceCredentialCheck,
+  InferenceCredentialRevokedError,
+} from "./inference-credential-revocation";
 
 export type InferenceAdmissionMode =
   | "durable_object_debit"
@@ -391,6 +395,20 @@ export async function admitOrganizationInference(
         executionCtx: params.executionCtx,
       });
     } catch (error) {
+      if (error instanceof InferenceCredentialRevokedError) {
+        // error-policy:J2 preserve the typed combined-gate refusal after
+        // attaching the full admission identity needed for diagnostics.
+        logger.warn(
+          "[OrganizationInferenceAdmission] blocked provider dispatch at combined credential and balance gate",
+          {
+            organizationId: params.context.organizationId,
+            userId: params.context.userId,
+            requestId: params.context.requestId,
+            credentialKind: params.credential?.kind ?? "unavailable",
+            reason: error.reason,
+          },
+        );
+      }
       if (error instanceof InferenceAdmissionLeaseRejectedError) {
         throw new InsufficientCreditsError(
           error.requiredUsd,

@@ -344,7 +344,7 @@ describe("handleCloudAndCoreRouteGroup", () => {
     expect(pluginState).not.toHaveProperty("createTelemetrySpan");
   });
 
-  it("lets the real disconnect handler persist only its staging-authority working state", async () => {
+  it("blocks the real disconnect handler under immutable staging authority", async () => {
     for (const [key, value] of Object.entries(process.env)) {
       if (key.startsWith("ELIZAOS_CLOUD_") && value !== undefined) {
         vi.stubEnv(key, value);
@@ -355,6 +355,7 @@ describe("handleCloudAndCoreRouteGroup", () => {
     vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "ambient-prod-key");
     vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api.eliza.app/api/v1");
     resetDevCloudEnvAuthorityForTests();
+    captureDevCloudEnvAuthority();
 
     const actualCloudHost = await vi.importActual<
       typeof import("@elizaos/plugin-elizacloud/host-routes")
@@ -381,20 +382,9 @@ describe("handleCloudAndCoreRouteGroup", () => {
 
     await expect(handleCloudAndCoreRouteGroup(args)).resolves.toBe(true);
 
-    expect(saveConfig).toHaveBeenCalledTimes(1);
-    const savedConfig = saveConfig.mock.calls[0]?.[0];
-    expect(savedConfig).toMatchObject({
-      keep: "durable",
-      deploymentTarget: { runtime: "local" },
-      cloud: {
-        enabled: false,
-        baseUrl: "https://api-staging.eliza.app/api/v1",
-      },
-    });
-    expect(savedConfig?.cloud).not.toHaveProperty("apiKey");
-    expect(savedConfig?.cloud).not.toHaveProperty("serviceKey");
-    expect(JSON.stringify(savedConfig)).not.toContain("persisted-prod");
-    expect(args.state.config).toBe(savedConfig);
+    expect(args.res.statusCode).toBe(409);
+    expect(saveConfig).not.toHaveBeenCalled();
+    expect(args.state.config).toBe(durableConfig);
     expect(durableConfig.cloud).toMatchObject({
       apiKey: "persisted-prod-key",
       serviceKey: "persisted-prod-service-key",

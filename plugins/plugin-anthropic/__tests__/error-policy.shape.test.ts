@@ -197,8 +197,11 @@ describe("Anthropic CLI mode failure surfaces", () => {
     await expect(consume()).rejects.toThrow(
       /\[Anthropic CLI\] claude -p stream failed \(exit 1\): auth expired/
     );
-    // The finish reason must not read as a successful end_turn.
-    await expect(result.finishReason).resolves.toBe("error");
+    // The terminal promise carries the same failure; it must never present a
+    // provider error as a successful finish reason.
+    await expect(result.finishReason).rejects.toThrow(
+      /\[Anthropic CLI\] claude -p stream failed \(exit 1\): auth expired/
+    );
   });
 
   it("still resolves end_turn for a successful stream with a result event", async () => {

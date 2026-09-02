@@ -288,7 +288,11 @@ describe("resolveInferenceSessionAuthContext", () => {
       useAuthCache: true,
     });
 
-    expect(result).toEqual({ kind: "rejected", status: 401 });
+    expect(result).toEqual({
+      kind: "rejected",
+      status: 401,
+      reason: "credential_inactive",
+    });
     expect(userReads).toBe(0);
     expect(moderationReads).toBe(0);
   });
@@ -311,7 +315,11 @@ describe("resolveInferenceSessionAuthContext", () => {
         cacheOnly: true,
         useAuthCache: true,
       }),
-    ).toEqual({ kind: "rejected", status: 401 });
+    ).toEqual({
+      kind: "rejected",
+      status: 401,
+      reason: "credential_inactive",
+    });
   });
 
   test("concurrent cold requests share one authoritative hydration", async () => {

@@ -303,7 +303,10 @@ function postMessages(
   });
 }
 
-function postMessagesInWorker(extraHeaders: Record<string, string> = {}) {
+function postMessagesInWorker(
+  extraHeaders: Record<string, string> = {},
+  bodyOverrides: Record<string, unknown> = {},
+) {
   return messagesRoute.request(
     "/",
     {
@@ -317,6 +320,7 @@ function postMessagesInWorker(extraHeaders: Record<string, string> = {}) {
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 16,
         messages: [{ role: "user", content: "hello" }],
+        ...bodyOverrides,
       }),
     },
     {},
@@ -329,6 +333,18 @@ function postMessagesInWorker(extraHeaders: Record<string, string> = {}) {
 }
 
 describe("/v1/messages IAC fast path", () => {
+  test("malformed request resolves auth once without deferral or provider admission", async () => {
+    const response = await postMessagesInWorker({}, { messages: [] });
+
+    expect(response.status).toBe(400);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      deferStrongCredentialCheck: false,
+    });
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+  });
+
   test("enabled Worker admission rejects a missing execution context without authoritative fallback", async () => {
     const response = await messagesRoute.request(
       "/",

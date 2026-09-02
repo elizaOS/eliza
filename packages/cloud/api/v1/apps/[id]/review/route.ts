@@ -24,6 +24,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getLatestAppReview, runAppReview } from "@/lib/services/app-review";
 import { appsService } from "@/lib/services/apps";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -36,6 +37,11 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       rateLimitEndpoint: "strict",
+      deferStrongCredentialCheck: true,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
     });
     const { user } = caller;
     const appId = c.req.param("id");
@@ -54,7 +60,9 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
     const review = await runAppReview({
       app: appRow,
       triggeredByUserId: user.id,
-      operationContext: getGenerativeOperationContext(c, caller),
+      operationContext: getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
     });
 
     logger.info("[AppReview API] Submitted app for review", {

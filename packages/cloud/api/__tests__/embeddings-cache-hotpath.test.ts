@@ -107,7 +107,10 @@ function makeExecutionCtx() {
   };
 }
 
-function post(ctx: ExecutionContext) {
+function post(
+  ctx: ExecutionContext,
+  bodyOverrides: Record<string, unknown> = {},
+) {
   return embeddingsRoute.request(
     "/",
     {
@@ -119,6 +122,7 @@ function post(ctx: ExecutionContext) {
       body: JSON.stringify({
         model: "text-embedding-3-small",
         input: "cache-only hot path",
+        ...bodyOverrides,
       }),
     },
     {},
@@ -177,6 +181,19 @@ beforeEach(() => {
 });
 
 describe("POST /api/v1/embeddings Worker cache hot path", () => {
+  test("malformed request resolves auth once without deferral or provider admission", async () => {
+    const { ctx } = makeExecutionCtx();
+    const response = await post(ctx, { input: undefined });
+
+    expect(response.status).toBe(400);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      deferStrongCredentialCheck: false,
+    });
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+  });
+
   test("enabled Worker admission rejects a missing execution context without authoritative fallback", async () => {
     const response = await embeddingsRoute.request(
       "/",

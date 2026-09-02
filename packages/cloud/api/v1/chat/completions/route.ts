@@ -1,7 +1,11 @@
 /** Implements the OpenAI-compatible chat-completions boundary and its streaming accounting. */
 import { Hono } from "hono";
-import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
@@ -1214,6 +1218,29 @@ export async function handleChatCompletionsPOST(
   let promptCacheKeyForRedaction: string | undefined;
 
   try {
+    const request = (await req.json().catch(() => null)) as ChatRequest | null;
+    const requestIsValid = Boolean(
+      request?.model &&
+        Array.isArray(request.messages) &&
+        request.messages.length,
+    );
+    const invalidRequestResponse = !requestIsValid
+      ? attachPreforwardTelemetry(
+          addCorsHeaders(
+            Response.json(
+              {
+                error: {
+                  message: "Missing required fields: model and messages",
+                  type: "invalid_request_error",
+                  code: "missing_required_parameter",
+                },
+              },
+              { status: 400 },
+            ),
+          ),
+        )
+      : undefined;
+
     // 1. Authenticate (+ moderation). API-key and Steward-session requests
     // resolve auth + org + moderation from a combined cache decision. On one
     // true cold miss, Workers may consume the retained authoritative decision
@@ -1224,9 +1251,15 @@ export async function handleChatCompletionsPOST(
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
     let appScopeId: string | null = null;
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user?.organization_id,
+      credential: () => admissionCredential,
+    });
 
     const deferStrongCredentialCheck =
-      Boolean(options.executionCtx) && isInferenceStrongRevocationEnabled();
+      requestIsValid &&
+      Boolean(options.executionCtx) &&
+      isInferenceStrongRevocationEnabled();
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,
@@ -1350,11 +1383,6 @@ export async function handleChatCompletionsPOST(
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
           })
         : Promise.resolve(null);
-    const requestPromise = req
-      .json()
-      // error-policy:J3 malformed JSON becomes the same typed invalid request path as a missing body.
-      .catch(() => null) as Promise<ChatRequest | null>;
-
     let orgRateLimited: Response | null;
     try {
       orgRateLimited = await orgRateLimitPromise;
@@ -1379,6 +1407,14 @@ export async function handleChatCompletionsPOST(
       throw error;
     }
     if (orgRateLimited) return orgRateLimited;
+
+    if (
+      !request?.model ||
+      !Array.isArray(request.messages) ||
+      !request.messages.length
+    ) {
+      return invalidRequestResponse!;
+    }
 
     // 2. Prepare app monetization lookup
     const requestedAppId = options.requiredAppId ?? req.headers.get("X-App-Id");
@@ -1406,30 +1442,6 @@ export async function handleChatCompletionsPOST(
     // (and echoes the raw parse text); the sibling agents routes already guard
     // this. Also require `messages` to be an ARRAY so a non-array value can't
     // slip past the length check and TypeError later in `messages.filter(...)`.
-    const request = await requestPromise;
-
-    // 4. Validate
-    if (
-      !request?.model ||
-      !Array.isArray(request.messages) ||
-      !request.messages.length
-    ) {
-      return attachPreforwardTelemetry(
-        addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message: "Missing required fields: model and messages",
-                type: "invalid_request_error",
-                code: "missing_required_parameter",
-              },
-            },
-            { status: 400 },
-          ),
-        ),
-      );
-    }
-
     // Collapse decorated Cerebras ids (e.g. "openai/gpt-oss-120b:nitro" emitted
     // by dedicated agents) to the bare Cerebras id so pricing, routing, and
     // billing all agree and route to cerebras-direct instead of OpenRouter.
@@ -1729,12 +1741,6 @@ export async function handleChatCompletionsPOST(
         settleReservation = async () => null;
         settleUnknown = async () => null;
       } else if (useAppCredits && appId && monetizedApp) {
-        if (admissionCredential) {
-          await assertInferenceCredentialActive(
-            user.organization_id,
-            admissionCredential,
-          );
-        }
         assertInferenceAppAffiliateSupported(appId, affiliateCode);
         const { totalCost } = await calculateCost(
           normalizedModel,
@@ -1773,6 +1779,7 @@ export async function handleChatCompletionsPOST(
             affiliateCode,
             executionCtx: options.executionCtx,
             admissionSnapshot,
+            credential: credentialGuard.credentialForAdmission(),
           });
           settleReservation = admission.settle;
           settleUnknown = admission.settleUnknown;
@@ -1809,7 +1816,7 @@ export async function handleChatCompletionsPOST(
           affiliateCode,
           executionCtx: options.executionCtx,
           admissionSnapshot,
-          credential: admissionCredential,
+          credential: credentialGuard.credentialForAdmission(),
         });
         settleReservation = admission.settle;
         settleUnknown = admission.settleUnknown;
@@ -2030,6 +2037,27 @@ export async function handleChatCompletionsPOST(
         await settleReservation?.(0);
       }
     });
+    const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
+      route: "chat_completions",
+      traceId,
+    });
+    if (credentialDenial) {
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: credentialDenial.message,
+                type: credentialDenial.type,
+                code: credentialDenial.code,
+                details: { reason: credentialDenial.reason },
+              },
+            },
+            { status: credentialDenial.status },
+          ),
+        ),
+      );
+    }
     const rawMessage = redactPromptCacheKey(
       error instanceof Error ? error.message : String(error),
       promptCacheKeyForRedaction,

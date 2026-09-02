@@ -335,6 +335,10 @@ const ALLOWLIST: Record<string, string> = {
   "/api/whatsapp/webhook (whatsapp-webhook-event)":
     "Meta webhook delivery must bypass auth",
 
+  // plugin-imessage — Blooio signs inbound delivery at the provider boundary.
+  "/api/imessage/webhook/blooio (imessage-blooio-webhook)":
+    "Blooio webhook delivery is unauthenticated at the agent gate and verified by provider signature",
+
   // @elizaos/ui cloud public pages — reachable by external/unauthenticated users.
   "payment/:paymentRequestId":
     "cloud public page: external payer; the request id is the capability link",

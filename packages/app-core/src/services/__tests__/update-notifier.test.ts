@@ -32,6 +32,7 @@ describe("scheduleUpdateNotification", () => {
     mocks.resolveChannel.mockReturnValue("stable");
     originalIsTTY = (process.stderr as { isTTY?: boolean }).isTTY;
     originalCI = process.env.CI;
+    delete process.env.CI;
     mod = await import("../update-notifier.ts");
   });
 

@@ -13,6 +13,7 @@ import {
   handleRuntimeModePreDispatch,
   handleRuntimeModeRemoteForward,
 } from "./pre-dispatch.ts";
+import { __resetRuntimeModeSnapshotCacheForTests } from "./runtime-mode.ts";
 
 interface ResponseHarness {
   res: ServerResponse;
@@ -39,6 +40,7 @@ function writeConfig(config: object): void {
     JSON.stringify(config),
     "utf8",
   );
+  __resetRuntimeModeSnapshotCacheForTests();
 }
 
 function makeRequest(url: string, method = "GET"): IncomingMessage {

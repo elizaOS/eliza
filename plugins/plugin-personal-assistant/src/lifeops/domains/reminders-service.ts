@@ -5606,6 +5606,7 @@ export class RemindersDomain {
       reminderLimit?: number;
       workflowLimit?: number;
       scheduledTaskLimit?: number;
+      sleepCycleCheckins?: boolean;
     } = {},
   ): Promise<{
     now: string;
@@ -5864,12 +5865,14 @@ export class RemindersDomain {
         }),
     );
     const sleepCycleCheckins: SleepCycleCheckinDeliveryReport[] =
-      await runSubsystem("sleep_cycle_checkins", [], () =>
-        this.processSleepCycleCheckins({
-          now,
-          currentSchedule,
-        }),
-      );
+      request.sleepCycleCheckins !== false
+        ? await runSubsystem("sleep_cycle_checkins", [], () =>
+            this.processSleepCycleCheckins({
+              now,
+              currentSchedule,
+            }),
+          )
+        : [];
     // A due check-in whose every delivery surface rejected the message is a
     // tick failure (#29068): the report was generated and then dropped. The
     // subsystem-isolation contract still holds — the tick completes and the

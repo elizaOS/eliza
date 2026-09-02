@@ -103,11 +103,15 @@ function expectRoutedAction(
   return undefined;
 }
 
-function handleResponseFixture(input: string, actionName: "APP" | "VIEWS") {
+function handleResponseFixture(
+  input: string,
+  actionName: "APP" | "VIEWS",
+  replyText = "On it.",
+) {
   const args = {
     contexts: ["settings"],
     intents: [input.toLowerCase()],
-    replyText: "On it.",
+    replyText,
     threadOps: [],
     candidateActionNames: [actionName],
   };
@@ -219,7 +223,7 @@ const appLoadDirectory = path.join(fixtureRoot, "apps");
 const repoRoot = path.join(fixtureRoot, "repo");
 const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
 const loadAppsInput = `Load apps from ${appLoadDirectory} directory`;
-const editFeedBoardInput = "Edit view feed-board plugin";
+const editFeedBoardInput = "Edit the feed-board view to make queue rows denser";
 
 const installedApps = [
   {
@@ -480,17 +484,24 @@ export default scenario({
 
         let launchCount = 0;
         runtime.scenarioModelFixtures?.register(
-          handleResponseFixture("Open the settings view", "VIEWS"),
-          plannerFixture(
+          handleResponseFixture(
             "Open the settings view",
             "VIEWS",
-            {
-              action: "show",
-              view: "settings",
-              viewType: "gui",
-            },
             "Opened Settings.",
           ),
+          {
+            ...plannerFixture(
+              "Open the settings view",
+              "VIEWS",
+              {
+                action: "show",
+                view: "settings",
+                viewType: "gui",
+              },
+              "Opened Settings.",
+            ),
+            times: { min: 0, max: 2 },
+          },
           handleResponseFixture("Search views for finance", "VIEWS"),
           plannerFixture(
             "Search views for finance",
@@ -562,7 +573,11 @@ export default scenario({
             },
             "Canceled. No app changes made.",
           ),
-          handleResponseFixture(editFeedBoardInput, "VIEWS"),
+          handleResponseFixture(
+            editFeedBoardInput,
+            "VIEWS",
+            `Started view edit task for Feed Board at ${feedPluginDir}. Task session scenario-edit-view-feed-board is running.`,
+          ),
           plannerFixture(
             editFeedBoardInput,
             "VIEWS",
@@ -753,7 +768,7 @@ export default scenario({
       assertTurn: (execution) =>
         expectRoutedAction(execution, {
           actionName: "VIEWS",
-          parameters: { action: "show", view: "settings", viewType: "gui" },
+          parameters: { action: "show", view: "settings" },
           resultFields: {
             "values.mode": "show",
             "values.viewId": "settings",
@@ -974,17 +989,17 @@ export default scenario({
             method: "GET",
             pathname: "/api/views",
             response: { body: { views }, status: 200 },
-            search: "?viewType=gui",
+            search: "",
           },
           {
-            body: { path: "/settings", viewType: "gui" },
+            body: { path: "/settings" },
             method: "POST",
             pathname: "/api/views/settings/navigate",
             response: {
               body: { ok: true, navigated: true, viewId: "settings" },
               status: 200,
             },
-            search: "?viewType=gui",
+            search: "",
           },
           {
             body: null,

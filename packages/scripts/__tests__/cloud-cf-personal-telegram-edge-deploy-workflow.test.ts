@@ -160,6 +160,7 @@ function verifyGatewayProof(
       environment: "staging",
       deploymentId,
       service: "gateway-webhook-stg",
+      telegramIdentity: "attested",
     }),
   );
   writeFileSync(
@@ -231,6 +232,10 @@ case "$url" in
   */ready/forwarder-auth/eliza-app)
     printf '{"error":"unauthorized","project":"eliza-app","status":"enforced"}' > "$output"
     printf '401'
+    ;;
+  */ready/telegram-identity/eliza-app)
+    printf '{"project":"eliza-app","status":"attested"}' > "$output"
+    printf '200'
     ;;
   *) exit 2 ;;
 esac

@@ -940,7 +940,9 @@ test.describe("orchestrator GUI workbench", () => {
       .poll(() => requests.actionLog)
       .toContain("restart-edited:stop-active");
 
-    await page.getByTestId("orchestrator-inspect-session").first().click();
+    await page
+      .getByRole("button", { name: "Inspect agent: Codex Builder" })
+      .click();
     const operatorDetail = page.getByTestId("orchestrator-operator-detail");
     await expect(operatorDetail).toContainText("Session detail");
     await expect(operatorDetail).toContainText("Codex Builder");
@@ -1024,7 +1026,9 @@ test.describe("orchestrator GUI workbench", () => {
       .poll(() => requests.actionLog)
       .toContain("restart:stop-active");
 
-    await page.getByTestId("orchestrator-stop-agent").first().click();
+    await page
+      .locator('[data-agent-human-id="sub-agent-stop-session-codex"]')
+      .click();
     await expect.poll(() => requests.actionLog).toContain("stop:session-codex");
 
     await page.getByTestId("orchestrator-inspector-pause").click();

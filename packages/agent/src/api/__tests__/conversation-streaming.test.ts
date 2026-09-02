@@ -1008,7 +1008,7 @@ describe("generateChatResponse token streaming", () => {
         values: {
           workflowId: "workflow-1",
           workflowName: "Daily summary",
-          longText: `${"x".repeat(997)}...`,
+          longText: "x".repeat(1200),
         },
       },
     ]);

@@ -550,6 +550,53 @@ export function buildGenerateArgsFromParams(
   return args;
 }
 
+/** Resolve the complete output budget without clipping the prompt or request. */
+export function resolveAospCompletionBudget(input: {
+  requestedMaxTokens?: number;
+  contextSize: number;
+  promptTokenCount: number;
+}): number {
+  const { requestedMaxTokens, contextSize, promptTokenCount } = input;
+  if (
+    !Number.isSafeInteger(contextSize) ||
+    contextSize <= 0 ||
+    !Number.isSafeInteger(promptTokenCount) ||
+    promptTokenCount < 0
+  ) {
+    throw new ElizaError("AOSP completion budget inputs are invalid", {
+      code: "INVALID_MODEL_CONTEXT_BUDGET",
+      context: { contextSize, promptTokenCount },
+    });
+  }
+  const remainingTokens = contextSize - promptTokenCount;
+  if (remainingTokens <= 0) {
+    throw new ElizaError(
+      "The complete prompt does not fit the AOSP model context; refusing to truncate it",
+      {
+        code: "MODEL_PROMPT_TOO_LARGE",
+        context: { contextSize, promptTokenCount },
+      },
+    );
+  }
+  if (requestedMaxTokens === undefined) return remainingTokens;
+  if (!Number.isSafeInteger(requestedMaxTokens) || requestedMaxTokens <= 0) {
+    throw new ElizaError("AOSP maxTokens must be a positive safe integer", {
+      code: "INVALID_MODEL_OUTPUT_BUDGET",
+      context: { requestedMaxTokens },
+    });
+  }
+  if (requestedMaxTokens > remainingTokens) {
+    throw new ElizaError(
+      "The requested AOSP output does not fit the remaining model context; refusing to clamp it",
+      {
+        code: "MODEL_OUTPUT_BUDGET_EXCEEDED",
+        context: { requestedMaxTokens, remainingTokens },
+      },
+    );
+  }
+  return requestedMaxTokens;
+}
+
 function readPositiveIntEnv(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
@@ -3369,9 +3416,13 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         throw new Error("[aosp-local-inference] fused text generate aborted");
       }
       const promptTokens = tokenizeFused(active, args.prompt);
-      const maxTokens =
-        args.maxTokens ??
-        Math.max(1, (active.contextSize ?? 32_768) - promptTokens.length);
+      const maxTokens = resolveAospCompletionBudget({
+        ...(args.maxTokens !== undefined
+          ? { requestedMaxTokens: args.maxTokens }
+          : {}),
+        contextSize: active.contextSize ?? 32_768,
+        promptTokenCount: promptTokens.length,
+      });
       const config: AospLlmStreamConfig = {
         maxTokens,
         temperature: args.temperature ?? 0.7,

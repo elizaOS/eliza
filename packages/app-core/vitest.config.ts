@@ -170,6 +170,7 @@ export default defineConfig({
       "scripts/android-sms-gateway-template.test.mjs",
       "scripts/stage-android-agent.test.mjs",
       "scripts/stage-desktop-fused-lib-staleness.test.mjs",
+      "scripts/ensure-fused-inference-install.test.mjs",
       "scripts/build-helpers/arm64-simd.test.mjs",
       "scripts/lib/electrobun-loopback-hardening.test.mjs",
       "scripts/lib/linux-artifact-permissions.test.mjs",

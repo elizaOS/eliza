@@ -7,6 +7,7 @@
 import { afterAll, beforeEach, expect, mock, test } from "bun:test";
 import * as authActual from "../../auth";
 import * as creditsActual from "../credits";
+import { InferenceCredentialRevokedError } from "../inference-credential-revocation";
 import * as admissionActual from "../organization-inference-admission";
 import type { ServiceConfig } from "./types";
 
@@ -58,6 +59,11 @@ afterAll(() => {
 });
 
 test("combined RPC admission orders mark before dispatch and defers settlement", async () => {
+  const credential = {
+    kind: "api_key" as const,
+    credentialId: "key-1",
+    userId: "user-1",
+  };
   const order: string[] = [];
   let finishSettlement: (() => void) | undefined;
   const settlement = new Promise<void>((resolve) => {
@@ -87,6 +93,7 @@ test("combined RPC admission orders mark before dispatch and defers settlement",
       apiKey: { id: "key-1" },
     },
     admissionSnapshot: snapshot,
+    credential,
     executionCtx: { waitUntil: (promise) => retained.push(promise) },
     requestId: "rpc-1",
   });
@@ -103,6 +110,7 @@ test("combined RPC admission orders mark before dispatch and defers settlement",
   expect(legacyAuth).not.toHaveBeenCalled();
   expect(admit).toHaveBeenCalledTimes(1);
   expect(admit.mock.calls[0]?.[0].admissionSnapshot).toBe(snapshot);
+  expect(admit.mock.calls[0]?.[0].credential).toBe(credential);
   expect(retained).toHaveLength(1);
   finishSettlement?.();
   await Promise.all(retained);
@@ -128,4 +136,36 @@ test("combined RPC admission denial performs zero provider dispatch", async () =
   expect(response.status).toBe(402);
   expect(work).not.toHaveBeenCalled();
   expect(legacyAuth).not.toHaveBeenCalled();
+});
+
+test("combined credential denial is a safe standing response with zero dispatch", async () => {
+  admit.mockRejectedValueOnce(new InferenceCredentialRevokedError("session_binding_revoked"));
+  const work = mock(async () => ({ response: new Response("not reached") }));
+  const handler = createHandler(config, work, {
+    auth: { user: { id: "user-1", organization_id: "org-1" } },
+    admissionSnapshot: snapshot,
+    credential: {
+      kind: "steward_session",
+      userId: "user-1",
+      stewardUserId: "steward-1",
+      issuedAt: 1,
+    },
+    executionCtx: { waitUntil: () => undefined },
+    requestId: "rpc-revoked",
+  });
+
+  const response = await handler(
+    new Request("https://api.test/api/v1/rpc/ethereum", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", id: 1 }),
+    }),
+  );
+
+  expect(response.status).toBe(401);
+  await expect(response.json()).resolves.toMatchObject({
+    error: "Authentication required",
+    code: "authentication_required",
+    details: { reason: "credential_inactive" },
+  });
+  expect(work).not.toHaveBeenCalled();
 });

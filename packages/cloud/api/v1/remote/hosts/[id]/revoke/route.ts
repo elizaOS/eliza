@@ -1,4 +1,8 @@
-/** Revokes an owner-scoped host and drains a bounded page of relay authority. */
+/**
+ * Revokes an owner-scoped host and drains a bounded page of relay authority.
+ * Revocation and pending Headscale cleanup are recovery operations and remain
+ * available while new paid/external work is fenced by account standing.
+ */
 
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";

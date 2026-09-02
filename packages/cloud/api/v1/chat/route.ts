@@ -9,7 +9,10 @@
 import { assertModelOutputComplete } from "@elizaos/core";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { Hono } from "hono";
-import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
@@ -59,11 +62,13 @@ import {
   DEFAULT_OUTPUT_TOKENS,
   InsufficientCreditsError,
 } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@/lib/services/generations";
 import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
 import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { usageService } from "@/lib/services/usage";
@@ -232,6 +237,23 @@ app.post("/", async (c) => {
   let providerDispatchStarted = false;
 
   try {
+    const decodedBody = await decodeRequestJson(c.req);
+    const body = decodedBody.ok ? decodedBody.value : undefined;
+    const bodyIsObject = Boolean(body && typeof body === "object");
+    const preflightMessages = bodyIsObject
+      ? (body as { messages?: unknown }).messages
+      : undefined;
+    const requestIsValid =
+      bodyIsObject &&
+      Array.isArray(preflightMessages) &&
+      preflightMessages.length > 0;
+    const invalidRequestResponse =
+      !decodedBody.ok || !bodyIsObject
+        ? c.json({ error: "Invalid JSON body" }, 400)
+        : !requestIsValid
+          ? c.json({ error: "At least one message is required" }, 400)
+          : undefined;
+
     let user: ChatBillingUser;
     let apiKey: ApiKeyIdentity | undefined;
     let isAnonymous = false;
@@ -242,11 +264,18 @@ app.post("/", async (c) => {
     let anonymousCredential: AnonymousChatGateCredential | null = null;
     let moderationAlreadyChecked = false;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+    let admissionCredential: InferenceCredentialCheck | undefined;
+    let guardOrganizationId: string | undefined;
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => guardOrganizationId,
+      credential: () => admissionCredential,
+    });
 
     if (executionCtx) {
       const authResolution = await resolveInferenceAuthContext(c.req.raw, {
         executionCtx,
         cacheOnly: true,
+        deferStrongCredentialCheck: requestIsValid,
       });
       if (authResolution.kind === "warming") {
         return retryableWarmingResponse(c, "Authentication");
@@ -287,12 +316,16 @@ app.post("/", async (c) => {
           id: authResolution.ctx.userId,
           organization_id: authResolution.ctx.orgId,
         };
+        guardOrganizationId = user.organization_id ?? undefined;
         apiKey = authResolution.ctx.apiKeyId
           ? { id: authResolution.ctx.apiKeyId }
           : undefined;
         moderationAlreadyChecked = true;
         admissionSnapshot = authResolution.ctx.admission;
+        admissionCredential = authResolution.credential;
+        if (invalidRequestResponse) return invalidRequestResponse;
       } else {
+        if (invalidRequestResponse) return invalidRequestResponse;
         const anonymousResolution = await resolveAnonymousChatContext(
           c.req.raw,
           executionCtx,
@@ -357,6 +390,8 @@ app.post("/", async (c) => {
       }
     }
 
+    if (invalidRequestResponse) return invalidRequestResponse;
+
     if (user.organization_id) {
       let orgRateLimited: Response | null;
       try {
@@ -386,16 +421,6 @@ app.post("/", async (c) => {
         throw error;
       }
       if (orgRateLimited) return orgRateLimited;
-    }
-
-    const decodedBody = await decodeRequestJson(c.req);
-    if (!decodedBody.ok) {
-      // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-    const body = decodedBody.value;
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid JSON body" }, 400);
     }
 
     const {
@@ -599,12 +624,27 @@ app.post("/", async (c) => {
           affiliateCode,
           executionCtx,
           admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
         });
         settleReservation = admission.settle;
         settleUnknownReservation = admission.settleUnknown;
         markProviderDispatched = admission.markProviderDispatched;
         billingReservation = admission.reservation;
       } catch (error) {
+        const denial = resolveInferenceCredentialAdmissionDenial(error, {
+          route: "chat",
+          traceId: c.get("traceId") ?? c.get("requestId"),
+        });
+        if (denial) {
+          return c.json(
+            {
+              error: denial.message,
+              code: denial.code,
+              reason: denial.reason,
+            },
+            denial.status,
+          );
+        }
         if (error instanceof InsufficientCreditsError) {
           return c.json(
             { error: "Insufficient balance", details: error.message },
@@ -892,6 +932,20 @@ app.post("/", async (c) => {
         await settleUnknownReservation?.();
       }
     });
+    const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
+      route: "chat",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    });
+    if (credentialDenial) {
+      return c.json(
+        {
+          error: credentialDenial.message,
+          code: credentialDenial.code,
+          reason: credentialDenial.reason,
+        },
+        credentialDenial.status,
+      );
+    }
     logger.error("chat-api", "Error processing chat", {
       error: error instanceof Error ? error.message : String(error),
     });

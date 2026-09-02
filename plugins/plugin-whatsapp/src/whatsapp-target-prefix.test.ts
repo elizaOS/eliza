@@ -13,11 +13,21 @@ describe("stripWhatsAppTargetPrefixes", () => {
   });
 
   it("strips stacked prefixes without quadratic copies", () => {
-    const n = 100_000;
-    const input = `${"whatsapp:".repeat(n)}+4179`;
-    const t0 = performance.now();
-    expect(stripWhatsAppTargetPrefixes(input)).toBe("+4179");
-    expect(performance.now() - t0).toBeLessThan(50);
+    const run = (n: number) => {
+      const input = `${"whatsapp:".repeat(n)}+4179`;
+      const t0 = performance.now();
+      expect(stripWhatsAppTargetPrefixes(input)).toBe("+4179");
+      return performance.now() - t0;
+    };
+
+    // Compare growth rather than enforcing a runner-speed deadline. A
+    // quadratic implementation grows by roughly 16x when input grows by 4x;
+    // the linear scanner stays comfortably below this deliberately generous
+    // ratio even on noisy hosted workers.
+    run(10_000);
+    const smaller = Math.max(run(25_000), 0.1);
+    const larger = run(100_000);
+    expect(larger / smaller).toBeLessThan(10);
   });
 
   it("preserves String.trim compatibility around every prefix", () => {

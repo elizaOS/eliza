@@ -5,6 +5,7 @@
  * without circular dependency issues.
  */
 
+import { isInferenceTraceId } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import {
   extractAssistantReplyText,
@@ -100,6 +101,7 @@ const DEDICATED_CLOUD_CORS_BLOCKED_HEADERS = new Set([
   // are not in the dedicated container server's CORS contract.
   "x-elizaos-turn-correlation",
   "x-elizaos-turn-attempt",
+  "x-eliza-telemetry",
 ]);
 const REPLAYABLE_WS_EVENT_TYPES: ReadonlySet<string> = new Set([
   SHELL_NAVIGATE_VIEW_WS_EVENT,
@@ -823,6 +825,15 @@ function generateSharedTurnCorrelation(): string | null {
   return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex
     .slice(6, 8)
     .join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+}
+
+/** Mint the closed-schema id adopted by the dedicated agent inference timer. */
+function generateDedicatedTraceId(): string | null {
+  if (typeof globalThis.crypto?.getRandomValues !== "function") return null;
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 /** Clamp the warming barrier's advertised `Retry-After` (seconds) into ms. */
@@ -1979,7 +1990,12 @@ export class ElizaClient {
     }
     if (isDedicatedCloudRequest) {
       for (const key of Object.keys(headers)) {
-        if (DEDICATED_CLOUD_CORS_BLOCKED_HEADERS.has(key.toLowerCase())) {
+        const normalized = key.toLowerCase();
+        if (
+          DEDICATED_CLOUD_CORS_BLOCKED_HEADERS.has(normalized) ||
+          (normalized === "x-eliza-trace-id" &&
+            !isInferenceTraceId(headers[key]))
+        ) {
           delete headers[key];
         }
       }
@@ -2881,6 +2897,9 @@ export class ElizaClient {
     // separate from the persisted/idempotent message ID so natural logs cannot
     // be joined back to message records or caller-supplied identifiers.
     const turnCorrelation = generateSharedTurnCorrelation();
+    const dedicatedTraceId = isDedicatedCloudAgentBase(this.baseUrl)
+      ? generateDedicatedTraceId()
+      : null;
     const res = await this.rawRequest(
       path,
       {
@@ -2888,6 +2907,7 @@ export class ElizaClient {
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
+          ...(dedicatedTraceId ? { "X-Eliza-Trace-Id": dedicatedTraceId } : {}),
           ...(turnCorrelation
             ? {
                 [SHARED_TURN_CORRELATION_HEADER]: turnCorrelation,

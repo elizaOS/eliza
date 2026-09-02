@@ -20,6 +20,7 @@ import {
   logHostedBrowserFailure,
   navigateHostedBrowserSession,
 } from "@/lib/services/browser-tools";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -32,36 +33,49 @@ async function handlePOST(
   context: RouteContext<{ id: string }>,
 ) {
   try {
-    const caller = await requireGenerativeRouteCaller(c);
     const { id } = await context.params;
     const decodedRawBody = await decodeRequestJson(c.req);
+    let pendingResponse: Response | undefined;
+    let body: z.infer<typeof navigateSchema> | undefined;
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
-      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
-    const rawBody = decodedRawBody.value;
-    const bodyResult = navigateSchema.safeParse(rawBody);
-    if (!bodyResult.success) {
-      return Response.json(
-        {
-          error: "Invalid navigate request",
-          details: bodyResult.error.flatten(),
-        },
+      pendingResponse = Response.json(
+        { error: "Invalid JSON body" },
         { status: 400 },
       );
+    } else {
+      const bodyResult = navigateSchema.safeParse(decodedRawBody.value);
+      if (bodyResult.success) {
+        body = bodyResult.data;
+      } else {
+        pendingResponse = Response.json(
+          {
+            error: "Invalid navigate request",
+            details: bodyResult.error.flatten(),
+          },
+          { status: 400 },
+        );
+      }
     }
 
-    const session = await navigateHostedBrowserSession(
-      id,
-      bodyResult.data.url,
-      {
-        apiKeyId: caller.apiKeyId,
-        organizationId: caller.user.organization_id,
-        requestSource: "api",
-        userId: caller.user.id,
-        operationContext: getGenerativeOperationContext(c, caller),
-      },
-    );
+    const caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: pendingResponse === undefined,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    if (pendingResponse) return pendingResponse;
+
+    const session = await navigateHostedBrowserSession(id, body!.url, {
+      apiKeyId: caller.apiKeyId,
+      organizationId: caller.user.organization_id,
+      requestSource: "api",
+      userId: caller.user.id,
+      operationContext: getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
+    });
 
     return Response.json({ session });
   } catch (error) {

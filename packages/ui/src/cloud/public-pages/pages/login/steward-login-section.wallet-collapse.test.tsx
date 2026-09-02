@@ -11,6 +11,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import StewardLoginSection from "./steward-login-section";
 
 const capabilityRef = vi.hoisted(() => ({
   usable: false,
@@ -149,13 +150,7 @@ vi.mock("./wallet-buttons", () => ({
   },
 }));
 
-// The section caches provider discovery at module scope. Import a fresh module
-// for each case so one test's served chains cannot leak into the next case.
-async function renderSection() {
-  vi.resetModules();
-  const { default: StewardLoginSection } = await import(
-    "./steward-login-section"
-  );
+function renderSection() {
   return render(
     <MemoryRouter initialEntries={["/login"]}>
       <StewardLoginSection />

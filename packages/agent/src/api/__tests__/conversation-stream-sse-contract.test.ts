@@ -30,6 +30,7 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  getInferenceTimer,
   logger,
   type Memory,
   ModelType,
@@ -1487,6 +1488,58 @@ describe("conversation stream SSE contract (#10712)", () => {
       (payload) => payload.type === "status" && payload.kind === "streaming",
     );
     expect(streamingStatusIndex).toBeLessThan(firstTokenIndex);
+  });
+
+  it("adopts and echoes a valid inbound trace through the inference timer", async () => {
+    const { ctx, record, useModel } = createCtx();
+    const inboundTrace = "0123456789abcdef0123456789abcdef";
+    ctx.req.headers["x-eliza-trace-id"] = inboundTrace;
+    let modelTrace: string | undefined;
+    const streamImpl = useModel.getMockImplementation();
+    if (!streamImpl) throw new Error("useModel fixture lost implementation");
+    useModel.mockImplementation(async (modelType, params) => {
+      modelTrace = getInferenceTimer()?.traceId;
+      return streamImpl(modelType, params);
+    });
+
+    await handleConversationRoutes(ctx);
+
+    expect(record.headers["X-Eliza-Trace-Id"]).toBe(inboundTrace);
+    expect(record.headers["Access-Control-Expose-Headers"]).toBe(
+      "X-Eliza-Trace-Id",
+    );
+    expect(modelTrace).toBe(inboundTrace);
+  });
+
+  it("discards invalid inbound trace text before echo and model dispatch", async () => {
+    const { ctx, record, useModel } = createCtx();
+    const invalidTrace = "Bearer private-secret and model body";
+    const info = vi.spyOn(logger, "info").mockImplementation(() => undefined);
+    ctx.req.headers["x-eliza-trace-id"] = invalidTrace;
+    let modelTrace: string | undefined;
+    const streamImpl = useModel.getMockImplementation();
+    if (!streamImpl) throw new Error("useModel fixture lost implementation");
+    useModel.mockImplementation(async (modelType, params) => {
+      modelTrace = getInferenceTimer()?.traceId;
+      return streamImpl(modelType, params);
+    });
+
+    await handleConversationRoutes(ctx);
+
+    const echoed = record.headers["X-Eliza-Trace-Id"];
+    expect(echoed).toMatch(/^[0-9a-f]{32}$/);
+    expect(echoed).not.toBe(invalidTrace);
+    expect(modelTrace).toBe(echoed);
+    expect(JSON.stringify(record.headers)).not.toContain("private-secret");
+    expect(record.writes.join("")).not.toContain("private-secret");
+    const traceLog = info.mock.calls.find(
+      ([, message]) =>
+        message === "[ConversationStream] accepted validated trace context",
+    );
+    expect(traceLog?.[0]).toEqual({ traceId: echoed, traceSource: "minted" });
+    expect(JSON.stringify(traceLog)).not.toContain("private-secret");
+    expect(JSON.stringify(traceLog)).not.toContain(DEFAULT_REQUEST_PROMPT);
+    info.mockRestore();
   });
 
   it("awaits connection reconciliation before persistence and generation", async () => {

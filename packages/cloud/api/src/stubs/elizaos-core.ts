@@ -16,6 +16,19 @@ const NOT_AVAILABLE =
 export const ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED =
   "ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED";
 
+// Worker-safe mirror of core's inference correlation contract. The gateway,
+// dedicated proxy, and cloud plugin all use this closed schema at the
+// untrusted HTTP boundary, so the bundle alias must preserve its exact shape.
+export const INFERENCE_TRACE_ID_PATTERN = /^[0-9a-f]{32}$/;
+
+export function isInferenceTraceId(value: unknown): value is string {
+  return typeof value === "string" && INFERENCE_TRACE_ID_PATTERN.test(value);
+}
+
+export function mintInferenceTraceId(): string {
+  return crypto.randomUUID().replaceAll("-", "");
+}
+
 // Worker-safe mirrors of the pure prompt fragments re-exported by core. The
 // cloud native-planner template interpolates them during bundle construction.
 export const groupResponsePrecedencePolicy = `response_precedence:

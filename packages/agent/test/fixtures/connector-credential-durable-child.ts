@@ -61,6 +61,7 @@ try {
     }
     const account = await manager.createAccount("google", {
       status: "pending",
+      role: "OWNER",
     });
     const persisted = await persistConnectorCredentialRefs({
       runtime,

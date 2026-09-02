@@ -2789,6 +2789,23 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fallback();
   });
 
+  await page.route("**/api/lifeops/calendar/sources**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (
+      request.method() !== "GET" ||
+      url.pathname !== "/api/lifeops/calendar/sources"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ sources: [] }),
+    });
+  });
+
   await page.route("**/api/lifeops/calendar/feed**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {
@@ -3072,6 +3089,64 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(populatedRelationships()),
     });
   });
+
+  // FamilyOperationsView loads four independent owner-only sections. The smoke
+  // server does not install the personal-assistant services, so preserve the
+  // real response envelopes while exercising the view's healthy empty state.
+  await page.route("**/api/lifeops/agreements", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ agreements: [] }),
+    });
+  });
+  await page.route("**/api/lifeops/calendar/links", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ links: [] }),
+    });
+  });
+  await page.route(
+    "**/api/lifeops/family-workflows/school/status",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          sourceId: "smoke-school-source",
+          config: null,
+          lastRun: null,
+        }),
+      });
+    },
+  );
+  await page.route(
+    "**/api/lifeops/family-workflows/packets**",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ packets: [], packetStates: [] }),
+      });
+    },
+  );
 
   // TodosView fetches GET /api/lifeops/todos; the **-suffixed pattern tolerates
   // any future query string while leaving non-GET methods on the real API.

@@ -20,6 +20,12 @@ import type {
   InferenceAdmissionSnapshot,
   InferenceAuthRejectionReason,
 } from "@/lib/services/inference-auth-cache";
+import {
+  assertInferenceCredentialActive,
+  type InferenceCredentialCheck,
+  InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
+} from "@/lib/services/inference-credential-revocation";
 import type { EndpointType } from "@/lib/services/org-rate-limits";
 import type { OrganizationInferenceAdmission } from "@/lib/services/organization-inference-admission";
 import { logger } from "@/lib/utils/logger";
@@ -33,6 +39,8 @@ export interface GenerativeRouteCaller {
   apiKeyId: string | null;
   authSource: "combined_cache" | "compatibility";
   admissionSnapshot?: InferenceAdmissionSnapshot;
+  /** Strong proof that the next paid admission must consume atomically. */
+  credential?: InferenceCredentialCheck;
   appScopeId: string | null;
 }
 
@@ -134,6 +142,53 @@ export function resolveInferenceAuthStandingDenial(
   return denial;
 }
 
+/** Maps a combined admission-gate credential refusal to the same route contract. */
+export function resolveInferenceCredentialAdmissionDenial(
+  error: unknown,
+  logContext?: { route: string; traceId?: string },
+): InferenceAuthStandingDenial | null {
+  let credentialError = error;
+  if (
+    error instanceof Error &&
+    error.name === "SuppressedError" &&
+    "error" in error &&
+    error.error instanceof InferenceCredentialRevokedError
+  ) {
+    credentialError = error.error;
+    const suppressed = "suppressed" in error ? error.suppressed : undefined;
+    const suppressedError =
+      suppressed instanceof Error
+        ? {
+            name: suppressed.name,
+            ...(suppressed instanceof ApiError
+              ? { code: suppressed.code, status: suppressed.status }
+              : {}),
+          }
+        : { name: typeof suppressed };
+    logger.error(
+      "[InferenceAuth] deferred revocation suppressed an earlier route failure",
+      {
+        route: logContext?.route ?? "unavailable",
+        traceId: logContext?.traceId ?? "unavailable",
+        credentialReason: error.error.reason,
+        suppressedError,
+      },
+    );
+  }
+  if (!(credentialError instanceof InferenceCredentialRevokedError)) {
+    return null;
+  }
+  const reason = inferenceCredentialRevocationReason(credentialError.reason);
+  return resolveInferenceAuthStandingDenial(
+    {
+      kind: "rejected",
+      status: reason === "credential_inactive" ? 401 : 403,
+      reason,
+    },
+    logContext,
+  );
+}
+
 export function getGenerativeExecutionContext(
   c: AppContext,
 ): { waitUntil(promise: Promise<unknown>): void } | undefined {
@@ -150,6 +205,9 @@ export function getGenerativeExecutionContext(
 export function getGenerativeOperationContext(
   c: AppContext,
   caller: GenerativeRouteCaller,
+  options: {
+    credentialForAdmission?: () => InferenceCredentialCheck | undefined;
+  } = {},
 ): GenerativeOperationContext {
   return {
     organizationId: caller.user.organization_id,
@@ -157,6 +215,8 @@ export function getGenerativeOperationContext(
     apiKeyId: caller.apiKeyId,
     requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
     admissionSnapshot: caller.admissionSnapshot,
+    credential: caller.credential,
+    ...options,
     executionCtx: getGenerativeExecutionContext(c),
   };
 }
@@ -232,7 +292,24 @@ export async function requireGenerativeKnownIdentity(
   };
 }
 
-export function asGenerativeCacheApiError(error: unknown): ApiError | null {
+export function asGenerativeCacheApiError(
+  error: unknown,
+  logContext?: { route: string; traceId?: string },
+): ApiError | null {
+  const admissionDenial = resolveInferenceCredentialAdmissionDenial(
+    error,
+    logContext,
+  );
+  if (admissionDenial) {
+    return new ApiError(
+      admissionDenial.status,
+      admissionDenial.code,
+      admissionDenial.message,
+      {
+        reason: admissionDenial.reason,
+      },
+    );
+  }
   if (
     error instanceof AiPricingCacheWarmingError ||
     error instanceof AiPricingCacheUnavailableError ||
@@ -257,6 +334,7 @@ export async function admitFlatGenerativeOperation(params: {
   cost: FlatBillingCost;
   idempotencyKey?: string;
   admissionSnapshot?: InferenceAdmissionSnapshot;
+  credential?: InferenceCredentialCheck;
 }): Promise<OrganizationInferenceAdmission> {
   const executionCtx = getGenerativeExecutionContext(params.c);
   const { provider, billingSource, requestId } = params.context;
@@ -309,6 +387,7 @@ export async function admitFlatGenerativeOperation(params: {
       executionCtx,
       flatCost: params.cost,
       admissionSnapshot: params.admissionSnapshot,
+      ...(params.credential ? { credential: params.credential } : {}),
     });
   } catch (error) {
     if (
@@ -344,6 +423,11 @@ export async function requireGenerativeRouteCaller(
      * Zero preserves an immediate retryable warming response.
      */
     awaitWarmingMs?: number;
+    /**
+     * This route has a mandatory paid admission before provider dispatch and
+     * will thread the returned credential into that admission consumer.
+     */
+    deferStrongCredentialCheck?: boolean;
   } = {},
 ): Promise<GenerativeRouteCaller> {
   const executionCtx = getGenerativeExecutionContext(c);
@@ -377,6 +461,9 @@ export async function requireGenerativeRouteCaller(
       cacheOnly: Boolean(executionCtx),
       executionCtx,
       inlineContinuationDeadlineMs: options.awaitWarmingMs,
+      ...(options.deferStrongCredentialCheck === true
+        ? { deferStrongCredentialCheck: true }
+        : {}),
     });
   const resolution = await resolveCallerAuth();
 
@@ -385,50 +472,64 @@ export async function requireGenerativeRouteCaller(
       id: resolution.ctx.userId,
       organization_id: resolution.ctx.orgId,
     };
-    c.set("user", user);
-    c.set("authMethod", resolution.ctx.apiKeyId ? "api_key" : "session");
-    if (resolution.ctx.apiKeyId) {
-      c.set("apiKeyId", resolution.ctx.apiKeyId);
-    }
-    if (options.rateLimitEndpoint) {
-      const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
-        await Promise.all([
-          import("@/lib/middleware/rate-limit"),
-          import("@/lib/services/inference-admission-snapshot"),
-        ]);
-      const limited = await enforceOrgRateLimit(
-        resolution.ctx.orgId,
-        options.rateLimitEndpoint,
-        {
-          // The combined decision carries the rate policy only when the hot
-          // cache is enabled. Development and integration Workers still have
-          // an execution context, but their authoritative origin decision has
-          // no snapshot and must retain the compatibility limiter path.
-          cacheOnly: Boolean(resolution.ctx.admission),
-          executionCtx,
-          config: inferenceRateLimitConfig(
-            resolution.ctx.admission,
-            options.rateLimitEndpoint,
-          ),
-        },
-      );
-      if (limited) {
-        throw new ApiError(
-          limited.status,
-          limited.status === 429
-            ? "rate_limit_exceeded"
-            : "service_unavailable",
-          limited.status === 429
-            ? "Rate limit exceeded"
-            : "Rate limiter is unavailable",
+    try {
+      c.set("user", user);
+      c.set("authMethod", resolution.ctx.apiKeyId ? "api_key" : "session");
+      if (resolution.ctx.apiKeyId) {
+        c.set("apiKeyId", resolution.ctx.apiKeyId);
+      }
+      if (options.rateLimitEndpoint) {
+        const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
+          await Promise.all([
+            import("@/lib/middleware/rate-limit"),
+            import("@/lib/services/inference-admission-snapshot"),
+          ]);
+        const limited = await enforceOrgRateLimit(
+          resolution.ctx.orgId,
+          options.rateLimitEndpoint,
+          {
+            // The combined decision carries the rate policy only when the hot
+            // cache is enabled. Development and integration Workers still have
+            // an execution context, but their authoritative origin decision has
+            // no snapshot and must retain the compatibility limiter path.
+            cacheOnly: Boolean(resolution.ctx.admission),
+            executionCtx,
+            config: inferenceRateLimitConfig(
+              resolution.ctx.admission,
+              options.rateLimitEndpoint,
+            ),
+          },
+        );
+        if (limited) {
+          throw new ApiError(
+            limited.status,
+            limited.status === 429
+              ? "rate_limit_exceeded"
+              : "service_unavailable",
+            limited.status === 429
+              ? "Rate limit exceeded"
+              : "Rate limiter is unavailable",
+          );
+        }
+      }
+    } catch (error) {
+      // A deferred credential may leave this helper only through its admission
+      // consumer. If a post-resolution boundary fails first, consume the same
+      // proof with the standalone strong check before exposing that failure.
+      if (resolution.credential) {
+        await assertInferenceCredentialActive(
+          resolution.ctx.orgId,
+          resolution.credential,
         );
       }
+      throw error;
     }
     return {
       user,
       apiKeyId: resolution.ctx.apiKeyId,
       authSource: "combined_cache",
       admissionSnapshot: resolution.ctx.admission,
+      credential: resolution.credential,
       appScopeId:
         "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null,
     };

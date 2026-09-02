@@ -991,6 +991,8 @@ export interface ChatGenerateOptions {
   roomHandlerLease?: RoomHandlerLease;
   resolveNoResponseText?: () => string;
   preferredLanguage?: string;
+  /** Validated upstream correlation id for this complete inference turn. */
+  traceId?: string;
 }
 
 const POST_COMMIT_INTERRUPTED_REPLY =
@@ -4457,6 +4459,7 @@ async function generateOwnedChatResponse(
 
   const timer = new InferenceTurnTimer({
     turnId: nextInferenceTurnId(),
+    traceId: opts?.traceId,
     label: "chat-request",
     roomId: message.roomId,
   });

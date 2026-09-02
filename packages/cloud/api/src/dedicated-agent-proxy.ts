@@ -16,6 +16,7 @@
  * entrypoint stays thin (Cloudflare startup-CPU budget).
  */
 
+import { isInferenceTraceId } from "@elizaos/core";
 import { renderCloudPairHandoffHtml } from "@elizaos/shared/contracts";
 import {
   ELIZA_DOMAIN_CONTRACTS,
@@ -330,6 +331,19 @@ function stripCloudOnlyCredentials(headers: Headers): void {
 }
 
 /**
+ * Dedicated ingress never forwards caller-controlled probe instrumentation.
+ * The agent owns turn timing, while the one closed-schema trace header is the
+ * only browser correlation value that may reach the container.
+ */
+function sanitizeDedicatedTraceHeaders(headers: Headers): void {
+  headers.delete("x-eliza-telemetry");
+  headers.delete("x-elizaos-turn-correlation");
+  headers.delete("x-elizaos-turn-attempt");
+  const traceId = headers.get("x-eliza-trace-id");
+  if (!isInferenceTraceId(traceId)) headers.delete("x-eliza-trace-id");
+}
+
+/**
  * Forward the request to the agent-router origin (the CP), preserving
  * path / method / body. When `injectBearer` is provided, the inbound auth is
  * REPLACED with the agent's own `ELIZA_API_TOKEN` (so the container accepts it);
@@ -348,6 +362,7 @@ async function proxyToOrigin(
   const headers = new Headers(request.headers);
   headers.delete("host");
   stripCloudOnlyCredentials(headers);
+  sanitizeDedicatedTraceHeaders(headers);
   headers.set("x-forwarded-host", url.host);
   headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
   if (injectBearer) {
@@ -774,7 +789,20 @@ function applyDedicatedProxyCors(
   );
   headers.set(
     "access-control-allow-headers",
-    "authorization,content-type,x-api-key",
+    ["authorization", "content-type", "x-api-key", "x-eliza-trace-id"].join(
+      ",",
+    ),
+  );
+  headers.set(
+    "access-control-expose-headers",
+    [
+      "x-eliza-trace-id",
+      "server-timing",
+      "x-eliza-preforward-ms",
+      "x-eliza-inference-path",
+      "x-eliza-provider-request-id",
+      "x-request-id",
+    ].join(","),
   );
   return true;
 }

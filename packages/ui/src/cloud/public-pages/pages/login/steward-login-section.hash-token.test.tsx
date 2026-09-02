@@ -30,6 +30,9 @@ const sessionSpies = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/shared/steward-session-client", () => ({
+  STEWARD_TOKEN_KEY: "steward_session_token",
+  registerStewardTokenPersistence: vi.fn(),
+  registerStewardTokenRemoval: vi.fn(),
   hasStewardAuthedCookie: () => false,
   readStoredStewardToken: () => sessionSpies.storedToken,
   writeStoredStewardToken: (token: string) => {
