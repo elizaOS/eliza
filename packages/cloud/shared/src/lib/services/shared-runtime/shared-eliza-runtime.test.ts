@@ -2772,7 +2772,6 @@ describe("Shared Eliza Workerd runtime", () => {
         ],
         usage: input.usage,
       });
-    };
     globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
       const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
       modelRequests.push(request);
