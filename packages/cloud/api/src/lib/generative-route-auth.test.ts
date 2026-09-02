@@ -354,6 +354,7 @@ function namedError(name: string, message = name) {
 
 function admissionSnapshot() {
   return {
+    subscriptionFunded: false,
     balance: {
       balanceUsd: 12,
       balanceAt: 1,

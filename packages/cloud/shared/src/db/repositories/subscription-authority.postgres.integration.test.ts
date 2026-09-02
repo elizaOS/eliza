@@ -409,6 +409,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         operation: "ai_inference",
         amount: microsToMoney(1_000_000n),
         description: "Database clock regression",
+        reservationTtlMs: 60_000,
       });
       const allocations = await setupClient!.query(
         `SELECT source, reserved_amount::text

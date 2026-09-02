@@ -1519,6 +1519,7 @@ describe("full/thin verifier env and outer cookie-cache revocation", () => {
         apiKeyId: null,
         stewardUserId: STEWARD_USER_ID,
         admission: {
+          subscriptionFunded: false,
           balance: {
             balanceUsd: 100,
             balanceAt: Date.now(),
