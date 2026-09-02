@@ -375,6 +375,21 @@ describe("provisioning worker deployment contract", () => {
     expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(125);
   });
 
+  it("repairs the service-owned checkout to the canonical public remote before fetching", () => {
+    const script = deployStep("Deploy and restart worker").with?.script ?? "";
+    const setCanonicalRemote = script.indexOf(
+      "git remote set-url origin https://github.com/elizaOS/eliza.git",
+    );
+    const fetchExactSha = script.indexOf(
+      'git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules origin "$DEPLOY_SHA"',
+    );
+
+    expect(setCanonicalRemote).toBeGreaterThan(-1);
+    expect(fetchExactSha).toBeGreaterThan(setCanonicalRemote);
+    expect(script).not.toContain("x-access-token");
+    expect(script).not.toContain("github.token");
+  });
+
   it("regenerates before deploy and self-heals every service", () => {
     expect(workflow).toContain(
       "bash packages/cloud/scripts/admin/ensure-generated-keywords.sh",

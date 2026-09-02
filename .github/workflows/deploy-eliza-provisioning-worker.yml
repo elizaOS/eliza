@@ -594,6 +594,11 @@ jobs:
             # commit whose submodule SHA was never pushed to the fork kills the
             # whole deploy with `upload-pack: not our ref`. Skip submodule
             # traversal entirely on this path.
+            # The checkout is service-owned, so repair its remote to the
+            # repository's public canonical URL on every deploy. Bootstrap
+            # credentials and one-off operator URLs must not become a hidden
+            # availability dependency for later immutable-SHA rollouts.
+            git remote set-url origin https://github.com/elizaOS/eliza.git
             git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules origin "$DEPLOY_SHA"
             git -c submodule.recurse=false checkout --no-recurse-submodules \
               -B "$DEPLOY_BRANCH" "$DEPLOY_SHA"
