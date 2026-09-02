@@ -56,7 +56,14 @@ mock.module("./inference-auth-cache", () => ({
   invalidateInferenceAuthContextsByKeyHashes: invalidateSpy,
   invalidateInferenceSessionAuthContexts: invalidateSessionSpy,
 }));
+// `mock.module` is process-global: this replaces the module for every other
+// file in the same Bun process too. Only `setInferenceSubjectActive` needs
+// stubbing here, so spread the real module rather than enumerate the rest —
+// an omitted export becomes a SyntaxError in whichever co-batched suite
+// imports it, and the list would go stale as the module grows.
+const actualInferenceCredentialRevocation = await import("./inference-credential-revocation");
 mock.module("./inference-credential-revocation", () => ({
+  ...actualInferenceCredentialRevocation,
   setInferenceSubjectActive: subjectFenceSpy,
 }));
 
