@@ -149,6 +149,10 @@ function isRecoverableStewardProjectionConflict(error: unknown): boolean {
   return isUniqueViolation && hasExactStewardConstraint;
 }
 
+function isInferenceRevocationBoundaryUnavailable(error: unknown): boolean {
+  return isElizaError(error) && error.code === "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE";
+}
+
 function isOrganizationSlugConflict(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
@@ -1231,11 +1235,29 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     );
 
     if (!recovered) {
-      await rollbackCreatedUserSafely(createdUser.id, "signup", error);
-      await organizationsService.delete(organization.id);
-      logger.error(
-        `[StewardSync] Identity projection upsert failed for new user ${createdUser.id}: ${describeSyncError(error)}`,
-      );
+      if (isInferenceRevocationBoundaryUnavailable(error)) {
+        // error-policy:J2 The user and Steward projection committed before the
+        // idempotent revocation-boundary activation failed. Preserve that
+        // canonical state so the existing-user path can repair activation on the
+        // next session instead of attempting a retention-blocked destructive
+        // rollback, then rethrow the original typed availability failure.
+        logger.warn(
+          `[StewardSync] Fresh Steward binding activation unavailable; preserving recoverable identity for user ${createdUser.id}: ${describeSyncError(error)}`,
+          { organizationId: organization.id },
+        );
+        throw new ElizaError("Fresh Steward binding activation is temporarily unavailable", {
+          code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE",
+          context: { userId: createdUser.id, organizationId: organization.id },
+          cause: error,
+          severity: "ephemeral",
+        });
+      } else {
+        await rollbackCreatedUserSafely(createdUser.id, "signup", error);
+        await organizationsService.delete(organization.id);
+        logger.error(
+          `[StewardSync] Identity projection upsert failed for new user ${createdUser.id}: ${describeSyncError(error)}`,
+        );
+      }
       throw error;
     }
   }
