@@ -119,9 +119,9 @@ describe("bot re-add durability across restart", () => {
     // Restart: stop the first runtime, boot a second over the same DB.
     const cleanupIndex = cleanups.indexOf(first.harness.cleanup);
     if (cleanupIndex >= 0) cleanups.splice(cleanupIndex, 1);
-    // error-policy:J6 Best-effort teardown: a stop() rejection during test
-    // cleanup must not mask the assertions below.
-    await first.harness.runtime.stop().catch(() => {});
+    // Successful shutdown is part of the tested restart contract: the
+    // second runtime must not boot while the first still holds PGlite.
+    await first.harness.runtime.stop();
     const second = await bootAuthority(dir);
 
     // PRE-re-add evidence (backlogged, stamped before the re-add moment)
@@ -234,9 +234,9 @@ describe("bot re-add durability across restart", () => {
     // this distinction when both writes land in the same millisecond.
     const cleanupIndex = cleanups.indexOf(first.harness.cleanup);
     if (cleanupIndex >= 0) cleanups.splice(cleanupIndex, 1);
-    // error-policy:J6 Best-effort teardown: a stop() rejection during test
-    // cleanup must not mask the assertions below.
-    await first.harness.runtime.stop().catch(() => {});
+    // Successful shutdown is part of the tested restart contract: the
+    // second runtime must not boot while the first still holds PGlite.
+    await first.harness.runtime.stop();
     const second = await bootAuthority(dir);
 
     await recordJoin(second.authority, 2, new Date().toISOString());
@@ -305,9 +305,9 @@ describe("bot re-add durability across restart", () => {
     // hydration and fresh evidence recovers admission.
     const cleanupIndex = cleanups.indexOf(first.harness.cleanup);
     if (cleanupIndex >= 0) cleanups.splice(cleanupIndex, 1);
-    // error-policy:J6 Best-effort teardown: a stop() rejection during test
-    // cleanup must not mask the assertions below.
-    await first.harness.runtime.stop().catch(() => {});
+    // Successful shutdown is part of the tested restart contract: the
+    // second runtime must not boot while the first still holds PGlite.
+    await first.harness.runtime.stop();
     const second = await bootAuthority(dir);
 
     const realGetCache = second.harness.runtime.getCache.bind(
@@ -424,7 +424,11 @@ describe("bot re-add durability across restart", () => {
         chatRoomKey: String(CHAT_ID),
       }),
       "undurable re-add clear must throw to the caller",
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({
+      name: "ElizaError",
+      code: "TELEGRAM_MEMBERSHIP_READD_WATERMARK_UNDURABLE",
+      cause: { message: "simulated persistent cache outage" },
+    });
 
     // THIS process is still protected: the in-memory watermark denies
     // backlogged pre-re-add evidence...
