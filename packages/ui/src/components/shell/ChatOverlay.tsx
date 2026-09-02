@@ -55,7 +55,6 @@ import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
   parseSlashDraft,
   resolveClientShortcutExecution,
-  resolveOptimisticNavigationExecution,
   runSlashExecution,
   type SlashExecution,
 } from "../../chat/slash-menu";
@@ -4466,30 +4465,6 @@ export function ChatOverlay({
   );
 
   const submit = React.useCallback(() => {
-    const isExplicitSlashCommand = parseSlashDraft(draft).isSlash;
-    const optimisticNavigation =
-      !firstRunOpen && !isExplicitSlashCommand && pendingImages.length === 0
-        ? resolveOptimisticNavigationExecution(
-            slash.commands,
-            draft,
-            slash.resolveSection,
-            {
-              resolveChoices: slash.resolveChoices,
-              isAuthorized: slash.isAuthorized,
-              isElevated: slash.isElevated,
-            },
-          )
-        : null;
-    if (optimisticNavigation) {
-      // Exact navigation is app chrome, not conversation. Execute it locally,
-      // clear the command from the composer, and retain focus without creating
-      // a user turn that forces the model to manufacture acknowledgement copy
-      // such as "On it." or "You're already there.". Anything that is not an
-      // exact known route still falls through to the real model below.
-      preserveComposerFocusUntilRef.current = performance.now() + 1000;
-      runExecution(optimisticNavigation);
-      return;
-    }
     const shortcut =
       !firstRunOpen && pendingImages.length === 0
         ? resolveClientShortcutExecution(
@@ -4497,10 +4472,12 @@ export function ChatOverlay({
             draft,
             slash.resolveSection,
             {
-              allowNatural: slash.naturalShortcutsEnabled,
+              // Natural language is always a real agent turn. Only explicit
+              // slash syntax may execute client-side without consulting Eliza.
+              allowNatural: false,
               resolveChoices: slash.resolveChoices,
-              // #12087 Item 20: re-apply the sender's real authority to the
-              // natural-language path so it matches the visible menu.
+              // #12087 Item 20: re-apply the sender's real authority so the
+              // explicit slash path matches the visible menu.
               isAuthorized: slash.isAuthorized,
               isElevated: slash.isElevated,
             },
@@ -4888,7 +4865,13 @@ export function ChatOverlay({
     if (typeof window === "undefined") return undefined;
     const onNavigateHome = (event: Event) => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
-      if (detail?.viewId !== "chat" && detail?.viewPath !== "/chat") return;
+      if (
+        detail?.viewId !== "chat" &&
+        detail?.viewId !== "home" &&
+        detail?.viewPath !== "/chat" &&
+        detail?.viewPath !== "/home"
+      )
+        return;
       goHome();
     };
     window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigateHome);

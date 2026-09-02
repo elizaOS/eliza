@@ -208,17 +208,21 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 // reply via REPLY action). Populate when contexts=["simple"].
 // ---------------------------------------------------------------------------
 
+const NAVIGATION_REPLY_RULE =
+	'For UI navigation, mention the requested destination in your own concise wording; never use a generic bare acknowledgement such as "On it." as the whole navigation reply. ';
+
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	name: "replyText",
 	description:
+		NAVIGATION_REPLY_RULE +
 		'User-facing reply. Populate when shouldRespond=RESPOND. contexts includes "simple" => whole answer. Planning/tool path => brief ack only ("On it.", "Spawning the sub-agent now.", "Looking into it."); planner sends grounded follow-up. IGNORE => empty. No thinking/reasoning.\n\nNEVER refuse in replyText on planning path. If `contexts` or `candidateActionNames` != "simple", planner handles work; ack only, no capability gatekeeping. Ban refusal openings: "I cannot...", "I am unable to...", "I don\'t have the ability to...", "Sorry, I can\'t...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, etc.). If no tool can attempt, use shouldRespond=RESPOND, `contexts: ["simple"]`, explain.',
 	descriptionCompressed:
-		'User-facing reply. simple=whole answer; tool/planning path=brief ack ("On it."), never a refusal; IGNORE=empty string.',
+		"User-facing reply. simple=whole answer; tool/planning path=brief ack, never a refusal; navigation must name its destination; IGNORE=empty string.",
 	priority: 20,
 	schema: {
 		type: "string",
 		description:
-			'User-facing reply. Simple=whole answer. Planning=brief ack ("On it.", "Working on it.", "Spawning a sub-agent now."). Never refuse on planning path. Plain text unless channel supports markdown.',
+			"User-facing reply. Simple=whole answer. Planning=brief ack. UI navigation must name the destination instead of using a generic bare acknowledgement. Never refuse on planning path. Plain text unless channel supports markdown.",
 	},
 	parse(value) {
 		if (typeof value !== "string") return "";

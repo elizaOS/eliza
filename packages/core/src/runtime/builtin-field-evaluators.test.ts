@@ -149,6 +149,15 @@ describe("candidateActionNamesFieldEvaluator", () => {
 });
 
 describe("replyTextFieldEvaluator", () => {
+	it("requires navigation acknowledgements to name the destination", () => {
+		expect(replyTextFieldEvaluator.description).toContain(
+			"For UI navigation, mention the requested destination",
+		);
+		expect(replyTextFieldEvaluator.schema.description).toContain(
+			"UI navigation must name the destination",
+		);
+	});
+
 	it("passes ordinary prose through unchanged", () => {
 		expect(replyTextFieldEvaluator.parse("On it.")).toBe("On it.");
 		expect(replyTextFieldEvaluator.parse("hello there")).toBe("hello there");

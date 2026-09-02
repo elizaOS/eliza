@@ -6876,6 +6876,49 @@ describe("tool-turn reply guarantee (#16935)", () => {
 		);
 	});
 
+	it("synthesizes destination-specific prose after accepted UI navigation", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{ id: "call-1", name: "VIEWS", arguments: { view: "notes" } },
+					],
+				})
+				.mockResolvedValueOnce({ text: "Notes is open." }),
+			logger: { warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: JSON.stringify({
+				effect: "view_navigation",
+				status: "accepted",
+				viewId: "notes",
+				label: "Notes",
+				path: "/notes",
+			}),
+			transcriptVisibility: "internal" as const,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The view opened.",
+			messageToUser: "On it.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("Notes is open.");
+	});
+
 	it("does not synthesize after a deliberate IGNORE terminal", async () => {
 		const runtime = {
 			useModel: vi

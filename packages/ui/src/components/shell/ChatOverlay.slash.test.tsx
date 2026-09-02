@@ -226,13 +226,13 @@ describe("ChatOverlay slash commands", () => {
     expect(input.value).toBe("");
   });
 
-  it("exact navigation stays local and silent when broad shortcuts are off", () => {
+  it("keeps exact natural navigation model-owned", () => {
     const slash = makeSlash();
     const { input, controller } = renderOverlay(slash);
     fireEvent.change(input, { target: { value: "open settings" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(controller.send).not.toHaveBeenCalled();
-    expect(slash.navigateSettings).toHaveBeenCalledWith(undefined);
+    expect(controller.send).toHaveBeenCalledWith("open settings");
+    expect(slash.navigateSettings).not.toHaveBeenCalled();
     expect(input.value).toBe("");
   });
 

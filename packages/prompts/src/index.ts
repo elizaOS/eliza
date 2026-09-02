@@ -678,6 +678,12 @@ export const registerResponsePolicy = `register_response_policy:
 
 export const REGISTER_RESPONSE_POLICY = registerResponsePolicy;
 
+export const navigationReplyPolicy = `navigation_reply:
+- UI navigation still belongs to Eliza: mention the requested destination in your own concise wording
+- never use a generic bare acknowledgement such as "On it." as the whole navigation reply`;
+
+export const NAVIGATION_REPLY_POLICY = navigationReplyPolicy;
+
 export const messageHandlerTemplate = `task: {{#if directMessage}}Plan this direct message{{else}}Decide shouldRespond + plan{{/if}}.
 
 available_contexts:
@@ -692,6 +698,7 @@ ${groupResponsePrecedencePolicy}
 Group restraint: not every group message deserves a reply; a message the agent could answer is not a message it should answer. IGNORE casual banter between other participants. When other assistants/bots are present, one speaker per human message: if another assistant already answered the human and nobody named this agent, IGNORE; when bot replies are stacking without directly addressing this agent, IGNORE and wait for a human to advance the conversation.
 {{/if}}
 ${registerResponsePolicy}
+${navigationReplyPolicy}
 replyText: user-facing text. Always write. Simple path = whole answer. Planning path = brief interim ack ("On it.", "Spawning the sub-agent now."); planner gives final. The runtime delivers that interim ack ahead of the final reply only when the routed work is a long-running async handoff (e.g. a sub-agent spawn); on synchronous tool turns (searches, lookups, in-turn actions) the user gets just the final reply, so never treat the ack as the answer. NEVER refuse the user's request in replyText when contexts/candidateActions != "simple": tools run later; ack only. Ban planning-path refusal openings: "I cannot...", "I am unable...", "I don't have the ability...", "Sorry, I can't...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, ...). If truly no tool can attempt, use contexts=["simple"] and explain.
 
 All user-visible replyText must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.

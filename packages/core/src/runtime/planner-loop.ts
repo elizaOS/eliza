@@ -5663,11 +5663,68 @@ function hasSuccessfulNonTerminalToolStep(
 }
 
 /**
+ * Return the destination label from the newest accepted UI-navigation receipt.
+ * Navigation tools keep their receipt internal, so the model must carry this
+ * human label into its own final prose instead of ending on a generic progress
+ * acknowledgement such as "On it.".
+ */
+function acceptedViewNavigationLabel(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	for (const step of [
+		...trajectory.archivedSteps,
+		...trajectory.steps,
+	].reverse()) {
+		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
+		if (step.result?.success !== true) continue;
+		const raw = getNonEmptyString(step.result.text);
+		if (!raw?.startsWith("{")) continue;
+		try {
+			const receipt = JSON.parse(raw) as {
+				effect?: unknown;
+				status?: unknown;
+				label?: unknown;
+			};
+			if (
+				receipt.effect === "view_navigation" &&
+				receipt.status === "accepted" &&
+				typeof receipt.label === "string" &&
+				receipt.label.trim().length > 0
+			) {
+				return receipt.label.trim();
+			}
+		} catch {
+			// Non-JSON diagnostic text is not a structured navigation receipt.
+		}
+	}
+	return undefined;
+}
+
+function replyNamesAcceptedViewDestination(
+	message: string | undefined,
+	trajectory: PlannerTrajectory,
+): boolean {
+	const label = acceptedViewNavigationLabel(trajectory);
+	if (!label) return true;
+	const normalize = (value: string): string =>
+		value
+			.toLocaleLowerCase()
+			.replace(/[^\p{L}\p{N}]+/gu, " ")
+			.trim();
+	const reply = normalize(message ?? "");
+	const destination = normalize(label);
+	return (
+		reply.length > 0 && destination.length > 0 && reply.includes(destination)
+	);
+}
+
+/**
  * Tool-turn reply guarantee (post-pass of {@link runPlannerLoop}). A finished
  * turn that executed at least one successful non-terminal tool but carries no
- * usable final message — undefined, blank, or the handled-step placeholder —
- * gets ONE forced no-tools synthesis call so the user receives a reply
- * grounded in the tool results instead of silence. Deliberate silence
+ * usable final message — undefined, blank, the handled-step placeholder, or a
+ * UI-navigation reply that omits the accepted destination — gets ONE forced
+ * no-tools synthesis call so the user receives a reply grounded in the tool
+ * results instead of silence or a generic progress acknowledgement. Deliberate silence
  * (`endedWithDeliberateSilence`) and coding mode (which owns its own
  * deterministic summary fallback) are exempt. Synthesis is best-effort: a
  * model failure here keeps the original result rather than discarding the
@@ -5684,7 +5741,8 @@ async function ensureToolTurnFinalMessage(
 	const unusable =
 		message === undefined ||
 		message.trim() === "" ||
-		message === HANDLED_STEP_FALLBACK_MESSAGE;
+		message === HANDLED_STEP_FALLBACK_MESSAGE ||
+		!replyNamesAcceptedViewDestination(message, result.trajectory);
 	if (!unusable) return result;
 	if (!hasSuccessfulNonTerminalToolStep(result.trajectory)) return result;
 	const iteration = result.trajectory.steps.length + 1;
@@ -5698,14 +5756,17 @@ async function ensureToolTurnFinalMessage(
 				"Tool work for this turn is complete but no user-facing reply was produced. " +
 				"Do not call any tool. Write the final answer to the user now from the tool " +
 				"results already in this trajectory; if they do not contain the answer, say " +
-				"plainly what you found and what was missing.",
+				"plainly what you found and what was missing. For completed UI navigation, " +
+				"name the destination shown in the accepted receipt in your own concise wording; " +
+				"do not answer with only a generic acknowledgement.",
 			onUsage: params.onModelUsage,
 		});
 		const finalMessage = synthesized.finalMessage;
 		const synthesizedUsable =
 			finalMessage !== undefined &&
 			finalMessage.trim() !== "" &&
-			finalMessage !== HANDLED_STEP_FALLBACK_MESSAGE;
+			finalMessage !== HANDLED_STEP_FALLBACK_MESSAGE &&
+			replyNamesAcceptedViewDestination(finalMessage, synthesized.trajectory);
 		params.runtime.logger?.warn?.(
 			{ iteration, synthesizedUsable },
 			"[planner-loop] tool work finished without a usable reply; forced a no-tools synthesis pass",
@@ -5717,7 +5778,10 @@ async function ensureToolTurnFinalMessage(
 			params,
 			result.trajectory,
 		);
-		if (rescued) {
+		if (
+			rescued &&
+			replyNamesAcceptedViewDestination(rescued, result.trajectory)
+		) {
 			result.trajectory.steps.push({
 				iteration: iteration + 1,
 				thought: "rescue synthesis from successful tool results",

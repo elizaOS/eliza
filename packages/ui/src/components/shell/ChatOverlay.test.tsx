@@ -425,7 +425,7 @@ describe("ChatOverlay", () => {
     expect(input.value).toBe("");
   });
 
-  it("opens an exact view locally without manufacturing a chat turn", () => {
+  it("keeps natural-language view requests model-owned", () => {
     const controller = makeController();
     const navigateView = vi.fn();
     const command: SlashCommandCatalogItem = {
@@ -451,8 +451,7 @@ describe("ChatOverlay", () => {
       commands: [command],
       loading: false,
       error: false,
-      // Ordinary prose stays model-owned; exact view navigation has a narrow
-      // optimistic path that must remain available independently.
+      // Ordinary prose stays model-owned, including exact route requests.
       naturalShortcutsEnabled: true,
       resolveChoices: () => ["notes", "calendar"],
       describeChoice: () => "",
@@ -472,11 +471,8 @@ describe("ChatOverlay", () => {
     fireEvent.change(input, { target: { value: "open notes" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(navigateView).toHaveBeenCalledWith({
-      viewId: "notes",
-      viewPath: undefined,
-    });
-    expect(controller.send).not.toHaveBeenCalled();
+    expect(navigateView).not.toHaveBeenCalled();
+    expect(controller.send).toHaveBeenCalledWith("open notes");
     expect(input.value).toBe("");
     expect(document.activeElement).toBe(input);
   });
@@ -957,7 +953,7 @@ describe("ChatOverlay", () => {
         new CustomEvent(NAVIGATE_VIEW_EVENT, {
           detail: {
             viewId: "chat",
-            viewPath: "/chat",
+            viewPath: "/home",
             source: "agent",
           },
         }),
