@@ -29,6 +29,7 @@ interface WorkflowStep {
   name?: string;
   run?: string;
   uses?: string;
+  with?: Record<string, string>;
 }
 
 interface WorkflowJob {
@@ -585,6 +586,25 @@ describe("homepage deployment workflow", () => {
     expect(telegramAuthorityResolver?.steps?.[0]?.uses).toContain(
       "actions/checkout@",
     );
+    const stagingBunSetupIndex =
+      telegramAuthorityResolver?.steps?.findIndex(
+        (step) =>
+          step.uses ===
+          "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
+      ) ?? -1;
+    const stagingRuntimeBindingIndex =
+      telegramAuthorityResolver?.steps?.findIndex(
+        (step) =>
+          step.name ===
+          "Verify protected staging Telegram Worker binding names",
+      ) ?? -1;
+    expect(stagingBunSetupIndex).toBeGreaterThan(0);
+    expect(stagingBunSetupIndex).toBeLessThan(stagingRuntimeBindingIndex);
+    expect(
+      telegramAuthorityResolver?.steps?.[stagingBunSetupIndex]?.with,
+    ).toEqual({
+      "bun-version": "1.3.14",
+    });
     expect(telegramValidation?.env).toEqual({
       RELEASE_RUN_ATTEMPT: githubExpression("github.run_attempt"),
       TARGET_ENVIRONMENT: "staging",
