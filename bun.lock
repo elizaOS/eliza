@@ -572,9 +572,6 @@
     "packages/cloud/services/_common": {
       "name": "@elizaos/cloud-services-common",
       "version": "1.0.0",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-      },
       "devDependencies": {
         "@types/node": "22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
