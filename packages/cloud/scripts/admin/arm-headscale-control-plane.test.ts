@@ -158,6 +158,7 @@ describe("Headscale control-plane self-enrollment", () => {
       'sudo headscale nodes delete --identifier "$STALE_NODE_ID" --force',
     );
     const tailscaleUp = remote.indexOf("sudo tailscale up \\");
+    const resetProfile = remote.indexOf("      --reset \\");
     const loginServer = remote.indexOf('    --login-server="$LOGIN_SERVER" \\');
 
     expect(inspectPrefs).toBeGreaterThan(0);
@@ -165,6 +166,8 @@ describe("Headscale control-plane self-enrollment", () => {
     expect(remote).toContain("CONTROL_URL_MATCH=true");
     expect(forceReauth).toBeGreaterThan(mintKey);
     expect(forceReauth).toBeGreaterThan(tailscaleUp);
+    expect(resetProfile).toBeGreaterThan(tailscaleUp);
+    expect(resetProfile).toBeLessThan(forceReauth);
     expect(forceReauth).toBeLessThan(loginServer);
     expect(retireStaleNode).toBeGreaterThan(mintKey);
     expect(retireStaleNode).toBeLessThan(tailscaleUp);

@@ -1194,6 +1194,7 @@ else
   # server must not prevent the forced local reauthentication below.
   sudo tailscale logout >/dev/null 2>&1 || true
   if ! sudo tailscale up \\
+      --reset \\
       --force-reauth \\
       --login-server="$LOGIN_SERVER" \\
       --authkey="$PREAUTH_KEY" \\
