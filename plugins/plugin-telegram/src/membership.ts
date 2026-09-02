@@ -1311,7 +1311,13 @@ export class TelegramMembershipAuthority {
             { code: "TELEGRAM_MEMBERSHIP_READD_WATERMARK_UNDURABLE" },
           );
         } catch (error) {
-          watermarkWriteError = error;
+          watermarkWriteError = new ElizaError(
+            `Telegram membership re-add watermark cache write failed for ${input.chatId}`,
+            {
+              code: "TELEGRAM_MEMBERSHIP_READD_WATERMARK_UNDURABLE",
+              cause: error,
+            },
+          );
         }
       }
       if (watermarkWriteError !== null) {
