@@ -303,53 +303,74 @@ app.post("/", async (c) => {
 
     const requestId = generated.requestId;
     const generationId = crypto.randomUUID();
-    let billingApplied = false;
-    const persistenceTask = (async () => {
-      await billFlatUsage(billingContext, cost, admission?.reservation);
-      billingApplied = true;
-      chargeSettled = true;
-      await generationsService.create({
-        id: generationId,
-        organization_id: user.organization_id,
-        user_id: user.id,
-        type: "sfx",
-        model: request.model,
-        provider: definition.provider,
-        prompt: request.prompt,
-        result: {
-          requestId,
-          billingSource: definition.billingSource,
-          raw: generated.raw,
-        },
-        status: "completed",
-        storage_url: audio.url,
-        thumbnail_url: null,
-        file_size: audio.file_size ? BigInt(audio.file_size) : undefined,
-        mime_type: audio.content_type ?? "audio/mpeg",
-        parameters: {
-          durationSeconds,
-          promptInfluence: request.promptInfluence,
-          outputFormat: request.outputFormat,
-        },
-        dimensions: {
-          duration: durationSeconds,
-        },
-        cost: String(cost.totalCost),
-        credits: String(cost.totalCost),
-        job_id: requestId,
-        completed_at: new Date(),
-      });
-    })().catch(async (error) => {
-      if (!billingApplied) await admission?.settleUnknown();
-      // error-policy:J7 billing and generation records persist after the audio
-      // response; conservative settlement remains observable on failure.
-      logger.error("[GenerateSfx] Background persistence failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+    await generationsService.create({
+      id: generationId,
+      organization_id: user.organization_id,
+      user_id: user.id,
+      type: "sfx",
+      model: request.model,
+      provider: definition.provider,
+      prompt: request.prompt,
+      result: {
+        requestId,
+        billingSource: definition.billingSource,
+        raw: generated.raw,
+      },
+      status: "completed",
+      storage_url: audio.url,
+      thumbnail_url: null,
+      file_size: audio.file_size ? BigInt(audio.file_size) : undefined,
+      mime_type: audio.content_type ?? "audio/mpeg",
+      parameters: {
+        durationSeconds,
+        promptInfluence: request.promptInfluence,
+        outputFormat: request.outputFormat,
+      },
+      dimensions: {
+        duration: durationSeconds,
+      },
+      cost: String(cost.totalCost),
+      credits: String(cost.totalCost),
+      job_id: requestId,
+      completed_at: new Date(),
     });
+
+    const settlementTask = billFlatUsage(
+      billingContext,
+      cost,
+      admission?.reservation,
+    )
+      .then(() => {
+        chargeSettled = true;
+      })
+      .catch(async (error) => {
+        // error-policy:J7 the durable completed receipt survives accounting
+        // outages; the admission lease remains the conservative backstop.
+        logger.error("[GenerateSfx] Background exact settlement failed", {
+          ...settlementContext,
+          providerDispatchStarted,
+          settlementMode: "unknown",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        try {
+          await admission?.settleUnknown();
+        } catch (settlementError) {
+          // error-policy:J7 reconciliation diagnostics must not reject the
+          // retained background task or hide the primary accounting failure.
+          logger.error("[GenerateSfx] Conservative settlement also failed", {
+            ...settlementContext,
+            providerDispatchStarted,
+            settlementMode: "unknown",
+            error:
+              settlementError instanceof Error
+                ? settlementError.message
+                : String(settlementError),
+          });
+        }
+      });
     const executionCtx = getGenerativeExecutionContext(c);
-    if (executionCtx) executionCtx.waitUntil(persistenceTask);
-    else void persistenceTask;
+    if (executionCtx) executionCtx.waitUntil(settlementTask);
+    else void settlementTask;
 
     return c.json({
       success: true,
