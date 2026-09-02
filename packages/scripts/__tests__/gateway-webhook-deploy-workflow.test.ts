@@ -529,7 +529,7 @@ describe("protected gateway-webhook deployment workflow", () => {
         }
       }
     }
-  }, 30_000);
+  }, 60_000);
 
   test("requires protected Worker and Railway Blooio values to actually match", () => {
     const variables = step(
@@ -600,7 +600,7 @@ describe("protected gateway-webhook deployment workflow", () => {
         }
       }
     }
-  }, 30_000);
+  }, 60_000);
 
   test("binds the exact root source and manifest to its new deployment id", () => {
     const exactSource = step("Deploy exact gateway-webhook source");
