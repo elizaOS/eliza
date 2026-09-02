@@ -46,6 +46,9 @@ import * as aiPricingDefsActual from "@/lib/services/ai-pricing-definitions";
 import * as contentSafetyActual from "@/lib/services/content-safety";
 import * as creditsActual from "@/lib/services/credits";
 import * as generationsActual from "@/lib/services/generations";
+import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
+
+const restoreEntitlementRepository = mockNonSubscriberEntitlementLookup();
 
 const falActual = require("@fal-ai/client") as typeof import("@fal-ai/client");
 const { ApiError: FalApiError } = falActual;
@@ -124,6 +127,7 @@ mock.module("@fal-ai/client", () => ({
 const videoRoute = (await import("../v1/generate-video/route")).default;
 
 afterAll(() => {
+  restoreEntitlementRepository();
   mock.module("@/lib/auth/workers-hono-auth", () => workersHonoAuthActual);
   mock.module(
     "@/lib/middleware/rate-limit-hono-cloudflare",

@@ -39,6 +39,9 @@ import * as aiPricingActual from "@/lib/services/ai-pricing";
 import * as contentSafetyActual from "@/lib/services/content-safety";
 import * as creditsActual from "@/lib/services/credits";
 import * as generationsActual from "@/lib/services/generations";
+import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
+
+const restoreEntitlementRepository = mockNonSubscriberEntitlementLookup();
 
 const ORG = "00000000-0000-4000-8000-000000001267";
 const USER = "00000000-0000-4000-8000-000000001268";
@@ -96,6 +99,7 @@ mock.module("@/lib/providers/audio/registry", () => ({
 const musicRoute = (await import("../v1/generate-music/route")).default;
 
 afterAll(() => {
+  restoreEntitlementRepository();
   mock.module("@/lib/auth/workers-hono-auth", () => workersHonoAuthActual);
   mock.module(
     "@/lib/middleware/rate-limit-hono-cloudflare",

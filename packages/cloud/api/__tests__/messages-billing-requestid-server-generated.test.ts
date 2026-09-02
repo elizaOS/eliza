@@ -137,6 +137,7 @@ const reserveCredits = mock(async () => ({
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
   billUsage,
+  isSubscriptionFundedOrganization: async () => false,
   recordUsageAnalytics,
   reserveCredits,
 }));

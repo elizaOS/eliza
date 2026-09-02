@@ -108,6 +108,7 @@ mock.module("@/lib/services/ai-billing", () => ({
   estimateInputTokens,
   getAffiliatePayoutSourceId: (context: { requestId?: string | null }) =>
     `affiliate:${context.requestId ?? "missing"}`,
+  isSubscriptionFundedOrganization: mock(async () => false),
   normalizeUsage: (
     usage:
       | {

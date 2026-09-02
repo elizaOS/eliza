@@ -57,6 +57,9 @@ import * as modelCatalogActual from "@/lib/services/model-catalog";
 import * as redeemableEarningsActual from "@/lib/services/redeemable-earnings";
 import * as teamPoolActual from "@/lib/services/team-credential-pool";
 import * as creditReservationActual from "@/lib/utils/credit-reservation";
+import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
+
+const restoreEntitlementRepository = mockNonSubscriberEntitlementLookup();
 
 process.env.DATABASE_URL ||= "pglite://memory";
 // Force the synchronous-reserve path (the one #12749 falls back to): optimistic
@@ -239,6 +242,7 @@ const { handleChatCompletionsPOST } = await import(
 );
 
 afterAll(() => {
+  restoreEntitlementRepository();
   // Leave the knob fail-safe BEFORE restoring the modules: bun's mock.module
   // can leave already-evaluated importers bound to these closures, which read
   // the knob by reference (see embeddings-optimistic-billing.test.ts).

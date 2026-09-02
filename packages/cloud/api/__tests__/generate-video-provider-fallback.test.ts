@@ -35,6 +35,9 @@ import * as aiPricingActual from "@/lib/services/ai-pricing";
 import * as contentSafetyActual from "@/lib/services/content-safety";
 import * as creditsActual from "@/lib/services/credits";
 import * as generationsActual from "@/lib/services/generations";
+import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
+
+const restoreEntitlementRepository = mockNonSubscriberEntitlementLookup();
 
 const falActual = require("@fal-ai/client") as typeof import("@fal-ai/client");
 const { ApiError: FalApiError } = falActual;
@@ -121,6 +124,7 @@ globalThis.fetch = Object.assign(fetchMock, {
 const videoRoute = (await import("../v1/generate-video/route")).default;
 
 afterAll(() => {
+  restoreEntitlementRepository();
   globalThis.fetch = originalFetch;
   mock.module("@/lib/auth/workers-hono-auth", () => workersHonoAuthActual);
   mock.module("@/lib/services/content-safety", () => contentSafetyActual);

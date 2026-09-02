@@ -334,6 +334,7 @@ class TestInsufficientCreditsError extends Error {
 
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
+  isSubscriptionFundedOrganization: mock(async () => false),
   estimateInputTokens: (messages: Array<{ content: string }>) =>
     messages.reduce((sum, message) => sum + message.content.length, 0),
   reserveCredits: mock(async () => reserveCreditsImpl()),
