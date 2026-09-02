@@ -728,6 +728,39 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 				).kind,
 			).not.toBe("owner-reads");
 		}
+		// Calendar reads run deterministically for the same reason todos reads
+		// do — and additionally so a plain schedule question never enters the
+		// full planner tool catalog (live: "what is on my calendar this week?"
+		// exceeded the planner model-context ceiling and died with a boundary
+		// reply while the todos read ran direct).
+		const calendarAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "CALENDAR",
+			similes: ["CHECK_CALENDAR"],
+			tags: [],
+		};
+		const calendarTaggedViews: Pick<Action, "name" | "similes" | "tags"> = {
+			...viewsAction,
+			tags: [...(viewsAction.tags ?? []), "calendar"],
+		};
+		for (const message of [
+			"what is on my calendar this week",
+			"whats on my schedule today",
+			"show my agenda for tomorrow",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[calendarTaggedViews, calendarAction],
+					message,
+				),
+			).toEqual({ names: ["CALENDAR"], kind: "owner-reads" });
+		}
+		// Navigation stays navigation.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[calendarTaggedViews, calendarAction],
+				"open my calendar page",
+			).kind,
+		).not.toBe("owner-reads");
 	});
 
 	it("covers the other owner-read domains and leaves non-possessive asks alone", () => {

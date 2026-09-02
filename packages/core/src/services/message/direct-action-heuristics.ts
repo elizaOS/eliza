@@ -922,6 +922,10 @@ function detectOwnerItemDeleteDomain(text: string): OwnerLifeReadDomain | null {
 		// Finance records have no named-item delete surface; "clear my
 		// spending" is not an item deletion.
 		if (domain === "finances") continue;
+		// Calendar item deletes ("remove the standup from my calendar") are
+		// owned by the scheduled-item admin heuristic; the read-domain noun must
+		// not double-route them.
+		if (domain === "calendar") continue;
 		if (noun.test(normalized)) return domain;
 	}
 	return null;
@@ -939,7 +943,8 @@ type OwnerLifeReadDomain =
 	| "reminders"
 	| "routines"
 	| "alarms"
-	| "finances";
+	| "finances"
+	| "calendar";
 
 const BLOCKED_OWNER_LIFE_READ = Symbol("blocked-owner-life-read");
 
@@ -953,6 +958,11 @@ const OWNER_READ_ACTION_NAMES_BY_DOMAIN: Record<
 	routines: OWNER_ROUTINES_ACTION_NAMES,
 	alarms: ["OWNER_ALARMS", "ALARMS", "ALARM"],
 	finances: ["OWNER_FINANCES", "FINANCES"],
+	// The read resolves to the calendar reader action directly. Routing the
+	// read deterministically keeps a plain "what is on my calendar?" out of the
+	// full planner catalog (observed live: the planner-path calendar read died
+	// on the model-context ceiling while todos reads ran direct).
+	calendar: ["CALENDAR", "CHECK_CALENDAR", "CALENDAR_FEED"],
 };
 
 const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
@@ -962,6 +972,7 @@ const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
 	["routines", /\b(?:routines?|habits?)\b/iu],
 	["alarms", /\balarms?\b/iu],
 	["finances", /\b(?:finances|budget|spending|expenses)\b/iu],
+	["calendar", /\b(?:calendar|agenda|schedule)\b/iu],
 ];
 
 function ownerLifeReadDomainsInPossessiveScopes(
