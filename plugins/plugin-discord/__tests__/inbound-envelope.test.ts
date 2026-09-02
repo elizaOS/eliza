@@ -99,14 +99,14 @@ describe("inbound Discord envelope", () => {
 			"message_id: 1234567890123456789",
 		);
 		expect(envelope.formattedContent).toContain(
-			"[/platform_reply_reference]\n(in reply to @Teammate:",
+			"[/platform_reply_reference]\n(in reply to @Teammate)",
 		);
 		expect(envelope.formattedContent).toContain(
 			"please note this as something the agent should learn from",
 		);
 	});
 
-	it("keeps surrogate pairs intact when truncating reply reference text", async () => {
+	it("keeps surrogate pairs intact while preserving complete reply reference text", async () => {
 		const longReply = `${"a".repeat(196)}🦊${"b".repeat(50)}`;
 		const message = {
 			...makeDiscordMessage(),
@@ -123,6 +123,6 @@ describe("inbound Discord envelope", () => {
 
 		const envelope = await formatInboundEnvelope(message, "test");
 		expect(envelope.formattedContent.isWellFormed()).toBe(true);
-		expect(envelope.formattedContent).toContain(`${"a".repeat(196)}...`);
+		expect(envelope.formattedContent).toContain(longReply);
 	});
 });
