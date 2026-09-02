@@ -111,8 +111,9 @@ const textToSpeech = mock(
       },
     }),
 );
+const getElevenLabsService = mock(() => ({ speechToText, textToSpeech }));
 mock.module("@/lib/services/elevenlabs", () => ({
-  getElevenLabsService: mock(() => ({ speechToText, textToSpeech })),
+  getElevenLabsService,
 }));
 const usageCreate = mock(async (_record: Record<string, unknown>) => ({}));
 mock.module("@/lib/services/usage", () => ({
@@ -579,6 +580,11 @@ beforeEach(() => {
         },
       }),
   );
+  getElevenLabsService.mockReset();
+  getElevenLabsService.mockImplementation(() => ({
+    speechToText,
+    textToSpeech,
+  }));
   upstreamReply = () => Response.json({ text: "" });
   deepgramReply = () => Response.json(DEEPGRAM_SHAPE);
   cartesiaReply = () => Response.json(CARTESIA_SHAPE);
@@ -1766,6 +1772,18 @@ describe("POST /api/v1/voice/stt — billed ElevenLabs lane", () => {
       required: 42,
     });
     expect(speechToText).not.toHaveBeenCalled();
+  });
+
+  test("releases a reservation when local ElevenLabs service setup fails", async () => {
+    getElevenLabsService.mockImplementationOnce(() => {
+      throw new Error("ELEVENLABS_API_KEY is not set");
+    });
+    const res = await app.request(sttRequest(), undefined, elevenLabsEnv);
+
+    expect(res.status).toBe(500);
+    expect(speechToText).not.toHaveBeenCalled();
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0);
   });
 
   test("a provider rate-limit failure is a 429 and settles unknown", async () => {

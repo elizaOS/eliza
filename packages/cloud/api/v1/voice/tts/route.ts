@@ -698,8 +698,10 @@ async function __hono_POST(c: AppContext) {
     let synthesisEngine: "elevenlabs" | "cartesia" = "elevenlabs";
     let cartesiaMp3ContentType = "audio/mpeg";
     settlementProvider = providerSelection.provider;
-    await markProviderDispatched?.();
-    providerWorkMayHaveStarted = true;
+    const markPaidTtsProviderDispatch = async () => {
+      await markProviderDispatched?.();
+      providerWorkMayHaveStarted = true;
+    };
     if (cartesiaEligible && cartesiaApiKey) {
       if (wantWav) {
         const cartesia = await synthesizeCartesiaWav({
@@ -708,6 +710,7 @@ async function __hono_POST(c: AppContext) {
           text,
           sampleRate: WAV_PCM_SAMPLE_RATE,
           maxPcmBytes: MAX_CARTESIA_PCM_BYTES,
+          beforeProviderDispatch: markPaidTtsProviderDispatch,
         });
         wav = cartesia.wav;
         synthesisEngine = "cartesia";
@@ -745,6 +748,7 @@ async function __hono_POST(c: AppContext) {
           apiKey: cartesiaApiKey,
           voiceId: cartesiaVoiceId,
           text,
+          beforeProviderDispatch: markPaidTtsProviderDispatch,
         });
         audioStream = cartesia.body;
         cartesiaMp3ContentType = cartesia.contentType;
@@ -755,6 +759,7 @@ async function __hono_POST(c: AppContext) {
     if (wav === undefined) {
       if (audioStream === undefined) {
         const elevenlabs = getElevenLabsService(env);
+        await markPaidTtsProviderDispatch();
         audioStream = await elevenlabs.textToSpeech({
           text,
           voiceId,

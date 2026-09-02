@@ -436,6 +436,7 @@ async function readRequestWithMultipartLimit(
 async function __hono_POST(c: AppContext) {
   let reservation: CreditReservation | undefined;
   let settleUnknown: (() => Promise<unknown>) | undefined;
+  let markProviderDispatched: (() => Promise<void>) | undefined;
   let providerWorkMayHaveStarted = false;
   let settlementProvider: "deepgram" | "cartesia" | "elevenlabs" | undefined;
   let request = c.req.raw;
@@ -1237,9 +1238,7 @@ async function __hono_POST(c: AppContext) {
       });
       reservation = admission.reservation;
       settleUnknown = admission.settleUnknown;
-      await admission.markProviderDispatched?.();
-      providerWorkMayHaveStarted = true;
-      settlementProvider = "elevenlabs";
+      markProviderDispatched = admission.markProviderDispatched;
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
@@ -1259,6 +1258,9 @@ async function __hono_POST(c: AppContext) {
     const validatedFile = new File([buffer], audioFile.name, {
       type: finalMimeType,
     });
+    await markProviderDispatched?.();
+    providerWorkMayHaveStarted = true;
+    settlementProvider = "elevenlabs";
     const transcript = await elevenlabs.speechToText({
       audioFile: validatedFile,
       languageCode,

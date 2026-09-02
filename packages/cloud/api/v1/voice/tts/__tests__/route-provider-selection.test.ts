@@ -53,6 +53,9 @@ let elevenLabsStreamFactory = () => {
   });
 };
 const elevenLabsTextToSpeech = mock(async () => elevenLabsStreamFactory());
+const getElevenLabsService = mock(() => ({
+  textToSpeech: elevenLabsTextToSpeech,
+}));
 let allowKokoroFetch = false;
 let cartesiaStatus = 200;
 let cacheBypass = true;
@@ -217,7 +220,7 @@ mock.module("@/lib/services/credits", () => {
 });
 
 mock.module("@/lib/services/elevenlabs", () => ({
-  getElevenLabsService: () => ({ textToSpeech: elevenLabsTextToSpeech }),
+  getElevenLabsService,
 }));
 
 mock.module("@/lib/services/tts-first-line-cache", () => ({
@@ -282,6 +285,10 @@ beforeEach(() => {
   billUsage.mockClear();
   createUsage.mockClear();
   elevenLabsTextToSpeech.mockClear();
+  getElevenLabsService.mockReset();
+  getElevenLabsService.mockImplementation(() => ({
+    textToSpeech: elevenLabsTextToSpeech,
+  }));
   reconcileReservation.mockClear();
   cacheGet.mockClear();
   cacheHas.mockClear();
@@ -585,6 +592,21 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(billUsage).not.toHaveBeenCalled();
     expect(reconcileReservation).toHaveBeenCalledTimes(1);
     expect(reconcileReservation).toHaveBeenCalledWith(0.0012);
+  });
+
+  test("releases the reservation when ElevenLabs service setup fails locally", async () => {
+    getElevenLabsService.mockImplementationOnce(() => {
+      throw new Error("ELEVENLABS_API_KEY is not set");
+    });
+    const response = await postTts({
+      text: "No provider work starts.",
+      voiceId: "custom-elevenlabs-voice",
+    });
+
+    expect(response.status).toBe(500);
+    expect(elevenLabsTextToSpeech).not.toHaveBeenCalled();
+    expect(reconcileReservation).toHaveBeenCalledTimes(1);
+    expect(reconcileReservation).toHaveBeenCalledWith(0);
   });
 
   test("cancels oversized PCM without billing, caching, or a partial WAV", async () => {
