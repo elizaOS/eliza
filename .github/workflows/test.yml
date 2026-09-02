@@ -504,6 +504,10 @@ jobs:
     name: Electrobun Desktop Contract
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
+    # This required lane must exercise the native fused-inference installer.
+    # Other test lanes keep the workflow-level skip to avoid duplicate downloads.
+    env:
+      ELIZA_SKIP_FUSED_INFERENCE_SETUP: ""
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
