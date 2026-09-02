@@ -15,7 +15,6 @@ import { logger, resolveStateDir } from "@elizaos/core";
 import type {
   CommandResolution,
   ExecAllowlistEntry,
-  ExecApprovalsAgent,
   ExecApprovalsDefaults,
   ExecApprovalsFile,
   ExecApprovalsResolved,
@@ -71,14 +70,6 @@ function ensureDir(filePath: string): void {
 }
 
 /**
- * Normalize allowlist pattern for comparison
- */
-function normalizePattern(value: string | undefined): string | null {
-  const trimmed = value?.trim() ?? "";
-  return trimmed ? trimmed.toLowerCase() : null;
-}
-
-/**
  * Ensure all allowlist entries have IDs
  */
 function ensureAllowlistIds(
@@ -99,55 +90,12 @@ function ensureAllowlistIds(
 }
 
 /**
- * Merge legacy agent configuration with current
- */
-function mergeLegacyAgent(
-  current: ExecApprovalsAgent,
-  legacy: ExecApprovalsAgent,
-): ExecApprovalsAgent {
-  const allowlist: ExecAllowlistEntry[] = [];
-  const seen = new Set<string>();
-
-  const pushEntry = (entry: ExecAllowlistEntry) => {
-    const key = normalizePattern(entry.pattern);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    allowlist.push(entry);
-  };
-
-  for (const entry of current.allowlist ?? []) pushEntry(entry);
-  for (const entry of legacy.allowlist ?? []) pushEntry(entry);
-
-  return {
-    security: current.security ?? legacy.security,
-    ask: current.ask ?? legacy.ask,
-    askFallback: current.askFallback ?? legacy.askFallback,
-    autoAllowSkills: current.autoAllowSkills ?? legacy.autoAllowSkills,
-    allowlist: allowlist.length > 0 ? allowlist : undefined,
-  };
-}
-
-/**
  * Normalize approval configuration file
  */
 export function normalizeApprovals(file: ExecApprovalsFile): ExecApprovalsFile {
   const socketPath = file.socket?.path?.trim();
   const token = file.socket?.token?.trim();
   const agents = { ...file.agents };
-
-  // Older trees used `agents.default` as a fallback while the canonical id
-  // was a different string. Here DEFAULT_AGENT_ID is already "default", so
-  // deleting that key would drop the config resolveApprovals(undefined) reads.
-  if (DEFAULT_AGENT_ID !== "default") {
-    const legacyDefault = agents.default;
-    if (legacyDefault) {
-      const main = agents[DEFAULT_AGENT_ID];
-      agents[DEFAULT_AGENT_ID] = main
-        ? mergeLegacyAgent(main, legacyDefault)
-        : legacyDefault;
-      delete agents.default;
-    }
-  }
 
   // Ensure all allowlist entries have IDs
   for (const [key, agent] of Object.entries(agents)) {
