@@ -207,6 +207,20 @@ describe("managed dedicated live-smoke workflow contract", () => {
     );
     expect(headscaleExchange?.with?.script).not.toContain('echo "$block"');
 
+    const headscaleKeys = diagnostic.steps.find(
+      (step) => step.name === "Summarize recent agent pre-auth key state",
+    );
+    expect(headscaleKeys?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(headscaleKeys?.with?.script).toContain(
+      "headscale preauthkeys list --output json",
+    );
+    expect(headscaleKeys?.with?.script).toContain(
+      "headscale_recent_agent_key_used=",
+    );
+    expect(headscaleKeys?.with?.script).not.toContain('echo "$raw"');
+
     const classifyMeshFailure = diagnostic.steps.find(
       (step) => step.name === "Classify private mesh observation failure",
     );

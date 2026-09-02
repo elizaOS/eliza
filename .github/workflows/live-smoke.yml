@@ -1229,6 +1229,58 @@ jobs:
             echo "headscale_registration_timeout_seen=$timed_out"
             echo "headscale_tag_rejection_seen=$tag_rejected"
 
+      - name: Summarize recent agent pre-auth key state
+        if: steps.cleanup_reconciliation.outputs.agent_id != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            raw="$(sudo headscale preauthkeys list --output json 2>/dev/null)"
+            summary="$(
+              jq -c '
+                [
+                  .[]
+                  | select((((.aclTags // .acl_tags // []) | index("tag:agent")) != null))
+                  | select(
+                      ((.createdAt // .created_at // "") | fromdateiso8601? // 0)
+                        >= (now - 14400)
+                    )
+                ] as $keys
+                | {
+                    count: ($keys | length),
+                    used: ([$keys[] | select(.used == true)] | length),
+                    unused: ([$keys[] | select(.used != true)] | length),
+                    reusable: ([$keys[] | select(.reusable == true)] | length),
+                    expired: ([
+                      $keys[]
+                      | select(
+                          ((.expiration // "") | fromdateiso8601? // 0) < now
+                        )
+                    ] | length)
+                  }
+              ' <<<"$raw"
+            )"
+            unset raw
+            jq -e '
+              keys == ["count", "expired", "reusable", "unused", "used"] and
+              ([.count, .expired, .reusable, .unused, .used] | all(type == "number")) and
+              .count >= 0 and .used >= 0 and .unused >= 0 and
+              .reusable >= 0 and .expired >= 0 and
+              .used + .unused == .count
+            ' <<<"$summary" >/dev/null
+            jq -r '
+              "headscale_recent_agent_key_count=" + (.count | tostring),
+              "headscale_recent_agent_key_used=" + (.used | tostring),
+              "headscale_recent_agent_key_unused=" + (.unused | tostring),
+              "headscale_recent_agent_key_reusable=" + (.reusable | tostring),
+              "headscale_recent_agent_key_expired=" + (.expired | tostring)
+            ' <<<"$summary"
+            unset summary
+
       - name: Classify exact dedicated lifecycle journal
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
