@@ -11,7 +11,14 @@ describe("agent string boundary scanner", () => {
   });
 
   it("handles a 100k-character suffix in linear time", () => {
-    expect(trimEndCharacters(`base${"/".repeat(100_000)}`, "/")).toBe("base");
+    // The `toBe` below only proves correctness. Without an elapsed-time bound
+    // a quadratic rewrite passes too: it finishes this input in ~33s, well
+    // inside this package's 120s `testTimeout`. The linear scan takes under
+    // 2ms, so a 1s budget fails on complexity rather than on a slow machine.
+    const value = `base${"/".repeat(100_000)}`;
+    const startedAt = performance.now();
+    expect(trimEndCharacters(value, "/")).toBe("base");
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
   });
 
   it("does not split an unmatched Unicode code point", () => {
