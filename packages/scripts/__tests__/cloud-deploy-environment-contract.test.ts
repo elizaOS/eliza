@@ -3,7 +3,10 @@
  * host-inventory, and shared-secret drift without inspecting protected values.
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const repoRoot = new URL("../../../", import.meta.url);
 
@@ -90,6 +93,10 @@ const cloudWorkerSecretNames = [
   "TUNNEL_HOSTNAME_SIGNING_SECRET",
 ] as const;
 
+// A value distinctive enough that finding it in any output stream is proof
+// the guard printed a secret rather than a coincidence.
+const SENTINEL_DEPLOY_SECRET = "sentinel-apps-worker-deploy-secret-value";
+
 const requiredAuthWorkerSecretNames = [
   "OIDC_CLIENTS",
   "OIDC_SIGNING_JWKS",
@@ -101,6 +108,51 @@ const requiredAuthWorkerSecretNames = [
   "STEWARD_TENANT_API_KEY",
   "GATEWAY_INTERNAL_SECRET",
 ] as const;
+
+/**
+ * Executes the apps-worker deploy preflight so its fail-closed behaviour is
+ * covered by running it, rather than by matching the step's text. The guard
+ * decides whether a deploy proceeds without a host or an SSH key, so both the
+ * admission decision and the fact that it never prints a secret are worth
+ * driving directly.
+ */
+function runAppsWorkerPreflight(options: {
+  deployHost: string;
+  deploySshKey: string;
+  environment?: string;
+}) {
+  const scratch = mkdtempSync(join(tmpdir(), "apps-worker-preflight-"));
+  const githubOutput = join(scratch, "output");
+  const stepSummary = join(scratch, "summary");
+  // The Actions runner pre-creates both files; the guard only ever appends.
+  writeFileSync(githubOutput, "");
+  writeFileSync(stepSummary, "");
+  try {
+    const result = spawnSync(
+      "bash",
+      ["-c", step(appsWorker, "deploy", "Check deploy configuration").run],
+      {
+        encoding: "utf8",
+        env: {
+          PATH: process.env.PATH ?? "",
+          DEPLOY_HOST: options.deployHost,
+          DEPLOY_SSH_KEY: options.deploySshKey,
+          TARGET_ENVIRONMENT: options.environment ?? "production",
+          GITHUB_OUTPUT: githubOutput,
+          GITHUB_STEP_SUMMARY: stepSummary,
+        },
+      },
+    );
+    return {
+      status: result.status,
+      output: readFileSync(githubOutput, "utf8"),
+      summary: readFileSync(stepSummary, "utf8"),
+      streams: `${result.stdout}${result.stderr}`,
+    };
+  } finally {
+    rmSync(scratch, { force: true, recursive: true });
+  }
+}
 
 describe("canonical cloud deployment environment contract", () => {
   test("records the staging certificate with the upload action digest shape", () => {
@@ -667,6 +719,79 @@ describe("canonical cloud deployment environment contract", () => {
     expect(preflight.run).toContain("exit 1");
     expect(preflight.run).not.toContain("skipping apps-worker deploy");
     expect(preflight.run).not.toContain('echo "$value"');
+  });
+
+  test("executes the apps-worker preflight's admission matrix without printing a secret", () => {
+    // A configured environment is admitted, and only then.
+    const configured = runAppsWorkerPreflight({
+      deployHost: "apps-control.internal",
+      deploySshKey: SENTINEL_DEPLOY_SECRET,
+    });
+    expect(configured.status).toBe(0);
+    expect(configured.output).toContain("configured=true");
+    expect(configured.summary).toBe("");
+
+    // Each setting is independently required, and a value that is only
+    // whitespace counts as absent — a trailing newline pasted into a GitHub
+    // secret must not read as configured.
+    for (const blocked of [
+      {
+        deployHost: "",
+        deploySshKey: SENTINEL_DEPLOY_SECRET,
+        names: ["DEPLOY_HOST"],
+      },
+      {
+        deployHost: "apps-control.internal",
+        deploySshKey: "",
+        names: ["DEPLOY_SSH_KEY"],
+      },
+      {
+        deployHost: " ",
+        deploySshKey: SENTINEL_DEPLOY_SECRET,
+        names: ["DEPLOY_HOST"],
+      },
+      {
+        deployHost: "apps-control.internal",
+        deploySshKey: "\n\t ",
+        names: ["DEPLOY_SSH_KEY"],
+      },
+      {
+        deployHost: "",
+        deploySshKey: "",
+        names: ["DEPLOY_HOST", "DEPLOY_SSH_KEY"],
+      },
+    ]) {
+      const label = JSON.stringify(blocked.names);
+      const result = runAppsWorkerPreflight(blocked);
+      expect(result.status, label).toBe(1);
+      expect(result.output, label).toContain("configured=false");
+      expect(result.output, label).not.toContain("configured=true");
+      expect(result.streams, label).toContain("::error::");
+      expect(result.summary, label).toContain("Apps worker deploy blocked");
+      // Every missing name is reported, not just the last one found.
+      for (const name of blocked.names) {
+        expect(result.streams, label).toContain(name);
+        expect(result.summary, label).toContain(name);
+      }
+    }
+
+    // The guard reads secret values but must never emit one, on any stream or
+    // into the job summary. Asserting the absence of a single spelling in the
+    // step text cannot cover this; running it can.
+    for (const probe of [
+      {
+        deployHost: SENTINEL_DEPLOY_SECRET,
+        deploySshKey: SENTINEL_DEPLOY_SECRET,
+      },
+      { deployHost: "", deploySshKey: SENTINEL_DEPLOY_SECRET },
+      { deployHost: SENTINEL_DEPLOY_SECRET, deploySshKey: "" },
+    ]) {
+      const result = runAppsWorkerPreflight(probe);
+      const emitted = `${result.streams}${result.summary}${result.output}`;
+      expect(emitted, JSON.stringify(probe)).not.toContain(
+        SENTINEL_DEPLOY_SECRET,
+      );
+    }
   });
 
   test("validates canonical Worker routes before any cutover mutation", () => {
