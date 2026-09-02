@@ -72,15 +72,15 @@
     "js-tiktoken": "^1.0.21"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.11",
     "@elizaos/core": "workspace:*",
-    "@types/bun": "^1.3.8",
+    "@types/bun": "^1.4.0",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "uuid": "^14.0.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",

@@ -41,8 +41,8 @@
     "typescript": "^6.0.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
-    "vitest": "^4.1.10"
+    "@biomejs/biome": "2.5.11",
+    "vitest": "^4.1.11"
   },
   "scripts": {
     "build": "bun run build.ts",

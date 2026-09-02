@@ -77,7 +77,7 @@
     "dist"
   ],
   "devDependencies": {
-    "@testing-library/react": "^16.3.2",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "jsdom": "^29.0.0",
@@ -86,7 +86,7 @@
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10",
-    "vite": "^8.0.0"
+    "vitest": "^4.1.11",
+    "vite": "^8.2.2"
   }
 }

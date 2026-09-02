@@ -104,10 +104,10 @@
     "ws": "8.21.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
-    "@storybook/react": "^10.0.0",
+    "@biomejs/biome": "2.5.11",
+    "@storybook/react": "^10.5.10",
     "@clack/prompts": "^1.5.1",
-    "@types/bun": "^1.3.5",
+    "@types/bun": "^1.4.0",
     "@types/node": "^25.0.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -116,8 +116,8 @@
     "react-dom": "^19.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vite": "^8.0.0",
-    "vitest": "^4.1.10"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   },
   "peerDependencies": {
     "@elizaos/ui": "workspace:*",

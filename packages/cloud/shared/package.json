@@ -106,19 +106,19 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.11",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@types/node": "^25.6.0",
     "@types/nodemailer": "^8.0.0",
-    "@types/pg": "^8.21.0",
+    "@types/pg": "^8.23.1",
     "@types/ssh2": "^1.15.5",
     "@types/ws": "^8.18.1",
-    "bun-types": "^1.3.13",
+    "bun-types": "^1.4.0",
     "drizzle-kit": "^0.31.10",
     "ioredis-mock": "^8.13.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "elizaos": {
     "managedIntegration": {

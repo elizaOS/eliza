@@ -70,7 +70,7 @@
   },
   "devDependencies": {
     "@elizaos/core": "workspace:*",
-    "@types/bun": "^1.1.0",
+    "@types/bun": "^1.4.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },

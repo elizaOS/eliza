@@ -101,8 +101,8 @@
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vite": "^8.0.0",
-    "vitest": "^4.1.10"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   },
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",

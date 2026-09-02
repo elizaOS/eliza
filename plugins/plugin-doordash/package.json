@@ -54,12 +54,12 @@
     "@elizaos/plugin-mcp": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.11",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "scripts": {
     "build": "bun run build:js && bun run build:types",
