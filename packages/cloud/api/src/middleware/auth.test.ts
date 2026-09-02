@@ -413,6 +413,9 @@ describe("isRouteAuthenticatedPaidProxyPath", () => {
 
     for (const [method, path] of routes) {
       expect(isRouteAuthenticatedPaidProxyPath(method, path)).toBe(true);
+      expect(isRouteAuthenticatedPaidProxyPath("HEAD", path)).toBe(
+        method === "GET",
+      );
       expect(isRouteAuthenticatedPaidProxyPath("OPTIONS", path)).toBe(true);
     }
   });
@@ -424,6 +427,8 @@ describe("isRouteAuthenticatedPaidProxyPath", () => {
       ["POST", "/api/internal/worker"],
       ["POST", "/api/v1/market/price/ethereum/address"],
       ["GET", "/api/v1/rpc/ethereum"],
+      ["HEAD", "/api/v1/rpc/ethereum"],
+      ["HEAD", "/api/v1/proxy/evm-rpc/ethereum"],
       ["POST", "/api/v1/rpc/ethereum/extra"],
       ["DELETE", "/api/v1/solana/assets/address"],
     ] as const) {

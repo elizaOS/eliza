@@ -110,12 +110,14 @@ test("global auth bypasses exactly the guarded generated v1 route inventory", as
   for (const entry of generatedV1Routes) {
     const pathname = materializeGeneratedPath(entry.path);
     const getBypass = isRouteAuthenticatedPaidProxyPath("GET", pathname);
+    const headBypass = isRouteAuthenticatedPaidProxyPath("HEAD", pathname);
     const postBypass = isRouteAuthenticatedPaidProxyPath("POST", pathname);
     const optionsBypass = isRouteAuthenticatedPaidProxyPath(
       "OPTIONS",
       pathname,
     );
     expect(optionsBypass, entry.path).toBe(getBypass || postBypass);
+    expect(headBypass, entry.path).toBe(getBypass);
     if (getBypass || postBypass) bypassedRoutes.add(entry.path);
   }
 

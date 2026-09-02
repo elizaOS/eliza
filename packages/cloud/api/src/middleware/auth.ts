@@ -319,7 +319,7 @@ export function isRouteAuthenticatedPaidProxyPath(
       isRouteAuthenticatedPaidProxyPath("POST", pathname)
     );
   }
-  if (method === "GET") {
+  if (method === "GET" || method === "HEAD") {
     return (
       /^\/api\/v1\/chain\/(?:nfts|tokens|transfers)\/[^/]+\/[^/]+\/?$/.test(
         pathname,

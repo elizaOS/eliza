@@ -392,6 +392,64 @@ test("every guarded route authenticates once before local validation or parsing 
   expect(globalSessionReads).not.toHaveBeenCalled();
 });
 
+test("HEAD self-authenticates every GET-backed guarded mount without input admission", async () => {
+  const app = mountedApp();
+  const malformedGetPaths = [
+    "/api/v1/chain/nfts/unsupported/0x1",
+    "/api/v1/chain/tokens/unsupported/0x1",
+    "/api/v1/chain/transfers/unsupported/0x1",
+    "/api/v1/market/candles/unsupported/0x1",
+    "/api/v1/market/portfolio/unsupported/0x1",
+    "/api/v1/market/price/unsupported/0x1",
+    "/api/v1/market/token/unsupported/0x1",
+    "/api/v1/market/trades/unsupported/0x1",
+    "/api/v1/solana/assets/not-a-solana-address",
+    "/api/v1/solana/token-accounts/not-a-solana-address",
+    "/api/v1/solana/transactions/not-a-solana-address",
+  ];
+
+  for (const path of malformedGetPaths) {
+    const beforeReads = standingReads.length;
+    const beforeAdmissions = admissionCalls.length;
+    const response = await app.fetch(
+      new Request(`https://api.test${path}`, {
+        method: "HEAD",
+        headers: authHeaders("session"),
+      }),
+      { NODE_ENV: "production" } as never,
+      executionCtx as never,
+    );
+    expect(response.status, path).toBe(400);
+    expect(await response.text(), path).toBe("");
+    expect(standingReads, path).toHaveLength(beforeReads + 1);
+    expect(admissionCalls, path).toHaveLength(beforeAdmissions);
+  }
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = mock(async () =>
+    Response.json({ data: { value: 1 } }),
+  ) as unknown as typeof fetch;
+  try {
+    const beforeReads = standingReads.length;
+    const response = await app.fetch(
+      new Request("https://api.test/api/v1/apis/birdeye/defi/price", {
+        method: "HEAD",
+        headers: authHeaders("session"),
+      }),
+      { NODE_ENV: "production", BIRDEYE_API_KEY: "provider-key" } as never,
+      executionCtx as never,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("");
+    expect(standingReads).toHaveLength(beforeReads + 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  expect(globalSessionReads).not.toHaveBeenCalled();
+  expect(providerDispatch).not.toHaveBeenCalled();
+});
+
 test("all three Solana reads keep typed denial status, reason, and CORS", async () => {
   authOutcome = "denied";
   const app = mountedApp();
