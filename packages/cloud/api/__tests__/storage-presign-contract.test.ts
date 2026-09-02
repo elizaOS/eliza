@@ -241,7 +241,7 @@ test("standing denial suppresses pricing, R2 access, settlement, and capability 
 
   expect(response.status).not.toBe(200);
   expect(requirePaidRouteStanding).toHaveBeenCalledTimes(1);
-  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(requireServiceMethodCost).not.toHaveBeenCalled();
   expect(executeNativeStoragePresign).not.toHaveBeenCalled();
   expect(mintStorageReadCapabilityUrl).not.toHaveBeenCalled();
 });
