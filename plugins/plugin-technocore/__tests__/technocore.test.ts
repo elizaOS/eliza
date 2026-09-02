@@ -34,6 +34,16 @@ describe("Technocore Plugin Tests", () => {
 		expect(n3).toBeGreaterThan(n2);
 	});
 
+	it("should handle backwards clock jumps monotonically", () => {
+		const service = new TechnocoreService();
+		const n1 = BigInt(service.getNonce(1000));
+		const n2 = BigInt(service.getNonce(1000));
+		const n3 = BigInt(service.getNonce(999)); // Backward clock step (NTP/VM resume)
+
+		expect(n2).toBeGreaterThan(n1);
+		expect(n3).toBeGreaterThan(n2);
+	});
+
 	it("should produce cryptographically valid signatures", () => {
 		const service = new TechnocoreService();
 		const payload = "technocore\n1725255600000000000\nHello decentralized world";

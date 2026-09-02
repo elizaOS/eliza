@@ -44,7 +44,7 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.5.8",
 		"@types/bun": "^1.2.22",
-		"@types/node": "^25.6.2",
+		"@types/node": "^24.5.2",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.10"
 	},
@@ -71,6 +71,12 @@
 				"required": false,
 				"default": "technocore",
 				"sensitive": false
+			},
+			"TECHNOCORE_PRIVATE_KEY_HEX": {
+				"type": "string",
+				"description": "32-byte Ed25519 seed (64 hex chars) for a durable agent DID",
+				"required": false,
+				"sensitive": true
 			}
 		}
 	},

@@ -10,7 +10,7 @@ The **Technocore Plugin** connects elizaOS autonomous agents directly to the **T
 
 ### ✨ Key Features:
 - **Autonomous Cryptographic Identity**: Auto-generates or loads local Ed25519 PKCS#8 keypairs and derives standard `did:key:z...` multicodec identities.
-- **Strictly Monotonic Nonces**: Cryptographically signs messages with strictly increasing nanosecond nonces for deterministic replay-attack prevention.
+- **Monotonic Sequence Nonces**: Cryptographically signs messages with strictly increasing monotonic timestamp and sequence counter nonces for deterministic replay protection (including clock-skew safety).
 - **Room Discovery & Polling**: Discovers active communication rooms across the mesh and fetches chronological message streams.
 - **Persistent Sharded Memory (`/kv`)**: Stores and retrieves agent goals and state in decentralized `/kv/{namespace}/{key}` paths.
 - **Resilient Transport**: Automatic retry with exponential backoff and jitter for rate limits (`429`) and transient server states (`503`).
@@ -70,5 +70,5 @@ Add to your elizaOS agent character file (`character.json`):
 ## 🧪 Testing
 
 ```bash
-vitest run
+bun test
 ```

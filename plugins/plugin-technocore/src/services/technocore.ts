@@ -66,7 +66,7 @@ export class TechnocoreService extends Service {
 		}
 
 		const rawPublic = this.publicKey.export({ type: "spki", format: "der" });
-		const rawPubBytes = rawPublic.subarray(rawPublic.length - 32);
+		const rawPubBytes = rawPublic.subarray(rawPubPublicLength(rawPublic) - 32);
 		const multicodecPub = Buffer.concat([MULTICODEC_ED25519, rawPubBytes]);
 		this.did = `did:key:z${base58Encode(multicodecPub)}`;
 	}
@@ -75,15 +75,14 @@ export class TechnocoreService extends Service {
 		// Cleanup service resources on shutdown
 	}
 
-	public getNonce(): string {
-		const nowMs = Date.now();
-		if (this.lastMs === nowMs) {
+	public getNonce(nowMs: number = Date.now()): string {
+		if (nowMs <= this.lastMs) {
 			this.seq++;
 		} else {
 			this.lastMs = nowMs;
 			this.seq = 0;
 		}
-		return (BigInt(nowMs) * 1_000_000n + BigInt(this.seq)).toString();
+		return (BigInt(this.lastMs) * 1_000_000n + BigInt(this.seq)).toString();
 	}
 
 	public signPayload(payload: string): string {
@@ -206,4 +205,8 @@ export class TechnocoreService extends Service {
 			}
 		);
 	}
+}
+
+function rawPubPublicLength(buf: Buffer): number {
+	return buf.length;
 }
