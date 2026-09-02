@@ -199,9 +199,18 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(classifyMeshFailure?.with?.script).toContain(
       "docker candidate mesh observation before cleanup",
     );
-    expect(classifyMeshFailure?.with?.script).toContain("tailscale_daemon_unavailable");
-    expect(classifyMeshFailure?.with?.script).toContain("tailscale_status_unavailable");
-    expect(classifyMeshFailure?.with?.script).toContain("private_mesh_observation_present");
+    expect(classifyMeshFailure?.with?.script).toContain(
+      "tailscale_daemon_unavailable",
+    );
+    expect(classifyMeshFailure?.with?.script).toContain(
+      "tailscale_status_unavailable",
+    );
+    expect(classifyMeshFailure?.with?.script).toContain(
+      "headscale_control_unreachable",
+    );
+    expect(classifyMeshFailure?.with?.script).toContain(
+      "private_mesh_observation_present",
+    );
 
     const lifecycleJournal = diagnostic.steps.find(
       (step) => step.name === "Classify exact dedicated lifecycle journal",

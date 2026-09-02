@@ -1011,6 +1011,9 @@ jobs:
               *'socket=false'*'daemon=false'*) category='tailscale_daemon_unavailable' ;;
               *'socket=false'*) category='tailscale_socket_missing' ;;
               *'daemon=false'*) category='tailscale_daemon_missing' ;;
+              *'route=false'*) category='container_default_route_missing' ;;
+              *'tun=false'*) category='container_tun_missing' ;;
+              *'control=false'*) category='headscale_control_unreachable' ;;
               *'status=error'*) category='tailscale_status_unavailable' ;;
               *'backend=needslogin'*) category='tailscale_needs_login' ;;
               *'backend=needsmachineauth'*) category='tailscale_needs_machine_auth' ;;
@@ -1065,7 +1068,7 @@ jobs:
             echo "private_mesh_failure_signals=${signals:-none}"
             echo "private_mesh_observation_present=$observation_present"
             if [ "$observation_present" = true ]; then
-              for field in container socket daemon status backend authorized authurl ip \
+              for field in container socket daemon status backend authorized authurl ip route tun control \
                 authkey_rejected interactive up_failed agent_started; do
                 value="$(printf '%s' "$observation" | tr ',' '\n' | sed -n "s/^${field}=//p" | tail -n 1)"
                 case "$field:$value" in
@@ -1073,7 +1076,7 @@ jobs:
                   status:success|status:error) ;;
                   backend:running|backend:starting|backend:stopped|backend:needslogin|backend:needsmachineauth|backend:nostate|backend:unknown) ;;
                   authorized:true|authorized:false|authorized:unknown) ;;
-                  socket:true|socket:false|daemon:true|daemon:false|authurl:true|authurl:false|ip:true|ip:false|authkey_rejected:true|authkey_rejected:false|interactive:true|interactive:false|up_failed:true|up_failed:false|agent_started:true|agent_started:false) ;;
+                  socket:true|socket:false|daemon:true|daemon:false|authurl:true|authurl:false|ip:true|ip:false|route:true|route:false|tun:true|tun:false|control:true|control:false|authkey_rejected:true|authkey_rejected:false|interactive:true|interactive:false|up_failed:true|up_failed:false|agent_started:true|agent_started:false) ;;
                   *) value='unknown' ;;
                 esac
                 echo "private_mesh_observation_${field}=$value"

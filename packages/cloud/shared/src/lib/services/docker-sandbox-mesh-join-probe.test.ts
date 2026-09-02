@@ -105,6 +105,10 @@ describe("Docker mesh-join observation", () => {
           "100.64.0.2",
           "__eliza_mesh_probe_section__=logs",
           "server started",
+          "__eliza_mesh_probe_section__=network",
+          "route=present",
+          "tun=present",
+          "control=reachable",
           "__eliza_mesh_probe_section__=end",
         ].join("\n"),
     };
@@ -127,6 +131,9 @@ describe("Docker mesh-join observation", () => {
       backendState: "Running",
       machineAuthorized: true,
       ipPresent: true,
+      defaultRoutePresent: true,
+      tunPresent: true,
+      headscaleReachable: true,
       agentStarted: true,
     });
   });
@@ -148,6 +155,10 @@ describe("Docker mesh-join observation", () => {
       "",
       "__eliza_mesh_probe_section__=logs",
       "control: waiting for network map",
+      "__eliza_mesh_probe_section__=network",
+      "route=present",
+      "tun=present",
+      "control=unreachable",
       "__eliza_mesh_probe_section__=end",
     ].join("\n");
 
@@ -162,13 +173,16 @@ describe("Docker mesh-join observation", () => {
       machineAuthorized: false,
       authUrlPresent: true,
       ipPresent: false,
+      defaultRoutePresent: true,
+      tunPresent: true,
+      headscaleReachable: false,
       authKeyRejected: false,
       interactiveAuthRequired: false,
       tailscaleUpFailed: false,
       agentStarted: false,
     });
     expect(formatDockerMeshJoinObservation(observation)).toBe(
-      "container=running,exit=0,socket=true,daemon=true,status=success,backend=NeedsLogin,authorized=false,authurl=true,ip=false,authkey_rejected=false,interactive=false,up_failed=false,agent_started=false",
+      "container=running,exit=0,socket=true,daemon=true,status=success,backend=NeedsLogin,authorized=false,authurl=true,ip=false,route=true,tun=true,control=false,authkey_rejected=false,interactive=false,up_failed=false,agent_started=false",
     );
     expect(formatDockerMeshJoinObservation(observation)).not.toContain("private.example");
   });
@@ -186,6 +200,10 @@ describe("Docker mesh-join observation", () => {
         "command failed",
         "__eliza_mesh_probe_section__=logs",
         "tailscale up failed",
+        "__eliza_mesh_probe_section__=network",
+        "route=absent",
+        "tun=absent",
+        "control=unreachable",
         "__eliza_mesh_probe_section__=end",
       ].join("\n"),
     );

@@ -1364,6 +1364,9 @@ export interface DockerMeshJoinObservation {
   readonly machineAuthorized: boolean | null;
   readonly authUrlPresent: boolean;
   readonly ipPresent: boolean;
+  readonly defaultRoutePresent: boolean;
+  readonly tunPresent: boolean;
+  readonly headscaleReachable: boolean;
   readonly authKeyRejected: boolean;
   readonly interactiveAuthRequired: boolean;
   readonly tailscaleUpFailed: boolean;
@@ -1409,7 +1412,8 @@ export function classifyDockerMeshJoinObservation(output: string): DockerMeshJoi
   const socket = meshProbeSection(output, "socket", "status");
   const statusOutput = meshProbeSection(output, "status", "ip");
   const ipOutput = meshProbeSection(output, "ip", "logs");
-  const logs = meshProbeSection(output, "logs", "end");
+  const logs = meshProbeSection(output, "logs", "network");
+  const network = meshProbeSection(output, "network", "end");
 
   let statusQuery: "success" | "error" = "error";
   let backendState: string | null = null;
@@ -1449,6 +1453,9 @@ export function classifyDockerMeshJoinObservation(output: string): DockerMeshJoi
     ipPresent: ipOutput
       .split(/\r?\n/)
       .some((line) => /^(?:\d{1,3}\.){3}\d{1,3}$/.test(line.trim())),
+    defaultRoutePresent: /^route=present$/m.test(network),
+    tunPresent: /^tun=present$/m.test(network),
+    headscaleReachable: /^control=reachable$/m.test(network),
     authKeyRejected:
       /(?:auth(?:entication)? key|authkey).*(?:invalid|expired|already used)|(?:invalid|expired|already used).*(?:auth(?:entication)? key|authkey)/i.test(
         logs,
@@ -1474,6 +1481,9 @@ export function formatDockerMeshJoinObservation(observation: DockerMeshJoinObser
     `authorized=${value(observation.machineAuthorized)}`,
     `authurl=${observation.authUrlPresent}`,
     `ip=${observation.ipPresent}`,
+    `route=${observation.defaultRoutePresent}`,
+    `tun=${observation.tunPresent}`,
+    `control=${observation.headscaleReachable}`,
     `authkey_rejected=${observation.authKeyRejected}`,
     `interactive=${observation.interactiveAuthRequired}`,
     `up_failed=${observation.tailscaleUpFailed}`,
@@ -1541,6 +1551,13 @@ export async function probeDockerMeshJoinTerminalFailure(
   observeUnavailable?: (kind: ReturnType<typeof classifyDockerSshProbeError>) => void,
   timeoutMs: number = MESH_JOIN_PROBE_TIMEOUT_MS,
 ): Promise<Error | null> {
+  const networkProbeScript = [
+    `awk 'NR > 1 && $2 == "00000000" { found=1 } END { print found ? "route=present" : "route=absent" }' /proc/net/route 2>/dev/null || echo route=absent`,
+    "test -c /dev/net/tun && echo tun=present || echo tun=absent",
+    'url="${HEADSCALE_URL:-${TS_CONTROL_URL:-}}"',
+    'code="$(curl -ksS --connect-timeout 3 --max-time 5 -o /dev/null -w "%{http_code}" "${url%/}/health" 2>/dev/null || true)"',
+    'case "$code" in [1-5][0-9][0-9]) echo control=reachable ;; *) echo control=unreachable ;; esac',
+  ].join("; ");
   let output: string;
   try {
     output = await ssh.exec(
@@ -1548,13 +1565,15 @@ export async function probeDockerMeshJoinTerminalFailure(
         `docker inspect --format 'state={{.State.Status}} exit={{.State.ExitCode}}' ${shellQuote(containerId)} 2>/dev/null`,
         `docker exec ${shellQuote(containerId)} sh -c 'test -f "\${TS_STATE_DIR:-/var/lib/tailscale}/${TS_AUTHKEY_EXPIRED_MARKER_BASENAME}" && echo authkey-marker=present || echo authkey-marker=absent' 2>/dev/null || echo authkey-marker=unknown`,
         `echo ${MESH_PROBE_SECTION}socket`,
-        `docker exec ${shellQuote(containerId)} sh -c 'test -S /tmp/tailscaled.sock && echo socket=present || echo socket=absent; pgrep -x tailscaled >/dev/null && echo daemon=present || echo daemon=absent' 2>/dev/null || true`,
+        `docker exec ${shellQuote(containerId)} sh -c 'test -S /tmp/tailscaled.sock && echo socket=present || echo socket=absent; daemon=absent; for comm in /proc/[0-9]*/comm; do read -r name < "$comm" 2>/dev/null || true; if [ "$name" = tailscaled ]; then daemon=present; break; fi; done; echo daemon=$daemon' 2>/dev/null || true`,
         `echo ${MESH_PROBE_SECTION}status`,
         `docker exec ${shellQuote(containerId)} tailscale --socket=/tmp/tailscaled.sock status --json 2>/dev/null || true`,
         `echo ${MESH_PROBE_SECTION}ip`,
         `docker exec ${shellQuote(containerId)} tailscale --socket=/tmp/tailscaled.sock ip -4 2>/dev/null || true`,
         `echo ${MESH_PROBE_SECTION}logs`,
         `docker logs --tail 80 ${shellQuote(containerId)} 2>&1 || true`,
+        `echo ${MESH_PROBE_SECTION}network`,
+        `docker exec ${shellQuote(containerId)} sh -c ${shellQuote(networkProbeScript)} 2>/dev/null || true`,
         `echo ${MESH_PROBE_SECTION}end`,
       ].join("; "),
       timeoutMs,
