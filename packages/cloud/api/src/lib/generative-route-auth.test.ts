@@ -63,6 +63,7 @@ const enforceOrgRateLimit = vi.fn();
 const inferenceRateLimitConfig = vi.fn();
 const assertInferenceCredentialActive = vi.fn();
 const loggerWarn = vi.fn();
+const loggerError = vi.fn();
 
 vi.mock("@/lib/api/cloud-worker-errors", () => ({ ApiError }));
 vi.mock("@/lib/services/ai-pricing/cache", () => ({
@@ -98,7 +99,7 @@ vi.mock("@/lib/services/inference-admission-snapshot", () => ({
   inferenceRateLimitConfig,
 }));
 vi.mock("@/lib/utils/logger", () => ({
-  logger: { warn: loggerWarn },
+  logger: { error: loggerError, warn: loggerWarn },
 }));
 
 if (typeof Bun !== "undefined") {
@@ -112,9 +113,18 @@ if (typeof Bun !== "undefined") {
     resolveInferenceAuthContext,
   }));
   bunTest.mock.module("@/lib/services/inference-credential-revocation", () => ({
+    assertInferenceCredentialActive,
     InferenceCredentialRevokedError,
     inferenceCredentialRevocationReason,
   }));
+  bunTest.mock.module(
+    "../../../shared/src/lib/services/inference-credential-revocation",
+    () => ({
+      assertInferenceCredentialActive,
+      InferenceCredentialRevokedError,
+      inferenceCredentialRevocationReason,
+    }),
+  );
   bunTest.mock.module("@/lib/auth", () => ({ requireAuthOrApiKeyWithOrg }));
   bunTest.mock.module("@/lib/auth/workers-hono-auth", () => ({
     requireUserOrApiKeyWithOrg,
@@ -135,7 +145,7 @@ if (typeof Bun !== "undefined") {
     inferenceRateLimitConfig,
   }));
   bunTest.mock.module("@/lib/utils/logger", () => ({
-    logger: { warn: loggerWarn },
+    logger: { error: loggerError, warn: loggerWarn },
   }));
 }
 
@@ -157,6 +167,7 @@ describe("deferredCredentialAdmissionGuard", () => {
   beforeEach(() => {
     assertInferenceCredentialActive.mockReset();
     assertInferenceCredentialActive.mockResolvedValue(undefined);
+    loggerError.mockReset();
   });
 
   test("performs one standalone check when a route exits before admission", async () => {
@@ -194,6 +205,86 @@ describe("deferredCredentialAdmissionGuard", () => {
     await guard[Symbol.asyncDispose]();
 
     expect(assertInferenceCredentialActive).not.toHaveBeenCalled();
+  });
+
+  test("maps an early-return disposal rejection to its safe standing denial", async () => {
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    assertInferenceCredentialActive.mockRejectedValueOnce(
+      new InferenceCredentialRevokedError("credential_revoked"),
+    );
+
+    let caught: unknown;
+    try {
+      await (async () => {
+        await using _guard = deferredCredentialAdmissionGuard({
+          organizationId: () => "org-1",
+          credential: () => credential,
+        });
+        return "terminal-response-before-resource-or-provider-work";
+      })();
+    } catch (error) {
+      // error-policy:J1 the test captures the route-boundary translation input.
+      caught = error;
+    }
+
+    const mapped = asGenerativeCacheApiError(caught, {
+      route: "terminal-test",
+      traceId: "trace-terminal",
+    });
+    expect(mapped?.status).toBe(401);
+    expect(mapped?.details).toEqual({ reason: "credential_inactive" });
+    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
+  });
+
+  test("unwraps disposal revocation when it suppresses a body failure without logging secrets", async () => {
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    assertInferenceCredentialActive.mockRejectedValueOnce(
+      new InferenceCredentialRevokedError("session_revoked"),
+    );
+
+    let caught: unknown;
+    try {
+      await using _guard = deferredCredentialAdmissionGuard({
+        organizationId: () => "org-1",
+        credential: () => credential,
+      });
+      throw new Error("secret-request-body bearer-private-value");
+    } catch (error) {
+      // error-policy:J1 the test captures the route-boundary translation input.
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).name).toBe("SuppressedError");
+    const mapped = asGenerativeCacheApiError(caught, {
+      route: "body-throw-test",
+      traceId: "trace-suppressed",
+    });
+    expect(mapped?.status).toBe(401);
+    expect(mapped?.details).toEqual({ reason: "credential_inactive" });
+    expect(loggerError).toHaveBeenCalledWith(
+      "[InferenceAuth] deferred revocation suppressed an earlier route failure",
+      {
+        route: "body-throw-test",
+        traceId: "trace-suppressed",
+        credentialReason: "session_revoked",
+        suppressedError: { name: "Error" },
+      },
+    );
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(
+      "secret-request-body",
+    );
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(
+      "bearer-private-value",
+    );
   });
 });
 

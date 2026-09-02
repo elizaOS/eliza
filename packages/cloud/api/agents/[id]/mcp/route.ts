@@ -14,6 +14,7 @@ import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
+  asGenerativeCacheApiError,
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
   resolveInferenceCredentialAdmissionDenial,
@@ -42,6 +43,7 @@ import {
 import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
@@ -80,8 +82,13 @@ function mcpAuthError(
   error: unknown,
   id: string | number | null,
 ) {
-  if (!(error instanceof ApiError)) throw error;
-  if (error.status === 429) {
+  const boundaryError =
+    asGenerativeCacheApiError(error, {
+      route: "agent_mcp",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    }) ?? error;
+  if (!(boundaryError instanceof ApiError)) throw boundaryError;
+  if (boundaryError.status === 429) {
     return c.json(
       {
         jsonrpc: "2.0",
@@ -91,7 +98,7 @@ function mcpAuthError(
       429,
     );
   }
-  if (error.status === 503) {
+  if (boundaryError.status === 503) {
     return c.json(
       {
         jsonrpc: "2.0",
@@ -104,22 +111,24 @@ function mcpAuthError(
       503,
     );
   }
-  if (error.status !== 401 && error.status !== 403) throw error;
+  if (boundaryError.status !== 401 && boundaryError.status !== 403) {
+    throw boundaryError;
+  }
   const reason =
-    typeof error.details?.reason === "string"
-      ? error.details.reason
+    typeof boundaryError.details?.reason === "string"
+      ? boundaryError.details.reason
       : undefined;
   return c.json(
     {
       jsonrpc: "2.0",
       error: {
         code: -32002,
-        message: error.message,
+        message: boundaryError.message,
         ...(reason ? { data: { reason } } : {}),
       },
       id,
     },
-    error.status,
+    boundaryError.status,
   );
 }
 
@@ -198,28 +207,51 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 app.post("/", async (c) => {
   const id = c.req.param("id");
   const executionCtx = getGenerativeExecutionContext(c);
-  let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
-    caller = await requireGenerativeRouteCaller(c, {
+    const caller = await requireGenerativeRouteCaller(c, {
       compatibility: "hono",
       rateLimitEndpoint: "standard",
-      deferStrongCredentialCheck: false,
+      deferStrongCredentialCheck: true,
     });
-  } catch (error) {
-    return mcpAuthError(c, error, null);
-  }
-  if (!id) return c.json({ error: "Missing id" }, 400);
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    if (!id) return c.json({ error: "Missing id" }, 400);
 
-  const characterResolution = executionCtx
-    ? await charactersService.getByIdCacheOnly(id, { executionCtx })
-    : {
-        kind: "ready" as const,
-        character: (await charactersService.getById(id)) ?? null,
-      };
-  if (characterResolution.kind !== "ready") {
-    // Confirm only the negative cold-cache case. Existing agents remain
-    // fail-closed until their cached character is ready for inference.
-    if (!(await charactersService.getById(id))) {
+    const characterResolution = executionCtx
+      ? await charactersService.getByIdCacheOnly(id, { executionCtx })
+      : {
+          kind: "ready" as const,
+          character: (await charactersService.getById(id)) ?? null,
+        };
+    if (characterResolution.kind !== "ready") {
+      // Confirm only the negative cold-cache case. Existing agents remain
+      // fail-closed until their cached character is ready for inference.
+      if (!(await charactersService.getById(id))) {
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            error: { code: -32001, message: "Agent not found" },
+            id: null,
+          },
+          404,
+        );
+      }
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: {
+            code: -32004,
+            message: "Agent cache is warming; retry shortly",
+          },
+          id: null,
+        },
+        503,
+      );
+    }
+    const character = characterResolution.character;
+    if (!character) {
       return c.json(
         {
           jsonrpc: "2.0",
@@ -229,128 +261,111 @@ app.post("/", async (c) => {
         404,
       );
     }
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: {
-          code: -32004,
-          message: "Agent cache is warming; retry shortly",
-        },
-        id: null,
-      },
-      503,
-    );
-  }
-  const character = characterResolution.character;
-  if (!character) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32001, message: "Agent not found" },
-        id: null,
-      },
-      404,
-    );
-  }
-  if (!character.is_public || !character.mcp_enabled) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32001, message: "MCP not accessible" },
-        id: null,
-      },
-      403,
-    );
-  }
-
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    // error-policy:J1 the JSON-RPC boundary translates malformed JSON.
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32700, message: "Parse error" },
-        id: null,
-      },
-      400,
-    );
-  }
-  const validation = MCPRequestSchema.safeParse(body);
-  if (!validation.success) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32700, message: "Parse error" },
-        id: null,
-      },
-      400,
-    );
-  }
-
-  const { method, params, id: rpcId } = validation.data;
-  switch (method) {
-    case "initialize":
-      return c.json({
-        jsonrpc: "2.0",
-        result: {
-          protocolVersion: "2024-11-05",
-          serverInfo: { name: character.name, version: "1.0.0" },
-          capabilities: { tools: {} },
-        },
-        id: rpcId,
-      });
-
-    case "tools/list":
-      return c.json({
-        jsonrpc: "2.0",
-        result: {
-          tools: [
-            {
-              name: "chat",
-              description: `Send a message to ${character.name}`,
-              inputSchema: {
-                type: "object",
-                properties: {
-                  message: { type: "string" },
-                  model: { type: "string" },
-                },
-                required: ["message"],
-              },
-            },
-            {
-              name: "get_info",
-              description: `Get information about ${character.name}`,
-              inputSchema: { type: "object", properties: {} },
-            },
-          ],
-        },
-        id: rpcId,
-      });
-
-    case "tools/call":
-      return handleToolCall(c, character, params ?? {}, rpcId, {
-        id: caller.user.id,
-        organization_id: caller.user.organization_id,
-        apiKeyId: caller.apiKeyId,
-        admissionSnapshot: caller.admissionSnapshot,
-        credential: caller.credential,
-        executionCtx,
-      });
-
-    case "ping":
-      return c.json({ jsonrpc: "2.0", result: {}, id: rpcId });
-
-    default:
+    if (!character.is_public || !character.mcp_enabled) {
       return c.json(
         {
           jsonrpc: "2.0",
-          error: { code: -32601, message: "Method not found" },
-          id: rpcId,
+          error: { code: -32001, message: "MCP not accessible" },
+          id: null,
+        },
+        403,
+      );
+    }
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J1 the JSON-RPC boundary translates malformed JSON.
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32700, message: "Parse error" },
+          id: null,
         },
         400,
       );
+    }
+    const validation = MCPRequestSchema.safeParse(body);
+    if (!validation.success) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32700, message: "Parse error" },
+          id: null,
+        },
+        400,
+      );
+    }
+
+    const { method, params, id: rpcId } = validation.data;
+    switch (method) {
+      case "initialize":
+        return c.json({
+          jsonrpc: "2.0",
+          result: {
+            protocolVersion: "2024-11-05",
+            serverInfo: { name: character.name, version: "1.0.0" },
+            capabilities: { tools: {} },
+          },
+          id: rpcId,
+        });
+
+      case "tools/list":
+        return c.json({
+          jsonrpc: "2.0",
+          result: {
+            tools: [
+              {
+                name: "chat",
+                description: `Send a message to ${character.name}`,
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    message: { type: "string" },
+                    model: { type: "string" },
+                  },
+                  required: ["message"],
+                },
+              },
+              {
+                name: "get_info",
+                description: `Get information about ${character.name}`,
+                inputSchema: { type: "object", properties: {} },
+              },
+            ],
+          },
+          id: rpcId,
+        });
+
+      case "tools/call":
+        // The handler must settle its admission handoff before the using scope
+        // checks a terminal exit, so this intentionally awaits before return.
+        return await handleToolCall(c, character, params ?? {}, rpcId, {
+          id: caller.user.id,
+          organization_id: caller.user.organization_id,
+          apiKeyId: caller.apiKeyId,
+          admissionSnapshot: caller.admissionSnapshot,
+          credentialForAdmission: () =>
+            credentialGuard.credentialForAdmission(),
+          executionCtx,
+        });
+
+      case "ping":
+        return c.json({ jsonrpc: "2.0", result: {}, id: rpcId });
+
+      default:
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            error: { code: -32601, message: "Method not found" },
+            id: rpcId,
+          },
+          400,
+        );
+    }
+  } catch (error) {
+    return mcpAuthError(c, error, null);
   }
 });
 
@@ -374,7 +389,7 @@ export async function handleToolCall(
     organization_id: string;
     apiKeyId?: string | null;
     admissionSnapshot?: InferenceAdmissionSnapshot;
-    credential?: InferenceCredentialCheck;
+    credentialForAdmission?: () => InferenceCredentialCheck | undefined;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   },
 ): Promise<Response> {
@@ -488,7 +503,7 @@ export async function handleToolCall(
         },
         executionCtx: authUser.executionCtx,
         admissionSnapshot: authUser.admissionSnapshot,
-        credential: authUser.credential,
+        credential: authUser.credentialForAdmission?.(),
       });
     } catch (error) {
       // error-policy:J1 the route boundary translates the expected credit

@@ -98,6 +98,7 @@ const requireGenerativeRouteCaller = mock(
   }),
 );
 const charactersGetById = mock();
+const assertInferenceCredentialActive = mock(async () => undefined);
 class InsufficientCreditsError extends Error {
   constructor(
     public readonly required: number,
@@ -116,9 +117,15 @@ mock.module("@/lib/services/organization-inference-admission", () => ({
 }));
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
+  asGenerativeCacheApiError: (error: unknown) =>
+    error instanceof ApiError ? error : null,
   getGenerativeExecutionContext: () => undefined,
   resolveInferenceCredentialAdmissionDenial: () => null,
   requireGenerativeRouteCaller,
+}));
+
+mock.module("@/lib/services/inference-credential-revocation", () => ({
+  assertInferenceCredentialActive,
 }));
 
 mock.module("@/lib/services/characters/characters", () => ({
@@ -171,6 +178,8 @@ function makeCharacter() {
     name: "Markup Agent",
     user_id: "owner-1",
     organization_id: "creator-org",
+    is_public: true,
+    mcp_enabled: true,
     monetization_enabled: true,
     inference_markup_percentage: "500",
     system: null,
@@ -209,8 +218,28 @@ async function callChat() {
     {
       id: USER_ID,
       organization_id: ORG_ID,
-      credential: inferenceCredential,
+      credentialForAdmission: () => inferenceCredential,
     },
+  );
+}
+
+function callRouteChat() {
+  return app.request(
+    "/agents/agent-1/mcp",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: {
+          name: "chat",
+          arguments: { message: "hello", model: "gpt-5-mini" },
+        },
+        id: "rpc-1",
+      }),
+    },
+    {},
   );
 }
 
@@ -224,6 +253,8 @@ beforeEach(() => {
     credential: inferenceCredential,
   });
   charactersGetById.mockReset();
+  assertInferenceCredentialActive.mockReset();
+  assertInferenceCredentialActive.mockResolvedValue(undefined);
   charactersGetById.mockResolvedValue(makeCharacter());
   getLanguageModel.mockClear();
   streamText.mockReset();
@@ -284,22 +315,44 @@ describe("Agent MCP billing", () => {
     });
     expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ deferStrongCredentialCheck: false }),
+      expect.objectContaining({ deferStrongCredentialCheck: true }),
     );
     expect(charactersGetById).not.toHaveBeenCalled();
     expect(admitOrganizationInference).not.toHaveBeenCalled();
     expect(streamText).not.toHaveBeenCalled();
   });
 
+  test("checks the deferred credential once when JSON parsing terminates before any resource or provider work", async () => {
+    const response = await app.request("/agents/agent-1/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{malformed",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: -32700, message: "Parse error" },
+    });
+    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
+    expect(assertInferenceCredentialActive).toHaveBeenCalledWith(
+      ORG_ID,
+      inferenceCredential,
+    );
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
   test("reserves the marked-up estimate before invoking the model", async () => {
     const reconcile = makeReservation({ adjustmentType: "none" });
 
-    const response = await callChat();
+    const response = await callRouteChat();
 
     expect(response.status).toBe(200);
     expect(admitOrganizationInference).toHaveBeenCalledWith(
       expect.objectContaining({ credential: inferenceCredential }),
     );
+    expect(assertInferenceCredentialActive).not.toHaveBeenCalled();
     expect(reserve).toHaveBeenCalledTimes(1);
     const reserveParams = reserve.mock.calls[0]?.[0] as { amount: number };
     expect(reserveParams).toMatchObject({

@@ -15,6 +15,7 @@ import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
+  asGenerativeCacheApiError,
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
   resolveInferenceCredentialAdmissionDenial,
@@ -55,6 +56,7 @@ import {
   type UserCharacter,
 } from "@/lib/services/characters/characters";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
@@ -140,8 +142,13 @@ export function generateAgentCard(character: UserCharacter, baseUrl: string) {
 const app = new Hono<AppEnv>();
 
 function a2aAuthError(c: AppContext, error: unknown, id: JsonRpcId | null) {
-  if (!(error instanceof ApiError)) throw error;
-  if (error.status === 429) {
+  const boundaryError =
+    asGenerativeCacheApiError(error, {
+      route: "agent_a2a",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    }) ?? error;
+  if (!(boundaryError instanceof ApiError)) throw boundaryError;
+  if (boundaryError.status === 429) {
     return c.json(
       {
         jsonrpc: "2.0",
@@ -151,7 +158,7 @@ function a2aAuthError(c: AppContext, error: unknown, id: JsonRpcId | null) {
       429,
     );
   }
-  if (error.status === 503) {
+  if (boundaryError.status === 503) {
     return c.json(
       {
         jsonrpc: "2.0",
@@ -164,22 +171,24 @@ function a2aAuthError(c: AppContext, error: unknown, id: JsonRpcId | null) {
       503,
     );
   }
-  if (error.status !== 401 && error.status !== 403) throw error;
+  if (boundaryError.status !== 401 && boundaryError.status !== 403) {
+    throw boundaryError;
+  }
   const reason =
-    typeof error.details?.reason === "string"
-      ? error.details.reason
+    typeof boundaryError.details?.reason === "string"
+      ? boundaryError.details.reason
       : undefined;
   return c.json(
     {
       jsonrpc: "2.0",
       error: {
         code: -32002,
-        message: error.message,
+        message: boundaryError.message,
         ...(reason ? { data: { reason } } : {}),
       },
       id,
     },
-    error.status,
+    boundaryError.status,
   );
 }
 
@@ -220,29 +229,52 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 app.post("/", async (c) => {
   const id = c.req.param("id");
   const executionCtx = getGenerativeExecutionContext(c);
-  let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
-    caller = await requireGenerativeRouteCaller(c, {
+    const caller = await requireGenerativeRouteCaller(c, {
       compatibility: "hono",
       rateLimitEndpoint: "standard",
-      deferStrongCredentialCheck: false,
+      deferStrongCredentialCheck: true,
     });
-  } catch (error) {
-    return a2aAuthError(c, error, null);
-  }
-  if (!id) return c.json({ error: "Missing id" }, 400);
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    if (!id) return c.json({ error: "Missing id" }, 400);
 
-  const characterResolution = executionCtx
-    ? await charactersService.getByIdCacheOnly(id, { executionCtx })
-    : {
-        kind: "ready" as const,
-        character: (await charactersService.getById(id)) ?? null,
-      };
-  if (characterResolution.kind !== "ready") {
-    // A cache-only miss cannot distinguish a real agent from an unknown id.
-    // Confirm only the negative case authoritatively; an existing cold agent
-    // still gets the retryable response and never joins Postgres to dispatch.
-    if (!(await charactersService.getById(id))) {
+    const characterResolution = executionCtx
+      ? await charactersService.getByIdCacheOnly(id, { executionCtx })
+      : {
+          kind: "ready" as const,
+          character: (await charactersService.getById(id)) ?? null,
+        };
+    if (characterResolution.kind !== "ready") {
+      // A cache-only miss cannot distinguish a real agent from an unknown id.
+      // Confirm only the negative case authoritatively; an existing cold agent
+      // still gets the retryable response and never joins Postgres to dispatch.
+      if (!(await charactersService.getById(id))) {
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            error: { code: -32001, message: "Agent not found" },
+            id: null,
+          },
+          404,
+        );
+      }
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: {
+            code: -32004,
+            message: "Agent cache is warming; retry shortly",
+          },
+          id: null,
+        },
+        503,
+      );
+    }
+    const character = characterResolution.character;
+    if (!character) {
       return c.json(
         {
           jsonrpc: "2.0",
@@ -252,102 +284,84 @@ app.post("/", async (c) => {
         404,
       );
     }
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: {
-          code: -32004,
-          message: "Agent cache is warming; retry shortly",
+    if (!character.is_public || !character.a2a_enabled) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32001, message: "Agent not accessible" },
+          id: null,
         },
-        id: null,
-      },
-      503,
-    );
-  }
-  const character = characterResolution.character;
-  if (!character) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32001, message: "Agent not found" },
-        id: null,
-      },
-      404,
-    );
-  }
-  if (!character.is_public || !character.a2a_enabled) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32001, message: "Agent not accessible" },
-        id: null,
-      },
-      403,
-    );
-  }
+        403,
+      );
+    }
 
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    // error-policy:J1 the JSON-RPC transport boundary distinguishes invalid
-    // JSON syntax from a syntactically valid but malformed request envelope.
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J1 the JSON-RPC transport boundary distinguishes invalid
+      // JSON syntax from a syntactically valid but malformed request envelope.
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32700, message: "Parse error" },
+          id: null,
+        },
+        400,
+      );
+    }
+    const validation = A2AJsonRpcRequestSchema.safeParse(body);
+    if (!validation.success) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32600, message: "Invalid Request" },
+          id: jsonRpcIdFromUnknown(body),
+        },
+        400,
+      );
+    }
+
+    const { method, params, id: rpcId } = validation.data;
+    if (method === "chat") {
+      // Keep the handler inside the using scope so admission consumes the
+      // deferred proof before its terminal-path disposal check can run.
+      return await handleChat(c, character, params ?? {}, rpcId, {
+        id: caller.user.id,
+        organization_id: caller.user.organization_id,
+        apiKeyId: caller.apiKeyId,
+        admissionSnapshot: caller.admissionSnapshot,
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+        executionCtx,
+      });
+    }
+
+    if (method === "getAgentInfo") {
+      return c.json({
+        jsonrpc: "2.0",
+        result: {
+          name: character.name,
+          bio: character.bio,
+          category: character.category,
+          tags: character.tags,
+          monetizationEnabled: character.monetization_enabled,
+          markupPercentage: character.inference_markup_percentage,
+        },
+        id: rpcId,
+      });
+    }
+
     return c.json(
       {
         jsonrpc: "2.0",
-        error: { code: -32700, message: "Parse error" },
-        id: null,
+        error: { code: -32601, message: "Method not found" },
+        id: rpcId,
       },
       400,
     );
+  } catch (error) {
+    return a2aAuthError(c, error, null);
   }
-  const validation = A2AJsonRpcRequestSchema.safeParse(body);
-  if (!validation.success) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32600, message: "Invalid Request" },
-        id: jsonRpcIdFromUnknown(body),
-      },
-      400,
-    );
-  }
-
-  const { method, params, id: rpcId } = validation.data;
-  if (method === "chat") {
-    return handleChat(c, character, params ?? {}, rpcId, {
-      id: caller.user.id,
-      organization_id: caller.user.organization_id,
-      apiKeyId: caller.apiKeyId,
-      admissionSnapshot: caller.admissionSnapshot,
-      credential: caller.credential,
-      executionCtx,
-    });
-  }
-
-  if (method === "getAgentInfo") {
-    return c.json({
-      jsonrpc: "2.0",
-      result: {
-        name: character.name,
-        bio: character.bio,
-        category: character.category,
-        tags: character.tags,
-        monetizationEnabled: character.monetization_enabled,
-        markupPercentage: character.inference_markup_percentage,
-      },
-      id: rpcId,
-    });
-  }
-
-  return c.json(
-    {
-      jsonrpc: "2.0",
-      error: { code: -32601, message: "Method not found" },
-      id: rpcId,
-    },
-    400,
-  );
 });
 
 async function handleChat(
@@ -370,7 +384,7 @@ async function handleChat(
     organization_id: string;
     apiKeyId: string | null;
     admissionSnapshot?: InferenceAdmissionSnapshot;
-    credential?: InferenceCredentialCheck;
+    credentialForAdmission?: () => InferenceCredentialCheck | undefined;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   },
 ): Promise<Response> {
@@ -446,7 +460,7 @@ async function handleChat(
       },
       executionCtx: authUser.executionCtx,
       admissionSnapshot: authUser.admissionSnapshot,
-      credential: authUser.credential,
+      credential: authUser.credentialForAdmission?.(),
     });
   } catch (error) {
     // error-policy:J1 the route boundary translates the expected credit

@@ -105,6 +105,7 @@ const requireGenerativeRouteCaller = mock(
   }),
 );
 const charactersGetById = mock();
+const assertInferenceCredentialActive = mock(async () => undefined);
 class InsufficientCreditsError extends Error {
   constructor(
     public readonly required: number,
@@ -123,9 +124,15 @@ mock.module("@/lib/services/organization-inference-admission", () => ({
 }));
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
+  asGenerativeCacheApiError: (error: unknown) =>
+    error instanceof ApiError ? error : null,
   getGenerativeExecutionContext: () => undefined,
   resolveInferenceCredentialAdmissionDenial: () => null,
   requireGenerativeRouteCaller,
+}));
+
+mock.module("@/lib/services/inference-credential-revocation", () => ({
+  assertInferenceCredentialActive,
 }));
 
 mock.module("@/lib/services/characters/characters", () => ({
@@ -237,6 +244,8 @@ beforeEach(() => {
   markProviderDispatched.mockReset();
   markProviderDispatched.mockResolvedValue(undefined);
   charactersGetById.mockReset();
+  assertInferenceCredentialActive.mockReset();
+  assertInferenceCredentialActive.mockResolvedValue(undefined);
   requireGenerativeRouteCaller.mockReset();
   requireUserOrApiKeyWithOrg.mockReset();
 
@@ -334,8 +343,34 @@ describe("Agent A2A billing", () => {
     expect(streamText).not.toHaveBeenCalled();
     expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(2);
     for (const [, options] of requireGenerativeRouteCaller.mock.calls) {
-      expect(options).toMatchObject({ deferStrongCredentialCheck: false });
+      expect(options).toMatchObject({ deferStrongCredentialCheck: true });
     }
+    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(2);
+    expect(assertInferenceCredentialActive).toHaveBeenCalledWith(
+      ORG_ID,
+      inferenceCredential,
+    );
+  });
+
+  test("checks the deferred credential once when JSON parsing terminates before any resource or provider work", async () => {
+    const response = await app.request("/agents/agent-1/a2a", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{not-json",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: -32700, message: "Parse error" },
+    });
+    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
+    expect(assertInferenceCredentialActive).toHaveBeenCalledWith(
+      ORG_ID,
+      inferenceCredential,
+    );
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
   });
 
   test("standing denial precedes agent lookup and preserves its safe reason", async () => {
@@ -376,6 +411,7 @@ describe("Agent A2A billing", () => {
     expect(admitOrganizationInference).toHaveBeenCalledWith(
       expect.objectContaining({ credential: inferenceCredential }),
     );
+    expect(assertInferenceCredentialActive).not.toHaveBeenCalled();
     expect(reconcile).toHaveBeenCalledTimes(1);
     expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
     expect(recordCreatorEarnings).toHaveBeenCalledWith(

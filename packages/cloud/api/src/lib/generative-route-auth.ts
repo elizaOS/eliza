@@ -147,8 +147,38 @@ export function resolveInferenceCredentialAdmissionDenial(
   error: unknown,
   logContext?: { route: string; traceId?: string },
 ): InferenceAuthStandingDenial | null {
-  if (!(error instanceof InferenceCredentialRevokedError)) return null;
-  const reason = inferenceCredentialRevocationReason(error.reason);
+  let credentialError = error;
+  if (
+    error instanceof Error &&
+    error.name === "SuppressedError" &&
+    "error" in error &&
+    error.error instanceof InferenceCredentialRevokedError
+  ) {
+    credentialError = error.error;
+    const suppressed = "suppressed" in error ? error.suppressed : undefined;
+    const suppressedError =
+      suppressed instanceof Error
+        ? {
+            name: suppressed.name,
+            ...(suppressed instanceof ApiError
+              ? { code: suppressed.code, status: suppressed.status }
+              : {}),
+          }
+        : { name: typeof suppressed };
+    logger.error(
+      "[InferenceAuth] deferred revocation suppressed an earlier route failure",
+      {
+        route: logContext?.route ?? "unavailable",
+        traceId: logContext?.traceId ?? "unavailable",
+        credentialReason: error.error.reason,
+        suppressedError,
+      },
+    );
+  }
+  if (!(credentialError instanceof InferenceCredentialRevokedError)) {
+    return null;
+  }
+  const reason = inferenceCredentialRevocationReason(credentialError.reason);
   return resolveInferenceAuthStandingDenial(
     {
       kind: "rejected",
@@ -262,8 +292,14 @@ export async function requireGenerativeKnownIdentity(
   };
 }
 
-export function asGenerativeCacheApiError(error: unknown): ApiError | null {
-  const admissionDenial = resolveInferenceCredentialAdmissionDenial(error);
+export function asGenerativeCacheApiError(
+  error: unknown,
+  logContext?: { route: string; traceId?: string },
+): ApiError | null {
+  const admissionDenial = resolveInferenceCredentialAdmissionDenial(
+    error,
+    logContext,
+  );
   if (admissionDenial) {
     return new ApiError(
       admissionDenial.status,
