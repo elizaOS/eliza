@@ -54,6 +54,22 @@ mock.module("./inference-credential-revocation", () => ({
   isInferenceStrongRevocationEnabled: () =>
     process.env.INFERENCE_STRONG_REVOCATION_ENABLED === "true",
   InferenceCredentialRevokedError: class InferenceCredentialRevokedError extends Error {},
+  inferenceCredentialRevocationReason: (reason: string) => {
+    switch (reason) {
+      case "organization_disabled":
+        return "organization_inactive";
+      case "subject_account_disabled":
+        return "account_inactive";
+      case "subject_membership_disabled":
+        return "membership_missing";
+      case "subject_moderation_disabled":
+        return "moderation_blocked";
+      case "credential_revoked":
+        return "credential_inactive";
+      default:
+        return "credential_invalid";
+    }
+  },
   assertInferenceCredentialActive: async () => {
     revocationBoundaryCalls++;
   },

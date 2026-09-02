@@ -44,6 +44,12 @@ type WalletSignupResult =
       isNewAccount: true;
       initialCreditsGranted: true;
       initialFreeCreditsUsd: typeof SIGNUP_CREDIT_POLICY.automaticGrantUsd;
+    }
+  | {
+      user: UserWithOrganization;
+      isNewAccount: true;
+      initialCreditsGranted: false;
+      initialFreeCreditsUsd: 0;
     };
 
 /**
@@ -77,7 +83,7 @@ async function createOrFindWalletOrg(params: {
   tx: DbTransaction;
   slug: string;
   name: string;
-}): Promise<Organization> {
+}): Promise<{ organization: Organization; initialCreditsGranted: boolean }> {
   const [created] = await params.tx
     .insert(organizations)
     .values({
@@ -91,7 +97,13 @@ async function createOrFindWalletOrg(params: {
   if (!org) {
     throw new Error("Organization creation failed and could not find existing org");
   }
-  return org;
+  return {
+    organization: org,
+    // A conflict can mean a concurrent creator won with the canonical opening
+    // balance. Report the balance the adopted organization actually carries;
+    // legacy zero-dollar orphan rows must not be presented as credited.
+    initialCreditsGranted: Number(org.credit_balance) === SIGNUP_CREDIT_POLICY.automaticGrantUsd,
+  };
 }
 
 async function findEvmUserForWrite(
@@ -183,7 +195,7 @@ export async function findOrCreateUserByWalletAddress(
         };
       }
 
-      const org = await createOrFindWalletOrg({
+      const { organization: org, initialCreditsGranted } = await createOrFindWalletOrg({
         tx,
         slug,
         name: `Wallet ${address.slice(0, 6)}...${address.slice(-4)}`,
@@ -219,12 +231,19 @@ export async function findOrCreateUserByWalletAddress(
       }
 
       const user: UserWithOrganization = { ...created, organization: org };
-      return {
-        user,
-        isNewAccount: true,
-        initialCreditsGranted: true,
-        initialFreeCreditsUsd: SIGNUP_CREDIT_POLICY.automaticGrantUsd,
-      };
+      return initialCreditsGranted
+        ? {
+            user,
+            isNewAccount: true,
+            initialCreditsGranted: true,
+            initialFreeCreditsUsd: SIGNUP_CREDIT_POLICY.automaticGrantUsd,
+          }
+        : {
+            user,
+            isNewAccount: true,
+            initialCreditsGranted: false,
+            initialFreeCreditsUsd: 0,
+          };
     });
   } catch (e) {
     // error-policy:J3 unique-violation race recovery — the losing concurrent
@@ -279,7 +298,7 @@ export async function findOrCreateSolanaUserByWalletAddress(
         };
       }
 
-      const org = await createOrFindWalletOrg({
+      const { organization: org, initialCreditsGranted } = await createOrFindWalletOrg({
         tx,
         slug,
         name: `Solana Wallet ${address.slice(0, 6)}...${address.slice(-4)}`,
@@ -312,12 +331,19 @@ export async function findOrCreateSolanaUserByWalletAddress(
       }
 
       const user: UserWithOrganization = { ...created, organization: org };
-      return {
-        user,
-        isNewAccount: true,
-        initialCreditsGranted: true,
-        initialFreeCreditsUsd: SIGNUP_CREDIT_POLICY.automaticGrantUsd,
-      };
+      return initialCreditsGranted
+        ? {
+            user,
+            isNewAccount: true,
+            initialCreditsGranted: true,
+            initialFreeCreditsUsd: SIGNUP_CREDIT_POLICY.automaticGrantUsd,
+          }
+        : {
+            user,
+            isNewAccount: true,
+            initialCreditsGranted: false,
+            initialFreeCreditsUsd: 0,
+          };
     });
   } catch (e) {
     // error-policy:J3 unique-violation race recovery — the losing concurrent
