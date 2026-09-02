@@ -1242,12 +1242,17 @@ jobs:
             raw="$(sudo headscale preauthkeys list --output json 2>/dev/null)"
             summary="$(
               jq -c '
+                def epoch:
+                  if type == "object" then (.seconds // 0 | tonumber)
+                  elif type == "string" then
+                    (sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601? // 0)
+                  else 0
+                  end;
                 [
                   .[]
                   | select((((.aclTags // .acl_tags // []) | index("tag:agent")) != null))
                   | select(
-                      ((.createdAt // .created_at // "") | fromdateiso8601? // 0)
-                        >= (now - 14400)
+                      ((.createdAt // .created_at // null) | epoch) >= (now - 14400)
                     )
                 ] as $keys
                 | {
@@ -1258,7 +1263,7 @@ jobs:
                     expired: ([
                       $keys[]
                       | select(
-                          ((.expiration // "") | fromdateiso8601? // 0) < now
+                          ((.expiration // null) | epoch) < now
                         )
                     ] | length)
                   }
