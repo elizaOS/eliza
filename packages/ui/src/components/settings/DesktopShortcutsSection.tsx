@@ -1,7 +1,6 @@
 /**
  * Native Shortcuts module for the canonical Settings registry. Surfaces global
- * hotkeys (with an in-place keystroke recorder and conflict detection), mouse
- * shortcut configuration, and the long-recording cancel confirmation threshold.
+ * hotkeys with an in-place keystroke recorder and conflict detection.
  *
  * The shortcut definitions mirror the accelerator strings used by the Electrobun
  * application menu (`app-core/platforms/electrobun/src/application-menu.ts`).
@@ -10,23 +9,18 @@
  * `ChatHotkeySettingsGroup.syncChatOverlayShortcut`.
  */
 
-import { AlertTriangle, Keyboard, Mouse, RotateCcw } from "lucide-react";
+import { ElizaError } from "@elizaos/core";
+import { AlertTriangle, Keyboard, RotateCcw } from "lucide-react";
 import * as React from "react";
-import { invokeDesktopBridgeRequest } from "../../../../bridge";
-import { cn } from "../../../../lib/utils";
+import { invokeDesktopBridgeRequest } from "../../bridge";
+import { cn } from "../../lib/utils";
 import {
   DEFAULT_PUSH_TO_TALK_ACCELERATOR,
   getPushToTalkAccelerator,
   setPushToTalkAccelerator,
-} from "../../../../state/push-to-talk-hotkey";
-import { Button } from "../../../ui/button";
-import {
-  CloudRow,
-  CloudSelectRow,
-  CloudSwitchRow,
-  SettingsGroup,
-  SettingsStack,
-} from "../cloud-settings-primitives";
+} from "../../state/push-to-talk-hotkey";
+import { SettingsActionButton } from "./settings-agent-rows";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 /** Internal canonical combo form: lowercase modifier names + key, joined by `+`. */
 type Combo = string;
@@ -134,10 +128,16 @@ async function syncShortcut(id: string, combo: Combo): Promise<void> {
     ipcChannel: "desktop:registerShortcut",
     params: { id, accelerator },
   });
-  if (result?.success === false) {
-    throw new Error(
-      `The operating system rejected ${accelerator}. Choose a different shortcut.`,
-    );
+  if (result?.success !== true) {
+    const message = result
+      ? `The operating system rejected ${accelerator}. Choose a different shortcut.`
+      : `The desktop app did not register ${accelerator}. Restart Eliza and try again.`;
+    throw new ElizaError(message, {
+      code: result
+        ? "DESKTOP_SHORTCUT_REJECTED"
+        : "DESKTOP_SHORTCUT_METHOD_UNAVAILABLE",
+      context: { id, accelerator },
+    });
   }
 }
 
@@ -153,27 +153,7 @@ const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
   },
 ];
 
-const CLICK_ACTION_OPTIONS = [
-  { value: "toggle-recording", label: "Toggle recording" },
-  { value: "push-to-talk", label: "Push to talk" },
-  { value: "open-eliza", label: "Open Eliza" },
-  { value: "none", label: "None" },
-];
-
-const HOLD_ACTION_OPTIONS = [
-  { value: "push-to-talk", label: "Push to talk" },
-  { value: "toggle-recording", label: "Toggle recording" },
-  { value: "none", label: "None" },
-];
-
-const THRESHOLD_OPTIONS = [
-  { value: "10", label: "10 seconds" },
-  { value: "20", label: "20 seconds" },
-  { value: "30", label: "30 seconds" },
-  { value: "60", label: "60 seconds" },
-];
-
-export function ShortcutsSection() {
+export function DesktopShortcutsSection() {
   const [shortcuts, setShortcuts] = React.useState<ShortcutBinding[]>(() =>
     DEFAULT_SHORTCUTS.map((shortcut) =>
       shortcut.id === "push-to-talk"
@@ -193,15 +173,7 @@ export function ShortcutsSection() {
   const [shortcutError, setShortcutError] = React.useState<string | null>(null);
   const [shortcutMutationPending, setShortcutMutationPending] =
     React.useState(false);
-
-  // Mouse shortcut config — local state; desktop RPC for mouse buttons is new.
-  const [mouseEnabled, setMouseEnabled] = React.useState(false);
-  const [clickAction, setClickAction] = React.useState("toggle-recording");
-  const [holdAction, setHoldAction] = React.useState("push-to-talk");
-
-  // Long-recording cancel confirmation — persisted to the app store when wired.
-  const [confirmCancel, setConfirmCancel] = React.useState(true);
-  const [threshold, setThreshold] = React.useState("30");
+  const mutationInFlight = React.useRef(false);
 
   const findConflict = React.useCallback(
     (id: string, combo: Combo): ShortcutBinding | undefined =>
@@ -231,6 +203,8 @@ export function ShortcutsSection() {
 
   const commitCombo = React.useCallback(
     async (id: string, combo: Combo) => {
+      if (mutationInFlight.current) return;
+      mutationInFlight.current = true;
       setShortcutMutationPending(true);
       const previousCombo = shortcuts.find(
         (shortcut) => shortcut.id === id,
@@ -248,15 +222,26 @@ export function ShortcutsSection() {
                 await syncShortcut(id, previousCombo);
               } catch (rollbackError) {
                 // error-policy:J2 rollback failure rethrows with both causes.
-                throw new Error(
-                  `The shortcut changed but could not be saved or restored. Restart Eliza to restore the saved shortcut. ${String(rollbackError)}`,
-                  { cause: persistenceError },
+                throw new ElizaError(
+                  "The shortcut changed but could not be saved or restored. Restart Eliza to restore the saved shortcut.",
+                  {
+                    code: "DESKTOP_SHORTCUT_PERSISTENCE_AND_ROLLBACK_FAILED",
+                    cause: new AggregateError([
+                      persistenceError,
+                      rollbackError,
+                    ]),
+                    context: { id, combo, previousCombo },
+                  },
                 );
               }
             }
-            throw new Error(
+            throw new ElizaError(
               "The shortcut could not be saved, so the previous shortcut was restored.",
-              { cause: persistenceError },
+              {
+                code: "DESKTOP_SHORTCUT_PERSISTENCE_FAILED",
+                cause: persistenceError,
+                context: { id, combo, previousCombo },
+              },
             );
           }
         }
@@ -272,6 +257,7 @@ export function ShortcutsSection() {
           error instanceof Error ? error.message : String(error),
         );
       } finally {
+        mutationInFlight.current = false;
         setShortcutMutationPending(false);
       }
     },
@@ -293,6 +279,8 @@ export function ShortcutsSection() {
       const current = shortcuts.find((shortcut) => shortcut.id === id);
       const conflictDef = DEFAULT_SHORTCUTS.find((s) => s.id === conflictId);
       if (!current || !conflictDef) return;
+      if (mutationInFlight.current) return;
+      mutationInFlight.current = true;
       setShortcutMutationPending(true);
       try {
         await syncShortcut(id, combo);
@@ -321,6 +309,7 @@ export function ShortcutsSection() {
           error instanceof Error ? error.message : String(error),
         );
       } finally {
+        mutationInFlight.current = false;
         setShortcutMutationPending(false);
       }
     },
@@ -354,148 +343,107 @@ export function ShortcutsSection() {
           const isPending = pending?.id === shortcut.id;
           const conflictForThis = isPending ? conflict : undefined;
           return (
-            <CloudRow
+            <SettingsRow
               key={shortcut.id}
               label={shortcut.label}
               description={
                 isRecording ? "Press keys… (Esc to cancel)" : undefined
               }
-            >
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "min-w-[3.5rem] rounded-sm border border-border bg-surface px-2 py-1 text-center font-mono text-xs tabular-nums text-foreground",
-                      isRecording && "border-accent/60 text-muted-foreground",
-                    )}
-                  >
-                    {isRecording ? "…" : formatCombo(shortcut.combo)}
-                  </span>
-                  <Button
-                    type="button"
-                    variant={isRecording ? "default" : "outline"}
-                    size="sm"
-                    aria-label={`Record ${shortcut.label} shortcut`}
-                    disabled={shortcutMutationPending}
-                    onClick={() => {
-                      setPending(null);
-                      setRecordingId(isRecording ? null : shortcut.id);
-                    }}
-                  >
-                    <Keyboard className="size-4" aria-hidden />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`Reset ${shortcut.label} shortcut`}
-                    disabled={
-                      shortcut.combo === shortcut.defaultCombo ||
-                      shortcutMutationPending
-                    }
-                    onClick={() => resetCombo(shortcut.id)}
-                  >
-                    <RotateCcw className="size-4" aria-hidden />
-                  </Button>
-                </div>
-                {isPending && conflictForThis ? (
-                  <div
-                    className="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
-                    role="alert"
-                  >
-                    <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
-                    <span className="flex-1">
-                      This combo is used by “{conflictForThis.label}”. Override?
-                    </span>
-                    <Button
-                      type="button"
-                      variant="default"
-                      size="sm"
-                      onClick={() =>
-                        void overrideConflict(
-                          shortcut.id,
-                          pending.combo,
-                          conflictForThis.id,
-                        )
-                      }
-                      disabled={shortcutMutationPending}
+              control={
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "min-w-[3.5rem] rounded-sm border border-border bg-surface px-2 py-1 text-center font-mono text-xs tabular-nums text-foreground",
+                        isRecording && "border-accent/60 text-muted-foreground",
+                      )}
                     >
-                      Override
-                    </Button>
-                    <Button
+                      {isRecording ? "…" : formatCombo(shortcut.combo)}
+                    </span>
+                    <SettingsActionButton
+                      agentId={`shortcut-${shortcut.id}-record`}
+                      agentLabel={`${isRecording ? "Cancel recording" : "Record"} ${shortcut.label} shortcut`}
+                      agentDescription={`Capture a new keyboard shortcut for ${shortcut.label}.`}
+                      agentGroup="shortcuts"
+                      type="button"
+                      variant={isRecording ? "default" : "outline"}
+                      size="sm"
+                      disabled={shortcutMutationPending}
+                      onClick={() => {
+                        setPending(null);
+                        setRecordingId(isRecording ? null : shortcut.id);
+                      }}
+                    >
+                      <Keyboard className="size-4" aria-hidden />
+                    </SettingsActionButton>
+                    <SettingsActionButton
+                      agentId={`shortcut-${shortcut.id}-reset`}
+                      agentLabel={`Reset ${shortcut.label} shortcut`}
+                      agentDescription={`Restore the default keyboard shortcut for ${shortcut.label}.`}
+                      agentGroup="shortcuts"
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() => setPending(null)}
+                      disabled={
+                        shortcut.combo === shortcut.defaultCombo ||
+                        shortcutMutationPending
+                      }
+                      onClick={() => resetCombo(shortcut.id)}
                     >
-                      Cancel
-                    </Button>
+                      <RotateCcw className="size-4" aria-hidden />
+                    </SettingsActionButton>
                   </div>
-                ) : null}
-              </div>
-            </CloudRow>
+                  {isPending && conflictForThis ? (
+                    <div
+                      className="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
+                      role="alert"
+                    >
+                      <AlertTriangle
+                        className="size-3.5 shrink-0"
+                        aria-hidden
+                      />
+                      <span className="flex-1">
+                        This combo is used by “{conflictForThis.label}”.
+                        Override?
+                      </span>
+                      <SettingsActionButton
+                        agentId={`shortcut-${shortcut.id}-override`}
+                        agentLabel={`Override ${shortcut.label} shortcut conflict`}
+                        agentDescription={`Assign the captured shortcut to ${shortcut.label} and restore the conflicting action to its default.`}
+                        agentGroup="shortcuts"
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        onClick={() =>
+                          void overrideConflict(
+                            shortcut.id,
+                            pending.combo,
+                            conflictForThis.id,
+                          )
+                        }
+                        disabled={shortcutMutationPending}
+                      >
+                        Override
+                      </SettingsActionButton>
+                      <SettingsActionButton
+                        agentId={`shortcut-${shortcut.id}-cancel`}
+                        agentLabel={`Cancel ${shortcut.label} shortcut change`}
+                        agentDescription={`Discard the captured shortcut for ${shortcut.label}.`}
+                        agentGroup="shortcuts"
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setPending(null)}
+                      >
+                        Cancel
+                      </SettingsActionButton>
+                    </div>
+                  ) : null}
+                </div>
+              }
+            />
           );
         })}
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="Mouse"
-        footer="Use a mouse button as a recording trigger."
-      >
-        <CloudSwitchRow
-          agentId="shortcuts-mouse-enabled"
-          group="shortcuts"
-          icon={Mouse}
-          label="Mouse shortcut"
-          description="Enable a mouse button as a shortcut trigger."
-          checked={mouseEnabled}
-          onCheckedChange={setMouseEnabled}
-        />
-        <CloudSelectRow
-          agentId="shortcuts-mouse-click-action"
-          group="shortcuts"
-          label="Click action"
-          description="What a quick click does."
-          value={clickAction}
-          onValueChange={setClickAction}
-          options={CLICK_ACTION_OPTIONS}
-          disabled={!mouseEnabled}
-        />
-        <CloudSelectRow
-          agentId="shortcuts-mouse-hold-action"
-          group="shortcuts"
-          label="Hold action"
-          description="What a click-and-hold does."
-          value={holdAction}
-          onValueChange={setHoldAction}
-          options={HOLD_ACTION_OPTIONS}
-          disabled={!mouseEnabled}
-        />
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="Recording"
-        footer="Protect against accidentally discarding long recordings."
-      >
-        <CloudSwitchRow
-          agentId="shortcuts-confirm-cancel-long"
-          group="shortcuts"
-          label="Confirm cancel on long recordings"
-          description="Show a confirmation prompt before cancelling a recording longer than the threshold."
-          checked={confirmCancel}
-          onCheckedChange={setConfirmCancel}
-        />
-        {confirmCancel ? (
-          <CloudSelectRow
-            agentId="shortcuts-cancel-threshold"
-            group="shortcuts"
-            label="Threshold"
-            description="Recordings longer than this trigger a cancel confirmation."
-            value={threshold}
-            onValueChange={setThreshold}
-            options={THRESHOLD_OPTIONS}
-          />
-        ) : null}
       </SettingsGroup>
     </SettingsStack>
   );

@@ -34,6 +34,10 @@ import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
 import { resolvePrimingSet } from "../permissions/permission-priming";
 import { DesktopSettingsNavigation } from "../settings/DesktopSettingsNavigation";
 import { SettingsHubList } from "../settings/SettingsHubList";
+import {
+  resolveSettingsExperience,
+  settingsSectionMatchesExperience,
+} from "../settings/settings-experience";
 import { buildSettingsNavigationGroups } from "../settings/settings-navigation-model";
 import {
   resolveSettingsRuntimeCapabilities,
@@ -267,6 +271,7 @@ export function SettingsView({
   const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
   const managedCloudRuntime =
     isManagedCloudRuntime(runtimeTarget) || cloudOnlyBranding;
+  const settingsExperience = resolveSettingsExperience(managedCloudRuntime);
   const enabledKinds = useEnabledViewKinds();
   const frontendPlatform = getFrontendPlatform();
   const androidCloudBuild = isAndroidCloudBuild();
@@ -323,8 +328,9 @@ export function SettingsView({
       availableSections.filter((section) => {
         if (section.id === "wallet-rpc" && walletEnabled === false)
           return false;
-        if (section.cloudOnly && !managedCloudRuntime) return false;
-        if (section.hideOnManagedCloud && managedCloudRuntime) return false;
+        if (!settingsSectionMatchesExperience(section, settingsExperience)) {
+          return false;
+        }
         if (!isViewVisible(section, enabledKinds)) return false;
         if (section.hideOnCloud && androidCloudBuild) return false;
         return true;
@@ -333,7 +339,7 @@ export function SettingsView({
       androidCloudBuild,
       availableSections,
       enabledKinds,
-      managedCloudRuntime,
+      settingsExperience,
       walletEnabled,
     ],
   );
@@ -565,6 +571,9 @@ export function SettingsView({
       >
         <div
           data-testid="settings-shell"
+          data-settings-presentation={
+            isNativeCompactSettings ? "compact-native" : "workspace"
+          }
           className={cn(
             "flex h-full min-h-0 w-full overflow-hidden",
             isWideSettings ? "flex-row" : "flex-col",

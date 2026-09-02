@@ -96,13 +96,13 @@ const ConnectorsSection = lazy(() =>
   import("./ConnectorsSection").then((m) => ({ default: m.ConnectorsSection })),
 );
 const DesktopIntegrationSection = lazy(() =>
-  import("./cloud-panel/sections/GeneralSection").then((m) => ({
+  import("./DesktopIntegrationSection").then((m) => ({
     default: m.DesktopIntegrationSection,
   })),
 );
 const DesktopShortcutsSection = lazy(() =>
-  import("./cloud-panel/sections/ShortcutsSection").then((m) => ({
-    default: m.ShortcutsSection,
+  import("./DesktopShortcutsSection").then((m) => ({
+    default: m.DesktopShortcutsSection,
   })),
 );
 const RuntimeSettingsSection = lazy(() =>
