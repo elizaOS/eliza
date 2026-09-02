@@ -710,6 +710,7 @@ jobs:
             SELECT
               id,
               organization_id,
+              headscale_ip,
               replacement_cleanup_created_at,
               replacement_cleanup_sandbox_id IS NOT NULL AS cleanup_fence_present,
               deletion_attempt_id IS NOT NULL AS deletion_attempt_present,
@@ -778,6 +779,7 @@ jobs:
           facts AS (
             SELECT
               target.replacement_cleanup_created_at,
+              target.headscale_ip,
               target.cleanup_fence_present,
               target.deletion_attempt_present,
               target.lifecycle_job_present,
@@ -816,6 +818,7 @@ jobs:
           SELECT json_build_object(
             'targetCount', (SELECT count(*) FROM target),
             'agentId', (SELECT id FROM target),
+            'headscaleIp', (SELECT headscale_ip FROM facts),
             'cleanupFencePresent', COALESCE((SELECT cleanup_fence_present FROM facts), false),
             'deletionAttemptPresent', COALESCE((SELECT deletion_attempt_present FROM facts), false),
             'lifecycleJobPresent', COALESCE((SELECT lifecycle_job_present FROM facts), false),
@@ -834,7 +837,7 @@ jobs:
           SQL
           } | sed '/^[[:space:]]*$/d' | head -n 1)"
           jq -e '
-            keys == ["activeExclusiveJobs", "agentId", "cleanupCreatedAt", "cleanupFencePresent", "deletionAttemptPresent", "graceElapsed", "inspectableCandidatePresent", "lifecycleGenerationPresent", "lifecycleJobPresent", "olderEligibleFences", "provisionExecutionGenerationPresent", "provisionExecutionQuiescedPresent", "provisionLiveExecutionLeasePresent", "targetCount", "totalEligibleFences"] and
+            keys == ["activeExclusiveJobs", "agentId", "cleanupCreatedAt", "cleanupFencePresent", "deletionAttemptPresent", "graceElapsed", "headscaleIp", "inspectableCandidatePresent", "lifecycleGenerationPresent", "lifecycleJobPresent", "olderEligibleFences", "provisionExecutionGenerationPresent", "provisionExecutionQuiescedPresent", "provisionLiveExecutionLeasePresent", "targetCount", "totalEligibleFences"] and
             .targetCount == 1 and
             (.agentId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")) and
             (.cleanupFencePresent | type == "boolean") and
@@ -855,6 +858,7 @@ jobs:
             (.provisionExecutionQuiescedPresent | type == "boolean") and
             (.provisionLiveExecutionLeasePresent | type == "boolean") and
             (.activeExclusiveJobs | type == "number") and
+            (.headscaleIp == null or (.headscaleIp | test("^100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.([0-9]{1,3})\\.([0-9]{1,3})$"))) and
             (.olderEligibleFences | type == "number") and
             (.totalEligibleFences | type == "number")
           ' <<<"$summary" >/dev/null
@@ -862,6 +866,12 @@ jobs:
           echo "::add-mask::$agent_id"
           echo "agent_id=$agent_id" >> "$GITHUB_OUTPUT"
           unset agent_id
+          headscale_ip="$(jq -r '.headscaleIp // ""' <<<"$summary")"
+          if [ -n "$headscale_ip" ]; then
+            echo "::add-mask::$headscale_ip"
+          fi
+          echo "headscale_ip=$headscale_ip" >> "$GITHUB_OUTPUT"
+          unset headscale_ip
           echo "fence_present=$(jq -r '.cleanupFencePresent' <<<"$summary")" >> "$GITHUB_OUTPUT"
           echo "inspectable_candidate_present=$(jq -r '.inspectableCandidatePresent' <<<"$summary")" >> "$GITHUB_OUTPUT"
           echo "### Replacement cleanup reconciliation" >> "$GITHUB_STEP_SUMMARY"
@@ -881,6 +891,60 @@ jobs:
             "- older eligible fences: `" + (.olderEligibleFences | tostring) + "`\n" +
             "- total eligible fences: `" + (.totalEligibleFences | tostring) + "`"
           ' <<<"$summary" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Inspect control-plane route to exact canary peer
+        if: steps.cleanup_reconciliation.outputs.headscale_ip != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          CANARY_HEADSCALE_IP: ${{ steps.cleanup_reconciliation.outputs.headscale_ip }}
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          envs: CANARY_HEADSCALE_IP
+          script: |
+            set -euo pipefail
+            [[ "$CANARY_HEADSCALE_IP" =~ ^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || exit 1
+            status_json="$(sudo tailscale status --json 2>/dev/null || true)"
+            backend="$(jq -r '.BackendState // "unknown"' <<<"$status_json" 2>/dev/null || echo unknown)"
+            self_ip=false
+            peer_present=false
+            peer_online=false
+            if jq -e '.Self.TailscaleIPs | type == "array" and length > 0' <<<"$status_json" >/dev/null 2>&1; then
+              self_ip=true
+            fi
+            if jq -e --arg ip "$CANARY_HEADSCALE_IP" '[.Peer[]? | select((.TailscaleIPs // []) | index($ip))] | length == 1' <<<"$status_json" >/dev/null 2>&1; then
+              peer_present=true
+            fi
+            if jq -e --arg ip "$CANARY_HEADSCALE_IP" '[.Peer[]? | select(((.TailscaleIPs // []) | index($ip)) and .Online == true)] | length == 1' <<<"$status_json" >/dev/null 2>&1; then
+              peer_online=true
+            fi
+            route_device="$(ip route get "$CANARY_HEADSCALE_IP" 2>/dev/null | awk '{ for (i = 1; i <= NF; i += 1) if ($i == "dev") { print $(i + 1); exit } }')"
+            route_tailnet=false
+            [ "$route_device" = tailscale0 ] && route_tailnet=true
+            ping_reachable=false
+            if timeout --signal=TERM --kill-after=2s 12s sudo tailscale ping --timeout=5s --c=1 "$CANARY_HEADSCALE_IP" >/dev/null 2>&1; then
+              ping_reachable=true
+            fi
+            health_reachable=false
+            health_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --connect-timeout 5 --max-time 10 "http://$CANARY_HEADSCALE_IP:2138/api/health" 2>/dev/null || true)"
+            case "$health_status" in
+              200|301|302|401) health_reachable=true ;;
+            esac
+            case "$backend" in
+              Running|Starting|Stopped|NeedsLogin|NeedsMachineAuth|NoState) ;;
+              *) backend=unknown ;;
+            esac
+            echo "control_plane_tailnet_backend=$backend"
+            echo "control_plane_tailnet_self_ip=$self_ip"
+            echo "control_plane_canary_peer_present=$peer_present"
+            echo "control_plane_canary_peer_online=$peer_online"
+            echo "control_plane_canary_route_tailscale0=$route_tailnet"
+            echo "control_plane_canary_ping_reachable=$ping_reachable"
+            echo "control_plane_canary_health_reachable=$health_reachable"
+            unset status_json backend self_ip peer_present peer_online route_device route_tailnet \
+              ping_reachable health_status health_reachable CANARY_HEADSCALE_IP
 
       - name: Classify control-plane replacement cleanup failure
         if: steps.cleanup_reconciliation.outputs.fence_present == 'true'
