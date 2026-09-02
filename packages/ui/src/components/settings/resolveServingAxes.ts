@@ -46,6 +46,12 @@ export interface ActiveChatSource {
 
 export interface ServingAxesInput {
   /**
+   * Where the selected agent sits relative to this app. A remote server can
+   * truthfully report its own deployment runtime as `local`; the client must
+   * still describe that process as remote rather than "this device".
+   */
+  clientRuntime?: ServingRuntime | null;
+  /**
    * `deploymentRuntime` from `GET /api/runtime/mode`, when the snapshot has
    * resolved. This is the server's own view of the persisted
    * `deploymentTarget.runtime`, which already records hybrid as `local`
@@ -113,6 +119,7 @@ function isHybridRuntime(
  * where hybrid would be misread as hosted Cloud.
  */
 export function resolveServingRuntime({
+  clientRuntime,
   deploymentRuntime,
   startupTarget,
   firstRunRuntimeTarget,
@@ -120,10 +127,12 @@ export function resolveServingRuntime({
 }: Pick<
   ServingAxesInput,
   | "deploymentRuntime"
+  | "clientRuntime"
   | "startupTarget"
   | "firstRunRuntimeTarget"
   | "mobileRuntimeMode"
 >): ServingRuntime {
+  if (clientRuntime) return clientRuntime;
   if (deploymentRuntime) return deploymentRuntime;
   if (isHybridRuntime(mobileRuntimeMode, firstRunRuntimeTarget)) {
     return "local";

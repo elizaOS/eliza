@@ -150,9 +150,15 @@ describe("IntelligenceServingSummary", () => {
     renderAxes({ deploymentRuntime: "remote" });
 
     expect(runtimeValue()).toBe("Remote host");
+    expect(inferenceValue()).toBe("Remote host");
     expect(
       screen.getByText(
         "The agent process runs on a remote host you configured, not on Eliza Cloud.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Chat replies are computed by a model running with your remote agent.",
       ),
     ).toBeTruthy();
   });

@@ -273,10 +273,15 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               "Managed models through your Eliza Cloud account. No setup — sign in and it works.",
           })
         : describeUnsignedCloudChat(servingAxes, t, "tile")
-      : t("providerswitcher.localTileDescription", {
-          defaultValue:
-            "Runs entirely on this device with the bundled local model. Private and works offline.",
-        });
+      : servingAxes.runtime === "remote"
+        ? t("providerswitcher.remoteLocalTileDescription", {
+            defaultValue:
+              "Runs with your remote agent. Private to that host and available while it stays online.",
+          })
+        : t("providerswitcher.localTileDescription", {
+            defaultValue:
+              "Runs entirely on this device with the bundled local model. Private and works offline.",
+          });
 
   return (
     <SettingsStack>
@@ -421,14 +426,24 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                       "Speech recognition and playback use your signed-in Eliza Cloud service. This app does not download a local voice model.",
                   })
                 : realtimeVoiceConfigured
-                  ? t("providerswitcher.realtimeVoiceRowDescription", {
-                      defaultValue:
-                        "Talk is set to use Cartesia for speech recognition and playback when the configured voice gateway is available. The agent model stays on this device.",
-                    })
-                  : t("providerswitcher.voiceRowDescription", {
-                      defaultValue:
-                        "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
-                    })
+                  ? servingAxes.runtime === "remote"
+                    ? t("providerswitcher.remoteRealtimeVoiceRowDescription", {
+                        defaultValue:
+                          "Talk uses Cartesia for speech recognition and playback when the voice gateway is available. Your agent stays on the remote host.",
+                      })
+                    : t("providerswitcher.realtimeVoiceRowDescription", {
+                        defaultValue:
+                          "Talk uses Cartesia for speech recognition and playback when the configured voice gateway is available. The agent model stays on this device.",
+                      })
+                  : servingAxes.runtime === "remote"
+                    ? t("providerswitcher.remoteVoiceRowDescription", {
+                        defaultValue:
+                          "Speech uses Kokoro on your remote host — nothing to configure. Voice selection moves to your character.",
+                      })
+                    : t("providerswitcher.voiceRowDescription", {
+                        defaultValue:
+                          "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
+                      })
             }
             control={
               <span className="text-xs text-accent">

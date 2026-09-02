@@ -41,6 +41,9 @@ const getModelsConfig = vi.hoisted(() =>
   })),
 );
 const bootstrapState = vi.hoisted(() => ({ routingConfigResolved: true }));
+const persistedRuntime = vi.hoisted(() => ({
+  kind: null as "local" | "cloud" | "remote" | null,
+}));
 
 vi.mock("../../hooks/useDefaultProviderPresets", () => ({
   useDefaultProviderPresets: vi.fn(),
@@ -67,6 +70,16 @@ vi.mock("../../api", () => ({
     ),
     getModelsConfig,
   },
+}));
+vi.mock("../../state/persistence", () => ({
+  loadPersistedActiveServer: () =>
+    persistedRuntime.kind
+      ? {
+          id: `test-${persistedRuntime.kind}`,
+          kind: persistedRuntime.kind,
+          label: persistedRuntime.kind,
+        }
+      : null,
 }));
 vi.mock("../../state", () => ({
   useAppSelectorShallow: (
@@ -220,6 +233,7 @@ describe("ProviderSwitcher", () => {
     selection.visibleProviderPanelId = "__local__";
     selection.cloudRuntimeLocked = false;
     bootstrapState.routingConfigResolved = true;
+    persistedRuntime.kind = null;
   });
 
   it("states both serving axes above the intelligence tiles", async () => {
@@ -272,6 +286,21 @@ describe("ProviderSwitcher", () => {
     ).toBeTruthy();
     expect(screen.getByText("Configured")).toBeTruthy();
     expect(screen.queryByText("Kokoro (on-device)")).toBeNull();
+  });
+
+  it("keeps local-model and Cartesia copy relative to a selected remote host", async () => {
+    persistedRuntime.kind = "remote";
+    render(<ProviderSwitcher realtimeVoiceConfigured />);
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-runtime-value").textContent).toBe(
+        "Remote host",
+      );
+    });
+    expect(screen.getByText(/Runs with your remote agent/)).toBeTruthy();
+    expect(
+      screen.getByText(/Your agent stays on the remote host/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/stays on this device/)).toBeNull();
   });
 
   it("withholds provider detail panels until saved routing is resolved", async () => {

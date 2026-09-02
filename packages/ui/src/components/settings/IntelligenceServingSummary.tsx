@@ -82,6 +82,11 @@ function inferenceValue(axes: ServingAxes, t: Translate): string {
         defaultValue: "Checking…",
       });
     case "local":
+      if (axes.runtime === "remote") {
+        return t("providerswitcher.servingInferenceRemote", {
+          defaultValue: "Remote host",
+        });
+      }
       return t("providerswitcher.servingInferenceLocal", {
         defaultValue: "This device",
       });
@@ -117,6 +122,12 @@ function inferenceDescription(axes: ServingAxes, t: Translate): string {
           "Waiting for the agent to report which provider is answering chat.",
       });
     case "local":
+      if (axes.runtime === "remote") {
+        return t("providerswitcher.servingInferenceRemoteDescription", {
+          defaultValue:
+            "Chat replies are computed by a model running with your remote agent.",
+        });
+      }
       return t("providerswitcher.servingInferenceLocalDescription", {
         defaultValue: "Chat replies are computed by the on-device model.",
       });

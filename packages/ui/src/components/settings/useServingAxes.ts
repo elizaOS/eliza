@@ -20,6 +20,8 @@ import {
 } from "../../first-run/mobile-runtime-mode";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
 import { useAppSelectorShallow } from "../../state";
+import { loadPersistedActiveServer } from "../../state/persistence";
+import { subscribeRuntimeAuthoritySwitch } from "../../state/switch-runtime";
 import {
   type ActiveChatSource,
   resolveServingAxes,
@@ -47,6 +49,32 @@ function usePersistedMobileRuntimeMode(): MobileRuntimeMode | null {
   }, []);
 
   return mode;
+}
+
+/**
+ * The selected server kind is client-relative truth. In particular, a VPS
+ * reports `deploymentRuntime: local` about itself, while this app must render
+ * that same process as a remote host. Resubscribe to in-place runtime switches
+ * so Settings updates without a reload.
+ */
+function readClientRuntime(): "local" | "cloud" | "remote" | null {
+  return loadPersistedActiveServer()?.kind ?? null;
+}
+
+function useClientRuntime(): "local" | "cloud" | "remote" | null {
+  const [runtime, setRuntime] = useState<"local" | "cloud" | "remote" | null>(
+    readClientRuntime,
+  );
+
+  useEffect(
+    () =>
+      subscribeRuntimeAuthoritySwitch((phase) => {
+        if (phase === "after") setRuntime(readClientRuntime());
+      }),
+    [],
+  );
+
+  return runtime;
 }
 
 /**
@@ -130,9 +158,11 @@ export function useServingAxes(args: {
   );
   const { state: runtimeModeState } = useRuntimeMode();
   const mobileRuntimeMode = usePersistedMobileRuntimeMode();
+  const clientRuntime = useClientRuntime();
   const { activeChat, activeChatResolved } = useActiveChatSource();
 
   return resolveServingAxes({
+    clientRuntime,
     deploymentRuntime:
       runtimeModeState.phase === "ready"
         ? runtimeModeState.snapshot.deploymentRuntime

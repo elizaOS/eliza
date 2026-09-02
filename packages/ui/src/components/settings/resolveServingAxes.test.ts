@@ -173,6 +173,17 @@ describe("resolveServingAxes", () => {
     expect(axes.combination).toBe("both");
   });
 
+  it("keeps a selected remote host remote when that server calls itself local", () => {
+    const axes = resolveServingAxes({
+      ...base,
+      clientRuntime: "remote",
+      deploymentRuntime: "local",
+      startupTarget: "embedded-local",
+    });
+    expect(axes.runtime).toBe("remote");
+    expect(axes.combination).toBe("remote");
+  });
+
   it("keeps hybrid local when the server also reports a local deployment runtime", () => {
     // buildDeploymentTarget persists elizacloud-hybrid as runtime "local",
     // so the authoritative snapshot must agree with the hybrid rule below it.
