@@ -8,10 +8,26 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 
-const requireGenerativeRouteCaller = mock(async () => ({
+type CombinedCaller = {
+  user: { id: string; organization_id: string };
+  apiKeyId: string | null;
+  authSource: "combined_cache";
+  admissionSnapshot?: {
+    balance: { balanceUsd: number; balanceAt: number; balanceRevision: string };
+    rateLimits: {
+      completionsRpm: number;
+      embeddingsRpm: number;
+      standardRpm: number;
+      strictRpm: number;
+    };
+  };
+  appScopeId: string | null;
+};
+
+const requireGenerativeRouteCaller = mock(async (): Promise<CombinedCaller> => ({
   user: { id: "user-1", organization_id: "org-1" },
   apiKeyId: "key-1",
-  authSource: "combined_cache" as const,
+  authSource: "combined_cache",
   admissionSnapshot: {
     balance: { balanceUsd: 10, balanceAt: 1, balanceRevision: "1" },
     rateLimits: {
@@ -91,14 +107,24 @@ describe("paid legacy proxy combined admission adapter", () => {
     expect(response.status).toBe(200);
     expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
     expect(executeWithBody).toHaveBeenCalledTimes(1);
-    const forwarded = executeWithBody.mock.calls[0]?.[4] as {
-      auth: {
-        user: { id: string; organization_id: string };
-        apiKey?: { id: string };
-      };
-      admissionSnapshot: unknown;
-      requestId: string;
-    };
+    const forwarded = (
+      executeWithBody.mock.calls as unknown as Array<
+        [
+          unknown,
+          unknown,
+          unknown,
+          unknown,
+          {
+            auth: {
+              user: { id: string; organization_id: string };
+              apiKey?: { id: string };
+            };
+            admissionSnapshot: unknown;
+            requestId: string;
+          },
+        ]
+      >
+    )[0][4];
     expect(forwarded.auth.user).toEqual({
       id: "user-1",
       organization_id: "org-1",
