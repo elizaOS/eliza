@@ -192,6 +192,21 @@ describe("managed dedicated live-smoke workflow contract", () => {
       "steps.cleanup_reconciliation.outputs.fence_present == 'true' || steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'",
     );
 
+    const headscaleExchange = diagnostic.steps.find(
+      (step) => step.name === "Classify exact Headscale registration exchange",
+    );
+    expect(headscaleExchange?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(headscaleExchange?.env?.CANARY_AGENT_ID).toBe(
+      githubExpression("steps.cleanup_reconciliation.outputs.agent_id"),
+    );
+    expect(headscaleExchange?.with?.script).toContain("headscale.service");
+    expect(headscaleExchange?.with?.script).toContain(
+      "headscale_registration_category=",
+    );
+    expect(headscaleExchange?.with?.script).not.toContain('echo "$block"');
+
     const classifyMeshFailure = diagnostic.steps.find(
       (step) => step.name === "Classify private mesh observation failure",
     );

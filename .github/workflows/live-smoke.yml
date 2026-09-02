@@ -1158,6 +1158,77 @@ jobs:
             ' <<<"$diagnostic"
             unset diagnostic
 
+      - name: Classify exact Headscale registration exchange
+        if: steps.cleanup_reconciliation.outputs.agent_id != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          CANARY_AGENT_ID: ${{ steps.cleanup_reconciliation.outputs.agent_id }}
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          envs: CANARY_AGENT_ID
+          script: |
+            set -euo pipefail
+            [[ "$CANARY_AGENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
+            block="$(
+              sudo journalctl \
+                -u headscale.service \
+                --since '4 hours ago' \
+                -o cat \
+                --no-pager 2>/dev/null \
+                | grep -F -B 12 -A 12 "$CANARY_AGENT_ID" \
+                | tail -n 1200 \
+                || true
+            )"
+            lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
+            request_seen=false
+            preauth_registration=false
+            invalid_key=false
+            expired_key=false
+            used_key=false
+            ownership_error=false
+            timed_out=false
+            tag_rejected=false
+            [ -n "$lower" ] && request_seen=true
+            case "$lower" in *'registering node with pre-auth key'*) preauth_registration=true ;; esac
+            case "$lower" in *'invalid authkey'*|*'invalid auth key'*|*'invalid pre auth key'*) invalid_key=true ;; esac
+            case "$lower" in *'authkey expired'*|*'auth key expired'*) expired_key=true ;; esac
+            case "$lower" in *'authkey already used'*|*'auth key already used'*) used_key=true ;; esac
+            case "$lower" in *'different machine key'*|*'ownership'*) ownership_error=true ;; esac
+            case "$lower" in *'registration timed out'*) timed_out=true ;; esac
+            case "$lower" in *'requested tags invalid or not permitted'*|*'advertise-tags'*'invalid'*) tag_rejected=true ;; esac
+            if [ "$invalid_key" = true ]; then
+              category='invalid_key'
+            elif [ "$expired_key" = true ]; then
+              category='expired_key'
+            elif [ "$used_key" = true ]; then
+              category='used_key'
+            elif [ "$ownership_error" = true ]; then
+              category='ownership_error'
+            elif [ "$timed_out" = true ]; then
+              category='registration_timed_out'
+            elif [ "$tag_rejected" = true ]; then
+              category='tag_rejected'
+            elif [ "$preauth_registration" = true ]; then
+              category='preauth_registration_seen'
+            elif [ "$request_seen" = true ]; then
+              category='agent_log_seen_without_preauth_registration'
+            else
+              category='no_exact_registration_log'
+            fi
+            unset block lower CANARY_AGENT_ID
+            echo "headscale_registration_category=$category"
+            echo "headscale_registration_request_seen=$request_seen"
+            echo "headscale_preauth_registration_seen=$preauth_registration"
+            echo "headscale_invalid_key_seen=$invalid_key"
+            echo "headscale_expired_key_seen=$expired_key"
+            echo "headscale_used_key_seen=$used_key"
+            echo "headscale_ownership_error_seen=$ownership_error"
+            echo "headscale_registration_timeout_seen=$timed_out"
+            echo "headscale_tag_rejection_seen=$tag_rejected"
+
       - name: Classify exact dedicated lifecycle journal
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
