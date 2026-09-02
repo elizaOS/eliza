@@ -28,6 +28,7 @@ import {
 } from "@/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@/lib/services/content-safety";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@/lib/services/generations";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
@@ -175,6 +176,10 @@ app.post("/", async (c) => {
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: pendingResponse === undefined,
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     if (pendingResponse) return pendingResponse;
     if (!request || !definition) {
       throw new Error("Validated SFX request was not retained");
@@ -222,7 +227,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost,
         admissionSnapshot,
-        credential,
+        credential: credentialGuard.credentialForAdmission(),
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {

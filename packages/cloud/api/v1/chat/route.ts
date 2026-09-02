@@ -62,6 +62,7 @@ import {
   DEFAULT_OUTPUT_TOKENS,
   InsufficientCreditsError,
 } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@/lib/services/generations";
 import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
@@ -264,6 +265,11 @@ app.post("/", async (c) => {
     let moderationAlreadyChecked = false;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
+    let guardOrganizationId: string | undefined;
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => guardOrganizationId,
+      credential: () => admissionCredential,
+    });
 
     if (executionCtx) {
       const authResolution = await resolveInferenceAuthContext(c.req.raw, {
@@ -310,6 +316,7 @@ app.post("/", async (c) => {
           id: authResolution.ctx.userId,
           organization_id: authResolution.ctx.orgId,
         };
+        guardOrganizationId = user.organization_id ?? undefined;
         apiKey = authResolution.ctx.apiKeyId
           ? { id: authResolution.ctx.apiKeyId }
           : undefined;
@@ -617,7 +624,7 @@ app.post("/", async (c) => {
           affiliateCode,
           executionCtx,
           admissionSnapshot,
-          credential: admissionCredential,
+          credential: credentialGuard.credentialForAdmission(),
         });
         settleReservation = admission.settle;
         settleUnknownReservation = admission.settleUnknown;
@@ -925,6 +932,20 @@ app.post("/", async (c) => {
         await settleUnknownReservation?.();
       }
     });
+    const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
+      route: "chat",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    });
+    if (credentialDenial) {
+      return c.json(
+        {
+          error: credentialDenial.message,
+          code: credentialDenial.code,
+          reason: credentialDenial.reason,
+        },
+        credentialDenial.status,
+      );
+    }
     logger.error("chat-api", "Error processing chat", {
       error: error instanceof Error ? error.message : String(error),
     });

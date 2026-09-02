@@ -30,6 +30,7 @@ import {
 } from "@/lib/services/ai-pricing";
 import { getSupportedVideoModelDefinition } from "@/lib/services/ai-pricing-definitions";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -202,70 +203,78 @@ const handle: Handler<AppEnv> = async (c) => {
   }
 
   try {
-    caller = await requireGenerativeRouteCaller(c, {
-      rateLimitEndpoint: "strict",
-      deferStrongCredentialCheck: Boolean(pricedMutation),
-    });
-  } catch (error) {
-    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
-  }
-  if (pendingResponse) return pendingResponse;
-
-  if (pricedMutation) {
     try {
-      const billingContext: BillingContext = {
-        organizationId: caller.user.organization_id,
-        userId: caller.user.id,
-        apiKeyId: caller.apiKeyId,
-        model: pricedMutation.model,
-        provider: "fal",
-        billingSource: "fal",
-        requestId: `fal-proxy:${crypto.randomUUID()}`,
-        description: `fal.ai ${pricedMutation.model}`,
-      };
-      admission = await admitFlatGenerativeOperation({
-        c,
-        context: billingContext,
-        apiKeyId: caller.apiKeyId,
-        cost: pricedMutation.cost,
-        admissionSnapshot: caller.admissionSnapshot,
-        credential: caller.credential,
+      caller = await requireGenerativeRouteCaller(c, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: Boolean(pricedMutation),
       });
     } catch (error) {
-      const admissionError = asGenerativeCacheApiError(error);
-      if (admissionError) return failureResponse(c, admissionError);
-      if (error instanceof InsufficientCreditsError) {
-        return c.json(
-          {
-            error: "Insufficient credits",
-            required: error.required,
-            available: error.available,
-          },
-          402,
+      return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
+    }
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    if (pendingResponse) return pendingResponse;
+
+    if (pricedMutation) {
+      try {
+        const billingContext: BillingContext = {
+          organizationId: caller.user.organization_id,
+          userId: caller.user.id,
+          apiKeyId: caller.apiKeyId,
+          model: pricedMutation.model,
+          provider: "fal",
+          billingSource: "fal",
+          requestId: `fal-proxy:${crypto.randomUUID()}`,
+          description: `fal.ai ${pricedMutation.model}`,
+        };
+        admission = await admitFlatGenerativeOperation({
+          c,
+          context: billingContext,
+          apiKeyId: caller.apiKeyId,
+          cost: pricedMutation.cost,
+          admissionSnapshot: caller.admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
+        });
+      } catch (error) {
+        const admissionError = asGenerativeCacheApiError(error);
+        if (admissionError) return failureResponse(c, admissionError);
+        if (error instanceof InsufficientCreditsError) {
+          return c.json(
+            {
+              error: "Insufficient credits",
+              required: error.required,
+              available: error.available,
+            },
+            402,
+          );
+        }
+        throw error;
+      }
+    }
+
+    try {
+      await admission?.markProviderDispatched?.();
+      const response = await invokeFalProxy(c);
+
+      if (admission && pricedMutation) {
+        await retainFalSettlement(
+          c,
+          admission.settle(response.ok ? pricedMutation.cost.totalCost : 0),
+          response.ok ? "settle" : "release",
         );
+      }
+
+      return response;
+    } catch (error) {
+      if (admission) {
+        await retainFalSettlement(c, admission.settle(0), "release");
       }
       throw error;
     }
-  }
-
-  try {
-    await admission?.markProviderDispatched?.();
-    const response = await invokeFalProxy(c);
-
-    if (admission && pricedMutation) {
-      await retainFalSettlement(
-        c,
-        admission.settle(response.ok ? pricedMutation.cost.totalCost : 0),
-        response.ok ? "settle" : "release",
-      );
-    }
-
-    return response;
   } catch (error) {
-    if (admission) {
-      await retainFalSettlement(c, admission.settle(0), "release");
-    }
-    throw error;
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 };
 

@@ -50,6 +50,7 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { drainPcm16ToWav } from "@/lib/services/pcm16-wav";
 import { recordCustomVoiceUsage } from "@/lib/services/tts-custom-voice-usage";
@@ -257,6 +258,10 @@ async function __hono_POST(c: AppContext) {
         awaitWarmingMs: 1500,
         deferStrongCredentialCheck: willAdmit,
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     timings.authMs = Date.now() - requestStart;
     const admissionStart = Date.now();
     if (pendingResponse) return pendingResponse;
@@ -615,7 +620,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: billingCost,
         admissionSnapshot,
-        credential,
+        credential: credentialGuard.credentialForAdmission(),
         idempotencyKey: ttsIdempotencyKey ?? undefined,
       });
       reservation = admission.reservation;

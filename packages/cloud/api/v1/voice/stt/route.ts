@@ -47,6 +47,7 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
@@ -461,6 +462,9 @@ async function __hono_POST(c: AppContext) {
       multipartBodyLimit,
     );
     if (sizeCheckedRequest instanceof Response) {
+      // Intentional transport-limit exception: reject and cancel oversized
+      // multipart bytes before any authentication cache, database, billing,
+      // or provider work. Route tests assert this pre-auth resource boundary.
       return sizeCheckedRequest;
     }
     request = sizeCheckedRequest;
@@ -470,10 +474,12 @@ async function __hono_POST(c: AppContext) {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         awaitWarmingMs: 1500,
-        // Multipart content/signature validation can still stop before the
-        // paid admission below, so this route must not defer strong checking.
-        deferStrongCredentialCheck: false,
+        deferStrongCredentialCheck: true,
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;
 
@@ -594,7 +600,7 @@ async function __hono_POST(c: AppContext) {
           apiKeyId,
           cost: sttCost,
           admissionSnapshot,
-          credential,
+          credential: credentialGuard.credentialForAdmission(),
         });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
@@ -1195,7 +1201,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: sttCost,
         admissionSnapshot,
-        credential,
+        credential: credentialGuard.credentialForAdmission(),
       });
       reservation = admission.reservation;
       settleUnknown = admission.settleUnknown;

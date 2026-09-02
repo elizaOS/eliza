@@ -1,7 +1,11 @@
 /** Implements the OpenAI-compatible chat-completions boundary and its streaming accounting. */
 import { Hono } from "hono";
-import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
@@ -1247,6 +1251,10 @@ export async function handleChatCompletionsPOST(
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
     let appScopeId: string | null = null;
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user?.organization_id,
+      credential: () => admissionCredential,
+    });
 
     const deferStrongCredentialCheck =
       requestIsValid &&
@@ -1771,7 +1779,7 @@ export async function handleChatCompletionsPOST(
             affiliateCode,
             executionCtx: options.executionCtx,
             admissionSnapshot,
-            credential: admissionCredential,
+            credential: credentialGuard.credentialForAdmission(),
           });
           settleReservation = admission.settle;
           settleUnknown = admission.settleUnknown;
@@ -1808,7 +1816,7 @@ export async function handleChatCompletionsPOST(
           affiliateCode,
           executionCtx: options.executionCtx,
           admissionSnapshot,
-          credential: admissionCredential,
+          credential: credentialGuard.credentialForAdmission(),
         });
         settleReservation = admission.settle;
         settleUnknown = admission.settleUnknown;
@@ -2029,6 +2037,27 @@ export async function handleChatCompletionsPOST(
         await settleReservation?.(0);
       }
     });
+    const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
+      route: "chat_completions",
+      traceId,
+    });
+    if (credentialDenial) {
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: credentialDenial.message,
+                type: credentialDenial.type,
+                code: credentialDenial.code,
+                details: { reason: credentialDenial.reason },
+              },
+            },
+            { status: credentialDenial.status },
+          ),
+        ),
+      );
+    }
     const rawMessage = redactPromptCacheKey(
       error instanceof Error ? error.message : String(error),
       promptCacheKeyForRedaction,

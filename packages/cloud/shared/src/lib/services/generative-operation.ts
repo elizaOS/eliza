@@ -17,6 +17,8 @@ export interface GenerativeOperationContext {
   admissionSnapshot?: InferenceAdmissionSnapshot;
   /** Strong standing proof consumed by the operation's admission lease. */
   credential?: InferenceCredentialCheck;
+  /** Marks the deferred proof consumed only when paid admission begins. */
+  credentialForAdmission?: () => InferenceCredentialCheck | undefined;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
 
@@ -107,7 +109,12 @@ async function admitFlatCost(
         platformMarkup: 0,
       },
       admissionSnapshot: context.admissionSnapshot,
-      ...(context.credential ? { credential: context.credential } : {}),
+      ...(() => {
+        const credential = context.credentialForAdmission
+          ? context.credentialForAdmission()
+          : context.credential;
+        return credential ? { credential } : {};
+      })(),
       executionCtx: context.executionCtx,
     });
   } catch (error) {

@@ -16,6 +16,7 @@ import {
 import { admitAppInferenceCacheOnly } from "@/lib/services/app-inference-admission";
 import { appsService } from "@/lib/services/apps";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import {
   executeImageGeneration,
   imageGenerationRequestSchema,
@@ -48,9 +49,12 @@ export async function handleGenerateImagePOST(
     const { user, apiKeyId, admissionSnapshot, credential, appScopeId } =
       await requireGenerativeRouteCaller(c, {
         rateLimitEndpoint: "strict",
-        deferStrongCredentialCheck:
-          pendingResponse === undefined && !options.requiredAppId,
+        deferStrongCredentialCheck: pendingResponse === undefined,
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     if (pendingResponse) return pendingResponse;
     if (!requestResult.success) throw requestResult.error;
     const request = requestResult.data;
@@ -124,7 +128,7 @@ export async function handleGenerateImagePOST(
             affiliateCode: context.affiliateCode,
             executionCtx,
             admissionSnapshot,
-            credential,
+            credential: credentialGuard.credentialForAdmission(),
             metadata: {
               endpoint: "apps.generate-image",
               numImages: request.numImages,
@@ -138,7 +142,7 @@ export async function handleGenerateImagePOST(
           apiKeyId,
           cost,
           admissionSnapshot,
-          credential,
+          credential: credentialGuard.credentialForAdmission(),
         });
         return { kind: "organization" as const, admission };
       },

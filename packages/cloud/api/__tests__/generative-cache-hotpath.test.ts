@@ -16,6 +16,26 @@ const routePaths = [
 ] as const;
 
 describe("canonical generative cache-only hot path", () => {
+  test("every route that directly invokes canonical admission is reverse-inventoried behind shared auth", async () => {
+    const routeRoot = new URL("../", import.meta.url);
+    const admissionCall =
+      /\b(?:admitOrganizationInference|admitFlatGenerativeOperation|admitAppInference(?:CacheOnly)?)\s*\(/;
+    const sharedAuthOrCanonicalDelegate =
+      /\b(?:requireGenerativeRouteCaller|resolveInferenceAuthContext|handleChatCompletionsPOST|handleGenerateImagePOST)\b/;
+    const admittedRoutes: string[] = [];
+
+    for await (const routePath of new Bun.Glob("**/route.ts").scan({
+      cwd: routeRoot.pathname,
+    })) {
+      const source = await Bun.file(new URL(routePath, routeRoot)).text();
+      if (!admissionCall.test(source)) continue;
+      admittedRoutes.push(routePath);
+      expect(source, routePath).toMatch(sharedAuthOrCanonicalDelegate);
+    }
+
+    expect(admittedRoutes.length).toBeGreaterThan(0);
+  });
+
   for (const routePath of routePaths) {
     test(`${routePath} uses combined auth and flat admission`, async () => {
       const source = await Bun.file(

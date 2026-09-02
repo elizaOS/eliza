@@ -17,6 +17,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 // `mock.module` is process-global: spread the real auth module so this file's
 // partial mock (only `requireUserOrApiKeyWithOrg`) does not drop the other auth
 // exports (e.g. `requireUserOrApiKey`) for later test files in the same run.
@@ -91,6 +92,18 @@ const inferenceCredential = {
   credentialId: "key-1",
   userId: USER_ID,
 };
+const requireGenerativeRouteCaller = mock(
+  async (
+    _c?: unknown,
+    _options?: { deferStrongCredentialCheck?: boolean },
+  ) => ({
+    user: { id: USER_ID, organization_id: ORG_ID },
+    apiKeyId: null,
+    appScopeId: null,
+    authSource: "compatibility" as const,
+    credential: inferenceCredential,
+  }),
+);
 const charactersGetById = mock();
 class InsufficientCreditsError extends Error {
   constructor(
@@ -112,13 +125,7 @@ mock.module("@/lib/services/organization-inference-admission", () => ({
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   getGenerativeExecutionContext: () => undefined,
   resolveInferenceCredentialAdmissionDenial: () => null,
-  requireGenerativeRouteCaller: async () => ({
-    user: { id: USER_ID, organization_id: ORG_ID },
-    apiKeyId: null,
-    appScopeId: null,
-    authSource: "compatibility",
-    credential: inferenceCredential,
-  }),
+  requireGenerativeRouteCaller,
 }));
 
 mock.module("@/lib/services/characters/characters", () => ({
@@ -230,9 +237,17 @@ beforeEach(() => {
   markProviderDispatched.mockReset();
   markProviderDispatched.mockResolvedValue(undefined);
   charactersGetById.mockReset();
+  requireGenerativeRouteCaller.mockReset();
   requireUserOrApiKeyWithOrg.mockReset();
 
   charactersGetById.mockResolvedValue(makeCharacter());
+  requireGenerativeRouteCaller.mockResolvedValue({
+    user: { id: USER_ID, organization_id: ORG_ID },
+    apiKeyId: null,
+    appScopeId: null,
+    authSource: "compatibility",
+    credential: inferenceCredential,
+  });
   requireUserOrApiKeyWithOrg.mockResolvedValue({
     id: USER_ID,
     organization_id: ORG_ID,
@@ -317,6 +332,35 @@ describe("Agent A2A billing", () => {
     });
     expect(reserve).not.toHaveBeenCalled();
     expect(streamText).not.toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(2);
+    for (const [, options] of requireGenerativeRouteCaller.mock.calls) {
+      expect(options).toMatchObject({ deferStrongCredentialCheck: false });
+    }
+  });
+
+  test("standing denial precedes agent lookup and preserves its safe reason", async () => {
+    requireGenerativeRouteCaller.mockRejectedValueOnce(
+      new ApiError(403, "access_denied", "Organization is inactive", {
+        reason: "organization_inactive",
+      }),
+    );
+
+    const response = await app.request("/agents/agent-1/a2a", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{not-json",
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: -32002,
+        message: "Organization is inactive",
+        data: { reason: "organization_inactive" },
+      },
+      id: null,
+    });
+    expect(charactersGetById).not.toHaveBeenCalled();
   });
 
   test("settles once and records creator earnings on the happy path", async () => {

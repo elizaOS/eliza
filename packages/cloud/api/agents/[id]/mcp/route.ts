@@ -75,6 +75,54 @@ const ChatArgumentsSchema = z.object({
 
 const app = new Hono<AppEnv>();
 
+function mcpAuthError(
+  c: AppContext,
+  error: unknown,
+  id: string | number | null,
+) {
+  if (!(error instanceof ApiError)) throw error;
+  if (error.status === 429) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32005, message: "Rate limit exceeded" },
+        id,
+      },
+      429,
+    );
+  }
+  if (error.status === 503) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: {
+          code: -32004,
+          message: "Authorization cache unavailable; retry shortly",
+        },
+        id,
+      },
+      503,
+    );
+  }
+  if (error.status !== 401 && error.status !== 403) throw error;
+  const reason =
+    typeof error.details?.reason === "string"
+      ? error.details.reason
+      : undefined;
+  return c.json(
+    {
+      jsonrpc: "2.0",
+      error: {
+        code: -32002,
+        message: error.message,
+        ...(reason ? { data: { reason } } : {}),
+      },
+      id,
+    },
+    error.status,
+  );
+}
+
 function getAnthropicCotEnv(env: AppEnv["Bindings"]): AnthropicCotEnv {
   return {
     ANTHROPIC_COT_BUDGET:
@@ -149,9 +197,19 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 
 app.post("/", async (c) => {
   const id = c.req.param("id");
+  const executionCtx = getGenerativeExecutionContext(c);
+  let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
+  try {
+    caller = await requireGenerativeRouteCaller(c, {
+      compatibility: "hono",
+      rateLimitEndpoint: "standard",
+      deferStrongCredentialCheck: false,
+    });
+  } catch (error) {
+    return mcpAuthError(c, error, null);
+  }
   if (!id) return c.json({ error: "Missing id" }, 400);
 
-  const executionCtx = getGenerativeExecutionContext(c);
   const characterResolution = executionCtx
     ? await charactersService.getByIdCacheOnly(id, { executionCtx })
     : {
@@ -232,66 +290,6 @@ app.post("/", async (c) => {
   }
 
   const { method, params, id: rpcId } = validation.data;
-  const parsedToolCallForAdmission =
-    method === "tools/call"
-      ? ToolCallParamsSchema.safeParse(params ?? {})
-      : null;
-  const willAdmitInference =
-    parsedToolCallForAdmission?.success === true &&
-    parsedToolCallForAdmission.data.name === "chat" &&
-    ChatArgumentsSchema.safeParse(parsedToolCallForAdmission.data.arguments)
-      .success;
-
-  let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
-  try {
-    caller = await requireGenerativeRouteCaller(c, {
-      compatibility: "hono",
-      rateLimitEndpoint: "standard",
-      deferStrongCredentialCheck: willAdmitInference,
-    });
-  } catch (error) {
-    // error-policy:J1 the public JSON-RPC boundary preserves retryable
-    // admission failures while translating credential failures without
-    // exposing session or API-key internals.
-    if (error instanceof ApiError && error.status === 429) {
-      return c.json(
-        {
-          jsonrpc: "2.0",
-          error: { code: -32005, message: "Rate limit exceeded" },
-          id: rpcId,
-        },
-        429,
-      );
-    }
-    if (error instanceof ApiError && error.status === 503) {
-      return c.json(
-        {
-          jsonrpc: "2.0",
-          error: {
-            code: -32004,
-            message: "Authorization cache unavailable; retry shortly",
-          },
-          id: rpcId,
-        },
-        503,
-      );
-    }
-    if (
-      !(error instanceof ApiError) ||
-      (error.status !== 401 && error.status !== 403)
-    ) {
-      throw error;
-    }
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32002, message: "Authentication required" },
-        id: rpcId,
-      },
-      error.status,
-    );
-  }
-
   switch (method) {
     case "initialize":
       return c.json({

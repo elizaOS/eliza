@@ -77,6 +77,35 @@ describe("runFlatProviderOperation", () => {
     expect(admitOrganizationInference.mock.calls.at(-1)?.[0].credential).toBe(credential);
   });
 
+  test("reuses one exact deferred credential across multiple atomic admissions", async () => {
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    const credentialForAdmission = mock(() => credential);
+    const provider = mock(async () => "ok");
+    const firstCall = admitOrganizationInference.mock.calls.length;
+
+    await runFlatProviderOperation(
+      { ...context, credential, credentialForAdmission },
+      operation,
+      provider,
+    );
+    await runFlatProviderOperation(
+      { ...context, credential, credentialForAdmission },
+      { ...operation, operation: "second_generation" },
+      provider,
+    );
+
+    const admissions = admitOrganizationInference.mock.calls.slice(firstCall);
+    expect(credentialForAdmission).toHaveBeenCalledTimes(2);
+    expect(admissions).toHaveLength(2);
+    expect(admissions.map(([params]) => params.credential)).toEqual([credential, credential]);
+    expect(provider).toHaveBeenCalledTimes(2);
+    expect(events).toEqual(["admit", "mark", "settle", "admit", "mark", "settle"]);
+  });
+
   test("does not dispatch or mark when admission denies", async () => {
     admissionError = new Error("cached standing denied");
     const provider = mock(async () => "unexpected");

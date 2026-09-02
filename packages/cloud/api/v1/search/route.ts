@@ -12,6 +12,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { executeHostedGoogleSearch } from "@/lib/services/google-search";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -60,6 +61,10 @@ async function handlePOST(c: AppContext) {
       rateLimitEndpoint: "standard",
       deferStrongCredentialCheck: pendingResponse === undefined,
     });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
     if (pendingResponse) return pendingResponse;
     if (!bodyResult.success) throw bodyResult.error;
     const body = bodyResult.data;
@@ -75,7 +80,10 @@ async function handlePOST(c: AppContext) {
         endDate: body.endDate,
       },
       {
-        ...getGenerativeOperationContext(c, caller),
+        ...getGenerativeOperationContext(c, caller, {
+          credentialForAdmission: () =>
+            credentialGuard.credentialForAdmission(),
+        }),
         requestSource: "api",
       },
     );

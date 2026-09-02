@@ -34,6 +34,7 @@ import {
 } from "@/lib/providers/language-model";
 import { billUsage, InsufficientCreditsError } from "@/lib/services/ai-billing";
 import type { CreditReservation } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
@@ -103,6 +104,11 @@ app.post("/", async (c) => {
   let billed = false;
   let providerDispatched = false;
   try {
+    let guardOrganizationId: string | undefined;
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => guardOrganizationId,
+      credential: () => admissionCredential,
+    });
     const request = (await c.req
       .json()
       .catch(() => null)) as EmbeddingsRequest | null;
@@ -190,6 +196,7 @@ app.post("/", async (c) => {
         id: resolution.ctx.userId,
         organization_id: resolution.ctx.orgId,
       };
+      guardOrganizationId = user.organization_id;
       apiKeyId = resolution.ctx.apiKeyId;
       admissionSnapshot = resolution.ctx.admission;
       admissionCredential = resolution.credential;
@@ -327,7 +334,7 @@ app.post("/", async (c) => {
         affiliateCode,
         executionCtx,
         admissionSnapshot,
-        credential: admissionCredential,
+        credential: credentialGuard.credentialForAdmission(),
       });
       settleReservation = admission.settle;
       settleUnknown = admission.settleUnknown;
@@ -621,6 +628,24 @@ app.post("/", async (c) => {
       } else {
         await observedRelease;
       }
+    }
+
+    const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
+      route: "embeddings",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    });
+    if (credentialDenial) {
+      return c.json(
+        {
+          error: {
+            message: credentialDenial.message,
+            type: credentialDenial.type,
+            code: credentialDenial.code,
+            details: { reason: credentialDenial.reason },
+          },
+        },
+        credentialDenial.status,
+      );
     }
 
     logger.error("[Embeddings] Error", {

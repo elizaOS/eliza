@@ -20,6 +20,7 @@ import {
 } from "@/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@/lib/services/content-safety";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@/lib/services/generations";
 import {
   checkGenerativeProviderHealth,
@@ -181,6 +182,10 @@ app.post("/", async (c) => {
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: willAdmit,
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is an explicit invalid request.
       return c.json({ error: "Invalid JSON body" }, 400);
@@ -315,7 +320,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost,
         admissionSnapshot,
-        credential,
+        credential: credentialGuard.credentialForAdmission(),
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {

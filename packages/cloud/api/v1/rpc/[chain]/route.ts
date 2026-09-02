@@ -4,6 +4,7 @@ import {
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { createHandler } from "@/lib/services/proxy/engine";
 import {
@@ -42,6 +43,10 @@ async function __hono_POST(
     rateLimitEndpoint: "standard",
     deferStrongCredentialCheck: chainIsValid,
   });
+  await using credentialGuard = deferredCredentialAdmissionGuard({
+    organizationId: () => caller.user.organization_id,
+    credential: () => caller.credential,
+  });
   if (pendingResponse) return pendingResponse;
   if (!chainIsValid) throw new Error("Validated RPC chain was not retained");
   const config = rpcConfigForChain(normalized);
@@ -62,6 +67,7 @@ async function __hono_POST(
     },
     admissionSnapshot: caller.admissionSnapshot,
     credential: caller.credential,
+    credentialForAdmission: () => credentialGuard.credentialForAdmission(),
     executionCtx,
     requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
   });

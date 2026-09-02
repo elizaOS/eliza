@@ -21,6 +21,7 @@ import type {
   InferenceAuthRejectionReason,
 } from "@/lib/services/inference-auth-cache";
 import {
+  assertInferenceCredentialActive,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
@@ -174,6 +175,9 @@ export function getGenerativeExecutionContext(
 export function getGenerativeOperationContext(
   c: AppContext,
   caller: GenerativeRouteCaller,
+  options: {
+    credentialForAdmission?: () => InferenceCredentialCheck | undefined;
+  } = {},
 ): GenerativeOperationContext {
   return {
     organizationId: caller.user.organization_id,
@@ -182,6 +186,7 @@ export function getGenerativeOperationContext(
     requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
     admissionSnapshot: caller.admissionSnapshot,
     credential: caller.credential,
+    ...options,
     executionCtx: getGenerativeExecutionContext(c),
   };
 }
@@ -431,44 +436,57 @@ export async function requireGenerativeRouteCaller(
       id: resolution.ctx.userId,
       organization_id: resolution.ctx.orgId,
     };
-    c.set("user", user);
-    c.set("authMethod", resolution.ctx.apiKeyId ? "api_key" : "session");
-    if (resolution.ctx.apiKeyId) {
-      c.set("apiKeyId", resolution.ctx.apiKeyId);
-    }
-    if (options.rateLimitEndpoint) {
-      const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
-        await Promise.all([
-          import("@/lib/middleware/rate-limit"),
-          import("@/lib/services/inference-admission-snapshot"),
-        ]);
-      const limited = await enforceOrgRateLimit(
-        resolution.ctx.orgId,
-        options.rateLimitEndpoint,
-        {
-          // The combined decision carries the rate policy only when the hot
-          // cache is enabled. Development and integration Workers still have
-          // an execution context, but their authoritative origin decision has
-          // no snapshot and must retain the compatibility limiter path.
-          cacheOnly: Boolean(resolution.ctx.admission),
-          executionCtx,
-          config: inferenceRateLimitConfig(
-            resolution.ctx.admission,
-            options.rateLimitEndpoint,
-          ),
-        },
-      );
-      if (limited) {
-        throw new ApiError(
-          limited.status,
-          limited.status === 429
-            ? "rate_limit_exceeded"
-            : "service_unavailable",
-          limited.status === 429
-            ? "Rate limit exceeded"
-            : "Rate limiter is unavailable",
+    try {
+      c.set("user", user);
+      c.set("authMethod", resolution.ctx.apiKeyId ? "api_key" : "session");
+      if (resolution.ctx.apiKeyId) {
+        c.set("apiKeyId", resolution.ctx.apiKeyId);
+      }
+      if (options.rateLimitEndpoint) {
+        const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
+          await Promise.all([
+            import("@/lib/middleware/rate-limit"),
+            import("@/lib/services/inference-admission-snapshot"),
+          ]);
+        const limited = await enforceOrgRateLimit(
+          resolution.ctx.orgId,
+          options.rateLimitEndpoint,
+          {
+            // The combined decision carries the rate policy only when the hot
+            // cache is enabled. Development and integration Workers still have
+            // an execution context, but their authoritative origin decision has
+            // no snapshot and must retain the compatibility limiter path.
+            cacheOnly: Boolean(resolution.ctx.admission),
+            executionCtx,
+            config: inferenceRateLimitConfig(
+              resolution.ctx.admission,
+              options.rateLimitEndpoint,
+            ),
+          },
+        );
+        if (limited) {
+          throw new ApiError(
+            limited.status,
+            limited.status === 429
+              ? "rate_limit_exceeded"
+              : "service_unavailable",
+            limited.status === 429
+              ? "Rate limit exceeded"
+              : "Rate limiter is unavailable",
+          );
+        }
+      }
+    } catch (error) {
+      // A deferred credential may leave this helper only through its admission
+      // consumer. If a post-resolution boundary fails first, consume the same
+      // proof with the standalone strong check before exposing that failure.
+      if (resolution.credential) {
+        await assertInferenceCredentialActive(
+          resolution.ctx.orgId,
+          resolution.credential,
         );
       }
+      throw error;
     }
     return {
       user,

@@ -61,6 +61,7 @@ const reserveFlatUsageCredits = vi.fn();
 const admitOrganizationInference = vi.fn();
 const enforceOrgRateLimit = vi.fn();
 const inferenceRateLimitConfig = vi.fn();
+const assertInferenceCredentialActive = vi.fn();
 const loggerWarn = vi.fn();
 
 vi.mock("@/lib/api/cloud-worker-errors", () => ({ ApiError }));
@@ -72,9 +73,18 @@ vi.mock("@/lib/services/inference-auth-context", () => ({
   resolveInferenceAuthContext,
 }));
 vi.mock("@/lib/services/inference-credential-revocation", () => ({
+  assertInferenceCredentialActive,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
 }));
+vi.mock(
+  "../../../shared/src/lib/services/inference-credential-revocation",
+  () => ({
+    assertInferenceCredentialActive,
+    InferenceCredentialRevokedError,
+    inferenceCredentialRevocationReason,
+  }),
+);
 vi.mock("@/lib/auth", () => ({ requireAuthOrApiKeyWithOrg }));
 vi.mock("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
@@ -139,6 +149,53 @@ const {
   resolveInferenceCredentialAdmissionDenial,
   resolveInferenceAuthStandingDenial,
 } = await import("./generative-route-auth");
+const { deferredCredentialAdmissionGuard } = await import(
+  "../../../shared/src/lib/services/deferred-credential-admission-guard"
+);
+
+describe("deferredCredentialAdmissionGuard", () => {
+  beforeEach(() => {
+    assertInferenceCredentialActive.mockReset();
+    assertInferenceCredentialActive.mockResolvedValue(undefined);
+  });
+
+  test("performs one standalone check when a route exits before admission", async () => {
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    const guard = deferredCredentialAdmissionGuard({
+      organizationId: () => "org-1",
+      credential: () => credential,
+    });
+
+    await guard[Symbol.asyncDispose]();
+
+    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
+    expect(assertInferenceCredentialActive).toHaveBeenCalledWith(
+      "org-1",
+      credential,
+    );
+  });
+
+  test("leaves the exact credential for atomic admission without a standalone check", async () => {
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    const guard = deferredCredentialAdmissionGuard({
+      organizationId: () => "org-1",
+      credential: () => credential,
+    });
+
+    expect(guard.credentialForAdmission()).toBe(credential);
+    await guard[Symbol.asyncDispose]();
+
+    expect(assertInferenceCredentialActive).not.toHaveBeenCalled();
+  });
+});
 
 const FLAT_COST = {
   totalCost: 1.25,
@@ -763,6 +820,7 @@ describe("requireGenerativeRouteCaller", () => {
     requireUserOrApiKeyWithOrg.mockReset();
     enforceOrgRateLimit.mockReset();
     inferenceRateLimitConfig.mockReset();
+    assertInferenceCredentialActive.mockReset();
     requireAuthOrApiKeyWithOrg.mockResolvedValue({
       user: { id: "user-1", organization_id: "org-1" },
       apiKey: { id: "key-raw" },
@@ -776,6 +834,7 @@ describe("requireGenerativeRouteCaller", () => {
       windowMs: 1000,
       maxRequests: 10,
     });
+    assertInferenceCredentialActive.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -784,6 +843,7 @@ describe("requireGenerativeRouteCaller", () => {
     requireUserOrApiKeyWithOrg.mockReset();
     enforceOrgRateLimit.mockReset();
     inferenceRateLimitConfig.mockReset();
+    assertInferenceCredentialActive.mockReset();
   });
 
   test("uses raw compatibility auth when no Worker context is present", async () => {
@@ -901,6 +961,7 @@ describe("requireGenerativeRouteCaller", () => {
     });
     expect(caller.credential).toBe(credential);
     expect(operationContext.credential).toBe(credential);
+    expect(assertInferenceCredentialActive).not.toHaveBeenCalled();
   });
 
   test("keeps standalone validation when no admission consumer is declared", async () => {
@@ -979,6 +1040,35 @@ describe("requireGenerativeRouteCaller", () => {
       code: "rate_limit_exceeded",
       message: "Rate limit exceeded",
     });
+  });
+
+  test("consumes a deferred credential before returning a rate-limit failure", async () => {
+    const { c } = workerContext();
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      ...apiKeyAuthorized,
+      credential,
+    });
+    enforceOrgRateLimit.mockResolvedValueOnce(
+      new Response("slow down", { status: 429 }),
+    );
+
+    await expect(
+      requireGenerativeRouteCaller(c as never, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: true,
+      }),
+    ).rejects.toMatchObject({ status: 429, code: "rate_limit_exceeded" });
+    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
+    expect(assertInferenceCredentialActive).toHaveBeenCalledWith(
+      "org-1",
+      credential,
+    );
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
   });
 
   test("throws service_unavailable when the limiter returns a non-429 failure", async () => {

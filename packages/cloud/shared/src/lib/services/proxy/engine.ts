@@ -43,6 +43,7 @@ export interface ProxyCombinedAdmission {
   };
   admissionSnapshot?: InferenceAdmissionSnapshot;
   credential?: InferenceCredentialCheck;
+  credentialForAdmission?: () => InferenceCredentialCheck | undefined;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   requestId: string;
 }
@@ -260,7 +261,12 @@ export function createHandler(
           },
           executionCtx: combinedAdmission.executionCtx,
           admissionSnapshot: combinedAdmission.admissionSnapshot,
-          ...(combinedAdmission.credential ? { credential: combinedAdmission.credential } : {}),
+          ...(() => {
+            const credential = combinedAdmission.credentialForAdmission
+              ? combinedAdmission.credentialForAdmission()
+              : combinedAdmission.credential;
+            return credential ? { credential } : {};
+          })(),
         });
       } else {
         const reservation = await creditsService.reserve({

@@ -43,6 +43,7 @@ import {
 import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
 import { calculateVoiceCloneCostFromCatalog } from "@/lib/services/ai-pricing";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -214,6 +215,10 @@ app.post("/", async (c) => {
       deferStrongCredentialCheck:
         pendingConfigResponse === undefined && validationError === undefined,
     });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
     user = caller.user;
     apiKeyId = caller.apiKeyId;
     if (pendingConfigResponse) return pendingConfigResponse;
@@ -253,7 +258,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost: cloneCost,
         admissionSnapshot: caller.admissionSnapshot,
-        credential: caller.credential,
+        credential: credentialGuard.credentialForAdmission(),
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {

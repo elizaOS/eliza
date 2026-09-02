@@ -19,6 +19,7 @@ import {
   extractHostedPage,
   logHostedBrowserFailure,
 } from "@/lib/services/browser-tools";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -64,6 +65,10 @@ app.post("/", async (c) => {
     const caller = await requireGenerativeRouteCaller(c, {
       deferStrongCredentialCheck: pendingResponse === undefined,
     });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
     if (pendingResponse) return pendingResponse;
     if (!body) throw new Error("Validated extract request was not retained");
     const { user } = caller;
@@ -73,7 +78,9 @@ app.post("/", async (c) => {
       organizationId: user.organization_id,
       requestSource: "api",
       userId: user.id,
-      operationContext: getGenerativeOperationContext(c, caller),
+      operationContext: getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
     });
 
     return c.json(result);
