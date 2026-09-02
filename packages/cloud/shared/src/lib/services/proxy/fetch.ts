@@ -68,41 +68,49 @@ export async function retryFetch(opts: RetryFetchOptions): Promise<Response> {
     replayPolicy,
   } = opts;
   const sanitizedUrl = sanitizeUrl(url);
-  const result = await executeResponseAttempts({
-    maxAttempts: maxRetries,
-    replayPolicy,
-    retryStatuses: true,
-    retryTransport: true,
-    baseDelayMs: initialDelayMs,
-    request: () =>
-      fetch(url, {
-        ...init,
-        signal: init.signal
-          ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)])
-          : AbortSignal.timeout(timeoutMs),
-      }),
-    reportObservationError: (error) => {
-      logger.warn(`[${serviceTag}] Attempt observation failed`, {
-        error: error instanceof Error ? error.message : String(error),
-        url: sanitizedUrl,
-      });
-    },
-    observe: (observation) => {
-      logger.debug(`[${serviceTag}] Attempt`, {
-        attempt: observation.attempt,
-        url: sanitizedUrl,
-        status: observation.response?.status,
-        error:
-          observation.error instanceof Error
-            ? observation.error.message
-            : observation.error
-              ? String(observation.error)
-              : undefined,
-        retryReason: observation.retryReason,
-        retryDelayMs: observation.retryDelayMs,
-      });
-    },
-  });
+  let result: Awaited<ReturnType<typeof executeResponseAttempts>>;
+  try {
+    result = await executeResponseAttempts({
+      maxAttempts: maxRetries,
+      replayPolicy,
+      retryStatuses: true,
+      retryTransport: true,
+      baseDelayMs: initialDelayMs,
+      request: () =>
+        fetch(url, {
+          ...init,
+          signal: init.signal
+            ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)])
+            : AbortSignal.timeout(timeoutMs),
+        }),
+      reportObservationError: (error) => {
+        logger.warn(`[${serviceTag}] Attempt observation failed`, {
+          error: error instanceof Error ? error.message : String(error),
+          url: sanitizedUrl,
+        });
+      },
+      observe: (observation) => {
+        logger.debug(`[${serviceTag}] Attempt`, {
+          attempt: observation.attempt,
+          url: sanitizedUrl,
+          status: observation.response?.status,
+          error:
+            observation.error instanceof Error
+              ? observation.error.message
+              : observation.error
+                ? String(observation.error)
+                : undefined,
+          retryReason: observation.retryReason,
+          retryDelayMs: observation.retryDelayMs,
+        });
+      },
+    });
+  } catch (error) {
+    // error-policy:J1 This proxy boundary preserves the original transport error
+    // identity after the shared retry engine records it as the terminal cause.
+    if (error instanceof Error && error.cause !== undefined) throw error.cause;
+    throw error;
+  }
   if (nonRetriableStatuses.includes(result.response.status)) return result.response;
   return result.response;
 }
