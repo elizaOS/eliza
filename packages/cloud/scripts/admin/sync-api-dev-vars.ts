@@ -258,7 +258,12 @@ if (process.env.PLAYWRIGHT_TEST_AUTH === "true") {
 
   env.TEST_DATABASE_URL = testDatabaseUrl;
   env.DATABASE_URL = testDatabaseUrl;
-  env.CACHE_ENABLED = "false";
+  // Wallet-header authentication consumes an atomic replay nonce before it
+  // can reach route authorization. The local Worker therefore needs the
+  // explicit test-only memory backend; disabling cache makes every valid
+  // signed request fail closed as a misleading 401.
+  env.CACHE_ENABLED = "true";
+  env.CACHE_BACKEND = "memory";
   env.RATE_LIMIT_DISABLED = "true";
 }
 
