@@ -173,7 +173,9 @@ describe("executeResponseAttempts", () => {
       retryTransport: true,
       request,
       reportObservationError: () => undefined,
-      observe: (observation) => observations.push(observation.retryable),
+      observe: (observation) => {
+        observations.push(observation.retryable);
+      },
     });
 
     expect(result.response.status).toBe(500);
