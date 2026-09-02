@@ -82,6 +82,10 @@ const e2eEnv = {
   // the real WebSocket route correctly fails closed with HTTP 503 before the
   // binary-first middleware contract can exercise the 101 upgrade.
   MOCK_REDIS: process.env.MOCK_REDIS || "1",
+  // The local admission caches are part of the real Worker contract. Force
+  // them on with the in-memory backend so an ambient CACHE_ENABLED=false does
+  // not make provider-backed tests permanently fail before they can hydrate.
+  CACHE_ENABLED: "true",
   ...(e2eRunReceipt ? { CLOUD_E2E_RUN_RECEIPT: e2eRunReceipt } : {}),
   ELIZA_KMS_BACKEND: process.env.ELIZA_KMS_BACKEND || "memory",
   // Keep the real voice upgrade route reachable in the pinned-Workerd lane.
