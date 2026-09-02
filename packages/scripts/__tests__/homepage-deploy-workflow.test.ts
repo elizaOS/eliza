@@ -30,6 +30,7 @@ interface WorkflowStep {
   run?: string;
   uses?: string;
   with?: Record<string, string>;
+  "working-directory"?: string;
 }
 
 interface WorkflowJob {
@@ -629,11 +630,14 @@ describe("homepage deployment workflow", () => {
       CLOUDFLARE_API_TOKEN: githubExpression("secrets.CLOUDFLARE_API_TOKEN"),
       CLOUDFLARE_ACCOUNT_ID: githubExpression("secrets.CLOUDFLARE_ACCOUNT_ID"),
     });
+    expect(stagingRuntimeBinding["working-directory"]).toBe(
+      "packages/cloud/api",
+    );
     expect(stagingRuntimeBinding.run).toContain(
       "wrangler@4.116.0 secret list --env staging --format json",
     );
     expect(stagingRuntimeBinding.run).toContain(
-      "verify-worker-secret-binding-names.mjs",
+      "../scripts/verify-worker-secret-binding-names.mjs",
     );
     expect(stagingRuntimeBinding.run).toContain(
       "runtime_authority=staging-protected-receipt-and-existing-bindings",
