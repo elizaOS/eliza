@@ -10,6 +10,7 @@
 
 import {
   clearStoredStewardToken,
+  getStewardTabSessionAuthorityCoordinator,
   isStewardSessionAuthoritySuperseded,
   runStewardSessionAuthorityExclusive,
   STEWARD_NONCE_EXCHANGE_ENDPOINT,
@@ -17,6 +18,7 @@ import {
   STEWARD_SESSION_ENDPOINT,
   type StewardNonceExchangeResponse,
   StewardSessionAuthorityError,
+  type StewardSessionAuthoritySnapshot,
   StewardSessionError,
   type StewardSessionRequest,
   type StewardTelegramClaimConfirmationRequest,
@@ -128,7 +130,7 @@ export async function syncStewardSessionCookie(
         }
         if (typeof window !== "undefined") {
           markStewardServerCookieSynced(token, sessionEndpoint);
-          await writeStoredStewardToken(token);
+          await writeStoredStewardToken(token, ctx);
           ctx.noteToken(token);
           ctx.revalidate();
           window.dispatchEvent(
@@ -526,32 +528,41 @@ function isRejectedCookieSession(error: unknown): boolean {
   );
 }
 
-async function clearRejectedCookieSession(): Promise<void> {
-  // The DELETE and subsequent token removal can each fail. Retire proof before
-  // either boundary so recovery can never reuse pre-clear cookie authority.
-  invalidateStewardServerCookieSyncMarker();
-  await runStewardSessionAuthorityExclusive({
-    kind: "cookie-delete",
-    work: async (ctx) => {
-      ctx.revalidate();
-      const response = await postAuthJson(
-        STEWARD_SESSION_ENDPOINT,
-        undefined,
-        "DELETE",
-        ctx.signal,
-      );
-      ctx.revalidate();
-      if (!response.ok) {
-        const body = await readSessionError(response);
-        throw new StewardSessionError(
-          body.error || "Could not reset the expired Eliza Cloud session.",
-          response.status,
-          body.code ?? null,
+async function clearRejectedCookieSession(
+  rejected: StewardSessionAuthoritySnapshot,
+): Promise<void> {
+  try {
+    await runStewardSessionAuthorityExclusive({
+      kind: "cookie-delete",
+      expectedToken: rejected.token,
+      expectedGeneration: rejected.generation,
+      work: async (ctx) => {
+        ctx.revalidate();
+        // Retire proof only for the rejected authority, after it still owns
+        // the lock. A later login must not lose its marker to this cleanup.
+        invalidateStewardServerCookieSyncMarker();
+        const response = await postAuthJson(
+          STEWARD_SESSION_ENDPOINT,
+          undefined,
+          "DELETE",
+          ctx.signal,
         );
-      }
-      await clearStoredStewardToken();
-    },
-  });
+        ctx.revalidate();
+        if (!response.ok) {
+          const body = await readSessionError(response);
+          throw new StewardSessionError(
+            body.error || "Could not reset the expired Eliza Cloud session.",
+            response.status,
+            body.code ?? null,
+          );
+        }
+        await clearStoredStewardToken(ctx);
+      },
+    });
+  } catch (error) {
+    if (isStewardSessionAuthoritySuperseded(error)) return;
+    throw error;
+  }
 }
 
 /**
@@ -567,6 +578,7 @@ export async function recoverStewardSessionViaCookie(): Promise<{
   expiresIn?: number;
   token?: string;
 } | null> {
+  const rejected = getStewardTabSessionAuthorityCoordinator().readSnapshot();
   try {
     return await refreshStewardSessionViaCookie();
   } catch (error) {
@@ -581,7 +593,7 @@ export async function recoverStewardSessionViaCookie(): Promise<{
     return await refreshStewardSessionViaCookie();
   } catch (error) {
     if (!isRejectedCookieSession(error)) throw error;
-    await clearRejectedCookieSession();
+    await clearRejectedCookieSession(rejected);
     return null;
   }
 }

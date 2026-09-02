@@ -261,7 +261,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
                 const body = await parseStewardResponseBody(res);
                 ctx.revalidate();
                 if (body?.token) {
-                  await writeStoredStewardToken(body.token);
+                  await writeStoredStewardToken(body.token, ctx);
                   ctx.noteToken(body.token);
                   lastSyncedToken.current = body.token;
                   wasAuthenticated.current = true;

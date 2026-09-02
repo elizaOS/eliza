@@ -538,7 +538,7 @@ export async function performSsoExchange(
         kind: "callback-restore",
         work: async (ctx) => {
           ctx.revalidate();
-          await writeStoredStewardToken(token);
+          await writeStoredStewardToken(token, ctx);
           ctx.noteToken(token);
           ctx.revalidate();
           try {

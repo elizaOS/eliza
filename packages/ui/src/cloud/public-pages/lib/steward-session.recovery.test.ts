@@ -3,8 +3,18 @@
  * one rejected refresh may lose a rotation race, while two rejected refreshes
  * clear the stale server session before the user starts a new login.
  */
+// @vitest-environment jsdom
 
+import {
+  resetStewardTabSessionAuthorityCoordinatorForTests,
+  STEWARD_SESSION_ENDPOINT,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  consumeStewardServerCookieSynced,
+  markStewardServerCookieSynced,
+} from "../../lib/steward-session-cookie-sync-marker";
 import {
   recoverStewardEmailSessionViaCookie,
   recoverStewardSessionViaCookie,
@@ -215,6 +225,8 @@ describe("recoverStewardEmailSessionViaCookie", () => {
 describe("recoverStewardSessionViaCookie", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    localStorage.clear();
+    resetStewardTabSessionAuthorityCoordinatorForTests();
   });
 
   it("returns the first healthy refresh without clearing the session", async () => {
@@ -294,6 +306,40 @@ describe("recoverStewardSessionViaCookie", () => {
       "Steward upstream unavailable",
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not clear account B after rejection-A / login-B / cleanup-A", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, "token-a");
+    markStewardServerCookieSynced("token-a", STEWARD_SESSION_ENDPOINT);
+    const rejected = () =>
+      jsonResponse(
+        { error: "Refresh token rejected", code: "invalid_token" },
+        401,
+      );
+    let posts = 0;
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "DELETE") {
+          throw new Error("must not DELETE account B cookies");
+        }
+        posts += 1;
+        if (posts === 2) {
+          localStorage.setItem(STEWARD_TOKEN_KEY, "token-b");
+          markStewardServerCookieSynced("token-b", STEWARD_SESSION_ENDPOINT);
+        }
+        return rejected();
+      },
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(recoverStewardSessionViaCookie()).resolves.toBeNull();
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("token-b");
+    expect(
+      consumeStewardServerCookieSynced("token-b", STEWARD_SESSION_ENDPOINT),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE"),
+    ).toBe(false);
   });
 });
 

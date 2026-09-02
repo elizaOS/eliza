@@ -78,6 +78,14 @@ export interface StewardSessionAuthorityWorkContext {
   revalidate: () => StewardSessionAuthoritySnapshot;
   noteToken: (token: string | null) => void;
   advanceLogoutGeneration: () => string;
+  /**
+   * Nested exclusive work on the current hold. Independent callers must use
+   * the coordinator `runExclusive` so they serialize behind this callback
+   * instead of borrowing ambient async state.
+   */
+  runExclusive: <U>(
+    options: StewardSessionAuthorityRunOptions<U>,
+  ) => Promise<U>;
 }
 
 export interface StewardSessionAuthorityRunOptions<T> {
@@ -131,7 +139,25 @@ function formatGeneration(seq: number, nonce: string): string {
 
 function createFallbackLockManager(): StewardSessionAuthorityLockManager {
   let busy = false;
-  const waiters: Array<() => void> = [];
+  const waiters: Array<{ aborted: boolean; run: () => void }> = [];
+
+  const timeoutError = (): StewardSessionAuthorityError =>
+    new StewardSessionAuthorityError(
+      "Steward session authority timed out waiting for the origin lock.",
+      "STEWARD_SESSION_AUTHORITY_TIMEOUT",
+    );
+
+  const dequeueNext = (): void => {
+    while (waiters.length > 0) {
+      const next = waiters.shift();
+      if (next && !next.aborted) {
+        next.run();
+        return;
+      }
+    }
+    busy = false;
+  };
+
   return {
     request<T>(
       _name: string,
@@ -140,32 +166,42 @@ function createFallbackLockManager(): StewardSessionAuthorityLockManager {
     ): Promise<T> {
       const run = (): Promise<T> => {
         if (options.signal.aborted) {
-          return Promise.reject(
-            new StewardSessionAuthorityError(
-              "Steward session authority timed out waiting for the origin lock.",
-              "STEWARD_SESSION_AUTHORITY_TIMEOUT",
-            ),
-          );
+          dequeueNext();
+          return Promise.reject(timeoutError());
         }
         busy = true;
         try {
           return Promise.resolve(callback()).finally(() => {
-            busy = false;
-            const next = waiters.shift();
-            if (next) next();
+            dequeueNext();
           });
         } catch (cause) {
-          busy = false;
-          const next = waiters.shift();
-          if (next) next();
+          dequeueNext();
           return Promise.reject(cause);
         }
       };
       if (!busy) return run();
       return new Promise<T>((resolve, reject) => {
-        waiters.push(() => {
-          run().then(resolve, reject);
-        });
+        const entry = {
+          aborted: false,
+          run: () => {
+            options.signal.removeEventListener("abort", onAbort);
+            run().then(resolve, reject);
+          },
+        };
+        const onAbort = (): void => {
+          entry.aborted = true;
+          const index = waiters.indexOf(entry);
+          if (index >= 0) {
+            waiters.splice(index, 1);
+            reject(timeoutError());
+          }
+        };
+        if (options.signal.aborted) {
+          onAbort();
+          return;
+        }
+        options.signal.addEventListener("abort", onAbort, { once: true });
+        waiters.push(entry);
       });
     },
   };
@@ -219,7 +255,6 @@ export function createStewardTabSessionAuthorityCoordinator(
     getOriginWideLocks() ?? fallbackLocks;
   const isOriginWide = (): boolean =>
     getOriginWideLocks() !== null && getStorage() !== null;
-  let holdDepth = 0;
   const randomId = deps.randomId ?? randomGenerationNonce;
 
   const readToken = (): string | null => {
@@ -312,19 +347,6 @@ export function createStewardTabSessionAuthorityCoordinator(
         "STEWARD_SESSION_AUTHORITY_UNAVAILABLE",
       );
     }
-    const storage = getStorage();
-
-    const captured: {
-      generation: string;
-      token?: string | null;
-      requireTokenAbsent?: boolean;
-    } = {
-      generation: options.expectedGeneration ?? readGeneration(),
-      ...(options.expectedToken !== undefined
-        ? { token: options.expectedToken }
-        : {}),
-      ...(options.requireTokenAbsent ? { requireTokenAbsent: true } : {}),
-    };
 
     const workTimeoutMs = options.timeoutMs ?? timeoutMs;
     const controller = new AbortController();
@@ -332,65 +354,78 @@ export function createStewardTabSessionAuthorityCoordinator(
       controller.abort();
     }, workTimeoutMs);
 
-    const runWork = async (): Promise<T> => {
+    type CapturedExpectation = {
+      generation: string;
+      token?: string | null;
+      requireTokenAbsent?: boolean;
+    };
+
+    const adoptSnapshot = (target: CapturedExpectation): void => {
+      const snap = readSnapshot();
+      target.generation = snap.generation;
+      if (snap.token === null) {
+        target.token = null;
+        target.requireTokenAbsent = true;
+      } else {
+        target.token = snap.token;
+        delete target.requireTokenAbsent;
+      }
+    };
+
+    const runHeldWork = async <U>(
+      held: StewardSessionAuthorityRunOptions<U>,
+    ): Promise<U> => {
+      if (held.requireOriginWide && !isOriginWide()) {
+        throw new StewardSessionAuthorityError(
+          "Origin-wide Steward session authority is unavailable.",
+          "STEWARD_SESSION_AUTHORITY_UNAVAILABLE",
+        );
+      }
+      const heldCaptured: CapturedExpectation = {
+        generation: held.expectedGeneration ?? readGeneration(),
+        ...(held.expectedToken !== undefined
+          ? { token: held.expectedToken }
+          : {}),
+        ...(held.requireTokenAbsent ? { requireTokenAbsent: true } : {}),
+      };
       if (controller.signal.aborted) {
         throw new StewardSessionAuthorityError(
           "Steward session authority timed out.",
           "STEWARD_SESSION_AUTHORITY_TIMEOUT",
         );
       }
-      assertExpectation(captured);
+      assertExpectation(heldCaptured);
       const ctx: StewardSessionAuthorityWorkContext = {
-        kind: options.kind,
+        kind: held.kind,
         signal: controller.signal,
         snapshot: readSnapshot(),
-        revalidate: () => assertExpectation(captured),
+        revalidate: () => assertExpectation(heldCaptured),
         noteToken: (token) => {
-          captured.token = token;
-          if (token === null) captured.requireTokenAbsent = true;
-          else delete captured.requireTokenAbsent;
+          heldCaptured.token = token;
+          if (token === null) heldCaptured.requireTokenAbsent = true;
+          else delete heldCaptured.requireTokenAbsent;
         },
         advanceLogoutGeneration: () => {
           const next = advanceLogoutGeneration();
-          captured.generation = next;
+          heldCaptured.generation = next;
           return next;
         },
+        runExclusive: async (nested) => {
+          const result = await runHeldWork(nested);
+          adoptSnapshot(heldCaptured);
+          return result;
+        },
       };
-      const result = await options.work(ctx);
-      assertExpectation(captured);
+      const result = await held.work(ctx);
+      assertExpectation(heldCaptured);
       return result;
     };
 
     try {
-      if (holdDepth > 0) {
-        holdDepth += 1;
-        try {
-          return await runWork();
-        } finally {
-          holdDepth -= 1;
-        }
-      }
-
-      if (!storage) {
-        holdDepth += 1;
-        try {
-          return await runWork();
-        } finally {
-          holdDepth -= 1;
-        }
-      }
-
       const result = await getLocks().request(
         STEWARD_SESSION_AUTHORITY_LOCK_NAME,
         { mode: "exclusive", signal: controller.signal },
-        async () => {
-          holdDepth += 1;
-          try {
-            return await runWork();
-          } finally {
-            holdDepth -= 1;
-          }
-        },
+        async () => runHeldWork(options),
       );
       return result;
     } catch (cause) {

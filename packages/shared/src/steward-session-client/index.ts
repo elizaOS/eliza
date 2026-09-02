@@ -17,6 +17,7 @@ import {
   isStewardSessionAuthoritySuperseded,
   runStewardSessionAuthorityExclusive,
   StewardSessionAuthorityError,
+  type StewardSessionAuthorityWorkContext,
 } from "./tab-session-authority.js";
 
 // ---------------------------------------------------------------------------
@@ -426,9 +427,13 @@ async function persistStoredStewardToken(
  * host boundary succeeds. A protected-store rejection never becomes a
  * healthy-looking in-memory login that disappears on relaunch.
  */
-export async function writeStoredStewardToken(token: string): Promise<void> {
+export async function writeStoredStewardToken(
+  token: string,
+  authority?: Pick<StewardSessionAuthorityWorkContext, "runExclusive">,
+): Promise<void> {
   if (typeof window === "undefined") return;
-  await runStewardSessionAuthorityExclusive({
+  const run = authority?.runExclusive ?? runStewardSessionAuthorityExclusive;
+  await run({
     kind: "token-write",
     work: async (ctx) => {
       ctx.revalidate();
@@ -489,9 +494,12 @@ export async function replaceStoredStewardTokenIfCurrent(
  * Once the canonical removal succeeds, invalidation is published even if the
  * legacy cleanup fails; either storage failure remains observable to callers.
  */
-export async function clearStoredStewardToken(): Promise<void> {
+export async function clearStoredStewardToken(
+  authority?: Pick<StewardSessionAuthorityWorkContext, "runExclusive">,
+): Promise<void> {
   if (typeof window === "undefined") return;
-  await runStewardSessionAuthorityExclusive({
+  const run = authority?.runExclusive ?? runStewardSessionAuthorityExclusive;
+  await run({
     kind: "logout",
     work: async (ctx) => {
       ctx.revalidate();
@@ -739,11 +747,15 @@ export {
  * useful to do about a cookie that won't clear.
  */
 export {
+  getStewardTabSessionAuthorityCoordinator,
   isOriginWideStewardSessionAuthorityAvailable,
   isStewardSessionAuthoritySuperseded,
+  resetStewardTabSessionAuthorityCoordinatorForTests,
   runStewardSessionAuthorityExclusive,
   STEWARD_LOGOUT_GENERATION_KEY,
   StewardSessionAuthorityError,
+  type StewardSessionAuthoritySnapshot,
+  type StewardSessionAuthorityWorkContext,
 } from "./tab-session-authority.js";
 
 export function clearStewardSession(opts: ClearOpts = {}): void {

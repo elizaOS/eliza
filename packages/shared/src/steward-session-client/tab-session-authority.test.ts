@@ -1,7 +1,7 @@
 /** Deterministic two-context Steward tab-session authority contract. */
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { STEWARD_TOKEN_KEY } from "./index";
 import {
   createStewardTabSessionAuthorityCoordinator,
@@ -396,5 +396,188 @@ describe("two-context Steward session authority", () => {
         },
       }),
     ).resolves.toMatch(/^1:/);
+  });
+
+  it("rejects a stale op captured before logout even when the same token is restored", async () => {
+    const { storage, tabA, tabB } = twoTabs();
+    storage.setItem(STEWARD_TOKEN_KEY, "token-a");
+    const stale = tabA.readSnapshot();
+
+    await tabB.runExclusive({
+      kind: "logout",
+      expectedToken: "token-a",
+      work: async (ctx) => {
+        ctx.advanceLogoutGeneration();
+        storage.removeItem(STEWARD_TOKEN_KEY);
+        ctx.noteToken(null);
+      },
+    });
+    await tabB.runExclusive({
+      kind: "token-write",
+      work: async (ctx) => {
+        ctx.revalidate();
+        storage.setItem(STEWARD_TOKEN_KEY, "token-a");
+        ctx.noteToken("token-a");
+      },
+    });
+
+    await expect(
+      tabA.runExclusive({
+        kind: "callback-restore",
+        expectedToken: stale.token,
+        expectedGeneration: stale.generation,
+        work: async (ctx) => {
+          ctx.revalidate();
+          storage.setItem(STEWARD_TOKEN_KEY, "token-a-stale-applied");
+          ctx.noteToken("token-a-stale-applied");
+        },
+      }),
+    ).rejects.toBeInstanceOf(StewardSessionAuthorityError);
+    expect(storage.getItem(STEWARD_TOKEN_KEY)).toBe("token-a");
+  });
+
+  it("serializes independent same-realm runExclusive calls instead of reentering via ambient hold state", async () => {
+    const storage = new MemoryStorage();
+    const coordinator = createStewardTabSessionAuthorityCoordinator({
+      storage,
+      lockManager: new SerialLockManager(),
+      timeoutMs: 250,
+    });
+    const order: string[] = [];
+    let releaseFirst!: () => void;
+    const firstHold = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    const first = coordinator.runExclusive({
+      kind: "session-sync",
+      work: async () => {
+        order.push("first:start");
+        await firstHold;
+        order.push("first:end");
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const second = coordinator.runExclusive({
+      kind: "logout",
+      work: async () => {
+        order.push("second");
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(order).toEqual(["first:start"]);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(["first:start", "first:end", "second"]);
+  });
+
+  it("runs nested work through the hold helper without deadlocking fire-and-forget callers", async () => {
+    const storage = new MemoryStorage();
+    const coordinator = createStewardTabSessionAuthorityCoordinator({
+      storage,
+      lockManager: new SerialLockManager(),
+      timeoutMs: 250,
+    });
+    const order: string[] = [];
+    let releaseOuter!: () => void;
+    const outerHold = new Promise<void>((resolve) => {
+      releaseOuter = resolve;
+    });
+
+    const outer = coordinator.runExclusive({
+      kind: "session-sync",
+      work: async (ctx) => {
+        order.push("outer:start");
+        await ctx.runExclusive({
+          kind: "token-write",
+          work: async () => {
+            order.push("nested");
+          },
+        });
+        await outerHold;
+        order.push("outer:end");
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    let fireDone = false;
+    void coordinator
+      .runExclusive({
+        kind: "cookie-delete",
+        work: async () => {
+          order.push("voided");
+        },
+      })
+      .then(() => {
+        fireDone = true;
+      });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(order).toEqual(["outer:start", "nested"]);
+    expect(fireDone).toBe(false);
+    releaseOuter();
+    await outer;
+    await vi.waitFor(() => {
+      expect(fireDone).toBe(true);
+    });
+    expect(order).toEqual(["outer:start", "nested", "outer:end", "voided"]);
+  });
+});
+
+describe("fallback lock waiter drain", () => {
+  it("lets waiter C run after A holds and B expires while queued", async () => {
+    const storage = new MemoryStorage();
+    const coordinator = createStewardTabSessionAuthorityCoordinator({
+      storage,
+      lockManager: null,
+      timeoutMs: 500,
+    });
+    const order: string[] = [];
+    let releaseA!: () => void;
+    const aHold = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+
+    const a = coordinator.runExclusive({
+      kind: "session-sync",
+      timeoutMs: 1000,
+      work: async () => {
+        order.push("A:start");
+        await aHold;
+        order.push("A:end");
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const b = coordinator.runExclusive({
+      kind: "logout",
+      timeoutMs: 40,
+      work: async () => {
+        order.push("B");
+      },
+    });
+    const c = coordinator.runExclusive({
+      kind: "token-write",
+      timeoutMs: 500,
+      work: async () => {
+        order.push("C");
+      },
+    });
+
+    await expect(b).rejects.toMatchObject({
+      code: "STEWARD_SESSION_AUTHORITY_TIMEOUT",
+    });
+    expect(order).toEqual(["A:start"]);
+    releaseA();
+    await a;
+    await c;
+    expect(order).toEqual(["A:start", "A:end", "C"]);
   });
 });
