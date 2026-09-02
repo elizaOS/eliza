@@ -1440,6 +1440,10 @@ export async function handleAppsRoutes(
   // -------------------------------------------------------------------------
 
   if (method === "POST" && pathname === "/api/apps/relaunch") {
+    if (!canLaunchApps(actorRole)) {
+      error(res, "App relaunch requires OWNER or ADMIN role", 403);
+      return true;
+    }
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
     const parsed = PostRelaunchAppRequestSchema.safeParse(rawBody);
