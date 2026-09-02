@@ -363,18 +363,24 @@ pair only when it matches the protected `staging` GitHub Environment secret
 `TELEGRAM_IDENTITY_AUTHORITY_SHA256`, and requires both components to differ
 from production. The receipt is the lowercase SHA-256 of the framed bytes
 `elizaOS/eliza\0staging\0telegram-public-identity\0v1\0<ID>\0<lowercase-username>\n`.
-The entry workflow's protected Environment job reads the receipt directly; the
-reusable release uses an exact caller-secret allowlist that deliberately does
-not forward or declare it, and receives only the already-admitted public pair.
-That keeps a repository or organization secret from substituting for the
-Environment authority. A repository/organization variable may resolve the same
-committed public pair, but cannot select a different pair.
+The protected staging entry job reads the receipt directly and verifies that the
+existing Worker has both Telegram binding names before any release mutation. It
+emits only a safe staging preserve-authority result; the reusable release
+receives that result and the already-admitted public pair, never the receipt,
+bot token, or webhook secret. This keeps a repository or organization secret
+from substituting for Environment authority or crossing the reusable-workflow
+boundary. The `deploy-api` job preserves a staging binding whose GitHub source
+is blank, then verifies its name again after the atomic Worker deploy. For
+production, the already-approved `production` authorization job verifies the
+live bot token against the canonical public identity and the deploy hard-fails
+if either protected credential is blank. A repository/organization variable may
+resolve the same committed public pair, but cannot select a different pair.
 For a hosted, read-only authority proof on a ref allowed by the protected
 `staging` Environment policy, dispatch `cloud-cf-deploy.yml` with
 `environment=staging` and `telegram_authority_canary=true`. The canary rejects
 production, force, and deployed-renderer options, runs only the protected
-staging receipt preflight, and skips admission, the reusable release, every
-mutation, and certification.
+staging identity and runtime-binding preflight, and skips admission, the
+reusable release, every mutation, and certification.
 Because GitHub preserves successful job outputs during failed-job reruns, the
 migration, API deploy, Pages build, and Pages deploy jobs each repeat the bound
 attempt check as their first step; a partial rerun must be replaced with a full
@@ -382,11 +388,13 @@ rerun before stale admitted values can reach a release mutation. Cancel and
 fully rerun any in-flight release when rotating the pair or receipt. Missing,
 partial, malformed, out-of-range, receipt-mismatched, or cross-environment
 staging configuration stops the release without printing either value or the
-receipt. Production continues to ignore every GitHub Telegram input and
-derives its exact canonical identity from the checked out
+receipt. Production continues to ignore every GitHub Telegram input, derives
+its exact canonical identity from the checked out
 `packages/homepage/src/lib/contact.ts`. Implicit Vite fallback use remains
-local/direct-only; protected production explicitly selects and validates the
-canonical source constants. Pull requests are validated by
+local/direct-only; its already-approved `production` authorization job verifies
+the live runtime identity before the reusable release begins, so no second
+Environment approval is introduced. Protected production explicitly selects and
+validates the canonical source constants. Pull requests are validated by
 `pr-static-smoke.yml`; there is no credentialed or artifact-only Pages preview
 path in `cloud-cf-deploy.yml`.
 
