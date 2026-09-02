@@ -121,6 +121,19 @@ printf '%s\\n' "$@" > "$TAILSCALE_ARGS_LOG"
 exec sleep 30
 `;
 
+function tailscaleUnkillableHangFixture(daemonReady: boolean): string {
+  const status = daemonReady
+    ? '{"BackendState":"Running","TailscaleIPs":["100.64.0.1"]}'
+    : '{"BackendState":"NeedsLogin","TailscaleIPs":[]}';
+  return `#!/bin/sh
+case " $* " in
+  *" status --json "*) printf '%s\\n' '${status}'; exit 0 ;;
+esac
+trap '' TERM
+exec sleep 30
+`;
+}
+
 // The daemon still records the rejected RegisterReq in its private log. Include
 // the raw URL too so the test proves classification does not copy it into the
 // container's stderr logs.
@@ -647,6 +660,76 @@ exit 0
       await expect(
         readFile(path.join(stateDir, "authkey-expired"), "utf8"),
       ).rejects.toThrow();
+    },
+  );
+});
+
+describeIfPosix("tailscale bootstrap deadline", () => {
+  testIfLinux(
+    "both entrypoints trust daemon readiness but fail a non-ready CLI at the outer deadline",
+    async () => {
+      for (const [name, run] of [
+        ["canonical", runDockerEntrypoint],
+        ["cloud-agent", runEntrypoint],
+      ] as const) {
+        for (const daemonReady of [true, false]) {
+          const root = await mkdtemp(
+            path.join(
+              tmpdir(),
+              `${name}-${daemonReady ? "ready" : "outer-timeout"}-`,
+            ),
+          );
+          const binDir = path.join(root, "bin");
+          const stateDir = path.join(root, "state");
+          const socketPath = path.join(root, "tailscaled.sock");
+          await mkdir(binDir, { recursive: true });
+          await mkdir(stateDir, { recursive: true });
+          await writeExecutable(path.join(binDir, "id"), ID_ROOT_FIXTURE);
+          await writeExecutable(
+            path.join(binDir, "tailscaled"),
+            tailscaledFixture(socketPath),
+          );
+          await writeExecutable(
+            path.join(binDir, "tailscale"),
+            tailscaleUnkillableHangFixture(daemonReady),
+          );
+          await writeExecutable(
+            path.join(binDir, "gosu"),
+            `#!/bin/sh
+shift
+exec "$@"
+`,
+          );
+
+          const startedAt = Date.now();
+          const result = run(
+            {
+              PATH: `${binDir}:/usr/bin:/bin`,
+              TS_AUTHKEY: KEY_CI_TEST,
+              TS_UP_TIMEOUT_SECONDS: "1",
+              SANDBOX_AGENT_ID: `agent-${name}-outer-timeout`,
+              TS_STATE_DIR: stateDir,
+              TS_SOCKET: socketPath,
+              HEADSCALE_URL: "https://headscale.example.test",
+            },
+            ["/bin/sh", "-c", "printf agent-started"],
+          );
+
+          expect(Date.now() - startedAt, name).toBeLessThan(5_000);
+          if (daemonReady) {
+            expect(result, name).toMatchObject({
+              code: 0,
+              stdout: "agent-started",
+            });
+            expect(result.stderr, name).toContain(
+              "daemon reached Running with a mesh address",
+            );
+          } else {
+            expect(result, name).toMatchObject({ code: 124, stdout: "" });
+            expect(result.stderr, name).toContain("outer bootstrap deadline");
+          }
+        }
+      }
     },
   );
 });

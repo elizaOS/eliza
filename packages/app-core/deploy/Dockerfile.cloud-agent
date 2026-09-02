@@ -5,7 +5,7 @@
 
 ARG APP_PORT=2138
 ARG APP_BRIDGE_PORT=18790
-ARG TAILSCALE_VERSION=1.90.8
+ARG TAILSCALE_VERSION=1.98.3
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Builder: precompile the standalone TS entrypoint to a single JS bundle so the
