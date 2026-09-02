@@ -112,10 +112,8 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     expect(prompt.detectedText).toBe("Save\nProject settings\nDeploy now");
   });
 
-  // Token-budget guards (#9105): OCR text fused into the IMAGE_DESCRIPTION prompt
-  // is cheap vs re-describing, but must not blow the budget; service.ts clamps
-  // it to SCENE_DESCRIPTION_OCR_LINE_LIMIT (40 lines) and
-  // SCENE_DESCRIPTION_OCR_TEXT_LIMIT (2000 chars) in normalizeOcrTextForPrompt.
+  // OCR fused into the IMAGE_DESCRIPTION prompt remains complete so the model
+  // never reasons over a silently truncated view of the screen.
   function sceneWithOcr(service: VisionService, fullScreenOCR: string): void {
     Object.defineProperty(service, "lastEnhancedScene", {
       configurable: true,
@@ -134,16 +132,15 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     });
   }
 
-  it("clamps the prompt OCR to the 40-line token-budget limit", async () => {
+  it("preserves every normalized OCR line in the prompt", async () => {
     const { runtime, useModel } = createRuntime({
       imageDescriptionResult: { description: "A long list." },
     });
     const service = new VisionService(runtime);
-    // 60 distinct short lines; without the cap the prompt would carry all 60.
-    sceneWithOcr(
-      service,
-      Array.from({ length: 60 }, (_, i) => `row ${i}`).join("\n"),
+    const fullScreenOCR = Array.from({ length: 60 }, (_, i) => `row ${i}`).join(
+      "\n",
     );
+    sceneWithOcr(service, fullScreenOCR);
     const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
       imageUrl: string,
     ) => Promise<string>;
@@ -158,21 +155,18 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
       throw new Error("Vision bridge did not call the image-description model");
     }
     const prompt = JSON.parse(modelArgs.prompt) as { detectedText?: string };
-    expect(prompt.detectedText).toBeTruthy();
-    expect((prompt.detectedText ?? "").split("\n")).toHaveLength(40);
+    expect(prompt.detectedText).toBe(fullScreenOCR);
   });
 
-  it("clamps the prompt OCR to the 2000-char token-budget limit", async () => {
+  it("preserves long OCR text in the prompt", async () => {
     const { runtime, useModel } = createRuntime({
       imageDescriptionResult: { description: "A wall of text." },
     });
     const service = new VisionService(runtime);
-    // Three distinct ~1000-char lines (~3000 chars total), under the 40-line
-    // cap but well over the 2000-char cap; without the slice it would be ~3000.
-    sceneWithOcr(
-      service,
-      [0, 1, 2].map((i) => `${i} ${"x".repeat(1000)}`).join("\n"),
-    );
+    const fullScreenOCR = [0, 1, 2]
+      .map((i) => `${i} ${"x".repeat(1000)}`)
+      .join("\n");
+    sceneWithOcr(service, fullScreenOCR);
     const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
       imageUrl: string,
     ) => Promise<string>;
@@ -187,9 +181,7 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
       throw new Error("Vision bridge did not call the image-description model");
     }
     const prompt = JSON.parse(modelArgs.prompt) as { detectedText?: string };
-    expect(prompt.detectedText).toBeTruthy();
-    expect((prompt.detectedText ?? "").length).toBeLessThanOrEqual(2000);
-    expect((prompt.detectedText ?? "").length).toBeGreaterThan(1900);
+    expect(prompt.detectedText).toBe(fullScreenOCR);
   });
 
   it("falls through to detected-objects synthesis when IMAGE_DESCRIPTION returns the unhelpful sentinel", async () => {
