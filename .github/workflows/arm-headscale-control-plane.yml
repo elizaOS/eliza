@@ -204,7 +204,21 @@ jobs:
           arm_status=$?
           set -e
           if [ "$arm_status" -ne 0 ]; then
-            echo "::error::Headscale remote operation failed (category=headscale-remote-failed; exit=$arm_status; raw-output=suppressed)."
+            # The remote script's category tokens are a closed diagnostic
+            # channel. Never print its free-form stdout/stderr: those streams
+            # may contain host configuration or command diagnostics.
+            safe_category=$(
+              grep -hEo 'category=(headscale|cp-router)-[a-z0-9-]+' \
+                "$arm_stdout" "$arm_stderr" \
+                | tail -n 1 \
+                | cut -d= -f2 \
+                || true
+            )
+            case "$safe_category" in
+              headscale-*|cp-router-*) ;;
+              *) safe_category="headscale-remote-failed" ;;
+            esac
+            echo "::error::Headscale remote operation failed (category=$safe_category; exit=$arm_status; raw-output=suppressed)."
             exit "$arm_status"
           fi
 

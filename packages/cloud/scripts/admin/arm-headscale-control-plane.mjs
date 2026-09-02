@@ -1193,13 +1193,16 @@ else
   # credential. Logout is best-effort because an unreachable retired control
   # server must not prevent the forced local reauthentication below.
   sudo tailscale logout >/dev/null 2>&1 || true
-  sudo tailscale up \\
-    --force-reauth \\
-    --login-server="$LOGIN_SERVER" \\
-    --authkey="$PREAUTH_KEY" \\
-    --hostname="$CP_ROUTER_HOST" \\
-    --advertise-tags=tag:eliza-proxy \\
-    --accept-routes >/dev/null 2>&1
+  if ! sudo tailscale up \\
+      --force-reauth \\
+      --login-server="$LOGIN_SERVER" \\
+      --authkey="$PREAUTH_KEY" \\
+      --hostname="$CP_ROUTER_HOST" \\
+      --advertise-tags=tag:eliza-proxy \\
+      --accept-routes >/dev/null 2>&1; then
+    echo "CP router forced reauthentication failed (category=cp-router-reauth-failed)"
+    exit 1
+  fi
   echo "CP router enrollment completed (category=cp-router-enrolled)"
 fi
 

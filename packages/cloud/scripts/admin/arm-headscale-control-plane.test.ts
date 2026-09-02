@@ -170,6 +170,9 @@ describe("Headscale control-plane self-enrollment", () => {
     expect(retireStaleNode).toBeLessThan(tailscaleUp);
     expect(remote.match(/--force-reauth/g)).toHaveLength(1);
     expect(remote).toContain(
+      "CP router forced reauthentication failed (category=cp-router-reauth-failed)",
+    );
+    expect(remote).toContain(
       "CP router live identity and canonical control URL verified (category=cp-router-visible)",
     );
     expect(remote).toContain('.BackendState == "Running"');
@@ -307,5 +310,18 @@ describe("Headscale protected workflow contract", () => {
       "node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs",
     );
     expect(converge).not.toContain("force-reauth");
+  });
+
+  test("emits only closed remote failure categories", () => {
+    const step = namedStep(workflow, "Inspect or converge Headscale control plane");
+    const run = String(step.run ?? "");
+
+    expect(run).toContain(
+      "grep -hEo 'category=(headscale|cp-router)-[a-z0-9-]+'",
+    );
+    expect(run).toContain('safe_category="headscale-remote-failed"');
+    expect(run).toContain("raw-output=suppressed");
+    expect(run).not.toContain('cat "$arm_stdout"');
+    expect(run).not.toContain('cat "$arm_stderr"');
   });
 });
