@@ -164,4 +164,47 @@ describe("ConnectionMonitor.stop() cancels in-flight reconnect (#29941)", () => 
 
     monitor.stop();
   });
+
+  it("a monitor restarted after a cancelled reconnect is not wedged by the reconnecting flag", async () => {
+    // stop() cancelling a loop mid-provision leaves attemptReconnect() to bail
+    // via the post-await token checkpoint, which returns *without* clearing
+    // `reconnecting`. stop()'s own `reconnecting = false` is therefore the only
+    // thing that stops a restarted monitor from wedging on tick()'s
+    // `if (this.reconnecting) return` guard forever. First provision() hangs so
+    // stop() lands mid-await; the second resolves so the restarted monitor must
+    // recover normally.
+    const firstProvision = deferred<void>();
+    const client = {
+      heartbeat: vi.fn().mockResolvedValue(false),
+      provision: vi.fn().mockReturnValueOnce(firstProvision.promise).mockResolvedValue(undefined),
+    } as unknown as ConstructorParameters<typeof ConnectionMonitor>[0];
+
+    const onReconnect = vi.fn();
+    const monitor = new ConnectionMonitor(
+      client,
+      "agent-4",
+      { onDisconnect: vi.fn(), onReconnect, onStatusChange: vi.fn() },
+      HEARTBEAT_INTERVAL_MS,
+      1
+    );
+
+    // Enter attemptReconnect, park on the first (hanging) provision(), then
+    // cancel. The stale loop must abandon itself and fire no onReconnect.
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    monitor.stop();
+    firstProvision.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onReconnect).not.toHaveBeenCalled();
+
+    // Restart: the monitor must not be wedged by a stale `reconnecting` flag.
+    // The next failed heartbeat must re-enter the loop and recover on the
+    // second (resolving) provision().
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+
+    monitor.stop();
+  });
 });
