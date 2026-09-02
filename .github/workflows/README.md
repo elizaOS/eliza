@@ -363,9 +363,10 @@ pair only when it matches the protected `staging` GitHub Environment secret
 from production. The receipt is the lowercase SHA-256 of the framed bytes
 `elizaOS/eliza\0staging\0telegram-public-identity\0v1\0<ID>\0<lowercase-username>\n`.
 The reusable release uses an exact caller-secret allowlist that deliberately
-does not forward that receipt, so a repository or organization secret cannot
-substitute for the Environment authority. A repository/organization variable
-may resolve the same committed public pair, but cannot select a different pair.
+does not forward or declare that receipt: it is resolved only from the protected
+job Environment, so a repository or organization secret cannot substitute for
+the Environment authority. A repository/organization variable may resolve the
+same committed public pair, but cannot select a different pair.
 Because GitHub preserves successful job outputs during failed-job reruns, the
 migration, API deploy, Pages build, and Pages deploy jobs each repeat the bound
 attempt check as their first step; a partial rerun must be replaced with a full

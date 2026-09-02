@@ -41,9 +41,9 @@ on:
         type: string
         default: ""
     # Keep caller-scope secrets explicit. The Telegram authority receipt is
-    # declared for the reusable-workflow type contract but intentionally not
-    # forwarded by the caller, so jobs below may resolve it only from their
-    # protected GitHub Environment.
+    # intentionally absent from both this callable schema and the caller map:
+    # GitHub must resolve it from the protected job Environment below, rather
+    # than materializing an empty caller-scope secret with the same name.
     secrets:
       ANTHROPIC_API_KEY:
         required: false
@@ -140,8 +140,6 @@ on:
       STEWARD_SESSION_SECRET:
         required: false
       STEWARD_TENANT_API_KEY:
-        required: false
-      TELEGRAM_IDENTITY_AUTHORITY_SHA256:
         required: false
       TUNNEL_HOSTNAME_SIGNING_SECRET:
         required: false

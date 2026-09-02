@@ -351,7 +351,7 @@ describe("homepage deployment workflow", () => {
     });
   });
 
-  it("forwards an exact caller-secret allowlist without the Environment authority receipt", () => {
+  it("reserves the Telegram authority receipt exclusively for the protected Environment", () => {
     const release = parsedWorkflow.jobs?.release;
     const callerSecrets = release?.secrets;
     const environmentOnlySecrets = [
@@ -381,7 +381,7 @@ describe("homepage deployment workflow", () => {
       Object.keys(
         parsedReleaseWorkflow.on?.workflow_call?.secrets ?? {},
       ).sort(),
-    ).toEqual([...expectedCallerSecrets, ...environmentOnlySecrets].sort());
+    ).toEqual(expectedCallerSecrets);
     for (const name of expectedCallerSecrets) {
       expect(callerSecretMap[name], name).toBe(
         githubExpression(`secrets.${name}`),
@@ -393,9 +393,9 @@ describe("homepage deployment workflow", () => {
     }
     for (const name of environmentOnlySecrets) {
       expect(callerSecretMap).not.toHaveProperty(name);
-      expect(parsedReleaseWorkflow.on?.workflow_call?.secrets?.[name]).toEqual({
-        required: false,
-      });
+      expect(
+        parsedReleaseWorkflow.on?.workflow_call?.secrets,
+      ).not.toHaveProperty(name);
     }
   });
 
