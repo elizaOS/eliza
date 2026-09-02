@@ -355,18 +355,25 @@ Terraform domain workflow additionally requires zone-scoped DNS write and
 certificate packs. Prefer separate environment-scoped deploy and DNS/TLS
 tokens so staging automation cannot mutate production zones.
 
-The Cloud release resolves the public Telegram bot ID and username before
-database migration or API deployment. Staging consumes the complete
+The Cloud deploy entry workflow resolves the public Telegram bot ID and
+username before it invokes the reusable release, database migration, or API
+deployment. Staging consumes the complete
 `VITE_TELEGRAM_BOT_ID` / `VITE_TELEGRAM_BOT_USERNAME` configuration-variable
 pair only when it matches the protected `staging` GitHub Environment secret
 `TELEGRAM_IDENTITY_AUTHORITY_SHA256`, and requires both components to differ
 from production. The receipt is the lowercase SHA-256 of the framed bytes
 `elizaOS/eliza\0staging\0telegram-public-identity\0v1\0<ID>\0<lowercase-username>\n`.
-The reusable release uses an exact caller-secret allowlist that deliberately
-does not forward or declare that receipt: it is resolved only from the protected
-job Environment, so a repository or organization secret cannot substitute for
-the Environment authority. A repository/organization variable may resolve the
-same committed public pair, but cannot select a different pair.
+The entry workflow's protected Environment job reads the receipt directly; the
+reusable release uses an exact caller-secret allowlist that deliberately does
+not forward or declare it, and receives only the already-admitted public pair.
+That keeps a repository or organization secret from substituting for the
+Environment authority. A repository/organization variable may resolve the same
+committed public pair, but cannot select a different pair.
+For a hosted, read-only authority proof on a pull-request branch, dispatch
+`cloud-cf-deploy.yml` with `environment=staging` and
+`telegram_authority_canary=true`. The canary rejects production, force, and
+deployed-renderer options, runs only the protected staging receipt preflight,
+and skips admission, the reusable release, every mutation, and certification.
 Because GitHub preserves successful job outputs during failed-job reruns, the
 migration, API deploy, Pages build, and Pages deploy jobs each repeat the bound
 attempt check as their first step; a partial rerun must be replaced with a full

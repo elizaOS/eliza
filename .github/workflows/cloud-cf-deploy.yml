@@ -87,6 +87,11 @@ on:
         required: false
         default: false
         type: boolean
+      telegram_authority_canary:
+        description: Run only the protected staging Telegram authority preflight; no release mutation or certification
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   # #18092: admission is unique per run so two dispatches/reruns of the same
@@ -122,6 +127,110 @@ jobs:
           }
           printf 'run_attempt=%s\n' "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
 
+  resolve-telegram-environment-authority:
+    name: Resolve protected Telegram configuration authority
+    needs: [bind-telegram-release-attempt, validate-deploy-source]
+    if: ${{ always() && needs.bind-telegram-release-attempt.result == 'success' && needs.validate-deploy-source.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # A reusable workflow cannot reference an Environment-only secret unless
+    # its caller declares that same secret in workflow_call.secrets. Resolve
+    # this receipt in the entry workflow's protected Environment instead, so
+    # no repository or organization secret can substitute for it.
+    environment: staging
+    outputs:
+      telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
+      telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
+      telegram_authority_run_attempt: ${{ steps.telegram.outputs.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Validate protected Telegram public identity
+        id: telegram
+        env:
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TARGET_ENVIRONMENT: staging
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ needs.bind-telegram-release-attempt.outputs.run_attempt }}
+          ENVIRONMENT_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          ENVIRONMENT_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+          TELEGRAM_IDENTITY_AUTHORITY_SHA256: ${{ secrets.TELEGRAM_IDENTITY_AUTHORITY_SHA256 }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            printf '%s\n' "::error::$1" >&2
+            exit 1
+          }
+
+          valid_bot_id() {
+            local candidate="$1"
+            [[ "$candidate" =~ ^[1-9][0-9]{0,15}$ ]] || return 1
+            (( 10#$candidate <= 4503599627370495 ))
+          }
+
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || \
+            fail "Telegram configuration authority run attempt is missing or invalid"
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || \
+            fail "Cloud release run attempt is missing or invalid"
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || \
+            fail "Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs"
+
+          case "$TARGET_ENVIRONMENT" in
+            staging|production) ;;
+            *) fail "target_environment must be exactly staging or production" ;;
+          esac
+
+          canonical_source="packages/homepage/src/lib/contact.ts"
+          canonical_bot_id="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_ID = "([^"]+)";$/\1/p' "$canonical_source")"
+          canonical_bot_username="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_USERNAME = "([^"]+)";$/\1/p' "$canonical_source")"
+          valid_bot_id "$canonical_bot_id" || \
+            fail "The homepage canonical Telegram bot ID is missing or invalid"
+          [[ "$canonical_bot_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
+            fail "The homepage canonical Telegram username is missing or invalid"
+          canonical_bot_username_key="$(printf '%s' "$canonical_bot_username" | tr '[:upper:]' '[:lower:]')"
+          [[ "$canonical_bot_username_key" == *bot ]] || \
+            fail "The homepage canonical Telegram username must use the managed bot suffix"
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            resolved_bot_id="$canonical_bot_id"
+            resolved_bot_username="$canonical_bot_username"
+          else
+            if [ -z "$ENVIRONMENT_TELEGRAM_BOT_ID" ] || \
+              [ -z "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" ]; then
+              fail "The protected staging Telegram identity must configure the complete VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME pair"
+            fi
+            valid_bot_id "$ENVIRONMENT_TELEGRAM_BOT_ID" || \
+              fail "The protected staging VITE_TELEGRAM_BOT_ID must match the Telegram bot ID contract"
+            [[ "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
+              fail "The protected staging VITE_TELEGRAM_BOT_USERNAME must match the Telegram username contract"
+            staging_bot_username_key="$(printf '%s' "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]')"
+            [[ "$staging_bot_username_key" == *bot ]] || \
+              fail "The protected staging VITE_TELEGRAM_BOT_USERNAME must use the managed bot suffix"
+            if [ "$ENVIRONMENT_TELEGRAM_BOT_ID" = "$canonical_bot_id" ] || \
+              [ "$staging_bot_username_key" = "$canonical_bot_username_key" ]; then
+              fail "Staging Telegram configuration must use an identity fully distinct from production"
+            fi
+            [[ "$TELEGRAM_IDENTITY_AUTHORITY_SHA256" =~ ^[0-9a-f]{64}$ ]] || \
+              fail "The staging GitHub Environment must provide a valid TELEGRAM_IDENTITY_AUTHORITY_SHA256 receipt"
+            computed_identity_sha256="$(
+              printf 'elizaOS/eliza\0staging\0telegram-public-identity\0v1\0%s\0%s\n' \
+                "$ENVIRONMENT_TELEGRAM_BOT_ID" "$staging_bot_username_key" \
+                | sha256sum | cut -d ' ' -f 1
+            )"
+            [ "$computed_identity_sha256" = "$TELEGRAM_IDENTITY_AUTHORITY_SHA256" ] || \
+              fail "The staging Telegram identity does not match its protected Environment authority receipt"
+            resolved_bot_id="$ENVIRONMENT_TELEGRAM_BOT_ID"
+            resolved_bot_username="$ENVIRONMENT_TELEGRAM_BOT_USERNAME"
+          fi
+
+          printf 'bot_id=%s\n' "$resolved_bot_id" >> "$GITHUB_OUTPUT"
+          printf 'bot_username=%s\n' "$resolved_bot_username" >> "$GITHUB_OUTPUT"
+          printf 'run_attempt=%s\n' "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          printf 'Validated protected Telegram public identity policy for %s.\n' \
+            "$TARGET_ENVIRONMENT" >> "$GITHUB_STEP_SUMMARY"
+
   validate-deploy-source:
     name: Validate Canonical Deploy Source
     # A manual dispatch can select an invalid ref, so reject it before any
@@ -139,6 +248,7 @@ jobs:
           SOURCE_REF: ${{ github.ref }}
           FORCE: ${{ inputs.force == true }}
           RUN_DEPLOYED_RENDERER_STAGING: ${{ inputs.run_deployed_renderer_staging == true }}
+          TELEGRAM_AUTHORITY_CANARY: ${{ inputs.telegram_authority_canary == true }}
           PRODUCTION_BINDING_ONLY_RECOVERY: ${{ inputs.production_binding_only_recovery == true }}
           CERTIFIED_PRODUCTION_BASE_SHA: ${{ inputs.certified_production_base_sha }}
           CERTIFIED_RECOVERY_POLICY_SHA: ${{ inputs.certified_recovery_policy_sha }}
@@ -146,6 +256,27 @@ jobs:
           set -euo pipefail
 
           if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            exit 0
+          fi
+
+          if [ "$TELEGRAM_AUTHORITY_CANARY" = "true" ]; then
+            [ "$TARGET_ENVIRONMENT" = "staging" ] || {
+              echo "::error::Telegram authority canary may target only staging."
+              exit 1
+            }
+            [ "$FORCE" = "false" ] || {
+              echo "::error::Telegram authority canary forbids force."
+              exit 1
+            }
+            [ "$RUN_DEPLOYED_RENDERER_STAGING" = "false" ] || {
+              echo "::error::Telegram authority canary forbids the deployed-renderer proof."
+              exit 1
+            }
+            [ "$PRODUCTION_BINDING_ONLY_RECOVERY" = "false" ] || {
+              echo "::error::Telegram authority canary forbids production recovery."
+              exit 1
+            }
+            echo "Telegram authority canary admitted for protected staging preflight only."
             exit 0
           fi
 
@@ -205,7 +336,7 @@ jobs:
   admit-staging:
     name: Authorize and admit staging release
     needs: validate-deploy-source
-    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
+    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -263,7 +394,7 @@ jobs:
   validate-staging-certification:
     name: Validate staging certification for production tree
     needs: validate-deploy-source
-    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
+    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -610,7 +741,7 @@ jobs:
   authorize-production:
     name: Authorize production environment
     needs: [validate-deploy-source, validate-staging-certification]
-    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && github.event_name != 'pull_request' && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
+    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Approval only. This job must not share a mutation concurrency group, or
@@ -847,8 +978,8 @@ jobs:
 
   release:
     name: Mutate and verify Cloud CF release
-    needs: [bind-telegram-release-attempt, validate-deploy-source, admit-staging, validate-staging-certification, authorize-production]
-    if: ${{ always() && github.event_name != 'pull_request' && needs.bind-telegram-release-attempt.result == 'success' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.admit-staging.outputs.should_deploy == 'true') }}
+    needs: [bind-telegram-release-attempt, resolve-telegram-environment-authority, validate-deploy-source, admit-staging, validate-staging-certification, authorize-production]
+    if: ${{ always() && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && needs.bind-telegram-release-attempt.result == 'success' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.resolve-telegram-environment-authority.result == 'skipped' && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.resolve-telegram-environment-authority.result == 'success' && needs.admit-staging.outputs.should_deploy == 'true') }}
     # One critical section for migrate + API + Pages + routing proof.
     # `queue: max` is GitHub's production-deploy contract: up to 100 approved
     # releases wait instead of the default one-pending eviction. FIFO is by
@@ -860,9 +991,10 @@ jobs:
       queue: max
     uses: ./.github/workflows/cloud-cf-release.yml
     # Explicitly forward every caller-scope secret consumed by the reusable
-    # release except TELEGRAM_IDENTITY_AUTHORITY_SHA256. That receipt must come
-    # only from the protected job Environment in the called workflow; `inherit`
-    # would also admit a repository/organization secret with the same name.
+    # release except TELEGRAM_IDENTITY_AUTHORITY_SHA256. The entry workflow
+    # validates that receipt in its protected Environment job and passes only
+    # the admitted public bot identity; `inherit` could admit a repository or
+    # organization secret with the same name.
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
@@ -918,7 +1050,9 @@ jobs:
       VOICE_REALTIME_ELIZA_AUTHORIZATION: ${{ secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION }}
     with:
       target_environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
-      telegram_authority_run_attempt: ${{ needs.bind-telegram-release-attempt.outputs.run_attempt }}
+      telegram_authority_run_attempt: ${{ needs.resolve-telegram-environment-authority.result == 'success' && needs.resolve-telegram-environment-authority.outputs.telegram_authority_run_attempt || needs.bind-telegram-release-attempt.outputs.run_attempt }}
+      admitted_telegram_bot_id: ${{ needs.resolve-telegram-environment-authority.outputs.telegram_bot_id }}
+      admitted_telegram_bot_username: ${{ needs.resolve-telegram-environment-authority.outputs.telegram_bot_username }}
       force: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
       # Resolve the proof request at the entry workflow boundary. A live-ready
       # automatic release is a Develop effect reconciliation with a bound
@@ -936,7 +1070,7 @@ jobs:
     # A canonical manual staging dispatch is equally authoritative after the
     # same release and routing checks; supporting it makes intentional pinned
     # releases certifiable when develop is moving faster than hosted runners.
-    if: ${{ always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' }}
+    if: ${{ always() && inputs.telegram_authority_canary != true && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
