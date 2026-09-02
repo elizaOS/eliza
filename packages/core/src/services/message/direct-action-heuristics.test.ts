@@ -1588,9 +1588,7 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 				// Calendar mutations carry the deterministic-dispatch marker
 				// (verified user-facing text; planner alternative exceeds small
 				// context windows); other scheduled-admin owners do not.
-				...(expected === "CALENDAR"
-					? { deterministicDispatch: true }
-					: {}),
+				...(expected === "CALENDAR" ? { deterministicDispatch: true } : {}),
 			});
 		}
 	});
