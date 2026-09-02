@@ -156,7 +156,8 @@ export async function verifyArmDeployment(
   } catch (cause) {
     throw new Error(`${arm} health request failed`, { cause });
   }
-  if (!response.ok) throw new Error(`${arm} health returned HTTP ${response.status}`);
+  if (!response.ok)
+    throw new Error(`${arm} health returned HTTP ${response.status}`);
   const body = await response.json();
   if (body?.commit !== deploySha || body?.environment !== "staging") {
     throw new Error(`${arm} did not serve the exact staging commit`);
@@ -174,7 +175,8 @@ export function sanitizePlacementServiceResult(worker, payload) {
   if (payload?.success !== true) {
     throw new Error(`Cloudflare placement status failed for ${worker}`);
   }
-  const script = payload.result?.default_environment?.script ?? payload.result?.script;
+  const script =
+    payload.result?.default_environment?.script ?? payload.result?.script;
   const placement = script?.placement;
   return {
     worker,
@@ -207,9 +209,12 @@ export async function readPlacementStatus(
       },
     );
   } catch (cause) {
-    throw new Error(`Cloudflare placement status request failed for ${worker}`, {
-      cause,
-    });
+    throw new Error(
+      `Cloudflare placement status request failed for ${worker}`,
+      {
+        cause,
+      },
+    );
   }
   if (!response.ok) {
     throw new Error(
@@ -262,7 +267,9 @@ export async function readWorkerBindingContract(
       },
     );
   } catch (cause) {
-    throw new Error(`Cloudflare binding readback failed for ${worker}`, { cause });
+    throw new Error(`Cloudflare binding readback failed for ${worker}`, {
+      cause,
+    });
   }
   if (!response.ok) {
     throw new Error(
@@ -309,14 +316,32 @@ export function summarizePlacementRecords(records) {
         attempts: group.length,
         successes: successful.length,
         failures: group.length - successful.length,
-        responseHeadersMs: metric(successful, (record) => record.responseHeadersMs),
+        responseHeadersMs: metric(
+          successful,
+          (record) => record.responseHeadersMs,
+        ),
         firstTokenMs: metric(successful, (record) => record.firstTokenMs),
         totalMs: metric(successful, (record) => record.totalMs),
-        preforwardTotalMs: metric(successful, (record) => record.preforward?.total),
-        preforwardAuthMs: metric(successful, (record) => record.preforward?.auth),
-        preforwardMiddleMs: metric(successful, (record) => record.preforward?.mid),
-        preforwardReserveMs: metric(successful, (record) => record.preforward?.reserve),
-        preforwardSetupMs: metric(successful, (record) => record.preforward?.setup),
+        preforwardTotalMs: metric(
+          successful,
+          (record) => record.preforward?.total,
+        ),
+        preforwardAuthMs: metric(
+          successful,
+          (record) => record.preforward?.auth,
+        ),
+        preforwardMiddleMs: metric(
+          successful,
+          (record) => record.preforward?.mid,
+        ),
+        preforwardReserveMs: metric(
+          successful,
+          (record) => record.preforward?.reserve,
+        ),
+        preforwardSetupMs: metric(
+          successful,
+          (record) => record.preforward?.setup,
+        ),
         upstreamHeadersMs: metric(
           successful,
           (record) => record.serverTiming?.upstream_headers,
@@ -371,7 +396,11 @@ export async function runPlacementAb(
   await mkdir(options.outputDir, { recursive: true, mode: 0o700 });
 
   const arms = [
-    { arm: "smart", baseUrl: options.smartBaseUrl, worker: options.smartWorker },
+    {
+      arm: "smart",
+      baseUrl: options.smartBaseUrl,
+      worker: options.smartWorker,
+    },
     {
       arm: "control",
       baseUrl: options.controlBaseUrl,
@@ -379,7 +408,9 @@ export async function runPlacementAb(
     },
   ];
   const deployments = await Promise.all(
-    arms.map((arm) => verifyArmDeployment({ ...arm, deploySha: options.deploySha }, fetchImpl)),
+    arms.map((arm) =>
+      verifyArmDeployment({ ...arm, deploySha: options.deploySha }, fetchImpl),
+    ),
   );
   const placementBefore = await Promise.all(
     arms.map(({ worker }) =>
@@ -403,7 +434,13 @@ export async function runPlacementAb(
 
   const records = [];
   records.push(
-    ...(await runProbePair({ options, apiKey, phase: "cold", sequence: 1, fetchImpl })),
+    ...(await runProbePair({
+      options,
+      apiKey,
+      phase: "cold",
+      sequence: 1,
+      fetchImpl,
+    })),
   );
   let successfulPairs = 0;
   for (
@@ -420,7 +457,8 @@ export async function runPlacementAb(
       fetchImpl,
     });
     records.push(...pair);
-    if (pair.every((record) => record.ok && record.proofMatched)) successfulPairs++;
+    if (pair.every((record) => record.ok && record.proofMatched))
+      successfulPairs++;
   }
   await sleep(500);
   records.push(
@@ -460,7 +498,9 @@ export async function runPlacementAb(
     { mode: 0o600, flag: "wx" },
   );
   if (successfulPairs < options.successPairs) {
-    throw new Error("Placement A/B did not collect enough successful warm pairs");
+    throw new Error(
+      "Placement A/B did not collect enough successful warm pairs",
+    );
   }
   return summary;
 }

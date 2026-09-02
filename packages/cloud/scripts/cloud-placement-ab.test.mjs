@@ -93,8 +93,13 @@ test("exact-SHA arm health retains only bounded placement metadata", async () =>
   assert.equal(JSON.stringify(result).includes("not-retained"), false);
   await assert.rejects(
     verifyArmDeployment(
-      { arm: "smart", baseUrl: "https://api-staging.eliza.app", deploySha: SHA },
-      async () => Response.json({ environment: "staging", commit: "b".repeat(40) }),
+      {
+        arm: "smart",
+        baseUrl: "https://api-staging.eliza.app",
+        deploySha: SHA,
+      },
+      async () =>
+        Response.json({ environment: "staging", commit: "b".repeat(40) }),
     ),
     /exact staging commit/,
   );

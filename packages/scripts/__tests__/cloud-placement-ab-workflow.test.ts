@@ -20,7 +20,10 @@ interface Step {
 }
 
 interface Workflow {
-  on?: Record<string, { inputs?: Record<string, { required?: boolean; type?: string }> }>;
+  on?: Record<
+    string,
+    { inputs?: Record<string, { required?: boolean; type?: string }> }
+  >;
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
   jobs?: Record<
