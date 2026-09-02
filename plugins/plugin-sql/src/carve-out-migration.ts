@@ -6,12 +6,13 @@
  * completed legacy import after an owner deletes data from the new table.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 export type CarveOutSqlExecutor = (statement: string) => Promise<Array<Record<string, unknown>>>;
 
 export type CarveOutRunResult<T> =
   | { status: "completed"; value: T }
-  | { status: "already-completed" }
-  | { status: "in-progress" };
+  | { status: "already-completed" };
 
 const RECEIPT_SCHEMA = "app_eliza_migrations";
 const RECEIPT_TABLE = "carve_out_receipts";
@@ -42,6 +43,8 @@ async function ensureReceiptTable(exec: CarveOutSqlExecutor): Promise<void> {
  * A failed callback removes only its own lease, allowing the next boot to
  * retry an idempotent domain copy. A five-minute abandoned lease can be taken
  * over; the holder token prevents the stale process from completing it later.
+ * A live competing lease fails startup so no runtime can write the target
+ * tables before the owning copy completes.
  */
 export async function runCarveOutMigration<T>(
   exec: CarveOutSqlExecutor,
@@ -71,9 +74,27 @@ export async function runCarveOutMigration<T>(
     const rows = await exec(`/* carve-out:status */
       SELECT status FROM ${RECEIPT_SCHEMA}.${RECEIPT_TABLE}
        WHERE migration_key = ${literal(options.key)}`);
-    return firstValue(rows[0]) === "completed"
-      ? { status: "already-completed" }
-      : { status: "in-progress" };
+    const status = rows.length === 1 ? firstValue(rows[0]) : undefined;
+    if (status === "completed") return { status: "already-completed" };
+    if (status === "running") {
+      throw new ElizaError(
+        "Carve-out migration is already running; startup cannot continue before its data copy completes",
+        {
+          code: "CARVE_OUT_MIGRATION_IN_PROGRESS",
+          context: { migrationKey: options.key },
+          severity: "fatal",
+        }
+      );
+    }
+    throw new ElizaError("Carve-out migration receipt is unreadable", {
+      code: "CARVE_OUT_MIGRATION_RECEIPT_INVALID",
+      context: {
+        migrationKey: options.key,
+        rowCount: rows.length,
+        status,
+      },
+      severity: "fatal",
+    });
   }
 
   try {

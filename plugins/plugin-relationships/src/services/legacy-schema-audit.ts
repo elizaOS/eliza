@@ -20,16 +20,72 @@ export interface LegacyRelationshipsInventory {
 }
 
 function count(row: Record<string, unknown> | undefined, key: string): number {
-  const value = row?.[key];
-  const parsed = typeof value === "number" ? value : Number(value ?? 0);
+  if (!row || !(key in row)) {
+    throw invalidInventory("Legacy relationships row count is missing", {
+      key,
+      row,
+    });
+  }
+  const value = row[key];
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d+$/.test(value)
+        ? Number(value)
+        : Number.NaN;
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    throw new ElizaError("Legacy relationships row count is unreadable", {
-      code: "RELATIONSHIPS_LEGACY_SCHEMA_INVENTORY_INVALID",
-      context: { key, value },
-      severity: "fatal",
+    throw invalidInventory("Legacy relationships row count is unreadable", {
+      key,
+      value,
     });
   }
   return parsed;
+}
+
+function invalidInventory(
+  message: string,
+  context: Record<string, unknown>,
+): ElizaError {
+  return new ElizaError(message, {
+    code: "RELATIONSHIPS_LEGACY_SCHEMA_INVENTORY_INVALID",
+    context,
+    severity: "fatal",
+  });
+}
+
+function requireSingleRow(
+  rows: Array<Record<string, unknown>>,
+  query: "presence" | "entities-count" | "relationships-count",
+): Record<string, unknown> {
+  if (rows.length !== 1) {
+    throw invalidInventory(
+      "Legacy relationships inventory returned an unexpected row count",
+      {
+        query,
+        rowCount: rows.length,
+      },
+    );
+  }
+  return rows[0];
+}
+
+function databaseBoolean(
+  row: Record<string, unknown>,
+  key: "entities" | "relationships",
+): boolean {
+  if (!(key in row)) {
+    throw invalidInventory("Legacy relationships table presence is missing", {
+      key,
+      row,
+    });
+  }
+  const value = row[key];
+  if (value === true || value === "true") return true;
+  if (value === false || value === "false") return false;
+  throw invalidInventory("Legacy relationships table presence is unreadable", {
+    key,
+    value,
+  });
 }
 
 /** Inventory the competing schema without creating, changing, or deleting it. */
@@ -41,11 +97,9 @@ export async function inventoryLegacyRelationshipsSchema(
       to_regclass('app_relationships.entities') IS NOT NULL AS entities,
       to_regclass('app_relationships.relationships') IS NOT NULL AS relationships
   `);
-  const hasEntities =
-    presence[0]?.entities === true || presence[0]?.entities === "true";
-  const hasRelationships =
-    presence[0]?.relationships === true ||
-    presence[0]?.relationships === "true";
+  const presenceRow = requireSingleRow(presence, "presence");
+  const hasEntities = databaseBoolean(presenceRow, "entities");
+  const hasRelationships = databaseBoolean(presenceRow, "relationships");
   const entityRows = hasEntities
     ? await exec("SELECT count(*) AS count FROM app_relationships.entities")
     : [{ count: 0 }];
@@ -55,8 +109,11 @@ export async function inventoryLegacyRelationshipsSchema(
       )
     : [{ count: 0 }];
   return {
-    entities: count(entityRows[0], "count"),
-    relationships: count(relationshipRows[0], "count"),
+    entities: count(requireSingleRow(entityRows, "entities-count"), "count"),
+    relationships: count(
+      requireSingleRow(relationshipRows, "relationships-count"),
+      "count",
+    ),
   };
 }
 

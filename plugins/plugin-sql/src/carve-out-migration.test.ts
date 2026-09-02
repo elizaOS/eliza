@@ -43,7 +43,7 @@ function ledgerExecutor() {
 }
 
 describe("runCarveOutMigration", () => {
-  it("serializes concurrent startup and records one durable completion", async () => {
+  it("fails concurrent startup closed until the durable completion is recorded", async () => {
     const exec = ledgerExecutor();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -60,18 +60,35 @@ describe("runCarveOutMigration", () => {
       outcome: (value) => value,
     });
     await Promise.resolve();
-    const second = await runCarveOutMigration(exec, {
-      key: "calendar/events/v1",
-      run: async () => {
-        runs += 1;
-        return "copied";
-      },
-      outcome: (value) => value,
-    });
-    expect(second).toEqual({ status: "in-progress" });
+    await expect(
+      runCarveOutMigration(exec, {
+        key: "calendar/events/v1",
+        run: async () => {
+          runs += 1;
+          return "copied";
+        },
+        outcome: (value) => value,
+      })
+    ).rejects.toMatchObject({ code: "CARVE_OUT_MIGRATION_IN_PROGRESS" });
     release();
     await expect(first).resolves.toEqual({ status: "completed", value: "copied" });
     expect(runs).toBe(1);
+  });
+
+  it("fails closed when a rejected claim has no readable receipt", async () => {
+    const exec = async (sql: string): Promise<Array<Record<string, unknown>>> => {
+      if (sql.includes("carve-out:claim") || sql.includes("carve-out:status")) {
+        return [];
+      }
+      return [];
+    };
+    await expect(
+      runCarveOutMigration(exec, {
+        key: "calendar/events/v1",
+        run: async () => "copied",
+        outcome: String,
+      })
+    ).rejects.toMatchObject({ code: "CARVE_OUT_MIGRATION_RECEIPT_INVALID" });
   });
 
   it("does not rerun after target data is owner-deleted", async () => {

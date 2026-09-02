@@ -31,11 +31,7 @@ export type SqlExecutor = (
 
 export interface TableMigrationResult {
   table: MigratedSchedulingTable;
-  outcome:
-    | "copied"
-    | "source-missing"
-    | "already-migrated"
-    | "migration-in-progress";
+  outcome: "copied" | "source-missing" | "already-migrated";
 }
 
 function quoteIdent(name: string): string {
@@ -283,13 +279,7 @@ export async function migrateSchedulingTables(
     results.push(
       receipt.status === "completed"
         ? receipt.value
-        : {
-            table,
-            outcome:
-              receipt.status === "already-completed"
-                ? "already-migrated"
-                : "migration-in-progress",
-          },
+        : { table, outcome: "already-migrated" },
     );
   }
   return results;

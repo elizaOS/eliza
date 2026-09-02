@@ -37,4 +37,43 @@ describe("inventoryLegacyRelationshipsSchema", () => {
       code: "RELATIONSHIPS_LEGACY_SCHEMA_INVENTORY_INVALID",
     });
   });
+
+  it.each([
+    ["no presence row", []],
+    [
+      "multiple presence rows",
+      [
+        { entities: false, relationships: false },
+        { entities: false, relationships: false },
+      ],
+    ],
+    ["a missing presence field", [{ entities: false }]],
+    ["an unreadable presence field", [{ entities: false, relationships: 0 }]],
+  ])(
+    "fails closed when the presence query returns %s",
+    async (_label, presence) => {
+      await expect(
+        inventoryLegacyRelationshipsSchema(async () => presence),
+      ).rejects.toMatchObject({
+        code: "RELATIONSHIPS_LEGACY_SCHEMA_INVENTORY_INVALID",
+      });
+    },
+  );
+
+  it.each([
+    ["no count row", []],
+    ["multiple count rows", [{ count: "0" }, { count: "0" }]],
+    ["a missing count field", [{}]],
+    ["an empty count", [{ count: "" }]],
+  ])(
+    "fails closed when a legacy count query returns %s",
+    async (_label, countRows) => {
+      const results = [[{ entities: true, relationships: false }], countRows];
+      await expect(
+        inventoryLegacyRelationshipsSchema(async () => results.shift() ?? []),
+      ).rejects.toMatchObject({
+        code: "RELATIONSHIPS_LEGACY_SCHEMA_INVENTORY_INVALID",
+      });
+    },
+  );
 });
