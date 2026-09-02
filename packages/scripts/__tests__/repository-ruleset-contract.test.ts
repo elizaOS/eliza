@@ -45,6 +45,9 @@ describe("repository ruleset contract", () => {
     expect(admission.jobs["browser-bridge-windows-security"].uses).toBe(
       "./.github/workflows/browser-bridge-windows-security.yml",
     );
+    expect(admission.jobs["subscription-authority-postgres"].name).toBe(
+      "Subscription authority PostgreSQL",
+    );
     expect(admission.concurrency["cancel-in-progress"]).toBeTrue();
   });
 

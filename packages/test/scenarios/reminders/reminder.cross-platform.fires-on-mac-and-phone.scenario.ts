@@ -1,5 +1,6 @@
 /** Scenario fixture for reminder cross platform fires on mac and phone; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { reminderDispatchModelFixtures } from "./reminder-dispatch-model-fixtures";
 
 /**
  * Deterministic ladder control for the Mac + phone reminder case, driving the
@@ -124,10 +125,7 @@ async function resetSharedRateLimits(): Promise<string | undefined> {
 
 export default scenario({
   lane: "pr-deterministic",
-  modelFixtures: {
-    mode: "model-free",
-    reason: "Direct API turns exercise runtime contracts without model calls.",
-  },
+  modelFixtures: reminderDispatchModelFixtures(6),
   id: "reminder.cross-platform.fires-on-mac-and-phone",
   title: "Reminder ladder fires across all three rungs before acknowledgement",
   domain: "reminders",
