@@ -251,6 +251,28 @@ test("buildDedicatedStreamRequest matches the frontend delta stream contract", (
   });
 });
 
+test("browser-literal dedicated request omits probe-only instrumentation", () => {
+  const request = buildDedicatedStreamRequest({
+    apiKey: "secret",
+    prompt: "private prompt",
+    clientMessageId: "message-1",
+    turnCorrelation: "11111111-1111-4111-8111-111111111111",
+    traceId: "0123456789abcdef0123456789abcdef",
+    requestMode: "browser-literal",
+  });
+
+  assert.deepEqual(request.headers, {
+    Authorization: "Bearer secret",
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+    "X-Eliza-Trace-Id": "0123456789abcdef0123456789abcdef",
+  });
+  assert.equal("X-Eliza-Telemetry" in request.headers, false);
+  assert.equal("X-ElizaOS-Turn-Correlation" in request.headers, false);
+  assert.equal("X-ElizaOS-Turn-Attempt" in request.headers, false);
+  assert.equal("User-Agent" in request.headers, false);
+});
+
 test("probeOpenAi requires a clean terminal frame and never records prompt text", async () => {
   let requestBody = null;
   const result = await probeOpenAi({
@@ -292,6 +314,58 @@ test("probeOpenAi requires a clean terminal frame and never records prompt text"
   assert.doesNotMatch(serialized, /super-secret/);
   assert.doesNotMatch(serialized, /Custom private instruction/);
   assert.doesNotMatch(serialized, /must-not-escape/);
+});
+
+test("browser-literal dedicated probe reports wire timings and adopts the echoed trace", async () => {
+  const calls = [];
+  const result = await probeDedicated({
+    agentId: "agent-literal",
+    baseUrl: "https://agent.example",
+    apiKey: "secret",
+    proof: "proof-literal",
+    timeoutMs: 5_000,
+    sequence: 1,
+    keepConversation: true,
+    requestMode: "browser-literal",
+    fetchImpl: async (url, init = {}) => {
+      calls.push({ url, headers: init.headers });
+      if (calls.length === 1) {
+        return Response.json({ conversation: { id: "conversation-literal" } });
+      }
+      return new Response(
+        [
+          'data: {"type":"token","text":"proof-literal"}\n\n',
+          'data: {"type":"done"}\n\n',
+        ].join(""),
+        {
+          headers: {
+            "x-eliza-trace-id": "abcdef0123456789abcdef0123456789",
+          },
+        },
+      );
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.requestMode, "browser-literal");
+  assert.equal(result.traceId, "abcdef0123456789abcdef0123456789");
+  assert.equal(Number.isFinite(result.responseHeadersMs), true);
+  assert.equal(Number.isFinite(result.firstEventMs), true);
+  assert.equal(Number.isFinite(result.firstTokenMs), true);
+  assert.equal(Number.isFinite(result.totalMs), true);
+  assert.deepEqual(result.phaseTimings, {
+    pagesBootMs: null,
+    browserRenderMs: null,
+    browserDispatchToHeadersMs: result.responseHeadersMs,
+    browserDispatchToFirstEventMs: result.firstEventMs,
+    browserDispatchToFirstTokenMs: result.firstTokenMs,
+    browserDispatchToDoneMs: result.totalMs,
+  });
+  assert.equal("X-Eliza-Trace-Id" in calls[0].headers, false);
+  assert.match(calls[1].headers["X-Eliza-Trace-Id"], /^[0-9a-f]{32}$/);
+  assert.equal("X-Eliza-Telemetry" in calls[1].headers, false);
+  assert.equal("X-ElizaOS-Turn-Correlation" in calls[1].headers, false);
+  assert.equal("X-ElizaOS-Turn-Attempt" in calls[1].headers, false);
 });
 
 test("probeOpenAi rejects truncated, malformed, and provider-error streams", async () => {
@@ -452,6 +526,7 @@ test("probeDedicated requires a done terminal and sanitizes telemetry", async ()
     keepConversation: false,
     fetchImpl,
   });
+  assert.equal(result.requestMode, "instrumented");
   assert.equal(result.ok, true);
   assert.equal(result.terminalType, "done");
   assert.deepEqual(result.terminalTelemetry, {

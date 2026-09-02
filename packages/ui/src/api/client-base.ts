@@ -825,6 +825,15 @@ function generateSharedTurnCorrelation(): string | null {
     .join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
 }
 
+/** Mint the closed-schema id adopted by the dedicated agent inference timer. */
+function generateDedicatedTraceId(): string | null {
+  if (typeof globalThis.crypto?.getRandomValues !== "function") return null;
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
 /** Clamp the warming barrier's advertised `Retry-After` (seconds) into ms. */
 function warmingRetryDelayMs(retryAfterSeconds: number | undefined): number {
   const ms =
@@ -2881,6 +2890,9 @@ export class ElizaClient {
     // separate from the persisted/idempotent message ID so natural logs cannot
     // be joined back to message records or caller-supplied identifiers.
     const turnCorrelation = generateSharedTurnCorrelation();
+    const dedicatedTraceId = isDedicatedCloudAgentBase(this.baseUrl)
+      ? generateDedicatedTraceId()
+      : null;
     const res = await this.rawRequest(
       path,
       {
@@ -2888,6 +2900,7 @@ export class ElizaClient {
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
+          ...(dedicatedTraceId ? { "X-Eliza-Trace-Id": dedicatedTraceId } : {}),
           ...(turnCorrelation
             ? {
                 [SHARED_TURN_CORRELATION_HEADER]: turnCorrelation,

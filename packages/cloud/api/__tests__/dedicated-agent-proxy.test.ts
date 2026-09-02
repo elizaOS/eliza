@@ -1331,6 +1331,15 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "x-eliza-trace-id",
+    );
+    expect(res.headers.get("access-control-allow-headers")).not.toContain(
+      "x-eliza-telemetry",
+    );
+    expect(res.headers.get("access-control-expose-headers")).toContain(
+      "x-eliza-trace-id",
+    );
     expect(res.headers.get("access-control-max-age")).toBe("600");
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(captured).toBeNull(); // preflight is answered at the edge

@@ -774,7 +774,20 @@ function applyDedicatedProxyCors(
   );
   headers.set(
     "access-control-allow-headers",
-    "authorization,content-type,x-api-key",
+    ["authorization", "content-type", "x-api-key", "x-eliza-trace-id"].join(
+      ",",
+    ),
+  );
+  headers.set(
+    "access-control-expose-headers",
+    [
+      "x-eliza-trace-id",
+      "server-timing",
+      "x-eliza-preforward-ms",
+      "x-eliza-inference-path",
+      "x-eliza-provider-request-id",
+      "x-request-id",
+    ].join(","),
   );
   return true;
 }
