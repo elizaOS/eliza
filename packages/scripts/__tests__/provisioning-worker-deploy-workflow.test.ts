@@ -87,7 +87,7 @@ describe("provisioning worker deployment contract", () => {
       'git ls-remote "https://github.com/$' + '{GITHUB_REPOSITORY}.git"',
     );
     expect(workflow).toContain(
-      'fetch --no-recurse-submodules origin "$DEPLOY_SHA"',
+      'git fetch --no-tags --depth=2048 origin \\\n            "$DEPLOY_SHA" "$deployed_sha"',
     );
     expect(workflow).toContain('-B "$DEPLOY_BRANCH" "$DEPLOY_SHA"');
     expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"');
@@ -186,7 +186,7 @@ describe("provisioning worker deployment contract", () => {
     expect(migrationGate).toContain(
       "bun install --frozen-lockfile --no-save --ignore-scripts",
     );
-    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(125);
+    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(140);
   });
 
   it("scopes protected values away from checkout, setup, and install actions", () => {
@@ -318,7 +318,7 @@ describe("provisioning worker deployment contract", () => {
       totalPreSshMinutes += bound ?? 0;
     }
 
-    expect(totalPreSshMinutes).toBe(40);
+    expect(totalPreSshMinutes).toBe(50);
     const remoteSteps = parsedWorkflow.jobs?.deploy?.steps?.filter((step) =>
       step.uses?.startsWith("appleboy/ssh-action@"),
     );
@@ -368,10 +368,12 @@ describe("provisioning worker deployment contract", () => {
         "{{ format('run-{0}', github.run_id) }}",
     );
     const lock = "exec 9>/tmp/eliza-provisioning-worker-deploy.lock";
-    expect(workflow).toContain(lock);
-    expect(workflow).toContain("flock -w 1200 9");
-    expect(workflow.indexOf(lock)).toBeLessThan(
-      workflow.indexOf("cd /opt/eliza"),
+    const deployScript =
+      deployStep("Deploy and restart worker").with?.script ?? "";
+    expect(deployScript).toContain(lock);
+    expect(deployScript).toContain("flock -w 1200 9");
+    expect(deployScript.indexOf(lock)).toBeLessThan(
+      deployScript.indexOf("cd /opt/eliza"),
     );
     expect(workflow).toContain("command_timeout: 40m");
     expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(140);
@@ -394,6 +396,10 @@ describe("provisioning worker deployment contract", () => {
     expect(script).toContain("actual_source_bundle_sha256");
     expect(script).not.toContain(
       'fetch --no-recurse-submodules origin "$DEPLOY_SHA"',
+    );
+    expect(workflow).toContain("persist-credentials: true");
+    expect(workflow).toContain(
+      'git fetch --no-tags --depth=2048 origin \\\n            "$DEPLOY_SHA" "$deployed_sha"',
     );
     expect(script).not.toContain("x-access-token");
     expect(script).not.toContain("github.token");

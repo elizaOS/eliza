@@ -339,7 +339,11 @@ jobs:
         with:
           ref: ${{ needs.determine-env.outputs.deployment_sha }}
           fetch-depth: 1
-          persist-credentials: false
+          # The runner may need to import the immutable generation currently
+          # installed on the host after that feature ref has been rebased.
+          # The checkout credential remains runner-local; only the verified Git
+          # bundle is transferred to Hetzner and checkout removes it post-job.
+          persist-credentials: true
 
       - name: Verify exact migration source
         if: steps.deploy_config.outputs.configured == 'true'
@@ -530,8 +534,7 @@ jobs:
             exit 1
           fi
           deployed_sha="${BASH_REMATCH[1]}"
-          git fetch --no-tags --depth=2048 \
-            https://github.com/elizaOS/eliza.git \
+          git fetch --no-tags --depth=2048 origin \
             "$DEPLOY_SHA" "$deployed_sha"
           if [ "$deployed_sha" = "$DEPLOY_SHA" ]; then
             # Keep same-SHA retries idempotent: a bundle excluding HEAD itself
