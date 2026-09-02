@@ -56,6 +56,12 @@ describe("finalMessageUserText", () => {
 		const value = 'message:user:\n{"query":"Buy 10 apples"}';
 		expect(finalMessageUserText(value)).toBe('{"query":"Buy 10 apples"}');
 	});
+
+	it("preserves JSON authored by the user inside the structured payload", () => {
+		const value =
+			'message:user:\n{"text":"{\\"command\\":\\"status\\"}","source":"scenario"}';
+		expect(finalMessageUserText(value)).toBe('{"command":"status"}');
+	});
 });
 
 describe("matchesScenarioInput", () => {
