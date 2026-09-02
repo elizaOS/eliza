@@ -171,6 +171,26 @@ describe("READ", () => {
     ).toEqual({ unit: "line", start: 2, end: 2, total: 2 });
   });
 
+  it("rejects a past-EOF line offset on the repeat call too", async () => {
+    const file = path.join(env.tmpDir, "past-eof.txt");
+    await fs.writeFile(file, "alpha\nbeta\n", "utf8");
+    await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, limit: 10 },
+    });
+
+    const first = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, offset: 5, limit: 1 },
+    });
+    const second = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, offset: 5, limit: 1 },
+    });
+
+    expect(first.success).toBe(false);
+    expect(first.text).toContain("line offset 5 exceeds total 2");
+    expect(second.success).toBe(false);
+    expect(second.text).toContain("line offset 5 exceeds total 2");
+  });
+
   it("accepts exact EOF from a cold line checkpoint after a byte-mode revision read", async () => {
     const file = path.join(env.tmpDir, "cold-eof.txt");
     await fs.writeFile(file, "alpha\nbeta\n", "utf8");
