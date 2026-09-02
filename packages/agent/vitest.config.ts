@@ -180,6 +180,13 @@ export default defineConfig({
         replacement: path.join(monorepoRoot, "packages/core/src/security/$1"),
       },
       {
+        // Vitest deliberately omits Vite's `module` condition. Resolve this
+        // workspace package explicitly so parallel builds cannot remove its
+        // dist entry while an agent test imports core's prompt re-export.
+        find: /^@elizaos\/prompts$/,
+        replacement: path.join(monorepoRoot, "packages/prompts/src/index.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-anthropic\/endpoint-config$/,
         replacement: path.join(
           monorepoRoot,
