@@ -380,12 +380,18 @@ describe("provisioning worker deployment contract", () => {
     const setCanonicalRemote = script.indexOf(
       "git remote set-url origin https://github.com/elizaOS/eliza.git",
     );
-    const fetchExactSha = script.indexOf(
-      'git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules origin "$DEPLOY_SHA"',
-    );
+    const fetchExactSha = script.indexOf('fetch --no-recurse-submodules');
 
     expect(setCanonicalRemote).toBeGreaterThan(-1);
     expect(fetchExactSha).toBeGreaterThan(setCanonicalRemote);
+    expect(script).toContain("GIT_CONFIG_GLOBAL=/dev/null");
+    expect(script).toContain("GIT_CONFIG_SYSTEM=/dev/null");
+    expect(script).toContain("GIT_TERMINAL_PROMPT=0");
+    expect(script).toContain("-c credential.helper=");
+    expect(script).toContain("-c http.https://github.com/.extraheader=");
+    expect(script).toContain(
+      'https://github.com/elizaOS/eliza.git "$DEPLOY_SHA"',
+    );
     expect(script).not.toContain("x-access-token");
     expect(script).not.toContain("github.token");
   });

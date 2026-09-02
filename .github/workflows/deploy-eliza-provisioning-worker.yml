@@ -599,7 +599,16 @@ jobs:
             # credentials and one-off operator URLs must not become a hidden
             # availability dependency for later immutable-SHA rollouts.
             git remote set-url origin https://github.com/elizaOS/eliza.git
-            git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules origin "$DEPLOY_SHA"
+            GIT_CONFIG_GLOBAL=/dev/null \
+              GIT_CONFIG_SYSTEM=/dev/null \
+              GIT_TERMINAL_PROMPT=0 \
+              git \
+                -c safe.directory=/opt/eliza \
+                -c credential.helper= \
+                -c http.https://github.com/.extraheader= \
+                -c fetch.recurseSubmodules=no \
+                fetch --no-recurse-submodules \
+                https://github.com/elizaOS/eliza.git "$DEPLOY_SHA"
             git -c submodule.recurse=false checkout --no-recurse-submodules \
               -B "$DEPLOY_BRANCH" "$DEPLOY_SHA"
             test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
