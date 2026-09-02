@@ -769,6 +769,31 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 				"open my calendar page",
 			).kind,
 		).not.toBe("owner-reads");
+		// Calendar creates anchored on the explicit calendar word dispatch
+		// deterministically too (same context-ceiling rationale as reads).
+		for (const message of [
+			"add lunch with nubs friday at noon to my calendar",
+			"put the team sync on my calendar for monday 9am",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[calendarTaggedViews, calendarAction],
+					message,
+				),
+			).toEqual({
+				names: ["CALENDAR"],
+				kind: "owner-scheduled-admin",
+				deterministicDispatch: true,
+			});
+		}
+		// A todo create with a mealtime noun stays off the calendar surface —
+		// the create leg requires the explicit calendar/agenda word.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[calendarTaggedViews, calendarAction, todosAction],
+				"add a todo: buy stuff for dinner",
+			).kind,
+		).not.toBe("owner-scheduled-admin");
 	});
 
 	it("covers the other owner-read domains and leaves non-possessive asks alone", () => {
@@ -1557,7 +1582,16 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 		for (const [message, expected] of cases) {
 			expect(
 				inferDirectCurrentRequestCandidateInference(actions, message),
-			).toEqual({ names: [expected], kind: "owner-scheduled-admin" });
+			).toEqual({
+				names: [expected],
+				kind: "owner-scheduled-admin",
+				// Calendar mutations carry the deterministic-dispatch marker
+				// (verified user-facing text; planner alternative exceeds small
+				// context windows); other scheduled-admin owners do not.
+				...(expected === "CALENDAR"
+					? { deterministicDispatch: true }
+					: {}),
+			});
 		}
 	});
 

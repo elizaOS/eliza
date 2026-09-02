@@ -759,6 +759,14 @@ const SCHEDULED_ADMIN_CALENDAR_MOVE_VERB_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])(?:move|push|bump|shift)(?=$|[^\p{L}\p{N}\p{M}])/iu;
 const SCHEDULED_ADMIN_CALENDAR_NOUN_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])(?:calendar|events?|meetings?|appointments?|lunch(?:es)?|dinners?|breakfasts?|brunch(?:es)?|coffees?|reservations?)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+// Calendar-event CREATES ("add lunch friday at noon to my calendar") anchor on
+// the calendar word itself, not the event-noun family: a generic create verb
+// plus a mealtime noun would hijack todo creates ("add a todo about dinner"),
+// while an explicit calendar/agenda mention is unambiguous.
+const SCHEDULED_ADMIN_CALENDAR_CREATE_VERB_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:add|put|book|create)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_CALENDAR_WORD_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:calendar|agenda)(?=$|[^\p{L}\p{N}\p{M}])/iu;
 
 const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
 	ScheduledAdminDomain,
@@ -793,9 +801,14 @@ function detectScheduledItemAdminDomain(
 	// calendar-state claim. The mutation must reach the CALENDAR surface,
 	// which reads real state before acting.
 	const calendarMutation =
-		SCHEDULED_ADMIN_CALENDAR_NOUN_PATTERN.test(normalized) &&
-		(sharedAdminVerb ||
-			SCHEDULED_ADMIN_CALENDAR_MOVE_VERB_PATTERN.test(normalized));
+		(SCHEDULED_ADMIN_CALENDAR_NOUN_PATTERN.test(normalized) &&
+			(sharedAdminVerb ||
+				SCHEDULED_ADMIN_CALENDAR_MOVE_VERB_PATTERN.test(normalized))) ||
+		// Creates anchored on the explicit calendar/agenda word ("add lunch
+		// friday to my calendar"); the reminder/alarm checks below still take
+		// precedence for their own nouns.
+		(SCHEDULED_ADMIN_CALENDAR_WORD_PATTERN.test(normalized) &&
+			SCHEDULED_ADMIN_CALENDAR_CREATE_VERB_PATTERN.test(normalized));
 	if (!sharedAdminVerb && !calendarMutation) {
 		return null;
 	}
@@ -1353,7 +1366,17 @@ export function inferDirectCurrentRequestCandidateInference(
 			scheduledAdminDomain,
 		);
 		if (scheduledAdminAction) {
-			return { names: [scheduledAdminAction], kind: "owner-scheduled-admin" };
+			return {
+				names: [scheduledAdminAction],
+				kind: "owner-scheduled-admin",
+				// Calendar mutations dispatch deterministically for the same
+				// reason calendar reads do (see the owner-read branch below):
+				// the CALENDAR surface emits verified user-facing text, and the
+				// planner alternative tier-matches past small context windows.
+				...(scheduledAdminDomain === "calendar-events"
+					? { deterministicDispatch: true as const }
+					: {}),
+			};
 		}
 		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}

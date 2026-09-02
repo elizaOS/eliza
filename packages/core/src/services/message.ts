@@ -9851,13 +9851,13 @@ export async function runV5MessageRuntimeStage1(args: {
 							...getMessageHandlerCandidateActions(messageHandler),
 							...directPlannerCandidateActions,
 						]);
-			// An owner-read whose resolved reader emits its own verified
-			// user-facing text (deterministicDispatch) skips the planner
-			// entirely — the deterministic executor runs the single reader
-			// directly. Evaluator-installed deterministic calls (e.g. view
-			// navigation) stay authoritative over this text-inference route.
+			// An inference whose resolved single action emits its own verified
+			// user-facing text (deterministicDispatch — calendar reads and
+			// calendar mutations) skips the planner entirely — the
+			// deterministic executor runs that action directly. Evaluator-
+			// installed deterministic calls (e.g. view navigation) stay
+			// authoritative over this text-inference route.
 			if (
-				directPlannerInference.kind === "owner-reads" &&
 				directPlannerInference.deterministicDispatch === true &&
 				directPlannerCandidateActions.length === 1 &&
 				!messageHandler.plan.deterministicToolCall
