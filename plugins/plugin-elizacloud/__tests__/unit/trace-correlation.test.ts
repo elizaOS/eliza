@@ -96,7 +96,7 @@ describe("recordGatewayResponseTelemetry", () => {
     });
   });
 
-  it("marks an uncorrelated span when the gateway minted its own id", () => {
+  it("drops an echoed UUID outside the closed gateway trace schema", () => {
     const t = timer();
     runWithInferenceTiming(t, () => {
       recordGatewayResponseTelemetry(
@@ -110,8 +110,8 @@ describe("recordGatewayResponseTelemetry", () => {
     const span = t.close().spans.find((entry) => entry.name === "cloud.gateway-preforward");
     expect(span?.meta).toMatchObject({
       correlated: false,
-      gatewayTraceId: "123e4567-e89b-42d3-a456-426614174000",
     });
+    expect(span?.meta && "gatewayTraceId" in span.meta).toBe(false);
   });
 
   it("drops an invalid echoed id but keeps the timing decomposition", () => {
