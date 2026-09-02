@@ -36,6 +36,7 @@ import { affiliatesService } from "@/lib/services/affiliates";
 import { containersService } from "@/lib/services/containers";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
+import { assertInferenceCredentialActive } from "@/lib/services/inference-credential-revocation";
 import {
   assertSettleableMcpRow,
   userMcpsService,
@@ -566,64 +567,79 @@ app.post("/", async (c) => {
         // Free-tier calls never enter the admission rail: its cost contract
         // rejects a non-positive total (`reserveFlatUsageCredits` throws on
         // cost <= 0), which would 500 a legitimately free MCP (#22961).
-        admission = isFreeTierCall
-          ? undefined
-          : await admitFlatGenerativeOperation({
-              c,
-              context: {
-                organizationId: user.organization_id,
-                userId: user.id,
-                apiKeyId: caller.apiKeyId,
-                model: `mcp/${mcp.id}`,
-                provider: "mcp",
-                billingSource: "selfhosted",
-                requestId,
-                description: `MCP: ${mcp.name}`,
-                metadata: {
-                  // Rail-debit recovery tag (#22961 rebase): in
-                  // synchronous_reservation mode this metadata lands verbatim on
-                  // the reservation debit row, making an MCP buyer debit
-                  // findable by the orphan sweep when the Worker dies between
-                  // the rail debit and the settlement receipt. Deferred/ledger
-                  // modes tag their debits with the requestId below instead.
-                  mcp_precharge: "v1",
-                  mcp_id: mcp.id,
-                  mcp_name: mcp.name,
-                  base_credits: creditsRequired.toFixed(4),
-                  affiliate_fee: affiliateFeeCredits.toFixed(4),
-                  platform_fee: platformFeeCredits.toFixed(4),
-                  total_credits_charged: totalCreditsRequired.toFixed(4),
-                  base_amount_usd: formatOrganizationCreditUsd(
-                    chargeReceipt.baseAmountUsd,
-                  ),
-                  affiliate_fee_usd: formatOrganizationCreditUsd(
-                    chargeReceipt.affiliateFeeUsd,
-                  ),
-                  platform_fee_usd: formatOrganizationCreditUsd(
-                    chargeReceipt.platformFeeUsd,
-                  ),
-                  total_amount_usd: formatOrganizationCreditUsd(
-                    chargeReceipt.totalAmountUsd,
-                  ),
-                  credit_unit: ORGANIZATION_CREDIT_UNIT,
-                  ...(affiliateOwnerId && {
-                    affiliate_owner_id: affiliateOwnerId,
-                  }),
-                  ...(affiliateCodeId && {
-                    affiliate_code_id: affiliateCodeId,
-                  }),
-                },
-              },
+        if (isFreeTierCall) {
+          // A zero-total call still must not dispatch for a revoked or
+          // disabled caller: the deferred strong credential check otherwise
+          // runs only in the guard's async disposal — after the upstream
+          // fetch. Consume the proof through the guard so the standalone
+          // check runs exactly once, before dispatch, mirroring what the
+          // admission rail does for paid calls.
+          const strongCredential = credentialGuard.credentialForAdmission();
+          if (strongCredential) {
+            await assertInferenceCredentialActive(
+              user.organization_id,
+              strongCredential,
+            );
+          }
+          admission = undefined;
+        } else {
+          admission = await admitFlatGenerativeOperation({
+            c,
+            context: {
+              organizationId: user.organization_id,
+              userId: user.id,
               apiKeyId: caller.apiKeyId,
-              admissionSnapshot: caller.admissionSnapshot,
-              credential: credentialGuard.credentialForAdmission(),
-              cost: {
-                baseTotalCost: chargeReceipt.baseAmountUsd,
-                platformMarkup:
-                  chargeReceipt.totalAmountUsd - chargeReceipt.baseAmountUsd,
-                totalCost: chargeReceipt.totalAmountUsd,
+              model: `mcp/${mcp.id}`,
+              provider: "mcp",
+              billingSource: "selfhosted",
+              requestId,
+              description: `MCP: ${mcp.name}`,
+              metadata: {
+                // Rail-debit recovery tag (#22961 rebase): in
+                // synchronous_reservation mode this metadata lands verbatim on
+                // the reservation debit row, making an MCP buyer debit
+                // findable by the orphan sweep when the Worker dies between
+                // the rail debit and the settlement receipt. Deferred/ledger
+                // modes tag their debits with the requestId below instead.
+                mcp_precharge: "v1",
+                mcp_id: mcp.id,
+                mcp_name: mcp.name,
+                base_credits: creditsRequired.toFixed(4),
+                affiliate_fee: affiliateFeeCredits.toFixed(4),
+                platform_fee: platformFeeCredits.toFixed(4),
+                total_credits_charged: totalCreditsRequired.toFixed(4),
+                base_amount_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.baseAmountUsd,
+                ),
+                affiliate_fee_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.affiliateFeeUsd,
+                ),
+                platform_fee_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.platformFeeUsd,
+                ),
+                total_amount_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.totalAmountUsd,
+                ),
+                credit_unit: ORGANIZATION_CREDIT_UNIT,
+                ...(affiliateOwnerId && {
+                  affiliate_owner_id: affiliateOwnerId,
+                }),
+                ...(affiliateCodeId && {
+                  affiliate_code_id: affiliateCodeId,
+                }),
               },
-            });
+            },
+            apiKeyId: caller.apiKeyId,
+            admissionSnapshot: caller.admissionSnapshot,
+            credential: credentialGuard.credentialForAdmission(),
+            cost: {
+              baseTotalCost: chargeReceipt.baseAmountUsd,
+              platformMarkup:
+                chargeReceipt.totalAmountUsd - chargeReceipt.baseAmountUsd,
+              totalCost: chargeReceipt.totalAmountUsd,
+            },
+          });
+        }
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return c.json(
