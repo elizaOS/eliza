@@ -55,6 +55,7 @@ const bindCheckoutCustomer = mock(
     stripe_customer_id: customerId,
   }),
 );
+const ensureStripeCustomer = mock(async () => "cus_agent");
 const getWithOrganization = mock(async () => ({
   id: "agent-user",
   email: "agent@example.test",
@@ -86,6 +87,12 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
 mock.module("@/db/helpers", () => ({ dbRead }));
+// The real authority reaches for a write transaction to lease the customer
+// row, which needs a live database. Stub it at the service boundary the route
+// actually calls, matching the org fixture's `stripe_customer_id`.
+mock.module("@/lib/services/stripe-customer-authority", () => ({
+  stripeCustomerAuthorityService: { ensure: ensureStripeCustomer },
+}));
 mock.module("@/lib/services/credit-balance-response", () => ({
   getCreditBalanceResponse,
 }));

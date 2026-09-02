@@ -1,5 +1,6 @@
 /** Exercises malformed request input with deterministic route collaborators. */
 import { describe, expect, mock, test } from "bun:test";
+import * as actualDbHelpers from "@/db/helpers";
 
 const checkoutCreate = mock(async () => ({
   id: "cs_1",
@@ -20,7 +21,11 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
   }),
 }));
 
+// Spread the real module: a factory replaces the whole namespace, so `dbWrite`
+// — pulled transitively by the route under test — has to survive it or the
+// suite fails to collect before a single test runs.
 mock.module("@/db/helpers", () => ({
+  ...actualDbHelpers,
   dbRead: {
     select: () => ({
       from: () => ({ where: () => ({ limit: async () => [] }) }),
@@ -86,7 +91,12 @@ describe("POST /api/v1/credits/checkout malformed JSON", () => {
       "/",
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        // `route.ts:106` has required an Idempotency-Key since this case was
+        // written; the collection failure above kept that from ever surfacing.
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": "test-idempotency-key",
+        },
         body: JSON.stringify(validBody),
       },
       {},

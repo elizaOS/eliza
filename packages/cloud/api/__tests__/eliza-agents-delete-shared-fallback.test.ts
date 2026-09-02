@@ -7,6 +7,7 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import * as actualElizaAgentWebUi from "@/lib/eliza-agent-web-ui";
 
 const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-1",
@@ -89,7 +90,11 @@ mock.module("@/lib/config/containers-env", () => ({
   containersEnv: { publicBaseDomain: () => "agents.example.test" },
 }));
 
+// Spread the real module: a factory replaces the whole namespace, so
+// `getElizaAgentPublicWebUiUrl` — pulled transitively by the route under test —
+// has to survive it or the suite fails to collect before a single test runs.
 mock.module("@/lib/eliza-agent-web-ui", () => ({
+  ...actualElizaAgentWebUi,
   getConfiguredElizaAgentPublicWebUiUrl: mock(() => null),
 }));
 
