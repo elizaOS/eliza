@@ -224,6 +224,38 @@ export async function readPlacementStatus(
   return sanitizePlacementServiceResult(worker, await response.json());
 }
 
+/** Reject a placement window unless its two arms retain their intended modes. */
+export function assertExpectedPlacementModes(placements, phase) {
+  const [smart, control] = placements;
+  if (smart?.mode !== "smart") {
+    throw new Error(`${phase} Smart arm is not configured for Smart Placement`);
+  }
+  if (control?.mode !== "absent") {
+    throw new Error(`${phase} control arm must use default placement`);
+  }
+}
+
+/**
+ * Reattests both staging arms before or after a probe window. Health readback
+ * binds the observation to the requested SHA, while service metadata verifies
+ * the Smart Placement/default-placement comparison did not change mid-run.
+ */
+export async function verifyPlacementWindow(
+  { arms, deploySha, accountId, apiToken, phase },
+  fetchImpl = fetch,
+) {
+  const deployments = await Promise.all(
+    arms.map((arm) => verifyArmDeployment({ ...arm, deploySha }, fetchImpl)),
+  );
+  const placements = await Promise.all(
+    arms.map(({ worker }) =>
+      readPlacementStatus({ worker, accountId, apiToken }, fetchImpl),
+    ),
+  );
+  assertExpectedPlacementModes(placements, phase);
+  return { deployments, placements };
+}
+
 export function fingerprintWorkerBindings(worker, payload) {
   if (payload?.success !== true || !Array.isArray(payload.result?.bindings)) {
     throw new Error(`Cloudflare binding readback failed for ${worker}`);
@@ -236,6 +268,10 @@ export function fingerprintWorkerBindings(worker, payload) {
       id: boundedToken(binding?.id, "absent"),
       bucketName: boundedToken(binding?.bucket_name, "absent"),
       className: boundedToken(binding?.class_name, "absent"),
+      scriptName: boundedToken(binding?.script_name, "absent"),
+      service: boundedToken(binding?.service, "absent"),
+      environment: boundedToken(binding?.environment, "absent"),
+      entrypoint: boundedToken(binding?.entrypoint, "absent"),
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
   const types = Object.fromEntries(
@@ -407,22 +443,17 @@ export async function runPlacementAb(
       worker: options.controlWorker,
     },
   ];
-  const deployments = await Promise.all(
-    arms.map((arm) =>
-      verifyArmDeployment({ ...arm, deploySha: options.deploySha }, fetchImpl),
-    ),
-  );
-  const placementBefore = await Promise.all(
-    arms.map(({ worker }) =>
-      readPlacementStatus({ worker, accountId, apiToken }, fetchImpl),
-    ),
-  );
-  if (placementBefore[0]?.mode !== "smart") {
-    throw new Error("Smart arm is not configured for Smart Placement");
-  }
-  if (placementBefore[1]?.mode !== "absent") {
-    throw new Error("Control arm must use default placement");
-  }
+  const { deployments, placements: placementBefore } =
+    await verifyPlacementWindow(
+      {
+        arms,
+        deploySha: options.deploySha,
+        accountId,
+        apiToken,
+        phase: "Pre-window",
+      },
+      fetchImpl,
+    );
   const bindingContracts = await Promise.all(
     arms.map(({ worker }) =>
       readWorkerBindingContract({ worker, accountId, apiToken }, fetchImpl),
@@ -470,11 +501,17 @@ export async function runPlacementAb(
       fetchImpl,
     })),
   );
-  const placementAfter = await Promise.all(
-    arms.map(({ worker }) =>
-      readPlacementStatus({ worker, accountId, apiToken }, fetchImpl),
-    ),
-  );
+  const { deployments: deploymentsAfter, placements: placementAfter } =
+    await verifyPlacementWindow(
+      {
+        arms,
+        deploySha: options.deploySha,
+        accountId,
+        apiToken,
+        phase: "Post-window",
+      },
+      fetchImpl,
+    );
 
   await writeFile(
     resolve(options.outputDir, "placement-ab.jsonl"),
@@ -487,6 +524,7 @@ export async function runPlacementAb(
     successfulPairs,
     requiredSuccessfulPairs: options.successPairs,
     deployments,
+    deploymentsAfter,
     bindingContracts,
     placementBefore,
     placementAfter,

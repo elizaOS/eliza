@@ -14,9 +14,48 @@ import {
   summarizePlacementRecords,
   validateStagingArmUrl,
   verifyArmDeployment,
+  verifyPlacementWindow,
 } from "./cloud-placement-ab.mjs";
 
 const SHA = "a".repeat(40);
+const ARMS = [
+  {
+    arm: "smart",
+    baseUrl: "https://api-staging.eliza.app",
+    worker: "smart-worker-staging",
+  },
+  {
+    arm: "control",
+    baseUrl: "https://control-staging.example.workers.dev",
+    worker: "control-worker-staging",
+  },
+];
+
+function placementWindowFetch({
+  controlMode = "absent",
+  controlCommit = SHA,
+  controlEnvironment = "staging",
+} = {}) {
+  return async (url) => {
+    const target = String(url);
+    if (target.endsWith("/api/health")) {
+      const control = target.includes("control-staging");
+      return Response.json({
+        environment: control ? controlEnvironment : "staging",
+        commit: control ? controlCommit : SHA,
+      });
+    }
+    const control = target.includes("control-worker-staging");
+    return Response.json({
+      success: true,
+      result: {
+        default_environment: {
+          script: { placement: { mode: control ? controlMode : "smart" } },
+        },
+      },
+    });
+  };
+}
 
 test("placement A/B args require two staging origins and an exact SHA", () => {
   assert.deepEqual(
@@ -105,6 +144,37 @@ test("exact-SHA arm health retains only bounded placement metadata", async () =>
   );
 });
 
+test("post-window attestation stubs reject placement, SHA, and environment drift", async () => {
+  const options = {
+    arms: ARMS,
+    deploySha: SHA,
+    accountId: "private-account",
+    apiToken: "private-token",
+    phase: "Post-window",
+  };
+  await assert.rejects(
+    verifyPlacementWindow(
+      options,
+      placementWindowFetch({ controlMode: "smart" }),
+    ),
+    /Post-window control arm must use default placement/,
+  );
+  await assert.rejects(
+    verifyPlacementWindow(
+      options,
+      placementWindowFetch({ controlCommit: "b".repeat(40) }),
+    ),
+    /control did not serve the exact staging commit/,
+  );
+  await assert.rejects(
+    verifyPlacementWindow(
+      options,
+      placementWindowFetch({ controlEnvironment: "production" }),
+    ),
+    /control did not serve the exact staging commit/,
+  );
+});
+
 test("Cloudflare placement response is reduced to non-secret decision metadata", () => {
   const result = sanitizePlacementServiceResult("worker-staging", {
     success: true,
@@ -131,7 +201,7 @@ test("Cloudflare placement response is reduced to non-secret decision metadata",
 });
 
 test("binding readback emits only a structural fingerprint and type counts", () => {
-  const result = fingerprintWorkerBindings("worker-staging", {
+  const payload = {
     success: true,
     result: {
       bindings: [
@@ -144,16 +214,31 @@ test("binding readback emits only a structural fingerprint and type counts", () 
           script_name: "canonical-worker",
           environment: "staging",
         },
+        {
+          name: "UPSTREAM",
+          type: "service",
+          service: "canonical-worker",
+          environment: "staging",
+          entrypoint: "fetch",
+        },
       ],
     },
-  });
-  assert.equal(result.bindingCount, 2);
+  };
+  const result = fingerprintWorkerBindings("worker-staging", payload);
+  assert.equal(result.bindingCount, 3);
   assert.deepEqual(result.types, {
     durable_object_namespace: 1,
     secret_text: 1,
+    service: 1,
   });
   assert.match(result.fingerprint, /^[a-f0-9]{64}$/);
   assert.equal(JSON.stringify(result).includes("private"), false);
+  const changedTarget = structuredClone(payload);
+  changedTarget.result.bindings[2].service = "different-worker";
+  assert.notEqual(
+    result.fingerprint,
+    fingerprintWorkerBindings("worker-staging", changedTarget).fingerprint,
+  );
 });
 
 test("warm summary stratifies arms by observed placement and reports phase percentiles", () => {
