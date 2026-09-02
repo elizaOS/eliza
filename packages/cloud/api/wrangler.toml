@@ -54,6 +54,11 @@ __filename = '"/worker.js"'
 # Worker-side call throws instead of returning empty text (#21327).
 "unpdf" = "./src/stubs/unpdf.ts"
 "mammoth" = "./src/stubs/mammoth.ts"
+# PGlite is the local test database. The deployed Worker always uses
+# Hyperdrive; db/client.ts explicitly rejects pglite:// in workerd.
+"@electric-sql/pglite" = "./src/stubs/pglite.ts"
+"@electric-sql/pglite/vector" = "./src/stubs/pglite.ts"
+"@electric-sql/pglite/contrib/btree_gist" = "./src/stubs/pglite.ts"
 
 [observability]
 enabled = true
