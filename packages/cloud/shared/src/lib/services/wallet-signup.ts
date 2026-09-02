@@ -93,7 +93,12 @@ async function createOrFindWalletOrg(params: {
     })
     .onConflictDoNothing()
     .returning();
-  if (created) return created;
+  if (created) {
+    return {
+      organization: created,
+      initialCreditsGranted: true,
+    };
+  }
 
   // A wallet slug can be reserved before its owner row exists (for example by
   // an older x402/provisioning path). Adopt an untouched legacy-zero row into

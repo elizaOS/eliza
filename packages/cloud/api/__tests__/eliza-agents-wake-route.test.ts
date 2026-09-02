@@ -176,7 +176,6 @@ beforeAll(async () => {
       agentBackupCatalogAuthorities,
       agentNodeIncarnationHistories,
       agentBackupObjects,
-      agentNodeIncarnationHistories,
       apiKeys,
       generations,
       jobs,

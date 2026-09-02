@@ -53,7 +53,6 @@ mock.module("./inference-app-key-scope", () => ({
 mock.module("./inference-credential-revocation", () => ({
   isInferenceStrongRevocationEnabled: () =>
     process.env.INFERENCE_STRONG_REVOCATION_ENABLED === "true",
-  inferenceCredentialRevocationReason: () => "credential_invalid",
   InferenceCredentialRevokedError: class InferenceCredentialRevokedError extends Error {},
   inferenceCredentialRevocationReason: (reason: string) => {
     switch (reason) {

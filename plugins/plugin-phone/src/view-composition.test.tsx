@@ -2,8 +2,8 @@
 
 /**
  * Verifies the Phone host-view ABI with real module entry paths and a
- * deterministic render seam. Signed, `/ui`, and dynamic entry points must mount
- * the same framed page while the underlying dialer view stays interactive.
+ * deterministic render seam. Signed and `/ui` entry points own native page
+ * chrome; the dynamic bundle stays embeddable because its host owns that chrome.
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -50,17 +50,21 @@ afterEach(() => {
   vi.resetModules();
 });
 
-async function exercise(component: React.ComponentType): Promise<string> {
+async function exercise(
+  component: React.ComponentType,
+  expectedFrame: "framed" | "embeddable",
+): Promise<string> {
   render(React.createElement(component));
-  expect(screen.getByRole("main", { name: "Phone page" })).toBeTruthy();
+  const frame = screen.queryByRole("main", { name: "Phone page" });
+  expect(frame === null ? "embeddable" : "framed").toBe(expectedFrame);
   fireEvent.click(screen.getByRole("button", { name: "Dial number" }));
   return (
     screen.getByRole("button", { name: "Number dialed" }).textContent ?? ""
   );
 }
 
-describe("Phone framed-view ABI", () => {
-  it("keeps signed, /ui, and dynamic loaders compositionally equivalent", async () => {
+describe("Phone host-view ABI", () => {
+  it("keeps native entry points framed and the dynamic bundle embeddable", async () => {
     await import("./register-phone-page.ts");
     const registrationCall = registration.register.mock.calls[0]?.[0];
     expect(registrationCall).toBeDefined();
@@ -73,11 +77,11 @@ describe("Phone framed-view ABI", () => {
     ]);
 
     expect(signed.default).toBe(ui.PhoneView);
-    expect(dynamic.PhoneView).toBe(ui.PhoneView);
-    expect(dynamic.PhoneView).not.toBe(raw.PhoneView);
-    const signedOutcome = await exercise(signed.default);
+    expect(dynamic.PhoneView).toBe(raw.PhoneView);
+    expect(dynamic.PhoneView).not.toBe(ui.PhoneView);
+    const signedOutcome = await exercise(signed.default, "framed");
     cleanup();
-    const dynamicOutcome = await exercise(dynamic.PhoneView);
+    const dynamicOutcome = await exercise(dynamic.PhoneView, "embeddable");
     expect(dynamicOutcome).toBe(signedOutcome);
   });
 });

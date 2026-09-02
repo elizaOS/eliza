@@ -2,8 +2,8 @@
 
 /**
  * Verifies the Contacts host-view ABI with real module entry paths and a
- * deterministic render seam. Signed, `/ui`, and dynamic entry points must mount
- * the same framed page while the underlying address-book view stays interactive.
+ * deterministic render seam. Signed and `/ui` entry points own native page
+ * chrome; the dynamic bundle stays embeddable because its host owns that chrome.
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -47,17 +47,21 @@ afterEach(() => {
   vi.resetModules();
 });
 
-async function exercise(component: React.ComponentType): Promise<string> {
+async function exercise(
+  component: React.ComponentType,
+  expectedFrame: "framed" | "embeddable",
+): Promise<string> {
   render(React.createElement(component));
-  expect(screen.getByRole("main", { name: "Contacts page" })).toBeTruthy();
+  const frame = screen.queryByRole("main", { name: "Contacts page" });
+  expect(frame === null ? "embeddable" : "framed").toBe(expectedFrame);
   fireEvent.click(screen.getByRole("button", { name: "Open contact" }));
   return (
     screen.getByRole("button", { name: "Contact opened" }).textContent ?? ""
   );
 }
 
-describe("Contacts framed-view ABI", () => {
-  it("keeps signed, /ui, and dynamic loaders compositionally equivalent", async () => {
+describe("Contacts host-view ABI", () => {
+  it("keeps native entry points framed and the dynamic bundle embeddable", async () => {
     await import("./register.ts");
     const registrationCall = registration.register.mock.calls[0]?.[0];
     expect(registrationCall).toBeDefined();
@@ -70,11 +74,11 @@ describe("Contacts framed-view ABI", () => {
     ]);
 
     expect(signed.default).toBe(ui.ContactsView);
-    expect(dynamic.ContactsView).toBe(ui.ContactsView);
-    expect(dynamic.ContactsView).not.toBe(raw.ContactsView);
-    const signedOutcome = await exercise(signed.default);
+    expect(dynamic.ContactsView).toBe(raw.ContactsView);
+    expect(dynamic.ContactsView).not.toBe(ui.ContactsView);
+    const signedOutcome = await exercise(signed.default, "framed");
     cleanup();
-    const dynamicOutcome = await exercise(dynamic.ContactsView);
+    const dynamicOutcome = await exercise(dynamic.ContactsView, "embeddable");
     expect(dynamicOutcome).toBe(signedOutcome);
   });
 });

@@ -1,9 +1,8 @@
 /**
- * Vite view-bundle entry: exposes the framed page plus the `interact` handler
- * under the names read from the built bundle. This host-facing `MessagesView`
- * matches the `/ui` and signed-registration ABI, while MessagesView.tsx remains
- * the raw Fast-Refresh-compatible component.
+ * Vite view-bundle entry: exposes the embeddable view plus the `interact`
+ * handler under the names read from the built bundle. The remote-view host owns
+ * page chrome; signed native registration continues to mount `MessagesPage`.
  */
 
-export { MessagesPage as MessagesView } from "./MessagesPage.tsx";
+export { MessagesView } from "./MessagesView.tsx";
 export { interact } from "./messages-interact.ts";

@@ -1,8 +1,8 @@
 /**
- * Exposes the framed Phone page and interaction handler under the names read
- * from the separately built Vite view bundle. This host-facing `PhoneView`
- * matches the `/ui` and signed-registration ABI, not the package-root raw view.
+ * Exposes the embeddable Phone view and interaction handler under the names
+ * read from the separately built Vite view bundle. The remote-view host owns
+ * page chrome; signed native registration continues to mount `PhonePage`.
  */
 
-export { PhonePage as PhoneView } from "./PhonePage.tsx";
+export { PhoneView } from "./PhoneView.tsx";
 export { interact } from "./phone-interact.ts";

@@ -1,8 +1,8 @@
 /**
- * Exposes the framed Contacts page and interaction handler under the names read
- * from the separately built Vite view bundle. This host-facing `ContactsView`
- * matches the `/ui` and signed-registration ABI, not the package-root raw view.
+ * Exposes the embeddable Contacts view and interaction handler under the names
+ * read from the separately built Vite view bundle. The remote-view host owns
+ * page chrome; signed native registration continues to mount `ContactsPage`.
  */
 
 export { interact } from "./ContactsAppView.interact.ts";
-export { ContactsPage as ContactsView } from "./ContactsPage.tsx";
+export { ContactsView } from "./ContactsView.tsx";

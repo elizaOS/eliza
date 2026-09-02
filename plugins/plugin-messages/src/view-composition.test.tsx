@@ -2,8 +2,8 @@
 
 /**
  * Verifies the Messages host-view ABI with real module entry paths and a
- * deterministic render seam. Signed, `/ui`, and dynamic entry points must mount
- * the same framed page while the underlying conversation view stays interactive.
+ * deterministic render seam. Signed and `/ui` entry points own native page
+ * chrome; the dynamic bundle stays embeddable because its host owns that chrome.
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -44,9 +44,13 @@ afterEach(() => {
   vi.resetModules();
 });
 
-async function exercise(component: React.ComponentType): Promise<string> {
+async function exercise(
+  component: React.ComponentType,
+  expectedFrame: "framed" | "embeddable",
+): Promise<string> {
   render(React.createElement(component));
-  expect(screen.getByRole("main", { name: "Messages page" })).toBeTruthy();
+  const frame = screen.queryByRole("main", { name: "Messages page" });
+  expect(frame === null ? "embeddable" : "framed").toBe(expectedFrame);
   fireEvent.click(screen.getByRole("button", { name: "Open conversation" }));
   return (
     screen.getByRole("button", { name: "Conversation opened" }).textContent ??
@@ -54,8 +58,8 @@ async function exercise(component: React.ComponentType): Promise<string> {
   );
 }
 
-describe("Messages framed-view ABI", () => {
-  it("keeps signed, /ui, and dynamic loaders compositionally equivalent", async () => {
+describe("Messages host-view ABI", () => {
+  it("keeps native entry points framed and the dynamic bundle embeddable", async () => {
     await import("./register.ts");
     const registrationCall = registration.register.mock.calls[0]?.[0];
     expect(registrationCall).toBeDefined();
@@ -68,11 +72,11 @@ describe("Messages framed-view ABI", () => {
     ]);
 
     expect(signed.default).toBe(ui.MessagesView);
-    expect(dynamic.MessagesView).toBe(ui.MessagesView);
-    expect(dynamic.MessagesView).not.toBe(raw.MessagesView);
-    const signedOutcome = await exercise(signed.default);
+    expect(dynamic.MessagesView).toBe(raw.MessagesView);
+    expect(dynamic.MessagesView).not.toBe(ui.MessagesView);
+    const signedOutcome = await exercise(signed.default, "framed");
     cleanup();
-    const dynamicOutcome = await exercise(dynamic.MessagesView);
+    const dynamicOutcome = await exercise(dynamic.MessagesView, "embeddable");
     expect(dynamicOutcome).toBe(signedOutcome);
   });
 });

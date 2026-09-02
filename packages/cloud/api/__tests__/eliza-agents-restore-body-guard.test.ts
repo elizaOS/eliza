@@ -126,7 +126,6 @@ beforeAll(async () => {
         agentBackupCatalogAuthorities,
         agentNodeIncarnationHistories,
         agentBackupObjects,
-        agentNodeIncarnationHistories,
       } as never,
       dbWrite as never,
     );

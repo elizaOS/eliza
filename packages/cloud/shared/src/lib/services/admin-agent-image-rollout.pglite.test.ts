@@ -330,7 +330,6 @@ beforeAll(async () => {
   try {
     const schema = {
       organizations,
-      providerAdmissions,
       users,
       userCharacters,
       apiKeys,
