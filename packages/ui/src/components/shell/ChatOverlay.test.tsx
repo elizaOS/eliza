@@ -425,7 +425,7 @@ describe("ChatOverlay", () => {
     expect(input.value).toBe("");
   });
 
-  it("opens an exact view immediately while preserving the model-authored turn", () => {
+  it("opens an exact view locally without manufacturing a chat turn", () => {
     const controller = makeController();
     const navigateView = vi.fn();
     const command: SlashCommandCatalogItem = {
@@ -468,6 +468,7 @@ describe("ChatOverlay", () => {
 
     render(<ChatOverlay controller={controller} slash={slash} />);
     const input = screen.getByLabelText("message") as HTMLInputElement;
+    fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "open notes" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -475,8 +476,9 @@ describe("ChatOverlay", () => {
       viewId: "notes",
       viewPath: undefined,
     });
-    expect(controller.send).toHaveBeenCalledWith("open notes");
+    expect(controller.send).not.toHaveBeenCalled();
     expect(input.value).toBe("");
+    expect(document.activeElement).toBe(input);
   });
 
   it("does NOT send on the Enter that commits an IME composition (CJK), only a real Enter", () => {
@@ -938,7 +940,7 @@ describe("ChatOverlay", () => {
     expect(document.activeElement).not.toBe(composer);
   });
 
-  it("collapses an open thread sheet and returns the launcher rail home for agent Home navigation", () => {
+  it("returns the launcher rail home without collapsing or blurring chat", () => {
     render(<ChatOverlay controller={makeController()} />);
     const composer = screen.getByLabelText("message") as HTMLTextAreaElement;
     const sheet = screen.getByTestId("chat-sheet");
@@ -962,8 +964,8 @@ describe("ChatOverlay", () => {
       );
     });
 
-    expect(sheet.getAttribute("data-variant")).toBe("closed");
-    expect(document.activeElement).not.toBe(composer);
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(document.activeElement).toBe(composer);
     expect(getShellSurface().page).toBe("home");
   });
 

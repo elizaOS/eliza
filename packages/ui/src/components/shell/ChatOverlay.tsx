@@ -4062,24 +4062,21 @@ export function ChatOverlay({
   }, [collapse]);
 
   // View navigation changes the canvas underneath this persistent composer; it
-  // is not a chat dismissal. Preserve an actively focused input through the
-  // route commit even when a plugin view maps its view id onto the generic
-  // `views` tab. Explicit close/open-window actions retain their own focus
-  // ownership instead.
+  // is not a chat dismissal. Preserve an actively focused input through every
+  // in-shell route commit, including Home, even when a plugin view maps its view
+  // id onto the generic `views` tab. Explicit close/open-window actions retain
+  // their own focus ownership instead.
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const preserveFocusedComposer = (event: Event) => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       const action = detail?.action;
-      const targetsHome =
-        detail?.viewId === "chat" || detail?.viewPath === "/chat";
       const staysInShell =
         action !== "close" &&
         action !== "close-all" &&
         action !== "open-window";
       const shouldPreserve =
         staysInShell &&
-        !targetsHome &&
         typeof document !== "undefined" &&
         document.activeElement === inputRef.current;
       preserveComposerFocusUntilRef.current = shouldPreserve
@@ -4107,14 +4104,20 @@ export function ChatOverlay({
   // change) is left untouched. Keyboard.hide() guarantees iOS dismisses the
   // accessory bar, not just the soft keyboard.
   React.useEffect(() => {
-    if (currentTab === "chat") {
-      preserveComposerFocusUntilRef.current = 0;
-      return;
-    }
+    const preserveUntil = preserveComposerFocusUntilRef.current;
     const preserveFocus =
-      preserveComposerFocusUntilRef.current >= performance.now();
+      preserveUntil > 0 && preserveUntil >= performance.now();
     preserveComposerFocusUntilRef.current = 0;
     const input = inputRef.current;
+    // A route can replace the textarea node while committing the new canvas.
+    // Restore focus onto the CURRENT node rather than requiring the old node to
+    // have survived the render; that requirement was why Home still needed a
+    // second click even though the navigation event had armed a focus lease.
+    if (preserveFocus) {
+      input?.focus({ preventScroll: true });
+      return;
+    }
+    if (currentTab === "chat") return;
     if (
       typeof document === "undefined" ||
       !input ||
@@ -4122,7 +4125,6 @@ export function ChatOverlay({
     ) {
       return;
     }
-    if (preserveFocus) return;
     input.blur();
     void import("@capacitor/keyboard")
       .then(({ Keyboard }) => Keyboard.hide())
@@ -4466,10 +4468,7 @@ export function ChatOverlay({
   const submit = React.useCallback(() => {
     const isExplicitSlashCommand = parseSlashDraft(draft).isSlash;
     const optimisticNavigation =
-      slash.naturalShortcutsEnabled &&
-      !firstRunOpen &&
-      !isExplicitSlashCommand &&
-      pendingImages.length === 0
+      !firstRunOpen && !isExplicitSlashCommand && pendingImages.length === 0
         ? resolveOptimisticNavigationExecution(
             slash.commands,
             draft,
@@ -4482,19 +4481,13 @@ export function ChatOverlay({
           )
         : null;
     if (optimisticNavigation) {
-      runSlashExecution(optimisticNavigation, {
-        navigateTab: slash.navigateTab,
-        navigateSettings: slash.navigateSettings,
-        navigateView: slash.navigateView,
-        clearChat: () => {},
-        newConversation: () => {},
-        toggleFullscreen: () => {},
-        openCommandPalette: () => {},
-        showCommands: () => {},
-        toggleTranscription: () => {},
-        send: () => {},
-      });
-      submitText(draft, pendingImages);
+      // Exact navigation is app chrome, not conversation. Execute it locally,
+      // clear the command from the composer, and retain focus without creating
+      // a user turn that forces the model to manufacture acknowledgement copy
+      // such as "On it." or "You're already there.". Anything that is not an
+      // exact known route still falls through to the real model below.
+      preserveComposerFocusUntilRef.current = performance.now() + 1000;
+      runExecution(optimisticNavigation);
       return;
     }
     const shortcut =
@@ -4887,23 +4880,21 @@ export function ChatOverlay({
       window.removeEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
   }, [sheetOpen, pinnedOpen, collapse]);
 
-  // Agent-driven Home navigation targets the persistent `/chat` canvas. When
-  // the thread sheet is already open, changing the route alone is visually a
-  // no-op: the sheet keeps covering Home even though the server delivered and
-  // accepted the navigation. Match the manual Home gesture by returning the
-  // launcher rail to Home and collapsing the sheet in the same event.
+  // Agent-driven Home navigation targets the persistent `/chat` canvas. The
+  // chat is ambient app chrome, so returning Home must not dismiss it or drop a
+  // draft/keyboard session. Only change the canvas underneath the current chat
+  // detent; explicit user collapse gestures remain the sole dismissal owner.
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const onNavigateHome = (event: Event) => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       if (detail?.viewId !== "chat" && detail?.viewPath !== "/chat") return;
       goHome();
-      if (sheetOpen) collapse();
     };
     window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigateHome);
     return () =>
       window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigateHome);
-  }, [sheetOpen, collapse]);
+  }, []);
 
   // Auto-grow the composer with multi-line input: snap to the content height
   // (capped by `max-h` in CSS, which then scrolls). Runs on every draft change

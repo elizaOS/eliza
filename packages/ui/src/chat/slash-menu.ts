@@ -595,10 +595,11 @@ const OPTIMISTIC_NAVIGATION_COMMANDS: SlashCommandCatalogItem[] = [
 ];
 
 /**
- * Resolve an exact natural-language navigation command for optimistic routing.
- * The caller still sends the original text to the agent, so only the local view
- * transition is accelerated; response wording and side-effect truth remain
- * model- and receipt-owned.
+ * Resolve an exact natural-language navigation command for local routing.
+ * The caller consumes a resolved command as app chrome: it changes the canvas
+ * without adding a synthetic navigation exchange to the conversation. Requests
+ * that contain anything beyond the exact route intent do not resolve here and
+ * remain model-owned.
  */
 export function resolveOptimisticNavigationExecution(
   commands: SlashCommandCatalogItem[],

@@ -226,22 +226,27 @@ describe("ChatOverlay slash commands", () => {
     expect(input.value).toBe("");
   });
 
-  it("natural navigation stays inert when the feature flag is off", () => {
+  it("exact navigation stays local and silent when broad shortcuts are off", () => {
     const slash = makeSlash();
     const { input, controller } = renderOverlay(slash);
     fireEvent.change(input, { target: { value: "open settings" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(controller.send).toHaveBeenCalledWith("open settings");
-    expect(slash.navigateSettings).not.toHaveBeenCalled();
+    expect(controller.send).not.toHaveBeenCalled();
+    expect(slash.navigateSettings).toHaveBeenCalledWith(undefined);
+    expect(input.value).toBe("");
   });
 
-  it("feature-flagged natural navigation preserves the model-authored turn", () => {
+  it("keeps non-exact navigation requests model-owned", () => {
     const slash = makeSlash({ naturalShortcutsEnabled: true });
     const { input, controller } = renderOverlay(slash);
-    fireEvent.change(input, { target: { value: "open settings" } });
+    fireEvent.change(input, {
+      target: { value: "open settings and explain every option" },
+    });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(slash.navigateSettings).toHaveBeenCalledWith(undefined);
-    expect(controller.send).toHaveBeenCalledWith("open settings");
+    expect(slash.navigateSettings).not.toHaveBeenCalled();
+    expect(controller.send).toHaveBeenCalledWith(
+      "open settings and explain every option",
+    );
     expect(input.value).toBe("");
   });
 
