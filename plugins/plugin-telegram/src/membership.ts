@@ -162,6 +162,47 @@ const FAIL_CLOSED_PENDING: ReadonlySet<UUID> = {
 
 const EMPTY_PENDING: ReadonlySet<UUID> = new Set<UUID>();
 
+const CANONICAL_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Runtime check for a canonical (8-4-4-4-12 lowercase-hex) UUID string. Used
+ * to validate durable cache payloads whose declared type is a compile-time
+ * cast only — the SQL cache contract stores arbitrary JSON.
+ */
+function isCanonicalUuid(value: unknown): value is UUID {
+  return typeof value === "string" && CANONICAL_UUID_PATTERN.test(value);
+}
+
+/**
+ * Validates a persisted pending-revocation overlay payload. The SQL cache
+ * contract stores arbitrary JSON and `getCache<UUID[]>` returns the raw
+ * stored value through a compile-time cast, so the shape must be proven at
+ * runtime: a bare string is iterable per character (never matching the
+ * revoked principal's UUID) and an empty string is falsy, either of which
+ * would silently re-authorize a principal whose revocation could not be
+ * committed. Only `undefined` (the typed cache miss — the adapter returns
+ * the raw JSONB value for a present row, so a stored JSON `null` arrives as
+ * `null`, not `undefined`) means no row exists: a definitive empty overlay.
+ * Everything else must prove it is an array of canonical UUIDs; anything
+ * else returns null so the caller fails closed instead of mistaking
+ * corruption for an empty fence.
+ */
+function parsePersistedPendingRevocations(value: unknown): UUID[] | null {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  for (const entry of value) {
+    if (!isCanonicalUuid(entry)) {
+      return null;
+    }
+  }
+  return value;
+}
+
 /**
  * Per-(agent, Telegram account) client for the membership authority. Scope
  * trackers are seeded from persisted scope health on first touch so a
@@ -257,7 +298,7 @@ export class TelegramMembershipAuthority {
     scope: MembershipScope,
   ): Promise<ReadonlySet<UUID>> {
     const key = scopeKey(scope);
-    let persisted: UUID[] | undefined;
+    let persisted: unknown;
     try {
       persisted = await this.runtime.getCache<UUID[]>(
         this.pendingRevocationsCacheKey(scope),
@@ -271,10 +312,35 @@ export class TelegramMembershipAuthority {
       });
       return FAIL_CLOSED_PENDING;
     }
+    const entries = parsePersistedPendingRevocations(persisted);
+    if (entries === null) {
+      // error-policy:J3 The persisted overlay payload is not the declared
+      // UUID[] shape (the SQL cache contract stores arbitrary JSON and the
+      // getCache type is a compile-time cast). Treat corruption exactly like
+      // an unreadable overlay: fail closed rather than let a malformed
+      // payload masquerade as an empty fence and re-authorize a principal
+      // whose revocation could not be committed. The hydrated mark is NOT
+      // set, so a later healthy payload resumes normal decisions.
+      this.runtime.reportError(
+        "telegram:membership-pending-hydration",
+        new ElizaError(
+          "Persisted pending-revocation overlay payload failed UUID[] validation",
+          {
+            code: "TELEGRAM_MEMBERSHIP_PENDING_PAYLOAD_INVALID",
+            context: {
+              chatId: scope.externalWorldId,
+              persistedType: typeof persisted,
+            },
+          },
+        ),
+        { chatId: scope.externalWorldId },
+      );
+      return FAIL_CLOSED_PENDING;
+    }
     this.pendingRevocationsHydrated.add(key);
-    if (persisted) {
+    if (entries.length > 0) {
       const overlay = this.pendingRevocations.get(key) ?? new Set<UUID>();
-      for (const id of persisted) overlay.add(id);
+      for (const id of entries) overlay.add(id);
       this.pendingRevocations.set(key, overlay);
     }
     return this.pendingRevocations.get(key) ?? EMPTY_PENDING;
