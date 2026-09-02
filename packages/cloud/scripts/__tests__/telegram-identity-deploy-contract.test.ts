@@ -46,7 +46,7 @@ function expectBashSyntax(step: WorkflowStep): void {
 }
 
 describe("protected Telegram identity workflow contract", () => {
-  test("Cloudflare preflight attests the selected identity before migration or deploy", () => {
+  test("Cloudflare preflight admits the selected identity before migration or deploy", () => {
     const release = workflow("cloud-cf-release.yml");
     const resolver = release.jobs["resolve-pages-environment-config"];
     const migrate = release.jobs["migrate-db"];
@@ -56,34 +56,30 @@ describe("protected Telegram identity workflow contract", () => {
 
     const select = namedStep(
       resolver,
-      "Validate Telegram public identity preflight",
-    );
-    const attest = namedStep(
-      resolver,
-      "Attest protected Telegram runtime identity",
-    );
-    expect(resolver.steps.indexOf(attest)).toBeGreaterThan(
-      resolver.steps.indexOf(select),
+      "Validate caller-admitted Telegram public identity",
     );
     expect(migrate.needs).toBe("resolve-pages-environment-config");
-    expect(attest.env).toMatchObject({
-      TELEGRAM_BOT_TOKEN: expect.stringContaining(
-        "secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN",
+    expect(select.env).toMatchObject({
+      RELEASE_RUN_ATTEMPT: expect.stringContaining("github.run_attempt"),
+      TARGET_ENVIRONMENT: expect.stringContaining("inputs.target_environment"),
+      TELEGRAM_AUTHORITY_RUN_ATTEMPT: expect.stringContaining(
+        "inputs.telegram_authority_run_attempt",
       ),
-      TELEGRAM_WEBHOOK_SECRET: expect.stringContaining(
-        "secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+      ADMITTED_TELEGRAM_BOT_ID: expect.stringContaining(
+        "inputs.admitted_telegram_bot_id",
       ),
-      TELEGRAM_EXPECTED_BOT_ID: expect.stringContaining(
-        "steps.telegram.outputs.bot_id",
+      ADMITTED_TELEGRAM_BOT_USERNAME: expect.stringContaining(
+        "inputs.admitted_telegram_bot_username",
       ),
-      TELEGRAM_EXPECTED_BOT_USERNAME: expect.stringContaining(
-        "steps.telegram.outputs.bot_username",
+      TELEGRAM_RUNTIME_AUTHORITY: expect.stringContaining(
+        "inputs.telegram_runtime_authority",
       ),
     });
-    expect(attest.run).toContain("verify-telegram-bot-identity.mjs");
     expect(select.run).toContain("packages/homepage/src/lib/contact.ts");
-    expect(select.run).toContain("ENVIRONMENT_TELEGRAM_BOT_ID");
-    expect(select.run).toContain("TELEGRAM_IDENTITY_AUTHORITY_SHA256");
+    expect(select.run).toContain("TELEGRAM_AUTHORITY_RUN_ATTEMPT");
+    expect(select.run).toContain("TELEGRAM_RUNTIME_AUTHORITY");
+    expect(select.run).toContain("ADMITTED_TELEGRAM_BOT_ID");
+    expect(select.run).toContain("ADMITTED_TELEGRAM_BOT_USERNAME");
 
     const prepare = namedStep(
       deploy,
@@ -95,7 +91,10 @@ describe("protected Telegram identity workflow contract", () => {
       "Verify deployed Telegram identity readiness",
     );
     expect(prepare.run).toContain(
-      "Required protected $DEPLOY_ENVIRONMENT Telegram secret is absent or blank",
+      "Required protected production Telegram secret is absent or blank",
+    );
+    expect(prepare.run).toContain(
+      "Staging can preserve the existing Telegram credentials",
     );
     expect(prepare.run).toContain('queue_secret "$name"');
     expect(publish.run).toContain("ELIZA_APP_TELEGRAM_BOT_ID");
