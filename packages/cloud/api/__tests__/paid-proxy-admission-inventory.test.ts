@@ -32,7 +32,7 @@ const paidLegacyRoutes = [
 ] as const;
 
 const GUARDED_ROUTE_CALL =
-  /\b(?:executeGuardedPaidProxyWithBody|executeGuardedPaidProxyRequest|withGuardedPaidProxyAdmission)\s*\(/;
+  /\b(?:executeGuardedPaidProxyWithPreflight|executeGuardedPaidProxyRequest|withGuardedPaidProxyAdmission)\s*\(/;
 
 function materializeGeneratedPath(path: string): string {
   return path
@@ -57,10 +57,10 @@ async function generatedRouteEntries(): Promise<
   return entries;
 }
 
-test("all 14 paid legacy proxy routes enter the shared guarded adapter", async () => {
+test("all 14 paid legacy proxy routes defer local parsing to the shared guarded adapter", async () => {
   for (const route of paidLegacyRoutes) {
     const source = await readFile(resolve(apiRoot, route), "utf8");
-    expect(source, route).toContain("executeGuardedPaidProxyWithBody");
+    expect(source, route).toContain("executeGuardedPaidProxyWithPreflight");
     expect(source, route).not.toMatch(/\bexecuteWithBody\s*\(/);
   }
 });
@@ -123,5 +123,27 @@ test("global auth bypasses exactly the guarded generated v1 route inventory", as
   expect(bypassedRoutes.size).toBe(16);
   for (const route of bypassedRoutes) {
     expect(guardedAdapterRoutes.has(route), route).toBe(true);
+  }
+});
+
+test("every guarded mount enters standing admission before route-local validation", async () => {
+  const generatedV1Routes = (await generatedRouteEntries()).filter((entry) =>
+    entry.path.startsWith("/api/v1/"),
+  );
+  for (const entry of generatedV1Routes) {
+    const source = await readFile(
+      resolve(apiRoot, "src", `${entry.import}.ts`),
+      "utf8",
+    );
+    if (!GUARDED_ROUTE_CALL.test(source)) continue;
+    if (
+      paidLegacyRoutes.some(
+        (route) => entry.import === `../${route.slice(0, -3)}`,
+      )
+    ) {
+      expect(source, entry.path).toContain(
+        "executeGuardedPaidProxyWithPreflight",
+      );
+    }
   }
 });

@@ -13,7 +13,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * Rate Limiting: Per API key
  */
 
-import { executeGuardedPaidProxyWithBody } from "@/api-app/lib/guarded-paid-proxy";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 import { getCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
   solanaRpcConfig,
@@ -29,36 +29,28 @@ async function __hono_GET(
   c: AppContext,
   { params }: { params: Promise<{ address: string }> },
 ) {
-  const { address } = await params;
-
-  if (!isValidSolanaAddress(address)) {
-    return Response.json(
-      {
-        error: "Invalid Solana address",
-        details: "Address must be a valid base58-encoded public key",
+  const response = await executeGuardedPaidProxyWithPreflight(c, async () => {
+    const { address } = await params;
+    if (!isValidSolanaAddress(address)) {
+      return Response.json(
+        {
+          error: "Invalid Solana address",
+          details: "Address must be a valid base58-encoded public key",
+        },
+        { status: 400 },
+      );
+    }
+    return {
+      config: solanaRpcConfig,
+      work: solanaRpcHandler,
+      body: {
+        jsonrpc: "2.0",
+        id: "eliza-cloud",
+        method: "getTransactionsForAddress",
+        params: { address },
       },
-      {
-        status: 400,
-        headers: getCorsHeaders("GET, OPTIONS"),
-      },
-    );
-  }
-
-  const body = {
-    jsonrpc: "2.0",
-    id: "eliza-cloud",
-    method: "getTransactionsForAddress",
-    params: {
-      address,
-    },
-  };
-
-  const response = await executeGuardedPaidProxyWithBody(
-    c,
-    solanaRpcConfig,
-    solanaRpcHandler,
-    body,
-  );
+    };
+  });
 
   const corsHeaders = getCorsHeaders("GET, OPTIONS");
   for (const [key, value] of Object.entries(corsHeaders)) {

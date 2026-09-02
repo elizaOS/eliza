@@ -21,9 +21,10 @@ mock.module("@/lib/services/proxy/engine", () => ({
   createHandler: mock(),
 }));
 
-const { executeGuardedPaidProxyWithBody } = await import(
-  "./guarded-paid-proxy"
-);
+const {
+  executeGuardedPaidProxyWithBody,
+  executeGuardedPaidProxyWithPreflight,
+} = await import("./guarded-paid-proxy");
 
 const snapshot = {
   balance: { balanceUsd: 10, balanceAt: Date.now(), balanceRevision: "9" },
@@ -142,6 +143,36 @@ test("standing denial preserves its safe reason and suppresses provider dispatch
   expect(combinedStandingRead).toHaveBeenCalledTimes(1);
   expect(executeWithBody).not.toHaveBeenCalled();
   expect(denial.details?.reason).toBe("organization_inactive");
+});
+
+test("preflight sees the caller after one standing read and can reject without provider admission", async () => {
+  combinedStandingRead.mockReset();
+  executionContextRead.mockReset();
+  executeWithBody.mockReset();
+  let resolved = false;
+  combinedStandingRead.mockImplementation(async () => {
+    resolved = true;
+    return {
+      user: { id: "user-1", organization_id: "org-1" },
+      apiKeyId: "key-1",
+      authSource: "combined_cache",
+      admissionSnapshot: snapshot,
+      appScopeId: null,
+    };
+  });
+  executionContextRead.mockReturnValue({ waitUntil: () => undefined });
+
+  const response = await executeGuardedPaidProxyWithPreflight(
+    makeContext(),
+    () => {
+      expect(resolved).toBe(true);
+      return Response.json({ error: "Invalid input" }, { status: 400 });
+    },
+  );
+
+  expect(response.status).toBe(400);
+  expect(combinedStandingRead).toHaveBeenCalledTimes(1);
+  expect(executeWithBody).not.toHaveBeenCalled();
 });
 
 test("production without a Worker lifetime fails closed before reserve or dispatch", async () => {

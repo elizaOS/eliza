@@ -10,7 +10,7 @@
  */
 
 import { Hono } from "hono";
-import { executeGuardedPaidProxyWithBody } from "@/api-app/lib/guarded-paid-proxy";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 import {
   solanaRpcConfig,
   solanaRpcHandler,
@@ -33,23 +33,25 @@ app.post("/", async (c) => {
     headers.set("authorization", `Bearer ${queryApiKey}`);
   }
 
-  let body: ProxyRequestBody;
-  try {
-    body = (await c.req.json()) as ProxyRequestBody;
-  } catch {
-    return c.json({ error: "Invalid JSON" }, 400);
-  }
-
   const request = new Request(c.req.url, {
     method: "POST",
     headers,
   });
-
-  return executeGuardedPaidProxyWithBody(
+  return executeGuardedPaidProxyWithPreflight(
     c,
-    solanaRpcConfig,
-    solanaRpcHandler,
-    body,
+    async () => {
+      let body: ProxyRequestBody;
+      try {
+        body = (await c.req.json()) as ProxyRequestBody;
+      } catch {
+        return c.json({ error: "Invalid JSON" }, 400);
+      }
+      return {
+        config: solanaRpcConfig,
+        work: solanaRpcHandler,
+        body,
+      };
+    },
     { request },
   );
 });

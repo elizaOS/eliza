@@ -56,10 +56,9 @@ mock.module("@/lib/services/inference-auth-context", () => ({
   resolveInferenceAuthContext: mock(
     async (
       request: Request,
-      options: { deferStrongCredentialCheck?: boolean },
+      _options: { deferStrongCredentialCheck?: boolean },
     ) => {
       standingReads.push(request);
-      expect(options.deferStrongCredentialCheck).toBe(true);
       if (authOutcome === "warming") return { kind: "warming" };
       if (authOutcome === "denied") {
         return {
@@ -148,7 +147,17 @@ mock.module("@/lib/services/proxy/services/market-data", () => ({
   },
   marketDataHandler: providerDispatch,
 }));
+mock.module("@/lib/services/proxy/services/chain-data", () => ({
+  chainDataConfig: {
+    id: "chain-data",
+    name: "Chain data",
+    auth: "apiKeyWithOrg",
+    getCost: async () => 0.01,
+  },
+  chainDataHandler: providerDispatch,
+}));
 mock.module("@/lib/services/proxy/services/rpc", () => ({
+  ALCHEMY_SLUGS: { ethereum: "eth-mainnet" },
   SUPPORTED_RPC_CHAINS: new Set(["ethereum"]),
   isValidRpcChain: (chain: string) => chain === "ethereum",
   rpcConfigForChain: () => ({
@@ -180,6 +189,13 @@ const [
   { default: solanaAssetsRoute },
   { default: solanaTokenAccountsRoute },
   { default: solanaTransactionsRoute },
+  { default: chainNftsRoute },
+  { default: chainTokensRoute },
+  { default: chainTransfersRoute },
+  { default: marketCandlesRoute },
+  { default: marketPortfolioRoute },
+  { default: marketTokenRoute },
+  { default: marketTradesRoute },
 ] = await Promise.all([
   import("./middleware/auth"),
   import("../v1/market/price/[chain]/[address]/route"),
@@ -191,6 +207,13 @@ const [
   import("../v1/solana/assets/[address]/route"),
   import("../v1/solana/token-accounts/[address]/route"),
   import("../v1/solana/transactions/[address]/route"),
+  import("../v1/chain/nfts/[chain]/[address]/route"),
+  import("../v1/chain/tokens/[chain]/[address]/route"),
+  import("../v1/chain/transfers/[chain]/[address]/route"),
+  import("../v1/market/candles/[chain]/[address]/route"),
+  import("../v1/market/portfolio/[chain]/[address]/route"),
+  import("../v1/market/token/[chain]/[address]/route"),
+  import("../v1/market/trades/[chain]/[address]/route"),
 ]);
 
 function mountedApp(): Hono<AppEnv> {
@@ -211,6 +234,13 @@ function mountedApp(): Hono<AppEnv> {
   app.route("/api/v1/solana/assets/:address", solanaAssetsRoute);
   app.route("/api/v1/solana/token-accounts/:address", solanaTokenAccountsRoute);
   app.route("/api/v1/solana/transactions/:address", solanaTransactionsRoute);
+  app.route("/api/v1/chain/nfts/:chain/:address", chainNftsRoute);
+  app.route("/api/v1/chain/tokens/:chain/:address", chainTokensRoute);
+  app.route("/api/v1/chain/transfers/:chain/:address", chainTransfersRoute);
+  app.route("/api/v1/market/candles/:chain/:address", marketCandlesRoute);
+  app.route("/api/v1/market/portfolio/:chain/:address", marketPortfolioRoute);
+  app.route("/api/v1/market/token/:chain/:address", marketTokenRoute);
+  app.route("/api/v1/market/trades/:chain/:address", marketTradesRoute);
   return app;
 }
 
@@ -316,6 +346,50 @@ test("all three query-key RPC routes resolve and dispatch with the same rewritte
   }
   expect(admissionCalls).toHaveLength(3);
   expect(providerDispatch).toHaveBeenCalledTimes(3);
+});
+
+test("every guarded route authenticates once before local validation or parsing rejects", async () => {
+  const app = mountedApp();
+  const invalidCases = [
+    ["GET", "/api/v1/chain/nfts/unsupported/0x1"],
+    ["GET", "/api/v1/chain/tokens/unsupported/0x1"],
+    ["GET", "/api/v1/chain/transfers/unsupported/0x1"],
+    ["GET", "/api/v1/market/candles/unsupported/0x1"],
+    ["GET", "/api/v1/market/portfolio/unsupported/0x1"],
+    ["GET", "/api/v1/market/price/unsupported/0x1"],
+    ["GET", "/api/v1/market/token/unsupported/0x1"],
+    ["GET", "/api/v1/market/trades/unsupported/0x1"],
+    ["POST", "/api/v1/proxy/evm-rpc/unsupported"],
+    ["POST", "/api/v1/proxy/solana-rpc"],
+    ["GET", "/api/v1/solana/assets/not-a-solana-address"],
+    ["POST", "/api/v1/solana/rpc"],
+    ["GET", "/api/v1/solana/token-accounts/not-a-solana-address"],
+    ["GET", "/api/v1/solana/transactions/not-a-solana-address"],
+    ["POST", "/api/v1/rpc/unsupported"],
+  ] as const;
+
+  for (const [method, path] of invalidCases) {
+    const beforeReads = standingReads.length;
+    const beforeAdmissions = admissionCalls.length;
+    const response = await app.fetch(
+      new Request(`https://api.test${path}`, {
+        method,
+        headers: {
+          ...authHeaders("session"),
+          ...(method === "POST" ? { "content-type": "application/json" } : {}),
+        },
+        body: method === "POST" ? "{" : undefined,
+      }),
+      { NODE_ENV: "production" } as never,
+      executionCtx as never,
+    );
+    expect(response.status, path).toBe(400);
+    expect(standingReads, path).toHaveLength(beforeReads + 1);
+    expect(admissionCalls, path).toHaveLength(beforeAdmissions);
+  }
+
+  expect(providerDispatch).not.toHaveBeenCalled();
+  expect(globalSessionReads).not.toHaveBeenCalled();
 });
 
 test("all three Solana reads keep typed denial status, reason, and CORS", async () => {

@@ -23,7 +23,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * - Cost: prevents wasted credits on invalid requests
  */
 
-import { executeGuardedPaidProxyWithBody } from "@/api-app/lib/guarded-paid-proxy";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
   isValidAddress,
@@ -47,58 +47,39 @@ async function __hono_GET(
   c: AppContext,
   { params }: { params: Promise<{ chain: string; address: string }> },
 ) {
-  const { chain, address } = await params;
-  const normalizedChain = chain.toLowerCase();
-
-  if (!isValidChain(normalizedChain)) {
-    return applyCorsHeaders(
-      Response.json(
-        {
-          error: "Invalid chain",
-          details:
-            "Supported chains: solana, ethereum, arbitrum, avalanche, bsc, optimism, polygon, base, zksync, sui",
-        },
-        { status: 400 },
-      ),
-      CORS_METHODS,
-    );
-  }
-
-  if (!isValidAddress(normalizedChain, address)) {
-    return applyCorsHeaders(
-      Response.json(
-        {
-          error: "Invalid address format",
-          details: `Address format invalid for chain: ${normalizedChain}`,
-        },
-        { status: 400 },
-      ),
-      CORS_METHODS,
-    );
-  }
-
-  // WHY this body structure:
-  // - method: "getPrice" is provider-agnostic (could be Birdeye, CoinGecko, etc.)
-  // - chain: passed through to handler for provider-specific routing
-  // - params: flexible object allows adding fields without route changes
-  const body = {
-    method: "getPrice",
-    chain: normalizedChain,
-    params: { address },
-  };
-
-  // WHY executeWithBody not manual billing:
-  // - Handles auth, credit reservation, caching, rate limiting automatically
-  // - Guarantees credits are refunded on errors
-  // - Tracks usage for analytics and billing
-  // - Consistent behavior across all service routes
   return applyCorsHeaders(
-    await executeGuardedPaidProxyWithBody(
-      c,
-      marketDataConfig,
-      marketDataHandler,
-      body,
-    ),
+    await executeGuardedPaidProxyWithPreflight(c, async () => {
+      const { chain, address } = await params;
+      const normalizedChain = chain.toLowerCase();
+      if (!isValidChain(normalizedChain)) {
+        return Response.json(
+          {
+            error: "Invalid chain",
+            details:
+              "Supported chains: solana, ethereum, arbitrum, avalanche, bsc, optimism, polygon, base, zksync, sui",
+          },
+          { status: 400 },
+        );
+      }
+      if (!isValidAddress(normalizedChain, address)) {
+        return Response.json(
+          {
+            error: "Invalid address format",
+            details: `Address format invalid for chain: ${normalizedChain}`,
+          },
+          { status: 400 },
+        );
+      }
+      return {
+        config: marketDataConfig,
+        work: marketDataHandler,
+        body: {
+          method: "getPrice",
+          chain: normalizedChain,
+          params: { address },
+        },
+      };
+    }),
     CORS_METHODS,
   );
 }

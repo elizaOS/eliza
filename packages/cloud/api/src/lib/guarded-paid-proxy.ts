@@ -27,6 +27,18 @@ interface GuardedPaidProxyOptions {
   deferStrongCredentialCheck?: boolean;
 }
 
+/** Delays route-local parsing until the shared caller standing decision exists. */
+export interface PreparedPaidProxyBody {
+  config: ServiceConfig;
+  work: ServiceHandler;
+  body: ProxyRequestBody;
+}
+
+export type PaidProxyPreflight = () =>
+  | PreparedPaidProxyBody
+  | Response
+  | Promise<PreparedPaidProxyBody | Response>;
+
 function paidProxyApiErrorResponse(error: ApiError): Response {
   const retryAfterSeconds = error.details?.retryAfterSeconds;
   const headers = new Headers({ "Content-Type": "application/json" });
@@ -138,6 +150,32 @@ export async function executeGuardedPaidProxyWithBody(
         body,
         admission,
       ),
+    { ...options, request: options.request ?? c.req.raw },
+  );
+}
+
+/**
+ * Resolves identity and standing before a route reads or validates paid input.
+ * Invalid input can return a local response without opening provider admission.
+ */
+export async function executeGuardedPaidProxyWithPreflight(
+  c: AppContext,
+  preflight: PaidProxyPreflight,
+  options: GuardedPaidProxyOptions = {},
+): Promise<Response> {
+  return withGuardedPaidProxyAdmission(
+    c,
+    async (admission) => {
+      const prepared = await preflight();
+      if (prepared instanceof Response) return prepared;
+      return executeWithBody(
+        prepared.config,
+        prepared.work,
+        options.request ?? c.req.raw,
+        prepared.body,
+        admission,
+      );
+    },
     { ...options, request: options.request ?? c.req.raw },
   );
 }

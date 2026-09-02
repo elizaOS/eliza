@@ -1,6 +1,6 @@
 /** Proxies validated public candle requests to the paid market-data provider. */
 import { Hono } from "hono";
-import { executeGuardedPaidProxyWithBody } from "@/api-app/lib/guarded-paid-proxy";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
   isValidAddress,
@@ -40,78 +40,60 @@ async function __hono_GET(
   c: AppContext,
   { params }: { params: Promise<{ chain: string; address: string }> },
 ) {
-  const request = c.req.raw;
-  const { chain, address } = await params;
-  const normalizedChain = chain.toLowerCase();
-  const { searchParams } = new URL(request.url);
-
-  if (!isValidChain(normalizedChain)) {
-    return applyCorsHeaders(
-      Response.json(
-        {
-          error: "Invalid chain",
-          details:
-            "Supported chains: solana, ethereum, arbitrum, avalanche, bsc, optimism, polygon, base, zksync, sui",
-        },
-        { status: 400 },
-      ),
-      CORS_METHODS,
-    );
-  }
-
-  if (!isValidAddress(normalizedChain, address)) {
-    return applyCorsHeaders(
-      Response.json(
-        {
-          error: "Invalid address format",
-          details: `Address format invalid for chain: ${normalizedChain}`,
-        },
-        { status: 400 },
-      ),
-      CORS_METHODS,
-    );
-  }
-
-  const requestParams: Record<string, string> = { address };
-
-  const requestedType = searchParams.get("type");
-  if (
-    requestedType != null &&
-    requestedType !== "" &&
-    !OHLCV_TYPE_SET.has(requestedType)
-  ) {
-    return applyCorsHeaders(
-      Response.json(
-        {
-          error: "Invalid type",
-          details: `type must be a canonical Birdeye OHLCV interval (${OHLCV_TYPES.join(", ")}).`,
-        },
-        { status: 400 },
-      ),
-      CORS_METHODS,
-    );
-  }
-  if (requestedType) requestParams.type = requestedType;
-
-  const timeFrom = searchParams.get("time_from");
-  if (timeFrom) requestParams.time_from = timeFrom;
-
-  const timeTo = searchParams.get("time_to");
-  if (timeTo) requestParams.time_to = timeTo;
-
-  const body = {
-    method: "getOHLCV",
-    chain: normalizedChain,
-    params: requestParams,
-  };
-
   return applyCorsHeaders(
-    await executeGuardedPaidProxyWithBody(
-      c,
-      marketDataConfig,
-      marketDataHandler,
-      body,
-    ),
+    await executeGuardedPaidProxyWithPreflight(c, async () => {
+      const { chain, address } = await params;
+      const normalizedChain = chain.toLowerCase();
+      const { searchParams } = new URL(c.req.raw.url);
+      if (!isValidChain(normalizedChain)) {
+        return Response.json(
+          {
+            error: "Invalid chain",
+            details:
+              "Supported chains: solana, ethereum, arbitrum, avalanche, bsc, optimism, polygon, base, zksync, sui",
+          },
+          { status: 400 },
+        );
+      }
+      if (!isValidAddress(normalizedChain, address)) {
+        return Response.json(
+          {
+            error: "Invalid address format",
+            details: `Address format invalid for chain: ${normalizedChain}`,
+          },
+          { status: 400 },
+        );
+      }
+      const requestParams: Record<string, string> = { address };
+      const requestedType = searchParams.get("type");
+      if (
+        requestedType != null &&
+        requestedType !== "" &&
+        !OHLCV_TYPE_SET.has(requestedType)
+      ) {
+        return Response.json(
+          {
+            error: "Invalid type",
+            details: `type must be a canonical Birdeye OHLCV interval (${OHLCV_TYPES.join(", ")}).`,
+          },
+          { status: 400 },
+        );
+      }
+      if (requestedType) requestParams.type = requestedType;
+      const timeFrom = searchParams.get("time_from");
+      if (timeFrom) requestParams.time_from = timeFrom;
+      const timeTo = searchParams.get("time_to");
+      if (timeTo) requestParams.time_to = timeTo;
+      return {
+        config: marketDataConfig,
+        work: marketDataHandler,
+        body: {
+          method: "getOHLCV",
+          chain: normalizedChain,
+          params: requestParams,
+        },
+      };
+    }),
     CORS_METHODS,
   );
 }

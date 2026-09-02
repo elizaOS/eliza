@@ -13,7 +13,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * Rate Limiting: Per API key
  */
 
-import { executeGuardedPaidProxyWithBody } from "@/api-app/lib/guarded-paid-proxy";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 import { getCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
   solanaRpcConfig,
@@ -29,39 +29,29 @@ async function __hono_GET(
   c: AppContext,
   { params }: { params: Promise<{ address: string }> },
 ) {
-  const { address } = await params;
-
-  // Validate Solana address format to prevent DoS and invalid requests
-  if (!isValidSolanaAddress(address)) {
-    const corsHeaders = getCorsHeaders("GET, OPTIONS");
-    return Response.json(
-      {
-        error: "Invalid Solana address",
-        details: "Address must be a valid base58-encoded public key",
-      },
-      { status: 400, headers: corsHeaders },
-    );
-  }
-
-  const body = {
-    jsonrpc: "2.0",
-    id: "eliza-cloud",
-    method: "getAssetsByOwner",
-    params: {
-      ownerAddress: address,
-      page: 1,
-      limit: 1000,
-    },
-  };
-
   const corsHeaders = getCorsHeaders("GET, OPTIONS");
-
-  const response = await executeGuardedPaidProxyWithBody(
-    c,
-    solanaRpcConfig,
-    solanaRpcHandler,
-    body,
-  );
+  const response = await executeGuardedPaidProxyWithPreflight(c, async () => {
+    const { address } = await params;
+    if (!isValidSolanaAddress(address)) {
+      return Response.json(
+        {
+          error: "Invalid Solana address",
+          details: "Address must be a valid base58-encoded public key",
+        },
+        { status: 400 },
+      );
+    }
+    return {
+      config: solanaRpcConfig,
+      work: solanaRpcHandler,
+      body: {
+        jsonrpc: "2.0",
+        id: "eliza-cloud",
+        method: "getAssetsByOwner",
+        params: { ownerAddress: address, page: 1, limit: 1000 },
+      },
+    };
+  });
 
   for (const [key, value] of Object.entries(corsHeaders)) {
     response.headers.set(key, value);
