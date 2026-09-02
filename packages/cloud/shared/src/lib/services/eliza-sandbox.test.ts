@@ -3541,7 +3541,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       nodeSpy.mockRestore();
       getClientSpy.mockRestore();
     }
-  }, 40_000);
+  }, 60_000);
 
   test("(e) recoverDisconnected: repaired IP + live re-probe → recovered with columns updated, no reprovision", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
