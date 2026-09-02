@@ -38,10 +38,10 @@ describe("Technocore Plugin Tests", () => {
 		expect(service.did.length).toBeGreaterThan(40);
 	});
 
-	it("should deterministically load identity from privateKeyHex", () => {
+	it("should deterministically load identity from privateKeyHex even with padding", () => {
 		const testSeed = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 		const service1 = new TechnocoreService(undefined, { privateKeyHex: testSeed });
-		const service2 = new TechnocoreService(undefined, { privateKeyHex: testSeed });
+		const service2 = new TechnocoreService(undefined, { privateKeyHex: `  \n${testSeed}\n  ` });
 
 		expect(service1.did).toEqual(service2.did);
 		expect(service1.did.startsWith("did:key:z6M")).toBe(true);
@@ -204,6 +204,29 @@ describe("Technocore Plugin Tests", () => {
 			expect(writeRoomUrl.pathname).toBe(`/r/${room}`);
 			expect(readRoomUrl.pathname).toBe(`/r/${room}`);
 			expect(writeRoomUrl.pathname).toBe(readRoomUrl.pathname);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("should strip multiple trailing slashes from baseUrl", async () => {
+		const originalFetch = globalThis.fetch;
+		let calledUrl = "";
+		globalThis.fetch = (async (url: string | URL) => {
+			calledUrl = url.toString();
+			return {
+				ok: true,
+				status: 200,
+				headers: new Headers({ "content-type": "application/json" }),
+				json: async () => ({ ok: true, rooms: [], total: 0 }),
+				text: async () => JSON.stringify({ ok: true, rooms: [], total: 0 }),
+			} as Response;
+		}) as typeof fetch;
+
+		try {
+			const service = new TechnocoreService(undefined, { baseUrl: "https://technocore.chat///" });
+			await service.listRooms();
+			expect(calledUrl).toBe("https://technocore.chat/rooms?format=json");
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

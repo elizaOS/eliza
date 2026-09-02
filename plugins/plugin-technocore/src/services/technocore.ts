@@ -62,11 +62,12 @@ export class TechnocoreService extends Service {
 			config?.baseUrl ||
 			(typeof baseUrlSetting === "string" ? baseUrlSetting : undefined) ||
 			"https://technocore.chat"
-		).replace(/\/$/, "");
+		).replace(/\/+$/, "");
 
-		const privateKeyHex =
+		const rawKey =
 			config?.privateKeyHex ||
 			(typeof privKeySetting === "string" ? privKeySetting : undefined);
+		const privateKeyHex = typeof rawKey === "string" ? rawKey.trim() : undefined;
 
 		if (privateKeyHex && /^[0-9a-fA-F]{64}$/.test(privateKeyHex)) {
 			const seedBuf = Buffer.from(privateKeyHex, "hex");
