@@ -21,6 +21,11 @@ import {
   organizationBalanceRevisionSequence,
   organizations,
 } from "../../../db/schemas/organizations";
+import {
+  personalSharedGroupBindings,
+  personalSharedGroupJoinChallenges,
+  personalSharedGroupParticipants,
+} from "../../../db/schemas/personal-shared-groups";
 import { userIdentities } from "../../../db/schemas/user-identities";
 import { users } from "../../../db/schemas/users";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
@@ -61,6 +66,9 @@ beforeAll(async () => {
         organizations,
         users,
         userIdentities,
+        personalSharedGroupBindings,
+        personalSharedGroupJoinChallenges,
+        personalSharedGroupParticipants,
         identityLinkCodes,
       } as never,
       dbWrite as never,

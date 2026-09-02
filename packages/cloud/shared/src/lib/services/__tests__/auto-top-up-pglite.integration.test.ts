@@ -450,11 +450,20 @@ beforeAll(async () => {
       settings jsonb NOT NULL DEFAULT '{}'::jsonb,
       stripe_customer_id text,
       billing_email text,
+      stripe_payment_method_id text,
       stripe_default_payment_method text,
       auto_top_up_enabled boolean NOT NULL DEFAULT false,
       auto_top_up_threshold numeric(10,2),
       auto_top_up_amount numeric(10,2),
+      pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true,
+      steward_tenant_id text UNIQUE,
+      steward_tenant_api_key text,
+      account_lifecycle_state text NOT NULL DEFAULT 'active',
+      account_lifecycle_revision bigint NOT NULL DEFAULT 0,
+      account_deletion_request_id uuid,
+      paid_work_fenced_at timestamp,
       is_active boolean NOT NULL DEFAULT true,
+      created_at timestamp NOT NULL DEFAULT now(),
       updated_at timestamp NOT NULL DEFAULT now()
     );
     CREATE UNIQUE INDEX organizations_stripe_customer_authority_unique
@@ -484,6 +493,7 @@ beforeAll(async () => {
     "0215_auto_top_up_attempts.sql",
     "0216_auto_top_up_cutover_control.sql",
     "0217_guard_auto_top_up_cutover_lifecycle.sql",
+    "0318_provider_admissions.sql",
   ]) {
     const migration = await readFile(
       new URL(`../../../db/migrations/${migrationName}`, import.meta.url),

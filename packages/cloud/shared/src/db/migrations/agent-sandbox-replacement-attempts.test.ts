@@ -522,7 +522,11 @@ describe("0321-0328 and 0370-0371 agent sandbox replacement attempts", () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
     };
-    expect(journal.entries.at(-1)).toMatchObject({
+    expect(
+      journal.entries.find(
+        ({ tag }) => tag === "0371_agent_vault_key_seed_receipts_per_replacement",
+      ),
+    ).toMatchObject({
       idx: 354,
       tag: "0371_agent_vault_key_seed_receipts_per_replacement",
     });

@@ -631,15 +631,17 @@ describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10
         inferenceMarkupPercentage: 10,
       });
 
-      const deduction = await appCreditsService.deductCredits({
+      const reservation = await appCreditsService.reserveInferenceCredits({
         appId: app.id,
         userId: consumerId,
-        baseCost: 2,
+        organizationId: payerOrgId,
+        estimatedBaseCost: 2,
         description: "withdrawal-race charge",
+        idempotencyKey: "withdrawal-race-charge",
         metadata: { model: "test-model" },
         app,
       });
-      expect(deduction.success).toBe(true);
+      expect(reservation.reservedAmount).toBeCloseTo(2.2, 6);
 
       const withdrawal = await redeemableEarningsService.reduceEarnings({
         userId: creatorId,
@@ -651,17 +653,9 @@ describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10
       });
       expect(withdrawal.success).toBe(true);
 
-      await expect(
-        appCreditsService.reconcileCredits({
-          appId: app.id,
-          userId: consumerId,
-          estimatedBaseCost: 2,
-          actualBaseCost: 0.5,
-          description: "withdrawal-race settle",
-          metadata: { model: "test-model" },
-          app,
-        }),
-      ).rejects.toThrow("Failed to reduce redeemable earnings");
+      await expect(reservation.reconcile(0.5)).rejects.toThrow(
+        "Failed to reduce redeemable earnings",
+      );
 
       expect(await orgBalance(payerOrgId)).toBeCloseTo(7.8, 6);
       expect(await orgTransactions(payerOrgId, "refund")).toHaveLength(0);
@@ -671,7 +665,7 @@ describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10
   );
 
   test(
-    "UNKEYED reconcile refund: a failed creator reversal retains the consumer charge and mints no refund",
+    "UNKEYED reconcile refund: missing reservation authority retains the consumer charge",
     async () => {
       if (!pgliteReady) return;
 
@@ -685,8 +679,8 @@ describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10
         inferenceMarkupPercentage: 10,
       });
 
-      // The direct-path shape (apps chat / generate-image routes): deductCredits
-      // then a single reconcileCredits with NO idempotencyKey and NO retry.
+      // A legacy direct-path shape deducts credits and then attempts a positive
+      // refund without the server-generated reservation transaction id.
       // $2 base + 10% markup = $2.20 debited → org 7.80, creator +$0.20.
       const deduction = await appCreditsService.deductCredits({
         appId: app.id,
@@ -700,15 +694,14 @@ describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10
       expect(await orgBalance(payerOrgId)).toBeCloseTo(7.8, 6);
       expect(await creatorRedeemableBalance(creatorId)).toBeCloseTo(0.2, 6);
 
-      // Blip the reversal exactly once. The creator leg runs before the refund,
-      // so failure must leave the original charge as backing.
+      // The missing reservation must fail closed before either the creator leg
+      // or the consumer refund can mutate a ledger.
       const reduceSpy = spyOn(redeemableEarningsService, "reduceEarnings").mockImplementationOnce(
         async () => {
           throw new Error("simulated transient DB error");
         },
       );
       try {
-        // Actual $0.5 → refund (2 − 0.5) × 1.1 = $1.65 commits, reversal throws.
         await expect(
           appCreditsService.reconcileCredits({
             appId: app.id,
@@ -719,7 +712,8 @@ describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10
             metadata: { model: "test-model" },
             app,
           }),
-        ).rejects.toThrow("simulated transient DB error");
+        ).rejects.toThrow("requires an authoritative reservation for a positive refund");
+        expect(reduceSpy).not.toHaveBeenCalled();
       } finally {
         reduceSpy.mockRestore();
       }

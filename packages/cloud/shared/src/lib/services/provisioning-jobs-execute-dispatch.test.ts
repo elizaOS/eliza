@@ -20,7 +20,7 @@ import { jobsRepository, StaleJobExecutionError } from "../../db/repositories/jo
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-import { ProvisioningJobService, provisioningJobService } from "./provisioning-jobs";
+import { ProvisioningJobService } from "./provisioning-jobs";
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -32,6 +32,10 @@ const EMPTY_RECOVERY = {
   unchanged: 0,
   failures: [],
 };
+const dispatchService = new ProvisioningJobService({
+  acquireProviderAdmission: async () => true,
+  releaseProviderAdmission: async () => {},
+});
 
 function makeJob(
   type: string,
@@ -92,7 +96,7 @@ function makeJob(
  */
 function harness(
   job: Job,
-  service = provisioningJobService,
+  service = dispatchService,
   suspendIntent?: {
     authorization: "user_request" | "billing_request";
     lifecycleRevision: number;
@@ -200,7 +204,7 @@ afterEach(() => {
   for (const s of serviceSpies.splice(0)) s.mockRestore();
 });
 
-async function run(type: string, service = provisioningJobService) {
+async function run(type: string, service = dispatchService) {
   return service.processPendingJobs(1, {
     jobTypes: [type as ProvisioningJobType],
   });
@@ -1476,7 +1480,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("agent_suspend dispatch recovers the durable revision omitted by a user envelope", async () => {
     const job = makeJob(JOB_TYPES.AGENT_SUSPEND);
-    const ctx = harness(job, provisioningJobService, {
+    const ctx = harness(job, dispatchService, {
       authorization: "user_request",
       lifecycleRevision: 7,
     });
@@ -1551,7 +1555,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("agent_suspend dispatch honors a billing intent promoted to user authority", async () => {
     const job = makeJob(JOB_TYPES.AGENT_SUSPEND, { authorization: "billing_request" });
-    const ctx = harness(job, provisioningJobService, {
+    const ctx = harness(job, dispatchService, {
       authorization: "user_request",
       lifecycleRevision: 9,
     });

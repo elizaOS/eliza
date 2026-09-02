@@ -36,6 +36,16 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "updated_at" timestamp NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 )`,
+  `CREATE TABLE IF NOT EXISTS "provider_admissions" (
+  "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+  "organization_id" uuid NOT NULL,
+  "operation_kind" text NOT NULL,
+  "operation_id" uuid NOT NULL,
+  "admitted_at" timestamptz NOT NULL,
+  "released_at" timestamptz,
+  PRIMARY KEY ("id"),
+  UNIQUE ("operation_kind", "operation_id")
+)`,
   `CREATE TABLE IF NOT EXISTS "users" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),
   "email" text,

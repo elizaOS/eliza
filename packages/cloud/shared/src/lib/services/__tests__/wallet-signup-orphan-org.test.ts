@@ -1,9 +1,10 @@
 /**
- * Wallet signup creates a zero-balance organization and its owner atomically.
- * Database triggers exercise rollback and retry behavior against real PGlite transactions.
+ * Wallet signup creates an opening-balance organization and its owner atomically.
+ * Database triggers exercise rollback, retry, and legacy orphan adoption against real PGlite transactions.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { SIGNUP_CREDIT_POLICY } from "../../signup-credits";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -118,14 +119,14 @@ beforeEach(async () => {
   await flushWalletLookupCache();
 });
 
-describe("wallet signup atomic zero-balance creation", () => {
+describe("wallet signup atomic opening-balance creation", () => {
   test("PGlite harness is available", () => {
     if (!pgliteReady) throw pgliteError;
     expect(pgliteReady).toBe(true);
   });
 
   test(
-    "EVM signup rolls back the organization when owner creation fails, then retries at $0",
+    "EVM signup rolls back the organization when owner creation fails, then grants on retry",
     async () => {
       if (!pgliteReady) throw pgliteError;
 
@@ -141,18 +142,20 @@ describe("wallet signup atomic zero-balance creation", () => {
 
       expect(retry.isNewAccount).toBe(true);
       expect(retry.user.role).toBe("owner");
-      expect(retry.initialCreditsGranted).toBe(false);
-      expect(retry.initialFreeCreditsUsd).toBe(0);
+      expect(retry.initialCreditsGranted).toBe(true);
+      expect(retry.initialFreeCreditsUsd).toBe(SIGNUP_CREDIT_POLICY.automaticGrantUsd);
       expect(await countRows("organizations")).toBe(1);
       expect(await countRows("users")).toBe(1);
       expect(await countRows("credit_transactions")).toBe(0);
-      expect(await orgBalanceBySlug(`wallet-${EVM_ADDRESS.toLowerCase()}`)).toBe(0);
+      expect(await orgBalanceBySlug(`wallet-${EVM_ADDRESS.toLowerCase()}`)).toBe(
+        SIGNUP_CREDIT_POLICY.automaticGrantUsd,
+      );
     },
     PGLITE_TIMEOUT,
   );
 
   test(
-    "Solana signup rolls back the organization when owner creation fails, then retries at $0",
+    "Solana signup rolls back the organization when owner creation fails, then grants on retry",
     async () => {
       if (!pgliteReady) throw pgliteError;
 
@@ -170,12 +173,14 @@ describe("wallet signup atomic zero-balance creation", () => {
 
       expect(retry.isNewAccount).toBe(true);
       expect(retry.user.role).toBe("owner");
-      expect(retry.initialCreditsGranted).toBe(false);
-      expect(retry.initialFreeCreditsUsd).toBe(0);
+      expect(retry.initialCreditsGranted).toBe(true);
+      expect(retry.initialFreeCreditsUsd).toBe(SIGNUP_CREDIT_POLICY.automaticGrantUsd);
       expect(await countRows("organizations")).toBe(1);
       expect(await countRows("users")).toBe(1);
       expect(await countRows("credit_transactions")).toBe(0);
-      expect(await orgBalanceBySlug(`wallet-solana-${SOLANA_ADDRESS}`)).toBe(0);
+      expect(await orgBalanceBySlug(`wallet-solana-${SOLANA_ADDRESS}`)).toBe(
+        SIGNUP_CREDIT_POLICY.automaticGrantUsd,
+      );
     },
     PGLITE_TIMEOUT,
   );
