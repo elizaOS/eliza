@@ -5,6 +5,7 @@
 
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
+import { isInferenceAuthCacheEnabled } from "@/lib/services/inference-hot-path-caches";
 import type { EndpointType } from "@/lib/services/org-rate-limits";
 import type { ProxyCombinedAdmission } from "@/lib/services/proxy/engine";
 import { createHandler, executeWithBody } from "@/lib/services/proxy/engine";
@@ -88,24 +89,27 @@ export async function withGuardedPaidProxyAdmission(
       ...(caller.apiKeyId ? { apiKey: { id: caller.apiKeyId } } : {}),
     };
 
-    if (!executionCtx) {
+    if (!executionCtx || !caller.admissionSnapshot) {
+      if (executionCtx && isInferenceAuthCacheEnabled(c.env)) {
+        logger.error(
+          "[PaidProxyAdmission] Combined admission snapshot missing",
+          {
+            requestId,
+            route: new URL(c.req.url).pathname,
+            organizationId: caller.user.organization_id,
+            authSource: caller.authSource,
+          },
+        );
+        return paidProxyApiErrorResponse(
+          new ApiError(
+            503,
+            "service_unavailable",
+            "Provider admission is unavailable; retry shortly",
+            { retryable: true, retryAfterSeconds: 1 },
+          ),
+        );
+      }
       return dispatch({ mode: "compatibility", auth, requestId });
-    }
-    if (!caller.admissionSnapshot) {
-      logger.error("[PaidProxyAdmission] Combined admission snapshot missing", {
-        requestId,
-        route: new URL(c.req.url).pathname,
-        organizationId: caller.user.organization_id,
-        authSource: caller.authSource,
-      });
-      return paidProxyApiErrorResponse(
-        new ApiError(
-          503,
-          "service_unavailable",
-          "Provider admission is unavailable; retry shortly",
-          { retryable: true, retryAfterSeconds: 1 },
-        ),
-      );
     }
 
     return dispatch({
