@@ -1313,7 +1313,13 @@ export async function runManagedDedicatedCanary(
         throw new CanaryFailure("ready", "wrong_execution_tier");
       }
       if (status && TERMINAL_AGENT_FAILURE_STATUSES.has(status)) {
-        throw new CanaryFailure("ready", "terminal_agent_state");
+        const errorMessage = stringField(data, "errorMessage");
+        throw new CanaryFailure(
+          "ready",
+          errorMessage
+            ? classifyProvisioningJobFailure({ error: errorMessage })
+            : "terminal_agent_state",
+        );
       }
       if (
         evidence.path.running &&

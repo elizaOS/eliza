@@ -36,6 +36,8 @@ interface FixtureOptions {
   createStatus?: number;
   createdTier?: string;
   readyTier?: string;
+  terminalStatus?: string;
+  terminalErrorMessage?: string | null;
   mesh?: boolean;
   bridgeUrl?: string;
   heartbeatAt?: string | null;
@@ -251,7 +253,10 @@ function createFixture(options: FixtureOptions = {}) {
         data: {
           id: AGENT_ID,
           agentName,
-          status: provisionCompleted ? "running" : "provisioning",
+          status: provisionCompleted
+            ? (options.terminalStatus ?? "running")
+            : "provisioning",
+          errorMessage: options.terminalErrorMessage ?? null,
           databaseStatus: "ready",
           executionTier:
             options.readyTier ?? options.createdTier ?? "dedicated-always",
@@ -1003,6 +1008,23 @@ describe("managed dedicated canary", () => {
     expect(evidence.path.heartbeatFresh).toBe(false);
     expect(evidence.path.meshAddressPresent).toBe(false);
     expect(evidence.timingsMs.ready).toBe(30);
+    expect(evidence.cleanup.status).toBe("passed");
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+  });
+
+  test("terminal readiness classifies the agent error without retaining private diagnostics", async () => {
+    const privateDiagnostic =
+      "Headscale route failed for private-agent-id on private-node-id";
+    const { evidence } = await runFixture({
+      terminalStatus: "error",
+      terminalErrorMessage: privateDiagnostic,
+    });
+
+    expect(evidence.failure).toEqual({
+      phase: "ready",
+      code: "provisioning_ingress_failed",
+    });
+    expect(JSON.stringify(evidence)).not.toContain(privateDiagnostic);
     expect(evidence.cleanup.status).toBe("passed");
     expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
   });
