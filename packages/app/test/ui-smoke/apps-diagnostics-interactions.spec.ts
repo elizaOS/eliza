@@ -13,7 +13,7 @@ import {
 } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
 });
 
@@ -40,9 +40,11 @@ test("logs page search really filters entries and clear restores them", async ({
   await expect(entries).toHaveCount(1);
 
   // Clear filters resets the view's filter state and restores the full list. It
-  // clears the view's searchQuery (not the shared composer draft), so assert on
-  // the restored entries rather than the composer value.
-  await view.getByRole("button", { name: /clear/i }).click();
+  // lives inside the compact filter menu and clears the view's searchQuery (not
+  // the shared composer draft), so assert on the restored entries rather than
+  // the composer value.
+  await view.locator('[data-agent-id="logs-filter"]').click();
+  await page.getByRole("button", { name: /clear filters/i }).click();
   await expect(entries).toHaveCount(1);
 });
 

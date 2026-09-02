@@ -196,6 +196,52 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
     expect(onSwitch).toHaveBeenCalledWith(localDedicatedBase);
   });
 
+  it("does not treat a shared row on the local UUID proxy as dedicated", async () => {
+    const sharedId = "00000000-0000-4000-8000-000000000001";
+    const cloudApiBase = "http://127.0.0.1:8787";
+    const localSharedBase = `${cloudApiBase}/api/v1/eliza/agents/${sharedId}`;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === localSharedBase) {
+        return {
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: {
+              id: sharedId,
+              status: "running",
+              executionTier: "shared",
+              webUiUrl: null,
+            },
+          }),
+        };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { client } = fakeClient({});
+    const onSwitch = vi.fn();
+    const result = await client.startCloudAgentHandoff({
+      agentId: sharedId,
+      sharedApiBase: localSharedBase,
+      conversationId: sharedId,
+      cloudApiBase,
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 20,
+      log: () => {},
+    });
+
+    expect(result.status).toBe("timed-out");
+    expect(onSwitch).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      `${localSharedBase}/api/health`,
+      expect.anything(),
+    );
+  });
+
   it("does not treat a production control-plane UUID path as a dedicated handoff target", async () => {
     const dedicatedId = "00000000-0000-4000-8000-000000000001";
     const cloudApiBase = DEFAULT_DIRECT_CLOUD_API_BASE_URL;

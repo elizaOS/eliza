@@ -175,8 +175,8 @@ async function installStatefulRoutingMock(page: Page): Promise<RoutingMock> {
 // accessible name combines the slot label ("Large text" = TEXT_LARGE) with the
 // control ("Policy" / "Preferred provider") and whose text content shows the
 // current value. Activating it opens a PORTALED listbox of role "option" items.
-// The RoutingMatrix lives inside a LAZY "Custom providers & model overrides" <details>
-// disclosure that only renders its children once open.
+// The RoutingMatrix lives inside a lazy "Custom providers & model overrides"
+// collapsible that only renders its children once open.
 const LARGE_TEXT_POLICY_LABEL = /^Large text Policy$/;
 const LARGE_TEXT_PREFERRED_LABEL = /^Large text Preferred provider$/;
 
@@ -185,20 +185,16 @@ interface RoutingMatrixControls {
   preferredTrigger: ReturnType<Page["getByRole"]>;
 }
 
-/** Expand the lazy "Custom providers & model overrides" disclosure if it is collapsed. */
+/** Expand the lazy "Custom providers & model overrides" disclosure if collapsed. */
 async function expandModelRoutingDisclosure(page: Page): Promise<void> {
-  const summary = page
-    .locator("#ai-model summary")
-    .filter({ hasText: /Custom providers & model overrides/i })
+  const trigger = page
+    .locator("#ai-model")
+    .getByRole("button", { name: /Custom providers & model overrides/i })
     .first();
-  await expect(summary).toBeVisible({ timeout: 15_000 });
-  const isOpen = await summary.evaluate((el) => {
-    const details = el.closest("details");
-    return Boolean(details?.open);
-  });
-  if (!isOpen) {
-    await summary.scrollIntoViewIfNeeded();
-    await summary.click();
+  await expect(trigger).toBeVisible({ timeout: 15_000 });
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") {
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click();
   }
 }
 
@@ -239,7 +235,7 @@ async function selectOptionByName(
 }
 
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
 });
 

@@ -48,7 +48,7 @@ test("files view: delete a file (confirm → DELETE request → optimistic remov
     window.confirm = () => true;
   });
 
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
 
   await page.route("**/api/files", (route) =>
@@ -87,8 +87,9 @@ test("files view: delete a file (confirm → DELETE request → optimistic remov
   const cards = page.getByTestId("file-card");
   await expect(cards).toHaveCount(2, { timeout: 60_000 });
 
-  // Delete the first file: click its delete control (confirm auto-accepts).
-  await page.getByTestId("file-delete").first().click();
+  // Delete the first file through its overflow menu (confirm auto-accepts).
+  await cards.first().getByTestId("file-actions").click();
+  await page.getByTestId("file-delete").click();
 
   // The DELETE request fired for that file, and the card was optimistically
   // removed (2 → 1).

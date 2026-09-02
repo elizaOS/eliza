@@ -111,6 +111,49 @@ test("one standing read forwards the credential and admission snapshot", async (
   });
 });
 
+test("disabled auth cache retains authoritative compatibility admission", async () => {
+  combinedStandingRead.mockReset();
+  executionContextRead.mockReset();
+  executeWithBody.mockReset();
+  combinedStandingRead.mockResolvedValue({
+    user: { id: "user-1", organization_id: "org-1" },
+    apiKeyId: "key-1",
+    authSource: "combined_cache",
+    appScopeId: null,
+  });
+  executionContextRead.mockReturnValue({ waitUntil: () => undefined });
+  executeWithBody.mockResolvedValue(Response.json({ ok: true }));
+  const context = makeContext();
+  Object.assign(context, {
+    env: {
+      INFERENCE_AUTH_CACHE_ENABLED: "false",
+      INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+    },
+  });
+
+  const response = await executeGuardedPaidProxyWithBody(
+    context,
+    {
+      id: "market-data",
+      name: "Market data",
+      auth: "apiKeyWithOrg",
+      getCost: async () => 0.01,
+    },
+    mock(),
+    { method: "getPrice" },
+  );
+
+  expect(response.status).toBe(200);
+  expect(executeWithBody.mock.calls[0]?.[4]).toMatchObject({
+    mode: "compatibility",
+    auth: {
+      user: { id: "user-1", organization_id: "org-1" },
+      apiKey: { id: "key-1" },
+    },
+    requestId: "paid-proxy-request-1",
+  });
+});
+
 test("standing denial preserves its safe reason and suppresses provider dispatch", async () => {
   combinedStandingRead.mockReset();
   executionContextRead.mockReset();

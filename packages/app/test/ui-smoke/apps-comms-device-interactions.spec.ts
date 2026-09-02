@@ -114,6 +114,7 @@ const PLUGIN_HEADERS: NativePluginHeader[] = [
   header("Network", ["addListener:callback", "removeListener", "getStatus"]),
   header("StatusBar", ["setStyle", "setOverlaysWebView", "setBackgroundColor"]),
   header("Preferences", ["get", "set", "remove", "keys", "clear", "configure"]),
+  header("ElizaSecureStore", ["get", "set", "remove", "status"]),
   header("CapacitorBackgroundRunner", [
     "dispatchEvent",
     "checkPermissions",
@@ -285,6 +286,7 @@ async function installDeterministicNativeBridge(
       const browserFetch = win.fetch.bind(win);
       const fixedNow = Date.parse("2026-01-01T12:00:00.000Z");
       const preferences = new Map<string, string>();
+      const protectedValues = new Map<string, string>();
       const preferenceStoragePrefix = "__elizaNativePreference:";
       const activeServer = isNativePlatform
         ? {
@@ -658,6 +660,31 @@ async function installDeterministicNativeBridge(
           }
           return {};
         }
+        if (pluginName === "ElizaSecureStore") {
+          const key = String(options?.key ?? "");
+          if (methodName === "get") {
+            const value = protectedValues.get(key);
+            return value === undefined
+              ? { ok: false, error: "not_found" }
+              : { ok: true, value };
+          }
+          if (methodName === "set") {
+            protectedValues.set(key, String(options?.value ?? ""));
+            return { ok: true };
+          }
+          if (methodName === "remove") {
+            protectedValues.delete(key);
+            return { ok: true };
+          }
+          if (methodName === "status") {
+            return {
+              available: true,
+              hardwareBacked: false,
+              authenticationRequired: false,
+            };
+          }
+          return { ok: false, error: "invalid_input" };
+        }
         if (pluginName === "CapacitorBackgroundRunner") {
           if (methodName === "checkPermissions")
             return { notifications: "granted" };
@@ -947,6 +974,12 @@ async function installDeterministicNativeBridge(
           setStyle: (options?: Record<string, unknown>) =>
             cap.nativePromise("StatusBar", "setStyle", options),
         },
+        ElizaSecureStore: nativePromisePlugin("ElizaSecureStore", [
+          "get",
+          "set",
+          "remove",
+          "status",
+        ]),
         ElizaPhone: nativePromisePlugin("ElizaPhone", [
           "getStatus",
           "placeCall",
@@ -998,6 +1031,7 @@ async function readFixture(
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page, {
+    "eliza:developerMode": "1",
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",
   });
@@ -1043,30 +1077,24 @@ test.describe("Android communications app interactions", () => {
       { selector: '[data-agent-id="phone-refresh"]' },
     ]);
     for (const digit of ["4", "1", "5", "5", "5", "5", "0", "1", "9"]) {
-      await page.locator(`[data-agent-id="dialpad-${digit}"]`).click();
+      await page.locator(`[data-agent-id="key-${digit}"]`).click();
     }
-    const dialerNumber = page.locator('[data-agent-id="dialer-number"]');
-    await expect(dialerNumber).toHaveValue("415555019");
-    await page.locator('[data-agent-id="dialer-call"]').click();
+    await expect(page.getByText("415555019", { exact: true })).toBeVisible();
+    const phoneCall = page.locator('[data-agent-id="phone-call"]');
+    await expect(phoneCall).toBeEnabled();
+    await phoneCall.click();
     await expect
       .poll(
         async () => (await readFixture(page))?.phone.placedCalls.at(-1)?.number,
       )
       .toBe("415555019");
 
-    await page.locator('[data-agent-id="phone-tab-contacts"]').click();
-    await expect(page.getByText("Ada Relay")).toBeVisible();
-    await expect(page.getByText("Grace Hopper")).toBeVisible();
-    await page
-      .locator('[data-agent-id="phone-contact-dial-contact-ada"]')
-      .click();
-    await expect(dialerNumber).toHaveValue("+1 (415) 555-0101");
-    await page.locator('[data-agent-id="dialer-call"]').click();
+    await page.locator('[data-agent-id="call:call-ada"]').click();
     await expect
       .poll(
         async () => (await readFixture(page))?.phone.placedCalls.at(-1)?.number,
       )
-      .toBe("+1 (415) 555-0101");
+      .toBe("+14155550101");
     await expectNoIssues(
       page,
       issues.splice(0),
@@ -1076,20 +1104,27 @@ test.describe("Android communications app interactions", () => {
     await openAppWindow(page, "messages", "/messages", [
       { selector: '[data-agent-id="messages-refresh"]' },
     ]);
-    await expect(page.getByText("Can you review the build?")).toBeVisible();
-    await expect(
-      page.getByText("Yes, checking the deterministic smoke path now."),
-    ).toBeVisible();
     await page
-      .locator('[data-agent-id="messages-address"]')
+      .locator('[data-agent-id="open-thread-thread-alpha"]')
+      .click();
+    await expect(page.getByText("Can you review the build?")).toBeVisible();
+    const latestThreadMessage = page.getByText(
+      "Yes, checking the deterministic smoke path now.",
+    );
+    await expect(latestThreadMessage).toHaveCount(2);
+    await expect(latestThreadMessage.last()).toBeVisible();
+    await page
+      .locator('[data-agent-id="compose-address"]')
       .fill("+14155550103");
     await page
-      .locator('[data-agent-id="messages-body"]')
+      .locator('[data-agent-id="compose-body"]')
       .fill("Deterministic SMS send from Playwright");
     const sendSms = page.locator('[data-agent-id="messages-send"]');
     await expect(sendSms).toBeEnabled();
     await sendSms.click();
-    await expect(page.getByText(/SMS sent and saved as message/)).toBeVisible();
+    await expect(
+      page.getByText("Deterministic SMS send from Playwright", { exact: true }),
+    ).toBeVisible();
     await expect
       .poll(async () => (await readFixture(page))?.messages.sent.at(-1))
       .toEqual({
@@ -1103,20 +1138,15 @@ test.describe("Android communications app interactions", () => {
     );
 
     await openAppWindow(page, "contacts", "/contacts", [
-      { selector: '[data-agent-id="contacts-refresh"]' },
+      { selector: '[data-agent-id="refresh"]' },
     ]);
     await expect(page.getByText("Ada Relay")).toBeVisible();
-    await expect(page.getByText("ada@example.test")).toBeVisible();
-    await page
-      .locator('[data-agent-id="contacts-create-display-name"]')
-      .fill("Lin Test");
-    await page
-      .locator('[data-agent-id="contacts-create-phone-number"]')
-      .fill("+1 415 555 0199");
-    await page
-      .locator('[data-agent-id="contacts-create-email"]')
-      .fill("lin@example.test");
-    await page.locator('[data-agent-id="contacts-create-submit"]').click();
+    await expect(page.getByText("Grace Hopper")).toBeVisible();
+    await page.locator('[data-agent-id="new"]').click();
+    await page.locator('[data-agent-id="name"]').fill("Lin Test");
+    await page.locator('[data-agent-id="phone"]').fill("+1 415 555 0199");
+    await page.locator('[data-agent-id="email"]').fill("lin@example.test");
+    await page.locator('[data-agent-id="save"]').click();
     await expect(page.getByText("Lin Test")).toBeVisible();
     await expect
       .poll(async () => (await readFixture(page))?.contacts.created.at(-1))

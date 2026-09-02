@@ -479,6 +479,9 @@ for (const viewport of VIEWPORTS) {
       apiBase,
       onRequest: () => {
         personalElizaRequests += 1;
+        // The account-native personal binding is Cloud's completion boundary;
+        // it does not POST the legacy local first-run profile.
+        firstRunState.complete = true;
       },
     });
 
@@ -707,7 +710,7 @@ for (const viewport of VIEWPORTS) {
     await openAppPath(page, "/chat", { allowOnboardingToast: true });
     await startCloudRuntime(page);
     await clickIfVisible(
-      page.getByRole("button", { name: /sign in with eliza cloud/i }),
+      page.getByRole("button", { name: /sign in (?:with|to) eliza cloud/i }),
     );
 
     // Since #19511 the account's personal Eliza is bound through
@@ -740,6 +743,13 @@ for (const viewport of VIEWPORTS) {
         page.evaluate(() => localStorage.getItem("eliza:mobile-runtime-mode")),
       )
       .toBe("cloud");
+
+    // Some shells still offer the chat-native tutorial choice after binding;
+    // account-native completion may also settle directly into chat.
+    await clickIfVisible(
+      page.getByRole("button", { name: "Skip for now" }),
+      10_000,
+    );
 
     await openAppPath(page, "/chat");
     const composer = chatComposer(page);
@@ -801,6 +811,7 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
     apiBase,
     onRequest: () => {
       personalElizaRequests += 1;
+      firstRunState.complete = true;
     },
   });
 
@@ -1023,7 +1034,7 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
   await openAppPath(page, "/chat", { allowOnboardingToast: true });
   await startCloudRuntime(page);
   await clickIfVisible(
-    page.getByRole("button", { name: /sign in with eliza cloud/i }),
+    page.getByRole("button", { name: /sign in (?:with|to) eliza cloud/i }),
   );
 
   // Zero-agent account: the picker is skipped and the controller auto-creates a
@@ -1047,6 +1058,11 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
       cloudRuntimeAgentId: PERSONAL_ACTIVE_AGENT_ID,
       cloudRuntime: "dedicated",
     });
+
+  await clickIfVisible(
+    page.getByRole("button", { name: "Skip for now" }),
+    10_000,
+  );
 
   const composer = chatComposer(page);
   await expect(composer).toBeVisible();

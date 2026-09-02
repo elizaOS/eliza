@@ -85,7 +85,7 @@ describe("inbound Discord envelope", () => {
 		expect(group.formattedContent).toContain("[Discord Group DM]");
 	});
 
-	it("keeps the reply quote after the current user text", async () => {
+	it("keeps the complete reply reference after the current user text", async () => {
 		const envelope = await formatInboundEnvelope(
 			makeDiscordMessage(),
 			"@assistant can you try this?",
