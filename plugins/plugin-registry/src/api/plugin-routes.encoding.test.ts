@@ -61,9 +61,8 @@ vi.mock("@elizaos/shared", () => {
     PutPluginRequestSchema: schema,
     PutSecretsRequestSchema: schema,
     sanitizeForSettingsDebug: (value: unknown) => value,
-		settingsDebugCloudSummary: (value: unknown) => value,
-		DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS: [],
-	};
+    settingsDebugCloudSummary: (value: unknown) => value,
+  };
 });
 
 import {

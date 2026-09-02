@@ -136,10 +136,7 @@ export default defineConfig({
 			},
 			{
 				find: "@elizaos/shared/elizacloud/domain-contract",
-				replacement: path.join(
-					sharedSrc,
-					"elizacloud/domain-contract.ts",
-				),
+				replacement: path.join(sharedSrc, "elizacloud/domain-contract.ts"),
 			},
 			{
 				// Directory subpath: the generic rules below map a subpath to a
