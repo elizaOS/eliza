@@ -173,7 +173,13 @@ describe("Headscale control-plane self-enrollment", () => {
     expect(retireStaleNode).toBeLessThan(tailscaleUp);
     expect(remote.match(/--force-reauth/g)).toHaveLength(1);
     expect(remote).toContain("--tags tag:eliza-proxy");
-    expect(remote).not.toContain("      --advertise-tags=");
+    // #30324 made the preauth key the sole tag authority, and this pins that
+    // no client-side request comes back. It has to match the flag in ARGUMENT
+    // position rather than by its indentation: re-adding the line at a
+    // different indent walks past a fixed-width substring. Matching the bare
+    // flag name would fail on the clean tree, because the comment above the
+    // key mint names `--advertise-tags` while explaining why it is absent.
+    expect(remote).not.toMatch(/^\s*--advertise-tags/m);
     expect(remote).toContain(
       "CP router forced reauthentication failed (category=cp-router-reauth-failed)",
     );
@@ -318,7 +324,10 @@ describe("Headscale protected workflow contract", () => {
   });
 
   test("emits only closed remote failure categories", () => {
-    const step = namedStep(workflow, "Inspect or converge Headscale control plane");
+    const step = namedStep(
+      workflow,
+      "Inspect or converge Headscale control plane",
+    );
     const run = String(step.run ?? "");
 
     expect(run).toContain(
