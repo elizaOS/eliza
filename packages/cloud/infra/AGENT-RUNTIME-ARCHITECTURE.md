@@ -258,7 +258,10 @@ validation or exposing the key.
 | Canary diagnostics | cleanup failure overwrote the original provisioning failure and terminal job details collapsed to `job_failed` | Fixed in this change: preserve the primary phase and emit only an allowlisted subsystem category |
 | Staging admission | the canary identity was below the hosting-runway threshold | Cleared: run `33280890733` created one Dedicated row/job; the failure moved into provisioning |
 | Steward bootstrap | worker called a retired platform agent-registration route and received 404 before Docker create | Fixed: canonical Eliza-minted JWT/JWKS auth; protected signer reconciled to the worker |
-| Current staging provision | the tenant database becomes ready and Docker creates the exact candidate, but required Headscale ingress produces no VPN node or `headscale_ip` | Open at the external boundary: source now retains and safely classifies the underlying Headscale auth, API, exit, timeout, rename, or identity cause; a clean post-deploy canary is required to select the exact category |
+| Headscale key identity | tagged pre-auth keys also carried a user, which conflicts with Headscale v0.28 tag-as-identity | Fixed: `tag:agent` keys omit user ownership; mixed input is rejected before network I/O |
+| Headscale observation | an arbitrary stale host `VPN_REGISTRATION_TIMEOUT_MS` made the worker abandon a join before the container's own 120-second bound | Fixed: deploy and source enforce a minimum 180-second control-plane observation budget |
+| Container mesh classifier | the entrypoint treated ordinary fresh-daemon `NeedsLogin` and `machineAuthorized=false` transition records as terminal interactive auth | Fixed: only an AuthURL, `NeedsMachineAuth`, or an explicit invalid/expired/used-key result is terminal; transient login remains under the bounded join observation |
+| Current staging provision | database and Docker are proven; the repaired image still requires a digest-pinned staging cold-path canary | Acceptance pending in the live deployment record below |
 | Failed replacement deletion | the API rejected every lifecycle job, including exact conditional cleanup, whenever a failed provision retained a replacement locator | Fixed: exact conditional delete owns the row, then the daemon proves that replacement absent before deleting the serving generation; ordinary lifecycle requests remain blocked |
 | Warm pool | both Worker and daemon are protected-off; no ready-count or live-claim proof exists | Intentionally disabled pending `#16961`; cold provisioning must work independently |
 | Deployment capacity | earlier production deploys queued/cancelled on unavailable runner labels | Partially cleared: run `33017962389` deployed the worker/router successfully; it predates this fix and is not a Dedicated canary |
@@ -370,6 +373,364 @@ rename completion, and exact Docker/VPN identity mismatch. Worker deployment
 systemd restart, and sustained health. The next clean candidate can therefore
 identify the real private-ingress failure without publishing raw logs,
 credentials, hostnames, container ids, or tailnet addresses.
+
+Subsequent canaries and exact-suffix diagnostics completed the ingress root-cause
+chain. Candidate `r33296439529a1` preserved `ingress_mesh_auth_required`; after
+the reconciliation grace, read-only proof showed every primary and replacement
+locator absent and cleanup-only run `33299360541` deleted only that row. The
+first repair aligned pre-auth creation with Headscale v0.28: a `tag:agent` key
+is tag-owned and therefore omits user ownership. This is the documented
+[tagged-device registration contract](https://headscale.net/0.28.0/ref/tags/)
+and the v0.28 [tags-as-identity change](https://github.com/juanfont/headscale/releases/tag/v0.28.0).
+
+Candidate `r33299484527a1` exposed an independent diagnostics defect: cleanup
+retries recursively embedded the already-serialized job error until the row
+exceeded the classifier's former input limit. The worker now keeps the first
+redacted startup error byte-stable and records only the current cleanup
+condition separately. Read-only run `33300752911` then classified the original
+mesh-auth failure without emitting the raw error, container identity, hostname,
+or tailnet address. Multi-registration cleanup source deployed in run
+`33325686108`; read-only run `33326873615` proved all locators absent, and
+cleanup-only run `33326921381` deleted exactly the stale candidate with zero new
+agents and zero chat requests.
+
+Fresh canary `33327070651` again selected `dedicated-always`, reached a ready
+tenant database, and created an exact Docker candidate, but obtained no VPN
+node. Diagnostic `33327782736` showed that its final retry executed for only
+`6113ms`, even though container `tailscale up` permits 120 seconds and source
+intended a 180-second observer. The deploy had never owned
+`VPN_REGISTRATION_TIMEOUT_MS`, so a stale short host value survived immutable
+source deployments. Source `dcd9a3a744c5e985f84cf679f828c5653288175a`
+made `180000` repository-owned, atomically reconciled it through the protected
+systemd EnvironmentFile, and attested exact equality after restart. Deployment
+`33328209418` passed migrations, reconciliation, restart, and health. Source
+`ebcf1d634863e16a1245065897f4eb11d9051319` also rejects malformed or shorter
+runtime overrides, and exact deployment `33328974769` installed that guard.
+
+After the 30-minute destructive-safety grace, read-only run `33329084735`
+proved all primary and replacement locators and the cleanup fence absent for
+`r33327070651a1`. Cleanup-only run `33329224705` then deleted exactly that row,
+created no replacement, issued no chat request, and returned a confirmed
+cleanup receipt. This establishes that failed-candidate retirement is
+convergent without weakening the exact identity fence.
+
+Canary `33329614860` was the decisive image-level reproduction. It again
+reached a ready tenant database and an exact Docker replacement, then retained
+`ingress_mesh_auth_required`; read-only diagnostic `33330411640` showed six
+retryable requeues and a terminal six-second attempt. Code and official
+Tailscale behavior then identified the false positive: a fresh backend normally
+passes through `NeedsLogin` while authentication starts, but both Eliza image
+entrypoints killed `tailscale up` as soon as they saw `NeedsLogin` or
+`machineAuthorized=false`. Those are transition facts, not proof that a tagged
+pre-auth key was rejected. The repaired entrypoints keep observing them and
+stop only for an actual AuthURL, `NeedsMachineAuth`, or explicit
+invalid/expired/already-used key. Control-plane log classification uses the same
+contract. Regression fixtures exercise both image entrypoints and prove that a
+delayed successful auth-key join starts the agent while definitive interactive
+auth still exits with the distinct re-key signal.
+
+Canonical image build `33330636941` built source
+`f154fd0d8b7e5a86c891e902566a04b28d701a92`, booted the real agent entrypoint,
+published and attested `ghcr.io/elizaos/eliza:sha-f154fd0` at digest
+`sha256:d4bc56fb4a4daac3aaecc5c743620eaa00e7a7796d7152eafab73134f900eb43`,
+and proved anonymous pullability. That canonical publication is build evidence;
+staging remains pinned to the separate digest-preserving `eliza-demo` canary
+repository, so it must not be repointed until an exact demo promotion has passed
+the same boot gate.
+
+Demo publication run `33473710420` then rebuilt rebased source
+`b8ba0e5908f6a70a6860ab29b3c24c5e293b45df`, booted the real entrypoint,
+published the canonical image, and copied its manifest byte-for-byte to
+`ghcr.io/elizaos/eliza-demo:sha-b8ba0e5`. Both repositories resolve to
+`sha256:6cba66dd2f55656ee1f657679c0aff6af15d449ae55e84a85753da0572ad873c`;
+the demo subject is attested and anonymously pullable. The protected staging
+`ELIZA_AGENT_IMAGE` variable was then updated from its August 28 digest to the
+exact `eliza-demo@sha256:6cba66dd...873c` reference and read back through the
+GitHub environment API. No mutable tag is used by the worker.
+
+Exact staging deployment `33475270167` then applied canonical migrations from
+`b8ba0e5908f6a70a6860ab29b3c24c5e293b45df`, reconciled the protected worker
+EnvironmentFile (including the new image digest, the repository-owned
+180-second VPN observation budget, and warm pool disabled), restarted the
+Hetzner control-plane services, and passed the sustained local and public
+health gates. The deployment job and its environment-resolution job both
+completed successfully; this is the source now responsible for the next cold
+Dedicated acceptance run.
+
+The September 1 branch rebase exposed a separate GitHub control-plane fact.
+Staging uses a custom deployment branch policy whose only durable entry was
+`develop`, so diagnostics dispatched from the repair branch were rejected before
+runner allocation. Check-run annotations explicitly reported the branch-policy
+denial; this was not an application, database, Hetzner, or runner-capacity
+failure. An exact temporary policy entry for
+`fix/dedicated-shared-bootstrap-isolation-29341` admitted only this repair branch
+for the bounded staging recovery. It must be removed after the final canary so
+the environment returns to its original develop-only policy.
+
+Once admitted, read-only diagnostic `33473859601` re-proved that failed canary
+`r33329614860a1` was `dedicated-always`, its tenant database was ready, its job
+retained `ingress_mesh_auth_required`, and every one of the four primary and six
+replacement infrastructure locators was absent. Cleanup-only run `33474048809`
+then deleted exactly that target. Its strict artifact reports `verdict=pass`,
+`createdAgents=0`, `chatRequests=0`, `recovery.match=one`,
+`recovery.confirmed=true`, `cleanup.status=passed`, and
+`possibleOrphan=false`. The stale database row and capacity guard are therefore
+clear without guessing at remote infrastructure identity.
+
+Fresh canary `33475627875` proved that the repaired entrypoint no longer
+misclassified Headscale's normal authentication transition: the durable
+category moved from `ingress_mesh_auth_required` to
+`ingress_headscale_ip_missing`. It selected `dedicated-always`, created exactly
+one agent, and reached a ready tenant database, but never recorded a Headscale
+address, heartbeat, bridge, SSE completion, or chat path. Read-only diagnostic
+`33526283803` found all primary and replacement locators absent and showed six
+retryable requeues; its terminal attempt retained the missing-address category.
+Cleanup-only run `33526404108` then matched and deleted exactly
+`r33475627875a1`, with zero created agents, zero chat requests, a confirmed
+recovery receipt, `cleanup.status=passed`, and `possibleOrphan=false`.
+
+That failure exposed a second Headscale observation race. Provisioning records
+`vpnRegistrationStartedAt` before Docker create, but the collision-suffixed
+node lookup previously used a new timestamp captured only after Docker start
+and immediately before polling. A container that joined quickly while the
+preserved node still owned the base hostname was legitimately renamed by
+Headscale, yet its `createdAt` preceded the poll timestamp and the safety filter
+rejected it forever as if it were a stale orphan. The fix makes the durable
+provisioning-attempt timestamp the suffix-admission boundary while retaining
+the exact prior-node exclusion. A real-client regression covers a registration
+that occurs after attempt start but before polling, and the provider contract
+proves that it passes the persisted boundary. Exact source
+`bc49934cb93dc5257a7138eae44bcb937d0293a4` passed the focused Headscale and
+replacement-cleanup suites, Cloud shared typechecking, and formatting. Worker
+deployment `33527374585` applied its migrations, reconciled and restarted both
+Hetzner worker units, and passed the exact-source health gate. A fresh cold-path
+canary was therefore required rather than treating the focused regression as
+production proof.
+
+Fresh canary `33527945357` still failed at the same observable boundary. Its
+strict artifact selected `dedicated-always`, created exactly one agent, made no
+chat request, and reported `provisioning_private_diagnostic` after 744,962 ms;
+the first cleanup attempt could not prove deletion and correctly retained
+`possibleOrphan=true`. Read-only database diagnostic `33529492209` then proved
+the tenant database was ready, the terminal category remained
+`ingress_headscale_ip_missing`, and the sixth retryable attempt retained exact
+replacement locators for its sandbox, node, container, provisioning attempt,
+and Docker container ID but no VPN node ID. The database and retry queue were
+therefore functioning; the failure was after container creation and before
+durable mesh registration.
+
+Privacy-safe worker-journal diagnostic `33529982508` narrowed that exact attempt
+to `registration_timeout`. It found no Headscale authentication or API failure,
+binding mismatch, rename conflict, or terminal-container signal. Exact cleanup
+`33532364883` subsequently matched and removed the single canary target. Its
+strict artifact reports `verdict=pass`, `createdAgents=0`, `chatRequests=0`,
+`recovery.match=one`, `recovery.confirmed=true`, `cleanup.status=passed`, and
+`possibleOrphan=false`.
+
+The journal category did not expose whether Tailscale inside the short-lived
+container was waiting for authorization, failing to reach its daemon, or had
+already exited. The recovery therefore added an exact-locator, read-only
+candidate probe. It derives the active replacement locator from the database,
+uses the host-key-pinned Hetzner SSH client, and emits only closed booleans and
+enums for container state, Tailscale backend state, machine authorization,
+socket/daemon reachability, mesh-address presence, and known startup-log
+categories. It never exports database identities, hostnames, IP addresses,
+container logs, or SSH errors. Early diagnostic-only runs exposed bounded-tool
+defects rather than application evidence: one omitted the suffix environment,
+and concurrent first-use SSH observations on one pooled client exceeded the
+outer timeout. Exact source `98e8b865e296f93dfdd38361e13778fbccbd830a`
+serializes those observations, bounds each at eight seconds, closes pooled SSH
+handles, and exits explicitly. Worker deployment `33532669836` deployed that
+exact source and passed its migration, restart, source-identity, and health
+gates. The next failed exact candidate, if any, can now be distinguished without
+guessing or exposing private infrastructure data.
+
+Cold-path canary `33535281990` then reproduced the same failure on the exact
+deployed worker source. Its artifact selected `dedicated-always`, created one
+agent, issued no chat request, and failed after 741,550 ms with no running,
+database-ready, heartbeat, mesh, bridge, SSE, or cleanup proof. Diagnostic
+`33546043861` found the tenant database ready and the terminal
+`ingress_headscale_ip_missing` result after six retryable requeues. Each failed
+attempt's exact-success cleanup had already removed its candidate and cleared
+the replacement fence before the diagnostic ran, so the out-of-band probe
+correctly skipped; there was no surviving locator to inspect and no safe basis
+for reconstructing one.
+
+The final observation therefore belongs inside the provisioning attempt, before
+its cleanup boundary. Source `d3a257a4659a017b89a7dfc413018900174445ef`
+extends the already-bounded exact-candidate probe to reduce Docker, Tailscale,
+and entrypoint output to a closed state vector: container state and exit code;
+socket and daemon presence; status-query result; allowlisted backend state;
+machine authorization; AuthURL and mesh-IP presence; and four startup-log
+booleans. The raw status, URL, addresses, logs, host identity, container identity,
+and SSH error are discarded. The closed vector becomes a durable causal error
+before exact cleanup, and the database diagnostic maps it to a closed failure
+family such as missing daemon/socket, unavailable status, pending login,
+machine authorization, stopped/starting backend, or running without an IP.
+
+The staging image path was then re-audited from the publishing workflow rather
+than inferred from similarly named Dockerfiles. `build-agent-image.yml` builds
+`packages/app-core/deploy/Dockerfile.ci`: the full `@elizaos/agent` host started
+through `docker-entrypoint.sh`, with `packages/agent/dist/bin.js start` as the
+runtime command. `Dockerfile.cloud-agent` is not the source of the protected
+`ELIZA_AGENT_IMAGE` used by this Hetzner path. Its readiness and ESM fixes remain
+valid hardening for that separate image, but are not evidence for the active
+Dedicated startup failure. Build `33567044875` produced, boot-tested, attested,
+and anonymously pull-tested the active demo image at
+`sha256:3669a5aa86ec5a7bf0ec340e1fdbbfd2a38959a07ce1acb0374a93d9b7539d13`.
+Staging was pinned to that immutable digest and the environment value was read
+back before provisioning.
+
+Worker deployment `33569186748` installed source
+`79b2e0c5b4e005f2e79dde644568ee2ae4c7eca6`, ran canonical migrations,
+reconciled systemd, restarted the Hetzner daemon, and passed health on its
+second attempt. The first attempt spent exactly three minutes unassigned even
+though the repository exposed eligible idle runners; that was a transient
+GitHub runner-assignment failure, not a Hetzner or application failure. Exact
+cleanup `33569019126` removed the prior synthetic row with the explicit
+state-loss waiver allowed only for this controlled canary.
+
+Fresh canary `33569952876` selected `dedicated-always`, created exactly one
+agent, and issued no chat request, but failed after 753,332 ms. Read-only
+diagnostic `33571111122` proved that its tenant database was ready and its job
+queue had executed six bounded retryable requeues. The exact Docker replacement
+identity was durable, while the VPN node identity was absent; the terminal
+category was `ingress_headscale_ip_missing`, and the private worker journal
+reduced the causal family to `registration_timeout`. This again rules out a
+database, quota, or pre-Docker admission failure.
+
+Cleanup attempt `33572040500` stopped at the HTTP 409 lifecycle boundary and
+performed no mutation. The canary previously discarded the structured conflict
+body, so source `872ea7b876a3ac6e8bef175182ea4cb74d1dbadb` added closed,
+privacy-safe conflict categories without retaining agent or job identifiers.
+Read-only source `fcfb0d8bf671f4f080be08a7c856821f9d27712f` also exposed the
+database-owned lifecycle facts needed to distinguish an active executor from a
+converging cleanup fence. Run `33573243386` proved the exact provision execution
+was quiesced, its lease and lifecycle fence were absent, and the reconciler had
+cleared the replacement locator. Cleanup-only run `33573378392` then deleted
+exactly the stale target, created no agent, sent no chat request, and returned a
+confirmed cleanup receipt. No safety fence was bypassed.
+
+The in-attempt candidate observer was strengthened once more in source
+`64dc20a6f4663a2f0b98a3f886c774ef4786cff9`: after the full Headscale
+observation window it closes the pooled SSH connection, reconnects, and performs
+one bounded synchronous observation of the exact persisted candidate before
+cleanup. If even that path is unavailable, it persists a closed transport or
+remote-observation category instead of erasing the evidence. Deployment
+`33573400161` installed the descendant source
+`fcfb0d8bf671f4f080be08a7c856821f9d27712f`, applied migrations, restarted the
+Hetzner services, and passed the exact-source health gate. This is the worker
+source responsible for the next cold-path acceptance result.
+
+Canary `33573776398` then created one `dedicated-always` target and no chat
+request, but failed after 732,108 ms. Diagnostic `33574914093` again proved a
+ready tenant database, six retryable requeues, and an exact Docker replacement
+identity without a VPN identity. Cleanup-only run `33576687216` subsequently
+matched and deleted exactly that target with zero new agents, zero chat
+requests, a confirmed receipt, and `possibleOrphan=false`. Worker deployment
+`33576066979` installed source
+`55502735d539746bc2ce9bcc55fc3a7ce4522b66`, including closed route, TUN, and
+control-plane observations, and passed migrations, systemd reconciliation,
+restart, and sustained health.
+
+Fresh canary `33576910808` reproduced the failure after 739,432 ms. Its exact
+candidate probe and later read-only diagnostics were decisive about what was
+*not* broken: the container was running; its Tailscale socket and daemon were
+present; `/dev/net/tun` and a default route existed; and the container could
+reach the public Headscale health endpoint. The daemon was still in
+`NeedsLogin`, with no mesh IP, no AuthURL, no explicit key rejection, and no
+agent-start marker. Headscale had six recent, unexpired, reusable `tag:agent`
+pre-auth keys and no exact invalid, expired, used, ownership, timeout, or tag
+rejection log. This ruled out the tenant database, Docker create, missing TUN,
+container routing, Headscale public reachability, and pre-auth-key creation.
+
+Source `62508fe0abe270ae6e507eb7edccff845a0d6168` added a final privacy-safe
+classification of the private `tailscaled` control exchange: control-key fetch,
+login start, RegisterReq send, control-transport failure, TLS failure, and DNS
+failure. Deployment `33587387098` installed that observer and passed the exact
+worker gates. Cleanup-only run `33587750846` then removed the failed
+`r33576910808a1` target before the next cold-path attempt.
+
+Canary `33587889664` provided the final root-cause evidence. It selected
+`dedicated-always`, created one agent, made no chat request, and timed out its
+provision wait after 963,143 ms; its bounded cleanup also failed, correctly
+retaining `possibleOrphan=true`. The in-flight diagnostic `33589001284` caught
+the exact candidate before reconciliation removed it. The authoritative
+database was ready and held every primary Docker locator plus a Headscale
+address. Inside that exact container, `tailscale status --json` succeeded with
+`BackendState=Running` and a mesh address, while the container remained before
+the application-start marker. The worker journal independently classified
+registration as observed. Headscale registration had therefore succeeded: the
+foreground `tailscale up` process simply did not return, so the mesh-first
+entrypoint never reached the agent command.
+
+This behavior is consistent with the upstream client contract and incident
+history rather than a database or Hetzner-capacity fault. `tailscale up` waits
+for the backend to reach Running under its own timeout in the upstream
+[`up` implementation](https://github.com/tailscale/tailscale/blob/main/cmd/tailscale/cli/up.go),
+but the pinned 1.90-series container client remained blocked after the daemon
+had already reached that state. The upstream
+[Docker 1.90.6+ hang report](https://github.com/tailscale/tailscale/issues/17912)
+documents the same release family. The image also lagged the supported client
+line even though Headscale v0.28 accepts clients from 1.80 onward.
+
+Source `e4ebfbf35e120f93d7c63193858cb89dee97abc4` repairs both active and dormant
+image entrypoints. While the foreground CLI is running, the entrypoint performs
+a bounded, private daemon-status probe. `Running` plus a non-empty
+`TailscaleIPs` list is authoritative success: the entrypoint terminates the
+stuck CLI and starts the agent. An independent outer deadline terminates a CLI
+that neither exits nor reaches that proven state, so a container can no longer
+remain indefinitely in `starting`. Definitive AuthURL, `NeedsMachineAuth`, and
+invalid/expired/used-key handling still takes precedence. Both images also move
+from Tailscale 1.90.8 to the integrity-checked 1.98.3 tarball, the final stable
+version available through Tailscale's architecture-specific tarball channel
+before its [distribution change](https://github.com/tailscale/tailscale/issues/20299).
+Deterministic Linux fixtures cover the success-after-stuck-CLI and bounded
+non-ready cases for both entrypoints.
+
+Build `33589931505` then built, boot-tested, attested, published, and anonymously
+pull-tested that exact `e4ebfbf35e120f93d7c63193858cb89dee97abc4` source. The
+staging environment was read back pinned to
+`ghcr.io/elizaos/eliza-demo@sha256:7a3d318b392f3e137f63ee5ca40412a6eacec045c5f3d5a3ff19f2685980821f`.
+Cleanup `33590846173` removed the prior failed canary only after diagnostic
+`33590767961` proved its provision executor quiesced. Worker deployment
+`33591362190` installed the same exact source, applied canonical migrations,
+reconciled both systemd units, and passed its source-identity and health gates.
+
+Fresh canary `33591733320` proved that the repaired container now crosses the
+entrypoint boundary. It selected `dedicated-always`, created one agent, and
+reached a ready tenant database. The worker observed Headscale registration,
+the exact container stayed running, its private socket answered
+`BackendState=Running` with a mesh address, and node-side HTTP/Docker health
+passed. The application path still did not become reachable from the control
+plane before the bounded canary and provision retries expired, so no chat was
+sent and the canary retained `possibleOrphan=true` until its executor quiesced.
+
+Read-only diagnostics `33592404806`, `33593459564`, `33593614955`, and
+`33594307474` separated that failure from the prior entrypoint deadlock. The
+primary Docker and Headscale locators were durable and the database/job queue
+continued advancing. At `05:21Z`, the control-plane Tailscale daemon itself was
+`Running` with a local mesh address, but the exact canary peer was absent from
+its network map, Linux had no `tailscale0` route for the peer, Tailscale ping
+failed, and the health URL was unreachable. By `05:33Z`, after the final
+provision attempt and container retirement, the peer finally appeared offline
+and the route existed. The problem is therefore delayed/split control-plane
+mesh convergence, not Docker capacity, tenant database setup, agent admission,
+or failure to register the container with Headscale.
+
+The Headscale arm path contained a specific recovery weakness: it treated an
+exactly named row in Headscale's database as sufficient proof that the local CP
+router was enrolled. That row can outlive the local `tailscaled` session or a
+control-URL migration, leaving the CP apparently enrolled but unable to see new
+agent peers. Source `fbea3fb41789224ded404d74d293118a30e9748f` makes convergence
+three-part and fail-closed: one unambiguous durable node, a local
+`BackendState=Running` identity with a mesh IP, and an exact canonical
+`ControlURL`. If any part differs, it mints a fresh single-use tagged key,
+retires only the exact numeric stale node, forces local reauthentication, and
+then re-proves all three facts. The regression renders the real remote script
+and locks the ordering and postconditions. The live staging arm and a new
+Dedicated canary remain the acceptance boundary; source inspection and the
+eventual offline route are diagnostic evidence, not success.
 
 Required acceptance evidence is: one non-cancelled exact-SHA worker deploy;
 systemd active identity and effective env-name audit; matching API/daemon DB
