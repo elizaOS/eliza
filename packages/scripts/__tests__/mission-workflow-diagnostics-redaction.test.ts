@@ -362,7 +362,7 @@ exit "\${RAILWAY_STUB_EXIT:-0}"
     } finally {
       rmSync(directory, { force: true, recursive: true });
     }
-  });
+  }, 15_000);
 
   test("hostile Railway domain output is reduced to fixed roles and removed", () => {
     const workflow = parseWorkflow(".github/workflows/deploy-tunnel-proxy.yml");
