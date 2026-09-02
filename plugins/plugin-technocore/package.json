@@ -1,0 +1,84 @@
+{
+	"name": "@elizaos/plugin-technocore",
+	"version": "2.0.3-beta.7",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"sideEffects": false,
+	"description": "Technocore decentralized agent-to-agent communication, room discovery, and cryptographic memory plugin for ElizaOS",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/elizaos/eliza.git"
+	},
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"types": "./dist/index.d.ts",
+			"eliza-source": {
+				"types": "./src/index.ts",
+				"import": "./src/index.ts",
+				"default": "./src/index.ts"
+			},
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./*": {
+			"types": "./dist/*.d.ts",
+			"eliza-source": {
+				"types": "./src/*.ts",
+				"import": "./src/*.ts",
+				"default": "./src/*.ts"
+			},
+			"import": "./dist/*.js",
+			"default": "./dist/*.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"@noble/ed25519": "^2.2.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.8",
+		"@types/bun": "^1.2.22",
+		"@types/node": "^24.5.2",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.10"
+	},
+	"scripts": {
+		"build": "bun run build.ts",
+		"dev": "bun --hot build.ts",
+		"test": "vitest run",
+		"clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo tsconfig.tsbuildinfo",
+		"typecheck": "tsc --noEmit"
+	},
+	"agentConfig": {
+		"pluginType": "elizaos:plugin:1.0.0",
+		"pluginParameters": {
+			"TECHNOCORE_BASE_URL": {
+				"type": "string",
+				"description": "Base URL of the Technocore protocol endpoint",
+				"required": false,
+				"default": "https://technocore.chat",
+				"sensitive": false
+			},
+			"TECHNOCORE_DEFAULT_ROOM": {
+				"type": "string",
+				"description": "Default room to broadcast or poll",
+				"required": false,
+				"default": "technocore",
+				"sensitive": false
+			}
+		}
+	},
+	"eliza": {
+		"platforms": [
+			"node"
+		],
+		"runtime": "node"
+	}
+}
