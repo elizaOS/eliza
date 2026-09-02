@@ -15,6 +15,7 @@ import type { WorkflowDefinitionResponse } from '../../src/types/index';
 
 const tenantId = `smithers-runner-test-${process.pid}`;
 const workflowId = 'real-smthrs-workflow';
+const finiteWorkflowId = 'finite-retry-workflow';
 
 const workflow: WorkflowDefinitionResponse = {
   id: workflowId,
@@ -41,7 +42,14 @@ export default smithers(() => (
 };
 
 afterAll(async () => {
-  await rm(resolveSmithersWorkflowDir(tenantId, workflowId), { recursive: true, force: true });
+  await Promise.all(
+    [workflowId, finiteWorkflowId].map((id) =>
+      rm(resolveSmithersWorkflowDir(tenantId, id), {
+        recursive: true,
+        force: true,
+      })
+    )
+  );
 });
 
 describe('real Smithers runner', () => {
@@ -132,7 +140,7 @@ describe('real Smithers runner', () => {
     let requests = 0;
     const finiteWorkflow: WorkflowDefinitionResponse = {
       ...workflow,
-      id: 'finite-retry-workflow',
+      id: finiteWorkflowId,
       versionId: 'finite-v1',
       source: workflow.source.replace(
         'id="run" output={outputs.output} agent={agent}',

@@ -26,6 +26,32 @@ mock.module("@/db/helpers", () => ({
       from: () => ({ where: () => ({ limit: async () => [] }) }),
     }),
   },
+  dbWrite: {},
+}));
+
+const checkoutOrder = {
+  id: "order-1",
+  status: "pending",
+  stripe_customer_id: null as string | null,
+  stripe_checkout_session_id: null,
+  updated_at: new Date("2026-08-01T00:00:00.000Z"),
+};
+
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  stripeCheckoutOrdersService: {
+    create: async () => ({ ...checkoutOrder }),
+    bindCustomer: async (_id: string, customerId: string) => ({
+      ...checkoutOrder,
+      stripe_customer_id: customerId,
+    }),
+    markProviderStarted: async () => undefined,
+    bindSession: async () => undefined,
+    markProviderAmbiguous: async () => undefined,
+  },
+}));
+
+mock.module("@/lib/services/stripe-customer-authority", () => ({
+  stripeCustomerAuthorityService: { ensure: async () => "cus_1" },
 }));
 
 mock.module("@/lib/services/users", () => ({
@@ -86,7 +112,10 @@ describe("POST /api/v1/credits/checkout malformed JSON", () => {
       "/",
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "Idempotency-Key": "checkout-test-1",
+        },
         body: JSON.stringify(validBody),
       },
       {},

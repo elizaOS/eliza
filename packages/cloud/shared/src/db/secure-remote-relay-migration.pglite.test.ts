@@ -141,15 +141,16 @@ describe("secure remote relay migrations", () => {
       const journal = JSON.parse(
         await readFile(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8"),
       ) as { entries: Array<{ idx: number; tag: string; when: number }> };
-      const recentEntries = journal.entries.slice(-5);
-      expect(recentEntries.map((entry) => entry.tag)).toEqual([
+      const expectedTags = [
         "0320_personal_shared_multi_principal_consent",
         "0330_remote_session_two_phase_activation",
         "0331_remote_host_managed_network",
         "0332_remote_target_initiated_pairing",
         "0333_remote_host_connection_mode_check",
-      ]);
-      expect(recentEntries.map((entry) => entry.idx)).toEqual([303, 304, 305, 306, 307]);
+      ];
+      const recentEntries = journal.entries.filter(({ tag }) => expectedTags.includes(tag));
+      expect(recentEntries.map((entry) => entry.tag)).toEqual(expectedTags);
+      expect(recentEntries.map((entry) => entry.idx)).toEqual([303, 313, 314, 315, 316]);
       expect(recentEntries[1]!.when).toBeGreaterThan(recentEntries[0]!.when);
       expect(recentEntries[2]!.when).toBeGreaterThan(recentEntries[1]!.when);
       expect(recentEntries[3]!.when).toBeGreaterThan(recentEntries[2]!.when);

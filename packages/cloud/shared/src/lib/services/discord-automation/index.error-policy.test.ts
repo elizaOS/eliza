@@ -16,6 +16,7 @@ const guildUpsert = mock(async () => {});
 // unrelated Core Unicode helper hermetic so the focused test does not require
 // a built @elizaos/core workspace package.
 mock.module("@elizaos/core", () => ({
+  toWellFormedUnicode: (value: string) => value.toWellFormed(),
   truncateWellFormed: (value: string, maxUnits: number) => value.slice(0, maxUnits),
 }));
 mock.module("../../../db/repositories/discord-channels", () => ({

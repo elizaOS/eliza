@@ -412,8 +412,8 @@ describe("service agent provisioning route", () => {
       cloudAgentId: "cloud-agent-1",
       characterId: "character-1",
       containerId: "container-worker",
-      containerUrl: "https://runtime.example.test",
-      bridgeUrl: "https://runtime.example.test",
+      containerUrl: "https://cloud-agent-1.cloud.eliza.app",
+      bridgeUrl: "https://cloud-agent-1.cloud.eliza.app",
       status: "running",
     });
     expect(createAgent).toHaveBeenCalledWith(

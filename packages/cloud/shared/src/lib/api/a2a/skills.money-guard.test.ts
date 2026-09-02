@@ -58,6 +58,7 @@ mock.module("@ai-sdk/openai", () => ({
 
 mock.module("uuid", () => ({
   v4: () => "00000000-0000-4000-8000-000000000000",
+  v5: () => "00000000-0000-5000-8000-000000000000",
 }));
 
 mock.module("../../pricing", () => ({
@@ -127,6 +128,14 @@ mock.module("../../services/conversations", () => ({
 }));
 
 mock.module("../../services/credits", () => ({
+  APP_CHAT_RESERVATION_SETTLEMENT_MARKER: "app_chat_reservation_v1",
+  COST_BUFFER: 1.5,
+  DEFAULT_OUTPUT_TOKENS: 500,
+  EPSILON: 0.0000001,
+  MIN_RESERVATION: 0.000001,
+  RESERVATION_SETTLEMENT_MARKER: "credit_reservation_v1",
+  RESERVATION_SWEEP_GRACE_MS: 0,
+  CreditsService: class CreditsService {},
   creditsService: {
     reserve: () => unexpectedDependencyCall("creditsService.reserve"),
   },
@@ -134,6 +143,12 @@ mock.module("../../services/credits", () => ({
     required = 0;
     available = 0;
   },
+  InvalidCreditAmountError: class InvalidCreditAmountError extends Error {},
+  ReservationNotFoundError: class ReservationNotFoundError extends Error {},
+  assertCreditRefundWithinReservation: () => undefined,
+  assertValidCreditSettlementCosts: () => undefined,
+  runObservedPostDebitNotifications: async () => undefined,
+  triggerDurableAutoTopUpForBalanceDecrease: async () => undefined,
 }));
 
 mock.module("../../services/generations", () => ({

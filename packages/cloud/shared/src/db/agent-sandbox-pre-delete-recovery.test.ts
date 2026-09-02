@@ -69,6 +69,9 @@ beforeAll(async () => {
   const { organizations } = await import("./schemas/organizations");
   const { users } = await import("./schemas/users");
   const { userCharacters } = await import("./schemas/user-characters");
+  const { agentNodeIncarnationHistories } = await import(
+    "./schemas/agent-node-incarnation-histories"
+  );
   const { agentSandboxes, agentSandboxBackups, agentBackupCatalogAuthorities } = await import(
     "./schemas/agent-sandboxes"
   );
@@ -79,6 +82,7 @@ beforeAll(async () => {
       organizations,
       users,
       userCharacters,
+      agentNodeIncarnationHistories,
       agentSandboxes,
       agentSandboxBackups,
       agentBackupCatalogAuthorities,

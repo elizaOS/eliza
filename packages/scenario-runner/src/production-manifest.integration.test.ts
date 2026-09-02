@@ -640,7 +640,7 @@ describe("production manifest persistence", () => {
     expect(await target.getCache(key)).toBeUndefined();
   });
 
-  it("applies complete notification manifests without an item-count boundary", async () => {
+  it("preserves large inboxes and resets only manifest-owned notifications", async () => {
     const target = runtime();
     const service = target.getService(ServiceType.NOTIFICATION);
     expect(service).toBeInstanceOf(NotificationService);
@@ -654,8 +654,15 @@ describe("production manifest persistence", () => {
         title: `Owned ${index}`,
       }));
       const oversizedReceipt = await applyProductionManifest(target, oversized);
+      expect(oversizedReceipt.notificationIds).toHaveLength(301);
+      const oversizedSnapshot = await readProductionManifestSnapshot(
+        target,
+        oversizedReceipt,
+      );
+      expect(oversizedSnapshot.notifications).toHaveLength(301);
       expect(notifications.listIncludingExpired()).toHaveLength(301);
       await resetProductionManifest(target, oversizedReceipt);
+      expect(notifications.listIncludingExpired()).toEqual([]);
       expect(
         await target.getWorldsByIds([
           stringToUuid(
@@ -669,6 +676,8 @@ describe("production manifest persistence", () => {
       }
       const input = manifest("notification-capacity");
       const receipt = await applyProductionManifest(target, input);
+      const snapshot = await readProductionManifestSnapshot(target, receipt);
+      expect(snapshot.notifications).toHaveLength(2);
       expect(notifications.listIncludingExpired()).toHaveLength(
         299 +
           (input.notifications?.length ?? 0) +
@@ -680,6 +689,7 @@ describe("production manifest persistence", () => {
           .filter((entry) => entry.title.startsWith("Unrelated ")),
       ).toHaveLength(299);
       await resetProductionManifest(target, receipt);
+      expect(notifications.listIncludingExpired()).toHaveLength(299);
       expect(
         notifications
           .listIncludingExpired()

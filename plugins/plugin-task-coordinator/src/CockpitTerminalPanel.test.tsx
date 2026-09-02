@@ -77,6 +77,16 @@ const ui = vi.hoisted(() => {
 });
 
 vi.mock("@elizaos/ui/api", () => ({
+  Button: ({ children, ...rest }: Record<string, unknown>) =>
+    React.createElement(
+      "button",
+      { type: "button", ...rest },
+      children as React.ReactNode,
+    ),
+  Card: ({ children, ...rest }: Record<string, unknown>) =>
+    React.createElement("div", rest, children as React.ReactNode),
+  Input: (props: Record<string, unknown>) =>
+    React.createElement("input", props),
   client: ui.client,
 }));
 

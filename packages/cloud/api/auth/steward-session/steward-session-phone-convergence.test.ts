@@ -153,6 +153,7 @@ describe("POST /api/auth/steward-session phone convergence", () => {
       telegramContinuation: undefined,
       sharedRuntimeConversationNamespace: undefined,
       executionCtx: undefined,
+      afterRequiredSignupProvisioning: expect.any(Function),
     });
   });
 
@@ -174,6 +175,7 @@ describe("POST /api/auth/steward-session phone convergence", () => {
       telegramContinuation: "opaque-telegram-claim-token",
       sharedRuntimeConversationNamespace: undefined,
       executionCtx: undefined,
+      afterRequiredSignupProvisioning: expect.any(Function),
     });
   });
 
@@ -203,6 +205,7 @@ describe("POST /api/auth/steward-session phone convergence", () => {
       telegramContinuation: undefined,
       sharedRuntimeConversationNamespace: undefined,
       executionCtx: undefined,
+      afterRequiredSignupProvisioning: expect.any(Function),
     });
   });
 

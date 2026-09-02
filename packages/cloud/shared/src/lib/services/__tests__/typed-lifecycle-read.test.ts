@@ -19,6 +19,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { agentBackupObjects } from "../../../db/schemas/agent-backup-catalog";
+import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import {
   type AgentSandbox,
   agentBackupCatalogAuthorities,
@@ -107,6 +108,7 @@ beforeAll(async () => {
     organizations,
     users,
     userCharacters,
+    agentNodeIncarnationHistories,
     agentSandboxes,
     agentSandboxBackups,
     agentBackupCatalogAuthorities,

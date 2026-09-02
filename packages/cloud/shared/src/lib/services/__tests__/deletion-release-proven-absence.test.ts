@@ -99,6 +99,7 @@ beforeAll(async () => {
       "provider_server_id" text,
       "node_incarnation" uuid,
       "current_node_history_id" uuid,
+      "backup_admission_xid" xid8 NOT NULL DEFAULT '0'::xid8,
       "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),

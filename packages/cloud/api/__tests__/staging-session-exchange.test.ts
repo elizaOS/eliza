@@ -979,6 +979,7 @@ describe("mint authentication and existing-subject eligibility", () => {
           .update(schemas.apiKeys)
           .set({ deleted_at: new Date() })
           .where(eq(schemas.apiKeys.id, API_KEY_ID)),
+      expectedStatus: 401,
     },
     {
       name: "inactive user",

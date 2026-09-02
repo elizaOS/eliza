@@ -179,7 +179,9 @@ describe("packaged ELF GLIBC compatibility", () => {
     expect(() =>
       inspectPackagedGlibcCompatibility(buildDir, {
         readelfVersionInfo: (filePath: string) =>
-          filePath === lazyLibrary
+          filePath.endsWith(
+            path.join("native", "libelizainference.so"),
+          )
             ? "Name: GLIBC_2.43"
             : GLIBC_238_VERSION_INFO,
       }),
