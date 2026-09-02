@@ -240,13 +240,17 @@ CREATE TABLE IF NOT EXISTS "agent_backup_restore_v3_candidate_stage_ledger" (
     ("command_kind" = 'record' AND "data_index" BETWEEN 0 AND 16383
       AND "offset_bytes" BETWEEN 0 AND 1073741824
       AND "entry_metadata_sha256" ~ '^[0-9a-f]{64}$'
-      AND ((num_nonnulls("entry_path", "entry_file_offset_bytes", "entry_file_size_bytes",
-          "entry_mode", "entry_mtime_ms") = 0)
-        OR ("entry_path" IS NOT NULL AND octet_length("entry_path") BETWEEN 1 AND 1024
-          AND "entry_path" !~ '(^/|(^|/)\.\.(/|$)|[[:cntrl:]])'
+      AND (("component_name" IN ('character', 'database')
+          AND num_nonnulls("entry_path", "entry_file_offset_bytes", "entry_file_size_bytes",
+            "entry_mode", "entry_mtime_ms") = 0)
+        OR ("component_name" IN ('media', 'state-files', 'vault')
+          AND "entry_path" IS NOT NULL AND octet_length("entry_path") BETWEEN 1 AND 1024
+          AND position(chr(92) in "entry_path") = 0
+          AND "entry_path" !~ '(^/|/$|//|(^|/)\.(/|$)|(^|/)\.\.(/|$))'
           AND "entry_file_offset_bytes" BETWEEN 0 AND 1073741824
           AND "entry_file_size_bytes" BETWEEN 0 AND 1073741824
-          AND "entry_mode" BETWEEN 0 AND 511 AND "entry_mtime_ms" >= 0
+          AND "entry_mode" BETWEEN 0 AND 511
+          AND "entry_mtime_ms" BETWEEN 0 AND 9007199254740991
           AND num_nonnulls("entry_path", "entry_file_offset_bytes", "entry_file_size_bytes",
             "entry_mode", "entry_mtime_ms") = 5))
       AND "payload_bytes" BETWEEN 0 AND 262144
@@ -425,6 +429,10 @@ CREATE TABLE IF NOT EXISTS "agent_backup_restore_v3_candidate_gc_tombstones" (
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "agent_backup_restore_v3_candidate_gc_candidate_uidx"
   ON "agent_backup_restore_v3_candidate_gc_tombstones" ("candidate_id");
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "agent_backup_restore_v3_candidate_gc_attempt_uidx"
+  ON "agent_backup_restore_v3_candidate_gc_tombstones"
+  ("organization_id", "restore_attempt_id");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "agent_backup_restore_v3_candidate_gc_tenant_idx"
   ON "agent_backup_restore_v3_candidate_gc_tombstones" ("organization_id", "created_at");

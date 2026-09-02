@@ -12,8 +12,12 @@ import {
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1,
+  AGENT_BACKUP_RESTORE_V3_SOURCE_AUTHORITY_DERIVATION,
+  AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS,
   type AgentBackupManifestV3Draft,
+  type AgentBackupRestoreV3SourceAuthority,
   canonicalizeAgentBackupManifestV3,
+  canonicalizeAgentBackupRestoreV3SourceAuthority,
   computeAgentBackupChunkAadDigest,
   createAgentBackupManifestV3,
 } from "@elizaos/shared";
@@ -97,6 +101,10 @@ const EXACT_FINAL_REPLACEMENT_GUARD_SQL = readFileSync(
 if (EXACT_FINAL_REPLACEMENT_GUARD_SQL.length !== 2) {
   throw new Error("0371 exact final replacement guard fixture is incomplete");
 }
+const RESTORE_V3_CANDIDATE_MIGRATIONS = [
+  "0373_agent_backup_restore_v3_candidates",
+  "0374_agent_backup_restore_v3_candidate_guards",
+].map((name) => readFileSync(join(MIGRATIONS_DIR, `${name}.sql`), "utf8"));
 
 const ORG_ID = "00000000-0000-4000-8000-00000000b101";
 const USER_ID = "00000000-0000-4000-8000-00000000b102";
@@ -279,13 +287,38 @@ async function waitUntilBlockedBy(observer: Client, blockedByPid: number): Promi
   throw new Error("Timed out waiting for a blocked restore-authority backend");
 }
 
-async function waitForLeaseExpiry(observer: Client): Promise<void> {
+async function waitUntilAdvisoryBlockedBy(
+  observer: Client,
+  blockedByPid: number,
+): Promise<{ pid: number; wait_event_type: string; wait_event: string }> {
   const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const result = await observer.query<{
+      pid: number;
+      wait_event_type: string;
+      wait_event: string;
+    }>(
+      `SELECT pid, wait_event_type, wait_event FROM pg_stat_activity
+       WHERE datname = current_database() AND state = 'active'
+         AND wait_event_type = 'Lock' AND wait_event = 'advisory'
+         AND $1 = ANY(pg_blocking_pids(pid))
+       LIMIT 1`,
+      [blockedByPid],
+    );
+    const blocked = result.rows[0];
+    if (blocked) return blocked;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Timed out waiting for the restore-v3 advisory attempt fence");
+}
+
+async function waitForLeaseExpiry(observer: Client, leaseId = CLOCK_LEASE_ID): Promise<void> {
+  const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     const result = await observer.query<{ expired: boolean }>(
       "SELECT expires_at <= clock_timestamp() AS expired " +
         "FROM agent_backup_restore_leases WHERE id = $1",
-      [CLOCK_LEASE_ID],
+      [leaseId],
     );
     if (result.rows[0]?.expired) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -309,6 +342,56 @@ async function waitUntilDatabaseTime(observer: Client, threshold: Date): Promise
 function postgresErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
   return typeof error.code === "string" ? error.code : undefined;
+}
+
+async function createRestoreV3CandidatePrerequisiteTables(client: Client): Promise<void> {
+  await client.query(`
+    CREATE TABLE organizations (id uuid PRIMARY KEY);
+    CREATE TABLE agent_backup_catalog_authorities (
+      organization_id uuid NOT NULL REFERENCES organizations(id), agent_id uuid NOT NULL,
+      catalog_revision bigint NOT NULL, restore_generation bigint NOT NULL DEFAULT 0,
+      updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (organization_id, agent_id)
+    );
+    CREATE TABLE agent_sandbox_backups (
+      id uuid PRIMARY KEY, catalog_organization_id uuid NOT NULL,
+      catalog_agent_id uuid NOT NULL, backup_operation_id uuid NOT NULL,
+      lifecycle_generation uuid NOT NULL, lifecycle_revision numeric(20, 0) NOT NULL,
+      manifest_digest text NOT NULL, operation_key_bundle_generation_id uuid NOT NULL,
+      catalog_state text NOT NULL, manifest_version integer NOT NULL
+    );
+    CREATE TABLE agent_backup_objects (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL, backup_id uuid NOT NULL,
+      copy_role text NOT NULL, component text NOT NULL, chunk_index integer NOT NULL,
+      state text NOT NULL, provider_write_started boolean NOT NULL, verified_at timestamptz,
+      content_hmac_sha256 text NOT NULL, transport text NOT NULL, provider text NOT NULL,
+      endpoint_identity_fingerprint text NOT NULL, endpoint_alias text NOT NULL,
+      bucket text NOT NULL, region text NOT NULL, key_fingerprint text NOT NULL,
+      provider_version_id text, provider_etag text, provider_checksum text,
+      upload_receipt_digest text, ciphertext_sha256 text NOT NULL, size_bytes bigint NOT NULL
+    );
+    CREATE TABLE agent_backup_restore_leases (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL, agent_id uuid NOT NULL,
+      backup_id uuid NOT NULL, restore_attempt_id uuid NOT NULL, owner_id text NOT NULL,
+      generation uuid NOT NULL, catalog_epoch bigint NOT NULL, copy_role text NOT NULL,
+      operation_id uuid NOT NULL, activation_generation uuid NOT NULL,
+      lifecycle_revision numeric(20, 0) NOT NULL, expected_manifest_sha256 text NOT NULL,
+      expires_at timestamptz NOT NULL, released_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT agent_backup_restore_leases_operation_authority_unique UNIQUE (
+        id, organization_id, agent_id, backup_id, restore_attempt_id, owner_id,
+        generation, catalog_epoch, copy_role, operation_id, activation_generation,
+        lifecycle_revision, expected_manifest_sha256)
+    );
+    CREATE TABLE agent_backup_restore_operations (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL, agent_id uuid NOT NULL,
+      backup_id uuid NOT NULL, restore_attempt_id uuid NOT NULL, lease_id uuid NOT NULL,
+      lease_owner_id text NOT NULL, lease_generation uuid NOT NULL, catalog_epoch bigint NOT NULL,
+      copy_role text NOT NULL, expected_operation_id uuid NOT NULL,
+      expected_activation_generation uuid NOT NULL,
+      expected_lifecycle_revision numeric(20, 0) NOT NULL,
+      expected_manifest_sha256 text NOT NULL, phase text NOT NULL
+    );
+  `);
 }
 
 async function buildLockManifest(
@@ -2150,6 +2233,601 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       if (expiration) await expiration;
       if (acquisition) await acquisition;
       await Promise.allSettled([blocker.end(), observer.end()]);
+    }
+  }, 30_000);
+
+  test("candidate begin rechecks lease expiry after waiting for the backup lock", async () => {
+    if (!isolatedDsn) throw new Error("real PostgreSQL harness was not initialized");
+    const setup = new Client({ connectionString: isolatedDsn });
+    const blocker = new Client({ connectionString: isolatedDsn });
+    const candidate = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([
+      setup.connect(),
+      blocker.connect(),
+      candidate.connect(),
+      observer.connect(),
+    ]);
+    const schemaName = `restore_v3_candidate_clock_${randomUUID().replaceAll("-", "")}`;
+    const organizationId = "00000000-0000-4000-8000-00000000b501";
+    const agentId = "00000000-0000-4000-8000-00000000b502";
+    const backupId = "00000000-0000-4000-8000-00000000b503";
+    const operationId = "00000000-0000-4000-8000-00000000b504";
+    const sourceGeneration = "00000000-0000-4000-8000-00000000b505";
+    const restoreAttemptId = "00000000-0000-4000-8000-00000000b506";
+    const leaseId = "00000000-0000-4000-8000-00000000b507";
+    const leaseGeneration = "00000000-0000-4000-8000-00000000b508";
+    const restoreOperationId = "00000000-0000-4000-8000-00000000b509";
+    const keyBundleGenerationId = "00000000-0000-4000-8000-00000000b50a";
+    const cleanupId = "00000000-0000-4000-8000-00000000b50b";
+    const candidateId = "00000000-0000-4000-8000-00000000b50c";
+    const manifestSha256 = "3".repeat(64);
+    const executionTokenSha256 = "4".repeat(64);
+    const cleanupCommandSha256 = "5".repeat(64);
+    const digest = (value: string): string =>
+      createHash("sha256").update(value, "utf8").digest("hex");
+    const objectFixtures = AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS.map(
+      (componentName, index) => ({
+        objectId: `00000000-0000-4000-8000-${String(0xb601 + index).padStart(12, "0")}`,
+        componentIndex: index,
+        componentName,
+        endpointIdentityFingerprint: `sha256:${digest(`candidate-identity-${index}`)}`,
+        endpointAlias: `candidate-alias-${index}`,
+        bucket: `candidate-bucket-${index}`,
+        region: `candidate-region-${index}`,
+        keyFingerprint: digest(`candidate-key-${index}`),
+        contentHmacSha256: digest(`candidate-content-${index}`),
+        uploadReceiptDigest: digest(`candidate-upload-${index}`),
+        ciphertextSha256: digest(`candidate-ciphertext-${index}`),
+        providerVersionId: `candidate-version-${index}`,
+        sizeBytes: index + 1,
+      }),
+    );
+    const sourceAuthority: AgentBackupRestoreV3SourceAuthority = {
+      derivation: AGENT_BACKUP_RESTORE_V3_SOURCE_AUTHORITY_DERIVATION,
+      organizationId,
+      agentId,
+      backupId,
+      operationId,
+      sourceActivationGeneration: sourceGeneration,
+      sourceLifecycleRevision: "7",
+      expectedManifestSha256: manifestSha256,
+      copyRole: "primary",
+      catalogEpoch: "9",
+      objects: objectFixtures.map((fixture) => ({
+        objectId: fixture.objectId,
+        componentIndex: fixture.componentIndex,
+        componentName: fixture.componentName,
+        chunkIndex: 0,
+        copyRole: "primary",
+        contentHmacSha256: fixture.contentHmacSha256,
+        catalog: {
+          transport: "worker-r2",
+          provider: "cloudflare-r2",
+          endpointIdentityFingerprint: fixture.endpointIdentityFingerprint,
+          endpointAliasFingerprint: `sha256:${digest(fixture.endpointAlias)}`,
+          bucketFingerprint: `sha256:${digest(fixture.bucket)}`,
+          regionFingerprint: `sha256:${digest(fixture.region)}`,
+          keyFingerprint: `sha256:${fixture.keyFingerprint}`,
+          providerVersionId: fixture.providerVersionId,
+          providerEtag: null,
+          providerChecksum: null,
+          uploadReceiptDigest: fixture.uploadReceiptDigest,
+          ciphertextSha256: fixture.ciphertextSha256,
+          sizeBytes: fixture.sizeBytes,
+        },
+      })),
+    };
+    const sourceCanonical = canonicalizeAgentBackupRestoreV3SourceAuthority(sourceAuthority);
+    const sourceSha256 = digest(sourceCanonical);
+    let candidateInsert: Promise<void> | undefined;
+    let candidateError: unknown;
+    let schemaCreated = false;
+    try {
+      await setup.query("CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public");
+      await setup.query(`CREATE SCHEMA "${schemaName}"`);
+      schemaCreated = true;
+      for (const client of [setup, blocker, candidate, observer]) {
+        await client.query(`SET search_path TO "${schemaName}", public`);
+      }
+      await createRestoreV3CandidatePrerequisiteTables(setup);
+      for (const migration of RESTORE_V3_CANDIDATE_MIGRATIONS) {
+        await setup.query(migration);
+      }
+      await setup.query("INSERT INTO organizations VALUES ($1)", [organizationId]);
+      await setup.query(
+        `INSERT INTO agent_backup_catalog_authorities
+          (organization_id, agent_id, catalog_revision) VALUES ($1, $2, 9)`,
+        [organizationId, agentId],
+      );
+      await setup.query(
+        `INSERT INTO agent_sandbox_backups (
+          id, catalog_organization_id, catalog_agent_id, backup_operation_id,
+          lifecycle_generation, lifecycle_revision, manifest_digest,
+          operation_key_bundle_generation_id, catalog_state, manifest_version
+        ) VALUES ($1, $2, $3, $4, $5, 7, $6, $7, 'protected', 3)`,
+        [
+          backupId,
+          organizationId,
+          agentId,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+          keyBundleGenerationId,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_leases (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, owner_id,
+          generation, catalog_epoch, copy_role, operation_id, activation_generation,
+          lifecycle_revision, expected_manifest_sha256, expires_at, created_at
+        ) VALUES ($1, $2, $3, $4, $5, 'candidate-clock-owner', $6, 9, 'primary',
+          $7, $8, 7, $9, clock_timestamp() + INTERVAL '1 hour', clock_timestamp())`,
+        [
+          leaseId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          leaseGeneration,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_operations (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, lease_id,
+          lease_owner_id, lease_generation, catalog_epoch, copy_role,
+          expected_operation_id, expected_activation_generation,
+          expected_lifecycle_revision, expected_manifest_sha256, phase
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'candidate-clock-owner', $7, 9, 'primary',
+          $8, $9, 7, $10, 'reserved')`,
+        [
+          restoreOperationId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          leaseId,
+          leaseGeneration,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+        ],
+      );
+      for (const fixture of objectFixtures) {
+        await setup.query(
+          `INSERT INTO agent_backup_objects (
+            id, organization_id, backup_id, copy_role, component, chunk_index, state,
+            provider_write_started, verified_at, content_hmac_sha256, transport, provider,
+            endpoint_identity_fingerprint, endpoint_alias, bucket, region, key_fingerprint,
+            provider_version_id, provider_etag, provider_checksum, upload_receipt_digest,
+            ciphertext_sha256, size_bytes
+          ) VALUES ($1, $2, $3, 'primary', $4, 0, 'verified', true, clock_timestamp(),
+            $5, 'worker-r2', 'cloudflare-r2', $6, $7, $8, $9, $10, $11,
+            NULL, NULL, $12, $13, $14)`,
+          [
+            fixture.objectId,
+            organizationId,
+            backupId,
+            fixture.componentName,
+            fixture.contentHmacSha256,
+            fixture.endpointIdentityFingerprint,
+            fixture.endpointAlias,
+            fixture.bucket,
+            fixture.region,
+            fixture.keyFingerprint,
+            fixture.providerVersionId,
+            fixture.uploadReceiptDigest,
+            fixture.ciphertextSha256,
+            fixture.sizeBytes,
+          ],
+        );
+      }
+      await setup.query(
+        `INSERT INTO agent_backup_restore_v3_candidate_cleanup_outbox (
+          id, organization_id, agent_id, backup_id, restore_attempt_id,
+          operation_id, cleanup_command_sha256
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          cleanupId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          operationId,
+          cleanupCommandSha256,
+        ],
+      );
+
+      await blocker.query("BEGIN");
+      const blockerPid = await blocker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await blocker.query("SELECT id FROM agent_sandbox_backups WHERE id = $1 FOR UPDATE", [
+        backupId,
+      ]);
+      const expiry = await setup.query(
+        `UPDATE agent_backup_restore_leases
+         SET expires_at = clock_timestamp() + INTERVAL '10 seconds'
+         WHERE id = $1`,
+        [leaseId],
+      );
+      expect(expiry.rowCount).toBe(1);
+      candidateInsert = candidate
+        .query(
+          `INSERT INTO agent_backup_restore_v3_candidates (
+            id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+            restore_operation_id, lease_id, lease_owner_id, lease_generation,
+            lease_expires_at, catalog_epoch, source_copy_role, source_activation_generation,
+            source_lifecycle_revision, expected_manifest_sha256, key_bundle_generation_id,
+            source_authority_canonical, source_authority_sha256, object_count,
+            cleanup_outbox_id, execution_token_sha256
+          ) SELECT $1, $2, $3, $4, $5, $6, $7, $8, 'candidate-clock-owner', $9,
+            lease.expires_at, 9, 'primary', $10, 7, $11, $12, $13, $14, 5, $15, $16
+          FROM agent_backup_restore_leases AS lease WHERE lease.id = $8`,
+          [
+            candidateId,
+            organizationId,
+            agentId,
+            backupId,
+            restoreAttemptId,
+            operationId,
+            restoreOperationId,
+            leaseId,
+            leaseGeneration,
+            sourceGeneration,
+            manifestSha256,
+            keyBundleGenerationId,
+            sourceCanonical,
+            sourceSha256,
+            cleanupId,
+            executionTokenSha256,
+          ],
+        )
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            candidateError = error;
+          },
+        );
+      const blockedPid = await waitUntilBlockedBy(observer, blockerPid.rows[0]!.pid);
+      const startProof = await observer.query<{ started_before_expiry: boolean }>(
+        `SELECT activity.query_start < lease.expires_at AS started_before_expiry
+         FROM pg_stat_activity AS activity
+         CROSS JOIN agent_backup_restore_leases AS lease
+         WHERE activity.pid = $1 AND lease.id = $2`,
+        [blockedPid, leaseId],
+      );
+      expect(startProof.rows).toEqual([{ started_before_expiry: true }]);
+      await waitForLeaseExpiry(observer, leaseId);
+      await blocker.query("COMMIT");
+      await candidateInsert;
+      expect(String(candidateError)).toContain(
+        "restore-v3 lease authority is released, stale, or expired",
+      );
+      const persisted = await observer.query<{
+        candidate_count: string;
+        cleanup_state: string;
+      }>(
+        `SELECT
+          (SELECT count(*)::text FROM agent_backup_restore_v3_candidates) AS candidate_count,
+          (SELECT state FROM agent_backup_restore_v3_candidate_cleanup_outbox WHERE id = $1)
+            AS cleanup_state`,
+        [cleanupId],
+      );
+      expect(persisted.rows).toEqual([{ candidate_count: "0", cleanup_state: "armed" }]);
+    } finally {
+      await blocker.query("ROLLBACK").catch(() => undefined);
+      if (candidateInsert) await candidateInsert;
+      await Promise.allSettled([blocker.end(), candidate.end(), observer.end()]);
+      if (schemaCreated) {
+        await setup.query("SET search_path TO public");
+        await setup.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      }
+      await setup.end();
+    }
+  }, 45_000);
+
+  test("GC tombstone fences a concurrent begin before it can resurrect cleanup", async () => {
+    if (!isolatedDsn) throw new Error("real PostgreSQL harness was not initialized");
+    const setup = new Client({ connectionString: isolatedDsn });
+    const gc = new Client({ connectionString: isolatedDsn });
+    const begin = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([setup.connect(), gc.connect(), begin.connect(), observer.connect()]);
+    const schemaName = `restore_v3_gc_fence_${randomUUID().replaceAll("-", "")}`;
+    const organizationId = "00000000-0000-4000-8000-00000000c501";
+    const agentId = "00000000-0000-4000-8000-00000000c502";
+    const backupId = "00000000-0000-4000-8000-00000000c503";
+    const operationId = "00000000-0000-4000-8000-00000000c504";
+    const sourceGeneration = "00000000-0000-4000-8000-00000000c505";
+    const restoreAttemptId = "00000000-0000-4000-8000-00000000c506";
+    const leaseId = "00000000-0000-4000-8000-00000000c507";
+    const leaseGeneration = "00000000-0000-4000-8000-00000000c508";
+    const restoreOperationId = "00000000-0000-4000-8000-00000000c509";
+    const keyBundleGenerationId = "00000000-0000-4000-8000-00000000c50a";
+    const cleanupId = "00000000-0000-4000-8000-00000000c50b";
+    const candidateId = "00000000-0000-4000-8000-00000000c50c";
+    const terminalCommandId = "00000000-0000-4000-8000-00000000c50d";
+    const tombstoneId = "00000000-0000-4000-8000-00000000c50e";
+    const replayCleanupId = "00000000-0000-4000-8000-00000000c50f";
+    const manifestSha256 = "6".repeat(64);
+    const sourceAuthorityCanonical = "{}";
+    const sourceAuthoritySha256 = createHash("sha256")
+      .update(sourceAuthorityCanonical, "utf8")
+      .digest("hex");
+    const executionTokenSha256 = "7".repeat(64);
+    const cleanupCommandSha256 = "8".repeat(64);
+    const abortReasonSha256 = "9".repeat(64);
+    const terminalCommandSha256 = "a".repeat(64);
+    const gcCommandSha256 = "b".repeat(64);
+    const replayCleanupCommandSha256 = "c".repeat(64);
+    let cleanupInsert: Promise<void> | undefined;
+    let cleanupError: unknown;
+    let gcCommitted = false;
+    let schemaCreated = false;
+    try {
+      await setup.query("CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public");
+      await setup.query(`CREATE SCHEMA "${schemaName}"`);
+      schemaCreated = true;
+      for (const client of [setup, gc, begin, observer]) {
+        await client.query(`SET search_path TO "${schemaName}", public`);
+      }
+      await createRestoreV3CandidatePrerequisiteTables(setup);
+      await setup.query(RESTORE_V3_CANDIDATE_MIGRATIONS[0]!);
+      await setup.query("INSERT INTO organizations VALUES ($1)", [organizationId]);
+      await setup.query(
+        `INSERT INTO agent_backup_catalog_authorities
+          (organization_id, agent_id, catalog_revision) VALUES ($1, $2, 9)`,
+        [organizationId, agentId],
+      );
+      await setup.query(
+        `INSERT INTO agent_sandbox_backups (
+          id, catalog_organization_id, catalog_agent_id, backup_operation_id,
+          lifecycle_generation, lifecycle_revision, manifest_digest,
+          operation_key_bundle_generation_id, catalog_state, manifest_version
+        ) VALUES ($1, $2, $3, $4, $5, 7, $6, $7, 'protected', 3)`,
+        [
+          backupId,
+          organizationId,
+          agentId,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+          keyBundleGenerationId,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_leases (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, owner_id,
+          generation, catalog_epoch, copy_role, operation_id, activation_generation,
+          lifecycle_revision, expected_manifest_sha256, expires_at, created_at
+        ) VALUES ($1, $2, $3, $4, $5, 'gc-fence-owner', $6, 9, 'primary',
+          $7, $8, 7, $9, clock_timestamp() + INTERVAL '1 hour',
+          clock_timestamp() - INTERVAL '41 days')`,
+        [
+          leaseId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          leaseGeneration,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_operations (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, lease_id,
+          lease_owner_id, lease_generation, catalog_epoch, copy_role,
+          expected_operation_id, expected_activation_generation,
+          expected_lifecycle_revision, expected_manifest_sha256, phase
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'gc-fence-owner', $7, 9, 'primary',
+          $8, $9, 7, $10, 'reserved')`,
+        [
+          restoreOperationId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          leaseId,
+          leaseGeneration,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_v3_candidate_cleanup_outbox (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+          cleanup_command_sha256, state, receipt_sha256, completed_at, next_attempt_at,
+          created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'completed', $8,
+          statement_timestamp() - INTERVAL '40 days',
+          statement_timestamp() - INTERVAL '41 days',
+          statement_timestamp() - INTERVAL '41 days',
+          statement_timestamp() - INTERVAL '40 days')`,
+        [
+          cleanupId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          operationId,
+          cleanupCommandSha256,
+          cleanupCommandSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_v3_candidates (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+          restore_operation_id, lease_id, lease_owner_id, lease_generation,
+          lease_expires_at, catalog_epoch, source_copy_role, source_activation_generation,
+          source_lifecycle_revision, expected_manifest_sha256, key_bundle_generation_id,
+          source_authority_canonical, source_authority_sha256, object_count,
+          cleanup_outbox_id, execution_token_sha256, state, abort_reason_sha256,
+          aborted_at, retention_until, created_at, updated_at
+        ) SELECT $1, $2, $3, $4, $5, $6, $7, $8, 'gc-fence-owner', $9,
+          lease.expires_at, 9, 'primary', $10, 7, $11, $12, $13, $14, 5, $15, $16,
+          'aborted', $17, clock_timestamp() - INTERVAL '40 days',
+          clock_timestamp() - INTERVAL '10 days', clock_timestamp() - INTERVAL '41 days',
+          clock_timestamp() - INTERVAL '40 days'
+        FROM agent_backup_restore_leases AS lease WHERE lease.id = $8`,
+        [
+          candidateId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          operationId,
+          restoreOperationId,
+          leaseId,
+          leaseGeneration,
+          sourceGeneration,
+          manifestSha256,
+          keyBundleGenerationId,
+          sourceAuthorityCanonical,
+          sourceAuthoritySha256,
+          cleanupId,
+          executionTokenSha256,
+          abortReasonSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_v3_candidate_terminal_commands (
+          id, candidate_id, organization_id, agent_id, backup_id, restore_attempt_id,
+          operation_id, execution_token_sha256, command_kind, abort_reason_sha256,
+          command_sha256, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'abort', $9, $10,
+          clock_timestamp() - INTERVAL '40 days')`,
+        [
+          terminalCommandId,
+          candidateId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          operationId,
+          executionTokenSha256,
+          abortReasonSha256,
+          terminalCommandSha256,
+        ],
+      );
+      await setup.query(RESTORE_V3_CANDIDATE_MIGRATIONS[1]!);
+
+      await gc.query("BEGIN");
+      const gcPid = await gc.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await gc.query(
+        `INSERT INTO agent_backup_restore_v3_candidate_gc_tombstones (
+          id, candidate_id, cleanup_outbox_id, organization_id, agent_id, backup_id,
+          restore_attempt_id, operation_id, terminal_state, terminal_evidence_sha256,
+          retention_until, gc_command_sha256
+        ) SELECT $1, candidate.id, candidate.cleanup_outbox_id, candidate.organization_id,
+          candidate.agent_id, candidate.backup_id, candidate.restore_attempt_id,
+          candidate.operation_id, candidate.state, candidate.abort_reason_sha256,
+          candidate.retention_until, $2
+        FROM agent_backup_restore_v3_candidates AS candidate WHERE candidate.id = $3`,
+        [tombstoneId, gcCommandSha256, candidateId],
+      );
+      cleanupInsert = begin
+        .query(
+          `INSERT INTO agent_backup_restore_v3_candidate_cleanup_outbox (
+            id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+            cleanup_command_sha256
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            replayCleanupId,
+            organizationId,
+            agentId,
+            backupId,
+            restoreAttemptId,
+            operationId,
+            replayCleanupCommandSha256,
+          ],
+        )
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            cleanupError = error;
+          },
+        );
+      const blocked = await waitUntilAdvisoryBlockedBy(observer, gcPid.rows[0]!.pid);
+      expect(blocked.wait_event_type).toBe("Lock");
+      expect(blocked.wait_event).toBe("advisory");
+      await gc.query("COMMIT");
+      gcCommitted = true;
+      await cleanupInsert;
+      expect(String(cleanupError)).toContain(
+        "restore-v3 restore attempt is permanently closed by GC tombstone",
+      );
+      const persisted = await observer.query<{
+        cleanups: string;
+        candidates: string;
+        tombstones: string;
+      }>(`SELECT
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_cleanup_outbox)
+          AS cleanups,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidates) AS candidates,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_gc_tombstones)
+          AS tombstones`);
+      expect(persisted.rows).toEqual([{ cleanups: "0", candidates: "0", tombstones: "1" }]);
+
+      for (const [isolation, cleanupIdForIsolation] of [
+        ["REPEATABLE READ", "00000000-0000-4000-8000-00000000c510"],
+        ["SERIALIZABLE", "00000000-0000-4000-8000-00000000c511"],
+      ] as const) {
+        await begin.query(`BEGIN ISOLATION LEVEL ${isolation}`);
+        let isolationError: unknown;
+        try {
+          await begin.query(
+            `INSERT INTO agent_backup_restore_v3_candidate_cleanup_outbox (
+              id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+              cleanup_command_sha256
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              cleanupIdForIsolation,
+              organizationId,
+              agentId,
+              backupId,
+              restoreAttemptId,
+              operationId,
+              replayCleanupCommandSha256,
+            ],
+          );
+        } catch (error) {
+          isolationError = error;
+        } finally {
+          await begin.query("ROLLBACK");
+        }
+        expect(isolationError).toBeInstanceOf(Error);
+        expect((isolationError as Error).message).toBe(
+          "restore-v3 attempt fencing requires read committed isolation",
+        );
+        expect(postgresErrorCode(isolationError)).toBe("55000");
+        const afterRejectedIsolation = await observer.query<{
+          cleanups: string;
+          candidates: string;
+          tombstones: string;
+        }>(`SELECT
+          (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_cleanup_outbox)
+            AS cleanups,
+          (SELECT count(*)::text FROM agent_backup_restore_v3_candidates) AS candidates,
+          (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_gc_tombstones)
+            AS tombstones`);
+        expect(afterRejectedIsolation.rows).toEqual([
+          { cleanups: "0", candidates: "0", tombstones: "1" },
+        ]);
+      }
+    } finally {
+      if (!gcCommitted) await gc.query("ROLLBACK").catch(() => undefined);
+      if (cleanupInsert) await cleanupInsert;
+      await Promise.allSettled([gc.end(), begin.end(), observer.end()]);
+      if (schemaCreated) {
+        await setup.query("SET search_path TO public");
+        await setup.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      }
+      await setup.end();
     }
   }, 30_000);
 

@@ -478,15 +478,18 @@ export const agentBackupRestoreV3CandidateStageLedger = pgTable(
           AND ${table.data_index} BETWEEN 0 AND 16383
           AND ${table.offset_bytes} BETWEEN 0 AND 1073741824
           AND ${table.entry_metadata_sha256} ~ '^[0-9a-f]{64}$'
-          AND ((num_nonnulls(${table.entry_path}, ${table.entry_file_offset_bytes},
-              ${table.entry_file_size_bytes}, ${table.entry_mode}, ${table.entry_mtime_ms}) = 0)
-            OR (${table.entry_path} IS NOT NULL
+          AND ((${table.component_name} IN ('character', 'database')
+              AND num_nonnulls(${table.entry_path}, ${table.entry_file_offset_bytes},
+                ${table.entry_file_size_bytes}, ${table.entry_mode}, ${table.entry_mtime_ms}) = 0)
+            OR (${table.component_name} IN ('media', 'state-files', 'vault')
+              AND ${table.entry_path} IS NOT NULL
               AND octet_length(${table.entry_path}) BETWEEN 1 AND 1024
-              AND ${table.entry_path} !~ '(^/|(^|/)\\.\\.(/|$)|[[:cntrl:]])'
+              AND position(chr(92) in ${table.entry_path}) = 0
+              AND ${table.entry_path} !~ '(^/|/$|//|(^|/)\\.(/|$)|(^|/)\\.\\.(/|$))'
               AND ${table.entry_file_offset_bytes} BETWEEN 0 AND 1073741824
               AND ${table.entry_file_size_bytes} BETWEEN 0 AND 1073741824
               AND ${table.entry_mode} BETWEEN 0 AND 511
-              AND ${table.entry_mtime_ms} >= 0
+              AND ${table.entry_mtime_ms} BETWEEN 0 AND 9007199254740991
               AND num_nonnulls(${table.entry_path}, ${table.entry_file_offset_bytes},
                 ${table.entry_file_size_bytes}, ${table.entry_mode}, ${table.entry_mtime_ms}) = 5))
           AND ${table.payload_bytes} BETWEEN 0 AND 262144
@@ -743,6 +746,10 @@ export const agentBackupRestoreV3CandidateGcTombstones = pgTable(
   (table) => ({
     candidate_uidx: uniqueIndex("agent_backup_restore_v3_candidate_gc_candidate_uidx").on(
       table.candidate_id,
+    ),
+    attempt_uidx: uniqueIndex("agent_backup_restore_v3_candidate_gc_attempt_uidx").on(
+      table.organization_id,
+      table.restore_attempt_id,
     ),
     tenant_idx: index("agent_backup_restore_v3_candidate_gc_tenant_idx").on(
       table.organization_id,

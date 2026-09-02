@@ -8,6 +8,23 @@ RETURNS text LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
   SELECT encode(sha256(convert_to(value, 'UTF8')), 'hex')
 $$;
 --> statement-breakpoint
+CREATE OR REPLACE FUNCTION "lock_agent_backup_restore_v3_attempt"(
+  p_organization_id uuid,
+  p_restore_attempt_id uuid
+) RETURNS void LANGUAGE plpgsql VOLATILE STRICT PARALLEL UNSAFE AS $$
+BEGIN
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'restore-v3 attempt fencing requires read committed isolation'
+      USING ERRCODE = '55000';
+  END IF;
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'eliza:agent-backup-restore-v3-attempt:v1:' || p_organization_id::text || ':' ||
+      p_restore_attempt_id::text,
+    0
+  ));
+END;
+$$;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION "reject_agent_backup_restore_v3_candidate_truncate"()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -39,6 +56,7 @@ CREATE OR REPLACE FUNCTION "lock_agent_backup_restore_v3_current_authority"(
 ) RETURNS timestamptz LANGUAGE plpgsql AS $$
 DECLARE
   current_lease_expires_at timestamptz;
+  observed_at timestamptz;
   source jsonb;
   source_object jsonb;
   source_catalog jsonb;
@@ -119,16 +137,9 @@ BEGIN
     AND lease."lifecycle_revision" = p_source_lifecycle_revision
     AND lease."expected_manifest_sha256" = p_expected_manifest_sha256
     AND lease."released_at" IS NULL
-    AND lease."expires_at" > statement_timestamp()
   FOR NO KEY UPDATE OF lease;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'restore-v3 lease authority is released, stale, or expired'
-      USING ERRCODE = '55000';
-  END IF;
-  IF p_lease_expires_snapshot IS NOT NULL
-    AND (p_lease_expires_snapshot <= statement_timestamp()
-      OR p_lease_expires_snapshot > current_lease_expires_at) THEN
-    RAISE EXCEPTION 'restore-v3 lease expiry snapshot is not current'
       USING ERRCODE = '55000';
   END IF;
 
@@ -371,6 +382,20 @@ BEGIN
     RAISE EXCEPTION 'restore-v3 selected copy contains an unbound catalogue object'
       USING ERRCODE = '55000';
   END IF;
+  -- Use the wall clock only after every authority lock has been acquired. A
+  -- statement timestamp predates lock waits and can therefore bless a lease
+  -- which expired while this transaction was blocked.
+  observed_at := clock_timestamp();
+  IF current_lease_expires_at <= observed_at THEN
+    RAISE EXCEPTION 'restore-v3 lease authority is released, stale, or expired'
+      USING ERRCODE = '55000';
+  END IF;
+  IF p_lease_expires_snapshot IS NOT NULL
+    AND (p_lease_expires_snapshot <= observed_at
+      OR p_lease_expires_snapshot > current_lease_expires_at) THEN
+    RAISE EXCEPTION 'restore-v3 lease expiry snapshot is not current'
+      USING ERRCODE = '55000';
+  END IF;
   RETURN current_lease_expires_at;
 END;
 $$;
@@ -389,6 +414,16 @@ BEGIN
       USING ERRCODE = '55000';
   END IF;
   IF TG_OP = 'INSERT' THEN
+    PERFORM "lock_agent_backup_restore_v3_attempt"(
+      NEW."organization_id", NEW."restore_attempt_id");
+    IF EXISTS (
+      SELECT 1 FROM "agent_backup_restore_v3_candidate_gc_tombstones" AS tombstone
+      WHERE tombstone."organization_id" = NEW."organization_id"
+        AND tombstone."restore_attempt_id" = NEW."restore_attempt_id"
+    ) THEN
+      RAISE EXCEPTION 'restore-v3 restore attempt is permanently closed by GC tombstone'
+        USING ERRCODE = '55000';
+    END IF;
     IF NEW."state" <> 'armed' OR NEW."attempts" <> 0
       OR NEW."claim_owner" IS NOT NULL OR NEW."claim_generation" IS NOT NULL
       OR NEW."lease_expires_at" IS NOT NULL
@@ -430,7 +465,7 @@ BEGIN
   END IF;
   IF OLD."state" = 'pending' AND NEW."state" = 'leased' THEN
     IF NEW."attempts" <> OLD."attempts" + 1
-      OR NEW."lease_expires_at" <= statement_timestamp() THEN
+      OR NEW."lease_expires_at" <= clock_timestamp() THEN
       RAISE EXCEPTION 'restore-v3 cleanup claim requires one attempt and a live lease: %', OLD."id"
         USING ERRCODE = '55000';
     END IF;
@@ -442,7 +477,7 @@ BEGIN
       NEW."claim_owner" IS DISTINCT FROM OLD."claim_owner"
       OR NEW."claim_generation" IS DISTINCT FROM OLD."claim_generation"
       OR NEW."lease_expires_at" < OLD."lease_expires_at"
-      OR NEW."lease_expires_at" <= statement_timestamp()) THEN
+      OR NEW."lease_expires_at" <= clock_timestamp()) THEN
     RAISE EXCEPTION 'restore-v3 cleanup lease must preserve its fence and horizon: %', OLD."id"
       USING ERRCODE = '55000';
   END IF;
@@ -476,6 +511,16 @@ BEGIN
       RAISE EXCEPTION 'restore-v3 candidate must enter active'
         USING ERRCODE = '55000';
     END IF;
+    PERFORM "lock_agent_backup_restore_v3_attempt"(
+      NEW."organization_id", NEW."restore_attempt_id");
+    IF EXISTS (
+      SELECT 1 FROM "agent_backup_restore_v3_candidate_gc_tombstones" AS tombstone
+      WHERE tombstone."organization_id" = NEW."organization_id"
+        AND tombstone."restore_attempt_id" = NEW."restore_attempt_id"
+    ) THEN
+      RAISE EXCEPTION 'restore-v3 restore attempt is permanently closed by GC tombstone'
+        USING ERRCODE = '55000';
+    END IF;
     PERFORM "lock_agent_backup_restore_v3_current_authority"(
       NEW."organization_id", NEW."agent_id", NEW."backup_id", NEW."restore_attempt_id",
       NEW."operation_id", NEW."restore_operation_id", NEW."lease_id", NEW."lease_owner_id",
@@ -500,6 +545,10 @@ BEGIN
     IF cleanup_state = 'armed' THEN
       UPDATE "agent_backup_restore_v3_candidate_cleanup_outbox"
       SET "state" = 'held' WHERE "id" = NEW."cleanup_outbox_id";
+    END IF;
+    IF NEW."lease_expires_at" <= clock_timestamp() THEN
+      RAISE EXCEPTION 'restore-v3 candidate lease expired while acquiring its cleanup lock'
+        USING ERRCODE = '55000';
     END IF;
     RETURN NEW;
   END IF;
@@ -561,6 +610,11 @@ DECLARE
   prior_finished integer;
   record_count integer;
   record_bytes numeric;
+  previous_entry_path text;
+  previous_entry_file_size_bytes numeric;
+  previous_entry_mode integer;
+  previous_entry_mtime_ms numeric;
+  previous_entry_end_bytes numeric;
 BEGIN
   SELECT candidate."state" INTO candidate_state
   FROM "agent_backup_restore_v3_candidates" AS candidate
@@ -602,10 +656,77 @@ BEGIN
       RAISE EXCEPTION 'restore-v3 stage record must append at the exact durable offset'
         USING ERRCODE = '55000';
     END IF;
+    IF NEW."component_name" IN ('media', 'state-files', 'vault') THEN
+      SELECT ledger."entry_path", ledger."entry_file_size_bytes", ledger."entry_mode",
+        ledger."entry_mtime_ms", ledger."entry_file_offset_bytes" + ledger."payload_bytes"
+      INTO previous_entry_path, previous_entry_file_size_bytes, previous_entry_mode,
+        previous_entry_mtime_ms, previous_entry_end_bytes
+      FROM "agent_backup_restore_v3_candidate_stage_ledger" AS ledger
+      WHERE ledger."candidate_id" = NEW."candidate_id"
+        AND ledger."command_kind" = 'record'
+        AND ledger."component_index" = NEW."component_index"
+      ORDER BY ledger."data_index" DESC
+      LIMIT 1;
+
+      IF previous_entry_path IS NULL THEN
+        IF NEW."entry_file_offset_bytes" <> 0 THEN
+          RAISE EXCEPTION 'restore-v3 file-set must begin at offset zero'
+            USING ERRCODE = '55000';
+        END IF;
+      ELSIF NEW."entry_path" = previous_entry_path THEN
+        IF NEW."entry_file_size_bytes" <> previous_entry_file_size_bytes
+          OR NEW."entry_mode" <> previous_entry_mode
+          OR NEW."entry_mtime_ms" <> previous_entry_mtime_ms
+          OR NEW."entry_file_offset_bytes" <> previous_entry_end_bytes THEN
+          RAISE EXCEPTION 'restore-v3 file metadata or offset changed within one file'
+            USING ERRCODE = '55000';
+        END IF;
+      ELSE
+        IF previous_entry_end_bytes <> previous_entry_file_size_bytes THEN
+          RAISE EXCEPTION 'restore-v3 file ended before its declared size'
+            USING ERRCODE = '55000';
+        END IF;
+        IF convert_to(NEW."entry_path", 'UTF8') <= convert_to(previous_entry_path, 'UTF8') THEN
+          RAISE EXCEPTION 'restore-v3 file paths must be unique and byte ordered'
+            USING ERRCODE = '55000';
+        END IF;
+        IF NEW."entry_file_offset_bytes" <> 0 THEN
+          RAISE EXCEPTION 'restore-v3 new file must begin at offset zero'
+            USING ERRCODE = '55000';
+        END IF;
+      END IF;
+
+      IF NEW."payload_bytes" > NEW."entry_file_size_bytes" - NEW."entry_file_offset_bytes" THEN
+        RAISE EXCEPTION 'restore-v3 file record exceeds its declared size'
+          USING ERRCODE = '55000';
+      END IF;
+      IF NEW."payload_bytes" = 0 AND NOT (
+          NEW."entry_file_size_bytes" = 0
+          AND NEW."entry_file_offset_bytes" = 0
+          AND previous_entry_path IS DISTINCT FROM NEW."entry_path") THEN
+        RAISE EXCEPTION 'restore-v3 file record made no canonical progress'
+          USING ERRCODE = '55000';
+      END IF;
+    END IF;
   ELSIF NEW."command_kind" = 'finish' THEN
     IF NEW."data_frame_count" <> record_count OR NEW."payload_bytes" <> record_bytes THEN
       RAISE EXCEPTION 'restore-v3 finish metadata differs from its durable record ledger'
         USING ERRCODE = '55000';
+    END IF;
+    IF NEW."component_name" IN ('media', 'state-files', 'vault') AND record_count > 0 THEN
+      SELECT ledger."entry_file_size_bytes",
+        ledger."entry_file_offset_bytes" + ledger."payload_bytes"
+      INTO previous_entry_file_size_bytes, previous_entry_end_bytes
+      FROM "agent_backup_restore_v3_candidate_stage_ledger" AS ledger
+      WHERE ledger."candidate_id" = NEW."candidate_id"
+        AND ledger."command_kind" = 'record'
+        AND ledger."component_index" = NEW."component_index"
+      ORDER BY ledger."data_index" DESC
+      LIMIT 1;
+      IF previous_entry_end_bytes <> previous_entry_file_size_bytes THEN
+        RAISE EXCEPTION 'restore-v3 final file ended before its declared size'
+          USING ERRCODE = '55000';
+      END IF;
     END IF;
   ELSE
     RAISE EXCEPTION 'unknown restore-v3 stage command kind' USING ERRCODE = '55000';
@@ -643,7 +764,7 @@ BEGIN
       USING ERRCODE = '55000';
   END IF;
   IF TG_OP = 'INSERT' THEN
-    IF NEW."state" <> 'active' OR NEW."expires_at" <= statement_timestamp() THEN
+    IF NEW."state" <> 'active' OR NEW."expires_at" <= clock_timestamp() THEN
       RAISE EXCEPTION 'restore-v3 seal authorization must enter active and unexpired'
         USING ERRCODE = '55000';
     END IF;
@@ -672,6 +793,7 @@ BEGIN
       AND "execution_token_sha256" = NEW."execution_token_sha256"
     FOR UPDATE;
     IF NOT FOUND OR candidate."state" <> 'active'
+      OR NEW."expires_at" <= clock_timestamp()
       OR NEW."expires_at" > current_lease_expires_at THEN
       RAISE EXCEPTION 'restore-v3 seal authorization lacks current candidate authority'
         USING ERRCODE = '55000';
@@ -716,7 +838,7 @@ BEGIN
       OLD."id" USING ERRCODE = '55000';
   END IF;
   IF NEW."state" = 'consumed' THEN
-    IF OLD."expires_at" <= statement_timestamp() THEN
+    IF OLD."expires_at" <= clock_timestamp() THEN
       RAISE EXCEPTION 'expired restore-v3 seal authorization cannot be consumed: %', OLD."id"
         USING ERRCODE = '55000';
     END IF;
@@ -1019,7 +1141,7 @@ BEGIN
       AND "candidate_receipt_sha256" = NEW."sealed_receipt_sha256"
     FOR UPDATE;
     IF NOT FOUND OR seal_authorization."state" <> 'active'
-      OR seal_authorization."expires_at" <= statement_timestamp()
+      OR seal_authorization."expires_at" <= clock_timestamp()
       OR seal_authorization."expires_at" > current_lease_expires_at THEN
       RAISE EXCEPTION 'restore-v3 seal command proof is stale, consumed, or divergent'
         USING ERRCODE = '55000';
@@ -1075,6 +1197,8 @@ BEGIN
     RAISE EXCEPTION 'restore-v3 GC tombstone must enter armed'
       USING ERRCODE = '55000';
   END IF;
+  PERFORM "lock_agent_backup_restore_v3_attempt"(
+    NEW."organization_id", NEW."restore_attempt_id");
   SELECT * INTO candidate FROM "agent_backup_restore_v3_candidates"
   WHERE "id" = NEW."candidate_id" FOR UPDATE;
   IF NOT FOUND OR candidate."state" NOT IN ('sealed', 'aborted')
