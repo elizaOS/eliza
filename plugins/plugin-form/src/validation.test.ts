@@ -323,12 +323,9 @@ describe("formatValue boolean rendering", () => {
     ["off", "No"],
     ["TRUE", "Yes"],
     ["FALSE", "No"],
-  ] as const)(
-    "renders %s as %s",
-    (value, expected) => {
-      expect(formatValue(value, booleanControl())).toBe(expected);
-    },
-  );
+  ])("renders %s as %s", (value: boolean | string, expected: string) => {
+    expect(formatValue(value, booleanControl())).toBe(expected);
+  });
 
   it("agrees with validateField: every accepted string boolean renders its meaning", () => {
     for (const value of ["true", "false", "yes", "no", "1", "0", "on", "off"]) {
