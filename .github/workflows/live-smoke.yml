@@ -1605,6 +1605,14 @@ jobs:
               *'inference revocation durable object binding is missing'*) delete_category='inference_revocation_binding_missing' ;;
               *'refusing to delete without a current backup'*) delete_category='pre_delete_capture_refused' ;;
               *'failed to delete sandbox'*) delete_category='sandbox_stop_failed' ;;
+              *'value.toisostring is not a function'*) delete_category='timestamp_shape_invalid' ;;
+              *'still owns backup catalog v2 authority'*) delete_category='backup_catalog_authority_retained' ;;
+              *'reviewed restore authority is fenced for agent'*) delete_category='reviewed_restore_authority_fenced' ;;
+              *'failed query: delete from "agent_sandboxes"'*) delete_category='sandbox_row_delete_query_failed' ;;
+              *'failed query: update "api_keys"'*) delete_category='credential_revocation_query_failed' ;;
+              *'deadlock detected'*) delete_category='database_deadlock' ;;
+              *'could not serialize access'*) delete_category='database_serialization' ;;
+              *'connection terminated'*|*'connection closed'*) delete_category='database_connection_lost' ;;
               *'agent deletion ownership changed'*|*'agent row delete lost its lifecycle ownership'*) delete_category='database_ownership_lost' ;;
               *'marked sandbox as deletion_failed'*) delete_category='permanent_failure_unclassified' ;;
               *) delete_category='none' ;;

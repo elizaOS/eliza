@@ -310,6 +310,12 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
       "dedicated_delete_failure_category=",
     );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "timestamp_shape_invalid",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "sandbox_row_delete_query_failed",
+    );
 
     const cleanupFailure = diagnostic.steps.find(
       (step) =>

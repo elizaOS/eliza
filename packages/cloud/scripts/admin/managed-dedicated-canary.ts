@@ -398,6 +398,7 @@ function hasExactHeadscaleIpv4Url(value: string): boolean {
 }
 
 function hasMeshAddress(agent: JsonObject): boolean {
+  if (agent.meshAddressPresent === true) return true;
   const adminDetails = isRecord(agent.adminDetails) ? agent.adminDetails : null;
   const explicit = stringField(adminDetails, "headscaleIp");
   if (explicit && isHeadscaleIpv4(explicit)) return true;

@@ -39,6 +39,7 @@ interface FixtureOptions {
   terminalStatus?: string;
   terminalErrorMessage?: string | null;
   mesh?: boolean;
+  meshAddressPresent?: boolean;
   bridgeUrl?: string;
   heartbeatAt?: string | null;
   bridgeReply?: "real" | "canned";
@@ -270,6 +271,7 @@ function createFixture(options: FixtureOptions = {}) {
             (options.mesh === false
               ? "http://192.0.2.10:3000"
               : "http://100.64.0.21:3000"),
+          meshAddressPresent: options.meshAddressPresent,
           adminDetails: null,
         },
       });
@@ -1010,6 +1012,17 @@ describe("managed dedicated canary", () => {
     expect(evidence.timingsMs.ready).toBe(30);
     expect(evidence.cleanup.status).toBe("passed");
     expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+  });
+
+  test("accepts the owner-safe mesh-presence bit without exposing a private address", async () => {
+    const { evidence } = await runFixture({
+      bridgeUrl: "https://agent.example.test",
+      meshAddressPresent: true,
+    });
+
+    expect(evidence.verdict).toBe("pass");
+    expect(evidence.path.meshAddressPresent).toBe(true);
+    expect(validateManagedDedicatedCanaryEvidence(evidence)).toEqual([]);
   });
 
   test("terminal readiness classifies the agent error without retaining private diagnostics", async () => {
