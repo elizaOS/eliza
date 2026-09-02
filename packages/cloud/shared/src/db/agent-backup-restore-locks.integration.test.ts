@@ -21,6 +21,10 @@ import { pushSchema } from "drizzle-kit/api";
 import { eq, inArray, sql } from "drizzle-orm";
 import { Client } from "pg";
 import {
+  AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+  buildRestoreVolumeVaultSeedReceiptV1,
+} from "../lib/services/agent-backup-restore-vault-seed";
+import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../lib/services/tenant-db/__tests__/ephemeral-postgres";
@@ -42,6 +46,7 @@ import {
   agentNodeIncarnationHistories,
   agentVaultKeySeedReceipts,
 } from "./schemas/agent-backup-restore-history";
+import { agentSandboxReplacementAttempts } from "./schemas/agent-sandbox-replacement-attempts";
 import { agentSandboxBackups, agentSandboxes } from "./schemas/agent-sandboxes";
 import {
   agentVaultKeyAuthorities,
@@ -74,6 +79,24 @@ const RESTORE_MIGRATIONS = [
   "0244_agent_backup_restore_lease_guard",
   "0245_agent_vault_key_topology_guard",
 ].map((name) => readFileSync(join(MIGRATIONS_DIR, `${name}.sql`), "utf8"));
+const EXACT_FINAL_REPLACEMENT_GUARD_SQL = readFileSync(
+  join(MIGRATIONS_DIR, "0371_agent_vault_key_seed_receipts_per_replacement.sql"),
+  "utf8",
+)
+  .split("--> statement-breakpoint")
+  .map((statement) => statement.trim())
+  .filter(
+    (statement) =>
+      statement.startsWith(
+        'CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_receipt_exact_replacement"',
+      ) ||
+      statement.startsWith(
+        'CREATE TRIGGER "agent_backup_restore_receipts_guard_exact_replacement"',
+      ),
+  );
+if (EXACT_FINAL_REPLACEMENT_GUARD_SQL.length !== 2) {
+  throw new Error("0371 exact final replacement guard fixture is incomplete");
+}
 
 const ORG_ID = "00000000-0000-4000-8000-00000000b101";
 const USER_ID = "00000000-0000-4000-8000-00000000b102";
@@ -112,8 +135,18 @@ const WRITER_PUBLICATION_ID = "00000000-0000-4000-8000-00000000b307";
 const WRITER_FINAL_ID = "00000000-0000-4000-8000-00000000b308";
 const WRITER_TARGET_GENERATION = "00000000-0000-4000-8000-00000000b309";
 const WRITER_ATTEMPT_ID = WRITER_TARGET_GENERATION;
+const WRITER_REPLACEMENT_ATTEMPT_ID = "00000000-0000-4000-8000-00000000b30c";
+const WRITER_MISMATCH_FINAL_ID = "00000000-0000-4000-8000-00000000b30d";
+const WRITER_MISMATCH_NODE_HISTORY_ID = "00000000-0000-4000-8000-00000000b30e";
+const WRITER_MISMATCH_NODE_INCARNATION = "00000000-0000-4000-8000-00000000b30f";
 const WRITER_VAULT_GENERATION = "00000000-0000-4000-8000-00000000b30a";
 const WRITER_RESERVE_ONE = "00000000-0000-4000-8000-00000000b30b";
+const WRITER_SEED_DIGEST = buildRestoreVolumeVaultSeedReceiptV1({
+  agentId: AGENT_ID,
+  restoreAttemptId: WRITER_ATTEMPT_ID,
+  replacementAttemptId: WRITER_REPLACEMENT_ATTEMPT_ID,
+  passphraseByteLength: AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+}).receiptDigest;
 
 const LOCK_BACKUP_ONE = "00000000-0000-4000-8000-00000000b401";
 const LOCK_BACKUP_TWO = "00000000-0000-4000-8000-00000000b402";
@@ -178,6 +211,26 @@ let reserveAgentBackupRestoreTarget:
 function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined): void {
   if (value === undefined) delete process.env[name];
   else process.env[name] = value;
+}
+
+async function expectPostgresFailure(operation: Promise<unknown>, expected: RegExp): Promise<void> {
+  let failure: unknown;
+  try {
+    await operation;
+  } catch (error) {
+    failure = error;
+  }
+
+  const details: string[] = [];
+  let current = failure;
+  for (let depth = 0; current && depth < 8; depth += 1) {
+    if (current instanceof Error) details.push(current.message);
+    if (typeof current !== "object") break;
+    const record = current as { cause?: unknown; constraint?: unknown };
+    if (typeof record.constraint === "string") details.push(record.constraint);
+    current = record.cause;
+  }
+  expect(details.join("\n")).toMatch(expected);
 }
 
 async function createIsolatedDatabase(baseDsn: string): Promise<{ name: string; dsn: string }> {
@@ -258,7 +311,10 @@ function postgresErrorCode(error: unknown): string | undefined {
   return typeof error.code === "string" ? error.code : undefined;
 }
 
-async function buildLockManifest(operationId: string): Promise<{
+async function buildLockManifest(
+  operationId: string,
+  vaultKeyGenerationId = LOCK_VAULT_GENERATION,
+): Promise<{
   canonicalDraft: string;
   digest: string;
 }> {
@@ -356,7 +412,7 @@ async function buildLockManifest(operationId: string): Promise<{
     },
     vaultKeyAuthority: {
       format: "kms-aead-vault-passphrase-v1",
-      generationId: LOCK_VAULT_GENERATION,
+      generationId: vaultKeyGenerationId,
       receiptDerivation: "elizaos.agent-vault-key.authority-receipt.v1",
       receiptDigest: RECEIPT_SHA,
     },
@@ -648,6 +704,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         agentBackupObjects,
         agentBackupRestoreLeases,
         agentBackupRestoreOperations,
+        agentSandboxReplacementAttempts,
         agentActivationPublications,
         agentVaultKeySeedReceipts,
         agentBackupRestoreReceipts,
@@ -658,6 +715,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       schemaDatabase as never,
     );
     await apply();
+    for (const statement of EXACT_FINAL_REPLACEMENT_GUARD_SQL) {
+      await schemaDatabase.execute(sql.raw(statement));
+    }
     await installAgentNodeOccurrenceTriggerForTests((statement) =>
       schemaDatabase.execute(sql.raw(statement)),
     );
@@ -681,6 +741,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         fleet_kind: "robot",
         infrastructure_provider: "hetzner",
         node_incarnation: NODE_INCARNATION,
+        metadata: { architecture: "amd64" },
         status: "healthy",
         enabled: true,
       })
@@ -749,18 +810,49 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     await dbWrite
       .update(agentSandboxes)
       .set({
+        lifecycle_revision: 0,
         activation_generation: ACTIVATION_GENERATION,
+        activation_previous_generation: null,
         activation_lifecycle_revision: 0n,
         activation_purpose: "provision",
         activation_phase: "active",
         activation_backup_id: null,
         activation_backup_hash: null,
+        activation_receipt: {
+          schemaVersion: 1,
+          generation: ACTIVATION_GENERATION,
+          purpose: "provision",
+          agentId: AGENT_ID,
+          organizationId: ORG_ID,
+          lifecycleRevision: "0",
+          backupId: null,
+          backupHash: null,
+          manifestHash: null,
+          componentHashes: null,
+          freshAuthorization: null,
+          containerId: SOURCE_CONTAINER_ID,
+          imageDigest: `sha256:${SHA}`,
+          receiptId: CLOCK_ATTEMPT_ID,
+          receiptHash: SHA,
+          receiptMac: SHA,
+          appliedAt: "2026-08-17T00:00:02.000Z",
+          restored: true,
+          requiresRestart: false,
+        },
         activation_receipt_hash: SHA,
         activation_container_id: SOURCE_CONTAINER_ID,
         activation_node_id: "robot-node-lock",
         activation_boot_id: NODE_INCARNATION,
         activation_image_digest: `sha256:${SHA}`,
         activation_token_hash: SHA,
+        activation_token_ciphertext: "sealed-token",
+        activation_authority_published_at: new Date("2026-08-17T00:00:00.000Z"),
+        activation_funding_revision: 0n,
+        activation_dispatched_at: new Date("2026-08-17T00:00:01.000Z"),
+        activation_completed_at: new Date("2026-08-17T00:00:02.000Z"),
+        activation_consent_lifecycle_revision: null,
+        activation_consent_head_backup_id: null,
+        activation_consent_head_backup_hash: null,
       })
       .where(eq(agentSandboxes.id, AGENT_ID));
     await dbWrite
@@ -769,6 +861,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     await dbWrite
       .delete(agentVaultKeySeedReceipts)
       .where(eq(agentVaultKeySeedReceipts.id, WRITER_SEED_ID));
+    await dbWrite
+      .delete(agentSandboxReplacementAttempts)
+      .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
     await dbWrite
       .delete(agentActivationPublications)
       .where(eq(agentActivationPublications.id, WRITER_PUBLICATION_ID));
@@ -811,6 +906,10 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     await dbWrite
       .delete(agentNodeIncarnationHistories)
       .where(eq(agentNodeIncarnationHistories.docker_node_record_id, LOCK_TARGET_NODE_RECORD_ID));
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 0 })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
   });
 
   test("reservation replay and actual restore acquisition share backup-before-authority order", async () => {
@@ -1147,7 +1246,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         infrastructure_provider: "hetzner",
         provider_server_id: null,
         node_incarnation: LOCK_TARGET_NODE_INCARNATION,
-        metadata: {},
+        metadata: { architecture: "amd64" },
       })
       .returning({ historyId: dockerNodes.current_node_history_id });
     const targetNodeHistoryId = targetNode?.historyId;
@@ -1225,6 +1324,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         nodeIncarnation: LOCK_TARGET_NODE_INCARNATION,
         nodeHistoryId: targetNodeHistoryId,
         imageDigest: `sha256:${SHA}`,
+        platform: "linux/amd64",
+        imageReference: null,
+        imagePlatformDigest: null,
       });
       expect(reservationResult?.operation.expected_node_record_id).toBe(LOCK_TARGET_NODE_RECORD_ID);
       expect(reservationResult?.operation.expected_node_incarnation).toBe(
@@ -1232,6 +1334,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       );
       expect(reservationResult?.operation.expected_node_history_id).toBe(targetNodeHistoryId);
       expect(reservationResult?.operation.expected_image_digest).toBe(`sha256:${SHA}`);
+      expect(reservationResult?.operation.expected_image_platform).toBe("linux/amd64");
       const [targetNode] = await dbWrite
         .select({ allocatedCount: dockerNodes.allocated_count })
         .from(dockerNodes)
@@ -1264,6 +1367,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       .from(agentBackupCatalogAuthorities)
       .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
     if (!initialAuthority) throw new Error("writer fixture catalogue authority is missing");
+    const writerManifest = await buildLockManifest(WRITER_OPERATION_ID, WRITER_VAULT_GENERATION);
 
     await dbWrite.insert(agentVaultKeyGenerations).values({
       organization_id: ORG_ID,
@@ -1316,8 +1420,8 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       retention_until: new Date("2026-12-01T00:00:00.000Z"),
       manifest_format: "elizaos.agent-backup",
       manifest_version: 3,
-      manifest_digest: SHA,
-      manifest_canonical_draft: "{}",
+      manifest_digest: writerManifest.digest,
+      manifest_canonical_draft: writerManifest.canonicalDraft,
       manifest_object_count: 1,
       object_inventory_digest: SHA,
       image_digest: `sha256:${SHA}`,
@@ -1351,10 +1455,11 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       operation_id: WRITER_OPERATION_ID,
       source_activation_generation: ACTIVATION_GENERATION,
       source_lifecycle_revision: 0n,
-      manifest_sha256: SHA,
+      manifest_sha256: writerManifest.digest,
       vault_key_generation_id: WRITER_VAULT_GENERATION,
       vault_key_authority_receipt_digest: RECEIPT_SHA,
     });
+    const writerLeaseExpiresAt = new Date(Date.now() + 300_000);
     await dbWrite.insert(agentBackupRestoreLeases).values({
       id: WRITER_LEASE_ID,
       organization_id: ORG_ID,
@@ -1363,13 +1468,13 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       operation_id: WRITER_OPERATION_ID,
       activation_generation: ACTIVATION_GENERATION,
       lifecycle_revision: 0n,
-      expected_manifest_sha256: SHA,
+      expected_manifest_sha256: writerManifest.digest,
       copy_role: "primary",
       restore_attempt_id: WRITER_ATTEMPT_ID,
       owner_id: "writer-lock-owner",
       generation: WRITER_FENCE,
       catalog_epoch: initialAuthority.revision,
-      expires_at: new Date(Date.now() + 300_000),
+      expires_at: writerLeaseExpiresAt,
     });
     await dbWrite.insert(agentBackupRestoreOperations).values({
       id: WRITER_RESTORE_OPERATION_ROW_ID,
@@ -1382,46 +1487,91 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       lease_owner_id: "writer-lock-owner",
       catalog_epoch: initialAuthority.revision,
       copy_role: "primary",
-      phase: "restart_attested",
-      expected_manifest_sha256: SHA,
+      phase: "reserved",
+      claim_owner: "writer-lock-owner",
+      claim_generation: WRITER_RESTORE_OPERATION_ROW_ID,
+      claim_expires_at: new Date(Date.now() + 300_000),
+      expected_manifest_sha256: writerManifest.digest,
       expected_operation_id: WRITER_OPERATION_ID,
       expected_activation_generation: ACTIVATION_GENERATION,
       expected_lifecycle_revision: 0n,
       expected_node_history_id: targetNodeHistoryId,
       expected_node_record_id: NODE_RECORD_ID,
       expected_node_incarnation: NODE_INCARNATION,
-      expected_container_id: SOURCE_CONTAINER_ID,
+      expected_container_id: null,
       expected_image_digest: `sha256:${SHA}`,
+      expected_image_platform: "linux/amd64",
     });
     await dbWrite
       .update(agentSandboxes)
       .set({
+        lifecycle_revision: 1,
         activation_generation: WRITER_TARGET_GENERATION,
-        activation_lifecycle_revision: 0n,
+        activation_previous_generation: ACTIVATION_GENERATION,
+        activation_lifecycle_revision: 1n,
         activation_purpose: "restore",
-        activation_phase: "active",
+        activation_phase: "container_pending",
         activation_backup_id: WRITER_BACKUP_ID,
-        activation_backup_hash: SHA,
-        activation_receipt_hash: SHA,
-        activation_container_id: SOURCE_CONTAINER_ID,
-        activation_node_id: "robot-node-lock",
-        activation_boot_id: NODE_INCARNATION,
-        activation_image_digest: `sha256:${SHA}`,
+        activation_backup_hash: writerManifest.digest,
+        activation_receipt: null,
+        activation_receipt_hash: null,
+        activation_container_id: null,
+        activation_node_id: null,
+        activation_boot_id: null,
+        activation_image_digest: null,
         activation_token_hash: SHA,
+        activation_token_ciphertext: "sealed-writer-restore-token",
+        activation_authority_published_at: null,
+        activation_funding_revision: null,
+        activation_dispatched_at: null,
+        activation_completed_at: null,
+        activation_consent_lifecycle_revision: null,
+        activation_consent_head_backup_id: null,
+        activation_consent_head_backup_hash: null,
       })
       .where(eq(agentSandboxes.id, AGENT_ID));
-
-    await publish({
-      publicationId: WRITER_PUBLICATION_ID,
-      organizationId: ORG_ID,
-      agentId: AGENT_ID,
-      activationGeneration: WRITER_TARGET_GENERATION,
-      expectedActivationReceiptSha256: SHA,
-      expectedContainerId: SOURCE_CONTAINER_ID,
-      expectedNodeRecordId: NODE_RECORD_ID,
-      expectedNodeIncarnation: NODE_INCARNATION,
-      expectedNodeHistoryId: targetNodeHistoryId,
-      expectedTokenSha256: SHA,
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 1 })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    const writerContainerName = `agent-restore-${AGENT_ID}-${WRITER_ATTEMPT_ID}`;
+    const writerIntentAt = new Date();
+    await dbWrite.insert(agentSandboxReplacementAttempts).values({
+      id: WRITER_REPLACEMENT_ATTEMPT_ID,
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      operation_kind: "provision",
+      lifecycle_revision: 1n,
+      activation_generation: WRITER_ATTEMPT_ID,
+      lifecycle_job_id: null,
+      lifecycle_execution_generation: null,
+      restore_lease_id: WRITER_LEASE_ID,
+      restore_backup_id: WRITER_BACKUP_ID,
+      restore_attempt_id: WRITER_ATTEMPT_ID,
+      restore_lease_owner_id: "writer-lock-owner",
+      restore_lease_generation: WRITER_FENCE,
+      restore_catalog_epoch: initialAuthority.revision,
+      restore_copy_role: "primary",
+      restore_operation_id: WRITER_OPERATION_ID,
+      restore_source_activation_generation: ACTIVATION_GENERATION,
+      restore_source_lifecycle_revision: 0n,
+      restore_manifest_sha256: writerManifest.digest,
+      restore_lease_expires_at: writerLeaseExpiresAt,
+      locator_sandbox_id: writerContainerName,
+      locator_node_id: "robot-node-lock",
+      locator_container_name: writerContainerName,
+      locator_node_record_id: NODE_RECORD_ID,
+      locator_node_incarnation: NODE_INCARNATION,
+      locator_node_history_id: targetNodeHistoryId,
+      locator_node_hostname: "robot-node-lock.example.test",
+      locator_node_ssh_port: 22,
+      locator_node_ssh_user: "root",
+      locator_node_host_key_fingerprint: "sha256:restore-lock-host-key",
+      locator_secret_cleanup_version: 1,
+      locator_allocation_counted: true,
+      locator_recorded_at: writerIntentAt,
+      created_at: writerIntentAt,
+      updated_at: writerIntentAt,
     });
 
     const reservationInput = (operationId: string) => ({
@@ -1430,7 +1580,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       sandboxRecordId: AGENT_ID,
       operationId,
       activationGeneration: WRITER_TARGET_GENERATION,
-      lifecycleRevision: "0",
+      lifecycleRevision: "2",
       snapshotType: "manual" as const,
       backupKind: "full" as const,
       sourceProvider: "operator-onboarded" as const,
@@ -1491,19 +1641,216 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
 
     await seed({
       receiptId: WRITER_SEED_ID,
-      receiptDigest: RECEIPT_SHA,
+      receiptDigest: WRITER_SEED_DIGEST,
       organizationId: ORG_ID,
       agentId: AGENT_ID,
       backupId: WRITER_BACKUP_ID,
       restoreAttemptId: WRITER_ATTEMPT_ID,
+      replacementAttemptId: WRITER_REPLACEMENT_ATTEMPT_ID,
       leaseId: WRITER_LEASE_ID,
       leaseOwnerId: "writer-lock-owner",
       leaseFencingToken: WRITER_FENCE,
+      restoreOperationId: WRITER_RESTORE_OPERATION_ROW_ID,
+      restoreClaimGeneration: WRITER_RESTORE_OPERATION_ROW_ID,
       targetActivationGeneration: WRITER_TARGET_GENERATION,
       targetNodeRecordId: NODE_RECORD_ID,
       targetNodeIncarnation: NODE_INCARNATION,
       targetNodeHistoryId,
+      targetImageDigest: `sha256:${SHA}`,
+      expectedActivationTokenSha256: SHA,
     });
+
+    const providerStartedAt = new Date(writerIntentAt.getTime() + 1);
+    const containerRecordedAt = new Date(providerStartedAt.getTime() + 1);
+    const providerSucceededAt = new Date(containerRecordedAt.getTime() + 1);
+    const lifecycleCommittedAt = new Date(providerSucceededAt.getTime() + 1);
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({ provider_started_at: providerStartedAt, updated_at: providerStartedAt })
+      .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        locator_container_id: SOURCE_CONTAINER_ID,
+        locator_container_recorded_at: containerRecordedAt,
+        updated_at: containerRecordedAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        state: "provider_succeeded",
+        provider_succeeded_at: providerSucceededAt,
+        provider_receipt_digest: SHA,
+        updated_at: providerSucceededAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        state: "lifecycle_committed",
+        lifecycle_committed_at: lifecycleCommittedAt,
+        lifecycle_receipt_digest: SHA,
+        updated_at: lifecycleCommittedAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
+
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ phase: "restart_attested", expected_container_id: SOURCE_CONTAINER_ID })
+      .where(eq(agentBackupRestoreOperations.id, WRITER_RESTORE_OPERATION_ROW_ID));
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        lifecycle_revision: 2,
+        activation_lifecycle_revision: 2n,
+        activation_phase: "restart_attested",
+        activation_receipt: {
+          schemaVersion: 1,
+          generation: WRITER_TARGET_GENERATION,
+          purpose: "restore",
+          agentId: AGENT_ID,
+          organizationId: ORG_ID,
+          lifecycleRevision: "2",
+          backupId: WRITER_BACKUP_ID,
+          backupHash: writerManifest.digest,
+          manifestHash: writerManifest.digest,
+          componentHashes: null,
+          freshAuthorization: null,
+          containerId: SOURCE_CONTAINER_ID,
+          imageDigest: `sha256:${SHA}`,
+          receiptId: WRITER_PUBLICATION_ID,
+          receiptHash: SHA,
+          receiptMac: SHA,
+          appliedAt: "2026-08-20T00:00:02.000Z",
+          restored: true,
+          requiresRestart: true,
+        },
+        activation_receipt_hash: SHA,
+        activation_container_id: SOURCE_CONTAINER_ID,
+        activation_node_id: "robot-node-lock",
+        activation_boot_id: NODE_INCARNATION,
+        activation_image_digest: `sha256:${SHA}`,
+        activation_funding_revision: 0n,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    const published = await publish({
+      publicationId: WRITER_PUBLICATION_ID,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      activationGeneration: WRITER_TARGET_GENERATION,
+      expectedActivationReceiptSha256: SHA,
+      expectedContainerId: SOURCE_CONTAINER_ID,
+      expectedNodeRecordId: NODE_RECORD_ID,
+      expectedNodeIncarnation: NODE_INCARNATION,
+      expectedNodeHistoryId: targetNodeHistoryId,
+      expectedTokenSha256: SHA,
+    });
+    const dispatchedAt = new Date(published.publication.published_at.getTime() + 1_000);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_phase: "active",
+        activation_authority_published_at: published.publication.published_at,
+        activation_dispatched_at: dispatchedAt,
+        activation_completed_at: new Date(dispatchedAt.getTime() + 1_000),
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+
+    await dbWrite.insert(agentNodeIncarnationHistories).values({
+      id: WRITER_MISMATCH_NODE_HISTORY_ID,
+      docker_node_record_id: NODE_RECORD_ID,
+      node_id: "robot-node-lock",
+      node_incarnation: WRITER_MISMATCH_NODE_INCARNATION,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      host_key_fingerprint: "sha256:restore-lock-host-key",
+    });
+    try {
+      await dbWrite
+        .update(agentVaultKeySeedReceipts)
+        .set({
+          node_history_id: WRITER_MISMATCH_NODE_HISTORY_ID,
+          node_incarnation: WRITER_MISMATCH_NODE_INCARNATION,
+        })
+        .where(eq(agentVaultKeySeedReceipts.id, WRITER_SEED_ID));
+      const [mismatchedSeed] = await dbWrite
+        .select({
+          nodeHistoryId: agentVaultKeySeedReceipts.node_history_id,
+          nodeRecordId: agentVaultKeySeedReceipts.docker_node_record_id,
+          nodeIncarnation: agentVaultKeySeedReceipts.node_incarnation,
+        })
+        .from(agentVaultKeySeedReceipts)
+        .where(eq(agentVaultKeySeedReceipts.id, WRITER_SEED_ID));
+      const [exactPublication] = await dbWrite
+        .select({
+          nodeHistoryId: agentActivationPublications.node_history_id,
+          nodeRecordId: agentActivationPublications.docker_node_record_id,
+          nodeIncarnation: agentActivationPublications.node_incarnation,
+        })
+        .from(agentActivationPublications)
+        .where(eq(agentActivationPublications.id, WRITER_PUBLICATION_ID));
+      const [exactReplacement] = await dbWrite
+        .select({
+          nodeHistoryId: agentSandboxReplacementAttempts.locator_node_history_id,
+          nodeRecordId: agentSandboxReplacementAttempts.locator_node_record_id,
+          nodeIncarnation: agentSandboxReplacementAttempts.locator_node_incarnation,
+        })
+        .from(agentSandboxReplacementAttempts)
+        .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
+      expect(mismatchedSeed).toEqual({
+        nodeHistoryId: WRITER_MISMATCH_NODE_HISTORY_ID,
+        nodeRecordId: NODE_RECORD_ID,
+        nodeIncarnation: WRITER_MISMATCH_NODE_INCARNATION,
+      });
+      expect(exactPublication).toEqual({
+        nodeHistoryId: targetNodeHistoryId,
+        nodeRecordId: NODE_RECORD_ID,
+        nodeIncarnation: NODE_INCARNATION,
+      });
+      expect(exactReplacement).toEqual(exactPublication);
+      await expectPostgresFailure(
+        dbWrite
+          .insert(agentBackupRestoreReceipts)
+          .values({
+            id: WRITER_MISMATCH_FINAL_ID,
+            organization_id: ORG_ID,
+            agent_id: AGENT_ID,
+            restore_attempt_id: WRITER_ATTEMPT_ID,
+            backup_id: WRITER_BACKUP_ID,
+            operation_id: WRITER_OPERATION_ID,
+            source_activation_generation: ACTIVATION_GENERATION,
+            source_lifecycle_revision: 0n,
+            manifest_sha256: writerManifest.digest,
+            seed_receipt_id: WRITER_SEED_ID,
+            seed_receipt_digest: WRITER_SEED_DIGEST,
+            replacement_attempt_id: WRITER_REPLACEMENT_ATTEMPT_ID,
+            target_activation_generation: WRITER_TARGET_GENERATION,
+            activation_purpose: "restore",
+            activation_publication_id: WRITER_PUBLICATION_ID,
+            activation_receipt_sha256: SHA,
+            restore_generation: 1n,
+            receipt_digest: SHA,
+          })
+          .execute(),
+        /exact adopted replacement chain/i,
+      );
+    } finally {
+      await dbWrite
+        .delete(agentBackupRestoreReceipts)
+        .where(eq(agentBackupRestoreReceipts.id, WRITER_MISMATCH_FINAL_ID));
+      await dbWrite
+        .update(agentVaultKeySeedReceipts)
+        .set({
+          node_history_id: targetNodeHistoryId,
+          node_incarnation: NODE_INCARNATION,
+        })
+        .where(eq(agentVaultKeySeedReceipts.id, WRITER_SEED_ID));
+      await dbWrite
+        .delete(agentNodeIncarnationHistories)
+        .where(eq(agentNodeIncarnationHistories.id, WRITER_MISMATCH_NODE_HISTORY_ID));
+    }
 
     // Seed and finalization share the same backup -> operation -> lease ->
     // sandbox -> node -> catalogue prefix. Interleave the final writer because
@@ -1518,8 +1865,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         agentId: AGENT_ID,
         backupId: WRITER_BACKUP_ID,
         restoreAttemptId: WRITER_ATTEMPT_ID,
+        replacementAttemptId: WRITER_REPLACEMENT_ATTEMPT_ID,
         seedReceiptId: WRITER_SEED_ID,
-        seedReceiptDigest: RECEIPT_SHA,
+        seedReceiptDigest: WRITER_SEED_DIGEST,
         activationPublicationId: WRITER_PUBLICATION_ID,
         targetActivationGeneration: WRITER_TARGET_GENERATION,
         expectedActivationReceiptSha256: SHA,

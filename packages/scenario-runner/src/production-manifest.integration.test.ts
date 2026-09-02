@@ -640,7 +640,7 @@ describe("production manifest persistence", () => {
     expect(await target.getCache(key)).toBeUndefined();
   });
 
-  it("rejects insufficient inbox capacity before mutating manifest state", async () => {
+  it("preserves large inboxes and resets only manifest-owned notifications", async () => {
     const target = runtime();
     const service = target.getService(ServiceType.NOTIFICATION);
     expect(service).toBeInstanceOf(NotificationService);
@@ -653,11 +653,16 @@ describe("production manifest persistence", () => {
         id: `notification-${index}`,
         title: `Owned ${index}`,
       }));
-      await expect(
-        applyProductionManifest(target, oversized),
-      ).rejects.toMatchObject({
-        code: "SCENARIO_MANIFEST_CAPACITY_EXCEEDED",
-      });
+      const oversizedReceipt = await applyProductionManifest(target, oversized);
+      expect(oversizedReceipt.notificationIds).toHaveLength(301);
+      const oversizedSnapshot = await readProductionManifestSnapshot(
+        target,
+        oversizedReceipt,
+      );
+      expect(oversizedSnapshot.notifications).toHaveLength(301);
+      expect(notifications.listIncludingExpired()).toHaveLength(301);
+      await resetProductionManifest(target, oversizedReceipt);
+      expect(notifications.listIncludingExpired()).toEqual([]);
       expect(
         await target.getWorldsByIds([
           stringToUuid(
@@ -670,16 +675,20 @@ describe("production manifest persistence", () => {
         await notifications.notify({ title: `Unrelated ${index}` });
       }
       const input = manifest("notification-capacity");
-      await expect(
-        applyProductionManifest(target, input),
-      ).rejects.toMatchObject({
-        code: "SCENARIO_MANIFEST_CAPACITY_EXCEEDED",
-      });
+      const receipt = await applyProductionManifest(target, input);
+      const snapshot = await readProductionManifestSnapshot(target, receipt);
+      expect(snapshot.notifications).toHaveLength(2);
+      expect(notifications.listIncludingExpired()).toHaveLength(
+        299 +
+          (input.notifications?.length ?? 0) +
+          (input.approvals?.length ?? 0),
+      );
       expect(
-        await target.getWorldsByIds([
-          stringToUuid("scenario-manifest:notification-capacity:world"),
-        ]),
-      ).toEqual([]);
+        notifications
+          .listIncludingExpired()
+          .filter((entry) => entry.title.startsWith("Unrelated ")),
+      ).toHaveLength(299);
+      await resetProductionManifest(target, receipt);
       expect(notifications.listIncludingExpired()).toHaveLength(299);
       expect(
         notifications

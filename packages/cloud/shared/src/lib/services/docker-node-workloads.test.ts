@@ -4,8 +4,14 @@
  */
 
 import { describe, expect, mock, spyOn, test } from "bun:test";
+import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { logger } from "../utils/logger";
-import { agentIdFromContainerName } from "./docker-node-workloads";
+import {
+  AGENT_ORPHAN_RECONCILER_CONFIG,
+  agentIdFromContainerName,
+  canonicalSandboxIdsForOrphanLookup,
+  exactRestoreAttemptOwnershipAliases,
+} from "./docker-node-workloads";
 import {
   computeOrphanContainersToReap,
   type LiveContainerRef,
@@ -33,6 +39,15 @@ describe("agentIdFromContainerName", () => {
   test("returns null for a bare prefix with no id", () => {
     expect(agentIdFromContainerName("agent-")).toBeNull();
   });
+
+  test("keeps exact physical-name aliases out of the PostgreSQL UUID predicate", () => {
+    const sandboxId = "11111111-1111-4111-8111-111111111111";
+    const exactAlias =
+      "restore-11111111-1111-4111-8111-111111111111-33333333-3333-4333-8333-333333333333";
+    expect(canonicalSandboxIdsForOrphanLookup([exactAlias, sandboxId, "malformed"])).toEqual([
+      sandboxId,
+    ]);
+  });
 });
 
 describe("computeOrphanContainersToReap (agent diff)", () => {
@@ -58,6 +73,61 @@ describe("computeOrphanContainersToReap (agent diff)", () => {
       createdAtMs: NOW_MS - 1_000,
     };
     expect(computeOrphanContainersToReap([young], [], AGENT_DIFF, undefined, NOW_MS)).toEqual([]);
+  });
+
+  test("retains an old exact restore candidate through its durable active-attempt alias", () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const restoreAttemptId = "33333333-3333-4333-8333-333333333333";
+    const name = `agent-restore-${agentId}-${restoreAttemptId}`;
+    const key = `restore-${agentId}-${restoreAttemptId}`;
+    const aliases = exactRestoreAttemptOwnershipAliases(
+      [
+        {
+          locatorContainerName: name,
+          locatorNodeId: "node-exact",
+          state: "in_flight_unresolved",
+        },
+      ],
+      new Set([key]),
+    );
+
+    expect(
+      computeOrphanContainersToReap(
+        [{ name, id: "candidate", createdAtMs: 0 }],
+        aliases,
+        { ...AGENT_DIFF, nodeAware: true, rowlessGraceMs: 1 },
+        "node-exact",
+        60 * 60_000,
+      ),
+    ).toEqual([]);
+  });
+
+  test("makes the exact restore alias reapable again after cleanup is proven", () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const restoreAttemptId = "33333333-3333-4333-8333-333333333333";
+    const name = `agent-restore-${agentId}-${restoreAttemptId}`;
+    const key = `restore-${agentId}-${restoreAttemptId}`;
+    const aliases = exactRestoreAttemptOwnershipAliases(
+      [
+        {
+          locatorContainerName: name,
+          locatorNodeId: "node-exact",
+          state: "cleanup_proven",
+        },
+      ],
+      new Set([key]),
+    );
+
+    expect(aliases).toEqual([]);
+    expect(
+      computeOrphanContainersToReap(
+        [{ name, id: "candidate", createdAtMs: 0 }],
+        aliases,
+        { ...AGENT_DIFF, nodeAware: true, rowlessGraceMs: 1 },
+        "node-exact",
+        60 * 60_000,
+      ),
+    ).toEqual([{ name, id: "candidate", key, reason: "no_db_row" }]);
   });
 
   test("retains a rowless container when Docker did not provide its age", () => {
@@ -303,5 +373,21 @@ describe("reconcileOrphanContainers (agent orchestration)", () => {
     await reconcileOrphanContainers([node], makeConfig(loadLive));
 
     expect(loadLive).not.toHaveBeenCalled();
+  });
+
+  test("never releases exact restore capacity through the generic deletion callback", async () => {
+    const release = spyOn(
+      agentSandboxesRepository,
+      "releaseDeletionAllocationOnReap",
+    ).mockResolvedValue(undefined);
+    try {
+      await AGENT_ORPHAN_RECONCILER_CONFIG.onReaped?.(
+        "restore-11111111-1111-4111-8111-111111111111-33333333-3333-4333-8333-333333333333",
+        "node-exact",
+      );
+      expect(release).not.toHaveBeenCalled();
+    } finally {
+      release.mockRestore();
+    }
   });
 });

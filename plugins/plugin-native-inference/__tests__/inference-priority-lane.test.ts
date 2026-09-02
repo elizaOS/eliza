@@ -48,15 +48,16 @@ function makeFakeLane(): {
     currentModelPath: () => "/fake/eliza-1.gguf",
     generate: async (args) => {
       const startedAt = Date.now();
-      await sleep(decodeMs);
       const record: RecordedGenerate = {
         name: args.prompt.slice(0, 24),
         prompt: args.prompt,
         maxTokens: args.maxTokens,
         startedAt,
-        endedAt: Date.now(),
+        endedAt: 0,
       };
       calls.push(record);
+      await sleep(decodeMs);
+      record.endedAt = Date.now();
       return `reply:${record.name}`;
     },
     embed: async () => ({ embedding: [0], tokens: 1 }),
@@ -116,14 +117,13 @@ describe("generateOnPriorityLane — lock priority (#11914)", () => {
       maxTokens: 64,
       priority: "background",
     });
-    await sleep(10); // bg1 holds the lane
+    while (lane.calls.length === 0) await sleep(1); // bg1 holds the lane
 
     const bg2 = generateOnPriorityLane(lane.loader, lane.lifecycle, {
       prompt: "bg2-next-firing",
       maxTokens: 64,
       priority: "background",
     });
-    await sleep(5);
 
     lane.setDecodeMs(20);
     const chatText = await generateOnPriorityLane(lane.loader, lane.lifecycle, {

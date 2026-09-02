@@ -2373,9 +2373,8 @@ export interface ManageLifeOpsGmailMessagesRequest {
   maxResults?: number;
   labelIds?: string[];
   /**
-   * Approval captured immediately before a destructive provider-side mailbox
-   * mutation (`trash`, `delete`, `spam`). Non-destructive operations execute
-   * without it, matching the original contract.
+   * Approval captured immediately before any provider-side mailbox mutation,
+   * including archive, read state, labels, trash, delete, and spam.
    */
   confirmAction?: boolean;
   /** Legacy destructive confirmation; either flag satisfies the destructive gate. */
@@ -4222,10 +4221,10 @@ export type LifeOpsIMessageHostPlatform =
 export interface LifeOpsIMessageConnectorStatus {
   available: boolean;
   connected: boolean;
-  bridgeType: "native" | "imsg" | "bluebubbles" | "none";
+  bridgeType: "native" | "blooio" | "imsg" | "bluebubbles" | "none";
   hostPlatform: LifeOpsIMessageHostPlatform;
   accountHandle: string | null;
-  sendMode: "cli" | "private-api" | "apple-script" | "none";
+  sendMode: "cli" | "private-api" | "provider-api" | "apple-script" | "none";
   helperConnected: boolean | null;
   privateApiEnabled: boolean | null;
   diagnostics: string[];

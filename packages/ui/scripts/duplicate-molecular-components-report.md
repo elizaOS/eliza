@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 896 maintained React files. 103 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 886 maintained React files. 101 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -29,7 +29,6 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 | card | button, input | 2 | distinct-domain-compositions |
 | dialog | alert, button, card | 2 | distinct-domain-compositions |
 | form | button, input | 2 | distinct-domain-compositions |
-| panel | badge, button, input | 2 | shared-lifecycle-owner |
 | panel | button, input | 2 | distinct-domain-compositions |
 | row | button, card, statusDot | 2 | distinct-domain-compositions |
 
@@ -103,13 +102,6 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `TagEditor` in `packages/ui/src/components/ui/tag-editor.tsx:29`
 - Fingerprint: `sha256:ecc864434687a7ce763252d359cad9bdb85db187f1defa060a767d5e5df45290`
 - Decision: **distinct-domain-compositions**. Trigger configuration and tag editing do not share a domain contract or meaningful layout beyond generic form controls.
-
-### panel: badge + button + input
-
-- `AgentSection` in `packages/ui/src/components/settings/cloud-panel/sections/AgentSection.tsx:109`
-- `CloudAgentsSection` in `packages/ui/src/components/settings/CloudAgentsSection.tsx:77`
-- Fingerprint: `sha256:f0e0a109e0fab258115f7e1cc83319bae2890d554c23083a69f95a6700db6757`
-- Decision: **shared-lifecycle-owner**. The cloud-panel-owned useCloudAgentManagement pattern owns list refresh, create, rename, suspend/resume, delete polling, wake-and-switch, persistence, and notices; AgentSection and CloudAgentsSection are distinct presentation adapters with explicit management-token providers.
 
 ### panel: button + input
 

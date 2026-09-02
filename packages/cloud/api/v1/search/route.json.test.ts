@@ -1,5 +1,6 @@
 /** Verifies the hosted-search JSON boundary with deterministic auth and provider mocks. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 import {
   getGenerativeOperationContext,
   paidBoundaryState,
@@ -15,6 +16,8 @@ const executeHostedGoogleSearch = mock(
   ) => ({ results: [] }),
 );
 mock.module("@/api-app/lib/generative-route-auth", () => ({
+  asGenerativeCacheApiError: (error: unknown) =>
+    error instanceof ApiError ? error : null,
   getGenerativeOperationContext,
   requireGenerativeKnownIdentity,
   requireGenerativeRouteCaller,
@@ -49,6 +52,11 @@ describe("POST /api/v1/search malformed JSON", () => {
       error: "Invalid JSON body",
     });
     expect(executeHostedGoogleSearch).not.toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
   });
 
   test("preserves non-syntax request decoding failures as server errors", async () => {
@@ -79,18 +87,32 @@ describe("POST /api/v1/search malformed JSON", () => {
     expect(response.status).toBe(200);
     expect(executeHostedGoogleSearch).toHaveBeenCalled();
     expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: true }),
+    );
     expect(getGenerativeOperationContext).toHaveBeenCalledTimes(1);
   });
 
   test("standing denial performs one combined auth read and never dispatches search", async () => {
-    paidBoundaryState.routeError = new Error("cached standing denied");
+    paidBoundaryState.routeError = new ApiError(
+      401,
+      "authentication_required",
+      "Authentication required",
+      { reason: "credential_inactive" },
+    );
     const response = await app.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ query: "elizaos" }),
     });
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "authentication_required",
+      error: "Authentication required",
+      details: { reason: "credential_inactive" },
+    });
     expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
     expect(getGenerativeOperationContext).not.toHaveBeenCalled();
     expect(executeHostedGoogleSearch).not.toHaveBeenCalled();

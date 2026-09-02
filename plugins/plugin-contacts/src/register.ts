@@ -1,18 +1,16 @@
 /**
- * Side-effect entry point — registers the Contacts overlay app on ElizaOS only.
+ * Side-effect entry point — registers the Contacts app-shell page on elizaOS only.
  *
  * Stock Android, web, iOS, and desktop leave the apps catalog unchanged so the
- * same import is safe everywhere. Non-ElizaOS callers will simply not see
- * Contacts in the apps catalog. Load this module once during app startup to
- * register the app.
+ * same import is safe everywhere. Non-elizaOS callers will simply not see
+ * Contacts in the app shell. Load this module once during app startup to
+ * register the page.
  */
 
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { isElizaOS } from "@elizaos/ui/platform/init";
-import { registerContactsApp } from "./components/contacts-app";
 
 if (isElizaOS()) {
-  registerContactsApp();
   registerAppShellPage({
     id: "contacts",
     pluginId: "@elizaos/plugin-contacts",

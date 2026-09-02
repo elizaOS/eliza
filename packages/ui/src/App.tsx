@@ -136,6 +136,7 @@ import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { ViewUnavailableState } from "./components/views/ViewStatusStates";
 import { AppWorkspaceContent } from "./components/workspace/AppWorkspaceContent";
 import { useBootConfig } from "./config/boot-config-react.hooks";
+import { useBranding } from "./config/branding";
 import {
   CHAT_OPEN_EVENT,
   dispatchNavigateViewEvent,
@@ -148,7 +149,10 @@ import {
   type PushToTalkHoldDetail,
 } from "./events";
 import { completeRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
-import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
+import {
+  isElizaCloudRuntimeLocked,
+  persistMobileRuntimeModeForServerTarget,
+} from "./first-run/mobile-runtime-mode";
 import { BootRecoveryConductorMount } from "./first-run/use-boot-recovery-conductor";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { ModelStatusConductorMount } from "./first-run/use-model-status-conductor";
@@ -201,6 +205,7 @@ import {
   clearCloudAuthFirstScreenGreeting,
   markCloudAuthFirstScreenGreeting,
 } from "./state/cloud-auth-first-screen";
+import { cloudAuthFirstScreenOwnsHost } from "./state/cloud-auth-first-screen-policy";
 import { hasUsableStoredStewardToken } from "./state/cloud-steward-login";
 import { isAuthoritativeFirstRunOpen } from "./state/first-run-chat-release";
 import {
@@ -2527,6 +2532,7 @@ function HomeScreenMount({
 }
 
 function AppContent() {
+  const branding = useBranding();
   const {
     startupError,
     startupCoordinator,
@@ -3261,7 +3267,16 @@ function AppContent() {
     shellMode === "full" &&
     !isPopout &&
     !isAuxiliaryAppWindow &&
-    !cloudPairToken;
+    !cloudPairToken &&
+    (cloudAuthFirstScreenOwnsHost({
+      cloudOnlyBranding: branding.cloudOnly === true,
+      isAgentlessCloudOrigin,
+      isNative,
+      isDesktopShell: isElectrobunRuntime(),
+    }) ||
+      (isNative &&
+        ((isAndroidCloudBuild() && branding.cloudOnly !== false) ||
+          isElizaCloudRuntimeLocked())));
   const hasUsableCloudSession =
     elizaCloudConnected ||
     hasUsableStoredStewardToken() ||

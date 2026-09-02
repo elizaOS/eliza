@@ -54,6 +54,11 @@ __filename = '"/worker.js"'
 # Worker-side call throws instead of returning empty text (#21327).
 "unpdf" = "./src/stubs/unpdf.ts"
 "mammoth" = "./src/stubs/mammoth.ts"
+# PGlite is the local test database. The deployed Worker always uses
+# Hyperdrive; db/client.ts explicitly rejects pglite:// in workerd.
+"@electric-sql/pglite" = "./src/stubs/pglite.ts"
+"@electric-sql/pglite/vector" = "./src/stubs/pglite.ts"
+"@electric-sql/pglite/contrib/btree_gist" = "./src/stubs/pglite.ts"
 
 [observability]
 enabled = true
@@ -79,22 +84,23 @@ head_sampling_rate = 0.05
 
 # -----------------------------------------------------------------------------
 # Cron triggers — Cloudflare requires unique schedule strings. Multiple
-# handlers per schedule are fanned out by the dispatcher in `src/lib/cron.ts`
-# (CRON_FANOUT). See cloud/INFRA.md "Cron triggers" for the full mapping.
+# handlers per schedule are fanned out by CRON_FANOUT in
+# `../shared/src/lib/cron/cloudflare-cron.ts`, which is the authoritative map.
+# `cron-fanout-wrangler-parity.test.ts` keeps this unique trigger set aligned.
 # -----------------------------------------------------------------------------
 [triggers]
 crons = [
-  "* * * * *",      # deployment-monitor + health-check + process-provisioning-jobs
-  "*/2 * * * *",    # pool-health-check
-  "*/5 * * * *",    # social-automation + sample-eliza-price + process-redemptions + cleanup-stuck-provisioning + node-disk-cleanup
-  "*/10 * * * *",   # cleanup-expired-crypto-payments
-  "*/15 * * * *",   # auto-top-up + agent-budgets + cleanup-mobile-app-auth + refresh-model-catalog + domain-health
-  "0 * * * *",      # agent-billing
-  "0 */6 * * *",  # cleanup-cli-sessions + agent-backups + reap-orphan-shared-bridges + gc-stranded-sandbox-keys
-  "0 0 * * *",      # container-billing
-  "0 1 * * *",      # compute-metrics
-  "0 2 * * *",      # cleanup-webhook-events
-  "0 3 * * *",      # domain-renewals + reclaim-stale-domains
+  "* * * * *",
+  "*/2 * * * *",
+  "*/5 * * * *",
+  "*/10 * * * *",
+  "*/15 * * * *",
+  "0 * * * *",
+  "0 */6 * * *",
+  "0 0 * * *",
+  "0 1 * * *",
+  "0 2 * * *",
+  "0 3 * * *",
 ]
 
 # -----------------------------------------------------------------------------
@@ -278,6 +284,10 @@ PAYOUT_TESTNET = "false"
 # identity, and health guards with staging soak evidence); flip this committed
 # value in the same PR that attaches that evidence.
 WARM_POOL_ENABLED = "false"
+# V3 backup admission remains dormant until its capture executor and an
+# authorized staging drill prove the full replacement flow. Only exact "1"
+# enables the scheduler-branded caller; this committed value is fail-closed.
+AGENT_BACKUP_ADMISSION_CALLER_ENABLED = "0"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
@@ -645,6 +655,9 @@ PAYOUT_TESTNET = "true"
 # issue's dependency chain but is sequenced behind draining the residual
 # sentinel-org pool rows; flip this committed value when that drain is done.
 WARM_POOL_ENABLED = "false"
+# Named-environment vars are not inherited. Keep staging dormant until an
+# explicit authorization starts the V3 backup activation drill.
+AGENT_BACKUP_ADMISSION_CALLER_ENABLED = "0"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
@@ -923,6 +936,9 @@ PAYOUT_TESTNET = "false"
 # identity, and health guards with staging soak evidence); flip this committed
 # value in the same PR that attaches that evidence.
 WARM_POOL_ENABLED = "false"
+# Named-environment vars are not inherited. Production remains dormant until
+# authorized staging evidence proves capture, restore, and rollback.
+AGENT_BACKUP_ADMISSION_CALLER_ENABLED = "0"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
@@ -1012,7 +1028,7 @@ bucket_name = "eliza-cloud-blob"
 # WebSocket driver in client.ts, which bypasses this binding).
 [[env.production.hyperdrive]]
 binding = "HYPERDRIVE"
-id = "486bdc36737a4ad1b526fc3c08627658"
+id = "9f59e4ec65f048f7b87e29e7b9c5d728"
 
 # KV is the Worker's cache backend (CacheClient). Workers can't reliably open raw
 # TCP to an external Redis (Railway's public proxy hangs under load), so the Worker

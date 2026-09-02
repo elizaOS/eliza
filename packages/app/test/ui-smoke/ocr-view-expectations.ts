@@ -268,6 +268,9 @@ export const VIEW_OCR_POLICIES = {
       "December",
     ],
   }),
+  "plugin-family-operations-gui": expected({
+    requireAny: ["Family Operations", "Private owner workspace"],
+  }),
   "plugin-computer-use-sessions-gui": expected({
     requireAll: ["Computer sessions", "Linux sandbox"],
     requireAny: [

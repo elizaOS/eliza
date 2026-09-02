@@ -3307,7 +3307,16 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
     const exec = mock(async (cmd: string) => {
       if (cmd.includes("docker inspect")) {
         if (opts.health instanceof Error) throw opts.health;
-        return opts.health;
+        return [
+          `state=running health=${opts.health} exit=0 oom=false restarts=0`,
+          "module_resolution=false",
+          "heap_oom=false",
+          "startup_failed=false",
+          "terminal_database=false",
+          "memory_watchdog=false",
+          "port_conflict=false",
+          "mesh_auth=false",
+        ].join("\n");
       }
       if (cmd.includes("tailscale --socket")) {
         if (opts.tailscaleIp instanceof Error) throw opts.tailscaleIp;
@@ -3386,6 +3395,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
     );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(nodeRecord());
     const { exec, getClientSpy } = mockNodeSsh({ health: "unhealthy", tailscaleIp: NEW_IP });
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
     fetchAllDead();
 
     try {
@@ -3395,6 +3405,13 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       const [, patch] = updateSpy.mock.calls[0] as [string, Record<string, unknown>];
       expect(patch.status).toBe("disconnected");
       expect(patch.headscale_ip).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[agent-sandbox] Heartbeat failed past grace window, marking disconnected",
+        expect.objectContaining({
+          reconcileOutcome: "container-dead",
+          containerRuntimeFailureKind: "unhealthy",
+        }),
+      );
       // A dead container short-circuits — no IP resolve is attempted on it.
       const tailscaleCalls = exec.mock.calls.filter(([cmd]) =>
         String(cmd).includes("tailscale --socket"),
@@ -3405,6 +3422,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       updateSpy.mockRestore();
       nodeSpy.mockRestore();
       getClientSpy.mockRestore();
+      warnSpy.mockRestore();
     }
   }, 20_000);
 
@@ -3523,7 +3541,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       nodeSpy.mockRestore();
       getClientSpy.mockRestore();
     }
-  }, 40_000);
+  }, 60_000);
 
   test("(e) recoverDisconnected: repaired IP + live re-probe → recovered with columns updated, no reprovision", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
@@ -3604,6 +3622,70 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       getClientSpy.mockRestore();
     }
   }, 30_000);
+});
+
+describe("container runtime health classification", () => {
+  const closed = (
+    header = "state=running health=unhealthy exit=1 oom=false restarts=2",
+    overrides: string[] = [],
+  ): string =>
+    [
+      header,
+      "module_resolution=false",
+      "heap_oom=false",
+      "startup_failed=false",
+      "terminal_database=false",
+      "memory_watchdog=false",
+      "port_conflict=false",
+      "mesh_auth=false",
+      ...overrides,
+    ].join("\n");
+
+  test("prioritizes authoritative OOM and closed fatal-log signals", async () => {
+    const { classifyContainerRuntimeHealthObservation } = await import("./eliza-sandbox.ts?actual");
+
+    expect(
+      classifyContainerRuntimeHealthObservation(
+        closed("state=exited health=unhealthy exit=137 oom=true restarts=5"),
+      ),
+    ).toEqual({ healthy: false, failureKind: "oom_killed" });
+    expect(
+      classifyContainerRuntimeHealthObservation(closed(undefined, ["module_resolution=true"])),
+    ).toEqual({
+      healthy: false,
+      failureKind: "module_resolution",
+    });
+    expect(
+      classifyContainerRuntimeHealthObservation(closed(undefined, ["terminal_database=true"])),
+    ).toEqual({
+      healthy: false,
+      failureKind: "terminal_database",
+    });
+  });
+
+  test("distinguishes healthy, restart, exit, and unavailable observations", async () => {
+    const { classifyContainerRuntimeHealthObservation } = await import("./eliza-sandbox.ts?actual");
+
+    expect(
+      classifyContainerRuntimeHealthObservation(
+        closed("state=running health=healthy exit=0 oom=false restarts=0"),
+      ),
+    ).toEqual({ healthy: true, failureKind: "healthy" });
+    expect(
+      classifyContainerRuntimeHealthObservation(
+        closed("state=restarting health=starting exit=1 oom=false restarts=4"),
+      ),
+    ).toEqual({ healthy: false, failureKind: "restarting" });
+    expect(
+      classifyContainerRuntimeHealthObservation(
+        closed("state=exited health=none exit=0 oom=false restarts=0"),
+      ),
+    ).toEqual({ healthy: false, failureKind: "exited_zero" });
+    expect(classifyContainerRuntimeHealthObservation("missing")).toEqual({
+      healthy: false,
+      failureKind: "inspect_unavailable",
+    });
+  });
 });
 
 // The daemon handler for the `agent_resume` job. Covers the branch logic the
@@ -5898,20 +5980,86 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     commitAgentRowDelete(agentId: string, orgId: string, ownership?: unknown): Promise<unknown>;
     commitAgentReconciliationPending(agentId: string, orgId: string): Promise<unknown>;
     runBoundedSandboxStop(sandboxId: string): Promise<unknown>;
+    retirePersistedReplacementCleanup(agentId: string, orgId: string): Promise<string>;
   };
 
-  async function makeSvc(): Promise<Svc> {
+  async function makeSvc(cleanupSource?: AgentSandbox): Promise<Svc> {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const svc = new ElizaSandboxService();
     // Phase 0 of deleteAgent (#18517) consults the live row before stamping
     // deletion intent; these tests exercise the later teardown phases, so the
     // capture sees no row and skips. Instance-scoped, so no cross-test leak.
     spyOn(
-      svc as unknown as { getAgentForWrite: () => Promise<undefined> },
+      svc as unknown as { getAgentForWrite: () => Promise<AgentSandbox | undefined> },
       "getAgentForWrite",
-    ).mockResolvedValue(undefined);
+    ).mockResolvedValue(cleanupSource);
     return svc as unknown as Svc;
   }
+
+  test("executeDeletion retries without deleting while exact replacement cleanup is unresolved", async () => {
+    const cleanupSource = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      replacement_cleanup_sandbox_id: "replacement-sandbox",
+      replacement_cleanup_node_id: "replacement-node",
+      replacement_cleanup_container_name: "replacement-container",
+      replacement_cleanup_attempt_id: "88888888-8888-4888-8888-888888888888",
+      replacement_cleanup_allocation_counted: true,
+      replacement_cleanup_created_at: new Date("2026-08-29T14:00:00.000Z"),
+    };
+    const svc = await makeSvc(cleanupSource);
+    const retire = spyOn(svc, "retirePersistedReplacementCleanup").mockRejectedValue(
+      new Error("exact Docker absence is not proven"),
+    );
+    const deleteAgent = spyOn(svc, "deleteAgent");
+
+    await expect(svc.executeDeletion(AGENT, ORG, "user_request")).resolves.toEqual({
+      success: false,
+      containerStopped: false,
+      rowDeleted: false,
+      retryable: true,
+      error: "Replacement cleanup is still pending: exact Docker absence is not proven",
+    });
+    expect(retire).toHaveBeenCalledWith(AGENT, ORG);
+    expect(deleteAgent).not.toHaveBeenCalled();
+  });
+
+  test("executeDeletion removes the serving generation only after replacement cleanup converges", async () => {
+    const cleanupSource = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      character_id: null,
+      replacement_cleanup_sandbox_id: "replacement-sandbox",
+      replacement_cleanup_node_id: "replacement-node",
+      replacement_cleanup_container_name: "replacement-container",
+      replacement_cleanup_attempt_id: "88888888-8888-4888-8888-888888888888",
+      replacement_cleanup_allocation_counted: true,
+      replacement_cleanup_created_at: new Date("2026-08-29T14:00:00.000Z"),
+    };
+    const svc = await makeSvc(cleanupSource);
+    const retire = spyOn(svc, "retirePersistedReplacementCleanup").mockResolvedValue("retired");
+    const deleteAgent = spyOn(svc, "deleteAgent").mockResolvedValue({
+      success: true,
+      rowDeleted: true,
+      deletedSandbox: cleanupSource,
+    });
+
+    await expect(svc.executeDeletion(AGENT, ORG, "user_request")).resolves.toEqual({
+      success: true,
+      containerStopped: true,
+      rowDeleted: true,
+    });
+    expect(retire).toHaveBeenCalledWith(AGENT, ORG);
+    expect(deleteAgent).toHaveBeenCalledWith(AGENT, ORG, {
+      authorization: "user_request",
+      stateLossAcknowledged: undefined,
+    });
+    expect(retire.mock.invocationCallOrder[0]).toBeLessThan(
+      deleteAgent.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
 
   test("prepareAgentDelete refuses an unauthorized running agent before deletion intent", async () => {
     const svc = await makeSvc();
@@ -7658,6 +7806,63 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     }
   });
 
+  test("post-create cleanup failure preserves the original readiness failure", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row = provisioningReadyRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findById").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => ({ ...row, ...data }),
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const create = mock(async () => providerHandle());
+    const stopForReplacement = mock(async () => {
+      throw new Error("remote absence remains unresolved");
+    });
+    const svc = new ElizaSandboxService();
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({
+      create,
+      stopForReplacement,
+      checkHealth: async () => false,
+    } as SandboxProvider);
+
+    try {
+      const res = await svc.provision(AGENT, ORG);
+      expect(res).toEqual(
+        expect.objectContaining({
+          success: false,
+          retryable: true,
+          error:
+            "Sandbox health check timed out; replacement cleanup remains pending: remote absence remains unresolved",
+        }),
+      );
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(stopForReplacement).toHaveBeenCalledWith("sandbox-blue-1");
+    } finally {
+      findSpy.mockRestore();
+      findByIdSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
+
   test("(5) UNIQUE on every attempt → exhaustion → 'Provisioning failed after 3 attempts'", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const row = provisioningReadyRow();
@@ -8599,6 +8804,73 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       infoLogSpy.mockRestore();
       errorLogSpy.mockRestore();
       ensureStartedSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
+
+  test("retains a typed replacement failure for the provisioning queue", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row = provisioningReadyRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findById").mockResolvedValue(row);
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => ({ ...row, ...data }) as AgentSandbox,
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const meshCause = new Error(
+      "Docker candidate cannot complete required Headscale registration: auth_required",
+    );
+    const unresolved = new SandboxReplacementCleanupUnresolvedError(
+      {
+        sandboxId: "replacement-sandbox",
+        nodeId: "replacement-node",
+        containerName: "replacement-container",
+        replacementAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        containerId: "sha256:replacement",
+        allocationCounted: true,
+      },
+      meshCause,
+    );
+    const create = mock(async () => {
+      throw unresolved;
+    });
+    const svc = new ElizaSandboxService();
+    const persistFenceSpy = spyOn(
+      svc as unknown as {
+        persistUnresolvedReplacementCleanupFence(
+          agentId: string,
+          orgId: string,
+          error: SandboxReplacementCleanupUnresolvedError,
+        ): Promise<void>;
+      },
+      "persistUnresolvedReplacementCleanupFence",
+    ).mockResolvedValue(undefined);
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue(replacementAwareProvider({ create } as unknown as SandboxProvider));
+
+    try {
+      const res = await svc.provision(AGENT, ORG);
+      expect(res).toMatchObject({ success: false, retryable: true });
+      if (res.success) throw new Error("Expected failed provision result");
+      expect(res.failureCause).toBe(unresolved);
+      expect(persistFenceSpy).toHaveBeenCalledWith(AGENT, ORG, unresolved);
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+      findByIdSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      persistFenceSpy.mockRestore();
       getProviderSpy.mockRestore();
     }
   });

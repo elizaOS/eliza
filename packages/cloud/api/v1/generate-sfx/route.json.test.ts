@@ -13,13 +13,14 @@ const generateAudio = mock(async () => ({
   raw: {},
 }));
 const markProviderDispatched = mock(async () => undefined);
+const requireGenerativeRouteCaller = mock(async () => ({
+  user: { id: "user-1", organization_id: "org-1" },
+  apiKeyId: null,
+  admissionSnapshot: null,
+}));
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
-  requireGenerativeRouteCaller: async () => ({
-    user: { id: "user-1", organization_id: "org-1" },
-    apiKeyId: null,
-    admissionSnapshot: null,
-  }),
+  requireGenerativeRouteCaller,
   admitFlatGenerativeOperation: async () => ({
     reservation: { reconcile: async () => undefined },
     settle: async () => undefined,
@@ -95,6 +96,11 @@ describe("POST /api/v1/generate-sfx malformed JSON", () => {
       error: "Invalid JSON body",
     });
     expect(assertSafeForPublicUse).not.toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
     expect(generateAudio).not.toHaveBeenCalled();
   });
 
@@ -108,6 +114,10 @@ describe("POST /api/v1/generate-sfx malformed JSON", () => {
       { ELEVENLABS_API_KEY: "el-test-key" },
     );
     expect(response.status).toBe(200);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: true }),
+    );
     expect(generateAudio).toHaveBeenCalled();
   });
 });

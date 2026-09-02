@@ -14,21 +14,34 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
 const capturedWheres: SQL[] = [];
+const capturedSelections: Array<Record<string, SQL>> = [];
 
-// dbRead.select().from().where(clause) captures each clause and resolves to a
-// single count row, so the query builder runs end-to-end without a live DB.
-const where = mock((clause: SQL) => {
+// dbWrite.select(fields).from().where(clause) captures each statement and
+// returns one synthetic aggregate row, so the query builder runs end-to-end
+// without a live DB.
+const where = mock((clause: SQL, fields: Record<string, SQL>) => {
   capturedWheres.push(clause);
-  return [{ count: 1 }];
+  if ("relation" in fields) return [{ relation: undefined }];
+  return [Object.fromEntries(Object.keys(fields).map((key) => [key, 1]))];
 });
-const from = mock(() => ({ where }));
-const select = mock(() => ({ from }));
+const select = mock((fields: Record<string, SQL>) => {
+  capturedSelections.push(fields);
+  return {
+    from: mock(() => ({ where: (clause: SQL) => where(clause, fields) })),
+  };
+});
+const readSelect = mock(() => {
+  throw new Error("capacity authority must not read from the replica");
+});
 
 // Replace the whole helpers module: dbRead captures the query, the rest are
 // stubs so every static import in the transitive chain still resolves.
 mock.module("../../db/helpers", () => ({
-  dbRead: { select },
-  dbWrite: { update: mock(() => ({ set: mock(() => ({ where: mock(() => []) })) })) },
+  dbRead: { select: readSelect },
+  dbWrite: {
+    select,
+    update: mock(() => ({ set: mock(() => ({ where: mock(() => []) })) })),
+  },
   useReadDb: mock(),
   useWriteDb: mock(),
   readQuery: mock(),
@@ -47,19 +60,24 @@ function renderParams(clause: SQL): string[] {
   return params.map((p) => String(p));
 }
 
+function renderSelectionParams(selection: Record<string, SQL>): string[] {
+  return Object.values(selection).flatMap(renderParams);
+}
+
 describe("countAllocatedWorkloadsOnNode — live-slot accounting (#15378)", () => {
   beforeEach(() => {
     capturedWheres.length = 0;
+    capturedSelections.length = 0;
     where.mockClear();
+    select.mockClear();
+    readSelect.mockClear();
   });
 
   test("the agent_sandboxes filter recognizes every terminal status before ownership override", async () => {
     await countAllocatedWorkloadsOnNode("node-under-test");
 
-    // Two queries run (containers + agent_sandboxes); the agent one is the
-    // clause whose params carry the sandbox terminal-status vocab.
-    const agentParams = capturedWheres
-      .map(renderParams)
+    const agentParams = capturedSelections
+      .map(renderSelectionParams)
       .find((params) => params.includes("sleeping"));
 
     expect(agentParams).toBeDefined();
@@ -77,16 +95,45 @@ describe("countAllocatedWorkloadsOnNode — live-slot accounting (#15378)", () =
 
   test("sums container + agent counts (one row each here) into total live slots", async () => {
     const total = await countAllocatedWorkloadsOnNode("node-under-test");
-    expect(where).toHaveBeenCalledTimes(3);
-    expect(total).toBe(3);
+    // One rolling-deploy relation probe, then one aggregate statement for all
+    // four workload ledgers.
+    expect(where).toHaveBeenCalledTimes(2);
+    expect(readSelect).not.toHaveBeenCalled();
+    expect(total).toBe(4);
+  });
+
+  test("reads all present workload ledgers in one aggregate statement snapshot", async () => {
+    await countAllocatedWorkloadsOnNode("node-under-test");
+
+    expect(select).toHaveBeenCalledTimes(2);
+    expect(Object.keys(capturedSelections[1] ?? {})).toEqual([
+      "containerCount",
+      "agentCount",
+      "replacementCleanupCount",
+      "exactRestoreReplacementCount",
+    ]);
   });
 
   test("counts a durable replacement reservation as its own live slot", async () => {
     await countAllocatedWorkloadsOnNode("replacement-node");
 
-    const rendered = capturedWheres.map(renderParams);
-    expect(rendered.filter((params) => params.includes("replacement-node"))).toHaveLength(3);
-    expect(rendered.some((params) => params.includes("true"))).toBe(true);
+    const rendered = capturedSelections.map(renderSelectionParams);
+    const aggregateParams = rendered.find((params) => params.includes("replacement-node"));
+    expect(aggregateParams?.filter((param) => param === "replacement-node")).toHaveLength(4);
+  });
+
+  test("counts only active exact-restore replacement reservation states", async () => {
+    await countAllocatedWorkloadsOnNode("replacement-node");
+
+    const replacementParams = capturedSelections
+      .map(renderSelectionParams)
+      .find((params) => params.includes("in_flight_unresolved"));
+    expect(replacementParams).toBeDefined();
+    for (const state of ["in_flight_unresolved", "cleanup_in_progress", "provider_succeeded"]) {
+      expect(replacementParams).toContain(state);
+    }
+    expect(replacementParams).not.toContain("lifecycle_committed");
+    expect(replacementParams).not.toContain("cleanup_proven");
   });
 });
 

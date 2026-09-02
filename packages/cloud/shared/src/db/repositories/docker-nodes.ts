@@ -2,6 +2,10 @@
  * Persists Docker node records for cloud scheduling and control-plane health.
  */
 import { and, asc, eq, sql } from "drizzle-orm";
+import {
+  type DockerNodeAllocationRecount,
+  reconcileAllocatedWorkloadsOnNodeWithDatabase,
+} from "../../lib/services/docker-node-workload-queries";
 import { logger } from "../../lib/utils/logger";
 import { dbRead, dbWrite } from "../helpers";
 import {
@@ -598,16 +602,17 @@ export class DockerNodesRepository {
   }
 
   /**
-   * Set allocated_count to an exact value (used during sync).
+   * Reconcile allocated_count from primary workload authority (used during
+   * sync).
+   *
+   * Locking the node before the recount serializes this absolute repair with
+   * exact-restore `allocated_count +/- 1` writers. Under READ COMMITTED, the
+   * count query starts after that lock is acquired, so a reservation that held
+   * the node lock is visible with its attempt row, while a cleanup that waits
+   * behind the recount applies its decrement after this transaction commits.
    */
-  async setAllocatedCount(nodeId: string, count: number): Promise<void> {
-    await dbWrite
-      .update(dockerNodes)
-      .set({
-        allocated_count: count,
-        updated_at: new Date(),
-      })
-      .where(eq(dockerNodes.node_id, nodeId));
+  async setAllocatedCount(nodeId: string): Promise<DockerNodeAllocationRecount | null> {
+    return reconcileAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId);
   }
 }
 

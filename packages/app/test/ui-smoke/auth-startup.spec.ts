@@ -10,6 +10,7 @@ import {
 } from "./helpers";
 
 const REMOTE_AUTH_REQUIRED_STATUS = {
+  instanceId: "ui-smoke-remote-instance",
   required: true,
   authenticated: false,
   loginRequired: true,
@@ -276,6 +277,7 @@ test("cloud bootstrap exchange stores the session bearer and resumes startup", a
       },
       access: {
         mode: "bearer",
+        role: "OWNER",
         passwordConfigured: false,
         ownerConfigured: true,
       },
@@ -402,8 +404,12 @@ test("remote pairing redeem persists token, resumes startup, and arms LifeOps ca
     sessionAuthenticated = true;
     expect(route.request().postDataJSON()).toEqual({
       code: "ABCD EFGH IJKL",
+      instanceId: REMOTE_AUTH_REQUIRED_STATUS.instanceId,
     });
-    await fulfillJson(route, 200, { token: "paired-token" });
+    await fulfillJson(route, 200, {
+      token: "paired-token",
+      instanceId: REMOTE_AUTH_REQUIRED_STATUS.instanceId,
+    });
   });
   await page.route("**/api/auth/me", async (route) => {
     if (route.request().method() !== "GET") {
@@ -427,6 +433,7 @@ test("remote pairing redeem persists token, resumes startup, and arms LifeOps ca
       },
       access: {
         mode: "bearer",
+        role: "OWNER",
         passwordConfigured: false,
         ownerConfigured: true,
       },

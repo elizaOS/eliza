@@ -96,8 +96,9 @@ describe("executeBrowserAutofillLogin", () => {
     const result = await executeBrowserAutofillLogin({} as never, undefined, {
       parameters: {
         domain: "example.com",
+        username: "alice",
       },
-    });
+    } as never);
 
     expect(result.success).toBe(false);
     expect(result.values).toMatchObject({ fillReason: reason });

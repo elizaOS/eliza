@@ -23,9 +23,9 @@ export interface AccountDeletionForeignKeyDescriptor {
   targetColumns: string;
   onDelete: string;
 }
-/** SHA-256 of the 236 sorted direct user/organization FK descriptors. */
+/** SHA-256 of the 248 sorted direct user/organization FK descriptors. */
 export const ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256 =
-  "77d81d74dd8e422f6f622b68a15c9c84601b7753e94063853c10b04d076bfb0a";
+  "40df404dcdd7a24d2ff9dae7e9ae308eb4f422db2a94db8ca0d912d5eb1a9608";
 
 function serializeDescriptor(descriptor: AccountDeletionForeignKeyDescriptor): string {
   return [
@@ -95,6 +95,8 @@ const EXTERNAL_RESOURCE_TABLES = new Set([
   "agent_vault_key_seed_receipts",
   "api_keys",
   "apps",
+  "billing_subscriptions",
+  "subscription_billing_fences",
   "cloud_files",
   "container_compute_stop_intents",
   "containers",
@@ -141,9 +143,9 @@ const SHARED_RESOURCE_TABLES = new Set([
 ]);
 
 /**
- * Financial, abuse, settlement, and security evidence is retained only after
- * its direct user/org identifier has been nulled or replaced by a bounded,
- * non-identifying audit digest.
+ * Financial, abuse, settlement, and security tables need explicit handling
+ * when a restrictive identifier cannot cascade. The provider inventory may
+ * erase privacy-bearing history instead of retaining and anonymizing it.
  */
 const RETAINED_AUDIT_TABLES = new Set([
   "admin_users",
@@ -158,6 +160,11 @@ const RETAINED_AUDIT_TABLES = new Set([
   "app_secret_requirements",
   "billing_cancel_command_keys",
   "billing_cancel_commands",
+  "billing_funding_reservations",
+  "billing_subscription_commands",
+  "billing_subscription_event_receipts",
+  "billing_subscription_incidents",
+  "billing_subscription_revisions",
   "cloud_files",
   "compute_billing_rate_segments",
   "container_billing_legacy_ledger_bindings",
@@ -183,6 +190,8 @@ const RETAINED_AUDIT_TABLES = new Set([
   "stripe_checkout_orders",
   "stripe_customer_attempts",
   "stripe_customer_legacy_quarantines",
+  "subscription_allowance_periods",
+  "subscription_allowance_transactions",
   "token_redemptions",
   "usage_records",
   "user_mcps",
@@ -193,6 +202,10 @@ const RETAINED_AUDIT_TABLES = new Set([
   "voice_imprint_observations",
 ]);
 
+/**
+ * Classifies the handling obligation imposed by an FK, not the final row operation.
+ * Provider adapters may satisfy retained-record obligations by erasing privacy-bearing rows.
+ */
 export function classifyAccountDeletionForeignKey(
   descriptor: AccountDeletionForeignKeyDescriptor,
 ): AccountDeletionForeignKeyAction {

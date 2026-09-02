@@ -11,6 +11,7 @@ import type { App } from "../../db/repositories/apps";
 
 let appRows = new Map<string, App>();
 let appReads = 0;
+let cacheFenceGate: Promise<void> | null = null;
 
 mock.module("../../db/repositories/apps", () => ({
   appsRepository: {
@@ -24,7 +25,10 @@ mock.module("../../db/repositories/apps", () => ({
   withAppCacheFences: async <T>(
     _identity: { appId?: string; apiKeyId?: string | null; slug?: string | null },
     operation: (tx: unknown) => Promise<T>,
-  ) => await operation({}),
+  ) => {
+    if (cacheFenceGate) await cacheFenceGate;
+    return await operation({});
+  },
 }));
 
 mock.module("./api-keys", () => ({
@@ -58,9 +62,34 @@ function app(overrides: Partial<App> = {}): App {
 beforeEach(() => {
   appRows = new Map();
   appReads = 0;
+  cacheFenceGate = null;
 });
 
 describe("AppsService inference cache-only lookup", () => {
+  test("async invalidation clears a stale row repopulated while shared deletion waits", async () => {
+    const stale = app({ review_status: "draft" });
+    const fresh = { ...stale, review_status: "approved" } as App;
+    appRows.set(stale.id, fresh);
+    await cache.set(CacheKeys.app.byId(stale.id), stale, CacheTTL.app.byId);
+    expect((await appsService.getById(stale.id))?.review_status).toBe("draft");
+
+    let releaseFence = () => {};
+    cacheFenceGate = new Promise<void>((resolve) => {
+      releaseFence = resolve;
+    });
+    const invalidation = appsService.invalidateCache(stale.id);
+
+    // The first local eviction has happened, but the shared stale row remains
+    // readable until the asynchronous fenced delete is allowed to proceed.
+    expect((await appsService.getById(stale.id))?.review_status).toBe("draft");
+    releaseFence();
+    await invalidation;
+
+    expect(await cache.get(CacheKeys.app.byId(stale.id))).toBeFalsy();
+    expect((await appsService.getById(stale.id))?.review_status).toBe("approved");
+    expect(appReads).toBe(1);
+  });
+
   test("serves a warm monetized app without an authoritative read", async () => {
     const row = app();
     await cache.set(CacheKeys.app.byId(row.id), row, CacheTTL.app.byId);

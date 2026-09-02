@@ -24,6 +24,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import StewardLoginSection from "./steward-login-section";
 
 const providerFlags = vi.hoisted(() => ({ siwe: false, siws: false }));
 
@@ -96,14 +97,7 @@ vi.mock("../../lib/login-return-to", () => ({
   storePendingOAuthReturnTo: () => undefined,
 }));
 
-// The section module-caches the providers fetch (`cachedStewardProviders`),
-// so each test must import a FRESH module instance or the first test's flags
-// leak into the rest.
-async function renderSection() {
-  vi.resetModules();
-  const { default: StewardLoginSection } = await import(
-    "./steward-login-section"
-  );
+function renderSection() {
   return render(
     <MemoryRouter initialEntries={["/login"]}>
       <StewardLoginSection />

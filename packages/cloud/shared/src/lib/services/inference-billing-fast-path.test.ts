@@ -105,6 +105,7 @@ const {
   resolveSafeBalanceThresholdUsd,
   isOptimisticEligible,
   isPendingInferenceCharge,
+  PENDING_INFERENCE_CHARGE_VERSION,
   getGateBalanceUsd,
   InferenceBalanceCacheWarmingError,
   writePendingInferenceCharge,
@@ -233,7 +234,7 @@ describe("isOptimisticEligible", () => {
 describe("isPendingInferenceCharge shape guard", () => {
   test("accepts a full record, rejects partial / wrong version", () => {
     const ok = {
-      v: 2,
+      v: PENDING_INFERENCE_CHARGE_VERSION,
       requestId: "r",
       organizationId: "o",
       userId: "u",
@@ -245,8 +246,8 @@ describe("isPendingInferenceCharge shape guard", () => {
       enqueuedAt: 1,
     };
     expect(isPendingInferenceCharge(ok)).toBe(true);
-    // Stale pre-IAC-v2 records must be rejected, not migrated (#17805 bumped
-    // INFERENCE_AUTH_CONTEXT_VERSION 1 -> 2; the sweep drops unversioned strays).
+    // Stale v1 and unknown future records must be rejected, not migrated; the
+    // sweep drops malformed or unsupported records without interpreting them.
     expect(isPendingInferenceCharge({ ...ok, v: 1 })).toBe(false);
     expect(isPendingInferenceCharge({ ...ok, v: 3 })).toBe(false);
     expect(isPendingInferenceCharge({ ...ok, estimatedCostUsd: Number.NaN })).toBe(false);

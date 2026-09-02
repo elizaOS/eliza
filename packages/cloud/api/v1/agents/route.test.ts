@@ -8,8 +8,8 @@ const requireServiceKey = mock(async () => ({
 }));
 const findOrCreateUserByWalletAddress = mock(async (walletAddress: string) => ({
   isNewAccount: true,
-  initialCreditsGranted: false,
-  initialFreeCreditsUsd: 0,
+  initialCreditsGranted: true,
+  initialFreeCreditsUsd: 5,
   user: {
     id: "agent-wallet-user",
     organization_id: "agent-wallet-org",
@@ -179,7 +179,7 @@ describe("service agent provisioning route", () => {
     enqueueAgentProvision.mockClear();
   });
 
-  test("creates a funded wallet-owned cloud agent without minting signup credit", async () => {
+  test("creates a wallet-owned cloud agent with the fixed signup credit", async () => {
     const response = await app.fetch(
       new Request("https://api.example.test/", {
         method: "POST",
@@ -261,8 +261,8 @@ describe("service agent provisioning route", () => {
         organizationId: "agent-wallet-org",
         userId: "agent-wallet-user",
         isNewAccount: true,
-        initialCreditsGranted: false,
-        initialFreeCreditsUsd: 0,
+        initialCreditsGranted: true,
+        initialFreeCreditsUsd: 5,
         welcomeBonusWithheld: false,
       },
     });
@@ -412,8 +412,8 @@ describe("service agent provisioning route", () => {
       cloudAgentId: "cloud-agent-1",
       characterId: "character-1",
       containerId: "container-worker",
-      containerUrl: "https://runtime.example.test",
-      bridgeUrl: "https://runtime.example.test",
+      containerUrl: "https://cloud-agent-1.cloud.eliza.app",
+      bridgeUrl: "https://cloud-agent-1.cloud.eliza.app",
       status: "running",
     });
     expect(createAgent).toHaveBeenCalledWith(
@@ -459,7 +459,7 @@ describe("service agent provisioning route", () => {
         agentConfig: expect.objectContaining({
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 0,
+            initialReserveUsd: 5,
           },
           access: expect.objectContaining({
             guestTokenThreshold: 1000,

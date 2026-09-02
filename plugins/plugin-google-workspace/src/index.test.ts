@@ -2076,6 +2076,7 @@ function createOAuthCallbackManager(
   const upsertStoredAccount = vi.fn(async (account: ConnectorAccount) => account);
   const deleteStoredAccount = vi.fn(async () => false);
   return {
+    listAccounts: vi.fn(async () => []),
     getStorage: () => ({
       setConnectorAccountCredentialRef: setCredentialRef,
       upsertAccount: upsertStoredAccount,

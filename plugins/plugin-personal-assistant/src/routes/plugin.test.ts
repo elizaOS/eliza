@@ -52,6 +52,10 @@ vi.mock("./cloud-features-routes.js", () => ({
 }));
 
 import {
+  AGREEMENT_UPLOAD_CHUNK_BYTES,
+  AGREEMENT_UPLOAD_METADATA_BYTES,
+} from "../lifeops/household/agreement-upload-limits.js";
+import {
   personalAssistantRoutesPlugin,
   requireLifeOpsRouteOwnerAdminAccess,
 } from "./plugin.js";
@@ -255,9 +259,77 @@ describe("LifeOps raw route owner/admin gate", () => {
       ["POST", "/api/lifeops/calendar/events"],
       ["PATCH", "/api/lifeops/calendar/events/:eventId"],
       ["DELETE", "/api/lifeops/calendar/events/:eventId"],
+      ["GET", "/api/lifeops/calendar/links"],
+      ["POST", "/api/lifeops/calendar/links"],
+      ["GET", "/api/lifeops/calendar/links/:id"],
+      ["POST", "/api/lifeops/calendar/links/:id/reconcile"],
+      ["POST", "/api/lifeops/calendar/links/:id/resolve"],
+      ["POST", "/api/lifeops/calendar/links/:id/disconnect"],
+      ["POST", "/api/lifeops/calendar/cards"],
+      ["GET", "/api/lifeops/calendar/cards/:cardId"],
+      ["DELETE", "/api/lifeops/calendar/cards/:cardId"],
     ] as const;
 
     for (const [type, path] of calendarRoutes) {
+      expect(findRoute(type, path).public).not.toBe(true);
+    }
+  });
+
+  it("mounts every agreement mutation and preview behind the owner gate", () => {
+    const agreementRoutes = [
+      ["GET", "/api/lifeops/agreements"],
+      ["POST", "/api/lifeops/agreements"],
+      ["GET", "/api/lifeops/agreements/:id"],
+      ["GET", "/api/lifeops/agreements/:id/guest-projection"],
+      ["GET", "/api/lifeops/agreements/:id/download"],
+      ["POST", "/api/lifeops/agreements/:id/obligations"],
+      ["GET", "/api/lifeops/agreements/:id/pins"],
+      ["POST", "/api/lifeops/agreements/:id/pins"],
+      ["DELETE", "/api/lifeops/agreements/pins/:id"],
+      ["POST", "/api/lifeops/agreements/grants/preview"],
+      ["POST", "/api/lifeops/agreements/grants"],
+      ["POST", "/api/lifeops/agreements/grants/:id/revoke"],
+      ["POST", "/api/lifeops/agreements/obligations/:id/decision"],
+      ["POST", "/api/lifeops/agreement-uploads"],
+      ["GET", "/api/lifeops/agreement-uploads/:id"],
+      ["PUT", "/api/lifeops/agreement-uploads/:id/chunks/:index"],
+      ["POST", "/api/lifeops/agreement-uploads/:id/commit"],
+    ] as const;
+
+    for (const [type, path] of agreementRoutes) {
+      expect(findRoute(type, path).public).not.toBe(true);
+    }
+    expect(
+      findRoute("POST", "/api/lifeops/agreement-uploads").maxBodyBytes,
+    ).toBe(AGREEMENT_UPLOAD_METADATA_BYTES);
+    expect(
+      findRoute("PUT", "/api/lifeops/agreement-uploads/:id/chunks/:index")
+        .maxBodyBytes,
+    ).toBe(AGREEMENT_UPLOAD_CHUNK_BYTES);
+    expect(
+      findRoute("POST", "/api/lifeops/agreements/grants").maxBodyBytes,
+    ).toBeUndefined();
+  });
+
+  it("mounts every family workflow surface behind the owner gate", () => {
+    const workflowRoutes = [
+      ["PUT", "/api/lifeops/family-workflows/school/source"],
+      ["GET", "/api/lifeops/family-workflows/school/status"],
+      ["POST", "/api/lifeops/family-workflows/school/run"],
+      ["GET", "/api/lifeops/family-workflows/school/runs/:runId"],
+      ["POST", "/api/lifeops/family-workflows/school/apply"],
+      ["POST", "/api/lifeops/family-workflows/run-now"],
+      ["GET", "/api/lifeops/family-workflows/packets"],
+      ["POST", "/api/lifeops/family-workflows/packets"],
+      ["GET", "/api/lifeops/family-workflows/packets/:packetId"],
+      ["POST", "/api/lifeops/family-workflows/packets/:packetId/drafts"],
+      [
+        "POST",
+        "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/approval",
+      ],
+    ] as const;
+
+    for (const [type, path] of workflowRoutes) {
       expect(findRoute(type, path).public).not.toBe(true);
     }
   });

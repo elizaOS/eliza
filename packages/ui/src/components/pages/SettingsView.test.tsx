@@ -726,6 +726,11 @@ describe("SettingsView", () => {
     try {
       render(<SettingsView />);
       expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+      expect(
+        screen
+          .getByTestId("settings-shell")
+          .getAttribute("data-settings-presentation"),
+      ).toBe("compact-native");
       expect(screen.queryByTestId("desktop-settings-navigation")).toBeNull();
       expect(screen.queryByTestId("stub-identity")).toBeNull();
     } finally {

@@ -83,10 +83,10 @@ describe("POST /api/v1/models/status malformed JSON", () => {
   });
 
   test("preserves non-syntax request decoding failures as server errors", async () => {
-    const originalJson = HonoRequest.prototype.json;
-    HonoRequest.prototype.json = mock(async () => {
+    const originalText = HonoRequest.prototype.text;
+    HonoRequest.prototype.text = mock(async () => {
       throw new Error("request stream failed");
-    }) as typeof HonoRequest.prototype.json;
+    }) as typeof HonoRequest.prototype.text;
 
     try {
       const response = await app.request("/", {
@@ -97,7 +97,7 @@ describe("POST /api/v1/models/status malformed JSON", () => {
       expect(response.status).toBe(500);
       expect(getCachedMergedModelCatalog).not.toHaveBeenCalled();
     } finally {
-      HonoRequest.prototype.json = originalJson;
+      HonoRequest.prototype.text = originalText;
     }
   });
 });

@@ -94,7 +94,11 @@ export function AccountConnectBlock({
   }, [accounts.data]);
 
   return (
-    <Card variant="accountConnect" data-testid="account-connect">
+    <Card
+      variant="insetPadded"
+      className="text-sm"
+      data-testid="account-connect"
+    >
       <div className="font-medium mb-1">
         {t("accounts.connect.heading", { defaultValue: "Add another account" })}
       </div>

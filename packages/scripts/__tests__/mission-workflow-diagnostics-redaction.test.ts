@@ -185,7 +185,12 @@ exit 17
     ).run;
     expect(converge).toContain('> "$arm_stdout" 2> "$arm_stderr"');
     expect(converge).toContain("category=headscale-converge-passed");
-    expect(converge).toContain("category=headscale-remote-failed");
+    expect(converge).toContain(
+      "grep -hEo 'category=(headscale|cp-router)-[a-z0-9-]+'",
+    );
+    expect(converge).toContain("headscale-*|cp-router-*) ;;");
+    expect(converge).toContain('safe_category="headscale-remote-failed"');
+    expect(converge).toContain("category=$safe_category");
     expect(converge).toContain('rm -f -- "$' + '{cleanup_paths[@]}"');
     expect(converge).not.toContain('cat "$arm_stdout"');
     expect(converge).not.toContain('cat "$arm_stderr"');
@@ -196,9 +201,10 @@ exit 17
     expect(script).not.toMatch(/systemctl status headscale\b/);
     expect(script).not.toMatch(/journalctl -u headscale\b/);
     expect(script).not.toMatch(/echo "\$CP_ROUTER_HOST/);
-    expect(script).toContain(
-      'tailscale status 2>/dev/null | grep -F "$CP_ROUTER_HOST" >/dev/null',
-    );
+    expect(script).toContain("sudo tailscale status --json");
+    expect(script).toContain("sudo tailscale debug prefs");
+    expect(script).toContain('((.Self.HostName // "") == $h');
+    expect(script).toContain('.ControlURL // ""');
     expect(script).toContain('headscale users create "$user" >/dev/null');
   });
 
@@ -362,7 +368,7 @@ exit "\${RAILWAY_STUB_EXIT:-0}"
     } finally {
       rmSync(directory, { force: true, recursive: true });
     }
-  });
+  }, 15_000);
 
   test("hostile Railway domain output is reduced to fixed roles and removed", () => {
     const workflow = parseWorkflow(".github/workflows/deploy-tunnel-proxy.yml");

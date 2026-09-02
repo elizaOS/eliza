@@ -117,7 +117,7 @@ describe("Ollama native text plumbing", () => {
 
     await expect(
       handleTextSmall(createRuntime(), { prompt: "complete this" })
-    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    ).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
   });
 
   it("forwards native ToolSet tools to generateText and returns a GenerateTextResult-shaped payload", async () => {
@@ -551,9 +551,9 @@ describe("Ollama native text plumbing", () => {
     const chunks: string[] = [];
     await expect(async () => {
       for await (const chunk of result.textStream) chunks.push(chunk);
-    }).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    }).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
     expect(chunks).toEqual(["partial"]);
-    await expect(result.text).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    await expect(result.text).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
   });
 
   it("emits MODEL_USED once after a successful plain stream is fully consumed", async () => {

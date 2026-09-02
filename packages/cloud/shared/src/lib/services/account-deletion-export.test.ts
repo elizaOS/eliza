@@ -104,6 +104,7 @@ class MemoryBucket implements RuntimeR2Bucket {
   readonly putOptions: RuntimeR2PutOptions[] = [];
   throwAfterPut = false;
   throwAfterDelete = false;
+  private uploadSequence = 0;
 
   async head(key: string): Promise<RuntimeR2ObjectMetadata | null> {
     return this.objects.get(key)?.metadata ?? null;
@@ -126,26 +127,66 @@ class MemoryBucket implements RuntimeR2Bucket {
     key: string,
     value: string | ArrayBuffer | ArrayBufferView | Blob | ReadableStream<Uint8Array> | null,
     options?: RuntimeR2PutOptions,
-  ): Promise<void> {
+  ): Promise<RuntimeR2ObjectMetadata | null> {
     if (!ArrayBuffer.isView(value)) throw new Error("test bucket requires bytes");
     if (options) this.putOptions.push(options);
+    const current = this.objects.get(key);
+    if (!(options?.onlyIf instanceof Headers)) {
+      if (options?.onlyIf?.etagDoesNotMatch === "*" && current) return null;
+      if (
+        options?.onlyIf?.etagMatches &&
+        (!current || current.metadata.etag !== options.onlyIf.etagMatches)
+      ) {
+        return null;
+      }
+    }
     const bytes = new Uint8Array(
       value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength),
     );
+    const checksumSha256 = createHash("sha256").update(bytes).digest("hex");
+    const requestedChecksum = options?.sha256;
+    const requestedChecksumHex =
+      typeof requestedChecksum === "string"
+        ? requestedChecksum
+        : requestedChecksum && ArrayBuffer.isView(requestedChecksum)
+          ? Buffer.from(
+              requestedChecksum.buffer,
+              requestedChecksum.byteOffset,
+              requestedChecksum.byteLength,
+            ).toString("hex")
+          : requestedChecksum instanceof ArrayBuffer
+            ? Buffer.from(requestedChecksum).toString("hex")
+            : null;
+    if (requestedChecksumHex && requestedChecksumHex !== checksumSha256) {
+      throw new Error("test bucket checksum mismatch");
+    }
+    this.uploadSequence += 1;
+    const checksumBytes = Uint8Array.from(Buffer.from(checksumSha256, "hex"));
+    const metadata: RuntimeR2ObjectMetadata = {
+      key,
+      version: `version-${this.uploadSequence}`,
+      etag: createHash("sha256")
+        .update(`etag:${this.uploadSequence}:${checksumSha256}`)
+        .digest("hex"),
+      size: bytes.byteLength,
+      checksums: {
+        sha256: checksumBytes.buffer.slice(
+          checksumBytes.byteOffset,
+          checksumBytes.byteOffset + checksumBytes.byteLength,
+        ) as ArrayBuffer,
+      },
+      customMetadata: options?.customMetadata ? { ...options.customMetadata } : undefined,
+      httpMetadata: options?.httpMetadata ? { ...options.httpMetadata } : undefined,
+    };
     this.objects.set(key, {
       bytes,
-      metadata: {
-        key,
-        version: "version-1",
-        etag: "etag-1",
-        size: bytes.byteLength,
-        customMetadata: options?.customMetadata,
-      },
+      metadata,
     });
     if (this.throwAfterPut) {
       this.throwAfterPut = false;
       throw new Error("object store response lost");
     }
+    return metadata;
   }
 
   async delete(key: string): Promise<void> {
@@ -444,21 +485,19 @@ describe("account deletion export", () => {
     );
   });
 
-  test("reconciles an expired export delete with a lost response without repeating delete", async () => {
+  test("reconciles a lost tombstone response without rewriting or allowing resurrection", async () => {
     const candidate = { requestId: REQUEST_ID, requestDigest: REQUEST_DIGEST };
     findExpiredExportCandidates.mockResolvedValueOnce([candidate]);
     findExportRevocationsDue.mockResolvedValue([candidate]);
     const bucket = new MemoryBucket();
-    bucket.objects.set(
-      `account-deletion-exports/v1/${createHash("sha256")
-        .update(`object:${REQUEST_DIGEST}`)
-        .digest("hex")}.bin`,
-      {
-        bytes: new Uint8Array([1]),
-        metadata: { etag: "etag", size: 1 },
-      },
-    );
-    bucket.throwAfterDelete = true;
+    const objectKey = `account-deletion-exports/v1/${createHash("sha256")
+      .update(`object:${REQUEST_DIGEST}`)
+      .digest("hex")}.bin`;
+    bucket.objects.set(objectKey, {
+      bytes: new Uint8Array([1]),
+      metadata: { etag: "etag", size: 1 },
+    });
+    bucket.throwAfterPut = true;
 
     await expect(
       reconcileAccountDeletionExportRevocations(1, {
@@ -470,8 +509,42 @@ describe("account deletion export", () => {
       expect.objectContaining({ requestId: REQUEST_ID }),
     );
     expect(markPhaseForReconciliation).toHaveBeenLastCalledWith(
-      expect.objectContaining({ errorCode: "EXPORT_REVOCATION_OUTCOME_AMBIGUOUS" }),
+      expect.objectContaining({ errorCode: "EXPORT_REVOCATION_TOMBSTONE_OUTCOME_AMBIGUOUS" }),
     );
+    expect(bucket.putOptions).toHaveLength(1);
+    expect(bucket.putOptions[0]).toMatchObject({
+      onlyIf: { etagMatches: "etag" },
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      customMetadata: {
+        format: "eliza-account-export-revoked-v1",
+        byteCount: expect.any(String),
+        checksumSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    });
+    const tombstoneAfterLostResponse = bucket.objects.get(objectKey);
+    expect(new TextDecoder().decode(tombstoneAfterLostResponse?.bytes)).toBe(
+      "ELIZA_ACCOUNT_EXPORT_REVOKED_V1\n",
+    );
+    expect(tombstoneAfterLostResponse?.metadata.version).toBeString();
+    expect(tombstoneAfterLostResponse?.metadata.size).toBe(
+      tombstoneAfterLostResponse?.bytes.byteLength,
+    );
+    expect(tombstoneAfterLostResponse?.metadata.customMetadata?.format).toBe(
+      "eliza-account-export-revoked-v1",
+    );
+    expect(tombstoneAfterLostResponse?.metadata.customMetadata?.byteCount).toBe(
+      String(tombstoneAfterLostResponse?.bytes.byteLength),
+    );
+    expect(tombstoneAfterLostResponse?.metadata.customMetadata?.checksumSha256).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
+    expect(
+      Buffer.from(
+        tombstoneAfterLostResponse?.metadata.checksums?.sha256 ?? new ArrayBuffer(0),
+      ).toString("hex"),
+    ).toBe(tombstoneAfterLostResponse?.metadata.customMetadata?.checksumSha256);
+    expect(JSON.stringify(tombstoneAfterLostResponse)).not.toContain(REQUEST_ID);
+    expect(JSON.stringify(tombstoneAfterLostResponse)).not.toContain(REQUEST_DIGEST);
 
     leasePhase.mockResolvedValueOnce({
       receipt: {
@@ -480,17 +553,70 @@ describe("account deletion export", () => {
       },
       generation: 2,
     });
-    const remove = mock(bucket.delete.bind(bucket));
-    bucket.delete = remove;
     await expect(
       reconcileAccountDeletionExportRevocations(1, {
         bucket,
         now: () => new Date(NOW.getTime() + 60_001),
       }),
     ).resolves.toEqual({ scheduled: 0, completed: 1, pending: 0 });
-    expect(remove).not.toHaveBeenCalled();
+    expect(bucket.putOptions).toHaveLength(1);
     expect(completeExportRevocation).toHaveBeenCalledWith(
-      expect.objectContaining({ requestId: REQUEST_ID, generation: 2 }),
+      expect.objectContaining({
+        requestId: REQUEST_ID,
+        generation: 2,
+        providerReceiptDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+    );
+
+    const staleWriterResult = await bucket.put(objectKey, new Uint8Array([9, 9, 9]), {
+      onlyIf: { etagDoesNotMatch: "*" },
+      customMetadata: { format: "eliza-account-export-v1" },
+    });
+    expect(staleWriterResult).toBeNull();
+    expect(new TextDecoder().decode(bucket.objects.get(objectKey)?.bytes)).toBe(
+      "ELIZA_ACCOUNT_EXPORT_REVOKED_V1\n",
+    );
+  });
+
+  test("writes and proves a tombstone before completing revocation of an absent object", async () => {
+    const candidate = { requestId: REQUEST_ID, requestDigest: REQUEST_DIGEST };
+    findExportRevocationsDue.mockResolvedValueOnce([candidate]);
+    const bucket = new MemoryBucket();
+
+    await expect(
+      reconcileAccountDeletionExportRevocations(1, {
+        bucket,
+        now: () => NOW,
+      }),
+    ).resolves.toEqual({ scheduled: 0, completed: 1, pending: 0 });
+
+    expect(bucket.putOptions).toHaveLength(1);
+    expect(bucket.putOptions[0]).toMatchObject({
+      onlyIf: { etagDoesNotMatch: "*" },
+      customMetadata: { format: "eliza-account-export-revoked-v1" },
+    });
+    const [tombstone] = [...bucket.objects.values()];
+    expect(new TextDecoder().decode(tombstone?.bytes)).toBe("ELIZA_ACCOUNT_EXPORT_REVOKED_V1\n");
+    expect(tombstone?.metadata).toMatchObject({
+      version: expect.any(String),
+      etag: expect.any(String),
+      checksums: { sha256: expect.any(ArrayBuffer) },
+      customMetadata: {
+        format: "eliza-account-export-revoked-v1",
+        checksumSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    });
+    expect(markPhaseProviderCallStarted).toHaveBeenCalledWith(
+      "44444444-4444-4444-8444-444444444444",
+      1,
+      NOW,
+    );
+    expect(completeExportRevocation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: REQUEST_ID,
+        generation: 1,
+        providerReceiptDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
     );
   });
 });

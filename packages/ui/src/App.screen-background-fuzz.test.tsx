@@ -167,7 +167,12 @@ vi.mock("./hooks/useAvailableViews", () => ({
 }));
 vi.mock("./hooks/useAuthStatus", () => ({
   useAuthStatus: () => ({
-    state: { phase: "authenticated" },
+    state: {
+      phase: "authenticated",
+      identity: { id: "test-user" },
+      session: { id: "test-session" },
+      access: {},
+    },
     refetch: vi.fn(),
   }),
   // PermissionPrimingOverlay (rendered directly by App) reads this; without it

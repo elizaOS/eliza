@@ -34,6 +34,13 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: ownerId,
   organization_id: organizationId,
 }));
+const requirePaidRouteStanding = mock(async () => ({
+  user: await requireUserOrApiKeyWithOrg(),
+  apiKeyId: null,
+  authSource: "combined_cache",
+  appScopeId: null,
+}));
+const getCurrentUser = mock(async () => null);
 const createOwned = mock();
 const recoverHostCredential = mock();
 const listOwned = mock();
@@ -79,7 +86,11 @@ const activationRateLimitConfigs: Array<{
 }> = [];
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
+  getCurrentUser,
   requireUserOrApiKeyWithOrg,
+}));
+mock.module("@/api-app/lib/paid-route-standing", () => ({
+  requirePaidRouteStanding,
 }));
 mock.module("@/db/repositories/remote-hosts", () => ({
   remoteHostsRepository: {
@@ -133,6 +144,7 @@ mock.module("@/db/repositories/remote-command-envelopes", () => ({
 }));
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   getIpKey: () => "ip:test-source",
+  getRequestIp: () => "203.0.113.1",
   rateLimit: (config: (typeof activationRateLimitConfigs)[number]) => {
     activationRateLimitConfigs.push(config);
     return async (_context: unknown, next: () => Promise<void>) => next();
@@ -164,6 +176,10 @@ const { default: startRoute } = await import(
 const { default: completeRoute } = await import(
   "./sessions/[id]/commands/[commandId]/complete/route"
 );
+const { authMiddleware } = await import("../../src/middleware/auth");
+const { cookieMutationGuardMiddleware } = await import(
+  "../../src/middleware/cookie-mutation-guard"
+);
 
 const app = new Hono<AppEnv>();
 app.route("/api/v1/remote/hosts", hostsRoute);
@@ -182,6 +198,18 @@ app.route("/api/v1/remote/sessions/:id/commands/:commandId/start", startRoute);
 app.route(
   "/api/v1/remote/sessions/:id/commands/:commandId/complete",
   completeRoute,
+);
+
+const productionActivationApp = new Hono<AppEnv>();
+productionActivationApp.use("*", authMiddleware);
+productionActivationApp.use("*", cookieMutationGuardMiddleware);
+productionActivationApp.route(
+  "/api/v1/remote/hosts/:id/managed-network/activate",
+  managedNetworkActivateRoute,
+);
+productionActivationApp.route(
+  "/api/v1/remote/sessions/activate",
+  activateByCodeRoute,
 );
 
 function envelope(
@@ -252,7 +280,27 @@ function request(
   );
 }
 
+function productionActivationRequest(
+  path: string,
+  body: unknown = undefined,
+  headers: Record<string, string> = hostHeaders(),
+) {
+  return productionActivationApp.fetch(
+    new Request(`https://api.example.test${path}`, {
+      method: "POST",
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }),
+    {
+      NODE_ENV: "production",
+      REMOTE_PAIRING_HMAC_SECRET:
+        "route-pairing-secret-at-least-thirty-two-bytes",
+    } as AppEnv["Bindings"],
+  );
+}
+
 beforeEach(() => {
+  requirePaidRouteStanding.mockClear();
   for (const collaborator of [
     createOwned,
     recoverHostCredential,
@@ -310,6 +358,52 @@ beforeEach(() => {
 });
 
 describe("secure remote relay routes", () => {
+  test("reaches both activation handlers through the production auth chain", async () => {
+    authenticateManagedEnrollment.mockResolvedValue(null);
+    const managedResponse = await productionActivationRequest(
+      `/api/v1/remote/hosts/${hostId}/managed-network/activate`,
+    );
+    expect(managedResponse.status).toBe(404);
+    expect(authenticateManagedEnrollment).toHaveBeenCalledWith(
+      hostId,
+      hostToken,
+    );
+
+    activatePendingHostByCode.mockResolvedValue({ kind: "invalid_pairing" });
+    const sessionResponse = await productionActivationRequest(
+      "/api/v1/remote/sessions/activate",
+      { code: "123456" },
+    );
+    expect(sessionResponse.status).toBe(404);
+    expect(activatePendingHostByCode).toHaveBeenCalledWith({
+      hostId,
+      hostToken,
+      code: "123456",
+      pairingSecret: "route-pairing-secret-at-least-thirty-two-bytes",
+    });
+  });
+
+  test("rejects malformed host credentials before either activation repository", async () => {
+    const malformedHeaders = {
+      ...hostHeaders(),
+      authorization: "Bearer rhost_v1_too-short",
+    };
+    const managedResponse = await productionActivationRequest(
+      `/api/v1/remote/hosts/${hostId}/managed-network/activate`,
+      undefined,
+      malformedHeaders,
+    );
+    const sessionResponse = await productionActivationRequest(
+      "/api/v1/remote/sessions/activate",
+      { code: "123456" },
+      malformedHeaders,
+    );
+    expect(managedResponse.status).toBe(401);
+    expect(sessionResponse.status).toBe(401);
+    expect(authenticateManagedEnrollment).not.toHaveBeenCalled();
+    expect(activatePendingHostByCode).not.toHaveBeenCalled();
+  });
+
   test("rejects a non-relay connection mode before any host state is created", async () => {
     for (const connectionMode of ["headscale", "tunnel", "direct", "RELAY"]) {
       createOwned.mockReset();
@@ -361,6 +455,38 @@ describe("secure remote relay routes", () => {
     expect(createOwned.mock.calls[0]?.[0].host_token_hash).not.toBe(
       body.data.hostToken,
     );
+  });
+
+  test("standing denial creates no host credential or Headscale enrollment", async () => {
+    requirePaidRouteStanding.mockRejectedValueOnce(
+      new Error("Organization is inactive"),
+    );
+
+    const response = await request(
+      "/api/v1/remote/hosts",
+      {
+        deviceId: "mac-denied",
+        displayName: "Denied Mac",
+        platform: "macos",
+        connectionMode: "relay",
+        managedNetwork: true,
+        runtimeKeyId: targetKeyId,
+        signingPublicKeyJwk: publicJwk,
+        encryptionPublicKeyJwk: publicJwk,
+      },
+      {},
+      "POST",
+      {
+        HEADSCALE_API_URL: "https://headscale-staging.example",
+        HEADSCALE_PUBLIC_URL: "https://headscale-staging.example",
+        HEADSCALE_API_KEY: "headscale-api-secret",
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(requirePaidRouteStanding).toHaveBeenCalledTimes(1);
+    expect(createOwned).not.toHaveBeenCalled();
+    expect(createPreAuthKey).not.toHaveBeenCalled();
   });
 
   test("returns a one-use managed-network key without persisting it", async () => {

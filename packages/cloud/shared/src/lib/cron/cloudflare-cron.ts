@@ -78,6 +78,10 @@ export const CRON_FANOUT: Record<string, string[]> = {
   ],
   "* * * * *": [
     "/api/cron/shared-scheduled-tasks",
+    // V3 backup admission is independently fenced and defaults OFF in every
+    // Worker environment. Keep the legacy six-hour caller below until an
+    // explicitly authorized staging run proves this replacement end to end.
+    "/api/v1/cron/agent-backup-admission",
     "/api/v1/cron/deployment-monitor",
     "/api/v1/cron/health-check",
     // Alerts ops when the provisioning-worker daemon's heartbeat goes
@@ -119,6 +123,8 @@ export const CRON_FANOUT: Record<string, string[]> = {
 interface ScheduledEvent {
   cron: string;
   scheduledTime: number;
+  /** Suppresses replay of the entire shared event after a reported caller failure. */
+  noRetry?: () => void;
 }
 
 export interface ScheduledCronInvocationMetadata {
@@ -134,10 +140,24 @@ export const CRON_INVOCATION_ID_HEADER = "x-cron-invocation-id";
 export const CRON_SCHEDULE_HEADER = "x-cron-schedule";
 export const CRON_SCHEDULED_TIME_HEADER = "x-cron-scheduled-time";
 
+// Existing fanout routes are best-effort and may not be safe to replay as one
+// shared event. Opt in only callers with durable continuation semantics.
+const FAILURE_REPORTED_CRON_PATHS: ReadonlySet<string> = new Set([
+  "/api/v1/cron/agent-backup-admission",
+]);
+
+class CronRouteFailure extends Error {
+  override readonly name = "CronRouteFailure";
+
+  constructor(message: string, cause?: unknown) {
+    super(message, { cause });
+  }
+}
+
 /**
  * Stable identity for one route invocation within one Cloudflare scheduled
  * event. The path is part of the identity because a single schedule fans out
- * to multiple independently retried handlers.
+ * to multiple handlers even though Cloudflare retries the event as one unit.
  */
 export function scheduledCronInvocationId(event: ScheduledEvent, path: string): string {
   return [
@@ -198,6 +218,7 @@ export function makeCronHandler(
     const baseUrl = env.NEXT_PUBLIC_APP_URL ?? "http://internal";
 
     const work = paths.map(async (path) => {
+      let response: Response;
       try {
         const invocationId = scheduledCronInvocationId(event, path);
         const req = new Request(`${baseUrl}${path}`, {
@@ -219,14 +240,40 @@ export function makeCronHandler(
             scheduledTime: event.scheduledTime,
           }),
         );
-        const res = await appFetch(req, env, ctx);
-        if (!res.ok) {
-          logger.warn(`[Cron] ${path} -> ${res.status}`);
-        }
+        response = await appFetch(req, env, ctx);
       } catch (err) {
         logger.error(`[Cron] ${path} threw`, { error: err });
+        if (!FAILURE_REPORTED_CRON_PATHS.has(path)) return;
+        // error-policy:J2 add the failing route while preserving the original cause.
+        throw new CronRouteFailure(`[Cron] ${path} threw`, err);
+      }
+
+      if (!response.ok) {
+        const message = `[Cron] ${path} -> ${response.status}`;
+        if (FAILURE_REPORTED_CRON_PATHS.has(path)) {
+          logger.error(message);
+          throw new CronRouteFailure(message);
+        }
+        // Preserve the established best-effort behavior for legacy fanout.
+        logger.warn(message);
       }
     });
-    ctx.waitUntil(Promise.all(work).then(() => undefined));
+    ctx.waitUntil(
+      Promise.allSettled(work).then((results) => {
+        const failures = results.filter(
+          (result): result is PromiseRejectedResult => result.status === "rejected",
+        );
+        if (failures.length === 0) return;
+        // A Cloudflare retry replays every sibling on this cron expression.
+        // The opted-in caller continues durably on the next fresh minute tick,
+        // so record this event as failed without replaying successful siblings.
+        event.noRetry?.();
+        if (failures.length === 1) throw failures[0].reason;
+        throw new AggregateError(
+          failures.map((failure) => failure.reason),
+          `[Cron] ${failures.length} routes failed`,
+        );
+      }),
+    );
   };
 }

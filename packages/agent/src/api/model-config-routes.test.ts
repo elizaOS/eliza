@@ -466,8 +466,8 @@ describe("POST /api/models/config coding writes", () => {
     expect(body).toMatchObject({ applied: true, restart: false });
   });
 
-  it("rejects the retired opencode backend without writing", async () => {
-    const { ctx, json, saveElizaConfig } = makeHarness("POST", {
+  it("rejects the removed opencode backend without mutating config", async () => {
+    const { ctx, config, json, saveElizaConfig } = makeHarness("POST", {
       target: "coding",
       backend: "opencode",
       model: "cerebras/gpt-oss-120b",
@@ -478,6 +478,7 @@ describe("POST /api/models/config coding writes", () => {
     expect(status).toBe(400);
     expect(String(body.error)).toContain('Unknown backend "opencode"');
     expect(saveElizaConfig).not.toHaveBeenCalled();
+    expect((config as Record<string, unknown>).env).toBeUndefined();
   });
 
   it("persists defaultBackend eliza-code under the orchestrator's elizaos spelling", async () => {

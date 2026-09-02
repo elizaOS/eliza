@@ -67,6 +67,8 @@ type WorkerProcessNodeDiskCleanup =
   typeof import("@elizaos/cloud-shared/lib/services/node-disk-manager").processNodeDiskCleanup;
 type WorkerRunBackupVerificationCycle =
   typeof import("@elizaos/cloud-shared/lib/services/agent-backup-verifier").runBackupVerificationCycle;
+type WorkerReadCloudApiDbHeartbeatAt =
+  typeof import("@elizaos/cloud-shared/lib/services/cloud-api-db-heartbeat").readCloudApiDbHeartbeatAt;
 
 interface PreflightKmsClient {
   getOrCreateKey(keyId: string): Promise<unknown>;
@@ -99,6 +101,7 @@ interface WorkerDeps {
   withTimeout: WorkerWithTimeout;
   processNodeDiskCleanup: WorkerProcessNodeDiskCleanup;
   runBackupVerificationCycle: WorkerRunBackupVerificationCycle;
+  readCloudApiDbHeartbeatAt: WorkerReadCloudApiDbHeartbeatAt;
 }
 
 export interface ProvisioningWorkerConfig {
@@ -320,6 +323,7 @@ async function loadDeps(): Promise<WorkerDeps> {
       import("@elizaos/cloud-shared/lib/utils/with-timeout"),
       import("@elizaos/cloud-shared/lib/services/node-disk-manager"),
       import("@elizaos/cloud-shared/lib/services/agent-backup-verifier"),
+      import("@elizaos/cloud-shared/lib/services/cloud-api-db-heartbeat"),
     ]).then(
       ([
         jobsModule,
@@ -337,6 +341,7 @@ async function loadDeps(): Promise<WorkerDeps> {
         withTimeoutModule,
         nodeDiskManagerModule,
         backupVerifierModule,
+        cloudApiDbHeartbeatModule,
       ]) => ({
         provisioningJobService: jobsModule.provisioningJobService,
         logger: loggerModule.logger,
@@ -360,6 +365,8 @@ async function loadDeps(): Promise<WorkerDeps> {
         processNodeDiskCleanup: nodeDiskManagerModule.processNodeDiskCleanup,
         runBackupVerificationCycle:
           backupVerifierModule.runBackupVerificationCycle,
+        readCloudApiDbHeartbeatAt:
+          cloudApiDbHeartbeatModule.readCloudApiDbHeartbeatAt,
       }),
     );
   }
@@ -791,10 +798,8 @@ async function processDbLivenessCheckCycle(
   // the check.
   let heartbeatAt: Date | null = null;
   try {
-    const heartbeat = await import(
-      "@elizaos/cloud-shared/lib/services/cloud-api-db-heartbeat"
-    );
-    heartbeatAt = await heartbeat.readCloudApiDbHeartbeatAt();
+    const { readCloudApiDbHeartbeatAt } = await loadDeps();
+    heartbeatAt = await readCloudApiDbHeartbeatAt();
   } catch {
     heartbeatAt = null;
   }

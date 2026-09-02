@@ -196,6 +196,10 @@ const stubElizaCore = {
           {
             ElizaError,
             isElizaError: (v) => v instanceof ElizaError,
+            roleRank: (role) =>
+              ({ NONE: 0, GUEST: 1, USER: 2, MEMBER: 2, ADMIN: 3, OWNER: 4 })[
+                String(role).trim().toUpperCase()
+              ] ?? 0,
             resolveViewKind,
             isViewKindEnabled,
             isViewVisible: (d, enabled) =>

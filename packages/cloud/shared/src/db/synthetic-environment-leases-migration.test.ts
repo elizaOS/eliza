@@ -12,7 +12,9 @@ describe("0299 synthetic environment leases migration", () => {
     const journal = JSON.parse(await readFile(journalUrl, "utf8")) as {
       entries: Array<{ tag: string }>;
     };
-    expect(journal.entries.at(-1)?.tag).toBe("0299_synthetic_environment_leases");
+    expect(
+      journal.entries.filter(({ tag }) => tag === "0299_synthetic_environment_leases"),
+    ).toHaveLength(1);
     const database = new PGlite();
     try {
       const source = await readFile(migrationUrl, "utf8");

@@ -6,6 +6,11 @@
  *   - Public paths pass through with no auth.
  *   - Programmatic auth (X-API-Key, Bearer eliza_*) — pass through; per-route
  *     handlers validate the key against the DB.
+ *   - Durable paid routes with a local combined-standing guard pass through;
+ *     that guard authenticates Steward sessions and keys without a preceding
+ *     session hydration or duplicate database lookup.
+ *   - The two remote-host activation routes accept their exact host credential;
+ *     their handlers still validate the revocable token against the DB.
  *   - Steward cookie / Steward Bearer JWT — verify via `getCurrentUser` and
  *     fall through on success. Failure on a protected /api/ path → 401.
  *
@@ -19,6 +24,7 @@ import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parseRemoteHostCredential } from "../../v1/remote/host-auth";
 import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
 const publicPathPrefixes = [
@@ -262,6 +268,114 @@ export function isRouteAuthenticatedInferencePath(
   );
 }
 
+/**
+ * Durable paid routes perform their own combined identity-and-standing check.
+ * Keep this allowlist method- and shape-exact: neighboring read, recovery, and
+ * management routes retain the global session boundary unless their own route
+ * handler is explicitly responsible for authentication.
+ */
+export function isRouteAuthenticatedPaidStandingPath(
+  method: string,
+  pathname: string,
+): boolean {
+  if (
+    (method === "GET" || method === "HEAD") &&
+    /^\/api\/v1\/apis\/storage\/list\/?$/.test(pathname)
+  ) {
+    return true;
+  }
+  if (
+    method === "POST" &&
+    (/^\/api\/v1\/apis\/storage\/presign\/?$/.test(pathname) ||
+      /^\/api\/v1\/apis\/tunnels\/tailscale\/auth-key\/?$/.test(pathname) ||
+      /^\/api\/v1\/apps\/[^/]+\/domains\/buy\/?$/.test(pathname) ||
+      /^\/api\/v1\/connections\/[^/]+\/broker\/?$/.test(pathname) ||
+      /^\/api\/v1\/remote\/hosts\/?$/.test(pathname))
+  ) {
+    return true;
+  }
+  return (
+    (method === "GET" ||
+      method === "HEAD" ||
+      method === "PUT" ||
+      method === "DELETE") &&
+    /^\/api\/v1\/apis\/storage\/objects(?:\/.*)?$/.test(pathname)
+  );
+}
+
+/**
+ * Paid proxy routes own their combined identity, standing, and organization
+ * admission decision. The global session gate must not resolve the same
+ * Steward credential first, or a session request would perform an additional
+ * authoritative user lookup before the route's one-read cache decision.
+ */
+export function isRouteAuthenticatedPaidProxyPath(
+  method: string,
+  pathname: string,
+): boolean {
+  if (method === "OPTIONS") {
+    return (
+      isRouteAuthenticatedPaidProxyPath("GET", pathname) ||
+      isRouteAuthenticatedPaidProxyPath("POST", pathname)
+    );
+  }
+  if (method === "GET" || method === "HEAD") {
+    return (
+      /^\/api\/v1\/chain\/(?:nfts|tokens|transfers)\/[^/]+\/[^/]+\/?$/.test(
+        pathname,
+      ) ||
+      /^\/api\/v1\/market\/(?:candles|portfolio|price|token|trades)\/[^/]+\/[^/]+\/?$/.test(
+        pathname,
+      ) ||
+      /^\/api\/v1\/solana\/(?:assets|token-accounts|transactions)\/[^/]+\/?$/.test(
+        pathname,
+      ) ||
+      /^\/api\/v1\/apis\/birdeye\/.+/.test(pathname)
+    );
+  }
+  if (method !== "POST") return false;
+  return (
+    /^\/api\/v1\/proxy\/evm-rpc\/[^/]+\/?$/.test(pathname) ||
+    /^\/api\/v1\/proxy\/solana-rpc\/?$/.test(pathname) ||
+    /^\/api\/v1\/rpc\/[^/]+\/?$/.test(pathname) ||
+    /^\/api\/v1\/solana\/rpc\/?$/.test(pathname)
+  );
+}
+
+/**
+ * Remote hosts reach these activation handlers before they have a Cloud
+ * session. Keep this pre-auth delegation exact: a syntactically valid,
+ * host-bound credential may reach only the two handlers introduced by the
+ * generated router, which perform the authoritative database validation.
+ */
+export function isRouteAuthenticatedRemoteHostRequest(
+  request: Request,
+): boolean {
+  if (request.method !== "POST") return false;
+  const credential = parseRemoteHostCredential(request);
+  if (!credential) return false;
+  const pathname = new URL(request.url).pathname;
+  if (
+    pathname === "/api/v1/remote/sessions/activate" ||
+    pathname === "/api/v1/remote/sessions/activate/"
+  ) {
+    return true;
+  }
+  const managedNetworkMatch =
+    /^\/api\/v1\/remote\/hosts\/([^/]+)\/managed-network\/activate\/?$/.exec(
+      pathname,
+    );
+  return managedNetworkMatch?.[1] === credential.hostId;
+}
+
+/** Keeps any remote-host credential attempt out of unrelated paid route bypasses. */
+function hasRemoteHostCredentialAttempt(request: Request): boolean {
+  return (
+    request.headers.has("x-remote-host-id") ||
+    /^Bearer rhost_v1_/.test(request.headers.get("authorization") ?? "")
+  );
+}
+
 function isLoopbackHostname(hostname: string): boolean {
   return (
     hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
@@ -332,6 +446,20 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   if (isRouteAuthenticatedInferencePath(c.req.method, pathname)) {
+    await next();
+    return;
+  }
+
+  if (isRouteAuthenticatedRemoteHostRequest(c.req.raw)) {
+    await next();
+    return;
+  }
+
+  if (
+    !hasRemoteHostCredentialAttempt(c.req.raw) &&
+    (isRouteAuthenticatedPaidStandingPath(c.req.method, pathname) ||
+      isRouteAuthenticatedPaidProxyPath(c.req.method, pathname))
+  ) {
     await next();
     return;
   }

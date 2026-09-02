@@ -60,7 +60,10 @@ async function dispatchEverySchedule(): Promise<Map<string, number>> {
       passThroughOnException: () => {},
     };
     await scheduled({ cron, scheduledTime: Date.now() }, env, ctx as never);
-    await Promise.all(pending);
+    // Every route is intentionally auth-failed below. Some handlers return a
+    // 4xx while missing configuration makes others return a 5xx; regardless
+    // of route-specific reporting policy, inspect every matched POST response.
+    await Promise.allSettled(pending);
   }
   return statuses;
 }

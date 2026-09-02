@@ -36,6 +36,10 @@ env:
   NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: "--max-old-space-size=8192"
+  # This suite never launches the packaged local-inference runtime. Avoid a
+  # fan-out of identical 67 MB Hugging Face downloads during workspace setup;
+  # dedicated desktop/device workflows retain the real installer coverage.
+  ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
   # Baseline PR jobs are secret-free. Dedicated live jobs inject provider keys
   # locally and remain opt-in/scheduled where external services are involved.
 

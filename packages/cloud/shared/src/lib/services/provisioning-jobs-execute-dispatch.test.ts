@@ -20,7 +20,7 @@ import { jobsRepository, StaleJobExecutionError } from "../../db/repositories/jo
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-import { ProvisioningJobService, provisioningJobService } from "./provisioning-jobs";
+import { ProvisioningJobService } from "./provisioning-jobs";
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -32,6 +32,10 @@ const EMPTY_RECOVERY = {
   unchanged: 0,
   failures: [],
 };
+const dispatchService = new ProvisioningJobService({
+  acquireProviderAdmission: async () => true,
+  releaseProviderAdmission: async () => {},
+});
 
 function makeJob(
   type: string,
@@ -92,7 +96,7 @@ function makeJob(
  */
 function harness(
   job: Job,
-  service = provisioningJobService,
+  service = dispatchService,
   suspendIntent?: {
     authorization: "user_request" | "billing_request";
     lifecycleRevision: number;
@@ -200,7 +204,7 @@ afterEach(() => {
   for (const s of serviceSpies.splice(0)) s.mockRestore();
 });
 
-async function run(type: string, service = provisioningJobService) {
+async function run(type: string, service = dispatchService) {
   return service.processPendingJobs(1, {
     jobTypes: [type as ProvisioningJobType],
   });
@@ -1037,6 +1041,90 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("agent_provision retains the typed startup cause in the durable retry error", async () => {
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => true,
+      releaseProviderAdmission: async () => {},
+    });
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION), service);
+    const meshCause = new Error(
+      "Docker candidate cannot complete required Headscale registration: auth_required",
+    );
+    stub("provision", {
+      success: false,
+      retryable: true,
+      error: "Headscale routing is required, but no headscale_ip was registered",
+      failureCause: new Error("Replacement cleanup is unresolved", { cause: meshCause }),
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION, service);
+      expect(res).toMatchObject({ retried: 1, failed: 0 });
+      const durableError = String(ctx.retryLaterSpy.mock.calls[0]?.[1]);
+      expect(durableError).toContain("Replacement cleanup is unresolved");
+      expect(durableError).toContain(
+        "Docker candidate cannot complete required Headscale registration: auth_required",
+      );
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_provision cleanup-only retry preserves the first startup failure", async () => {
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => true,
+      releaseProviderAdmission: async () => {},
+    });
+    const ctx = harness(
+      makeJob(
+        JOB_TYPES.AGENT_PROVISION,
+        {},
+        {
+          result: {
+            cloudAgentId: AGENT,
+            status: "provisioning",
+            error:
+              "Sandbox health check timed out; replacement cleanup remains pending: first cleanup failure",
+          },
+          error:
+            "RetryableProvisionTransportError: first startup failure\ncaused by: Error: Docker candidate cannot complete required Headscale registration: auth_required",
+        },
+      ),
+      service,
+    );
+    stub("provision", {
+      success: false,
+      retryable: true,
+      error: "Replacement cleanup is still pending: second cleanup failure",
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION, service);
+      expect(res).toMatchObject({ retried: 1, failed: 0 });
+      const preserved =
+        "Sandbox health check timed out; replacement cleanup remains pending: second cleanup failure";
+      expect(ctx.updateSpy.mock.calls[0]?.[1]?.result).toMatchObject({ error: preserved });
+      const durableError = String(ctx.retryLaterSpy.mock.calls[0]?.[1]);
+      expect(durableError).toBe(
+        "RetryableProvisionTransportError: first startup failure\ncaused by: Error: Docker candidate cannot complete required Headscale registration: auth_required",
+      );
+      expect(durableError).not.toContain("second cleanup failure");
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("agent_provision retryable transport settles when the database bound is exhausted", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION, {}, { retryable_requeues: 5 }));
     ctx.retryLaterSpy.mockImplementation(async (retrySnapshot) => ({
@@ -1392,7 +1480,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("agent_suspend dispatch recovers the durable revision omitted by a user envelope", async () => {
     const job = makeJob(JOB_TYPES.AGENT_SUSPEND);
-    const ctx = harness(job, provisioningJobService, {
+    const ctx = harness(job, dispatchService, {
       authorization: "user_request",
       lifecycleRevision: 7,
     });
@@ -1467,7 +1555,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("agent_suspend dispatch honors a billing intent promoted to user authority", async () => {
     const job = makeJob(JOB_TYPES.AGENT_SUSPEND, { authorization: "billing_request" });
-    const ctx = harness(job, provisioningJobService, {
+    const ctx = harness(job, dispatchService, {
       authorization: "user_request",
       lifecycleRevision: 9,
     });

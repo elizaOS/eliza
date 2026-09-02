@@ -267,6 +267,10 @@ function routeTable(): RouteMatch[] {
       body: whenAttention(goalsPayload, { goals: [] }),
     },
     {
+      test: has("/api/approvals"),
+      body: () => ({ pending: [] }),
+    },
+    {
       test: has("/api/lifeops/sleep/history"),
       body: whenAttention(sleepHistory, {
         episodes: [],

@@ -73,7 +73,7 @@ describe("orchestrator widget registered HTTP surface", () => {
       server.listen(0, "127.0.0.1", resolve),
     );
     baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     if (server) {

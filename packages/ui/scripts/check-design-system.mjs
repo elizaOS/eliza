@@ -460,7 +460,17 @@ function* walk(directory) {
         yield full;
         continue;
       }
-      const source = fs.readFileSync(full, "utf8");
+      let source;
+      try {
+        source = fs.readFileSync(full, "utf8");
+      } catch (error) {
+        // Turbo can replace transient declaration files after readdir returns
+        // but before this scanner reads them. They are not governed React
+        // sources, so a vanished entry is safe to skip; all other I/O errors
+        // remain fatal.
+        if (error?.code === "ENOENT") continue;
+        throw error;
+      }
       if (
         /\bcreateElement\b/.test(source) &&
         /from\s+["']react["']/.test(source)

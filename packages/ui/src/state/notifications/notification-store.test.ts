@@ -133,6 +133,8 @@ async function flushDelivery(): Promise<void> {
 describe("notification-store", () => {
   beforeEach(() => {
     __resetNotificationStoreForTests();
+    __resetAuthStatusForTests();
+    __setAuthStatusForTests({ phase: "unauthenticated" });
     listNotifications.mockReset().mockResolvedValue({
       notifications: [],
       unreadCount: 0,
@@ -160,6 +162,7 @@ describe("notification-store", () => {
   });
 
   afterEach(() => {
+    __resetAuthStatusForTests();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -998,9 +1001,45 @@ describe("notification-store — protected hydrate gate (#16242)", () => {
     });
   });
 
-  it("hydrates on mount on a non-Cloud origin regardless of auth (unchanged)", async () => {
+  it("holds a non-Cloud inbox until the auth probe resolves", async () => {
     setOrigin("http://localhost:2138/");
     initNotifications();
+    await Promise.resolve();
+    expect(listNotifications).not.toHaveBeenCalled();
+
+    __setAuthStatusForTests({ phase: "unauthenticated" });
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps a pairing-gated remote inbox disabled until authentication", async () => {
+    setOrigin("https://agent.example.com/");
+    __setAuthStatusForTests({
+      phase: "unauthenticated",
+      reason: "remote_auth_required",
+      access: {
+        mode: "remote",
+        passwordConfigured: false,
+        ownerConfigured: false,
+      },
+    });
+
+    initNotifications();
+    await Promise.resolve();
+    expect(listNotifications).not.toHaveBeenCalled();
+    expect(__getStateForTests().hydrationStatus).toBe("disabled");
+
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+      session: { id: "s-1", kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: false,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
+
     await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
   });
 });
@@ -1031,6 +1070,7 @@ describe("notification-store — authority isolation (#18391)", () => {
   beforeEach(() => {
     __resetNotificationStoreForTests();
     __resetAuthStatusForTests();
+    __setAuthStatusForTests({ phase: "unauthenticated" });
     listNotifications
       .mockReset()
       .mockResolvedValue({ notifications: [], unreadCount: 0 });

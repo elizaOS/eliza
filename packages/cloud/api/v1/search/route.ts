@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import {
+  asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
@@ -11,6 +12,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { executeHostedGoogleSearch } from "@/lib/services/google-search";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -31,17 +33,21 @@ const searchRequestSchema = z.object({
 async function handlePOST(c: AppContext) {
   try {
     let raw: unknown;
+    let pendingResponse: Response | undefined;
     try {
       raw = await c.req.raw.json();
     } catch (error) {
       if (!(error instanceof SyntaxError)) throw error;
       // error-policy:J3 malformed JSON is an explicit invalid request.
-      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+      pendingResponse = Response.json(
+        { error: "Invalid JSON body" },
+        { status: 400 },
+      );
     }
     const bodyResult = searchRequestSchema.safeParse(raw);
 
     if (!bodyResult.success) {
-      return Response.json(
+      pendingResponse ??= Response.json(
         {
           error: "Invalid search request",
           details: bodyResult.error.flatten(),
@@ -50,11 +56,18 @@ async function handlePOST(c: AppContext) {
       );
     }
 
-    const body = bodyResult.data;
     const caller = await requireGenerativeRouteCaller(c, {
       compatibility: "raw",
       rateLimitEndpoint: "standard",
+      deferStrongCredentialCheck: pendingResponse === undefined,
     });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    if (pendingResponse) return pendingResponse;
+    if (!bodyResult.success) throw bodyResult.error;
+    const body = bodyResult.data;
     const result = await executeHostedGoogleSearch(
       {
         query: body.query,
@@ -67,7 +80,10 @@ async function handlePOST(c: AppContext) {
         endDate: body.endDate,
       },
       {
-        ...getGenerativeOperationContext(c, caller),
+        ...getGenerativeOperationContext(c, caller, {
+          credentialForAdmission: () =>
+            credentialGuard.credentialForAdmission(),
+        }),
         requestSource: "api",
       },
     );
@@ -77,6 +93,9 @@ async function handlePOST(c: AppContext) {
     logger.error("[/api/v1/search] Request failed", {
       error: error instanceof Error ? error.message : String(error),
     });
+
+    const admissionError = asGenerativeCacheApiError(error);
+    if (admissionError) return failureResponse(c, admissionError);
 
     return Response.json(
       {

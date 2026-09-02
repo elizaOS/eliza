@@ -3,10 +3,11 @@
 /**
  * PGlite TCP server for local development.
  *
- * Boots an embedded PGlite instance with pgvector and exposes it on a
- * Postgres-compatible TCP socket so the wrangler/Miniflare API and any other
- * `pg`-style consumer can connect with no Docker. Managed harnesses can require
- * an ownership marker before accepting the socket as their own.
+ * Boots an embedded PGlite instance with the production migration extensions
+ * (including pgvector) and exposes it on a Postgres-compatible TCP socket so
+ * the wrangler/Miniflare API and other `pg`-style consumers can connect with no
+ * Docker. One process runs per workspace; managed harnesses can require an
+ * ownership marker before accepting the socket as their own.
  *
  *   bun run pglite:server                              # default :5432, .eliza/.pgdata
  *   PGLITE_PORT=55432 bun run pglite:server
@@ -57,15 +58,17 @@ if (DATA_DIR) {
 }
 
 const requireFromCwd = createRequire(path.join(process.cwd(), "package.json"));
-const [{ PGlite }, { vector }, { PGLiteSocketServer }] = await Promise.all([
-  import(requireFromCwd.resolve("@electric-sql/pglite")),
-  import(requireFromCwd.resolve("@electric-sql/pglite/vector")),
-  import(requireFromCwd.resolve("@electric-sql/pglite-socket")),
-]);
+const [{ PGlite }, { btree_gist }, { vector }, { PGLiteSocketServer }] =
+  await Promise.all([
+    import(requireFromCwd.resolve("@electric-sql/pglite")),
+    import(requireFromCwd.resolve("@electric-sql/pglite/contrib/btree_gist")),
+    import(requireFromCwd.resolve("@electric-sql/pglite/vector")),
+    import(requireFromCwd.resolve("@electric-sql/pglite-socket")),
+  ]);
 
 const db = await PGlite.create({
   dataDir: DATA_DIR,
-  extensions: { vector },
+  extensions: { btree_gist, vector },
 });
 
 const server = new PGLiteSocketServer({

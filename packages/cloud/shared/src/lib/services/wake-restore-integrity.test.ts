@@ -30,6 +30,7 @@ import { resetKmsClientForTests } from "../../db/crypto/kms-client";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { agentBackupObjects } from "../../db/schemas/agent-backup-catalog";
+import { agentNodeIncarnationHistories } from "../../db/schemas/agent-node-incarnation-histories";
 import {
   type AgentBackupStateData,
   agentBackupCatalogAuthorities,
@@ -187,6 +188,7 @@ beforeAll(async () => {
       organizations,
       users,
       userCharacters,
+      agentNodeIncarnationHistories,
       agentSandboxes,
       agentSandboxBackups,
       agentBackupCatalogAuthorities,

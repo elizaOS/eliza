@@ -110,7 +110,15 @@ export function renderDiscordInteractions(
 			}
 		}
 		if (layout.needsFallback) needsFreeTextReply = true;
-		if (!producedButton && layout.text) extraLines.push(layout.text);
+		if (!producedButton && layout.text) {
+			extraLines.push(layout.text);
+		} else if (!producedButton && block.kind === "task") {
+			// A task without a configured app origin cannot render its link button.
+			// Preserve the task title as actionable prose instead of silently losing
+			// the only task-specific information on this transport.
+			extraLines.push(block.title);
+			needsFreeTextReply = true;
+		}
 	}
 
 	// Discord hard-caps a message at 5 action rows. When controls overflow the

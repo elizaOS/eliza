@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 /**
  * Development script that starts:
@@ -10,10 +10,10 @@
  * runtime is ready; proxied requests recover as soon as the API comes online.
  *
  * Usage:
- *   node eliza/packages/app-core/scripts/dev-ui.mjs            # from Eliza repo root — API + UI
- *   node packages/app-core/scripts/dev-ui.mjs                  # from eliza repo root — same
- *   node …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
- *   node …/dev-ui.mjs --check-acp-hot-reload=31337             # one-shot reload safety probe
+ *   bun eliza/packages/app-core/scripts/dev-ui.mjs            # from Eliza repo root — API + UI
+ *   bun packages/app-core/scripts/dev-ui.mjs                  # from eliza repo root — same
+ *   bun …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
+ *   bun …/dev-ui.mjs --check-acp-hot-reload=31337             # one-shot reload safety probe
  */
 import { execSync, spawn } from "node:child_process";
 import {
@@ -420,7 +420,7 @@ function resolveApiRuntimeCommand(env) {
 }
 
 const visionDepsRetryCommand = [
-  "node",
+  "bun",
   path.relative(cwd, visionDepsScriptPath) || visionDepsScriptPath,
   `--name=${cliName}`,
 ]
@@ -451,7 +451,8 @@ function dim(text) {
 }
 
 // ---------------------------------------------------------------------------
-// Runtime detection — prefer bun when available, fall back to node/npx.
+// Runtime detection — prefer Bun when available, retaining an explicit Node
+// override only for operators diagnosing a Bun-specific failure.
 // ---------------------------------------------------------------------------
 
 function which(cmd) {
@@ -488,12 +489,11 @@ function which(cmd) {
 
 const forceNodeRuntime = process.env.ELIZA_FORCE_NODE === "1";
 const hasNode = !!which("node");
-const hasBun = !forceNodeRuntime && !!which("bun") && !!which("bunx");
+const hasBun = !forceNodeRuntime && !!which("bun");
 
-if (!hasBun && !which("npx")) {
+if (!hasBun && !hasNode) {
   console.error(
-    'Neither "bun" nor "npx" was found in your PATH. ' +
-      "Install Bun or Node.js with npx to run this dev script.",
+    'Neither "bun" nor "node" was found in your PATH. Install Bun to run the supported development path.',
   );
   process.exit(1);
 }
@@ -842,8 +842,9 @@ let visionDepsCheckStarted = false;
 function startVisionDepsCheck() {
   if (visionDepsCheckStarted || shuttingDown) return;
   visionDepsCheckStarted = true;
+  const visionRuntime = which("bun") ?? process.execPath;
   visionDepsProcess = spawn(
-    "node",
+    visionRuntime,
     [visionDepsScriptPath, `--name=${cliName}`],
     { stdio: "inherit" },
   );

@@ -93,9 +93,9 @@ function parsePGliteDataDir(url: string): string {
 let pgliteClientForTests: import("@electric-sql/pglite").PGlite | null = null;
 
 /**
- * Build a PGlite instance with the `vector` extension loaded so the
- * cloud schema's pgvector columns (used by trajectories, embeddings, etc.)
- * resolve at migration and query time. Synchronous module require keeps the
+ * Build a PGlite instance with the extensions required by the cloud schema.
+ * `vector` supports embeddings and `btree_gist` supports exclusion constraints
+ * such as non-overlapping subscription allowance periods. Synchronous module require keeps the
  * call site type as `Database`; PGlite is bun/node-only and does not exist
  * on the Workers runtime.
  */
@@ -103,9 +103,11 @@ function createPGliteClient(dataDir: string): Database {
   const { PGlite } = require("@electric-sql/pglite") as typeof import("@electric-sql/pglite");
   const { vector } =
     require("@electric-sql/pglite/vector") as typeof import("@electric-sql/pglite/vector");
+  const { btree_gist } =
+    require("@electric-sql/pglite/contrib/btree_gist") as typeof import("@electric-sql/pglite/contrib/btree_gist");
   const client = new PGlite({
     dataDir: dataDir === "memory://" ? undefined : dataDir,
-    extensions: { vector },
+    extensions: { btree_gist, vector },
   });
   pgliteClientForTests = client;
   const database: PgliteDatabase<typeof schema> = drizzlePGlite({ client, schema });

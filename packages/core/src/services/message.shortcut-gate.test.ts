@@ -608,6 +608,54 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(settled.toolCallId).toBe(announced.toolCall?.id);
 	});
 
+	it("settles the shortcut announcement exactly once when infrastructure throws", async () => {
+		const connectorAction = {
+			...echoAction(),
+			connectorAccountPolicy: { provider: "gmail" },
+		} as Action;
+		const { runtime } = makeRuntime({ actions: [connectorAction] });
+		const infrastructureError = new Error("account storage unavailable");
+		Object.assign(runtime, {
+			getService: vi.fn(() => {
+				throw infrastructureError;
+			}),
+		});
+		const onToolCall = vi.fn();
+		const onToolResult = vi.fn();
+
+		await expect(
+			runWithStreamingContext(
+				{
+					onToolCall,
+					onToolResult,
+				} as never,
+				() =>
+					runShortcutGate({
+						// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+						runtime: runtime as any,
+						message: msg("/echo hi"),
+						state: {} as State,
+						responseId,
+						senderRole: "OWNER",
+					}),
+			),
+		).rejects.toBe(infrastructureError);
+
+		expect(onToolCall).toHaveBeenCalledTimes(1);
+		expect(onToolResult).toHaveBeenCalledTimes(1);
+		const announced = onToolCall.mock.calls[0]?.[0] as {
+			toolCall?: { id?: string };
+		};
+		expect(onToolResult.mock.calls[0]?.[0]).toMatchObject({
+			toolCallId: announced.toolCall?.id,
+			status: "failed",
+			result: expect.objectContaining({
+				success: false,
+				error: infrastructureError.message,
+			}),
+		});
+	});
+
 	it("allows an OWNER to trigger the same OWNER-gated shortcut action", async () => {
 		const handler = vi.fn(
 			async (

@@ -235,13 +235,13 @@ describe("ChatOverlay slash commands", () => {
     expect(slash.navigateSettings).not.toHaveBeenCalled();
   });
 
-  it("feature-flagged natural navigation runs through the client command path", () => {
+  it("feature-flagged natural navigation preserves the model-authored turn", () => {
     const slash = makeSlash({ naturalShortcutsEnabled: true });
     const { input, controller } = renderOverlay(slash);
     fireEvent.change(input, { target: { value: "open settings" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(slash.navigateSettings).toHaveBeenCalledWith(undefined);
-    expect(controller.send).not.toHaveBeenCalled();
+    expect(controller.send).toHaveBeenCalledWith("open settings");
     expect(input.value).toBe("");
   });
 

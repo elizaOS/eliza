@@ -1581,6 +1581,59 @@ export class HouseholdCoordinationService {
     return true;
   }
 
+  /**
+   * Authorizes one exact persisted grant rather than allowing a different
+   * grant for the same principal to satisfy a resource binding.
+   */
+  async requireGrantActive(input: {
+    householdId?: string;
+    grantId: string;
+    principalEntityId: string;
+    scope: HouseholdAccessScope;
+    at?: Date;
+  }): Promise<HouseholdAccessGrant> {
+    const householdId = householdNamespace(input.householdId);
+    const grantId = normalizeHouseholdIdentifier(input.grantId, "grantId");
+    const principalEntityId = normalizeHouseholdIdentifier(
+      input.principalEntityId,
+      "principalEntityId",
+    );
+    const grant = await this.deps.repository.getGrant(grantId);
+    if (
+      !grant ||
+      grant.householdId !== householdId ||
+      grant.principalEntityId !== principalEntityId ||
+      !expandGrantScopes(grant.scopes).includes(input.scope)
+    ) {
+      throw new HouseholdCoordinationError(
+        "The exact household grant does not authorize this resource",
+        "HOUSEHOLD_ACCESS_DENIED",
+        { householdId, grantId, principalEntityId, scope: input.scope },
+      );
+    }
+    const at = input.at ?? this.now();
+    if (await this.grantIsActive(grant, at)) return grant;
+    if (grant.revokedAt) {
+      throw new HouseholdCoordinationError(
+        "Household access grant has been revoked",
+        "HOUSEHOLD_GRANT_REVOKED",
+        { householdId, grantId, principalEntityId, scope: input.scope },
+      );
+    }
+    if (grant.expiresAt && Date.parse(grant.expiresAt) <= at.getTime()) {
+      throw new HouseholdCoordinationError(
+        "Household access grant has expired",
+        "HOUSEHOLD_GRANT_EXPIRED",
+        { householdId, grantId, principalEntityId, scope: input.scope },
+      );
+    }
+    throw new HouseholdCoordinationError(
+      "Household access grant is no longer active",
+      "HOUSEHOLD_ACCESS_DENIED",
+      { householdId, grantId, principalEntityId, scope: input.scope },
+    );
+  }
+
   private async activeGrants(
     principalEntityId: string,
     householdId: string,

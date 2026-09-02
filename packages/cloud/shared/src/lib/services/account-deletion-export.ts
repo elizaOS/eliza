@@ -23,6 +23,13 @@ const EXPORT_REVOCATION_SAFETY_MILLISECONDS = 15 * 60 * 1_000;
 const MAX_ROWS_PER_TABLE = 100_000;
 const MAX_EXPORT_BYTES = 32 * 1024 * 1024;
 const ENCRYPTED_EXPORT_MAGIC = Buffer.from("ELZXPT01", "ascii");
+const EXPORT_REVOCATION_TOMBSTONE_FORMAT = "eliza-account-export-revoked-v1";
+const EXPORT_REVOCATION_TOMBSTONE_BYTES = new TextEncoder().encode(
+  "ELIZA_ACCOUNT_EXPORT_REVOKED_V1\n",
+);
+const EXPORT_REVOCATION_TOMBSTONE_SHA256 = createHash("sha256")
+  .update(EXPORT_REVOCATION_TOMBSTONE_BYTES)
+  .digest("hex");
 const REDACTED_SECURITY_MATERIAL = "[REDACTED_SECURITY_MATERIAL]";
 const SENSITIVE_COLUMN =
   /(^|_)(access_token|refresh_token|token|secret|password|credential|api_key|private_key|encryption_key|key_hash|hash|ciphertext|nonce|signature|authorization|cookie|session_token)(_|$)/i;
@@ -471,20 +478,72 @@ async function readVerifiedExportObject(input: {
 
 async function completeExportRevocation(input: {
   requestId: string;
-  requestDigest: string;
   phaseReceiptId: string;
   generation: number;
+  tombstone: RuntimeR2ObjectMetadata;
   now: Date;
 }): Promise<boolean> {
+  const checksum = input.tombstone.checksums?.sha256;
+  if (!input.tombstone.version || !checksum) {
+    throw new AccountDeletionExportError(
+      "Deletion export tombstone receipt is incomplete",
+      "EXPORT_INTEGRITY_FAILED",
+    );
+  }
   return await accountDeletionRequestsRepository.completeExportRevocation({
     requestId: input.requestId,
     phaseReceiptId: input.phaseReceiptId,
     generation: input.generation,
     providerReceiptDigest: sha256(
-      `r2-export-delete-receipt:v1:${exportObjectKey(input.requestDigest)}`,
+      `r2-export-tombstone-receipt:v1:${input.tombstone.version}:${input.tombstone.etag}:${Buffer.from(checksum).toString("hex")}`,
     ),
     now: input.now,
   });
+}
+
+function isExportRevocationTombstone(
+  object: RuntimeR2ObjectMetadata | null,
+): object is RuntimeR2ObjectMetadata & { version: string } {
+  const checksum = object?.checksums?.sha256;
+  return Boolean(
+    object?.version &&
+      checksum &&
+      object.size === EXPORT_REVOCATION_TOMBSTONE_BYTES.byteLength &&
+      object.customMetadata?.format === EXPORT_REVOCATION_TOMBSTONE_FORMAT &&
+      object.customMetadata?.byteCount === String(EXPORT_REVOCATION_TOMBSTONE_BYTES.byteLength) &&
+      object.customMetadata?.checksumSha256 === EXPORT_REVOCATION_TOMBSTONE_SHA256 &&
+      Buffer.from(checksum).toString("hex") === EXPORT_REVOCATION_TOMBSTONE_SHA256,
+  );
+}
+
+async function installExportRevocationTombstone(input: {
+  bucket: RuntimeR2Bucket;
+  objectKey: string;
+  observed: RuntimeR2ObjectMetadata | null;
+}): Promise<RuntimeR2ObjectMetadata> {
+  let observed = input.observed;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (isExportRevocationTombstone(observed)) return observed;
+
+    // The recovery writer uses If-None-Match: *. Whichever conditional write
+    // wins first, a strongly consistent HEAD lets this loop either observe the
+    // immutable tombstone or replace the exact old export generation by ETag.
+    await input.bucket.put(input.objectKey, EXPORT_REVOCATION_TOMBSTONE_BYTES, {
+      onlyIf: observed ? { etagMatches: observed.etag } : { etagDoesNotMatch: "*" },
+      httpMetadata: { contentType: "application/octet-stream" },
+      customMetadata: {
+        format: EXPORT_REVOCATION_TOMBSTONE_FORMAT,
+        byteCount: String(EXPORT_REVOCATION_TOMBSTONE_BYTES.byteLength),
+        checksumSha256: EXPORT_REVOCATION_TOMBSTONE_SHA256,
+      },
+      sha256: EXPORT_REVOCATION_TOMBSTONE_SHA256,
+    });
+    observed = (await input.bucket.head?.(input.objectKey)) ?? null;
+  }
+  throw new AccountDeletionExportError(
+    "Deletion export tombstone could not be confirmed",
+    "EXPORT_INTEGRITY_FAILED",
+  );
 }
 
 async function reconcileExportRevocationCandidate(input: {
@@ -520,12 +579,12 @@ async function reconcileExportRevocationCandidate(input: {
     return "pending";
   }
 
-  if (!existing) {
+  if (isExportRevocationTombstone(existing)) {
     return (await completeExportRevocation({
       requestId: input.requestId,
-      requestDigest: input.requestDigest,
       phaseReceiptId: lease.receipt.id,
       generation: lease.generation,
+      tombstone: existing,
       now: input.now,
     }))
       ? "completed"
@@ -536,7 +595,7 @@ async function reconcileExportRevocationCandidate(input: {
     await accountDeletionRequestsRepository.markPhaseRetryable({
       phaseReceiptId: lease.receipt.id,
       generation: lease.generation,
-      errorCode: "EXPORT_REVOCATION_ABSENCE_CONFIRMED",
+      errorCode: "EXPORT_REVOCATION_TOMBSTONE_ABSENCE_CONFIRMED",
       retryClass: "provider_absence_confirmed",
       now: input.now,
       retryAt: new Date(input.now.getTime() + EXPORT_RETRY_MILLISECONDS),
@@ -551,29 +610,27 @@ async function reconcileExportRevocationCandidate(input: {
   );
   if (!started) return "pending";
   try {
-    await input.bucket.delete(objectKey);
-    if (await input.bucket.head?.(objectKey)) {
-      throw new AccountDeletionExportError(
-        "Deletion export object still exists after revocation",
-        "EXPORT_INTEGRITY_FAILED",
-      );
-    }
+    const tombstone = await installExportRevocationTombstone({
+      bucket: input.bucket,
+      objectKey,
+      observed: existing,
+    });
     return (await completeExportRevocation({
       requestId: input.requestId,
-      requestDigest: input.requestDigest,
       phaseReceiptId: lease.receipt.id,
       generation: lease.generation,
+      tombstone,
       now: input.now,
     }))
       ? "completed"
       : "pending";
   } catch {
-    // error-policy:J2 DELETE may have succeeded with a lost response; retain
-    // reconciliation state so the next lease proves absence before commit.
+    // error-policy:J2 the tombstone PUT may have succeeded with a lost
+    // response; retain reconciliation so the next lease proves it by HEAD.
     await accountDeletionRequestsRepository.markPhaseForReconciliation({
       phaseReceiptId: lease.receipt.id,
       generation: lease.generation,
-      errorCode: "EXPORT_REVOCATION_OUTCOME_AMBIGUOUS",
+      errorCode: "EXPORT_REVOCATION_TOMBSTONE_OUTCOME_AMBIGUOUS",
       now: input.now,
       retryAt: new Date(input.now.getTime() + EXPORT_RETRY_MILLISECONDS),
     });

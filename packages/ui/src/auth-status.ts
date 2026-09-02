@@ -4,6 +4,7 @@
  */
 export {
   type AuthStatusState,
+  getAuthStatusSnapshot,
   isAuthenticatedNow,
   subscribeAuthStatus,
 } from "./hooks/useAuthStatus";

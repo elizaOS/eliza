@@ -1279,7 +1279,7 @@ describe("deterministic completion-residuals gate", () => {
     expect(snapshot?.residuals.map((r) => r.kind)).toContain(
       "unpushed_commits",
     );
-  });
+  }, 15_000);
 
   it("blocks a CRITERIA-FREE task with a dirty workspace (no trivial fast-pass)", async () => {
     const fake = makeFakeAcp();

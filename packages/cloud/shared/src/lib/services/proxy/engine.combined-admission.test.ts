@@ -1,35 +1,62 @@
 /**
- * Proves the generic RPC proxy consumes one pre-resolved standing/admission
- * snapshot, marks immediately before provider dispatch, and retains settlement
- * asynchronously without a second auth or balance-cache read.
+ * Proves the generic paid proxy engine consumes a pre-resolved combined
+ * admission, marks before dispatch, and retains exactly one async settlement.
  */
 
-import { afterAll, beforeEach, expect, mock, test } from "bun:test";
-import * as authActual from "../../auth";
-import * as creditsActual from "../credits";
-import * as admissionActual from "../organization-inference-admission";
+import { beforeEach, expect, mock, test } from "bun:test";
+import { InferenceCredentialRevokedError } from "../inference-credential-revocation";
 import type { ServiceConfig } from "./types";
 
-const realAuth = { ...authActual };
-const realAdmission = { ...admissionActual };
 const legacyAuth = mock(async () => {
   throw new Error("legacy auth must not run");
 });
-const admit = mock<typeof admissionActual.admitOrganizationInference>();
+const genericReserve = mock(async () => {
+  throw new Error("generic reserve must not run");
+});
+const admit = mock();
+const proxyCacheGet = mock();
+const proxyCacheSet = mock();
+const rateLimitWrap = mock((handler: unknown) => handler);
+
+class TestInsufficientCreditsError extends Error {
+  constructor(
+    readonly required: number,
+    readonly available: number,
+  ) {
+    super("Insufficient credits");
+  }
+}
 
 mock.module("../../auth", () => ({
-  ...realAuth,
   requireAuth: legacyAuth,
   requireAuthOrApiKey: legacyAuth,
   requireAuthOrApiKeyWithOrg: legacyAuth,
   requireAuthWithOrg: legacyAuth,
 }));
+mock.module("../credits", () => ({
+  creditsService: { reserve: genericReserve },
+  InsufficientCreditsError: TestInsufficientCreditsError,
+}));
 mock.module("../organization-inference-admission", () => ({
-  ...realAdmission,
   admitOrganizationInference: admit,
 }));
+mock.module("../../cache/client", () => ({
+  cache: { get: proxyCacheGet, set: proxyCacheSet },
+}));
+mock.module("../usage", () => ({
+  usageService: { create: mock(async () => undefined) },
+}));
+mock.module("../../middleware/rate-limit", () => ({
+  withRateLimit: rateLimitWrap,
+}));
+mock.module("./pricing", () => ({
+  PricingNotFoundError: class PricingNotFoundError extends Error {},
+}));
 
-const { createHandler } = await import("./engine");
+const [{ InferenceBalanceCacheWarmingError }, { createHandler }] = await Promise.all([
+  import("../inference-billing-fast-path"),
+  import("./engine"),
+]);
 
 const config: ServiceConfig = {
   id: "evm-rpc",
@@ -49,15 +76,19 @@ const snapshot = {
 
 beforeEach(() => {
   legacyAuth.mockClear();
+  genericReserve.mockClear();
   admit.mockReset();
+  proxyCacheGet.mockClear();
+  proxyCacheSet.mockClear();
+  rateLimitWrap.mockClear();
 });
 
-afterAll(() => {
-  mock.module("../../auth", () => realAuth);
-  mock.module("../organization-inference-admission", () => realAdmission);
-});
-
-test("combined RPC admission orders mark before dispatch and defers settlement", async () => {
+test("combined admission orders mark before dispatch and returns before settlement", async () => {
+  const credential = {
+    kind: "api_key" as const,
+    credentialId: "key-1",
+    userId: "user-1",
+  };
   const order: string[] = [];
   let finishSettlement: (() => void) | undefined;
   const settlement = new Promise<void>((resolve) => {
@@ -77,11 +108,13 @@ test("combined RPC admission orders mark before dispatch and defers settlement",
     settleUnknown: settle,
   });
   const retained: Promise<unknown>[] = [];
-  const work = mock(async () => {
+  const work = mock(async ({ auth }) => {
+    expect(auth.apiKey?.id).toBe("key-1");
     order.push("dispatch");
     return { response: Response.json({ ok: true }) };
   });
   const handler = createHandler(config, work, {
+    mode: "combined",
     auth: {
       user: { id: "user-1", organization_id: "org-1" },
       apiKey: { id: "key-1" },
@@ -89,6 +122,7 @@ test("combined RPC admission orders mark before dispatch and defers settlement",
     admissionSnapshot: snapshot,
     executionCtx: { waitUntil: (promise) => retained.push(promise) },
     requestId: "rpc-1",
+    credentialForAdmission: () => credential,
   });
 
   const response = await handler(
@@ -101,17 +135,64 @@ test("combined RPC admission orders mark before dispatch and defers settlement",
   expect(response.status).toBe(200);
   expect(order).toEqual(["mark", "dispatch", "settle"]);
   expect(legacyAuth).not.toHaveBeenCalled();
+  expect(genericReserve).not.toHaveBeenCalled();
   expect(admit).toHaveBeenCalledTimes(1);
+  expect(admit.mock.calls[0]?.[0].apiKeyId).toBe("key-1");
   expect(admit.mock.calls[0]?.[0].admissionSnapshot).toBe(snapshot);
+  expect(admit.mock.calls[0]?.[0].credential).toBe(credential);
+  expect(settle).toHaveBeenCalledTimes(1);
+  expect(proxyCacheGet).not.toHaveBeenCalled();
+  expect(proxyCacheSet).not.toHaveBeenCalled();
   expect(retained).toHaveLength(1);
   finishSettlement?.();
   await Promise.all(retained);
 });
 
-test("combined RPC admission denial performs zero provider dispatch", async () => {
-  admit.mockRejectedValueOnce(new creditsActual.InsufficientCreditsError(0.25, 0));
+test("combined warming failure is a sanitized retryable 503 before provider dispatch", async () => {
+  admit.mockRejectedValueOnce(new InferenceBalanceCacheWarmingError());
   const work = mock(async () => ({ response: new Response("not reached") }));
   const handler = createHandler(config, work, {
+    mode: "combined",
+    auth: { user: { id: "user-1", organization_id: "org-1" } },
+    admissionSnapshot: snapshot,
+    executionCtx: { waitUntil: () => undefined },
+    requestId: "rpc-warming",
+  });
+
+  const response = await handler(
+    new Request("https://api.test/api/v1/rpc/ethereum", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", id: 1 }),
+    }),
+  );
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).toBe("1");
+  expect(await response.json()).toEqual({
+    success: false,
+    error: "Provider admission is unavailable; retry shortly",
+    code: "service_unavailable",
+    details: { retryable: true, retryAfterSeconds: 1 },
+  });
+  expect(work).not.toHaveBeenCalled();
+  expect(genericReserve).not.toHaveBeenCalled();
+});
+
+test("explicit local compatibility retains the configured proxy limiter", () => {
+  createHandler({ ...config, rateLimit: { windowMs: 60_000, maxRequests: 10 } }, mock(), {
+    mode: "compatibility",
+    auth: { user: { id: "user-1", organization_id: "org-1" } },
+    requestId: "local-compatibility",
+  });
+
+  expect(rateLimitWrap).toHaveBeenCalledTimes(1);
+});
+
+test("combined admission denial performs zero provider dispatch", async () => {
+  admit.mockRejectedValueOnce(new TestInsufficientCreditsError(0.25, 0));
+  const work = mock(async () => ({ response: new Response("not reached") }));
+  const handler = createHandler(config, work, {
+    mode: "combined",
     auth: { user: { id: "user-1", organization_id: "org-1" } },
     admissionSnapshot: snapshot,
     executionCtx: { waitUntil: () => undefined },
@@ -128,4 +209,38 @@ test("combined RPC admission denial performs zero provider dispatch", async () =
   expect(response.status).toBe(402);
   expect(work).not.toHaveBeenCalled();
   expect(legacyAuth).not.toHaveBeenCalled();
+  expect(genericReserve).not.toHaveBeenCalled();
+});
+
+test("combined credential denial is a safe standing response with zero dispatch", async () => {
+  admit.mockRejectedValueOnce(new InferenceCredentialRevokedError("session_binding_revoked"));
+  const work = mock(async () => ({ response: new Response("not reached") }));
+  const handler = createHandler(config, work, {
+    mode: "combined",
+    auth: { user: { id: "user-1", organization_id: "org-1" } },
+    admissionSnapshot: snapshot,
+    credential: {
+      kind: "steward_session",
+      userId: "user-1",
+      stewardUserId: "steward-1",
+      issuedAt: 1,
+    },
+    executionCtx: { waitUntil: () => undefined },
+    requestId: "rpc-revoked",
+  });
+
+  const response = await handler(
+    new Request("https://api.test/api/v1/rpc/ethereum", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", id: 1 }),
+    }),
+  );
+
+  expect(response.status).toBe(401);
+  await expect(response.json()).resolves.toMatchObject({
+    error: "Authentication required",
+    code: "authentication_required",
+    details: { reason: "credential_inactive" },
+  });
+  expect(work).not.toHaveBeenCalled();
 });

@@ -241,6 +241,43 @@ export const googleCalendarWatchChannels = calendarPgSchema.table(
   ],
 );
 
+/** Durable identity and reconciliation checkpoint for an Eliza event linked to Google. */
+export const linkedCalendarEvents = calendarPgSchema.table(
+  "linked_calendar_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    localEventId: text("local_event_id").notNull(),
+    connectorAccountId: text("connector_account_id").notNull(),
+    providerCalendarId: text("provider_calendar_id").notNull(),
+    providerEventId: text("provider_event_id"),
+    providerEtag: text("provider_etag"),
+    localRevision: integer("local_revision").notNull().default(0),
+    lastCommonSemanticHash: text("last_common_semantic_hash"),
+    state: text("state").notNull().default("dirty"),
+    pendingOperation: text("pending_operation"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    lastErrorCode: text("last_error_code"),
+    lastErrorMessage: text("last_error_message"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique("linked_calendar_events_local_unique").on(t.agentId, t.localEventId),
+    unique("linked_calendar_events_provider_unique").on(
+      t.agentId,
+      t.connectorAccountId,
+      t.providerCalendarId,
+      t.providerEventId,
+    ),
+    index("linked_calendar_events_reconcile_idx").on(
+      t.agentId,
+      t.state,
+      t.updatedAt,
+    ),
+  ],
+);
+
 export const calendarSchema = {
   calendarEvents,
   calendarSyncStates,
@@ -248,4 +285,5 @@ export const calendarSchema = {
   calendarSecretCleanup,
   calendarFeedPreferences,
   googleCalendarWatchChannels,
+  linkedCalendarEvents,
 };

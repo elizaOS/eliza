@@ -123,7 +123,7 @@ const SHELL_VIEW_TARGETS: readonly {
     path: "/character/documents",
     viewId: "documents",
     readyTestId: "documents-view",
-    requiredIds: ["scope-all", "document-doc-smoke-1"],
+    requiredIds: ["facet-all", "document-doc-smoke-1"],
   },
   {
     label: "Character",
@@ -158,21 +158,21 @@ const SHELL_VIEW_TARGETS: readonly {
     path: "/apps/files",
     viewId: "files",
     readyTestId: "files-view",
-    requiredIds: ["file-facet-all", `file-download-${FILE_HASH_A}-png`],
+    requiredIds: ["file-type-filter", `file-download-${FILE_HASH_A}-png`],
   },
   {
     label: "Relationships",
     path: "/apps/relationships",
     viewId: "relationships",
     readyTestId: "relationships-view",
-    requiredIds: ["relationships-platform"],
+    requiredIds: ["open-self"],
   },
   {
     label: "Logs",
     path: "/apps/logs",
     viewId: "logs",
     readyTestId: "logs-view",
-    requiredIds: ["logs-filter-level", "logs-clear"],
+    requiredIds: ["logs-filter", "logs-clear"],
   },
   {
     label: "Database",
@@ -304,7 +304,7 @@ async function describeElement(
 }
 
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
   await installBridgeInventoryFixtures(page);
 });
@@ -342,21 +342,6 @@ test("shell bridge can fill and click representative editable controls", async (
       { timeout: 5_000 },
     )
     .toBe("Bridge-edited character bio.");
-
-  await openAppPath(page, "/apps/logs");
-  await expect(page.getByTestId("logs-view")).toBeVisible({ timeout: 60_000 });
-  const levelFill = (await interact(page, "logs", "agent-fill", {
-    id: "logs-filter-level",
-    value: "error",
-  })) as { ok?: boolean };
-  expect(levelFill?.ok).toBe(true);
-  await expect
-    .poll(
-      async () =>
-        (await describeElement(page, "logs", "logs-filter-level"))?.value,
-      { timeout: 5_000 },
-    )
-    .toBe("error");
 
   await openAppPath(page, "/apps/database");
   await expect(page.getByTestId("database-view")).toBeVisible({

@@ -12,7 +12,6 @@
 
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -21,6 +20,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import StewardLoginSection from "./steward-login-section";
 
 const sessionSpies = vi.hoisted(() => ({
   sync: vi.fn(),
@@ -125,29 +125,19 @@ function hasTestAuthMarker(): boolean {
 }
 
 /**
- * The flag and key are read once at module evaluation, so each scenario
- * stubs the env first and then loads a fresh copy of the component.
+ * Each scenario stubs the build-time flag and key before mounting the
+ * component so the supported configuration matrix stays explicit.
  */
-async function renderSectionWithEnv(env: {
-  testAuth?: string;
-  localKey?: string;
-}) {
-  vi.resetModules();
+function renderSectionWithEnv(env: { testAuth?: string; localKey?: string }) {
   vi.stubEnv("VITE_PLAYWRIGHT_TEST_AUTH", env.testAuth ?? "");
   vi.stubEnv("VITE_LOCAL_DEDICATED_TEST_API_KEY", env.localKey ?? "");
   vi.stubEnv("NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH", "");
   vi.stubEnv("NEXT_PUBLIC_LOCAL_DEDICATED_TEST_API_KEY", "");
-  const { default: StewardLoginSection } = await import(
-    "./steward-login-section"
-  );
   const rendered = render(
     <MemoryRouter initialEntries={["/login?returnTo=%2Fcloud%2Fagents"]}>
       <StewardLoginSection />
     </MemoryRouter>,
   );
-  await act(async () => {
-    await Promise.resolve();
-  });
   return rendered;
 }
 

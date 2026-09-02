@@ -378,7 +378,7 @@ describe("resolveSharedAgent", () => {
     });
   });
 
-  test("cache-only converges for a bootstrap-window dedicated agent: retry is served authoritatively", async () => {
+  test("cache-only converges for a provisioning Dedicated agent: retry is refused authoritatively", async () => {
     findByIdAndOrg.mockResolvedValue(
       agent({ execution_tier: "dedicated-lazy", status: "provisioning" }),
     );
@@ -402,7 +402,11 @@ describe("resolveSharedAgent", () => {
         cacheOnly: true,
         executionCtx: { waitUntil: (promise) => waited.push(promise) },
       }),
-    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    ).resolves.toEqual({
+      error: "Not a shared-runtime agent",
+      status: 404,
+      refusal: "dedicated-agent",
+    });
   });
 
   test("cache-only does not freeze a rejected credential after it becomes valid", async () => {
@@ -463,37 +467,28 @@ describe("resolveSharedAgent", () => {
     });
   });
 
-  test("allows a dedicated agent only during its first bootstrap window", async () => {
-    findByIdAndOrg.mockResolvedValue(
-      agent({
-        execution_tier: "dedicated-lazy",
-        status: "provisioning",
-        agent_name: null,
-      }),
-    );
+  test("rejects dedicated agents in every lifecycle state", async () => {
+    for (const [status, bridgeUrl] of [
+      ["pending", null],
+      ["provisioning", null],
+      ["running", "https://agent.example.test"],
+      ["stopped", "https://agent.example.test"],
+    ] as const) {
+      findByIdAndOrg.mockResolvedValue(
+        agent({
+          execution_tier: "dedicated-lazy",
+          status,
+          bridge_url: bridgeUrl,
+        }),
+      );
 
-    await expect(resolveSharedAgent(apiKeyContext("agent-1") as never)).resolves.toMatchObject({
-      agentName: "Eliza",
-      agentId: "agent-1",
-    });
-  });
-
-  test("rejects non-shared agents outside the bootstrap window", async () => {
-    findByIdAndOrg.mockResolvedValue(
-      agent({
-        execution_tier: "dedicated-lazy",
-        status: "running",
-        bridge_url: "https://agent.example.test",
-      }),
-    );
-
-    await expect(resolveSharedAgent(apiKeyContext("agent-1") as never)).resolves.toEqual({
-      error: "Not a shared-runtime agent",
-      status: 404,
-      // A running dedicated agent is refused here and dispatched to its own
-      // container by the bridge route; the tag is what carries that decision.
-      refusal: "dedicated-agent",
-    });
+      await expect(resolveSharedAgent(apiKeyContext("agent-1") as never)).resolves.toEqual({
+        error: "Not a shared-runtime agent",
+        status: 404,
+        refusal: "dedicated-agent",
+      });
+    }
+    expect(cacheSet).not.toHaveBeenCalled();
   });
 
   test("rejects an unknown future tier during pending and provisioning", async () => {
@@ -623,17 +618,17 @@ describe("resolveSharedAgent scope cache (COLDPATH-FIX-2026-07-21)", () => {
     expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
   });
 
-  test("a dedicated-bootstrap agent caches a positive scope for the bounded base TTL", async () => {
+  test("a provisioning Dedicated agent never enters the Shared scope cache", async () => {
     findByIdAndOrg.mockResolvedValue(
       agent({ execution_tier: "dedicated-lazy", status: "provisioning" }),
     );
 
-    await resolveSharedAgent(apiKeyContext("agent-1") as never);
-    expect(cacheSet).toHaveBeenCalledTimes(1);
-    expect(cacheSet.mock.calls[0]?.[1]).toMatchObject({
-      orgId: "org-1",
-      agent: { id: "agent-1", execution_tier: "dedicated-lazy", status: "provisioning" },
+    await expect(resolveSharedAgent(apiKeyContext("agent-1") as never)).resolves.toEqual({
+      error: "Not a shared-runtime agent",
+      status: 404,
+      refusal: "dedicated-agent",
     });
+    expect(cacheSet).not.toHaveBeenCalled();
   });
 
   test("a request carrying NEITHER an api key nor a session never touches the scope cache", async () => {

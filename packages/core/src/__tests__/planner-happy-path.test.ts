@@ -9,6 +9,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
@@ -2413,6 +2414,80 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(results[0]).toMatchObject({
 			toolCallId: calls[0]?.toolCall.id,
 			status: "failed",
+		});
+	});
+
+	it("settles a deterministic announcement exactly once when executor infrastructure throws", async () => {
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "must not run",
+		}));
+		const action = {
+			...makeMockAction({ name: "CONNECTOR_ACTION", handler }),
+			connectorAccountPolicy: { provider: "gmail" },
+		} as Action;
+		const evaluator = {
+			name: "test.force_infrastructure_failure",
+			priority: 10,
+			deterministicActions: ["CONNECTOR_ACTION"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: { name: "CONNECTOR_ACTION" },
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [action],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["CONNECTOR_ACTION"],
+						thought: "Run the deterministic connector action.",
+					}),
+				},
+			],
+		});
+		const infrastructureError = new Error("account storage unavailable");
+		Object.assign(runtime, {
+			getService: vi.fn((serviceType: string) => {
+				if (serviceType === CONNECTOR_ACCOUNT_SERVICE_TYPE) {
+					throw infrastructureError;
+				}
+				return null;
+			}),
+		});
+		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
+		const results: import("../types/streaming").StreamingToolResultPayload[] =
+			[];
+
+		await runWithStreamingContext(
+			{
+				onToolCall: (payload) => calls.push(payload),
+				onToolResult: (payload) => results.push(payload),
+			},
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage("run the connector action"),
+					state: makeState(),
+					responseId: RESPONSE_ID,
+				}),
+		);
+
+		expect(handler).not.toHaveBeenCalled();
+		expect(calls).toHaveLength(1);
+		expect(results).toHaveLength(1);
+		expect(results[0]).toMatchObject({
+			toolCallId: calls[0]?.toolCall.id,
+			status: "failed",
+			result: expect.objectContaining({
+				success: false,
+				error: infrastructureError.message,
+			}),
 		});
 	});
 

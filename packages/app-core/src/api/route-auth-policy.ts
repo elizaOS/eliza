@@ -146,6 +146,7 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   publicExactAnyMethod("pool.status", "/api/pool/status"),
 
   sessionExact("runtime.mode", "GET", "/api/runtime/mode"),
+  sessionExact("auth.guest-pair-code", "POST", "/api/auth/guest-pair-code"),
   sessionExact("cloud.status", "GET", "/api/cloud/status"),
   sessionExact("cloud.credits", "GET", "/api/cloud/credits"),
   sessionExact("cloud.login", "POST", "/api/cloud/login"),

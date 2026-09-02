@@ -16,6 +16,7 @@ import {
 import { admitAppInferenceCacheOnly } from "@/lib/services/app-inference-admission";
 import { appsService } from "@/lib/services/apps";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import {
   executeImageGeneration,
   imageGenerationRequestSchema,
@@ -31,8 +32,32 @@ export async function handleGenerateImagePOST(
   options: { requiredAppId?: string } = {},
 ): Promise<Response> {
   try {
-    const { user, apiKeyId, admissionSnapshot, appScopeId } =
-      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
+    const requestResult = imageGenerationRequestSchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    let pendingResponse: Response | undefined;
+    if (!requestResult.success) {
+      pendingResponse = failureResponse(c, requestResult.error);
+    } else if (!c.env.BLOB) {
+      pendingResponse = jsonError(
+        c,
+        503,
+        "R2 storage is not configured",
+        "internal_error",
+      );
+    }
+    const { user, apiKeyId, admissionSnapshot, credential, appScopeId } =
+      await requireGenerativeRouteCaller(c, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: pendingResponse === undefined,
+      });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
+    if (pendingResponse) return pendingResponse;
+    if (!requestResult.success) throw requestResult.error;
+    const request = requestResult.data;
     const executionCtx = getGenerativeExecutionContext(c);
     let inferenceApp: Awaited<ReturnType<typeof appsService.getById>> | null =
       null;
@@ -66,16 +91,6 @@ export async function handleGenerateImagePOST(
         return jsonError(c, 403, "Access denied to this app", "access_denied");
       }
     }
-    if (!c.env.BLOB) {
-      return jsonError(
-        c,
-        503,
-        "R2 storage is not configured",
-        "internal_error",
-      );
-    }
-
-    const request = imageGenerationRequestSchema.parse(await c.req.json());
     const idempotencyKey = c.req.header("Idempotency-Key")?.trim();
     const requestId =
       options.requiredAppId && idempotencyKey
@@ -113,6 +128,7 @@ export async function handleGenerateImagePOST(
             affiliateCode: context.affiliateCode,
             executionCtx,
             admissionSnapshot,
+            credential: credentialGuard.credentialForAdmission(),
             metadata: {
               endpoint: "apps.generate-image",
               numImages: request.numImages,
@@ -126,6 +142,7 @@ export async function handleGenerateImagePOST(
           apiKeyId,
           cost,
           admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
         });
         return { kind: "organization" as const, admission };
       },

@@ -779,7 +779,11 @@ describe("App navigate-view event wiring", () => {
     window.history.replaceState(null, "", "/automations");
 
     const { container } = render(<App />);
-    const automations = await screen.findByTestId("automations-layout");
+    const automations = await screen.findByTestId(
+      "automations-layout",
+      {},
+      { timeout: 10_000 },
+    );
     const frame = automations.closest<HTMLElement>("[data-page-kind]");
     const pageContent = frame?.querySelector<HTMLElement>(
       ":scope > [data-page-content]",

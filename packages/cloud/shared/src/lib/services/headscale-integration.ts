@@ -35,11 +35,35 @@ const POLL_INTERVAL_MAX_MS = 8_000;
  * redeploy. Exported so the docker-sandbox provider shares this single source
  * of truth instead of hardcoding its own timeout at the call site.
  */
-export const DEFAULT_REGISTRATION_TIMEOUT_MS = (() => {
-  const raw = process.env.VPN_REGISTRATION_TIMEOUT_MS;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 180_000;
-})();
+const MIN_REGISTRATION_TIMEOUT_MS = 180_000;
+
+/** Resolve the worker's mesh observation budget without permitting early abandonment. */
+export function resolveRegistrationTimeoutMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return MIN_REGISTRATION_TIMEOUT_MS;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new ElizaError("VPN_REGISTRATION_TIMEOUT_MS must be a positive integer", {
+      code: "HEADSCALE_REGISTRATION_TIMEOUT_INVALID",
+      context: { configured: true },
+      severity: "fatal",
+    });
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < MIN_REGISTRATION_TIMEOUT_MS) {
+    throw new ElizaError(
+      `VPN_REGISTRATION_TIMEOUT_MS must be at least ${MIN_REGISTRATION_TIMEOUT_MS}`,
+      {
+        code: "HEADSCALE_REGISTRATION_TIMEOUT_TOO_SHORT",
+        context: { minimumMs: MIN_REGISTRATION_TIMEOUT_MS },
+        severity: "fatal",
+      },
+    );
+  }
+  return parsed;
+}
+
+export const DEFAULT_REGISTRATION_TIMEOUT_MS = resolveRegistrationTimeoutMs(
+  process.env.VPN_REGISTRATION_TIMEOUT_MS,
+);
 
 function headscalePublicUrl(): string {
   return (
@@ -157,6 +181,12 @@ export class HeadscaleIntegration {
    * leaving the agent in a permanent restart loop. Explicit sandbox teardown
    * already calls cleanupContainerVPN(), so persistent nodes are still removed.
    *
+   * The key is a v0.28 tag identity, not a user identity: `tag:agent` is
+   * attached directly to the pre-auth key and the request intentionally omits
+   * `user`. Headscale rejects a tagged key that is also user-bound during
+   * registration, which previously left fresh containers asking for
+   * interactive auth even though key creation had succeeded.
+   *
    * The key is REUSABLE (was single-use) so a reboot that de-authorizes the
    * persisted node identity can re-`up` with the SAME baked key instead of
    * hitting `authkey already used` and crash-looping (the prod-2 hard-reset
@@ -230,8 +260,6 @@ export class HeadscaleIntegration {
         reusable: true,
         ephemeral: false,
         aclTags: ["tag:agent"],
-        user: inferHeadscaleUser(input),
-        ensureUser: true,
       });
 
       const envVars: Record<string, string> = {
@@ -279,6 +307,13 @@ export class HeadscaleIntegration {
        *  the exact race the reclaim-mode deletion used to guard against. */
       excludeNodeId?: string;
       /**
+       * Earliest instant at which this exact provisioning attempt could have
+       * registered. Docker can join Headscale before this polling method is
+       * entered, so the collision-suffix safety gate must start at the
+       * persisted attempt boundary rather than at the first poll.
+       */
+      registrationStartedAt?: Date;
+      /**
        * Inspect the exact Docker candidate after a Headscale miss. Returning
        * an error proves that candidate cannot register and aborts immediately;
        * `null` means it is still pending. The probe is awaited inline, so no
@@ -292,10 +327,13 @@ export class HeadscaleIntegration {
     );
 
     // Suffixed (collision-renamed) matches are gated to nodes created during
-    // THIS poll: renamed nodes keep their suffix forever, so without the gate a
-    // poll would adopt the previous cycle's live green node or a stale orphan
-    // from an earlier failed upgrade. Exact-name matches are not gated.
+    // THIS provisioning attempt: renamed nodes keep their suffix forever, so
+    // without the gate a poll would adopt the previous cycle's live green node
+    // or a stale orphan from an earlier failed upgrade. Docker may register
+    // before polling begins, so callers with a durable attempt boundary pass it
+    // explicitly. Exact-name matches are not gated.
     const pollStart = new Date();
+    const registrationStartedAt = options?.registrationStartedAt ?? pollStart;
     const deadline = Date.now() + timeoutMs;
     let interval = POLL_INTERVAL_INITIAL_MS;
 
@@ -307,7 +345,7 @@ export class HeadscaleIntegration {
         // healthy registration.
         const node = await this.client.getNodeByNameOrSuffixed(nodeName, {
           excludeNodeId: options?.excludeNodeId,
-          createdAfter: pollStart,
+          createdAfter: registrationStartedAt,
         });
 
         if (node) assertCanonicalHeadscaleNode(node);

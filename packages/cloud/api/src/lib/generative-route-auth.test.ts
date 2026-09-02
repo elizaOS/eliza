@@ -39,15 +39,31 @@ class AiPricingCacheUnavailableError extends Error {
   }
 }
 
+class InferenceCredentialRevokedError extends Error {
+  constructor(readonly reason: string) {
+    super(`Inference credential rejected: ${reason}`);
+    this.name = "InferenceCredentialRevokedError";
+  }
+}
+
+function inferenceCredentialRevocationReason(reason: string) {
+  return reason === "credential_revoked" ||
+    reason === "session_revoked" ||
+    reason === "session_binding_revoked"
+    ? "credential_inactive"
+    : reason;
+}
+
 const resolveInferenceAuthContext = vi.fn();
-const observeInferenceApiKeyUsage = vi.fn();
 const requireAuthOrApiKeyWithOrg = vi.fn();
 const requireUserOrApiKeyWithOrg = vi.fn();
 const reserveFlatUsageCredits = vi.fn();
 const admitOrganizationInference = vi.fn();
 const enforceOrgRateLimit = vi.fn();
 const inferenceRateLimitConfig = vi.fn();
+const assertInferenceCredentialActive = vi.fn();
 const loggerWarn = vi.fn();
+const loggerError = vi.fn();
 
 vi.mock("@/lib/api/cloud-worker-errors", () => ({ ApiError }));
 vi.mock("@/lib/services/ai-pricing/cache", () => ({
@@ -55,9 +71,21 @@ vi.mock("@/lib/services/ai-pricing/cache", () => ({
   AiPricingCacheUnavailableError,
 }));
 vi.mock("@/lib/services/inference-auth-context", () => ({
-  observeInferenceApiKeyUsage,
   resolveInferenceAuthContext,
 }));
+vi.mock("@/lib/services/inference-credential-revocation", () => ({
+  assertInferenceCredentialActive,
+  InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
+}));
+vi.mock(
+  "../../../shared/src/lib/services/inference-credential-revocation",
+  () => ({
+    assertInferenceCredentialActive,
+    InferenceCredentialRevokedError,
+    inferenceCredentialRevocationReason,
+  }),
+);
 vi.mock("@/lib/auth", () => ({ requireAuthOrApiKeyWithOrg }));
 vi.mock("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
@@ -71,7 +99,7 @@ vi.mock("@/lib/services/inference-admission-snapshot", () => ({
   inferenceRateLimitConfig,
 }));
 vi.mock("@/lib/utils/logger", () => ({
-  logger: { warn: loggerWarn },
+  logger: { error: loggerError, warn: loggerWarn },
 }));
 
 if (typeof Bun !== "undefined") {
@@ -82,9 +110,21 @@ if (typeof Bun !== "undefined") {
     AiPricingCacheUnavailableError,
   }));
   bunTest.mock.module("@/lib/services/inference-auth-context", () => ({
-    observeInferenceApiKeyUsage,
     resolveInferenceAuthContext,
   }));
+  bunTest.mock.module("@/lib/services/inference-credential-revocation", () => ({
+    assertInferenceCredentialActive,
+    InferenceCredentialRevokedError,
+    inferenceCredentialRevocationReason,
+  }));
+  bunTest.mock.module(
+    "../../../shared/src/lib/services/inference-credential-revocation",
+    () => ({
+      assertInferenceCredentialActive,
+      InferenceCredentialRevokedError,
+      inferenceCredentialRevocationReason,
+    }),
+  );
   bunTest.mock.module("@/lib/auth", () => ({ requireAuthOrApiKeyWithOrg }));
   bunTest.mock.module("@/lib/auth/workers-hono-auth", () => ({
     requireUserOrApiKeyWithOrg,
@@ -105,7 +145,7 @@ if (typeof Bun !== "undefined") {
     inferenceRateLimitConfig,
   }));
   bunTest.mock.module("@/lib/utils/logger", () => ({
-    logger: { warn: loggerWarn },
+    logger: { error: loggerError, warn: loggerWarn },
   }));
 }
 
@@ -113,10 +153,140 @@ const {
   admitFlatGenerativeOperation,
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,
+  getGenerativeOperationContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
+  resolveInferenceCredentialAdmissionDenial,
   resolveInferenceAuthStandingDenial,
 } = await import("./generative-route-auth");
+const { deferredCredentialAdmissionGuard } = await import(
+  "../../../shared/src/lib/services/deferred-credential-admission-guard"
+);
+
+describe("deferredCredentialAdmissionGuard", () => {
+  beforeEach(() => {
+    assertInferenceCredentialActive.mockReset();
+    assertInferenceCredentialActive.mockResolvedValue(undefined);
+    loggerError.mockReset();
+  });
+
+  test("performs one standalone check when a route exits before admission", async () => {
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    const guard = deferredCredentialAdmissionGuard({
+      organizationId: () => "org-1",
+      credential: () => credential,
+    });
+
+    await guard[Symbol.asyncDispose]();
+
+    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
+    expect(assertInferenceCredentialActive).toHaveBeenCalledWith(
+      "org-1",
+      credential,
+    );
+  });
+
+  test("leaves the exact credential for atomic admission without a standalone check", async () => {
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    const guard = deferredCredentialAdmissionGuard({
+      organizationId: () => "org-1",
+      credential: () => credential,
+    });
+
+    expect(guard.credentialForAdmission()).toBe(credential);
+    await guard[Symbol.asyncDispose]();
+
+    expect(assertInferenceCredentialActive).not.toHaveBeenCalled();
+  });
+
+  test("maps an early-return disposal rejection to its safe standing denial", async () => {
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    assertInferenceCredentialActive.mockRejectedValueOnce(
+      new InferenceCredentialRevokedError("credential_revoked"),
+    );
+
+    let caught: unknown;
+    try {
+      await (async () => {
+        await using _guard = deferredCredentialAdmissionGuard({
+          organizationId: () => "org-1",
+          credential: () => credential,
+        });
+        return "terminal-response-before-resource-or-provider-work";
+      })();
+    } catch (error) {
+      // error-policy:J1 the test captures the route-boundary translation input.
+      caught = error;
+    }
+
+    const mapped = asGenerativeCacheApiError(caught, {
+      route: "terminal-test",
+      traceId: "trace-terminal",
+    });
+    expect(mapped?.status).toBe(401);
+    expect(mapped?.details).toEqual({ reason: "credential_inactive" });
+    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
+  });
+
+  test("unwraps disposal revocation when it suppresses a body failure without logging secrets", async () => {
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    assertInferenceCredentialActive.mockRejectedValueOnce(
+      new InferenceCredentialRevokedError("session_revoked"),
+    );
+
+    let caught: unknown;
+    try {
+      await using _guard = deferredCredentialAdmissionGuard({
+        organizationId: () => "org-1",
+        credential: () => credential,
+      });
+      throw new Error("secret-request-body bearer-private-value");
+    } catch (error) {
+      // error-policy:J1 the test captures the route-boundary translation input.
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).name).toBe("SuppressedError");
+    const mapped = asGenerativeCacheApiError(caught, {
+      route: "body-throw-test",
+      traceId: "trace-suppressed",
+    });
+    expect(mapped?.status).toBe(401);
+    expect(mapped?.details).toEqual({ reason: "credential_inactive" });
+    expect(loggerError).toHaveBeenCalledWith(
+      "[InferenceAuth] deferred revocation suppressed an earlier route failure",
+      {
+        route: "body-throw-test",
+        traceId: "trace-suppressed",
+        credentialReason: "session_revoked",
+        suppressedError: { name: "Error" },
+      },
+    );
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(
+      "secret-request-body",
+    );
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(
+      "bearer-private-value",
+    );
+  });
+});
 
 const FLAT_COST = {
   totalCost: 1.25,
@@ -184,6 +354,7 @@ function namedError(name: string, message = name) {
 
 function admissionSnapshot() {
   return {
+    subscriptionFunded: false,
     balance: {
       balanceUsd: 12,
       balanceAt: 1,
@@ -288,6 +459,46 @@ describe("getGenerativePricingCacheOptions", () => {
 });
 
 describe("asGenerativeCacheApiError", () => {
+  test("maps a fused credential refusal without losing the standing reason", () => {
+    const error = new InferenceCredentialRevokedError("credential_revoked");
+    const denial = resolveInferenceCredentialAdmissionDenial(error, {
+      route: "generate-image",
+      traceId: "trace-1",
+    });
+    const mapped = asGenerativeCacheApiError(error);
+
+    expect(denial).toEqual({
+      status: 401,
+      type: "authentication_error",
+      code: "authentication_required",
+      message: "API key is inactive",
+      reason: "credential_inactive",
+    });
+    expect(mapped).toBeInstanceOf(ApiError);
+    expect(mapped?.status).toBe(401);
+    expect(mapped?.details).toEqual({ reason: "credential_inactive" });
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[InferenceAuth] blocked provider dispatch at route boundary",
+      expect.objectContaining({
+        route: "generate-image",
+        traceId: "trace-1",
+        reason: "credential_inactive",
+      }),
+    );
+  });
+
+  test.each(["session_revoked", "session_binding_revoked"])(
+    "maps Steward %s to the same 401 standing contract",
+    (reason) => {
+      const mapped = asGenerativeCacheApiError(
+        new InferenceCredentialRevokedError(reason),
+      );
+      expect(mapped?.status).toBe(401);
+      expect(mapped?.code).toBe("authentication_required");
+      expect(mapped?.details).toEqual({ reason: "credential_inactive" });
+    },
+  );
+
   test("maps AiPricingCacheWarmingError to a retryable 503", () => {
     const mapped = asGenerativeCacheApiError(new AiPricingCacheWarmingError());
     expect(mapped).toBeInstanceOf(ApiError);
@@ -534,6 +745,33 @@ describe("admitFlatGenerativeOperation", () => {
     });
   });
 
+  test("threads the exact deferred credential into Worker flat admission", async () => {
+    const { c, executionCtx } = workerContext();
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    admitOrganizationInference.mockResolvedValueOnce({
+      mode: "durable_object_debit",
+      settle: async () => null,
+      settleUnknown: async () => null,
+    });
+
+    await admitFlatGenerativeOperation({
+      c: c as never,
+      context: billingContext(),
+      apiKeyId: "key-1",
+      cost: FLAT_COST,
+      admissionSnapshot: admissionSnapshot(),
+      credential,
+    });
+
+    expect(admitOrganizationInference).toHaveBeenCalledWith(
+      expect.objectContaining({ executionCtx, credential }),
+    );
+  });
+
   test("wraps Inference Warming failures from Worker admission as 503", async () => {
     const { c } = workerContext();
     admitOrganizationInference.mockRejectedValueOnce(
@@ -670,11 +908,11 @@ describe("resolveInferenceAuthStandingDenial", () => {
 describe("requireGenerativeRouteCaller", () => {
   beforeEach(() => {
     resolveInferenceAuthContext.mockReset();
-    observeInferenceApiKeyUsage.mockReset();
     requireAuthOrApiKeyWithOrg.mockReset();
     requireUserOrApiKeyWithOrg.mockReset();
     enforceOrgRateLimit.mockReset();
     inferenceRateLimitConfig.mockReset();
+    assertInferenceCredentialActive.mockReset();
     requireAuthOrApiKeyWithOrg.mockResolvedValue({
       user: { id: "user-1", organization_id: "org-1" },
       apiKey: { id: "key-raw" },
@@ -688,15 +926,16 @@ describe("requireGenerativeRouteCaller", () => {
       windowMs: 1000,
       maxRequests: 10,
     });
+    assertInferenceCredentialActive.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     resolveInferenceAuthContext.mockReset();
-    observeInferenceApiKeyUsage.mockReset();
     requireAuthOrApiKeyWithOrg.mockReset();
     requireUserOrApiKeyWithOrg.mockReset();
     enforceOrgRateLimit.mockReset();
     inferenceRateLimitConfig.mockReset();
+    assertInferenceCredentialActive.mockReset();
   });
 
   test("uses raw compatibility auth when no Worker context is present", async () => {
@@ -792,6 +1031,42 @@ describe("requireGenerativeRouteCaller", () => {
     expect(caller.appScopeId).toBe("app-1");
   });
 
+  test("defers only for a declared admission consumer and preserves the exact credential", async () => {
+    const { c } = workerContext({ requestId: "req-fused" });
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      ...apiKeyAuthorized,
+      credential,
+    });
+
+    const caller = await requireGenerativeRouteCaller(c as never, {
+      deferStrongCredentialCheck: true,
+    });
+    const operationContext = getGenerativeOperationContext(c as never, caller);
+
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      deferStrongCredentialCheck: true,
+    });
+    expect(caller.credential).toBe(credential);
+    expect(operationContext.credential).toBe(credential);
+    expect(assertInferenceCredentialActive).not.toHaveBeenCalled();
+  });
+
+  test("keeps standalone validation when no admission consumer is declared", async () => {
+    const { c } = workerContext();
+    resolveInferenceAuthContext.mockResolvedValueOnce(apiKeyAuthorized);
+
+    await requireGenerativeRouteCaller(c as never);
+
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).not.toHaveProperty(
+      "deferStrongCredentialCheck",
+    );
+  });
+
   test("returns null appScopeId when the field is absent from ctx", async () => {
     const { c } = workerContext();
     resolveInferenceAuthContext.mockResolvedValueOnce({
@@ -859,6 +1134,35 @@ describe("requireGenerativeRouteCaller", () => {
     });
   });
 
+  test("consumes a deferred credential before returning a rate-limit failure", async () => {
+    const { c } = workerContext();
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    };
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      ...apiKeyAuthorized,
+      credential,
+    });
+    enforceOrgRateLimit.mockResolvedValueOnce(
+      new Response("slow down", { status: 429 }),
+    );
+
+    await expect(
+      requireGenerativeRouteCaller(c as never, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: true,
+      }),
+    ).rejects.toMatchObject({ status: 429, code: "rate_limit_exceeded" });
+    expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
+    expect(assertInferenceCredentialActive).toHaveBeenCalledWith(
+      "org-1",
+      credential,
+    );
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+  });
+
   test("throws service_unavailable when the limiter returns a non-429 failure", async () => {
     const { c } = workerContext();
     resolveInferenceAuthContext.mockResolvedValueOnce(apiKeyAuthorized);
@@ -874,7 +1178,7 @@ describe("requireGenerativeRouteCaller", () => {
     });
   });
 
-  test("fails closed on warming without awaiting when the budget is unset", async () => {
+  test("fails closed when warming has no one-shot continuation", async () => {
     const { c } = workerContext();
     resolveInferenceAuthContext.mockResolvedValueOnce({
       kind: "warming",
@@ -900,6 +1204,9 @@ describe("requireGenerativeRouteCaller", () => {
       requireGenerativeRouteCaller(c as never, { awaitWarmingMs: 0 }),
     ).rejects.toMatchObject({ status: 503 });
     expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      inlineContinuationDeadlineMs: 0,
+    });
   });
 
   test("fails fast when warming has no hydration promise even with a budget", async () => {
@@ -911,22 +1218,35 @@ describe("requireGenerativeRouteCaller", () => {
     expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
   });
 
-  test("consumes the one-shot continuation without a second cache read", async () => {
-    const { c, executionCtx } = workerContext();
-    resolveInferenceAuthContext.mockResolvedValueOnce({
-      kind: "warming",
-      hydration: Promise.resolve(sessionAuthorized),
-      continuation: Promise.resolve(sessionAuthorized),
-    });
+  test("uses the inline origin result returned by the shared resolver", async () => {
+    const { c } = workerContext();
+    resolveInferenceAuthContext.mockResolvedValueOnce(sessionAuthorized);
     const caller = await requireGenerativeRouteCaller(c as never, {
-      awaitWarmingMs: 1500,
+      rateLimitEndpoint: "strict",
     });
     expect(caller.authSource).toBe("combined_cache");
     expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
-    expect(observeInferenceApiKeyUsage).toHaveBeenCalledWith(
-      sessionAuthorized,
-      executionCtx,
-    );
+    expect(enforceOrgRateLimit).toHaveBeenCalledTimes(1);
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      inlineContinuationDeadlineMs: undefined,
+    });
+  });
+
+  test("surfaces a definitive continuation denial before rate limit admission", async () => {
+    const { c } = workerContext();
+    const denial = {
+      kind: "rejected" as const,
+      status: 403 as const,
+      reason: "organization_inactive" as const,
+    };
+    resolveInferenceAuthContext.mockResolvedValueOnce(denial);
+
+    await expect(
+      requireGenerativeRouteCaller(c as never, { rateLimitEndpoint: "strict" }),
+    ).rejects.toMatchObject({ status: 403, code: "access_denied" });
+
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(enforceOrgRateLimit).not.toHaveBeenCalled();
   });
 
   test("still 503s when the warming budget expires", async () => {
@@ -947,7 +1267,10 @@ describe("requireGenerativeRouteCaller", () => {
       code: "service_unavailable",
     });
     expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
-    expect(observeInferenceApiKeyUsage).not.toHaveBeenCalled();
+    expect(enforceOrgRateLimit).not.toHaveBeenCalled();
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      inlineContinuationDeadlineMs: 20,
+    });
     release?.();
   });
 

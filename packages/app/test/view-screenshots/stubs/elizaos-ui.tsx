@@ -143,6 +143,8 @@ interface HarnessButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   align?: string;
   asChild?: boolean;
   unstyled?: boolean;
+  layoutStyle?: CSSProperties;
+  visualStyle?: CSSProperties;
   "data-state"?: string;
 }
 
@@ -150,11 +152,13 @@ export function Button({
   align: _align,
   asChild: _asChild,
   children,
+  layoutStyle,
   shape,
   size,
   style,
   unstyled: _unstyled,
   variant,
+  visualStyle,
   ...props
 }: HarnessButtonProps): ReactNode {
   const sizeStyle: CSSProperties =
@@ -208,12 +212,28 @@ export function Button({
         cursor: "pointer",
         ...sizeStyle,
         ...variantStyle,
+        ...layoutStyle,
+        ...visualStyle,
         ...style,
       }}
     >
       {children}
     </button>
   );
+}
+
+export function Card({
+  children,
+  ...props
+}: HTMLAttributes<HTMLDivElement>): ReactNode {
+  return <div {...props}>{children}</div>;
+}
+
+export function SemanticForm({
+  children,
+  ...props
+}: HTMLAttributes<HTMLFormElement>): ReactNode {
+  return <form {...props}>{children}</form>;
 }
 
 interface HarnessInputProps extends InputHTMLAttributes<HTMLInputElement> {

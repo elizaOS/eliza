@@ -66,7 +66,10 @@ import {
   isKnownPreDispatchProviderConfigurationError,
   isKnownUnacceptedProviderError,
 } from "../inference-provider-outcome";
-import { admitOrganizationInference } from "../organization-inference-admission";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+} from "../organization-inference-admission";
 import { isCanonicalPersonalSharedAgent } from "./personal-shared-identity";
 import {
   estimatePersonalSharedSeedanceCostUsd,
@@ -97,7 +100,10 @@ import {
 } from "./shared-recall";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
-import { sharedRuntimeModelHistoryMessages } from "./shared-runtime-history-policy";
+import {
+  parseSharedReminderActionProvenance,
+  sharedRuntimeModelHistoryMessages,
+} from "./shared-runtime-history-policy";
 import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
 import {
   replayedSharedProviderTiming,
@@ -1100,7 +1106,10 @@ async function admitTurn(
   } catch (error) {
     // error-policy:J1 translate the billing-cache boundary into the shared
     // runtime's retryable cache-warming signal.
-    if (error instanceof InferenceBalanceCacheWarmingError) {
+    if (
+      error instanceof InferenceAdmissionUnavailableError ||
+      error instanceof InferenceBalanceCacheWarmingError
+    ) {
       throw new SharedRuntimeCacheWarmingError("Billing authorization is warming. Retry shortly.");
     }
     throw error;
@@ -1802,6 +1811,11 @@ export class SharedRuntimeChatService {
     }
 
     const encoder = new TextEncoder();
+    const terminalReminderAction = parseSharedReminderActionProvenance(
+      turn.history?.findLast(
+        (message) => message.role === "assistant" && message.id === messageIds.assistant,
+      )?.reminderAction,
+    );
     const makeTurnMessages = (
       reply: string,
       interrupted: boolean,
@@ -1820,6 +1834,9 @@ export class SharedRuntimeChatService {
           createdAt: sentAt + 1,
           interrupted,
           ...(grounding ? { grounding } : {}),
+          ...(terminalReminderAction && !interrupted
+            ? { reminderAction: terminalReminderAction }
+            : {}),
         });
       }
       return messages;

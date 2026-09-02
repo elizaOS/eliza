@@ -88,15 +88,6 @@
       ],
       "semanticFingerprint": "sha256:ecc864434687a7ce763252d359cad9bdb85db187f1defa060a767d5e5df45290"
     },
-    "panel:badge+button+input": {
-      "disposition": "shared-lifecycle-owner",
-      "rationale": "The cloud-panel-owned useCloudAgentManagement pattern owns list refresh, create, rename, suspend/resume, delete polling, wake-and-switch, persistence, and notices; AgentSection and CloudAgentsSection are distinct presentation adapters with explicit management-token providers.",
-      "memberComponentIds": [
-        "packages/ui/src/components/settings/cloud-panel/sections/AgentSection.tsx:AgentSection",
-        "packages/ui/src/components/settings/CloudAgentsSection.tsx:CloudAgentsSection"
-      ],
-      "semanticFingerprint": "sha256:f0e0a109e0fab258115f7e1cc83319bae2890d554c23083a69f95a6700db6757"
-    },
     "panel:button+input": {
       "disposition": "distinct-domain-compositions",
       "rationale": "Search, connector setup, and release-note panels have different interaction and state contracts.",

@@ -1,5 +1,6 @@
 // Exercises cloud DB jobs behavior with deterministic repository fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
+import { InlinePayloadTooLargeError } from "../../lib/storage/object-store";
 import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../../lib/storage/r2-runtime-binding";
 import { prepareJobInsertData } from "./jobs";
 
@@ -82,7 +83,7 @@ describe("prepareJobInsertData", () => {
     process.env.SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES = "4096";
 
     const dump = "PGLITE-DUMP".repeat(5000);
-    const prepared = await prepareJobInsertData({
+    const preparation = prepareJobInsertData({
       id: "44444444-4444-4444-8444-444444444444",
       type: "agent_snapshot",
       organization_id: "22222222-2222-4222-8222-222222222222",
@@ -91,11 +92,12 @@ describe("prepareJobInsertData", () => {
       error: dump,
     });
 
-    expect(prepared.error_storage).toBe("inline");
-    expect(prepared.error_key).toBeNull();
-    const stored = prepared.error ?? "";
-    expect(new TextEncoder().encode(stored).byteLength).toBeLessThanOrEqual(4096);
-    expect(stored).toContain("truncated:");
-    expect(stored.startsWith("PGLITE-DUMP")).toBe(true);
+    await expect(preparation).rejects.toMatchObject({
+      name: InlinePayloadTooLargeError.name,
+      code: "INLINE_PAYLOAD_TOO_LARGE",
+      field: "error",
+      sizeBytes: new TextEncoder().encode(dump).byteLength,
+      maxInlineBytes: 4096,
+    });
   });
 });

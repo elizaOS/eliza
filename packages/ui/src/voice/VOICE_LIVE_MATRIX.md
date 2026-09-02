@@ -3,8 +3,8 @@
 Issue #9958 defines the live-voice verification product surface. This document
 is the canonical matrix and `bun run voice:matrix` is the canonical artifact
 producer. The matrix is evidence-oriented: every cell is either `pass`, `fail`,
-`pending`, or `skip` with a hardware-unavailable reason. A skipped cell is never
-platform coverage.
+`pending`, or `skip` with an allowlisted availability code. A skipped cell is
+never platform coverage.
 
 ## Dimensions
 
@@ -39,6 +39,12 @@ test-results/evidence/9958-voice-matrix/
   index.html
 ```
 
+The JSON report uses `eliza_voice_live_matrix_v2`. Version 2 replaces raw host,
+probe, filter, and child-process diagnostics with closed codes and aggregate
+counters suitable for uploaded CI evidence. Every report also carries the exact
+Git revision and a per-execution session ID so downstream finalizers can reject
+stale or cross-cell evidence instead of relabeling it as the current run.
+
 Use `--run` to execute available cell commands:
 
 ```bash
@@ -52,7 +58,7 @@ Use `--require-green` on any opted-in hardware lane; it turns `pending` or
 while a device, app install, model, or reviewed report is missing.
 `--platform` accepts a platform value or exact cell ID; a supplied filter that
 matches no cells is a failing configuration and is recorded in
-`selection.error`.
+`selection.errorCode` without echoing the caller-supplied filter.
 
 To validate the Stage-B STT benchmark cell, point the matrix at the reviewed
 report:
@@ -109,8 +115,10 @@ developer laptop:
 | `ELIZA_INFERENCE_LIBRARY` + `ELIZA_ASR_BUNDLE` | Linux fused real-service runner has the provisioned local-inference bundle |
 | `ELIZA_VOICE_STAGE_B_REPORT` | reviewed Stage-B JSON report using schema `eliza_voice_stage_b_stt_eval_v1`; required backends are `ios-sfspeechrecognizer`, `android-speechrecognizer`, and `fused-asr` |
 
-The matrix report records these gates in the `probe.reason` field. This keeps
-Linux green separate from missing macOS/iOS/Android evidence.
+The matrix report records these gates as closed, allowlisted values in the
+`probe.code` field. Raw device identifiers, provider output, host identity, and
+probe failure text stay private to the runner. This keeps Linux green separate
+from missing macOS/iOS/Android evidence without publishing device diagnostics.
 
 The openWakeWord report must mark `realHardware: true` and `realHead: true`.
 Each required case must identify the device/build/openWakeWord model, record the

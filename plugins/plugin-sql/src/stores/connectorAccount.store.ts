@@ -356,17 +356,30 @@ export class ConnectorAccountStore implements Store {
         }
       }
 
+      const hasExternalIdentity = params.externalId != null;
+      const conflictTarget = hasExternalIdentity
+        ? [
+            connectorAccountsTable.agentId,
+            connectorAccountsTable.provider,
+            connectorAccountsTable.externalId,
+            connectorAccountsTable.role,
+          ]
+        : [
+            connectorAccountsTable.agentId,
+            connectorAccountsTable.provider,
+            connectorAccountsTable.accountKey,
+          ];
+      const conflictUpdateSet = hasExternalIdentity
+        ? { ...updateSet, accountKey: params.accountKey }
+        : updateSet;
+
       const inserted = await this.db
         .insert(connectorAccountsTable)
         .values(insertValues)
         .onConflictDoUpdate({
-          target: [
-            connectorAccountsTable.agentId,
-            connectorAccountsTable.provider,
-            connectorAccountsTable.accountKey,
-          ],
+          target: conflictTarget,
           targetWhere: sql`${connectorAccountsTable.deletedAt} IS NULL`,
-          set: updateSet,
+          set: conflictUpdateSet,
         })
         .returning();
 

@@ -11,15 +11,18 @@ import { Hono } from "hono";
 
 const SOLANA_TOKEN = "So11111111111111111111111111111111111111112";
 
-type ExecuteWithBody =
-  typeof import("@/lib/services/proxy/engine").executeWithBody;
+const preparedBodies: Array<{ params: Record<string, string> }> = [];
+const executePreflight = mock(async (_c: unknown, preflight: () => unknown) => {
+  const prepared = await preflight();
+  if (prepared instanceof Response) return prepared;
+  preparedBodies.push(
+    (prepared as { body: { params: Record<string, string> } }).body,
+  );
+  return Response.json({ success: true });
+});
 
-const executeWithBody = mock(async (..._args: Parameters<ExecuteWithBody>) =>
-  Response.json({ success: true }),
-);
-
-mock.module("@/lib/services/proxy/engine", () => ({
-  executeWithBody,
+mock.module("@/api-app/lib/guarded-paid-proxy", () => ({
+  executeGuardedPaidProxyWithPreflight: executePreflight,
 }));
 mock.module("@/lib/services/proxy/cors", () => ({
   applyCorsHeaders: (response: Response) => response,
@@ -44,15 +47,14 @@ function trades(query: string) {
 async function forwardedParams(query: string) {
   const response = await trades(query);
   expect(response.status).toBe(200);
-  const body = executeWithBody.mock.calls.at(-1)?.[3] as {
-    params: Record<string, string>;
-  };
+  const body = preparedBodies.at(-1) as { params: Record<string, string> };
   return body.params;
 }
 
 describe("GET /api/v1/market/trades limit/offset clamp", () => {
   beforeEach(() => {
-    executeWithBody.mockClear();
+    executePreflight.mockClear();
+    preparedBodies.length = 0;
   });
 
   test("omits limit/offset when absent, matching provider defaults", async () => {

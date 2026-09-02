@@ -157,6 +157,9 @@ beforeAll(async () => {
     const { agentBackupObjects } = await import(
       "@/db/schemas/agent-backup-catalog"
     );
+    const { agentNodeIncarnationHistories } = await import(
+      "@/db/schemas/agent-node-incarnation-histories"
+    );
     const { apiKeys } = await import("@/db/schemas/api-keys");
     const { generations } = await import("@/db/schemas/generations");
     const { jobs } = await import("@/db/schemas/jobs");
@@ -172,6 +175,7 @@ beforeAll(async () => {
       agentSandboxBackups,
       agentBackupCatalogAuthorities,
       agentBackupObjects,
+      agentNodeIncarnationHistories,
       apiKeys,
       generations,
       jobs,
