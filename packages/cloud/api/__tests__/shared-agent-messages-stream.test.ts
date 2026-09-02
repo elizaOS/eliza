@@ -526,15 +526,13 @@ describe("shared agent messages/stream", () => {
     const hydrationStarted = new Promise<void>((resolve) => {
       markHydrationStarted = resolve;
     });
-    let scopeReads = 0;
-    findByIdAndOrg.mockImplementation(() => {
-      scopeReads += 1;
-      if (scopeReads > 1) return Promise.resolve(cachedVoiceAgent());
-      return new Promise((resolve) => {
-        releaseHydration = resolve;
-        markHydrationStarted();
-      });
-    });
+    findByIdAndOrg.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseHydration = resolve;
+          markHydrationStarted();
+        }),
+    );
 
     const fetchImpl = createInternalElizaConversationFetchFactory(
       env,
@@ -558,7 +556,7 @@ describe("shared agent messages/stream", () => {
       code: "agent_cache_warming",
       retryable: true,
     });
-    expect(findByIdAndOrg).toHaveBeenCalledTimes(2);
+    expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
     expect(runtime.fetch).not.toHaveBeenCalled();
     expect(bridgeStream).not.toHaveBeenCalled();
 
@@ -572,7 +570,7 @@ describe("shared agent messages/stream", () => {
     );
     expect(retry.status).toBe(200);
     await expect(retry.text()).resolves.toContain("hydrated ok");
-    expect(findByIdAndOrg).toHaveBeenCalledTimes(2);
+    expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
     expect(runtime.fetch).toHaveBeenCalledTimes(2);
     const operations = runtime.fetch.mock.calls.map(([, init]) =>
       JSON.parse(String(init?.body)),
