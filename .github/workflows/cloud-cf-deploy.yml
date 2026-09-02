@@ -88,7 +88,7 @@ on:
         default: false
         type: boolean
       telegram_authority_canary:
-        description: Run only the protected staging Telegram authority preflight; no release mutation or certification
+        description: Run only the protected staging Telegram authority preflight on an Environment-allowed ref; no release mutation or certification
         required: false
         default: false
         type: boolean

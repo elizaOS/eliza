@@ -369,11 +369,12 @@ not forward or declare it, and receives only the already-admitted public pair.
 That keeps a repository or organization secret from substituting for the
 Environment authority. A repository/organization variable may resolve the same
 committed public pair, but cannot select a different pair.
-For a hosted, read-only authority proof on a pull-request branch, dispatch
-`cloud-cf-deploy.yml` with `environment=staging` and
-`telegram_authority_canary=true`. The canary rejects production, force, and
-deployed-renderer options, runs only the protected staging receipt preflight,
-and skips admission, the reusable release, every mutation, and certification.
+For a hosted, read-only authority proof on a ref allowed by the protected
+`staging` Environment policy, dispatch `cloud-cf-deploy.yml` with
+`environment=staging` and `telegram_authority_canary=true`. The canary rejects
+production, force, and deployed-renderer options, runs only the protected
+staging receipt preflight, and skips admission, the reusable release, every
+mutation, and certification.
 Because GitHub preserves successful job outputs during failed-job reruns, the
 migration, API deploy, Pages build, and Pages deploy jobs each repeat the bound
 attempt check as their first step; a partial rerun must be replaced with a full
