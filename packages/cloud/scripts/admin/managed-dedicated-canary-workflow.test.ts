@@ -289,6 +289,9 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(lifecycleJournal?.env?.CANARY_AGENT_ID).toBe(
       githubExpression("steps.cleanup_reconciliation.outputs.agent_id"),
     );
+    expect(lifecycleJournal?.env?.CANARY_DELETE_JOB_ID).toBe(
+      githubExpression("steps.cleanup_reconciliation.outputs.delete_job_id"),
+    );
     expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
       "dedicated_lifecycle_signals=",
     );

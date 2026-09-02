@@ -857,6 +857,14 @@ jobs:
             ORDER BY jobs.created_at DESC, jobs.id DESC
             LIMIT 1
           ),
+          latest_delete AS (
+            SELECT jobs.id
+            FROM jobs
+            INNER JOIN target ON target.id::text = jobs.agent_id
+            WHERE jobs.type = 'agent_delete'
+            ORDER BY jobs.created_at DESC, jobs.id DESC
+            LIMIT 1
+          ),
           eligible AS (
             SELECT candidate.replacement_cleanup_created_at
             FROM agent_sandboxes AS candidate
@@ -928,6 +936,7 @@ jobs:
           SELECT json_build_object(
             'targetCount', (SELECT count(*) FROM target),
             'agentId', (SELECT id FROM target),
+            'deleteJobId', (SELECT id FROM latest_delete),
             'headscaleIp', (SELECT headscale_ip FROM facts),
             'cleanupFencePresent', COALESCE((SELECT cleanup_fence_present FROM facts), false),
             'deletionAttemptPresent', COALESCE((SELECT deletion_attempt_present FROM facts), false),
@@ -947,9 +956,10 @@ jobs:
           SQL
           } | sed '/^[[:space:]]*$/d' | head -n 1)"
           jq -e '
-            keys == ["activeExclusiveJobs", "agentId", "cleanupCreatedAt", "cleanupFencePresent", "deletionAttemptPresent", "graceElapsed", "headscaleIp", "inspectableCandidatePresent", "lifecycleGenerationPresent", "lifecycleJobPresent", "olderEligibleFences", "provisionExecutionGenerationPresent", "provisionExecutionQuiescedPresent", "provisionLiveExecutionLeasePresent", "targetCount", "totalEligibleFences"] and
+            keys == ["activeExclusiveJobs", "agentId", "cleanupCreatedAt", "cleanupFencePresent", "deleteJobId", "deletionAttemptPresent", "graceElapsed", "headscaleIp", "inspectableCandidatePresent", "lifecycleGenerationPresent", "lifecycleJobPresent", "olderEligibleFences", "provisionExecutionGenerationPresent", "provisionExecutionQuiescedPresent", "provisionLiveExecutionLeasePresent", "targetCount", "totalEligibleFences"] and
             .targetCount == 1 and
             (.agentId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")) and
+            (.deleteJobId == null or (.deleteJobId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"))) and
             (.cleanupFencePresent | type == "boolean") and
             (
               (
@@ -976,6 +986,12 @@ jobs:
           echo "::add-mask::$agent_id"
           echo "agent_id=$agent_id" >> "$GITHUB_OUTPUT"
           unset agent_id
+          delete_job_id="$(jq -r '.deleteJobId // ""' <<<"$summary")"
+          if [ -n "$delete_job_id" ]; then
+            echo "::add-mask::$delete_job_id"
+          fi
+          echo "delete_job_id=$delete_job_id" >> "$GITHUB_OUTPUT"
+          unset delete_job_id
           headscale_ip="$(jq -r '.headscaleIp // ""' <<<"$summary")"
           if [ -n "$headscale_ip" ]; then
             echo "::add-mask::$headscale_ip"
@@ -1531,24 +1547,27 @@ jobs:
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         env:
           CANARY_AGENT_ID: ${{ steps.cleanup_reconciliation.outputs.agent_id }}
+          CANARY_DELETE_JOB_ID: ${{ steps.cleanup_reconciliation.outputs.delete_job_id }}
         with:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 2m
-          envs: CANARY_AGENT_ID
+          envs: CANARY_AGENT_ID,CANARY_DELETE_JOB_ID
           script: |
             set -euo pipefail
             [[ "$CANARY_AGENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
+            if [ -n "$CANARY_DELETE_JOB_ID" ]; then
+              [[ "$CANARY_DELETE_JOB_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
+            fi
             block="$(
               sudo journalctl \
                 -u eliza-provisioning-worker.service \
                 --since '4 hours ago' \
                 -o cat \
                 --no-pager 2>/dev/null \
-                | grep -F -B 12 -A 12 "$CANARY_AGENT_ID" \
+                | { grep -F -B 12 -A 12 -e "$CANARY_AGENT_ID" ${CANARY_DELETE_JOB_ID:+-e "$CANARY_DELETE_JOB_ID"} || true; } \
                 | tail -n 1200 \
-                || true
             )"
             lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
             signals=''
@@ -1617,7 +1636,7 @@ jobs:
               *'marked sandbox as deletion_failed'*) delete_category='permanent_failure_unclassified' ;;
               *) delete_category='none' ;;
             esac
-            unset block lower CANARY_AGENT_ID
+            unset block lower CANARY_AGENT_ID CANARY_DELETE_JOB_ID
             echo "dedicated_lifecycle_signals=${signals:-none}"
             echo "dedicated_heartbeat_failure_category=$heartbeat_category"
             echo "dedicated_delete_failure_category=$delete_category"
