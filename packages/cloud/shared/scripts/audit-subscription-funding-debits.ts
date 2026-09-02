@@ -12,15 +12,16 @@ export const CLOUD_ROOT = resolve(import.meta.dirname, "../..");
 
 const SIGNAL_PATTERNS: Readonly<Record<SubscriptionDebitSignal, RegExp>> = {
   credit_service_deduct: /\.deductCredits\s*\(/g,
-  // `reserve` is generic, so require a receiver whose name identifies credit authority while
-  // remaining agnostic to singleton aliases and injected members such as `this.credits`.
+  // `reserve` is generic, so require a receiver whose name identifies credit authority. This
+  // covers singleton aliases and explicitly named injected members such as `this.credits`.
   credit_service_reserve: /\b(?:[\w$]*credits?[\w$]*|this\.credits)\.reserve\s*\(/gi,
   credit_service_reserve_and_deduct: /\.reserveAndDeductCredits\s*\(/g,
   credit_transaction_repository_create: /\bcreditTransactionsRepository\.create\s*\(/g,
   debit_ledger_literal: /\btype\s*:\s*["']debit["']/g,
   organization_repository_deduct: /\.deductCreditsWithTransaction\s*\(/g,
   // The terminators keep this scan local to one balance expression without a silent length cliff.
-  raw_credit_balance_decrement: /credit_balance\s*(?:=|:\s*sql`)\s*(?:(?![;`]).|\r?\n)*?\s-\s/g,
+  raw_credit_balance_decrement:
+    /credit_balance\s*(?:=|:\s*sql`)\s*(?:(?![;`]).|\r?\n)*?(?<!-)\s*-(?!-)\s*/g,
   raw_credit_transaction_sql_insert: /\bINSERT\s+INTO\s+"?credit_transactions"?/gi,
   raw_credit_transaction_insert: /\.insert\s*\(\s*creditTransactions\s*\)/g,
 };

@@ -46,6 +46,15 @@ describe("subscription funding production debit inventory", () => {
     ).toEqual({ raw_credit_balance_decrement: 1 });
   });
 
+  test("detects raw balance decrements without author-controlled whitespace", () => {
+    expect(
+      scanSubscriptionDebitSignals(`
+        credit_balance: sql\`${"${organizations.credit_balance}"}-${"${amount}"}\`,
+        await tx.execute(sql\`UPDATE organizations SET credit_balance=credit_balance-${"${amount}"}\`);
+      `),
+    ).toEqual({ raw_credit_balance_decrement: 2 });
+  });
+
   test("ignores debit-shaped prose and quoted strings", () => {
     expect(
       scanSubscriptionDebitSignals(`
