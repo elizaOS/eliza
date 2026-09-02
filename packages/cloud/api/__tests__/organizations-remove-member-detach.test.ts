@@ -101,6 +101,10 @@ beforeAll(async () => {
         pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true,
         steward_tenant_id text UNIQUE,
         steward_tenant_api_key text,
+        account_lifecycle_state text NOT NULL DEFAULT 'active',
+        account_lifecycle_revision bigint NOT NULL DEFAULT 0,
+        account_deletion_request_id uuid,
+        paid_work_fenced_at timestamp,
         is_active boolean NOT NULL DEFAULT true,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
@@ -137,6 +141,10 @@ beforeAll(async () => {
         preferences text,
         email_notifications boolean DEFAULT true,
         response_notifications boolean DEFAULT true,
+        account_lifecycle_state text NOT NULL DEFAULT 'active',
+        account_lifecycle_revision bigint NOT NULL DEFAULT 0,
+        account_deletion_request_id uuid,
+        auth_fenced_at timestamp,
         is_active boolean NOT NULL DEFAULT true,
         email_ciphertext text, email_nonce text, email_auth_tag text,
         email_kms_key_id text, email_kms_key_version integer, email_blind_index text,
@@ -199,6 +207,16 @@ beforeAll(async () => {
         whatsapp_name text,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
+      )`,
+      `CREATE TABLE IF NOT EXISTS personal_shared_group_participants (
+        binding_id uuid NOT NULL,
+        linked_user_id uuid REFERENCES users(id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS personal_shared_group_join_challenges (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        binding_id uuid NOT NULL,
+        linked_user_id uuid REFERENCES users(id),
+        consumed_at timestamp
       )`,
     ];
     for (const stmt of ddl) await dbWrite.execute(stmt);

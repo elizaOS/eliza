@@ -62,10 +62,21 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
       return {
         async fetch(input: RequestInfo | URL, init?: RequestInit) {
           coordinatorCalls.push({ name, input, init });
-          return new Response(
-            'event: chunk\ndata: {"chunk":"cache only"}\n\nevent: done\ndata: {}\n\n',
-            { headers: { "Content-Type": "text/event-stream" } },
-          );
+          const operation = JSON.parse(String(init?.body)) as {
+            operation?: string;
+            rpc?: { id?: unknown };
+          };
+          return operation.operation === "prewarm"
+            ? Response.json({ success: true })
+            : Response.json({
+                jsonrpc: "2.0",
+                id: operation.rpc?.id ?? "voice-hotpath",
+                result: {
+                  text: "cache only",
+                  messageId: "assistant-message",
+                  userMessageId: "user-message",
+                },
+              });
         },
       };
     },
@@ -137,7 +148,7 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
   });
   const turnEnvelope = JSON.parse(String(coordinatorCalls[1]?.init?.body));
   expect(turnEnvelope).toMatchObject({
-    operation: "stream",
+    operation: "bridge",
     agent: cachedAgent,
     channel: {
       type: ChannelType.VOICE_DM,
@@ -167,8 +178,17 @@ test("authenticated lifecycle controls cross the real adapter outside RPC params
       return {
         async fetch(input: RequestInfo | URL, init?: RequestInit) {
           coordinatorCalls.push({ input, init });
-          return new Response("event: done\ndata: {}\n\n", {
-            headers: { "Content-Type": "text/event-stream" },
+          const operation = JSON.parse(String(init?.body)) as {
+            rpc?: { id?: unknown };
+          };
+          return Response.json({
+            jsonrpc: "2.0",
+            id: operation.rpc?.id ?? "voice-lifecycle",
+            result: {
+              text: "lifecycle ok",
+              messageId: "assistant-message",
+              userMessageId: "user-message",
+            },
           });
         },
       };
@@ -221,7 +241,7 @@ test("authenticated lifecycle controls cross the real adapter outside RPC params
   expect(coordinatorCalls).toHaveLength(1);
   const envelope = JSON.parse(String(coordinatorCalls[0]?.init?.body));
   expect(envelope).toMatchObject({
-    operation: "stream",
+    operation: "bridge",
     trustedMessageRole: "system",
     trustedHistoryCutoffAt: cutoff,
     transientInput: true,

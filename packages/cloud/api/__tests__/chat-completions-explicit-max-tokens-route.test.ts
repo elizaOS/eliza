@@ -430,7 +430,7 @@ function makeRequest(body: Record<string, unknown>): Request {
 }
 
 describe("chat/completions explicit max_tokens route behavior", () => {
-  test("returns the designed suspended-account error from the hot auth path", async () => {
+  test("returns the unified permission error for a suspended hot-path account", async () => {
     authResolution = { kind: "suspended" };
 
     const response = await handleChatCompletionsPOST(makeRequest({}), {
@@ -441,8 +441,8 @@ describe("chat/completions explicit max_tokens route behavior", () => {
     const body = (await response.json()) as {
       error: { type: string; code: string };
     };
-    expect(body.error.type).toBe("account_suspended");
-    expect(body.error.code).toBe("moderation_violation");
+    expect(body.error.type).toBe("permission_error");
+    expect(body.error.code).toBe("access_denied");
     expect(generateTextCalls).toHaveLength(0);
   });
 

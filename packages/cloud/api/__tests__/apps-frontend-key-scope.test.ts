@@ -78,6 +78,21 @@ mock.module("@/lib/auth", () => ({
   }),
 }));
 
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  asGenerativeCacheApiError: () => null,
+  getGenerativeOperationContext: () => ({}),
+  requireGenerativeRouteCaller: async () => ({
+    user: { id: USER, organization_id: ORG },
+    apiKeyId: currentApiKeyId ?? null,
+    authSource: "combined_cache",
+    appScopeId: currentApiKeyId
+      ? (Object.values(APPS).find(
+          (candidate) => candidate.api_key_id === currentApiKeyId,
+        )?.id ?? null)
+      : null,
+  }),
+}));
+
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { CRITICAL: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),

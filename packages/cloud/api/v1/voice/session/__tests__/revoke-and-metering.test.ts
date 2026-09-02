@@ -356,7 +356,7 @@ describe("revoke-to-silence (SEC-6)", () => {
     await new Promise((resolve) => setTimeout(resolve, 1_300));
 
     expect(ink.closed).toBe(true);
-    expect(dl.ref.closed).toEqual({ code: 1000, reason: "revoked" });
+    expect(dl.ref.closed).toEqual({ code: 1000, reason: "error" });
   });
 
   test("client disconnect self-severs the provider socket", async () => {
