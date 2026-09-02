@@ -197,7 +197,8 @@ const gmailNext: JsonRecord = {
 const fileMutate = {
   action: "write",
   file_path: filePath,
-  content: "replacement after continuation",
+  content: `${FILE_SOURCE}\nreplacement after continuation`,
+  overwrite: true,
 };
 const fileStale: JsonRecord = {
   action: "read",
@@ -261,6 +262,7 @@ async function setupSources(ctx: ScenarioContext): Promise<string | undefined> {
       path.join(realpathSync(os.tmpdir()), `${SCENARIO_ID}-`),
     );
   }
+  fixtureRoot = realpathSync(fixtureRoot);
   filePath = path.join(fixtureRoot, "late-evidence.txt");
   fileFirst.file_path = filePath;
   fileLate.file_path = filePath;

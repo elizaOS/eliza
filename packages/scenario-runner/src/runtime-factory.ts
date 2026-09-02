@@ -939,6 +939,7 @@ export async function createScenarioRuntime(
             ? { SKILLS_DIR: process.env.SKILLS_DIR }
             : {}),
           ACTION_CALLBACK_VOICE_REWRITE: "false",
+          OUTBOUND_VOICE_REWRITE: "false",
           LIFEOPS_INBOX_PRIORITY_SCORING: "false",
         }
       : {};

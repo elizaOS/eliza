@@ -2821,8 +2821,9 @@ export class LifeOpsService extends LifeOpsServiceBase {
         "LIFEOPS_INBOX_PRIORITY_SCORING",
       );
       if (
-        typeof scoringOverride === "string" &&
-        scoringOverride.trim().toLowerCase() === "false"
+        scoringOverride === false ||
+        (typeof scoringOverride === "string" &&
+          scoringOverride.trim().toLowerCase() === "false")
       ) {
         return { enabled: false, model: null };
       }
