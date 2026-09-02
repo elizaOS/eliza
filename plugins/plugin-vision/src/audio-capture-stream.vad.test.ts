@@ -100,7 +100,9 @@ describe("StreamingAudioCaptureService end-of-utterance detection", () => {
     // The trailing silence must have re-armed the end-of-speech countdown.
     expect(speechEnd).toHaveBeenCalledTimes(0);
 
-    await vi.advanceTimersByTimeAsync(SILENCE_TIMEOUT + 500);
+    // Advance just past the configured timeout (not the hardcoded 1500 default),
+    // so a build that ignored `config.silenceTimeout` would not fire here.
+    await vi.advanceTimersByTimeAsync(SILENCE_TIMEOUT + 100);
 
     expect(speechEnd).toHaveBeenCalledTimes(1);
     // processFinalTranscription() ran and reached the transcription model.
@@ -117,7 +119,7 @@ describe("StreamingAudioCaptureService end-of-utterance detection", () => {
     feed(SILENCE());
 
     expect(speechEnd).toHaveBeenCalledTimes(0);
-    await vi.advanceTimersByTimeAsync(SILENCE_TIMEOUT + 500);
+    await vi.advanceTimersByTimeAsync(SILENCE_TIMEOUT + 100);
 
     expect(speechEnd).toHaveBeenCalledTimes(1);
     expect(useModel).toHaveBeenCalledTimes(1);
@@ -144,9 +146,30 @@ describe("StreamingAudioCaptureService end-of-utterance detection", () => {
     // A genuinely re-armed (not stale) handle fires exactly one endSpeech.
     expect(secondArmed).not.toBe(firstArmed);
 
-    await vi.advanceTimersByTimeAsync(SILENCE_TIMEOUT + 500);
+    await vi.advanceTimersByTimeAsync(SILENCE_TIMEOUT + 100);
     expect(speechEnd).toHaveBeenCalledTimes(1);
     // The fired timer is cleared back to null by endSpeech().
     expect(silenceTimerHandle()).toBeNull();
+  });
+
+  it("does not end speech from a stale countdown when the pause is followed by more speech", async () => {
+    const { service, feed } = makeHarness();
+    const speechEnd = vi.fn();
+    service.on("speechEnd", speechEnd);
+
+    // Pin the *cancel* half of the invariant: resuming speech must clear the
+    // pending countdown, not merely null the handle. Time passes during the
+    // pause, then the user resumes and keeps talking past the moment the first
+    // countdown would have expired. A stale-but-live timer (nulled without
+    // clearing) would fire mid-speech and drop the utterance.
+    feed(SPEECH());
+    feed(SILENCE());
+    await vi.advanceTimersByTimeAsync(SILENCE_TIMEOUT - 200);
+    feed(SPEECH());
+    await vi.advanceTimersByTimeAsync(SILENCE_TIMEOUT);
+    feed(SPEECH());
+
+    expect(speechEnd).toHaveBeenCalledTimes(0);
+    expect(service.isSpeechActive()).toBe(true);
   });
 });
