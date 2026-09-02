@@ -9,6 +9,7 @@ import type {
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const MULTICODEC_ED25519 = Buffer.from([0xed, 0x01]);
+const PKCS8_ED25519_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 
 function base58Encode(buffer: Buffer): string {
 	let num = BigInt(`0x${buffer.toString("hex")}`);
@@ -31,7 +32,10 @@ export class TechnocoreService extends Service {
 
 	private baseUrl: string;
 	private privateKey: crypto.KeyObject;
+	public publicKey: crypto.KeyObject;
 	public did: string;
+	private lastMs = 0;
+	private seq = 0;
 
 	constructor(runtime?: IAgentRuntime, config?: Partial<TechnocoreConfig>) {
 		super(runtime);
@@ -39,17 +43,50 @@ export class TechnocoreService extends Service {
 		const settingUrl = runtime?.getSetting?.("TECHNOCORE_BASE_URL") as string | undefined;
 		this.baseUrl = (config?.baseUrl || settingUrl || "https://technocore.chat").replace(/\/+$/, "");
 
-		// Generate or load persistent Ed25519 keypair for this service instance
-		const keypair = crypto.generateKeyPairSync("ed25519");
-		this.privateKey = keypair.privateKey;
+		const privateKeySetting =
+			(runtime?.getSetting?.("TECHNOCORE_PRIVATE_KEY_HEX") as string | undefined) ||
+			(runtime?.getSetting?.("TECHNOCORE_PRIVATE_KEY") as string | undefined) ||
+			config?.privateKeyHex;
 
-		const rawPublic = keypair.publicKey.export({ type: "spki", format: "der" });
+		if (privateKeySetting && /^[0-9a-fA-F]{64}$/.test(privateKeySetting.trim())) {
+			// Deterministically load from 32-byte Ed25519 seed hex
+			const seed = Buffer.from(privateKeySetting.trim(), "hex");
+			const pkcs8Der = Buffer.concat([PKCS8_ED25519_PREFIX, seed]);
+			this.privateKey = crypto.createPrivateKey({
+				key: pkcs8Der,
+				format: "der",
+				type: "pkcs8",
+			});
+			this.publicKey = crypto.createPublicKey(this.privateKey);
+		} else {
+			// Generate fresh persistent keypair for this service instance
+			const keypair = crypto.generateKeyPairSync("ed25519");
+			this.privateKey = keypair.privateKey;
+			this.publicKey = keypair.publicKey;
+		}
+
+		const rawPublic = this.publicKey.export({ type: "spki", format: "der" });
 		const rawPubBytes = rawPublic.subarray(rawPublic.length - 32);
 		const multicodecPub = Buffer.concat([MULTICODEC_ED25519, rawPubBytes]);
 		this.did = `did:key:z${base58Encode(multicodecPub)}`;
 	}
 
-	private signPayload(payload: string): string {
+	public override async stop(): Promise<void> {
+		// Cleanup service resources on shutdown
+	}
+
+	public getNonce(): string {
+		const nowMs = Date.now();
+		if (this.lastMs === nowMs) {
+			this.seq++;
+		} else {
+			this.lastMs = nowMs;
+			this.seq = 0;
+		}
+		return (BigInt(nowMs) * 1_000_000n + BigInt(this.seq)).toString();
+	}
+
+	public signPayload(payload: string): string {
 		const sig = crypto.sign(null, Buffer.from(payload, "utf-8"), this.privateKey);
 		return sig.toString("base64url").replace(/=+$/, "");
 	}
@@ -84,13 +121,14 @@ export class TechnocoreService extends Service {
 			payloadBody = JSON.stringify(body);
 		}
 
+		const init: RequestInit = { method, headers };
+		if (payloadBody !== undefined) {
+			init.body = payloadBody;
+		}
+
 		for (let attempt = 1; attempt <= maxRetries; attempt++) {
 			try {
-				const res = await fetch(url.toString(), {
-					method,
-					headers,
-					body: payloadBody,
-				});
+				const res = await fetch(url.toString(), init);
 
 				if (!res.ok) {
 					if ([429, 502, 503, 504].includes(res.status) && attempt < maxRetries) {
@@ -114,9 +152,7 @@ export class TechnocoreService extends Service {
 	}
 
 	public async postMessage(room: string, text: string): Promise<TechnocoreRoomResponse> {
-		const nonce = (
-			BigInt(Date.now()) * 1_000_000n + BigInt(Math.floor(Math.random() * 1_000_000))
-		).toString();
+		const nonce = this.getNonce();
 		const payload = `${room}\n${nonce}\n${text}`;
 		const sig = this.signPayload(payload);
 
@@ -154,9 +190,7 @@ export class TechnocoreService extends Service {
 		key: string,
 		value: string
 	): Promise<TechnocoreKVResponse> {
-		const nonce = (
-			BigInt(Date.now()) * 1_000_000n + BigInt(Math.floor(Math.random() * 1_000_000))
-		).toString();
+		const nonce = this.getNonce();
 		const payload = `${namespace}|${key}|${nonce}|${value}`;
 		const sig = this.signPayload(payload);
 

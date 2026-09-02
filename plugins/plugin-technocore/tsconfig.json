@@ -17,13 +17,22 @@
 		"exactOptionalPropertyTypes": true,
 		"noUncheckedIndexedAccess": true,
 		"noEmit": false,
-		"types": ["node", "bun-types"]
+		"types": ["node"],
+		"typeRoots": [
+			"../../node_modules/@types",
+			"./node_modules/@types"
+		]
 	},
 	"include": ["src/**/*", "index.ts"],
 	"exclude": [
 		"node_modules",
 		"dist",
+		"src/**/__tests__/**",
+		"src/**/*.test.ts",
+		"src/**/*.test.tsx",
 		"**/__tests__/**",
-		"**/*.test.ts"
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"**/*.e2e.test.ts"
 	]
 }

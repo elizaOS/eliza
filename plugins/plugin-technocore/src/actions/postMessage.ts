@@ -4,15 +4,18 @@ import type {
 	HandlerCallback,
 	IAgentRuntime,
 	Memory,
+	ProviderDataRecord,
 	State,
 } from "@elizaos/core";
 import { TechnocoreService } from "../services/technocore";
 
 function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
-	return (
-		(runtime.getService?.("technocore") as TechnocoreService) ||
-		new TechnocoreService(runtime)
+	const service = runtime.getService?.("technocore") as TechnocoreService | undefined;
+	if (service) return service;
+	runtime.logger?.warn?.(
+		"[TechnocorePlugin] TechnocoreService was not found in runtime. Falling back to a transient service instance."
 	);
+	return new TechnocoreService(runtime);
 }
 
 export const postMessageAction: Action = {
@@ -56,8 +59,8 @@ export const postMessageAction: Action = {
 
 			return {
 				success: true,
-				response: responseText,
-				data: result,
+				text: responseText,
+				data: result as unknown as ProviderDataRecord,
 			};
 		} catch (err: any) {
 			const errMessage = `Failed to post message to Technocore: ${err.message}`;

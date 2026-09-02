@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { TechnocoreService } from "../src/services/technocore";
 import { postMessageAction } from "../src/actions/postMessage";
@@ -12,6 +13,39 @@ describe("Technocore Plugin Tests", () => {
 		expect(service.did).toBeDefined();
 		expect(service.did.startsWith("did:key:z6M")).toBe(true);
 		expect(service.did.length).toBeGreaterThan(40);
+	});
+
+	it("should deterministically load identity from privateKeyHex", () => {
+		const testSeed = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+		const service1 = new TechnocoreService(undefined, { privateKeyHex: testSeed });
+		const service2 = new TechnocoreService(undefined, { privateKeyHex: testSeed });
+
+		expect(service1.did).toEqual(service2.did);
+		expect(service1.did.startsWith("did:key:z6M")).toBe(true);
+	});
+
+	it("should generate strictly monotonic nonces across rapid calls", () => {
+		const service = new TechnocoreService();
+		const n1 = BigInt(service.getNonce());
+		const n2 = BigInt(service.getNonce());
+		const n3 = BigInt(service.getNonce());
+
+		expect(n2).toBeGreaterThan(n1);
+		expect(n3).toBeGreaterThan(n2);
+	});
+
+	it("should produce cryptographically valid signatures", () => {
+		const service = new TechnocoreService();
+		const payload = "technocore\n1725255600000000000\nHello decentralized world";
+		const sigUrlSafe = service.signPayload(payload);
+
+		expect(sigUrlSafe).toBeDefined();
+		expect(sigUrlSafe.length).toBeGreaterThan(50);
+
+		// Verify signature using Node.js crypto.verify and service's public key
+		const sigBytes = Buffer.from(sigUrlSafe, "base64url");
+		const isValid = crypto.verify(null, Buffer.from(payload, "utf-8"), service.publicKey, sigBytes);
+		expect(isValid).toBe(true);
 	});
 
 	it("should export full plugin structure with valid actions, provider, and service", () => {
