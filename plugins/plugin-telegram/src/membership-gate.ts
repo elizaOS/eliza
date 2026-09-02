@@ -9,6 +9,7 @@ import type { UUID } from "@elizaos/core";
 import { ElizaError, isTruthyEnvValue, logger } from "@elizaos/core";
 import type { TelegramMembershipAuthority } from "./membership";
 import {
+  authorityErrorCode,
   resolveMembershipService,
   telegramMembershipShouldReconcile,
 } from "./membership";
@@ -259,15 +260,42 @@ export class TelegramMembershipMessageGate {
       return true;
     }
     if (telegramMembershipShouldReconcile(decision)) {
-      const reconciled = await this.authority.reconcile({
-        chatId: input.chatId,
-        chatRoomKey: input.chatRoomKey,
-        canonicalPrincipalId: input.principalEntityId,
-        telegramUserId: input.telegramUserId,
-        runtime: input.runtimeMapping,
-        getChatMember: input.getChatMember,
-        nonce: `${Date.now()}-${++this.reconcileNonce}`,
-      });
+      let reconciled: Awaited<
+        ReturnType<TelegramMembershipAuthority["reconcile"]>
+      > = null;
+      try {
+        reconciled = await this.authority.reconcile({
+          chatId: input.chatId,
+          chatRoomKey: input.chatRoomKey,
+          canonicalPrincipalId: input.principalEntityId,
+          telegramUserId: input.telegramUserId,
+          runtime: input.runtimeMapping,
+          getChatMember: input.getChatMember,
+          nonce: `${Date.now()}-${++this.reconcileNonce}`,
+        });
+      } catch (error) {
+        // error-policy:J1 A revoked reconcile could be neither committed nor
+        // degraded fail-closed: no durable fence landed, so prior active
+        // evidence may still authorize the departed principal on a later
+        // message. Mark the connector gate broken — every group admission
+        // then fails closed until a later boot rebinds a healthy gate —
+        // mirroring the recordEvent failure path in TelegramService.
+        if (
+          authorityErrorCode(error) === "TELEGRAM_MEMBERSHIP_REVOCATION_UNSAFE"
+        ) {
+          this.runtime.reportError(
+            "telegram:membership-reconcile-unsafe",
+            error,
+            {
+              chatId: input.chatId,
+              telegramUserId: input.telegramUserId,
+            },
+          );
+          this.markBroken();
+          return false;
+        }
+        throw error;
+      }
       if (reconciled?.state === "active") {
         const recheck = await this.authority.authorize({
           chatId: input.chatId,

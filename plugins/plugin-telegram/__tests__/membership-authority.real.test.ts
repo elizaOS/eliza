@@ -60,6 +60,13 @@ async function bootMembershipHarness(options?: {
    */
   faults: { failApplyMembership: boolean };
   /**
+   * Fault injector for the fail-closed stale-degrade path: while true, every
+   * setScopeHealth call throws, so a failed revocation write ALSO cannot
+   * degrade the scope — the double-fault class where no durable fence can
+   * land and the connector admission gate must break instead.
+   */
+  degradeFaults: { failSetScopeHealth: boolean };
+  /**
    * Fault injector for durable-overlay hydration failures: while true, the
    * runtime cache read throws, so authorize must fail closed.
    */
@@ -79,6 +86,18 @@ async function bootMembershipHarness(options?: {
   }
 
   const faults = { failApplyMembership: false };
+  // Fault injector #4: while true, setScopeHealth throws on the real service
+  // instance — the stale-degrade path of a failed revocation write cannot
+  // land either, forcing the unsafe escalation class under test.
+  const degradeFaults = { failSetScopeHealth: false };
+  const originalSetScopeHealth =
+    membershipService.setScopeHealth.bind(membershipService);
+  membershipService.setScopeHealth = ((command: never) => {
+    if (degradeFaults.failSetScopeHealth) {
+      throw new Error("injected health-degrade outage (test fault)");
+    }
+    return originalSetScopeHealth(command);
+  }) as never;
   // Fault injector #2: while true, runtime.getCache throws, exercising the
   // durable-overlay hydration failure path (must fail admission closed).
   const cacheFaults = { failGetCache: false, setCacheResolvesFalse: false };
@@ -161,6 +180,7 @@ async function bootMembershipHarness(options?: {
     getChatMember,
     membershipService,
     faults,
+    degradeFaults,
     cacheFaults,
   };
 }
@@ -1698,5 +1718,135 @@ describe("telegram membership authority vertical (real PGlite)", () => {
       "after re-add + fresh evidence, admission restores",
     ).toBe("allowed");
     expect(getChatMember).not.toHaveBeenCalled();
+  }, 120_000);
+
+  it("breaks the connector admission gate when a revoked reconcile can neither commit nor degrade (REVOCATION_UNSAFE)", async () => {
+    const { manager, authority, getChatMember, faults, degradeFaults } =
+      await bootMembershipHarness();
+
+    // A never-seen principal in a group with no committed evidence: the
+    // first admission consults authorize (no_scope_evidence -> reconcile
+    // miss) and the gate issues the getChatMember point query.
+    getChatMember.mockResolvedValue({
+      status: "kicked",
+      user: { id: MEMBER_TG_ID },
+    });
+
+    // Admission observability: wrap the real createMemory so internal
+    // callers keep working while counting actual admissions.
+    const harnessRuntime = (
+      manager as unknown as { runtime: { createMemory: unknown } }
+    ).runtime;
+    const originalCreateMemory = (
+      harnessRuntime.createMemory as (...args: unknown[]) => Promise<boolean>
+    ).bind(harnessRuntime);
+    let admissions = 0;
+    (harnessRuntime as { createMemory: unknown }).createMemory = async (
+      ...args: unknown[]
+    ) => {
+      admissions += 1;
+      return originalCreateMemory(
+        ...(args as Parameters<typeof originalCreateMemory>),
+      );
+    };
+
+    // Double fault: the revoked evidence write fails AND the fail-closed
+    // stale-degrade fails — no durable fence can land. Before the fix the
+    // reconcile path swallowed this class and returned null, leaving the
+    // gate healthy with no overlay installed.
+    faults.failApplyMembership = true;
+    degradeFaults.failSetScopeHealth = true;
+    await manager.handleMessage(
+      groupMessageCtx({ messageId: 300, getChatMember }),
+      { forceReply: false },
+    );
+    expect(
+      getChatMember,
+      "never-seen principal triggers the reconcile query",
+    ).toHaveBeenCalledTimes(1);
+    expect(admissions, "the revoked reconcile's message is denied").toBe(0);
+
+    // The connector admission gate is now BROKEN: a later message from the
+    // SAME principal is denied at the broken short-circuit — no provider
+    // query, no authority consult, no reconciliation attempt at all.
+    await manager.handleMessage(
+      groupMessageCtx({ messageId: 301, getChatMember }),
+      { forceReply: false },
+    );
+    expect(
+      getChatMember,
+      "a broken gate must not reconsult the provider or the authority",
+    ).toHaveBeenCalledTimes(1);
+    expect(admissions).toBe(0);
+
+    // Refutation of "denied because of the fault": lift BOTH faults and
+    // answer "member" — the gate stays broken, so even a would-be-admissible
+    // reconcile result cannot restore admission. Only a later successful
+    // boot (rebind) can clear the broken state.
+    faults.failApplyMembership = false;
+    degradeFaults.failSetScopeHealth = false;
+    getChatMember.mockResolvedValue({
+      status: "member",
+      user: { id: MEMBER_TG_ID },
+    });
+    await manager.handleMessage(
+      groupMessageCtx({ messageId: 302, getChatMember }),
+      { forceReply: false },
+    );
+    expect(
+      getChatMember,
+      "the broken gate denies before any reconcile could admit",
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      admissions,
+      "a healthy authority answer cannot restore a broken gate",
+    ).toBe(0);
+
+    // Recovery refutation, second leg: the broken gate itself — not residual
+    // runtime damage — is what denies. Rebinding a healthy gate (what a
+    // later successful boot does) restores normal admission FOR A CLEAN
+    // SCOPE: a never-seen principal in a DIFFERENT chat backfills through
+    // reconcile and is admitted. (The faulted scope itself stays denied
+    // until fresh evidence restores its health — covered by the
+    // tombstone/restart tests above — so the same-principal message above
+    // must remain denied regardless of gate state.)
+    manager.bindMembershipGate({
+      authority,
+      botTelegramUserId: "900001",
+    });
+    const otherChat = { id: CHAT_ID - 7, type: "group", title: "Other" };
+    const otherFrom = {
+      id: MEMBER_TG_ID + 9,
+      is_bot: false,
+      first_name: "Other",
+      username: "other",
+    };
+    const otherCtx = {
+      from: otherFrom,
+      chat: otherChat,
+      message: {
+        message_id: 310,
+        date: Math.floor(Date.now() / 1000),
+        text: "hello",
+        chat: otherChat,
+        from: otherFrom,
+      },
+      telegram: {
+        getChatMember: async () => ({
+          status: "member",
+          user: { id: MEMBER_TG_ID + 9 },
+        }),
+        sendMessage: async () => ({}),
+        sendChatAction: async () => true,
+      },
+    } as unknown as Context;
+    await manager.handleMessage(otherCtx, { forceReply: false });
+    expect(
+      admissions,
+      "a rebound healthy gate admits a clean-scope member via reconcile",
+    ).toBeGreaterThan(0);
+
+    (harnessRuntime as { createMemory: unknown }).createMemory =
+      originalCreateMemory;
   }, 120_000);
 });
