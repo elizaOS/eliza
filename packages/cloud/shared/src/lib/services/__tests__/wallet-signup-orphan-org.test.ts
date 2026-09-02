@@ -212,6 +212,36 @@ describe("wallet signup atomic opening-balance creation", () => {
   );
 
   test(
+    "an adopted organization richer than the grant is not reported as credited",
+    async () => {
+      if (!pgliteReady) throw pgliteError;
+
+      // A slug collision can adopt an organization that already carries a
+      // balance above the opening grant. This signup granted nothing, so the
+      // reported figures must stay false/0 -- reporting the adopted balance as
+      // an initial grant is the same false statement as the zero-dollar orphan
+      // case, approached from above rather than below.
+      const normalized = EVM_ADDRESS_2.toLowerCase();
+      const slug = `wallet-${normalized}`;
+      const adoptedBalanceUsd = SIGNUP_CREDIT_POLICY.automaticGrantUsd + 37.5;
+      await dbWrite.execute(
+        `INSERT INTO organizations (name, slug, credit_balance) VALUES ('Accrued', '${slug}', '${adoptedBalanceUsd.toFixed(2)}');`,
+      );
+
+      const result = await walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS_2);
+
+      expect(result.isNewAccount).toBe(true);
+      expect(result.user.organization?.slug).toBe(slug);
+      expect(result.initialCreditsGranted).toBe(false);
+      expect(result.initialFreeCreditsUsd).toBe(0);
+      expect(await countRows("organizations")).toBe(1);
+      expect(await countRows("credit_transactions")).toBe(0);
+      expect(await orgBalanceBySlug(slug)).toBe(adoptedBalanceUsd);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "a second sign-in returns the existing owner without creating rows",
     async () => {
       if (!pgliteReady) throw pgliteError;
