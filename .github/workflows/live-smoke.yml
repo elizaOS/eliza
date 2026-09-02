@@ -1154,7 +1154,7 @@ jobs:
             unset diagnostic
 
       - name: Classify exact dedicated lifecycle journal
-        if: steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'
+        if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         env:
           CANARY_AGENT_ID: ${{ steps.cleanup_reconciliation.outputs.agent_id }}

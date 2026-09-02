@@ -216,7 +216,7 @@ describe("managed dedicated live-smoke workflow contract", () => {
       (step) => step.name === "Classify exact dedicated lifecycle journal",
     );
     expect(lifecycleJournal?.if).toBe(
-      "steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'",
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
     );
     expect(lifecycleJournal?.env?.CANARY_AGENT_ID).toBe(
       githubExpression("steps.cleanup_reconciliation.outputs.agent_id"),
