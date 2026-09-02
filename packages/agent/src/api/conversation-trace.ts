@@ -5,10 +5,7 @@
  */
 
 import type http from "node:http";
-import {
-  INFERENCE_TRACE_ID_PATTERN,
-  mintInferenceTraceId,
-} from "@elizaos/core";
+import { isInferenceTraceId, mintInferenceTraceId } from "@elizaos/core";
 
 export const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 
@@ -22,10 +19,7 @@ export function resolveConversationTraceContext(
   headers: http.IncomingHttpHeaders,
 ): ConversationTraceContext {
   const supplied = headers[ELIZA_TRACE_ID_HEADER.toLowerCase()];
-  if (
-    typeof supplied === "string" &&
-    INFERENCE_TRACE_ID_PATTERN.test(supplied)
-  ) {
+  if (isInferenceTraceId(supplied)) {
     return { traceId: supplied, source: "inbound" };
   }
   return { traceId: mintInferenceTraceId(), source: "minted" };

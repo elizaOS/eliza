@@ -275,6 +275,7 @@ test("browser-literal dedicated request omits probe-only instrumentation", () =>
 
 test("probeOpenAi requires a clean terminal frame and never records prompt text", async () => {
   let requestBody = null;
+  let requestTraceId = null;
   const result = await probeOpenAi({
     target: "gateway",
     probeCase: parseProbeCase("zai-glm-4.7@none@512"),
@@ -287,10 +288,11 @@ test("probeOpenAi requires a clean terminal frame and never records prompt text"
     metadata: { phase: "warm", pairId: "pair-1" },
     fetchImpl: async (_url, init) => {
       requestBody = JSON.parse(init.body);
+      requestTraceId = init.headers["X-Eliza-Trace-Id"];
       return successfulOpenAiResponse("proof-clean", {
         headers: {
           "x-eliza-preforward-ms": "total=12;auth=2;mid=3;reserve=4;setup=3",
-          "x-eliza-trace-id": "trace-safe",
+          "x-eliza-trace-id": requestTraceId,
           "x-private": "must-not-escape",
         },
       });
@@ -310,6 +312,8 @@ test("probeOpenAi requires a clean terminal frame and never records prompt text"
   });
   assert.match(requestBody.messages[0].content, /Custom private instruction/);
   assert.match(requestBody.messages[0].content, /proof-clean/);
+  assert.match(requestTraceId, /^[0-9a-f]{32}$/);
+  assert.equal(result.traceId, requestTraceId);
   const serialized = JSON.stringify(result);
   assert.doesNotMatch(serialized, /super-secret/);
   assert.doesNotMatch(serialized, /Custom private instruction/);

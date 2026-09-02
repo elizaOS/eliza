@@ -459,7 +459,9 @@ export async function probeOpenAi({
 }) {
   const expectedProof = proof || ["latency-proof", randomUUID()].join("-");
   const prompt = buildProofPrompt(promptOverride, expectedProof);
-  const traceId = `latency_${randomUUID()}`;
+  // Gateway telemetry only adopts the dedicated runtime's lower-case 32-hex
+  // trace schema, so this probe can correlate its sent and echoed id.
+  const traceId = randomUUID().replaceAll("-", "");
   const root = baseUrl.replace(/\/+$/, "");
   const url = `${root + (target === "direct" ? "/v1" : "/api/v1")}/chat/completions`;
   const startedAt = performance.now();

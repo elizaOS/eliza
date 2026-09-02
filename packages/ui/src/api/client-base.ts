@@ -5,6 +5,7 @@
  * without circular dependency issues.
  */
 
+import { isInferenceTraceId } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import {
   extractAssistantReplyText,
@@ -100,6 +101,7 @@ const DEDICATED_CLOUD_CORS_BLOCKED_HEADERS = new Set([
   // are not in the dedicated container server's CORS contract.
   "x-elizaos-turn-correlation",
   "x-elizaos-turn-attempt",
+  "x-eliza-telemetry",
 ]);
 const REPLAYABLE_WS_EVENT_TYPES: ReadonlySet<string> = new Set([
   SHELL_NAVIGATE_VIEW_WS_EVENT,
@@ -1988,7 +1990,12 @@ export class ElizaClient {
     }
     if (isDedicatedCloudRequest) {
       for (const key of Object.keys(headers)) {
-        if (DEDICATED_CLOUD_CORS_BLOCKED_HEADERS.has(key.toLowerCase())) {
+        const normalized = key.toLowerCase();
+        if (
+          DEDICATED_CLOUD_CORS_BLOCKED_HEADERS.has(normalized) ||
+          (normalized === "x-eliza-trace-id" &&
+            !isInferenceTraceId(headers[key]))
+        ) {
           delete headers[key];
         }
       }
