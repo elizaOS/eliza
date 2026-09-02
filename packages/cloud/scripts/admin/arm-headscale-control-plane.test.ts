@@ -172,6 +172,8 @@ describe("Headscale control-plane self-enrollment", () => {
     expect(retireStaleNode).toBeGreaterThan(mintKey);
     expect(retireStaleNode).toBeLessThan(tailscaleUp);
     expect(remote.match(/--force-reauth/g)).toHaveLength(1);
+    expect(remote).toContain("--tags tag:eliza-proxy");
+    expect(remote).not.toContain("      --advertise-tags=");
     expect(remote).toContain(
       "CP router forced reauthentication failed (category=cp-router-reauth-failed)",
     );

@@ -1171,8 +1171,9 @@ else
     | jq -r '.[] | select(.name == "tunnel") | .id')
   [ -n "$TUNNEL_UID" ] || { echo "required Headscale role is absent (category=cp-router-role-missing)"; exit 1; }
 
-  # Short-lived, single-use, pre-tagged preauth key. Tagged tag:eliza-proxy so
-  # the node lands tagged at join (ownership enforced by acl.hujson tagOwners).
+  # Short-lived, single-use, pre-tagged preauth key. The key is the sole tag
+  # authority for this non-interactive join: Headscale rejects a client-side
+  # --advertise-tags request when a preauth key already supplies the tags.
   PREAUTH_KEY=$(sudo headscale preauthkeys create -u "$TUNNEL_UID" \\
     --tags tag:eliza-proxy --expiration 1h -o json 2>/dev/null | jq -r '.key')
   [ -n "$PREAUTH_KEY" ] || { echo "CP router enrollment credential could not be minted (category=cp-router-key-failed)"; exit 1; }
@@ -1199,7 +1200,6 @@ else
       --login-server="$LOGIN_SERVER" \\
       --authkey="$PREAUTH_KEY" \\
       --hostname="$CP_ROUTER_HOST" \\
-      --advertise-tags=tag:eliza-proxy \\
       --accept-routes >/dev/null 2>&1; then
     echo "CP router forced reauthentication failed (category=cp-router-reauth-failed)"
     exit 1
