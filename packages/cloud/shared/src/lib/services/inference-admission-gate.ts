@@ -30,6 +30,7 @@ const GATE_ORIGIN = "https://inference-admission.internal";
 const RATE_LIMIT_GATE_PREFIX = "rate-limit:v2:";
 const HYDRATION_GATE_TIMEOUT_MS = 5_000;
 const GATE_OPERATION_TIMEOUT_MS = 1_500;
+const LEASE_GATE_MAX_ATTEMPTS = 2;
 const DISPATCH_GATE_TIMEOUT_MS = 1_500;
 const DISPATCH_GATE_MAX_ATTEMPTS = 3;
 const RATE_LIMIT_WARM_TTL_MS = 5 * 60_000;
@@ -551,28 +552,45 @@ export async function acquireInferenceAdmissionLease(params: {
   }
 
   const stub = gateStub(params.organizationId);
-  const response = await gateFetch(
-    params.organizationId,
-    params.credential ? "/lease-authorized" : "/lease",
-    {
-      organizationId: params.organizationId,
-      requestId: params.requestId,
-      balanceUsd,
-      balanceRevision: params.balanceRevision,
-      estimatedCostUsd,
-      recovery: params.recovery,
-      ...(params.credential
-        ? {
-            credential: {
-              organizationId: params.organizationId,
-              ...params.credential,
-            },
-          }
-        : {}),
-    },
-    stub,
-    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
-  );
+  const path = params.credential ? "/lease-authorized" : "/lease";
+  const body = {
+    organizationId: params.organizationId,
+    requestId: params.requestId,
+    balanceUsd,
+    balanceRevision: params.balanceRevision,
+    estimatedCostUsd,
+    recovery: params.recovery,
+    ...(params.credential
+      ? {
+          credential: {
+            organizationId: params.organizationId,
+            ...params.credential,
+          },
+        }
+      : {}),
+  };
+  let response: Response | undefined;
+  for (let attempt = 1; attempt <= LEASE_GATE_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      response = await gateFetch(
+        params.organizationId,
+        path,
+        body,
+        stub,
+        AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
+      );
+    } catch (error) {
+      if (attempt < LEASE_GATE_MAX_ATTEMPTS) continue;
+      throw error;
+    }
+    if (response.status >= 500 && attempt < LEASE_GATE_MAX_ATTEMPTS) continue;
+    break;
+  }
+  if (!response) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission gate lease produced no response",
+    );
+  }
   if (response.status === 403 && params.credential) {
     let reason = "revoked";
     try {

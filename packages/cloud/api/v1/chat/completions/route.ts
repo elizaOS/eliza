@@ -128,7 +128,14 @@ import {
   getCachedGatewayModelById,
   getGatewayModelByIdCacheOnly,
 } from "@/lib/services/model-catalog";
-import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+  InferenceAffiliateCacheUnavailableError,
+  InferenceAffiliateCacheWarmingError,
+  InferencePricingCacheUnavailableError,
+  InferencePricingCacheWarmingError,
+} from "@/lib/services/organization-inference-admission";
 import {
   getTeamPoolRegistry,
   type SelectedPooledCredential,
@@ -1373,8 +1380,11 @@ export async function handleChatCompletionsPOST(
     // catches any regression before a provider invocation.
     const tAuth = performance.now();
 
-    // 1b. Per-org tier rate limit. Start it beside body parsing: rate-limit
-    // still wins over malformed bodies, matching the pre-existing gate order.
+    // 1b. Per-org tier rate limit. Start the authoritative decision now, then
+    // overlap it with the independent cache-only preparation below. We still
+    // inspect and return this result first, preserving the existing denial
+    // precedence without serializing an unrelated Durable Object round trip
+    // ahead of every dependency read.
     const orgRateLimitPromise =
       user.organization_id && !options.skipOrgRateLimit
         ? enforceOrgRateLimit(user.organization_id, "completions", {
@@ -1383,13 +1393,12 @@ export async function handleChatCompletionsPOST(
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
           })
         : Promise.resolve(null);
-    let orgRateLimited: Response | null;
-    try {
-      orgRateLimited = await orgRateLimitPromise;
-    } catch (error) {
-      if (error instanceof OrgRateLimitCacheNotReadyError) {
-        return attachPreforwardTelemetry(
-          addCorsHeaders(
+    const resolveOrgRateLimit = async (): Promise<Response | null> => {
+      try {
+        return await orgRateLimitPromise;
+      } catch (error) {
+        if (error instanceof OrgRateLimitCacheNotReadyError) {
+          return addCorsHeaders(
             Response.json(
               {
                 error: {
@@ -1401,19 +1410,33 @@ export async function handleChatCompletionsPOST(
               },
               { status: 503, headers: { "Retry-After": "1" } },
             ),
-          ),
-        );
+          );
+        }
+        throw error;
       }
-      throw error;
-    }
-    if (orgRateLimited) return orgRateLimited;
+    };
+    const captureEarlyPreforwardTiming = (): void => {
+      if (preforwardTiming) return;
+      const stoppedAt = performance.now();
+      preforwardTiming = snapshotGatewayPreforwardTiming({
+        authMs: tAuth - telemetryStartedAt,
+        middleMs: stoppedAt - tAuth,
+        reserveMs: 0,
+        setupMs: 0,
+        totalMs: stoppedAt - telemetryStartedAt,
+      });
+    };
 
     if (
       !request?.model ||
       !Array.isArray(request.messages) ||
       !request.messages.length
     ) {
-      return invalidRequestResponse!;
+      const orgRateLimited = await resolveOrgRateLimit();
+      captureEarlyPreforwardTiming();
+      return attachPreforwardTelemetry(
+        orgRateLimited ?? invalidRequestResponse!,
+      );
     }
 
     // 2. Prepare app monetization lookup
@@ -1563,6 +1586,12 @@ export async function handleChatCompletionsPOST(
         : contentModerationService
             .shouldBlockUser(user.id)
             .then((blocked) => ({ kind: "ready" as const, blocked }));
+
+    const orgRateLimited = await resolveOrgRateLimit();
+    if (orgRateLimited) {
+      captureEarlyPreforwardTiming();
+      return attachPreforwardTelemetry(orgRateLimited);
+    }
 
     const [
       appResolution,
@@ -1824,6 +1853,14 @@ export async function handleChatCompletionsPOST(
         billingReservation = admission.reservation;
       }
     } catch (error) {
+      const failedAt = performance.now();
+      preforwardTiming ??= snapshotGatewayPreforwardTiming({
+        authMs: tAuth - telemetryStartedAt,
+        middleMs: tBeforeReserve - tAuth,
+        reserveMs: failedAt - tBeforeReserve,
+        setupMs: 0,
+        totalMs: failedAt - telemetryStartedAt,
+      });
       if (error instanceof InferenceCredentialRevokedError) {
         const reason = inferenceCredentialRevocationReason(error.reason);
         const denial = resolveInferenceAuthStandingDenial(
@@ -1881,21 +1918,85 @@ export async function handleChatCompletionsPOST(
           ),
         );
       }
+      if (error instanceof InferenceAdmissionUnavailableError) {
+        logger.error(
+          "[Chat Completions] inference admission transport failed closed",
+          {
+            traceId,
+            requestId,
+            organizationId: user.organization_id,
+            userId: user.id,
+            model,
+            provider,
+            billingSource,
+            phase: "reserve",
+            errorName: error.name,
+            error: error.message,
+            cause:
+              error.cause instanceof Error
+                ? `${error.cause.name}: ${error.cause.message}`
+                : error.cause === undefined
+                  ? undefined
+                  : String(error.cause),
+          },
+        );
+        return attachPreforwardTelemetry(
+          addCorsHeaders(
+            Response.json(
+              {
+                error: {
+                  message:
+                    "Inference admission is temporarily unavailable. Retry shortly.",
+                  type: "service_unavailable",
+                  code: "inference_admission_unavailable",
+                },
+              },
+              { status: 503, headers: { "Retry-After": "1" } },
+            ),
+          ),
+        );
+      }
       if (
         error instanceof InferenceBalanceCacheWarmingError ||
         error instanceof AiPricingCacheWarmingError ||
         error instanceof AiPricingCacheUnavailableError
       ) {
-        return addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message: "Billing authorization is warming. Retry shortly.",
-                type: "service_unavailable",
-                code: "billing_cache_warming",
+        const dependency =
+          error instanceof InferencePricingCacheWarmingError ||
+          error instanceof InferencePricingCacheUnavailableError ||
+          error instanceof AiPricingCacheWarmingError ||
+          error instanceof AiPricingCacheUnavailableError
+            ? "pricing"
+            : error instanceof InferenceAffiliateCacheWarmingError ||
+                error instanceof InferenceAffiliateCacheUnavailableError
+              ? "affiliate_policy"
+              : "balance";
+        logger.warn("[Chat Completions] billing dependency failed closed", {
+          traceId,
+          requestId,
+          organizationId: user.organization_id,
+          userId: user.id,
+          model,
+          provider,
+          billingSource,
+          phase: "reserve",
+          dependency,
+          errorName: error.name,
+          error: error.message,
+        });
+        return attachPreforwardTelemetry(
+          addCorsHeaders(
+            Response.json(
+              {
+                error: {
+                  message: "Billing authorization is warming. Retry shortly.",
+                  type: "service_unavailable",
+                  code: "billing_cache_warming",
+                  details: { dependency },
+                },
               },
-            },
-            { status: 503 },
+              { status: 503, headers: { "Retry-After": "1" } },
+            ),
           ),
         );
       }

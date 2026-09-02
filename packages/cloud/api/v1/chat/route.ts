@@ -70,7 +70,10 @@ import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-conte
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
 import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
-import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+} from "@/lib/services/organization-inference-admission";
 import { usageService } from "@/lib/services/usage";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
@@ -652,6 +655,7 @@ app.post("/", async (c) => {
           );
         }
         if (
+          error instanceof InferenceAdmissionUnavailableError ||
           error instanceof InferenceBalanceCacheWarmingError ||
           error instanceof AiPricingCacheWarmingError ||
           error instanceof AiPricingCacheUnavailableError

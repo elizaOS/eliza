@@ -1171,6 +1171,136 @@ describe("InferenceAdmissionGate", () => {
     ).toBe(409);
   });
 
+  test("replays the identical lease after a lost transport acknowledgement", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 5);
+    const requests: Array<{ path: string; body: string }> = [];
+    let attempts = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            requests.push({
+              path: new URL(incoming.url).pathname,
+              body: await incoming.clone().text(),
+            });
+            attempts += 1;
+            const response = await gate.fetch(incoming);
+            if (attempts === 1) {
+              throw new DOMException(
+                "injected lost lease acknowledgement",
+                "TimeoutError",
+              );
+            }
+            return response;
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "request-lost-lease-ack",
+        balanceUsd: 5,
+        balanceRevision: "1",
+        estimatedCostUsd: 3,
+        recovery: organizationRecovery("request-lost-lease-ack"),
+      });
+      expect(lease.requestId).toBe("request-lost-lease-ack");
+    });
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(storage.keyCount("lease:")).toBe(1);
+    expect(storage.read<{ activeLeaseCount: number }>("ledger")).toMatchObject({
+      activeLeaseCount: 1,
+    });
+  });
+
+  test("replays the identical lease once after a 503", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 5);
+    const requests: Array<{ path: string; body: string }> = [];
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            requests.push({
+              path: new URL(incoming.url).pathname,
+              body: await incoming.clone().text(),
+            });
+            if (requests.length === 1) {
+              return Response.json(
+                { code: "inference_admission_gate_starting" },
+                { status: 503 },
+              );
+            }
+            return gate.fetch(incoming);
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "request-starting-gate",
+        balanceUsd: 5,
+        balanceRevision: "1",
+        estimatedCostUsd: 3,
+        recovery: organizationRecovery("request-starting-gate"),
+      });
+      expect(lease.requestId).toBe("request-starting-gate");
+    });
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(storage.keyCount("lease:")).toBe(1);
+    expect(storage.read<{ activeLeaseCount: number }>("ledger")).toMatchObject({
+      activeLeaseCount: 1,
+    });
+  });
+
+  test("does not retry definitive lease refusals", async () => {
+    for (const status of [402, 403, 409, 429]) {
+      let attempts = 0;
+      const bindings = {
+        INFERENCE_ADMISSION_GATES: {
+          getByName: (_name: string) => ({
+            fetch: async () => {
+              attempts += 1;
+              return Response.json(
+                status === 402
+                  ? { admitted: false, availableUsd: 1, requiredUsd: 2 }
+                  : { code: "definitive_refusal" },
+                { status },
+              );
+            },
+          }),
+        },
+      };
+
+      await runWithCloudBindingsAsync(bindings, async () => {
+        await expect(
+          acquireInferenceAdmissionLease({
+            organizationId: "org-a",
+            requestId: `request-refused-${status}`,
+            balanceUsd: 5,
+            balanceRevision: "1",
+            estimatedCostUsd: 2,
+            recovery: organizationRecovery(`request-refused-${status}`),
+          }),
+        ).rejects.toBeInstanceOf(Error);
+      });
+      expect(attempts).toBe(1);
+    }
+  });
+
   test("client maps rejection and missing bindings to typed failures", async () => {
     const gate = createGate();
     await hydrateGate(gate, 2);

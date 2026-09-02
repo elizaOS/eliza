@@ -65,6 +65,7 @@ const appGate = deferred();
 const moderationGate = deferred();
 const catalogGate = deferred();
 const poolGate = deferred();
+const rateGate = deferred();
 
 mock.module("@/lib/services/inference-auth-context", () => ({
   ...inferenceAuthContextActual,
@@ -84,7 +85,12 @@ mock.module("@/lib/auth", () => ({
 
 mock.module("@/lib/middleware/rate-limit", () => ({
   ...rateLimitActual,
-  enforceOrgRateLimit: async () => null,
+  enforceOrgRateLimit: async () => {
+    events.push("rate:start");
+    await rateGate.promise;
+    events.push("rate:end");
+    return null;
+  },
 }));
 
 mock.module("@/lib/services/apps", () => ({
@@ -242,6 +248,7 @@ describe("chat/completions mid-read orchestration", () => {
     const responsePromise = handleChatCompletionsPOST(makeRequest());
 
     await waitForEvents([
+      "rate:start",
       "app:start",
       "moderation:start",
       "catalog:start",
@@ -252,7 +259,9 @@ describe("chat/completions mid-read orchestration", () => {
     expect(events).not.toContain("moderation:end");
     expect(events).not.toContain("catalog:end");
     expect(events).not.toContain("pool:end");
+    expect(events).not.toContain("rate:end");
 
+    rateGate.resolve();
     appGate.resolve();
     moderationGate.resolve();
     catalogGate.resolve();

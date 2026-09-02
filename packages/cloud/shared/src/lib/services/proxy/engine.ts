@@ -19,7 +19,10 @@ import {
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
 } from "../inference-credential-revocation";
-import { admitOrganizationInference } from "../organization-inference-admission";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+} from "../organization-inference-admission";
 import { usageService } from "../usage";
 import { PricingNotFoundError } from "./pricing";
 import type {
@@ -539,6 +542,7 @@ export function createHandler(
       }
 
       if (
+        error instanceof InferenceAdmissionUnavailableError ||
         error instanceof InferenceBalanceCacheWarmingError ||
         error instanceof InferenceCredentialRevocationUnavailableError
       ) {

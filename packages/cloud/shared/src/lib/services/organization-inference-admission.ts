@@ -146,9 +146,9 @@ export class InferenceAffiliateCacheUnavailableError extends InferenceBalanceCac
 }
 
 /** The request cannot safely defer its durable charge in this Worker. */
-export class InferenceAdmissionUnavailableError extends InferenceBalanceCacheWarmingError {
-  constructor() {
-    super();
+export class InferenceAdmissionUnavailableError extends Error {
+  constructor(options?: { cause?: unknown }) {
+    super("Inference admission transport is unavailable", options);
     this.name = "InferenceAdmissionUnavailableError";
   }
 }
@@ -434,7 +434,9 @@ export async function admitOrganizationInference(
         );
       }
       if (error instanceof InferenceAdmissionGateUnavailableError) {
-        throw new InferenceAdmissionUnavailableError();
+        // error-policy:J2 preserve the gate transport failure for route-level
+        // classification and diagnostics.
+        throw new InferenceAdmissionUnavailableError({ cause: error });
       }
       throw error;
     }

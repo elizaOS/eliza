@@ -148,18 +148,25 @@ let gateBalance = 50;
 let eligible = true;
 let orgRefused = false;
 let subscriptionFunded = false;
+let leaseFailure: Error | undefined;
 const isSubscriptionFundedOrganization = mock(async () => subscriptionFunded);
 const isOptimisticEligible = mock(() => eligible);
 const acquireInferenceAdmissionLease = mock(
-  async (params: { organizationId: string; requestId: string; estimatedCostUsd: number }) => ({
-    organizationId: params.organizationId,
-    requestId: params.requestId,
-    estimatedCostUsd: params.estimatedCostUsd,
-    gate: { fetch: async () => Response.json({ settled: true }) },
-    providerDispatched: false,
-  }),
+  async (params: { organizationId: string; requestId: string; estimatedCostUsd: number }) => {
+    if (leaseFailure) throw leaseFailure;
+    return {
+      organizationId: params.organizationId,
+      requestId: params.requestId,
+      estimatedCostUsd: params.estimatedCostUsd,
+      gate: { fetch: async () => Response.json({ settled: true }) },
+      providerDispatched: false,
+    };
+  },
 );
 const settleInferenceAdmissionLease = mock(async () => undefined);
+
+class TestInferenceBalanceCacheWarmingError extends Error {}
+class TestInferenceAdmissionGateUnavailableError extends Error {}
 
 mock.module("./ai-billing", () => ({
   reserveCredits,
@@ -189,12 +196,7 @@ mock.module("../utils/credit-reservation", () => ({
   createCreditReservationSettler: () => optimisticSettle,
 }));
 mock.module("./inference-billing-fast-path", () => ({
-  InferenceBalanceCacheWarmingError: class InferenceBalanceCacheWarmingError extends Error {
-    constructor() {
-      super("warming");
-      this.name = "InferenceBalanceCacheWarmingError";
-    }
-  },
+  InferenceBalanceCacheWarmingError: TestInferenceBalanceCacheWarmingError,
   createOptimisticDebitSettler: () => optimisticSettle,
   debitInferenceCost,
   getGateBalanceHint: async () => ({
@@ -218,7 +220,7 @@ mock.module("./inference-admission-gate", () => ({
     balanceBackedUsd: actualCostUsd,
     gateConsumedUsd: actualCostUsd,
   }),
-  InferenceAdmissionGateUnavailableError: class InferenceAdmissionGateUnavailableError extends Error {},
+  InferenceAdmissionGateUnavailableError: TestInferenceAdmissionGateUnavailableError,
   InferenceAdmissionLeaseRejectedError: class InferenceAdmissionLeaseRejectedError extends Error {
     readonly requiredUsd = 1;
     readonly availableUsd = 0;
@@ -239,7 +241,9 @@ mock.module("./inference-billing-deferred", () => ({
   },
 }));
 
-const { admitOrganizationInference } = await import("./organization-inference-admission");
+const { admitOrganizationInference, InferenceAdmissionUnavailableError } = await import(
+  "./organization-inference-admission"
+);
 const { __clearPersistedPricingCache } = await import("./ai-pricing/cache");
 const { __clearInferenceAffiliateCacheState } = await import("./inference-affiliate-cache");
 
@@ -287,6 +291,7 @@ beforeEach(() => {
   eligible = true;
   orgRefused = false;
   subscriptionFunded = false;
+  leaseFailure = undefined;
   isSubscriptionFundedOrganization.mockClear();
   repositoryBlock = null;
   affiliateRepositoryBlock = null;
@@ -665,6 +670,21 @@ test("a previously refused org fails closed and hydrates balance off path", asyn
   expect(pairReads).toBe(0);
   expect(affiliateReads).toBe(0);
   expect(reserveCredits).not.toHaveBeenCalled();
+});
+
+test("admission transport failures retain their cause without becoming balance warming", async () => {
+  const model = nextModel();
+  await hydratePricing(model);
+  const gateCause = new TestInferenceAdmissionGateUnavailableError("gate timed out");
+  leaseFailure = gateCause;
+
+  const error = await admitOrganizationInference(admissionParams(model, [])).catch(
+    (caught: unknown) => caught,
+  );
+
+  expect(error).toBeInstanceOf(InferenceAdmissionUnavailableError);
+  expect(error).not.toBeInstanceOf(TestInferenceBalanceCacheWarmingError);
+  expect(error).toMatchObject({ cause: gateCause });
 });
 
 test("cold affiliate pricing hydrates policy and model rates without a synchronous reserve", async () => {
