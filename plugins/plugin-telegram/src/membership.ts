@@ -572,48 +572,61 @@ export class TelegramMembershipAuthority {
       ) {
         const health = await this.service.getScopeHealth(input.scope);
         if (health?.health === "unavailable") {
-          // Durable re-add watermark: a persisted watermark NEWER than the
-          // unavailable observation proves the bot was re-added AFTER the
-          // removal that wrote this health row — the persisted unavailable
-          // state is stale, so do NOT re-hydrate the tombstone (the bot is
-          // already present; no second re-add transition will ever clear
-          // it). On a cache read failure or a watermark that does NOT
-          // postdate the observation, keep the tombstone (fail closed: an
-          // older/equal watermark belongs to an EARLIER re-add cycle, whose
-          // removal came after).
-          let persistedReaddMs: number | null = null;
+          // Durable re-add watermark: the watermark records the generation
+          // of the persisted health row it repaired. Hydration compares
+          // GENERATIONS, never wall clocks: a watermark whose generation is
+          // greater than or equal to the observed unavailable row's
+          // generation proves the clear already covered this removal cycle
+          // (the row is stale — the bot is present again, so no second
+          // re-add transition will ever arrive to clear it), while a
+          // strictly greater row generation means a NEWER removal landed
+          // after the re-add and the tombstone must stay. A cache READ
+          // failure denies this attempt WITHOUT memoizing the tombstone —
+          // hydration must retry on the next evidence once the cache is
+          // readable again, not strand the scope in-process.
+          let persistedReadd: { at: number; generation: number } | null = null;
+          let watermarkReadFailed = false;
           try {
-            const persisted = await this.runtime.getCache<number | null>(
-              this.readdWatermarkCacheKey(input.scope),
-            );
-            if (typeof persisted === "number") {
-              persistedReaddMs = persisted;
+            const persisted = await this.runtime.getCache<{
+              at: number;
+              generation: number;
+            }>(this.readdWatermarkCacheKey(input.scope));
+            if (
+              persisted !== undefined &&
+              persisted !== null &&
+              typeof persisted.at === "number" &&
+              typeof persisted.generation === "number"
+            ) {
+              persistedReadd = persisted;
             }
           } catch (error) {
-            // error-policy:J4 Durable re-add watermark unreadable: treat as
-            // absent and keep the tombstone (deny) — the stale-unavailable
-            // strand is repaired on the next re-add cycle, whereas wrongly
-            // clearing the tombstone would let backlogged evidence from
-            // while the bot was absent re-authorize members.
+            // error-policy:J4 Durable re-add watermark unreadable: fail
+            // closed for THIS attempt only (no evidence write below), but
+            // leave the tombstone unset so the next evidence attempt
+            // re-runs hydration against the recovered cache.
+            watermarkReadFailed = true;
             this.runtime.reportError(
               "telegram:membership-readd-watermark-read",
               error,
               { chatId: input.scope.externalWorldId },
             );
           }
+          if (watermarkReadFailed) {
+            return false;
+          }
           const readdAfterRemoval =
-            persistedReaddMs !== null &&
-            persistedReaddMs > Date.parse(health.observedAt);
+            persistedReadd !== null &&
+            persistedReadd.generation >= health.generation;
           if (!readdAfterRemoval) {
             this.removedScopes.set(
               key,
               health.reason || "bot_removed_persisted",
             );
-          } else if (persistedReaddMs !== null) {
+          } else if (persistedReadd !== null) {
             // Re-hydrate the in-memory watermark too: backlogged evidence
-            // stamped BEFORE the persisted re-add moment must stay denied in
-            // this process exactly as it would without the restart.
-            this.scopeReaddWatermarks.set(key, persistedReaddMs);
+            // stamped BEFORE the re-add moment must stay denied in this
+            // process exactly as it would without the restart.
+            this.scopeReaddWatermarks.set(key, persistedReadd.at);
           }
         }
       }
@@ -1262,40 +1275,56 @@ export class TelegramMembershipAuthority {
       // actually present may establish authority again.
       const watermark = Date.now();
       this.scopeReaddWatermarks.set(key, watermark);
-      // Persist the watermark durably: a restart between the re-add and the
-      // next fresh evidence write must not re-hydrate the tombstone from the
-      // stale persisted "unavailable" health (the bot is already present, so
-      // no second re-add transition would ever arrive to clear it). On a
-      // failed durable write the in-memory watermark still protects THIS
-      // process; a restart then fails closed (tombstone re-hydrates) until
-      // the next re-add cycle — reported for diagnosis.
-      try {
-        const persisted = await this.runtime.setCache(
-          this.readdWatermarkCacheKey(scope),
-          watermark,
-        );
-        if (persisted !== true) {
-          // error-policy:J4 The durable re-add watermark did not land (the
-          // cache adapter resolved false): admission still recovers in THIS
-          // process via the in-memory watermark, but a restart re-hydrates
-          // the tombstone and denies until the next re-add cycle.
-          this.runtime.reportError(
-            "telegram:membership-readd-watermark-write",
-            new ElizaError(
-              `Telegram membership re-add watermark cache write resolved false for ${input.chatId}`,
-              { code: "TELEGRAM_MEMBERSHIP_READD_WATERMARK_UNDURABLE" },
-            ),
-            { chatId: input.chatId },
+      // Persist the watermark durably, keyed to the health row's GENERATION
+      // rather than wall-clock time: generations are monotonic per scope and
+      // persisted by the membership service, so a same-millisecond re-add or
+      // a wall clock moving backward cannot make a legitimately later clear
+      // order before the removal it repaired. Hydration compares the
+      // persisted generation against the observed unavailable row's
+      // generation (>= means this clear already covered that removal). A
+      // restart between the re-add and the next fresh evidence write must
+      // not re-hydrate the tombstone from the stale persisted "unavailable"
+      // health (the bot is already present, so no second re-add transition
+      // would ever arrive to clear it). THROWS on persistent write failure,
+      // mirroring markScopeUnavailable: the re-add caller must be able to
+      // detect that the clear could NOT be made durable — otherwise a
+      // restart silently re-strands the scope. The in-memory watermark
+      // still protects THIS process in the meantime.
+      const healthAtClear = await this.service.getScopeHealth(scope);
+      const watermarkRecord = {
+        at: watermark,
+        generation: healthAtClear?.generation ?? 0,
+      };
+      let watermarkWriteError: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const persisted = await this.runtime.setCache(
+            this.readdWatermarkCacheKey(scope),
+            watermarkRecord,
           );
+          if (persisted === true) {
+            watermarkWriteError = null;
+            break;
+          }
+          watermarkWriteError = new ElizaError(
+            `Telegram membership re-add watermark cache write resolved false for ${input.chatId}`,
+            { code: "TELEGRAM_MEMBERSHIP_READD_WATERMARK_UNDURABLE" },
+          );
+        } catch (error) {
+          watermarkWriteError = error;
         }
-      } catch (error) {
-        // error-policy:J4 Same contract as the resolved-false branch: the
-        // in-memory watermark carries this process; a restart fails closed.
+      }
+      if (watermarkWriteError !== null) {
+        // error-policy:J2 Durability failure of the re-add clear propagates
+        // to the caller as a typed error (the update handler's catch turns
+        // it into a logged, reported boundary decision); the in-memory
+        // watermark still carries this process.
         this.runtime.reportError(
           "telegram:membership-readd-watermark-write",
-          error,
+          watermarkWriteError,
           { chatId: input.chatId },
         );
+        throw watermarkWriteError;
       }
     });
   }
