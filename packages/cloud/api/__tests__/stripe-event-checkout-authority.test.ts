@@ -2,6 +2,7 @@
  * Proves the Stripe queue uses durable Checkout authority and never mints from Checkout metadata.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as actualProvisioningJobs from "@/lib/services/provisioning-jobs";
 
 const settle = mock(async () => ({
   order: {
@@ -68,7 +69,11 @@ mock.module("@/lib/services/invoices", () => ({
 mock.module("@/lib/services/org-rate-limits", () => ({
   invalidateOrgTierCache: mock(async () => undefined),
 }));
+// Spread the real module so exports this suite does not stub — such as
+// `CONTAINER_BACKED_TARGET_REJECTION_REASON`, which `src/queue/stripe-event`
+// imports — survive the factory and the suite can collect.
 mock.module("@/lib/services/provisioning-jobs", () => ({
+  ...actualProvisioningJobs,
   provisioningJobService: {},
 }));
 mock.module("@/lib/services/redeemable-earnings", () => ({

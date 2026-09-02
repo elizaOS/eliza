@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
+import * as actualCredits from "@/lib/services/credits";
 
 const requireGenerativeRouteCaller = mock(async () => {
   throw new ApiError(403, "access_denied", "Organization is inactive", {
@@ -92,7 +93,12 @@ mock.module("@/lib/promotion-pricing", () => ({
   PROMO_IMAGE_COST: 2,
   estimateAssetGenerationCost: () => ({ total: 5 }),
 }));
+// Spread the real module: a factory replaces the whole namespace, so every
+// export a transitive importer pulls (`ReservationNotFoundError` via
+// `lib/utils/credit-reservation`, `COST_BUFFER`, ...) has to survive it or the
+// suite fails to collect before a single test runs.
 mock.module("@/lib/services/credits", () => ({
+  ...actualCredits,
   creditsService: {
     deductCredits,
     refundCredits: mock(async () => undefined),
