@@ -393,6 +393,20 @@ export function describeCaptureFailure(err: unknown): string {
   return "Could not start the microphone. Check your microphone permissions and try again.";
 }
 
+/**
+ * Silence is a normal outcome for an open microphone, not an actionable
+ * failure. Keep true permission, device, transport, and provider failures
+ * visible, but let an empty recording/transcript return quietly to idle.
+ */
+export function isNoSpeechCaptureFailure(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("no microphone audio was captured") ||
+    normalized.includes("empty transcript")
+  );
+}
+
 function describeRealtimeVoiceFailure(
   outcome: Exclude<RealtimeVoiceStartOutcome, { kind: "live" }>,
   surfacedError: string | null,
@@ -1375,14 +1389,6 @@ export function useShellController(): ShellController {
         // as the final turn even if its silence window hasn't fired. Converse
         // stops only on toggle-off, where a partial must NOT be submitted.
         finalizeOnStop: intent === "dictate" || intent === "ptt",
-        // Pre-POST silence guard fired: a near-silent tap was dropped without a
-        // cloud round-trip (correct), but the user got nothing. Surface a subtle
-        // "didn't catch that" hint so the dead-air is legible instead of
-        // crickets (#voice-crickets). Info-severity + short: it's a nudge to
-        // speak up, not an error.
-        onSilentDrop: () => {
-          setActionNotice("Didn't catch that — try again.", "info", 2500);
-        },
         onTranscript: (segment) => {
           const text = segment.text.trim();
           if (!segment.final) {
@@ -1516,7 +1522,7 @@ export function useShellController(): ShellController {
           // spoken turn never silently vanishes (#20483). Cloud STT throwing
           // at stop() lands here as the error state; surface one actionable
           // notice instead of letting the words evaporate.
-          if (state === "error" && error) {
+          if (state === "error" && error && !isNoSpeechCaptureFailure(error)) {
             setActionNotice(describeCaptureFailure(error), "error", 6000);
           }
           if (state === "error" || state === "stopped" || state === "idle") {
@@ -1587,7 +1593,10 @@ export function useShellController(): ShellController {
           // Surface one actionable notice per grant epoch; the hands-free
           // re-listen loop may retry capture, but repeated toasts make recovery
           // harder rather than clearer.
-          if (!captureFailureNoticedRef.current) {
+          if (
+            !captureFailureNoticedRef.current &&
+            !isNoSpeechCaptureFailure(err)
+          ) {
             captureFailureNoticedRef.current = true;
             setActionNotice(describeCaptureFailure(err), "error", 6000);
           }
