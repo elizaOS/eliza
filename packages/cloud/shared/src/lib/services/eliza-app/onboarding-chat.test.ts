@@ -2236,10 +2236,18 @@ describe("runOnboardingChat", () => {
         expect(result.handoffComplete).toBe(false);
         expect(result.session.handoffCopiedAt).toBeUndefined();
         expect(loggerWarn).toHaveBeenCalledWith(
+          "[eliza-app onboarding] failed to read remember error body",
+          expect.objectContaining({
+            agentId: "agent-1",
+            status: 502,
+            error: "body stream broke",
+          }),
+        );
+        expect(loggerWarn).toHaveBeenCalledWith(
           "[eliza-app onboarding] handoff memory copy failed",
           expect.objectContaining({
             agentId: "agent-1",
-            error: "memory copy failed (502) upstream failed",
+            error: "memory copy failed (502)",
           }),
         );
       } finally {

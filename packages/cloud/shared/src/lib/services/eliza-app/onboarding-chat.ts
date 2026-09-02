@@ -1547,9 +1547,10 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
         });
         return "";
       });
-      throw new Error(
-        `memory copy failed (${rememberResponse.status}) ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
-      );
+      const detail = body
+        ? ` ${truncateWellFormed(toWellFormedUnicode(body), 200)}`
+        : "";
+      throw new Error(`memory copy failed (${rememberResponse.status})${detail}`);
     }
 
     return {
