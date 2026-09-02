@@ -102,6 +102,31 @@ describe("complete action surface", () => {
 		).toEqual(["EMAIL", "MUSIC"]);
 	});
 
+	it("orders saturated parents by retrieval rank against alphabetical order", () => {
+		const catalog = buildActionCatalog(actions);
+		const music = catalog.parentByName.get("MUSIC");
+		const email = catalog.parentByName.get("EMAIL");
+		if (!music || !email) throw new Error("missing catalog parent");
+		// The sibling saturated-score case ranks EMAIL first, which is also its
+		// position under the normalizedName fallback -- so it holds whether or
+		// not rank is consulted. Invert it: rank puts MUSIC first while
+		// localeCompare puts EMAIL first, so only the rank tiebreaker can
+		// produce this order.
+		const musicResult = resultFor(music, 1);
+		const emailResult = resultFor(email, 1);
+		musicResult.rank = 1;
+		emailResult.rank = 2;
+
+		const surface = tierActionResults({
+			catalog,
+			results: [emailResult, musicResult],
+		});
+
+		expect(
+			surface.tierAParents.slice(0, 2).map((parent) => parent.name),
+		).toEqual(["MUSIC", "EMAIL"]);
+	});
+
 	it("ignores legacy parent, child, threshold, and candidate caps", () => {
 		const manyChildren = Array.from({ length: 24 }, (_, index) => ({
 			name: `CHILD_${String(index).padStart(2, "0")}`,
