@@ -55,6 +55,7 @@ const bindCheckoutCustomer = mock(
     stripe_customer_id: customerId,
   }),
 );
+const ensureStripeCustomer = mock(async () => "cus_agent");
 const getWithOrganization = mock(async () => ({
   id: "agent-user",
   email: "agent@example.test",
@@ -104,6 +105,9 @@ mock.module("@/lib/services/stripe-checkout-orders", () => ({
     markProviderAmbiguous: mock(async () => undefined),
   },
 }));
+mock.module("@/lib/services/stripe-customer-authority", () => ({
+  stripeCustomerAuthorityService: { ensure: ensureStripeCustomer },
+}));
 mock.module("@/lib/security/redirect-validation", () => ({
   getDefaultPlatformRedirectOrigins: () => ["https://waifu.example.test"],
   assertAllowedAbsoluteRedirectUrl: (url: string) => new URL(url),
@@ -150,6 +154,7 @@ describe("credits agent-bridge — real service-key scope (#10852)", () => {
     customersCreate.mockClear();
     createCheckoutOrder.mockClear();
     bindCheckoutCustomer.mockClear();
+    ensureStripeCustomer.mockClear();
     updateOrganization.mockClear();
     getWithOrganization.mockClear();
     dbRead.select.mockClear();
@@ -220,6 +225,7 @@ describe("credits agent-bridge — real service-key scope (#10852)", () => {
     expect(customersCreate).not.toHaveBeenCalled();
     expect(updateOrganization).not.toHaveBeenCalled();
     expect(checkoutSessionsCreate).not.toHaveBeenCalled();
+    expect(ensureStripeCustomer).not.toHaveBeenCalled();
   });
 
   test("checkout: agent_id WITH correct service key → creates session for agent org", async () => {
@@ -236,6 +242,10 @@ describe("credits agent-bridge — real service-key scope (#10852)", () => {
       SERVICE_ENV,
     );
     expect(res.status).toBe(200);
+    expect(ensureStripeCustomer).toHaveBeenCalledWith({
+      organizationId: "agent-org",
+      callerIntent: "credit_checkout",
+    });
     expect(checkoutSessionsCreate).toHaveBeenCalledTimes(1);
     const params = checkoutSessionsCreate.mock.calls[0]?.[0] as {
       metadata?: Record<string, string>;

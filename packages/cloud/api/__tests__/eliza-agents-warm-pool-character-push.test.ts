@@ -174,6 +174,8 @@ function claimedRow() {
     id: AGENT_ID,
     agent_name: "alpha",
     agent_config: { name: "alpha", system: "You are alpha." },
+    organization_id: "org-1",
+    user_id: "user-1",
     status: "running",
     execution_tier: "dedicated-always",
     node_id: "node-1",
@@ -196,6 +198,7 @@ async function postCreate(body: unknown) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+    { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "agents.example.test" },
   );
 }
 

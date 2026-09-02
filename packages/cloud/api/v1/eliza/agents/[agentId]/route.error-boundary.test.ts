@@ -81,6 +81,7 @@ mock.module("@/lib/config/containers-env", () => ({
 }));
 mock.module("@/lib/eliza-agent-web-ui", () => ({
   getConfiguredElizaAgentPublicWebUiUrl: () => "https://example.test",
+  getElizaAgentPublicWebUiUrl: () => "https://example.test",
 }));
 mock.module("@/lib/services/admin", () => ({
   adminService: {

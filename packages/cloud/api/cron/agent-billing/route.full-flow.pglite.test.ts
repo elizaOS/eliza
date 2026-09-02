@@ -113,6 +113,44 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    await dbWrite.execute(
+      sql.raw(`
+      CREATE TABLE IF NOT EXISTS jobs (
+        id uuid PRIMARY KEY,
+        type text NOT NULL,
+        status text NOT NULL,
+        organization_id uuid NOT NULL,
+        agent_id text,
+        user_id uuid,
+        data_storage text NOT NULL DEFAULT 'inline',
+        data_key text,
+        data jsonb NOT NULL DEFAULT '{}'::jsonb
+      )
+    `),
+    );
+    await dbWrite.execute(
+      sql.raw(`
+      CREATE TABLE IF NOT EXISTS agent_compute_stop_intents (
+        id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL,
+        agent_id uuid NOT NULL,
+        lifecycle_revision bigint NOT NULL,
+        "authorization" text NOT NULL DEFAULT 'billing_request',
+        status text NOT NULL DEFAULT 'pending',
+        job_id uuid,
+        attempts integer NOT NULL DEFAULT 0,
+        last_error text,
+        next_attempt_at timestamptz NOT NULL DEFAULT now(),
+        provider_started_at timestamptz,
+        provider_confirmed_at timestamptz,
+        retained_backup_billing boolean NOT NULL DEFAULT false,
+        retained_backup_rate_per_hour numeric(18, 6),
+        superseded_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `),
+    );
   } catch (error) {
     // error-policy:J1 isolated test-harness setup boundary; dependent tests
     // fail through the explicit readiness assertion with this diagnostic.

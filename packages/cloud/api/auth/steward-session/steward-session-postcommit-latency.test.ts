@@ -118,6 +118,10 @@ mock.module("@/lib/services/users", () => ({
 mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
   findActivePersonalDedicatedTarget,
 }));
+mock.module("@/lib/services/account-lifecycle-authority", () => ({
+  organizationLifecycleAllowsNewWork: () => true,
+  readOrganizationLifecycleAuthority: async () => ({ state: "active" }),
+}));
 mock.module("@/lib/utils/logger", () => ({
   logger: {
     debug: mock(() => undefined),

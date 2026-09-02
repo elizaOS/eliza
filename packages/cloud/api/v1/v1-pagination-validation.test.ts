@@ -262,6 +262,7 @@ describe("gallery pagination pass-through", () => {
       type: undefined,
       limit: 38,
       offset: 12,
+      requireStorageUrl: true,
     });
     expect(await response.json()).toMatchObject({ limit: 37, offset: 12 });
   });
@@ -276,6 +277,7 @@ describe("gallery pagination pass-through", () => {
       type: undefined,
       limit: 101,
       offset: 0,
+      requireStorageUrl: true,
     });
     expect(await response.json()).toMatchObject({ limit: 100, offset: 0 });
   });
