@@ -1,9 +1,8 @@
 /**
- * Vite view-bundle entry: re-exports the unified spatial view component plus the
- * `interact` capability handler so the built bundle (dist/views/bundle.js)
- * exposes the named exports the view loader reads (`MessagesView`, `interact`).
- * Kept separate from MessagesView.tsx so that file exports only React components
- * and stays Fast-Refresh-compatible in dev.
+ * Vite view-bundle entry: exposes the framed page plus the `interact` handler
+ * under the names read from the built bundle. This host-facing `MessagesView`
+ * matches the `/ui` and signed-registration ABI, while MessagesView.tsx remains
+ * the raw Fast-Refresh-compatible component.
  */
 
 export { MessagesPage as MessagesView } from "./MessagesPage.tsx";

@@ -8,8 +8,9 @@
  *  - The Phone Companion — Capacitor pairing + chat-mirror + remote-session
  *    surface that runs alongside (or in place of) the desktop UI.
  *
- * Both surfaces are exported from the package barrel; hosts choose what they
- * render without importing package subpaths.
+ * Both surfaces are exported from the package barrel; its `PhoneView` is the
+ * raw embeddable dialer. Hosts that own page navigation load the framed
+ * `PhonePage` through the `/ui`, signed-registration, or view-bundle ABI.
  */
 
 export { PhoneCompanionApp } from "./companion/components/PhoneCompanionApp.js";
