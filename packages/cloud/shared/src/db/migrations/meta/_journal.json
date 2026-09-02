@@ -2493,6 +2493,20 @@
       "when": 1794254400063,
       "tag": "0372_agent_backup_restore_exact_image_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 356,
+      "version": "7",
+      "when": 1796083200000,
+      "tag": "0373_subscription_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 357,
+      "version": "7",
+      "when": 1796083200001,
+      "tag": "0374_subscription_funding_transaction_uniqueness",
+      "breakpoints": true
     }
   ]
 }

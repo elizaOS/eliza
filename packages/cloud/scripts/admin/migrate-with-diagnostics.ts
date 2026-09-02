@@ -1292,8 +1292,14 @@ async function createPGliteClient(url: string): Promise<MigrationClient> {
   const stripped = url.slice("pglite://".length);
   const dataDir = !stripped || stripped === "memory" ? undefined : stripped;
   const { PGlite } = await import("@electric-sql/pglite");
+  const { btree_gist } = await import(
+    "@electric-sql/pglite/contrib/btree_gist"
+  );
   const { vector } = await import("@electric-sql/pglite/vector");
-  const db = await PGlite.create({ dataDir, extensions: { vector } });
+  const db = await PGlite.create({
+    dataDir,
+    extensions: { btree_gist, vector },
+  });
 
   return {
     backend: "pglite",

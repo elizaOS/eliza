@@ -303,6 +303,84 @@ type LocalGrantInventoryEntry = Readonly<{
 export const ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY: readonly LocalGrantInventoryEntry[] =
   Object.freeze([
     {
+      table: "subscription_allowance_transactions",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "billing_funding_allocations",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "billing_funding_reservations",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "subscription_allowance_periods",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "billing_subscription_incidents",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "billing_subscription_event_receipts",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "billing_subscription_incidents",
+      column: "resolved_by_user_id",
+      subject: "user",
+      action: "delete",
+    },
+    {
+      table: "billing_subscription_commands",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "subscription_billing_fences",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "billing_subscription_commands",
+      column: "requested_by_user_id",
+      subject: "user",
+      action: "delete",
+    },
+    {
+      table: "organization_entitlements",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "billing_subscription_revisions",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "billing_subscriptions",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
       table: "affiliate_payout_outbox",
       column: "affiliate_user_id",
       subject: "user",
@@ -430,6 +508,9 @@ async function countLocalRestrictiveRows(context: AccountDeletionProviderContext
 
 async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContext): Promise<void> {
   await dbWrite.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT set_config('eliza.subscription_account_deletion_authority', 'on', true)`,
+    );
     for (const entry of ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY) {
       const subject = localGrantSubject(entry, context);
       if (entry.action === "delete") {
@@ -443,6 +524,11 @@ async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContex
         );
       }
     }
+    // Belt-and-braces disarm for readers and future statements; the setting is
+    // transaction-local and would be cleared automatically at commit.
+    await tx.execute(
+      sql`SELECT set_config('eliza.subscription_account_deletion_authority', '', true)`,
+    );
   });
 }
 
