@@ -58,17 +58,22 @@ commits = [
 # The first #23107 tranche introduced a synthetic DISCORD_APPLICATION_ID
 # snowflake ("123456789012345678") in the plugin-discord installation
 # contribution-init test fixture. The secret-scan workflow scans commit
-# diffs, so every commit whose diff adds those fixture lines needs an entry
-# here. After the 2026-09-01 rebase onto develop tip 346badd178 the original
-# commit 788fda97c5 was replayed as e4f10fce94; both SHAs are listed so the
-# allowlist survives history rewrites. Live working-tree lines are not
-# flagged (the same synthetic snowflake appears unannotated elsewhere on
-# develop, e.g. owner-pairing-service tests).
+# diffs, and a commit-scoped allowlist silently broke on every rebase that
+# replayed the fixture commit under a new SHA (788fda97c5 -> e4f10fce94 ->
+# c3c4fa58fb). Scope the exception to the exact synthetic line shape in the
+# one fixture file instead, so the entry survives history rewrites while
+# every other token in the file — including a genuine Discord application
+# or client id — remains scanned. The same synthetic snowflake appears
+# unannotated elsewhere on develop (e.g. owner-pairing-service tests).
 [[allowlists]]
-description = "historical synthetic DISCORD_APPLICATION_ID snowflake in installation-contribution-init fixture (#23107) — diff-scanned historical commits only; live lines unannotated by design"
-commits = [
-  "788fda97c549934aabb6086f852063c2c1c4f475",
-  "e4f10fce9495da226848ebf0fb87b007173a90a4",
+description = "synthetic DISCORD_APPLICATION_ID snowflake in installation-contribution-init fixture (#23107)"
+condition = "AND"
+paths = [
+  '''(^|/)plugins/plugin-discord/__tests__/installation-contribution-init\.test\.ts$''',
+]
+regexTarget = "line"
+regexes = [
+  '''DISCORD_APPLICATION_ID\s*:\s*"123456789012345678"''',
 ]
 
 # The inference-auth controlled-probe test uses a fixed discriminator with a
