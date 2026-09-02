@@ -181,11 +181,23 @@ const handle: Handler<AppEnv> = async (c) => {
     null;
   let pendingResponse: Response | undefined;
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
+  let providerDispatchStarted = false;
+  let settlementContext:
+    | {
+        requestId: string;
+        organizationId: string;
+        userId: string;
+        model: string;
+        provider: "fal";
+      }
+    | undefined;
 
   if (willAdmitMutation) {
     try {
       pricedMutation = await priceFalMutation(c);
     } catch (error) {
+      // error-policy:J1 translate pricing input and catalog failures at the
+      // route boundary before any credit admission or provider dispatch.
       if (error instanceof Error && error.message === "missing_target") {
         pendingResponse = c.json({ error: "Invalid request" }, 400);
       } else if (
@@ -219,6 +231,7 @@ const handle: Handler<AppEnv> = async (c) => {
 
     if (pricedMutation) {
       try {
+        const requestId = `fal-proxy:${crypto.randomUUID()}`;
         const billingContext: BillingContext = {
           organizationId: caller.user.organization_id,
           userId: caller.user.id,
@@ -226,8 +239,15 @@ const handle: Handler<AppEnv> = async (c) => {
           model: pricedMutation.model,
           provider: "fal",
           billingSource: "fal",
-          requestId: `fal-proxy:${crypto.randomUUID()}`,
+          requestId,
           description: `fal.ai ${pricedMutation.model}`,
+        };
+        settlementContext = {
+          requestId,
+          organizationId: caller.user.organization_id,
+          userId: caller.user.id,
+          model: pricedMutation.model,
+          provider: "fal",
         };
         admission = await admitFlatGenerativeOperation({
           c,
@@ -256,20 +276,50 @@ const handle: Handler<AppEnv> = async (c) => {
 
     try {
       await admission?.markProviderDispatched?.();
+      providerDispatchStarted = true;
       const response = await invokeFalProxy(c);
 
       if (admission && pricedMutation) {
+        if (!response.ok) {
+          logger.error(
+            "[fal proxy] Provider returned an ambiguous post-dispatch failure",
+            {
+              ...settlementContext,
+              providerStatus: response.status,
+              settlementMode: "unknown",
+            },
+          );
+        }
         await retainFalSettlement(
           c,
-          admission.settle(response.ok ? pricedMutation.cost.totalCost : 0),
-          response.ok ? "settle" : "release",
+          response.ok
+            ? admission.settle(pricedMutation.cost.totalCost)
+            : admission.settleUnknown(),
+          response.ok ? "settle" : "settle_unknown",
+          settlementContext,
         );
       }
 
       return response;
     } catch (error) {
+      // error-policy:J1 translate the provider boundary only after preserving
+      // the admitted mutation's post-dispatch accounting outcome.
       if (admission) {
-        await retainFalSettlement(c, admission.settle(0), "release");
+        const settlementMode = providerDispatchStarted ? "unknown" : "release";
+        logger.error("[fal proxy] Mutation failed after admission", {
+          ...settlementContext,
+          providerDispatchStarted,
+          settlementMode,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await retainFalSettlement(
+          c,
+          providerDispatchStarted
+            ? admission.settleUnknown()
+            : admission.settle(0),
+          providerDispatchStarted ? "settle_unknown" : "release",
+          settlementContext,
+        );
       }
       throw error;
     }
@@ -281,12 +331,21 @@ const handle: Handler<AppEnv> = async (c) => {
 async function retainFalSettlement(
   c: Context<AppEnv>,
   settlement: Promise<unknown>,
-  operation: "settle" | "release",
+  operation: "settle" | "settle_unknown" | "release",
+  context?: {
+    requestId: string;
+    organizationId: string;
+    userId: string;
+    model: string;
+    provider: "fal";
+  },
 ): Promise<void> {
   const observed = settlement.catch((error) => {
     // error-policy:J7 settlement diagnostics must not replace the provider
     // response; the durable reservation sweep remains the recovery boundary.
     logger.error(`[fal proxy] Failed to ${operation} inference admission`, {
+      ...context,
+      settlementMode: operation,
       error: error instanceof Error ? error.message : String(error),
     });
   });

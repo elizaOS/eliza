@@ -1,18 +1,27 @@
 /** Verifies the music generation request boundary with deterministic provider mocks. */
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const assertSafeForPublicUse = mock(async () => undefined);
-const generateAudio = mock(async () => ({
-  source: "hosted",
-  url: "https://v3b.fal.media/files/music-output.mp3",
-  fileName: "music-output.mp3",
-  fileSize: 1234,
-  contentType: "audio/mpeg",
-  requestId: "req-music",
-  status: "completed",
-  raw: {},
-}));
-const markProviderDispatched = mock(async () => undefined);
+let providerError: Error | null = null;
+let dispatchReceiptError: Error | null = null;
+const generateAudio = mock(async () => {
+  if (providerError) throw providerError;
+  return {
+    source: "hosted" as const,
+    url: "https://v3b.fal.media/files/music-output.mp3",
+    fileName: "music-output.mp3",
+    fileSize: 1234,
+    contentType: "audio/mpeg",
+    requestId: "req-music",
+    status: "completed",
+    raw: {},
+  };
+});
+const markProviderDispatched = mock(async () => {
+  if (dispatchReceiptError) throw dispatchReceiptError;
+});
+const settle = mock(async (_cost: number) => undefined);
+const settleUnknown = mock(async () => undefined);
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   requireGenerativeRouteCaller: async () => ({
@@ -22,8 +31,8 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   }),
   admitFlatGenerativeOperation: async () => ({
     reservation: { reconcile: async () => undefined },
-    settle: async () => undefined,
-    settleUnknown: async () => undefined,
+    settle,
+    settleUnknown,
     markProviderDispatched,
   }),
   asGenerativeCacheApiError: () => null,
@@ -80,6 +89,16 @@ const validBody = {
 };
 
 describe("POST /api/v1/generate-music malformed JSON", () => {
+  beforeEach(() => {
+    providerError = null;
+    dispatchReceiptError = null;
+    assertSafeForPublicUse.mockClear();
+    generateAudio.mockClear();
+    markProviderDispatched.mockClear();
+    settle.mockClear();
+    settleUnknown.mockClear();
+  });
+
   test("returns 400 instead of 500 and never admits generation", async () => {
     const response = await app.request(
       "/",
@@ -109,5 +128,40 @@ describe("POST /api/v1/generate-music malformed JSON", () => {
     );
     expect(response.status).toBe(200);
     expect(generateAudio).toHaveBeenCalled();
+  });
+
+  test("conservatively settles an ambiguous provider failure after dispatch", async () => {
+    providerError = new Error("provider transport closed after submit");
+    const response = await app.fetch(
+      new Request("http://test.local/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(validBody),
+      }),
+      { FAL_KEY: "fal-test-key" },
+    );
+
+    expect(response.status).toBe(500);
+    expect(markProviderDispatched).toHaveBeenCalledTimes(1);
+    expect(generateAudio).toHaveBeenCalledTimes(1);
+    expect(settleUnknown).toHaveBeenCalledTimes(1);
+    expect(settle).not.toHaveBeenCalled();
+  });
+
+  test("releases the reservation when the dispatch receipt fails before provider invocation", async () => {
+    dispatchReceiptError = new Error("dispatch receipt unavailable");
+    const response = await app.fetch(
+      new Request("http://test.local/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(validBody),
+      }),
+      { FAL_KEY: "fal-test-key" },
+    );
+
+    expect(response.status).toBe(500);
+    expect(generateAudio).not.toHaveBeenCalled();
+    expect(settle).toHaveBeenCalledWith(0);
+    expect(settleUnknown).not.toHaveBeenCalled();
   });
 });

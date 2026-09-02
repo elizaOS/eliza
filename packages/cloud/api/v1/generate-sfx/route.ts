@@ -121,6 +121,17 @@ app.post("/", async (c) => {
   // Post-settle failures must not refund a settled charge (mirrors
   // generate-image / generate-video / generate-music).
   let chargeSettled = false;
+  let providerDispatchStarted = false;
+  let settlementContext:
+    | {
+        requestId: string;
+        organizationId: string;
+        userId: string;
+        model: string;
+        provider: string;
+        billingSource: string;
+      }
+    | undefined;
 
   try {
     const decodedRawBody = await decodeRequestJson(c.req);
@@ -208,6 +219,7 @@ app.post("/", async (c) => {
         cache: getGenerativePricingCacheOptions(c),
       }),
     ]);
+    const billingRequestId = `generate-sfx:${crypto.randomUUID()}`;
     const billingContext: BillingContext = {
       organizationId: user.organization_id,
       userId: user.id,
@@ -215,9 +227,17 @@ app.post("/", async (c) => {
       model: request.model,
       provider: definition.provider,
       billingSource: definition.billingSource,
-      requestId: `generate-sfx:${crypto.randomUUID()}`,
+      requestId: billingRequestId,
       affiliateCode: c.req.header("X-Affiliate-Code"),
       description: `SFX generation: ${request.model}`,
+    };
+    settlementContext = {
+      requestId: billingRequestId,
+      organizationId: user.organization_id,
+      userId: user.id,
+      model: request.model,
+      provider: definition.provider,
+      billingSource: definition.billingSource,
     };
 
     try {
@@ -243,31 +263,31 @@ app.post("/", async (c) => {
       throw error;
     }
 
+    const audioProvider = getAudioProvider(definition.billingSource);
     await admission.markProviderDispatched?.();
-    const generated = await getAudioProvider(definition.billingSource).generate(
-      {
-        kind: "sfx",
-        model: request.model,
-        prompt: request.prompt,
-        durationSeconds: request.durationSeconds,
-        promptInfluence: request.promptInfluence,
-        seed: request.seed,
-        outputFormat: request.outputFormat,
-        extraInput: request.extraInput,
-        apiKeys: {
-          FAL_KEY: envString(c.env, "FAL_KEY"),
-          FAL_API_KEY: envString(c.env, "FAL_API_KEY"),
-          FAL_QUEUE_BASE_URL: envString(c.env, "FAL_QUEUE_BASE_URL"),
-          FAL_QUEUE_POLL_INTERVAL_MS: envString(
-            c.env,
-            "FAL_QUEUE_POLL_INTERVAL_MS",
-          ),
-          FAL_QUEUE_TIMEOUT_MS: envString(c.env, "FAL_QUEUE_TIMEOUT_MS"),
-          ELEVENLABS_API_KEY: envString(c.env, "ELEVENLABS_API_KEY"),
-          ELEVENLABS_BASE_URL: envString(c.env, "ELEVENLABS_BASE_URL"),
-        },
+    providerDispatchStarted = true;
+    const generated = await audioProvider.generate({
+      kind: "sfx",
+      model: request.model,
+      prompt: request.prompt,
+      durationSeconds: request.durationSeconds,
+      promptInfluence: request.promptInfluence,
+      seed: request.seed,
+      outputFormat: request.outputFormat,
+      extraInput: request.extraInput,
+      apiKeys: {
+        FAL_KEY: envString(c.env, "FAL_KEY"),
+        FAL_API_KEY: envString(c.env, "FAL_API_KEY"),
+        FAL_QUEUE_BASE_URL: envString(c.env, "FAL_QUEUE_BASE_URL"),
+        FAL_QUEUE_POLL_INTERVAL_MS: envString(
+          c.env,
+          "FAL_QUEUE_POLL_INTERVAL_MS",
+        ),
+        FAL_QUEUE_TIMEOUT_MS: envString(c.env, "FAL_QUEUE_TIMEOUT_MS"),
+        ELEVENLABS_API_KEY: envString(c.env, "ELEVENLABS_API_KEY"),
+        ELEVENLABS_BASE_URL: envString(c.env, "ELEVENLABS_BASE_URL"),
       },
-    );
+    });
 
     const audio = await storeGeneratedSfx(
       c.env,
@@ -339,11 +359,25 @@ app.post("/", async (c) => {
       cost,
     });
   } catch (error) {
+    // error-policy:J1 translate the route failure after reconciling the durable
+    // reservation according to whether provider dispatch actually began.
     if (admission && !chargeSettled) {
-      const release = admission.settle(0);
+      const settlementMode = providerDispatchStarted ? "unknown" : "release";
+      logger.error("[GenerateSfx] Generation failed after admission", {
+        ...settlementContext,
+        providerDispatchStarted,
+        settlementMode,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const release = providerDispatchStarted
+        ? admission.settleUnknown()
+        : admission.settle(0);
       const executionCtx = getGenerativeExecutionContext(c);
       const observed = release.catch((reconcileError) => {
-        logger.error("[GenerateSfx] Failed to refund reservation", {
+        logger.error("[GenerateSfx] Failed to reconcile reservation", {
+          ...settlementContext,
+          providerDispatchStarted,
+          settlementMode,
           error:
             reconcileError instanceof Error
               ? reconcileError.message
