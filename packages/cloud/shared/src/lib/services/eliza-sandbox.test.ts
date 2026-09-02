@@ -5387,6 +5387,51 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
     }
   });
 
+  test("an acknowledged retry with no reachable bridge is fenced to that exact generation", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = {
+      ...customSandbox(),
+      status: "deletion_failed" as const,
+      bridge_url: null,
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
+    };
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const priorBackup = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+      undefined,
+    );
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "halted by test after capture phase",
+    });
+    try {
+      await expect(
+        svc.deleteAgent(rec.id, rec.organization_id, {
+          authorization: "user_request",
+          stateLossAcknowledged: true,
+        }),
+      ).resolves.toEqual({ success: false, error: "halted by test after capture phase" });
+      expect(fetchSnap).not.toHaveBeenCalled();
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "user_request", {
+        snapshot: null,
+        captureAuthority: rec,
+        captureWaiverGeneration: {
+          bridgeUrl: null,
+          environmentRevision: rec.environment_revision,
+          sandboxId: rec.sandbox_id,
+        },
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      priorBackup.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
   test("a stopped-origin deletion continuation does not recapture a dead container", async () => {
     const { svc, spyTarget } = await makeCaptureSvc();
     const rec = {
@@ -5861,6 +5906,66 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
           pre_delete_capture_waiver_bridge_url: live.bridge_url,
         }),
       );
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+      persist.mockRestore();
+    }
+  });
+
+  test("prepareAgentDelete accepts an acknowledged absent-bridge generation without fabricating a persisted URL", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const live = {
+      ...customSandbox(),
+      status: "deletion_failed" as const,
+      bridge_url: null,
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
+    };
+    const lockLifecycle = spyOn(spyTarget, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(spyTarget, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(spyTarget, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(spyTarget, "hasActiveReplacementJobTx").mockResolvedValue(
+      false,
+    );
+    const persist = spyOn(spyTarget, "persistSnapshotWithinTransaction");
+    const set = mock((values: Record<string, unknown>) => ({
+      where: mock(() => ({
+        returning: mock(async () => [
+          {
+            id: live.id,
+            deletionAttemptId: live.deletion_attempt_id,
+            deletionStartedAt: live.deletion_started_at,
+            lifecycleRevision: 7,
+          },
+        ]),
+      })),
+    }));
+    const update = mock(() => ({ set }));
+    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+    try {
+      const result = (await (
+        svc as unknown as {
+          prepareAgentDelete: (...args: unknown[]) => Promise<{ ok: boolean }>;
+        }
+      ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
+        snapshot: null,
+        captureAuthority: live,
+        captureWaiverGeneration: {
+          bridgeUrl: null,
+          environmentRevision: live.environment_revision,
+          sandboxId: live.sandbox_id,
+        },
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      })) as { ok: boolean };
+      expect(result.ok).toBe(true);
+      expect(persist).not.toHaveBeenCalled();
+      expect(set).toHaveBeenCalledTimes(1);
+      expect(set.mock.calls[0]?.[0]).not.toHaveProperty("pre_delete_capture_waiver_bridge_url");
     } finally {
       upgradeTransactionImpl = null;
       lockLifecycle.mockRestore();

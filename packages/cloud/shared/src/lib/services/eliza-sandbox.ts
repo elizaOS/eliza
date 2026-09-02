@@ -2676,7 +2676,7 @@ export class ElizaSandboxService {
     // refusal leaves a recoverable tombstone the next attempt retries.
     let captureWaiverAlreadyPersisted = false;
     let captureWaiverGeneration: {
-      bridgeUrl: string;
+      bridgeUrl: string | null;
       environmentRevision: number;
       sandboxId: string | null;
     } | null = null;
@@ -2734,15 +2734,36 @@ export class ElizaSandboxService {
       } else if (this.hasCurrentPreDeleteCaptureWaiver(snapshotSource)) {
         captureWaiverAlreadyPersisted = true;
       } else if (!snapshotSource.bridge_url) {
-        logger.error("[agent-sandbox] Delete refused: data-bearing container has no bridge", {
-          agentId,
-          status: snapshotSource.status,
-        });
-        return {
-          success: false,
-          error:
-            "Refusing to delete without a current backup: the agent's container has no reachable bridge to capture from",
-        };
+        if (options.stateLossAcknowledged) {
+          // A prior attempt can remove the workload before a later boundary
+          // (credential revocation or row-delete settlement) fails. The
+          // acknowledged job is the durable authority for the retry; bind its
+          // in-memory waiver to the exact absent-bridge generation under the
+          // lifecycle lock below. There is no URL to persist in the legacy
+          // row-level waiver shape, and every later attempt must re-present the
+          // acknowledged job authority.
+          preDeleteCaptureAuthority = snapshotSource;
+          captureWaiverGeneration = {
+            bridgeUrl: null,
+            environmentRevision: snapshotSource.environment_revision,
+            sandboxId: snapshotSource.sandbox_id,
+          };
+          logger.error(
+            "[agent-sandbox] Delete proceeding without pre-deletion capture: " +
+              "state loss acknowledged for an absent bridge",
+            { agentId, status: snapshotSource.status },
+          );
+        } else {
+          logger.error("[agent-sandbox] Delete refused: data-bearing container has no bridge", {
+            agentId,
+            status: snapshotSource.status,
+          });
+          return {
+            success: false,
+            error:
+              "Refusing to delete without a current backup: the agent's container has no reachable bridge to capture from",
+          };
+        }
       } else {
         preDeleteCaptureAuthority = snapshotSource;
         try {
@@ -3091,7 +3112,7 @@ export class ElizaSandboxService {
       } | null;
       captureAuthority: SnapshotAuthorityCapture | null;
       captureWaiverGeneration: {
-        bridgeUrl: string;
+        bridgeUrl: string | null;
         environmentRevision: number;
         sandboxId: string | null;
       } | null;
@@ -3191,7 +3212,17 @@ export class ElizaSandboxService {
                   "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
               };
             }
-            captureWaiverToPersist = waiver;
+            // The database waiver shape intentionally records a concrete
+            // bridge URL. An acknowledged retry whose bridge is already absent
+            // is authorized by the durable job tuple and revalidated here, but
+            // has no URL to persist.
+            if (waiver.bridgeUrl !== null) {
+              captureWaiverToPersist = {
+                bridgeUrl: waiver.bridgeUrl,
+                environmentRevision: waiver.environmentRevision,
+                sandboxId: waiver.sandboxId,
+              };
+            }
           } else {
             const snapshot = preDeleteCapture?.snapshot ?? null;
             // The capture must be OF THIS exact generation (shutdown's rule).
