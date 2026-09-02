@@ -439,7 +439,7 @@ describe("resolveInferenceAuthContext", () => {
 
   test("a cold request safely joins a refresh-created flight and retains its lease credential", async () => {
     await writeInferenceAuthContext({
-      v: 2,
+      v: 3,
       cachedAt: 1,
       userId: "user-1",
       orgId: "org-1",
