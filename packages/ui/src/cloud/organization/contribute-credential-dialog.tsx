@@ -50,7 +50,7 @@ import { organizationErrorMessage } from "./data/use-organization";
 interface ContributeCredentialDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (credential: PooledCredentialDto) => void;
 }
 
 export function ContributeCredentialDialog({
@@ -102,7 +102,7 @@ export function ContributeCredentialDialog({
       });
       setApiKey("");
       setResult(data);
-      onSuccess();
+      onSuccess(data);
     } catch (err) {
       setError(
         organizationErrorMessage(

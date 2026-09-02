@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
 import {
+  finalMessageUserText,
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
@@ -302,7 +303,7 @@ const strictGithubRoutes = [
     args: githubIssueParameters(false),
     contextIds: ["code"],
     input: "create deterministic GitHub issue preview",
-    messageToUser: "Preparing issue preview.",
+    messageToUser: "",
   },
   {
     actionName: "GITHUB_ISSUE_CREATE",
@@ -398,9 +399,8 @@ const strictGithubRoutes = [
 
 function matchesGithubIssueCreatePreviewEvaluation(value: string): boolean {
   return (
-    value.includes(
-      "message:user:\ncreate deterministic GitHub issue preview",
-    ) &&
+    finalMessageUserText(value) ===
+      "create deterministic GitHub issue preview" &&
     value.includes("event:message_handler:") &&
     value.includes(
       "Stage 1 router marked this current turn as requiring a tool",

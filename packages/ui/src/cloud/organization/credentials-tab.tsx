@@ -16,7 +16,7 @@
  */
 
 import { KeyRound, Loader2, UserPlus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../cloud-ui";
 import { useCloudT } from "../shell/CloudI18nProvider";
@@ -24,6 +24,7 @@ import { ContributeCredentialDialog } from "./contribute-credential-dialog";
 import { CredentialsList } from "./credentials-list";
 import {
   canManageOrg,
+  type PooledCredentialDto,
   type UserWithOrganizationDto,
 } from "./data/cloud-org-types";
 import {
@@ -46,6 +47,8 @@ export function CredentialsTab({
   const t = useCloudT();
   const [isContributeOpen, setIsContributeOpen] = useState(autoContribute);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [optimisticCredential, setOptimisticCredential] =
+    useState<PooledCredentialDto | null>(null);
 
   const canManage = canManageOrg(user.role);
 
@@ -53,7 +56,26 @@ export function CredentialsTab({
   const updateCredential = useUpdateCredential();
   const removeCredential = useRemoveCredential();
 
-  const credentials = credentialsQuery.data ?? [];
+  const serverCredentials = credentialsQuery.data ?? [];
+  const credentials = optimisticCredential
+    ? [
+        optimisticCredential,
+        ...serverCredentials.filter(
+          (credential) => credential.id !== optimisticCredential.id,
+        ),
+      ]
+    : serverCredentials;
+
+  useEffect(() => {
+    if (
+      optimisticCredential &&
+      serverCredentials.some(
+        (credential) => credential.id === optimisticCredential.id,
+      )
+    ) {
+      setOptimisticCredential(null);
+    }
+  }, [optimisticCredential, serverCredentials]);
 
   const handleToggle = async (credentialId: string, enabled: boolean) => {
     try {
@@ -163,7 +185,9 @@ export function CredentialsTab({
       <ContributeCredentialDialog
         isOpen={isContributeOpen}
         onClose={() => setIsContributeOpen(false)}
-        onSuccess={() => {
+        onSuccess={(credential) => {
+          setOptimisticCredential(credential);
+          void credentialsQuery.refetch();
           toast.success(
             t("cloud.credentialsTab.contributed", {
               defaultValue: "Key validated and added to the pool",

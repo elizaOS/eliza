@@ -924,7 +924,7 @@ describe("Ankr provider path", () => {
       expect(ok[0]?.nfts[0]?.name).toBe("Untitled");
       expect(ok[0]?.nfts[0]?.collectionName).toBe("FromContract");
       expect(ok[0]?.nfts[0]?.imageUrl).toBe("https://img.example/preview.png");
-      expect(ok[0]?.nfts[0]?.description.length).toBeLessThanOrEqual(200);
+      expect(ok[0]?.nfts[0]?.description).toBe("d".repeat(250));
 
       vi.unstubAllGlobals();
       installFetch(() => {

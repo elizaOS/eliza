@@ -131,6 +131,42 @@ describe("createDeterministicModelPlugin", () => {
 		expect(() => plugin.assertFixturesConsumed()).not.toThrow();
 	});
 
+	it("matches forced post-tool synthesis calls to the originating user turn", async () => {
+		const plugin = createDeterministicModelPlugin({
+			fixtures: [
+				{
+					name: "post-tool-reply",
+					match: {
+						modelType: ModelType.ACTION_PLANNER,
+						input: /Read the deterministic note(?![\s\S]*message:user:\n)/,
+						toolNames: [],
+					},
+					response: "read complete",
+					times: 1,
+				},
+			],
+		});
+		const forced =
+			"Tool work for this turn is complete but no user-facing reply was produced. Do not call any tool. Write the final answer to the user now from the tool results already in this trajectory; if they do not contain the answer, say plainly what you found and what was missing.";
+
+		await expect(
+			textHandler(plugin, ModelType.ACTION_PLANNER)(runtime, {
+				messages: [
+					{
+						role: "user",
+						content: "message:user:\nRead the deterministic note",
+					},
+					{ role: "assistant", content: [] },
+					{ role: "tool", content: [] },
+					{ role: "user", content: "event:evaluation:\nevaluation: {}" },
+					{ role: "user", content: forced },
+				],
+				tools: [],
+			} as GenerateTextParams),
+		).resolves.toBe("read complete");
+		expect(() => plugin.assertFixturesConsumed()).not.toThrow();
+	});
+
 	it("uses an explicit resolver only when no fixture matches", async () => {
 		const plugin = createDeterministicModelPlugin({
 			fixtures: [

@@ -94,12 +94,13 @@ describe("GitHub bug-report title bound", () => {
   });
 
   it("keeps the posted title (prefix included) within 80 chars", async () => {
-    const { title } = await postBugReport("x".repeat(120));
+    const description = "crash on startup ".repeat(10);
+    const { title } = await postBugReport(description);
 
     expect(title.startsWith("[Bug] ")).toBe(true);
     expect(title.length).toBeLessThanOrEqual(GITHUB_TITLE_MAX_LEN);
     expect(title).toBe(
-      `[Bug] ${"x".repeat(GITHUB_TITLE_MAX_LEN - "[Bug] ".length)}`,
+      `[Bug] ${description.slice(0, GITHUB_TITLE_MAX_LEN - "[Bug] ".length)}`,
     );
   });
 

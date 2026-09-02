@@ -1436,7 +1436,7 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     expect(joinedWrites).toMatch(/x{70000}/);
     expect(joinedWrites).toContain(JSON.stringify(oversizedArray));
     expect(joinedWrites).toContain("[Circular]");
-    expect(joinedWrites).toContain("[MaxDepth]");
+    expect(joinedWrites).not.toContain("[MaxDepth]");
     expect(joinedWrites).not.toContain("...[truncated]");
     expect(joinedWrites).not.toContain('"__truncatedItems"');
   });

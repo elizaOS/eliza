@@ -404,8 +404,9 @@ const pageHtml = `<!doctype html><html><head><meta charset="utf-8">
 </head><body><div id="root"></div>
 <script>
   window.global = window;
-  window.__VITE_ENV__ = {};
+  window.__VITE_ENV__ = { VITE_PLAYWRIGHT_TEST_AUTH: "true" };
   window.process = { env: {}, platform: "browser", cwd: () => "/", versions: {} };
+  document.cookie = "eliza-test-auth=1; path=/; SameSite=Lax";
   localStorage.setItem("steward_session_token", ${JSON.stringify(KEY)});
 </script>
 <script>${js.replace(/<\/script>/g, "<\\/script>")}</script></body></html>`;
@@ -566,6 +567,20 @@ assert(!domHasPlaintext, "plaintext key never appears in the DOM after submit");
 await snap("desktop-contribute-pooled");
 await page.getByRole("button", { name: /^Done$/i }).click();
 
+const pooledAfterAdd = await j(
+  "GET",
+  "/api/organizations/credentials",
+  undefined,
+  KEY,
+);
+assert(
+  pooledAfterAdd.s === 200 &&
+    pooledAfterAdd.d?.data?.some(
+      (credential) => credential.label === "work console key",
+    ),
+  "server confirms the contributed credential is pooled",
+);
+
 // --- masked list row -----------------------------------------------------------
 await page.getByText("work console key").waitFor({ timeout: 30_000 });
 assert(
@@ -626,15 +641,29 @@ await snap("desktop-connect-link-landing");
 await page.keyboard.press("Escape");
 
 // --- mobile ---------------------------------------------------------------------
-const mobile = await context.newPage();
-await mobile.setViewportSize({ width: 390, height: 844 });
-await mobile.goto(PAGE_URL);
-await mobile.getByText("work console key").waitFor({ timeout: 30_000 });
-await snap("mobile-list-row", mobile);
-await mobile.getByRole("button", { name: /Contribute Key/i }).click();
-await mobile.getByText("Contribute an API Key").waitFor();
-await snap("mobile-contribute-dialog", mobile);
-await mobile.close();
+await page.setViewportSize({ width: 390, height: 844 });
+await page.goto(PAGE_URL);
+try {
+  await page.getByText("work console key").waitFor({ timeout: 30_000 });
+} catch (error) {
+  await snap("DEBUG-mobile-state");
+  const [body, serverCredentials] = await Promise.all([
+    page.evaluate(() => document.body.innerText.slice(0, 800)),
+    j("GET", "/api/organizations/credentials", undefined, KEY),
+  ]);
+  console.log("DEBUG mobile body:", JSON.stringify(body));
+  console.log(
+    "DEBUG server credentials:",
+    JSON.stringify(serverCredentials),
+  );
+  throw error;
+}
+await snap("mobile-list-row");
+await page.getByRole("button", { name: /Contribute Key/i }).click();
+await page.getByText("Contribute an API Key").waitFor();
+await snap("mobile-contribute-dialog");
+await page.keyboard.press("Escape");
+await page.setViewportSize({ width: 1280, height: 800 });
 
 // --- remove (own credential) ------------------------------------------------------
 await page.goto(PAGE_URL);

@@ -2225,6 +2225,13 @@ async function executeApiTurn(args: {
           apiServer: args.apiServer,
           variables: args.variables,
         });
+  const configuredHeaders = args.turn.headers
+    ? ((await resolveTemplateValue({
+        value: args.turn.headers,
+        apiServer: args.apiServer,
+        variables: args.variables,
+      })) as Record<string, string>)
+    : undefined;
 
   const startedAt = Date.now();
   const timeoutMs =
@@ -2253,8 +2260,10 @@ async function executeApiTurn(args: {
   try {
     response = await fetch(`${args.apiServer.baseUrl}${path}`, {
       method,
-      headers:
-        body === undefined ? undefined : { "content-type": "application/json" },
+      headers: {
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+        ...configuredHeaders,
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
