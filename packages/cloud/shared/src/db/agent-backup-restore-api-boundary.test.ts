@@ -220,12 +220,7 @@ describe("disabled-first restore API boundary", () => {
           .sort(),
         `${symbol} gained an unapproved production source`,
       ).toEqual([...(allowedSuffixes ?? [])].sort());
-      const expectedInvocationLikeOccurrences =
-        symbol === "loadCurrentAgentVaultKeyAuthority"
-          ? 3
-          : symbol === "loadAgentBackupRestoreSourceV3"
-            ? 2
-            : 1;
+      const expectedInvocationLikeOccurrences = symbol === "loadAgentBackupRestoreSourceV3" ? 2 : 1;
       expect(
         countInvocationLikeOccurrences(occurrenceSources, symbol),
         `${symbol} gained a production call site`,
