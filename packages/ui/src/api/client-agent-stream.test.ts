@@ -67,6 +67,30 @@ describe("ElizaClient agent streaming transport", () => {
     );
   });
 
+  it("mints no trace for a self-hosted base, so the header is dedicated-only", async () => {
+    const request = vi.fn<AgentRequestTransport["request"]>(async () => {
+      return new Response(
+        'data: {"type":"done","fullText":"ok","agentName":"Eliza"}\n\n',
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    });
+    // Same call as the test above, differing only in the base URL. The trace id
+    // is minted client-side and echoed back by the gateway as a correlation
+    // key, so a base outside the dedicated cloud must not receive one.
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "private model input",
+      vi.fn(),
+    );
+
+    const headers = new Headers(request.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("Accept")).toBe("text/event-stream");
+    expect(headers.has("X-Eliza-Trace-Id")).toBe(false);
+  });
+
   it("resolves chat streams immediately after a terminal done event", async () => {
     const encoder = new TextEncoder();
     const read = vi

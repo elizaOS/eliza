@@ -1,6 +1,10 @@
 /** Exercises Worker-safe core stub behavior with deterministic fixtures. */
 import { describe, expect, test } from "bun:test";
 import {
+  INFERENCE_TRACE_ID_PATTERN as canonicalInferenceTraceIdPattern,
+  isInferenceTraceId as canonicalIsInferenceTraceId,
+} from "@elizaos/core";
+import {
   groupResponsePrecedencePolicy as canonicalGroupResponsePrecedencePolicy,
   registerResponsePolicy as canonicalRegisterResponsePolicy,
 } from "@elizaos/prompts";
@@ -14,6 +18,9 @@ import {
   getInferenceTimer,
   groupResponsePrecedencePolicy,
   hasDocumentAugmentationEnvelope,
+  INFERENCE_TRACE_ID_PATTERN,
+  isInferenceTraceId,
+  mintInferenceTraceId,
   registerResponsePolicy,
   runWithTrajectoryPurpose,
   SsrfBlockedError,
@@ -28,6 +35,47 @@ describe("elizaos-core Worker stub", () => {
       canonicalGroupResponsePrecedencePolicy,
     );
     expect(registerResponsePolicy).toBe(canonicalRegisterResponsePolicy);
+  });
+
+  test("mirrors core's inference trace-id contract exactly", () => {
+    // The Worker bundle aliases @elizaos/core to this stub, so the gateway,
+    // the dedicated proxy, and plugin-elizacloud all validate ingress trace
+    // ids against the copy below rather than core's. A stub that widened the
+    // schema (accepting upper-case hex, say) would echo an id core rejects,
+    // and no lane compares the two — so compare them here, against the real
+    // module rather than a literal transcribed from it.
+    expect(INFERENCE_TRACE_ID_PATTERN.source).toBe(
+      canonicalInferenceTraceIdPattern.source,
+    );
+    expect(INFERENCE_TRACE_ID_PATTERN.flags).toBe(
+      canonicalInferenceTraceIdPattern.flags,
+    );
+
+    for (const value of [
+      "0123456789abcdef0123456789abcdef",
+      "0123456789ABCDEF0123456789ABCDEF",
+      "0123456789abcdef0123456789abcde",
+      "0123456789abcdef0123456789abcdef0",
+      "82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb",
+      "",
+      null,
+      undefined,
+      12345,
+      // A boxed string stringifies into a valid id, so a guard that tests the
+      // coerced value instead of checking `typeof` first would adopt it.
+      new String("0123456789abcdef0123456789abcdef"),
+    ]) {
+      expect(isInferenceTraceId(value)).toBe(
+        canonicalIsInferenceTraceId(value),
+      );
+    }
+
+    // Minting has to land inside the shape both sides agree on: a stub that
+    // emitted a hyphenated UUID would be stripped at the gateway boundary.
+    const minted = mintInferenceTraceId();
+    expect(minted).toMatch(canonicalInferenceTraceIdPattern);
+    expect(canonicalIsInferenceTraceId(minted)).toBe(true);
+    expect(mintInferenceTraceId()).not.toBe(minted);
   });
 
   test("exports the Eliza Cloud default text model aliases used by plugin-elizacloud", () => {
