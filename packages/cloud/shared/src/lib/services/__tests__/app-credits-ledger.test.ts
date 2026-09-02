@@ -199,13 +199,6 @@ beforeEach(() => {
   cacheGet.mockResolvedValue(null);
   cacheSet.mockResolvedValue(undefined);
   cacheDel.mockResolvedValue(undefined);
-  selectedCreditTransaction = {
-    organizationId: ORG_ID,
-    amount: "-1.1",
-    type: "debit",
-    metadata: {},
-  };
-
   findAppById.mockResolvedValue(monetizedApp);
   findUserById.mockResolvedValue({ id: USER_ID, organization_id: ORG_ID });
   // This unit suite owns the legacy ledger seam. Atomic app-chat reservation
@@ -254,13 +247,6 @@ beforeEach(() => {
       amount: number;
       metadata?: Record<string, unknown>;
     }) => {
-      const { settlement_marker: _settlementMarker, ...legacyMetadata } = args.metadata ?? {};
-      selectedCreditTransaction = {
-        organizationId: args.organizationId,
-        amount: String(-args.amount),
-        type: "debit",
-        metadata: legacyMetadata,
-      };
       return {
         success: true,
         newBalance: 41.4,
