@@ -35,23 +35,50 @@ function productionSources(directory = REPOSITORY_ROOT): string[] {
   });
 }
 
+interface ProductionSource {
+  path: string;
+  source: string;
+}
+
+function indexSymbolSources(
+  sources: readonly ProductionSource[],
+  symbols: readonly string[],
+): ReadonlyMap<string, readonly ProductionSource[]> {
+  const indexed = new Map<string, ProductionSource[]>();
+  const symbolPattern = new RegExp(`\\b(?:${symbols.join("|")})\\b`, "g");
+  for (const source of sources) {
+    for (const symbol of new Set(source.source.match(symbolPattern) ?? [])) {
+      const occurrences = indexed.get(symbol) ?? [];
+      occurrences.push(source);
+      indexed.set(symbol, occurrences);
+    }
+  }
+  return indexed;
+}
+
+function countInvocationLikeOccurrences(
+  sources: readonly ProductionSource[],
+  symbol: string,
+): number {
+  const invocationPattern = new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g");
+  return sources.reduce(
+    (count, { source }) => count + (source.match(invocationPattern)?.length ?? 0),
+    0,
+  );
+}
+
 describe("disabled-first restore API boundary", () => {
   test("keeps post-quarantine APIs dormant and active calls narrowly allowlisted", () => {
     const sources = productionSources().map((path) => ({
       path,
       source: readFileSync(path, "utf8"),
     }));
-    for (const forbidden of [
+    const forbiddenSymbols = [
       "queryAgentBackupRestoreCommitOutcome",
       "markAgentBackupRestoreVerified",
       "runAgentBackupRestoreCoordinator",
       "dispatchAgentBackupRestore",
-    ]) {
-      expect(
-        sources.filter(({ source }) => source.includes(forbidden)).map(({ path }) => path),
-        `Unexpected provisional restore surface: ${forbidden}`,
-      ).toEqual([]);
-    }
+    ] as const;
     const approvedProductionSources: Readonly<Record<string, readonly string[]>> = {
       acquireAgentBackupRestoreLease: ["/db/repositories/agent-backup-restore-lease.ts"],
       renewAgentBackupRestoreLease: ["/db/repositories/agent-backup-restore-lease.ts"],
@@ -141,7 +168,7 @@ describe("disabled-first restore API boundary", () => {
       ],
       commitAgentBackupRestore: ["/db/repositories/agent-backup-restore-history.ts"],
     };
-    for (const symbol of [
+    const activeSymbols = [
       "acquireAgentBackupRestoreLease",
       "renewAgentBackupRestoreLease",
       "releaseAgentBackupRestoreLease",
@@ -172,23 +199,27 @@ describe("disabled-first restore API boundary", () => {
       "authorizeAgentActivationDispatch",
       "recordAgentVaultKeySeedReceipt",
       "commitAgentBackupRestore",
-    ]) {
-      const symbolBoundary = new RegExp(`\\b${symbol}\\b`);
-      const matchingSources = sources.filter(
-        ({ source }) => source.includes(symbol) && symbolBoundary.test(source),
-      );
-      const occurrences = matchingSources.map(({ path }) => path);
+    ] as const;
+    const activeSymbolSources = indexSymbolSources(sources, [
+      ...forbiddenSymbols,
+      ...activeSymbols,
+    ]);
+    for (const forbidden of forbiddenSymbols) {
+      expect(
+        activeSymbolSources.get(forbidden) ?? [],
+        `Unexpected provisional restore surface: ${forbidden}`,
+      ).toHaveLength(0);
+    }
+    for (const symbol of activeSymbols) {
+      const occurrenceSources = activeSymbolSources.get(symbol) ?? [];
       const allowedSuffixes = approvedProductionSources[symbol];
       expect(allowedSuffixes, `${symbol} must have an explicit source allowlist`).toBeDefined();
       expect(
-        occurrences
-          .map((path) => allowedSuffixes?.find((suffix) => path.endsWith(suffix)) ?? path)
+        occurrenceSources
+          .map(({ path }) => allowedSuffixes?.find((suffix) => path.endsWith(suffix)) ?? path)
           .sort(),
         `${symbol} gained an unapproved production source`,
       ).toEqual([...(allowedSuffixes ?? [])].sort());
-      const invocationLikeOccurrences = matchingSources.flatMap(
-        ({ source }) => source.match(new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g")) ?? [],
-      );
       const expectedInvocationLikeOccurrences =
         symbol === "loadCurrentAgentVaultKeyAuthority"
           ? 3
@@ -196,9 +227,9 @@ describe("disabled-first restore API boundary", () => {
             ? 2
             : 1;
       expect(
-        invocationLikeOccurrences ?? [],
+        countInvocationLikeOccurrences(occurrenceSources, symbol),
         `${symbol} gained a production call site`,
-      ).toHaveLength(expectedInvocationLikeOccurrences);
+      ).toBe(expectedInvocationLikeOccurrences);
     }
 
     const lockedExactHelperCallSites = {
@@ -240,24 +271,22 @@ describe("disabled-first restore API boundary", () => {
         "packages/cloud/shared/src/db/repositories/agent-backup-restore-quarantine.ts",
       ],
     } as const;
+    const lockedHelperSources = indexSymbolSources(
+      sources,
+      Object.keys(lockedExactHelperCallSites),
+    );
     for (const [symbol, expectedPaths] of Object.entries(lockedExactHelperCallSites)) {
-      const symbolBoundary = new RegExp(`\\b${symbol}\\b`);
-      const matchingSources = sources.filter(
-        ({ source }) => source.includes(symbol) && symbolBoundary.test(source),
-      );
-      const actualPaths = matchingSources
+      const occurrenceSources = lockedHelperSources.get(symbol) ?? [];
+      const actualPaths = occurrenceSources
         .map(({ path }) => path.slice(REPOSITORY_ROOT.length + 1))
         .sort();
       expect(actualPaths, `${symbol} gained a production import or call site`).toEqual(
         [...expectedPaths].sort(),
       );
-      const invocationLikeOccurrences = matchingSources.flatMap(
-        ({ source }) => source.match(new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g")) ?? [],
-      );
       expect(
-        invocationLikeOccurrences ?? [],
+        countInvocationLikeOccurrences(occurrenceSources, symbol),
         `${symbol} gained a production invocation`,
-      ).toHaveLength(
+      ).toBe(
         symbol === "openAgentBackupRestoreQuarantineForLockedAuthoritiesInTransaction"
           ? 3
           : expectedPaths.length,
