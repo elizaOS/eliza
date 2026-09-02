@@ -1000,7 +1000,26 @@ jobs:
                 || true
             )"
             lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
-            case "$lower" in
+            observation="$(
+              printf '%s\n' "$lower" \
+                | sed -n 's/^.*docker candidate mesh observation before cleanup: //p' \
+                | tail -n 1
+            )"
+            case "$observation" in
+              *'authkey_rejected=true'*|*'interactive=true'*) category='mesh_auth_required' ;;
+              *'container=exited'*|*'container=dead'*) category='candidate_container_exited' ;;
+              *'socket=false'*'daemon=false'*) category='tailscale_daemon_unavailable' ;;
+              *'socket=false'*) category='tailscale_socket_missing' ;;
+              *'daemon=false'*) category='tailscale_daemon_missing' ;;
+              *'status=error'*) category='tailscale_status_unavailable' ;;
+              *'backend=needslogin'*) category='tailscale_needs_login' ;;
+              *'backend=needsmachineauth'*) category='tailscale_needs_machine_auth' ;;
+              *'backend=starting'*) category='tailscale_starting_without_ip' ;;
+              *'backend=stopped'*) category='tailscale_stopped' ;;
+              *'backend=running'*'ip=false'*) category='tailscale_running_without_ip' ;;
+              *'ip=true'*) category='candidate_ip_observed' ;;
+              '')
+                case "$lower" in
               *'docker candidate cannot complete required headscale registration: auth_required'*) category='mesh_auth_required' ;;
               *'docker candidate cannot complete required headscale registration: container_exited'*) category='candidate_container_exited' ;;
               *'headscale registration does not match the exact docker candidate'*) category='candidate_identity_mismatch' ;;
@@ -1013,6 +1032,9 @@ jobs:
               *' registered on vpn:'*) category='registration_observed' ;;
               '') category='missing' ;;
               *) category='unclassified' ;;
+                esac
+                ;;
+              *) category='observation_unclassified' ;;
             esac
             signals=''
             for signal in \
@@ -1036,9 +1058,28 @@ jobs:
                 signals="${signals:+$signals,}$signal"
               fi
             done
+            observation_present=false
+            [ -n "$observation" ] && observation_present=true
             unset block lower
             echo "private_mesh_failure_category=$category"
             echo "private_mesh_failure_signals=${signals:-none}"
+            echo "private_mesh_observation_present=$observation_present"
+            if [ "$observation_present" = true ]; then
+              for field in container socket daemon status backend authorized authurl ip \
+                authkey_rejected interactive up_failed agent_started; do
+                value="$(printf '%s' "$observation" | tr ',' '\n' | sed -n "s/^${field}=//p" | tail -n 1)"
+                case "$field:$value" in
+                  container:running|container:paused|container:restarting|container:removing|container:exited|container:dead|container:created|container:unknown) ;;
+                  status:success|status:error) ;;
+                  backend:running|backend:starting|backend:stopped|backend:needslogin|backend:needsmachineauth|backend:nostate|backend:unknown) ;;
+                  authorized:true|authorized:false|authorized:unknown) ;;
+                  socket:true|socket:false|daemon:true|daemon:false|authurl:true|authurl:false|ip:true|ip:false|authkey_rejected:true|authkey_rejected:false|interactive:true|interactive:false|up_failed:true|up_failed:false|agent_started:true|agent_started:false) ;;
+                  *) value='unknown' ;;
+                esac
+                echo "private_mesh_observation_${field}=$value"
+              done
+            fi
+            unset observation observation_present
 
       - name: Inspect exact private mesh candidate
         if: steps.cleanup_reconciliation.outputs.fence_present == 'true' || steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'
