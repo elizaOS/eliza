@@ -14,6 +14,7 @@ import {
   appPromotionService,
   type PromotionConfig,
 } from "@/lib/services/app-promotion";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -178,6 +179,7 @@ async function __hono_POST(
   c: AppContext,
   { params }: RouteContext<{ id: string }>,
   caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>,
+  operationOptions: Parameters<typeof getGenerativeOperationContext>[2],
 ) {
   const { user } = caller;
   const { id } = await params;
@@ -274,7 +276,7 @@ async function __hono_POST(
     user.id,
     id,
     config,
-    getGenerativeOperationContext(c, caller),
+    getGenerativeOperationContext(c, caller, operationOptions),
   );
 
   logger.info("[Promote API] Promotion complete", {
@@ -298,11 +300,19 @@ __hono_app.post("/", async (c) => {
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       rateLimitEndpoint: "strict",
+      deferStrongCredentialCheck: true,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
     });
     return await __hono_POST(
       c,
       { params: Promise.resolve({ id: c.req.param("id")! }) },
       caller,
+      {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      },
     );
   } catch (error) {
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);

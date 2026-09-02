@@ -18,6 +18,7 @@ import {
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { estimateTokens } from "@/lib/pricing";
 import { billUsage } from "@/lib/services/ai-billing";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -32,6 +33,11 @@ app.post("/", async (c) => {
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       rateLimitEndpoint: "strict",
+      deferStrongCredentialCheck: true,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
     });
 
     const body = ((await c.req.json().catch(() => ({}))) ?? {}) as {
@@ -93,6 +99,7 @@ Random seed: ${promptSeed}`;
       estimatedOutputTokens: 128,
       executionCtx,
       admissionSnapshot: caller.admissionSnapshot,
+      credential: credentialGuard.credentialForAdmission(),
     });
     await admission.markProviderDispatched?.();
     providerDispatchStarted = true;

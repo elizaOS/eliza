@@ -28,6 +28,7 @@ import {
 } from "@/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@/lib/services/content-safety";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@/lib/services/generations";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
@@ -122,18 +123,21 @@ app.post("/", async (c) => {
   let chargeSettled = false;
 
   try {
-    const { user, apiKeyId, admissionSnapshot } =
-      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
     const decodedRawBody = await decodeRequestJson(c.req);
+    let pendingResponse: Response | undefined;
+    let request: z.infer<typeof sfxRequestSchema> | undefined;
+    let definition: ReturnType<typeof getSupportedSfxModelDefinition>;
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is an explicit invalid request.
-      return c.json({ error: "Invalid JSON body" }, 400);
+      pendingResponse = c.json({ error: "Invalid JSON body" }, 400);
+    } else {
+      const parsed = sfxRequestSchema.safeParse(decodedRawBody.value);
+      if (parsed.success) request = parsed.data;
+      else pendingResponse = failureResponse(c, parsed.error);
     }
-    const rawBody = decodedRawBody.value;
-    const request = sfxRequestSchema.parse(rawBody);
-    const definition = getSupportedSfxModelDefinition(request.model);
-    if (!definition) {
-      return jsonError(
+    if (request) definition = getSupportedSfxModelDefinition(request.model);
+    if (request && !definition) {
+      pendingResponse = jsonError(
         c,
         400,
         `Unsupported SFX model: ${request.model}`,
@@ -142,25 +146,43 @@ app.post("/", async (c) => {
           supportedModels: SUPPORTED_SFX_MODEL_IDS,
         },
       );
-    }
-    if (
+    } else if (
+      request &&
+      definition &&
       request.durationSeconds !== undefined &&
       request.durationSeconds > definition.defaultParameters.maxDurationSeconds
     ) {
-      return jsonError(
+      pendingResponse = jsonError(
         c,
         400,
         `${request.model} supports at most ${definition.defaultParameters.maxDurationSeconds}s per clip`,
         "validation_error",
       );
-    }
-    if (!providerConfigured(c.env, definition.provider)) {
-      return jsonError(
+    } else if (
+      request &&
+      definition &&
+      !providerConfigured(c.env, definition.provider)
+    ) {
+      pendingResponse = jsonError(
         c,
         503,
         `${definition.provider} SFX generation is not configured`,
         "internal_error",
       );
+    }
+
+    const { user, apiKeyId, admissionSnapshot, credential } =
+      await requireGenerativeRouteCaller(c, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: pendingResponse === undefined,
+      });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
+    if (pendingResponse) return pendingResponse;
+    if (!request || !definition) {
+      throw new Error("Validated SFX request was not retained");
     }
 
     const durationSeconds =
@@ -205,6 +227,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost,
         admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {

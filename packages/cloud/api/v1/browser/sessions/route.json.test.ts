@@ -6,15 +6,16 @@ const createHostedBrowserSession = mock(async () => ({
   id: "sess-1",
   url: "https://example.com",
 }));
+const requireGenerativeRouteCaller = mock(async () => ({
+  user: { id: "user-1", organization_id: "org-1" },
+  apiKeyId: null,
+  authSource: "combined_cache",
+  appScopeId: null,
+}));
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   asGenerativeCacheApiError: () => null,
-  requireGenerativeRouteCaller: async () => ({
-    user: { id: "user-1", organization_id: "org-1" },
-    apiKeyId: null,
-    authSource: "combined_cache",
-    appScopeId: null,
-  }),
+  requireGenerativeRouteCaller,
   getGenerativeOperationContext: () => ({
     organizationId: "org-1",
     userId: "user-1",
@@ -39,6 +40,7 @@ const { default: app } = await import("./route");
 describe("POST /api/v1/browser/sessions malformed JSON", () => {
   beforeEach(() => {
     createHostedBrowserSession.mockClear();
+    requireGenerativeRouteCaller.mockClear();
   });
 
   test("returns 400 instead of 500 and never creates a session", async () => {
@@ -52,6 +54,11 @@ describe("POST /api/v1/browser/sessions malformed JSON", () => {
       error: "Invalid JSON body",
     });
     expect(createHostedBrowserSession).not.toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
   });
 
   test("canonical JSON still creates a session", async () => {
@@ -61,6 +68,10 @@ describe("POST /api/v1/browser/sessions malformed JSON", () => {
       body: JSON.stringify({ url: "https://example.com" }),
     });
     expect(response.status).toBe(200);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: true }),
+    );
     expect(createHostedBrowserSession).toHaveBeenCalled();
   });
 

@@ -12,6 +12,11 @@ import { withRateLimit } from "../../middleware/rate-limit";
 import { logger } from "../../utils/logger";
 import { creditsService, InsufficientCreditsError } from "../credits";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
+import {
+  type InferenceCredentialCheck,
+  InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
+} from "../inference-credential-revocation";
 import { admitOrganizationInference } from "../organization-inference-admission";
 import { usageService } from "../usage";
 import { PricingNotFoundError } from "./pricing";
@@ -37,6 +42,8 @@ export interface ProxyCombinedAdmission {
     apiKey?: { id: string };
   };
   admissionSnapshot?: InferenceAdmissionSnapshot;
+  credential?: InferenceCredentialCheck;
+  credentialForAdmission?: () => InferenceCredentialCheck | undefined;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   requestId: string;
 }
@@ -254,6 +261,12 @@ export function createHandler(
           },
           executionCtx: combinedAdmission.executionCtx,
           admissionSnapshot: combinedAdmission.admissionSnapshot,
+          ...(() => {
+            const credential = combinedAdmission.credentialForAdmission
+              ? combinedAdmission.credentialForAdmission()
+              : combinedAdmission.credential;
+            return credential ? { credential } : {};
+          })(),
         });
       } else {
         const reservation = await creditsService.reserve({
@@ -474,6 +487,31 @@ export function createHandler(
             available: error.available,
           },
           { status: 402 },
+        );
+      }
+
+      if (error instanceof InferenceCredentialRevokedError) {
+        const reason = inferenceCredentialRevocationReason(error.reason);
+        const status =
+          reason === "credential_inactive" || reason === "credential_invalid" ? 401 : 403;
+        logger.warn(
+          "[Proxy Engine] blocked provider dispatch at combined credential and balance gate",
+          {
+            serviceId: config.id,
+            requestId: combinedAdmission?.requestId ?? "unavailable",
+            organizationId: combinedAdmission?.auth.user.organization_id ?? "unavailable",
+            userId: combinedAdmission?.auth.user.id ?? "unavailable",
+            credentialKind: combinedAdmission?.credential?.kind ?? "unavailable",
+            reason,
+          },
+        );
+        return Response.json(
+          {
+            error: status === 401 ? "Authentication required" : "Access denied",
+            code: status === 401 ? "authentication_required" : "access_denied",
+            details: { reason },
+          },
+          { status },
         );
       }
 

@@ -17,6 +17,7 @@ import {
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import {
   type GenerativeOperationContext,
   isGenerativeOperationAdmissionError,
@@ -103,12 +104,19 @@ __hono_app.post("/", async (c) => {
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       rateLimitEndpoint: "strict",
+      deferStrongCredentialCheck: true,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
     });
     return await __hono_POST(
       c.req.raw,
       { params: Promise.resolve({ id: c.req.param("id")! }) },
       caller,
-      getGenerativeOperationContext(c, caller),
+      getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
     );
   } catch (error) {
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);

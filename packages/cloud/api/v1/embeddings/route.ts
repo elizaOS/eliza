@@ -10,7 +10,10 @@
 
 import { APICallError, embed, embedMany, RetryError } from "ai";
 import { Hono } from "hono";
-import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -31,10 +34,12 @@ import {
 } from "@/lib/providers/language-model";
 import { billUsage, InsufficientCreditsError } from "@/lib/services/ai-billing";
 import type { CreditReservation } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import { isPassthroughEmbeddingsEnabled } from "@/lib/services/inference-passthrough";
 import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
 import {
@@ -69,6 +74,7 @@ app.post("/", async (c) => {
   let billingReservation: CreditReservation | undefined;
   let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  let admissionCredential: InferenceCredentialCheck | undefined;
   try {
     const candidate = c.executionCtx;
     executionCtx =
@@ -98,6 +104,29 @@ app.post("/", async (c) => {
   let billed = false;
   let providerDispatched = false;
   try {
+    let guardOrganizationId: string | undefined;
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => guardOrganizationId,
+      credential: () => admissionCredential,
+    });
+    const request = (await c.req
+      .json()
+      .catch(() => null)) as EmbeddingsRequest | null;
+    const requestIsValid = Boolean(request?.model && request.input);
+    const invalidRequestResponse = !requestIsValid
+      ? c.json(
+          {
+            error: {
+              message: "Missing required fields: model and input",
+              type: "invalid_request_error",
+              param: !request?.model ? "model" : "input",
+              code: "missing_required_parameter",
+            },
+          },
+          400,
+        )
+      : undefined;
+
     // Resolve auth (+ org + moderation) in a SINGLE cache read for API-key
     // inference requests (#9899) — the same fast-path as /v1/chat/completions.
     // This route is on the agent reply hot path: the always-on
@@ -111,6 +140,7 @@ app.post("/", async (c) => {
     const resolution = await resolveInferenceAuthContext(c.req.raw, {
       executionCtx,
       cacheOnly: Boolean(executionCtx),
+      deferStrongCredentialCheck: Boolean(executionCtx) && requestIsValid,
     });
     if (resolution.kind === "warming") {
       return c.json(
@@ -166,8 +196,10 @@ app.post("/", async (c) => {
         id: resolution.ctx.userId,
         organization_id: resolution.ctx.orgId,
       };
+      guardOrganizationId = user.organization_id;
       apiKeyId = resolution.ctx.apiKeyId;
       admissionSnapshot = resolution.ctx.admission;
+      admissionCredential = resolution.credential;
     } else {
       if (executionCtx) {
         return c.json(
@@ -199,11 +231,8 @@ app.post("/", async (c) => {
     // Guard a malformed/empty body to a 400 instead of a 500 (mirrors the agents
     // routes). An unguarded parse throws a SyntaxError that failureResponse maps
     // to 500 on this always-on agent-recall hot path.
-    const requestPromise = c.req.json().catch(() => {
-      // error-policy:J3 malformed JSON becomes an explicit invalid-request
-      // signal and is never interpreted as a valid empty payload.
-      return null;
-    }) as Promise<EmbeddingsRequest | null>;
+    if (!request?.model || !request.input) return invalidRequestResponse!;
+
     let orgRateLimited: Response | null;
     try {
       orgRateLimited = await orgRateLimitPromise;
@@ -231,21 +260,6 @@ app.post("/", async (c) => {
       throw error;
     }
     if (orgRateLimited) return orgRateLimited;
-    const request = await requestPromise;
-
-    if (!request?.model || !request.input) {
-      return c.json(
-        {
-          error: {
-            message: "Missing required fields: model and input",
-            type: "invalid_request_error",
-            param: !request?.model ? "model" : "input",
-            code: "missing_required_parameter",
-          },
-        },
-        400,
-      );
-    }
 
     if (Array.isArray(request.input) && request.input.length === 0) {
       return c.json(
@@ -320,6 +334,7 @@ app.post("/", async (c) => {
         affiliateCode,
         executionCtx,
         admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
       });
       settleReservation = admission.settle;
       settleUnknown = admission.settleUnknown;
@@ -328,6 +343,23 @@ app.post("/", async (c) => {
     } catch (error) {
       // error-policy:J1 the route boundary exposes cached credit decisions and
       // cache readiness without falling through to authoritative storage.
+      const denial = resolveInferenceCredentialAdmissionDenial(error, {
+        route: "embeddings",
+        traceId: c.get("traceId") ?? c.get("requestId"),
+      });
+      if (denial) {
+        return c.json(
+          {
+            error: {
+              message: denial.message,
+              type: denial.type,
+              code: denial.code,
+              details: { reason: denial.reason },
+            },
+          },
+          denial.status,
+        );
+      }
       if (error instanceof InsufficientCreditsError) {
         return c.json(
           {
@@ -596,6 +628,24 @@ app.post("/", async (c) => {
       } else {
         await observedRelease;
       }
+    }
+
+    const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
+      route: "embeddings",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    });
+    if (credentialDenial) {
+      return c.json(
+        {
+          error: {
+            message: credentialDenial.message,
+            type: credentialDenial.type,
+            code: credentialDenial.code,
+            details: { reason: credentialDenial.reason },
+          },
+        },
+        credentialDenial.status,
+      );
     }
 
     logger.error("[Embeddings] Error", {

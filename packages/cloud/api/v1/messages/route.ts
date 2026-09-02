@@ -25,7 +25,10 @@ import {
   type UserModelMessage,
 } from "ai";
 import { Hono } from "hono";
-import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -83,10 +86,12 @@ import type {
   CreditReconciliationResult,
   CreditReservation,
 } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import {
   isKnownPreDispatchProviderConfigurationError,
   isKnownUnacceptedProviderError,
@@ -558,6 +563,26 @@ app.post("/", async (c) => {
       503,
     );
   }
+  const decodedBody = await decodeRequestJson(c.req);
+  const body = decodedBody.ok ? decodedBody.value : undefined;
+  const request =
+    body && typeof body === "object"
+      ? (body as AnthropicMessagesRequest)
+      : undefined;
+  const requestIsValid = Boolean(
+    request?.model && request.max_tokens != null && request.messages?.length,
+  );
+  const invalidRequestResponse =
+    !decodedBody.ok || !request
+      ? anthropicError("invalid_request_error", "Invalid JSON body", 400)
+      : !requestIsValid
+        ? anthropicError(
+            "invalid_request_error",
+            "Missing required fields: model, max_tokens, messages",
+            400,
+          )
+        : undefined;
+
   let settleReservation:
     | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
     | null = null;
@@ -575,552 +600,573 @@ app.post("/", async (c) => {
   // because their timestamped signatures are not reusable cache identities.
   let moderationAlreadyChecked = false;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  let admissionCredential: InferenceCredentialCheck | undefined;
+  let guardOrganizationId: string | undefined;
   try {
-    const resolution = await resolveInferenceAuthContext(c.req.raw, {
-      executionCtx,
-      traceId,
-      cacheOnly: Boolean(executionCtx),
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => guardOrganizationId,
+      credential: () => admissionCredential,
     });
-    if (resolution.kind === "warming") {
-      return anthropicError(
-        "api_error",
-        "Authorization cache is warming. Retry shortly.",
-        503,
-      );
-    }
-    if (resolution.kind === "suspended") {
-      const denial = resolveInferenceAuthStandingDenial(resolution, {
-        route: "messages",
-        traceId,
-      });
-      return anthropicError(denial.type, denial.message, denial.status);
-    }
-    if (resolution.kind === "rejected") {
-      const denial = resolveInferenceAuthStandingDenial(resolution, {
-        route: "messages",
-        traceId,
-      });
-      return anthropicError(
-        denial.type,
-        denial.message,
-        denial.status,
-        denial.retryAfterSeconds
-          ? { "Retry-After": String(denial.retryAfterSeconds) }
-          : undefined,
-      );
-    }
-    if (resolution.kind === "authorized") {
-      user = {
-        id: resolution.ctx.userId,
-        organization_id: resolution.ctx.orgId,
-      };
-      apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
-      admissionSnapshot = resolution.ctx.admission;
-      // The resolver already verified not-suspended (cache hit = at populate;
-      // origin miss = just now), so the synchronous moderation read is skipped.
-      moderationAlreadyChecked = true;
-    } else {
-      if (executionCtx) {
-        return anthropicError(
-          "authentication_error",
-          "Authentication required.",
-          401,
-        );
-      }
-      const auth = await requireUserOrApiKeyWithOrg(c);
-      user = { id: auth.id, organization_id: auth.organization_id };
-      // Workers auth shim does not surface the apiKey row; attribution by
-      // apiKey id requires a separate lookup.
-      apiKey = await getRequestApiKeyId(c);
-    }
-  } catch (error) {
-    // error-policy:J1 resolver infrastructure and typed auth failures retain
-    // their status; an unexpected failure is an Anthropic-shaped 500, never a
-    // fabricated authentication rejection.
-    const status = getErrorStatusCode(error);
-    if (status === 401 || status === 403 || status === 503) {
-      const denial = resolveInferenceAuthStandingDenial(
-        { kind: "rejected", status },
-        { route: "messages", traceId },
-      );
-      return anthropicError(
-        denial.type,
-        denial.message,
-        denial.status,
-        denial.retryAfterSeconds
-          ? { "Retry-After": String(denial.retryAfterSeconds) }
-          : undefined,
-      );
-    }
-    logger.error("[Messages] inference auth resolver failed", {
-      traceId,
-      status,
-      errorName: error instanceof Error ? error.name : "NonErrorThrown",
-    });
-    return anthropicError(
-      "api_error",
-      "Authorization could not be completed.",
-      status >= 400 && status <= 599 ? status : 500,
-    );
-  }
-  const tAuth = performance.now();
-
-  let orgRateLimited: Response | null;
-  try {
-    orgRateLimited = await enforceOrgRateLimit(
-      user.organization_id,
-      "completions",
-      {
-        cacheOnly: Boolean(executionCtx),
+    try {
+      const resolution = await resolveInferenceAuthContext(c.req.raw, {
         executionCtx,
-        config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
-      },
-    );
-  } catch (error) {
-    // error-policy:J1 preserve the Anthropic error envelope while the
-    // cache-only policy hydrates off path.
-    if (error instanceof OrgRateLimitCacheNotReadyError) {
-      return anthropicError(
-        "api_error",
-        "Rate-limit authorization cache is warming. Retry shortly.",
-        503,
-        { "Retry-After": "1" },
-      );
-    }
-    throw error;
-  }
-  if (orgRateLimited) {
-    const headers = new Headers(orgRateLimited.headers);
-    headers.delete("Content-Type");
-    headers.delete("Content-Length");
-    if (orgRateLimited.status === 429) {
-      return anthropicError(
-        "rate_limit_error",
-        "Organization rate limit exceeded.",
-        429,
-        headers,
-      );
-    }
-    return anthropicError(
-      "api_error",
-      "Rate-limit authorization is unavailable. Retry shortly.",
-      503,
-      headers,
-    );
-  }
-
-  const requestedAppId = c.req.header("X-App-Id");
-  let appId: string | null = null;
-  let useAppCredits = false;
-  let monetizedApp: NonNullable<
-    Awaited<ReturnType<typeof appsService.getById>>
-  > | null = null;
-  if (requestedAppId) {
-    if (executionCtx) {
-      const appResolution =
-        await appsService.getAuthorizedMonetizedAppForUserCacheOnly(
-          requestedAppId,
-          user,
-          { executionCtx },
-        );
-      if (appResolution.kind !== "ready") {
+        traceId,
+        cacheOnly: Boolean(executionCtx),
+        deferStrongCredentialCheck: Boolean(executionCtx) && requestIsValid,
+      });
+      if (resolution.kind === "warming") {
         return anthropicError(
           "api_error",
-          "Application authorization cache is warming. Retry shortly.",
+          "Authorization cache is warming. Retry shortly.",
+          503,
+        );
+      }
+      if (resolution.kind === "suspended") {
+        const denial = resolveInferenceAuthStandingDenial(resolution, {
+          route: "messages",
+          traceId,
+        });
+        return anthropicError(denial.type, denial.message, denial.status);
+      }
+      if (resolution.kind === "rejected") {
+        const denial = resolveInferenceAuthStandingDenial(resolution, {
+          route: "messages",
+          traceId,
+        });
+        return anthropicError(
+          denial.type,
+          denial.message,
+          denial.status,
+          denial.retryAfterSeconds
+            ? { "Retry-After": String(denial.retryAfterSeconds) }
+            : undefined,
+        );
+      }
+      if (resolution.kind === "authorized") {
+        user = {
+          id: resolution.ctx.userId,
+          organization_id: resolution.ctx.orgId,
+        };
+        guardOrganizationId = user.organization_id;
+        apiKey = resolution.ctx.apiKeyId
+          ? { id: resolution.ctx.apiKeyId }
+          : null;
+        admissionSnapshot = resolution.ctx.admission;
+        admissionCredential = resolution.credential;
+        // The resolver already verified not-suspended (cache hit = at populate;
+        // origin miss = just now), so the synchronous moderation read is skipped.
+        moderationAlreadyChecked = true;
+      } else {
+        if (executionCtx) {
+          return anthropicError(
+            "authentication_error",
+            "Authentication required.",
+            401,
+          );
+        }
+        const auth = await requireUserOrApiKeyWithOrg(c);
+        user = { id: auth.id, organization_id: auth.organization_id };
+        // Workers auth shim does not surface the apiKey row; attribution by
+        // apiKey id requires a separate lookup.
+        apiKey = await getRequestApiKeyId(c);
+      }
+    } catch (error) {
+      // error-policy:J1 resolver infrastructure and typed auth failures retain
+      // their status; an unexpected failure is an Anthropic-shaped 500, never a
+      // fabricated authentication rejection.
+      const status = getErrorStatusCode(error);
+      if (status === 401 || status === 403 || status === 503) {
+        const denial = resolveInferenceAuthStandingDenial(
+          { kind: "rejected", status },
+          { route: "messages", traceId },
+        );
+        return anthropicError(
+          denial.type,
+          denial.message,
+          denial.status,
+          denial.retryAfterSeconds
+            ? { "Retry-After": String(denial.retryAfterSeconds) }
+            : undefined,
+        );
+      }
+      logger.error("[Messages] inference auth resolver failed", {
+        traceId,
+        status,
+        errorName: error instanceof Error ? error.name : "NonErrorThrown",
+      });
+      return anthropicError(
+        "api_error",
+        "Authorization could not be completed.",
+        status >= 400 && status <= 599 ? status : 500,
+      );
+    }
+    if (!requestIsValid || !request) return invalidRequestResponse!;
+    const tAuth = performance.now();
+
+    let orgRateLimited: Response | null;
+    try {
+      orgRateLimited = await enforceOrgRateLimit(
+        user.organization_id,
+        "completions",
+        {
+          cacheOnly: Boolean(executionCtx),
+          executionCtx,
+          config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+        },
+      );
+    } catch (error) {
+      // error-policy:J1 preserve the Anthropic error envelope while the
+      // cache-only policy hydrates off path.
+      if (error instanceof OrgRateLimitCacheNotReadyError) {
+        return anthropicError(
+          "api_error",
+          "Rate-limit authorization cache is warming. Retry shortly.",
           503,
           { "Retry-After": "1" },
         );
       }
-      monetizedApp = appResolution.app;
-    } else {
-      monetizedApp =
-        (await appsService.getAuthorizedMonetizedAppForUser(
-          requestedAppId,
-          user,
-        )) ?? null;
+      throw error;
     }
-    appId = monetizedApp?.id ?? null;
-    useAppCredits = Boolean(monetizedApp?.monetization_enabled);
-  }
-
-  const decodedBody = await decodeRequestJson(c.req);
-  if (!decodedBody.ok) {
-    // error-policy:J3 malformed JSON is invalid request input.
-    return anthropicError("invalid_request_error", "Invalid JSON body", 400);
-  }
-  const body = decodedBody.value;
-
-  if (!body || typeof body !== "object") {
-    return anthropicError("invalid_request_error", "Invalid JSON body", 400);
-  }
-
-  const request = body as AnthropicMessagesRequest;
-  if (
-    !request.model ||
-    request.max_tokens == null ||
-    !request.messages?.length
-  ) {
-    return anthropicError(
-      "invalid_request_error",
-      "Missing required fields: model, max_tokens, messages",
-      400,
-    );
-  }
-
-  const model = normalizeModelId(request.model);
-  const provider = getProviderFromModel(model);
-  const normalizedModel = normalizeModelName(model);
-  const systemPrompt = normalizeSystemPrompt(request.system);
-
-  let shouldBlockUser = false;
-  if (!moderationAlreadyChecked) {
-    if (executionCtx) {
-      const moderationResolution =
-        await contentModerationService.shouldBlockUserCacheOnly(user.id, {
-          executionCtx,
-        });
-      if (moderationResolution.kind !== "ready") {
+    if (orgRateLimited) {
+      const headers = new Headers(orgRateLimited.headers);
+      headers.delete("Content-Type");
+      headers.delete("Content-Length");
+      if (orgRateLimited.status === 429) {
         return anthropicError(
-          "api_error",
-          "Moderation authorization cache is warming. Retry shortly.",
-          503,
+          "rate_limit_error",
+          "Organization rate limit exceeded.",
+          429,
+          headers,
         );
       }
-      shouldBlockUser = moderationResolution.blocked;
-    } else {
-      shouldBlockUser = await contentModerationService.shouldBlockUser(user.id);
-    }
-  }
-  if (shouldBlockUser) {
-    return anthropicError(
-      "permission_error",
-      "Your account has been suspended due to policy violations.",
-      403,
-    );
-  }
-
-  const lastUserMessage = request.messages
-    .filter((message) => message.role === "user")
-    .pop();
-  if (lastUserMessage) {
-    const content = getMessageContentForEstimate(lastUserMessage);
-    if (content) {
-      const moderationTask = contentModerationService.moderateInBackground(
-        content,
-        user.id,
-        undefined,
-        (result) => {
-          logger.warn("[Messages API] Async moderation detected violation", {
-            userId: user.id,
-            categories: result.flaggedCategories,
-          });
-        },
+      return anthropicError(
+        "api_error",
+        "Rate-limit authorization is unavailable. Retry shortly.",
+        503,
+        headers,
       );
-      executionCtx?.waitUntil(moderationTask);
     }
-  }
 
-  const estimateMessages: Array<{ content: string | undefined }> = [];
-  if (systemPrompt) {
-    estimateMessages.push({ content: systemPrompt });
-  }
-  for (const message of request.messages) {
-    estimateMessages.push({ content: getMessageContentForEstimate(message) });
-  }
-
-  const estimatedInputTokens = estimateInputTokens(estimateMessages);
-  // Reserve against the same caller-authored ceiling enforced at the provider
-  // boundary. Reasoning configuration never silently increases generation or
-  // spend authority.
-  const reservationCotBudget = resolveAnthropicThinkingBudgetTokens(
-    model,
-    process.env,
-  );
-  const estimatedOutputTokens =
-    messagesEffectiveMaxTokens(
-      request.max_tokens,
-      reservationCotBudget,
-      model,
-    ) ?? request.max_tokens;
-  const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
-  const billingSource: PricingBillingSource =
-    resolveAiProviderSource(model) ?? "bitrouter";
-  // One server-generated identity spans admission, settlement, affiliate
-  // earnings, and audit records. A client-controlled retry key is intentionally
-  // kept separate because two delivered requests must produce two charges.
-  const requestId = crypto.randomUUID();
-  const tBeforeReserve = performance.now();
-
-  if (useAppCredits && appId && monetizedApp) {
-    // #10423: prefer the request-stable key (Idempotency-Key/X-Request-Id via
-    // the bootstrap ALS) so a client retry of the SAME request dedupes the
-    // creator-earnings legs; a fresh uuid per invocation would never match.
-    const idempotencyKey = getRequestIdempotencyKey() ?? crypto.randomUUID();
-
-    try {
-      assertInferenceAppAffiliateSupported(appId, affiliateCode);
-      const { totalCost } = await calculateCost(
-        normalizedModel,
-        provider,
-        estimatedInputTokens,
-        estimatedOutputTokens,
-        billingSource,
-        executionCtx ? { cacheOnly: true, executionCtx } : undefined,
-      );
-      const metadata = {
-        model,
-        provider,
-        billingSource,
-        estimatedInputTokens,
-        estimatedOutputTokens,
-        streaming: Boolean(request.stream),
-      };
+    const requestedAppId = c.req.header("X-App-Id");
+    let appId: string | null = null;
+    let useAppCredits = false;
+    let monetizedApp: NonNullable<
+      Awaited<ReturnType<typeof appsService.getById>>
+    > | null = null;
+    if (requestedAppId) {
       if (executionCtx) {
-        const admission = await admitAppInferenceCacheOnly({
-          appId,
-          app: monetizedApp,
-          userId: user.id,
-          organizationId: user.organization_id,
-          estimatedBaseCostUsd: totalCost,
-          description: `Messages API: ${model}`,
-          idempotencyKey,
-          metadata,
-          requestId,
+        const appResolution =
+          await appsService.getAuthorizedMonetizedAppForUserCacheOnly(
+            requestedAppId,
+            user,
+            { executionCtx },
+          );
+        if (appResolution.kind !== "ready") {
+          return anthropicError(
+            "api_error",
+            "Application authorization cache is warming. Retry shortly.",
+            503,
+            { "Retry-After": "1" },
+          );
+        }
+        monetizedApp = appResolution.app;
+      } else {
+        monetizedApp =
+          (await appsService.getAuthorizedMonetizedAppForUser(
+            requestedAppId,
+            user,
+          )) ?? null;
+      }
+      appId = monetizedApp?.id ?? null;
+      useAppCredits = Boolean(monetizedApp?.monetization_enabled);
+    }
+
+    const model = normalizeModelId(request.model);
+    const provider = getProviderFromModel(model);
+    const normalizedModel = normalizeModelName(model);
+    const systemPrompt = normalizeSystemPrompt(request.system);
+
+    let shouldBlockUser = false;
+    if (!moderationAlreadyChecked) {
+      if (executionCtx) {
+        const moderationResolution =
+          await contentModerationService.shouldBlockUserCacheOnly(user.id, {
+            executionCtx,
+          });
+        if (moderationResolution.kind !== "ready") {
+          return anthropicError(
+            "api_error",
+            "Moderation authorization cache is warming. Retry shortly.",
+            503,
+          );
+        }
+        shouldBlockUser = moderationResolution.blocked;
+      } else {
+        shouldBlockUser = await contentModerationService.shouldBlockUser(
+          user.id,
+        );
+      }
+    }
+    if (shouldBlockUser) {
+      return anthropicError(
+        "permission_error",
+        "Your account has been suspended due to policy violations.",
+        403,
+      );
+    }
+
+    const lastUserMessage = request.messages
+      .filter((message) => message.role === "user")
+      .pop();
+    if (lastUserMessage) {
+      const content = getMessageContentForEstimate(lastUserMessage);
+      if (content) {
+        const moderationTask = contentModerationService.moderateInBackground(
+          content,
+          user.id,
+          undefined,
+          (result) => {
+            logger.warn("[Messages API] Async moderation detected violation", {
+              userId: user.id,
+              categories: result.flaggedCategories,
+            });
+          },
+        );
+        executionCtx?.waitUntil(moderationTask);
+      }
+    }
+
+    const estimateMessages: Array<{ content: string | undefined }> = [];
+    if (systemPrompt) {
+      estimateMessages.push({ content: systemPrompt });
+    }
+    for (const message of request.messages) {
+      estimateMessages.push({ content: getMessageContentForEstimate(message) });
+    }
+
+    const estimatedInputTokens = estimateInputTokens(estimateMessages);
+    // Reserve against the same caller-authored ceiling enforced at the provider
+    // boundary. Reasoning configuration never silently increases generation or
+    // spend authority.
+    const reservationCotBudget = resolveAnthropicThinkingBudgetTokens(
+      model,
+      process.env,
+    );
+    const estimatedOutputTokens =
+      messagesEffectiveMaxTokens(
+        request.max_tokens,
+        reservationCotBudget,
+        model,
+      ) ?? request.max_tokens;
+    const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
+    const billingSource: PricingBillingSource =
+      resolveAiProviderSource(model) ?? "bitrouter";
+    // One server-generated identity spans admission, settlement, affiliate
+    // earnings, and audit records. A client-controlled retry key is intentionally
+    // kept separate because two delivered requests must produce two charges.
+    const requestId = crypto.randomUUID();
+    const tBeforeReserve = performance.now();
+
+    if (useAppCredits && appId && monetizedApp) {
+      // #10423: prefer the request-stable key (Idempotency-Key/X-Request-Id via
+      // the bootstrap ALS) so a client retry of the SAME request dedupes the
+      // creator-earnings legs; a fresh uuid per invocation would never match.
+      const idempotencyKey = getRequestIdempotencyKey() ?? crypto.randomUUID();
+
+      try {
+        assertInferenceAppAffiliateSupported(appId, affiliateCode);
+        const { totalCost } = await calculateCost(
+          normalizedModel,
+          provider,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          billingSource,
+          executionCtx ? { cacheOnly: true, executionCtx } : undefined,
+        );
+        const metadata = {
           model,
           provider,
           billingSource,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          streaming: Boolean(request.stream),
+        };
+        if (executionCtx) {
+          const admission = await admitAppInferenceCacheOnly({
+            appId,
+            app: monetizedApp,
+            userId: user.id,
+            organizationId: user.organization_id,
+            estimatedBaseCostUsd: totalCost,
+            description: `Messages API: ${model}`,
+            idempotencyKey,
+            metadata,
+            requestId,
+            model,
+            provider,
+            billingSource,
+            affiliateCode,
+            executionCtx,
+            admissionSnapshot,
+            credential: credentialGuard.credentialForAdmission(),
+          });
+          settleReservation = admission.settle;
+          settleUnknownReservation = admission.settleUnknown;
+          markProviderDispatched = admission.markProviderDispatched;
+        } else {
+          const reservation = await appCreditsService.reserveInferenceCredits({
+            appId,
+            userId: user.id,
+            estimatedBaseCost: totalCost,
+            description: `Messages API: ${model}`,
+            idempotencyKey,
+            metadata,
+            app: monetizedApp,
+          });
+          const settle = createCreditReservationSettler(reservation);
+          settleReservation = settle;
+          settleUnknownReservation = () => settle(reservation.reservedAmount);
+        }
+      } catch (error) {
+        // error-policy:J1 admission failures become terminal Anthropic responses
+        // before any provider dispatch.
+        const denial = resolveInferenceCredentialAdmissionDenial(error, {
+          route: "messages",
+          traceId,
+        });
+        if (denial) {
+          return anthropicError(denial.type, denial.message, denial.status);
+        }
+        if (error instanceof InferenceAppAffiliateUnsupportedError) {
+          return anthropicError(
+            "invalid_request_error",
+            "App monetization and affiliate attribution cannot be combined.",
+            400,
+          );
+        }
+        if (error instanceof InsufficientCreditsError) {
+          return anthropicError(
+            "billing_error",
+            `Insufficient cloud credits. Required: $${error.required.toFixed(4)}`,
+            402,
+          );
+        }
+        if (
+          error instanceof InferenceBalanceCacheWarmingError ||
+          error instanceof AiPricingCacheWarmingError ||
+          error instanceof AiPricingCacheUnavailableError
+        ) {
+          return anthropicError(
+            "api_error",
+            "Billing authorization is warming. Retry shortly.",
+            503,
+          );
+        }
+
+        throw error;
+      }
+    } else {
+      try {
+        const admission = await admitOrganizationInference({
+          context: {
+            organizationId: user.organization_id,
+            userId: user.id,
+            apiKeyId: apiKey?.id,
+            model,
+            provider,
+            billingSource,
+            affiliateCode,
+            requestId,
+          },
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          apiKeyId: apiKey?.id,
           affiliateCode,
           executionCtx,
           admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
         });
         settleReservation = admission.settle;
         settleUnknownReservation = admission.settleUnknown;
         markProviderDispatched = admission.markProviderDispatched;
-      } else {
-        const reservation = await appCreditsService.reserveInferenceCredits({
-          appId,
-          userId: user.id,
-          estimatedBaseCost: totalCost,
-          description: `Messages API: ${model}`,
-          idempotencyKey,
-          metadata,
-          app: monetizedApp,
+        billingReservation = admission.reservation;
+      } catch (error) {
+        // error-policy:J1 admission failures become terminal Anthropic responses
+        // before any provider dispatch.
+        const denial = resolveInferenceCredentialAdmissionDenial(error, {
+          route: "messages",
+          traceId,
         });
-        const settle = createCreditReservationSettler(reservation);
-        settleReservation = settle;
-        settleUnknownReservation = () => settle(reservation.reservedAmount);
-      }
-    } catch (error) {
-      // error-policy:J1 admission failures become terminal Anthropic responses
-      // before any provider dispatch.
-      if (error instanceof InferenceAppAffiliateUnsupportedError) {
-        return anthropicError(
-          "invalid_request_error",
-          "App monetization and affiliate attribution cannot be combined.",
-          400,
-        );
-      }
-      if (error instanceof InsufficientCreditsError) {
-        return anthropicError(
-          "billing_error",
-          `Insufficient cloud credits. Required: $${error.required.toFixed(4)}`,
-          402,
-        );
-      }
-      if (
-        error instanceof InferenceBalanceCacheWarmingError ||
-        error instanceof AiPricingCacheWarmingError ||
-        error instanceof AiPricingCacheUnavailableError
-      ) {
-        return anthropicError(
-          "api_error",
-          "Billing authorization is warming. Retry shortly.",
-          503,
-        );
-      }
+        if (denial) {
+          return anthropicError(denial.type, denial.message, denial.status);
+        }
+        if (error instanceof InsufficientCreditsError) {
+          return anthropicError(
+            "billing_error",
+            `Insufficient credits. Required: $${error.required.toFixed(4)}`,
+            402,
+          );
+        }
+        if (error instanceof InferenceBalanceCacheWarmingError) {
+          return anthropicError(
+            "api_error",
+            "Billing authorization is warming. Retry shortly.",
+            503,
+          );
+        }
 
-      throw error;
+        throw error;
+      }
     }
-  } else {
-    try {
-      const admission = await admitOrganizationInference({
-        context: {
-          organizationId: user.organization_id,
-          userId: user.id,
-          apiKeyId: apiKey?.id,
-          model,
-          provider,
-          billingSource,
-          affiliateCode,
-          requestId,
-        },
-        estimatedInputTokens,
-        estimatedOutputTokens,
-        apiKeyId: apiKey?.id,
-        affiliateCode,
-        executionCtx,
-        admissionSnapshot,
-      });
-      settleReservation = admission.settle;
-      settleUnknownReservation = admission.settleUnknown;
-      markProviderDispatched = admission.markProviderDispatched;
-      billingReservation = admission.reservation;
-    } catch (error) {
-      // error-policy:J1 admission failures become terminal Anthropic responses
-      // before any provider dispatch.
-      if (error instanceof InsufficientCreditsError) {
-        return anthropicError(
-          "billing_error",
-          `Insufficient credits. Required: $${error.required.toFixed(4)}`,
-          402,
-        );
-      }
-      if (error instanceof InferenceBalanceCacheWarmingError) {
-        return anthropicError(
-          "api_error",
-          "Billing authorization is warming. Retry shortly.",
-          503,
-        );
-      }
 
-      throw error;
-    }
-  }
-
-  if (!settleReservation || !settleUnknownReservation) {
-    throw new Error(
-      "[Messages API] inference admission did not return terminal settlers",
-    );
-  }
-  const tAfterReserve = performance.now();
-
-  // The outer AI SDK invocation is the last gateway-controlled boundary.
-  // Model doGenerate/doStream dispatch occurs later inside the SDK and is not
-  // represented as provider latency by this preforward snapshot.
-  let gatewayHandoffAt: number | undefined;
-  const gatewayHandoffTelemetry: GatewayHandoffTelemetry = {
-    capture: () => {
-      gatewayHandoffAt ??= performance.now();
-    },
-    emit: () => {
-      if (gatewayHandoffAt === undefined || preforwardTiming) return;
-      preforwardTiming = snapshotGatewayPreforwardTiming({
-        authMs: tAuth - telemetryStartedAt,
-        middleMs: tBeforeReserve - tAuth,
-        reserveMs: tAfterReserve - tBeforeReserve,
-        setupMs: gatewayHandoffAt - tAfterReserve,
-        totalMs: gatewayHandoffAt - telemetryStartedAt,
-      });
-      logger.info("[Messages API][preforward]", {
-        traceId,
-        model,
-        authMs: preforwardTiming.authMs,
-        midReadsMs: preforwardTiming.middleMs,
-        reserveMs: preforwardTiming.reserveMs,
-        setupMs: preforwardTiming.setupMs,
-        totalMs: preforwardTiming.totalMs,
-        stream: Boolean(request.stream),
-      });
-    },
-  };
-
-  try {
-    // Payload conversion is throwable (convertTools rejects a malformed-but-
-    // valid `tools` array); keep it inside the settle-refunding try so a
-    // conversion throw refunds the reservation instead of stranding the debit
-    // the caller was just charged (refund-gap class, #11795).
-    const messages = anthropicMessagesToModelMessages(request.messages);
-    const tools = convertTools(request.tools);
-    const toolChoice = mapToolChoice(request.tool_choice);
-    const safeParams = getSafeModelParams(model, {
-      temperature: request.temperature,
-      topP: request.top_p,
-      topK: request.top_k,
-      stopSequences: request.stop_sequences,
-    });
-
-    const preforwardResponse = request.stream
-      ? await handleStream(
-          model,
-          systemPrompt,
-          messages,
-          request,
-          user,
-          apiKey,
-          affiliateCode,
-          startTime,
-          estimatedInputTokens,
-          safeParams,
-          tools,
-          toolChoice,
-          c.req.raw.signal,
-          routeTimeoutMs,
-          settleReservation,
-          settleUnknownReservation,
-          billingReservation,
-          billingSource,
-          requestId,
-          executionCtx,
-          gatewayHandoffTelemetry,
-          markProviderDispatched,
-        )
-      : await handleNonStream(
-          model,
-          systemPrompt,
-          messages,
-          request,
-          user,
-          apiKey,
-          affiliateCode,
-          startTime,
-          safeParams,
-          tools,
-          toolChoice,
-          c.req.raw.signal,
-          routeTimeoutMs,
-          settleReservation,
-          settleUnknownReservation,
-          billingReservation,
-          billingSource,
-          requestId,
-          executionCtx,
-          gatewayHandoffTelemetry,
-          markProviderDispatched,
-        );
-    if (!preforwardTiming) {
-      throw new Error("[Messages API] gateway handoff timing was not captured");
-    }
-    return attachPreforwardTelemetry(preforwardResponse);
-  } catch (error) {
-    await settleOffResponsePath(executionCtx, async () => {
-      if (
-        gatewayHandoffAt === undefined ||
-        isProviderConfigurationError(error)
-      ) {
-        await settleReservation?.(0);
-      } else {
-        await settleUnknownReservation?.();
-      }
-    });
-    const message = error instanceof Error ? error.message : String(error);
-    // A provider-configuration failure (unknown model / unconfigured gateway)
-    // carries internal setup guidance in its message — return a clean,
-    // model-scoped 400 instead of leaking it as a 500 api_error (#13913 for the
-    // sibling /v1/chat/completions boundary).
-    if (isProviderConfigurationError(error)) {
-      logger.error("[Messages API] Provider configuration error", {
-        error: message,
-      });
-      return attachPreforwardTelemetry(
-        anthropicError(
-          "invalid_request_error",
-          modelNotAvailableMessage(model),
-          400,
-        ),
+    if (!settleReservation || !settleUnknownReservation) {
+      throw new Error(
+        "[Messages API] inference admission did not return terminal settlers",
       );
     }
-    logger.error("[Messages API] Error", { traceId, error: message });
-    return attachPreforwardTelemetry(anthropicError("api_error", message, 500));
+    const tAfterReserve = performance.now();
+
+    // The outer AI SDK invocation is the last gateway-controlled boundary.
+    // Model doGenerate/doStream dispatch occurs later inside the SDK and is not
+    // represented as provider latency by this preforward snapshot.
+    let gatewayHandoffAt: number | undefined;
+    const gatewayHandoffTelemetry: GatewayHandoffTelemetry = {
+      capture: () => {
+        gatewayHandoffAt ??= performance.now();
+      },
+      emit: () => {
+        if (gatewayHandoffAt === undefined || preforwardTiming) return;
+        preforwardTiming = snapshotGatewayPreforwardTiming({
+          authMs: tAuth - telemetryStartedAt,
+          middleMs: tBeforeReserve - tAuth,
+          reserveMs: tAfterReserve - tBeforeReserve,
+          setupMs: gatewayHandoffAt - tAfterReserve,
+          totalMs: gatewayHandoffAt - telemetryStartedAt,
+        });
+        logger.info("[Messages API][preforward]", {
+          traceId,
+          model,
+          authMs: preforwardTiming.authMs,
+          midReadsMs: preforwardTiming.middleMs,
+          reserveMs: preforwardTiming.reserveMs,
+          setupMs: preforwardTiming.setupMs,
+          totalMs: preforwardTiming.totalMs,
+          stream: Boolean(request.stream),
+        });
+      },
+    };
+
+    try {
+      // Payload conversion is throwable (convertTools rejects a malformed-but-
+      // valid `tools` array); keep it inside the settle-refunding try so a
+      // conversion throw refunds the reservation instead of stranding the debit
+      // the caller was just charged (refund-gap class, #11795).
+      const messages = anthropicMessagesToModelMessages(request.messages);
+      const tools = convertTools(request.tools);
+      const toolChoice = mapToolChoice(request.tool_choice);
+      const safeParams = getSafeModelParams(model, {
+        temperature: request.temperature,
+        topP: request.top_p,
+        topK: request.top_k,
+        stopSequences: request.stop_sequences,
+      });
+
+      const preforwardResponse = request.stream
+        ? await handleStream(
+            model,
+            systemPrompt,
+            messages,
+            request,
+            user,
+            apiKey,
+            affiliateCode,
+            startTime,
+            estimatedInputTokens,
+            safeParams,
+            tools,
+            toolChoice,
+            c.req.raw.signal,
+            routeTimeoutMs,
+            settleReservation,
+            settleUnknownReservation,
+            billingReservation,
+            billingSource,
+            requestId,
+            executionCtx,
+            gatewayHandoffTelemetry,
+            markProviderDispatched,
+          )
+        : await handleNonStream(
+            model,
+            systemPrompt,
+            messages,
+            request,
+            user,
+            apiKey,
+            affiliateCode,
+            startTime,
+            safeParams,
+            tools,
+            toolChoice,
+            c.req.raw.signal,
+            routeTimeoutMs,
+            settleReservation,
+            settleUnknownReservation,
+            billingReservation,
+            billingSource,
+            requestId,
+            executionCtx,
+            gatewayHandoffTelemetry,
+            markProviderDispatched,
+          );
+      if (!preforwardTiming) {
+        throw new Error(
+          "[Messages API] gateway handoff timing was not captured",
+        );
+      }
+      return attachPreforwardTelemetry(preforwardResponse);
+    } catch (error) {
+      await settleOffResponsePath(executionCtx, async () => {
+        if (
+          gatewayHandoffAt === undefined ||
+          isProviderConfigurationError(error)
+        ) {
+          await settleReservation?.(0);
+        } else {
+          await settleUnknownReservation?.();
+        }
+      });
+      const message = error instanceof Error ? error.message : String(error);
+      // A provider-configuration failure (unknown model / unconfigured gateway)
+      // carries internal setup guidance in its message — return a clean,
+      // model-scoped 400 instead of leaking it as a 500 api_error (#13913 for the
+      // sibling /v1/chat/completions boundary).
+      if (isProviderConfigurationError(error)) {
+        logger.error("[Messages API] Provider configuration error", {
+          error: message,
+        });
+        return attachPreforwardTelemetry(
+          anthropicError(
+            "invalid_request_error",
+            modelNotAvailableMessage(model),
+            400,
+          ),
+        );
+      }
+      logger.error("[Messages API] Error", { traceId, error: message });
+      return attachPreforwardTelemetry(
+        anthropicError("api_error", message, 500),
+      );
+    }
+  } catch (error) {
+    const denial = resolveInferenceCredentialAdmissionDenial(error, {
+      route: "messages",
+      traceId,
+    });
+    if (denial) {
+      return anthropicError(denial.type, denial.message, denial.status);
+    }
+    throw error;
   }
 });
 

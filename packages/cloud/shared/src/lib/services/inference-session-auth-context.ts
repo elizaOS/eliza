@@ -186,7 +186,7 @@ async function enforceStrongSessionBoundary(
   } catch (error) {
     if (error instanceof InferenceCredentialRevokedError) {
       return error.reason === "session_revoked" || error.reason === "session_binding_revoked"
-        ? { kind: "rejected", status: 401 }
+        ? { kind: "rejected", status: 401, reason: "credential_inactive" }
         : { kind: "suspended", userId: resolved.ctx.userId };
     }
     throw error;
