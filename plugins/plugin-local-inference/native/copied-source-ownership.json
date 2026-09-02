@@ -39,6 +39,23 @@
         { "file": "qjl_score_avx2.c", "reason": "ggml integration uses fork SIMD dispatch." },
         { "file": "qjl_score_neon.c", "reason": "ggml integration uses fork SIMD dispatch." },
         { "file": "qjl_score_dotprod.c", "reason": "ggml integration uses fork SIMD dispatch." }
+      ],
+      "standalone": [
+        {
+          "file": "qjl_quantize_rvv.c",
+          "owner": "packages/native/plugins/qjl-cpu",
+          "reason": "The canonical RVV encoder remains standalone because the pinned llama.cpp fork has no RVV QJL dispatch path."
+        },
+        {
+          "file": "qjl_score_rvv.c",
+          "owner": "packages/native/plugins/qjl-cpu",
+          "reason": "The canonical RVV floating-point scorer remains standalone because the pinned llama.cpp fork has no RVV QJL dispatch path."
+        },
+        {
+          "file": "qjl_score_i8_rvv.c",
+          "owner": "packages/native/plugins/qjl-cpu",
+          "reason": "The canonical RVV int8 scorer remains standalone because the pinned llama.cpp fork has no RVV QJL dispatch path."
+        }
       ]
     },
     {

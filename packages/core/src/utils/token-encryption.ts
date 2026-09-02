@@ -38,16 +38,19 @@ function decodeKeyMaterial(raw: string): Buffer {
 
 function loadOrCreateKeyFile(credentialsDir: string): Buffer {
 	const filePath = path.join(credentialsDir, KEY_FILENAME);
-	if (fs.existsSync(filePath)) {
-		return decodeKeyMaterial(fs.readFileSync(filePath, "utf8"));
-	}
 	fs.mkdirSync(credentialsDir, { recursive: true, mode: 0o700 });
 	const key = crypto.randomBytes(KEY_BYTES);
-	fs.writeFileSync(filePath, key.toString("base64"), {
-		encoding: "utf8",
-		mode: 0o600,
-	});
-	return key;
+	try {
+		fs.writeFileSync(filePath, key.toString("base64"), {
+			encoding: "utf8",
+			mode: 0o600,
+			flag: "wx",
+		});
+		return key;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+		return decodeKeyMaterial(fs.readFileSync(filePath, "utf8"));
+	}
 }
 
 export function resolveTokenEncryptionKey(

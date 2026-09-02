@@ -130,6 +130,10 @@ interface ComputerUseLike {
   ) => Promise<{ success?: boolean; screenshot?: string; displayId?: number }>;
 }
 
+function isValidDisplayId(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
 /**
  * Acquire a fresh screen frame for GET_SCREEN. Prefers plugin-computeruse's
  * verified OS screenshot (which also drives the CUA loop); falls back to the
@@ -140,16 +144,19 @@ interface ComputerUseLike {
  * via the Capacitor ScreenCapture MediaProjection plugin, and POSTs the frame
  * back). Return its result directly — do not fall through to desktop sources.
  */
-async function acquireScreenFrame(runtime: IAgentRuntime): Promise<{
+async function acquireScreenFrame(
+  runtime: IAgentRuntime,
+  displayId?: number,
+): Promise<{
   pngBytes: Uint8Array;
-  displayId: number;
+  displayId?: number;
   capturedAt: number;
 } | null> {
   if (isMobilePlatform()) {
     const bridge = runtime.getService<ScreenCaptureBridgeService>(
       SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
     );
-    const frame = bridge ? await bridge.requestFrame() : null;
+    const frame = bridge ? await bridge.requestFrame(displayId) : null;
     if (!frame) return null;
     const pngBytes =
       frame.format === "png"
@@ -164,7 +171,10 @@ async function acquireScreenFrame(runtime: IAgentRuntime): Promise<{
   const cu = runtime.getService("computeruse") as ComputerUseLike | null;
   if (cu?.executeCommand) {
     try {
-      const r = await cu.executeCommand("screenshot");
+      const r = await cu.executeCommand(
+        "screenshot",
+        displayId === undefined ? {} : { displayId },
+      );
       if (
         r?.success !== false &&
         typeof r?.screenshot === "string" &&
@@ -172,7 +182,7 @@ async function acquireScreenFrame(runtime: IAgentRuntime): Promise<{
       ) {
         return {
           pngBytes: new Uint8Array(Buffer.from(r.screenshot, "base64")),
-          displayId: typeof r.displayId === "number" ? r.displayId : 0,
+          displayId: isValidDisplayId(r.displayId) ? r.displayId : undefined,
           capturedAt: Date.now(),
         };
       }
@@ -184,6 +194,9 @@ async function acquireScreenFrame(runtime: IAgentRuntime): Promise<{
       );
     }
   }
+  // The vision service retains only an unscoped latest frame. It cannot prove
+  // that frame came from a specifically requested display.
+  if (displayId !== undefined) return null;
   const visionService = runtime.getService<VisionService>("VISION");
   const cap = await visionService?.getScreenCapture();
   if (cap?.data && cap.data.byteLength > 0) {
@@ -202,12 +215,27 @@ async function runGetScreen(
   options: Record<string, unknown>,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
+  const requestedAt = Date.now();
   const includeImage = options.includeImage === true;
   const includeOcr = options.includeOcr !== false;
-  const displayId =
-    typeof options.displayId === "number" ? options.displayId : undefined;
+  const rawDisplayId = options.displayId;
+  const displayId = isValidDisplayId(rawDisplayId) ? rawDisplayId : undefined;
 
-  const frame = await acquireScreenFrame(runtime);
+  if (rawDisplayId !== undefined && !isValidDisplayId(rawDisplayId)) {
+    return {
+      success: false,
+      text: "displayId must be a non-negative safe integer",
+      values: { success: false, visionAvailable: false },
+      data: {
+        actionName: "VISION",
+        op: "get_screen",
+        error: "invalid_display_id",
+        capturedAt: requestedAt,
+      },
+    };
+  }
+
+  const frame = await acquireScreenFrame(runtime, displayId);
   if (!frame) {
     const thought = "No screen capture source is available.";
     const text =
@@ -222,13 +250,31 @@ async function runGetScreen(
         actionName: "VISION",
         op: "get_screen",
         error: "no_capture_source",
+        capturedAt: requestedAt,
+      },
+    };
+  }
+
+  if (displayId !== undefined && frame.displayId !== displayId) {
+    const actualDisplay = frame.displayId ?? "unknown";
+    return {
+      success: false,
+      text: `Capture returned display ${actualDisplay}, not requested display ${displayId}`,
+      values: { success: false, visionAvailable: true },
+      data: {
+        actionName: "VISION",
+        op: "get_screen",
+        error: "display_id_mismatch",
+        requestedDisplayId: displayId,
+        actualDisplayId: frame.displayId ?? null,
+        capturedAt: frame.capturedAt,
       },
     };
   }
 
   const result = await buildGetScreen({
     pngBytes: frame.pngBytes,
-    displayId: displayId ?? frame.displayId,
+    displayId: frame.displayId ?? 0,
     includeImage,
     includeOcr,
     capturedAt: frame.capturedAt,
