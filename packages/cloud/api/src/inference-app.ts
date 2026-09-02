@@ -22,6 +22,7 @@ import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { inferenceIngressRateLimit } from "./inference-ingress-rate-limit";
 import { cookieMutationGuardMiddleware } from "./middleware/cookie-mutation-guard";
 
 /**
@@ -132,6 +133,11 @@ export function createInferenceApp(
       },
     );
   });
+  // The machine-local Cloudflare counter runs before route auth with a bounded
+  // deadline and isolate-local outage fallback. Organization policy remains
+  // authoritative in the admission gate; this layer only protects auth CPU.
+  // Request observability wraps it so a flood's 429 verdicts remain visible.
+  app.use("*", inferenceIngressRateLimit());
 
   // CSRF: same mount point as bootstrap-app (immediately before the routes).
   // See middleware/cookie-mutation-guard.ts.

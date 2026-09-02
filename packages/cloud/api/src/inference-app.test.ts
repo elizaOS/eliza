@@ -159,7 +159,7 @@ describe("chat-only inference application", () => {
     });
   });
 
-  test("reaches route authentication without consulting the global limiter", async () => {
+  test("uses native ingress protection before route authentication", async () => {
     let globalLimiterCalls = 0;
     const routeKeys: string[] = [];
     const response = await createChatInferenceApp().fetch(
@@ -179,7 +179,7 @@ describe("chat-only inference application", () => {
         GLOBAL_RATE_LIMITER: {
           async limit() {
             globalLimiterCalls += 1;
-            throw new Error("global limiter must not run in inference shell");
+            return { success: true };
           },
         },
         CHAT_ROUTE_RATE_LIMITER: {
@@ -193,7 +193,7 @@ describe("chat-only inference application", () => {
     );
 
     expect(response.status).toBe(401);
-    expect(globalLimiterCalls).toBe(0);
+    expect(globalLimiterCalls).toBe(1);
     // #17805 retired the per-route native chat gate from the hot path; even a
     // bound limiter must never be consulted by the thin inference app.
     expect(routeKeys).toHaveLength(0);

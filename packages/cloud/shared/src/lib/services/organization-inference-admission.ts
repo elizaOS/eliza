@@ -10,6 +10,7 @@
  * disappears.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
@@ -146,11 +147,35 @@ export class InferenceAffiliateCacheUnavailableError extends InferenceBalanceCac
 }
 
 /** The request cannot safely defer its durable charge in this Worker. */
-export class InferenceAdmissionUnavailableError extends Error {
-  constructor(options?: { cause?: unknown }) {
-    super("Inference admission transport is unavailable", options);
-    this.name = "InferenceAdmissionUnavailableError";
+export class InferenceAdmissionUnavailableError extends ElizaError {
+  override readonly name = "InferenceAdmissionUnavailableError";
+  readonly statusCode = 503;
+
+  constructor(options?: { cause?: unknown; context?: Record<string, unknown> }) {
+    super("Inference admission transport is unavailable", {
+      code: "INFERENCE_ADMISSION_UNAVAILABLE",
+      cause: options?.cause,
+      context: options?.context,
+      severity: "ephemeral",
+    });
   }
+}
+
+function admissionUnavailable(
+  params: OrganizationInferenceAdmissionParams,
+  cause?: unknown,
+): InferenceAdmissionUnavailableError {
+  return new InferenceAdmissionUnavailableError({
+    cause,
+    context: {
+      organizationId: params.context.organizationId,
+      userId: params.context.userId,
+      requestId: params.context.requestId,
+      model: params.context.model,
+      provider: params.context.provider,
+      billingSource: params.context.billingSource,
+    },
+  });
 }
 
 async function reserveSynchronously(
@@ -270,13 +295,13 @@ export async function admitOrganizationInference(
     // state under waitUntil; this request must not bypass the refusal with a
     // synchronous database reserve on the model hot path.
     scheduleOrgBalanceHintHydration(params.context.organizationId, executionCtx);
-    throw new InferenceAdmissionUnavailableError();
+    throw admissionUnavailable(params);
   }
   if (!workerHotPath && affiliateMarked) {
     return await reserveSynchronously(params, false);
   }
   if (!isOptimisticBillingEnabled()) {
-    if (workerHotPath) throw new InferenceAdmissionUnavailableError();
+    if (workerHotPath) throw admissionUnavailable(params);
     return await reserveSynchronously(params, false);
   }
 
@@ -284,7 +309,7 @@ export async function admitOrganizationInference(
   const useDbLedger = resolveInferenceBillingLedger() === "db";
   const canDefer = isDeferredAdmissionEnabled() && workerHotPath;
   if (workerHotPath && !canDefer) {
-    throw new InferenceAdmissionUnavailableError();
+    throw admissionUnavailable(params);
   }
   // The legacy KV pending-charge lane cannot make an authoritative balance
   // decision before provider dispatch. A delayed post-debit projection write
@@ -436,7 +461,7 @@ export async function admitOrganizationInference(
       if (error instanceof InferenceAdmissionGateUnavailableError) {
         // error-policy:J2 preserve the gate transport failure for route-level
         // classification and diagnostics.
-        throw new InferenceAdmissionUnavailableError({ cause: error });
+        throw admissionUnavailable(params, error);
       }
       throw error;
     }
@@ -462,7 +487,7 @@ export async function admitOrganizationInference(
 
   if (canDefer && params.executionCtx) {
     if (!inferenceLease) {
-      throw new InferenceAdmissionUnavailableError();
+      throw admissionUnavailable(params);
     }
     if (affiliateAttribution) {
       const affiliatePayoutSourceId = getAffiliatePayoutSourceId(params.context);

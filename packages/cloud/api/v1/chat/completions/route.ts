@@ -1182,6 +1182,30 @@ interface ChatCompletionsHandlerOptions {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
 
+type ConcurrentPromiseOutcome<T> =
+  | { kind: "fulfilled"; value: T }
+  | { kind: "rejected"; error: unknown };
+
+/**
+ * Installs a rejection handler at task creation time while retaining the
+ * original failure for the point where route precedence permits observing it.
+ * This matters when a faster validation or rate-limit denial returns before
+ * another overlapped task settles.
+ */
+function observeConcurrentPromise<T>(
+  promise: Promise<T>,
+): Promise<ConcurrentPromiseOutcome<T>> {
+  return promise.then(
+    (value) => ({ kind: "fulfilled", value }),
+    (error: unknown) => ({ kind: "rejected", error }),
+  );
+}
+
+function unwrapConcurrentPromise<T>(outcome: ConcurrentPromiseOutcome<T>): T {
+  if (outcome.kind === "rejected") throw outcome.error;
+  return outcome.value;
+}
+
 export async function handleChatCompletionsPOST(
   req: Request,
   options: ChatCompletionsHandlerOptions = {},
@@ -1385,17 +1409,19 @@ export async function handleChatCompletionsPOST(
     // inspect and return this result first, preserving the existing denial
     // precedence without serializing an unrelated Durable Object round trip
     // ahead of every dependency read.
-    const orgRateLimitPromise =
+    const orgRateLimitPromise = observeConcurrentPromise(
       user.organization_id && !options.skipOrgRateLimit
         ? enforceOrgRateLimit(user.organization_id, "completions", {
             cacheOnly: Boolean(options.executionCtx),
             executionCtx: options.executionCtx,
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
           })
-        : Promise.resolve(null);
+        : Promise.resolve(null),
+    );
     const resolveOrgRateLimit = async (): Promise<Response | null> => {
+      const outcome = await orgRateLimitPromise;
       try {
-        return await orgRateLimitPromise;
+        return unwrapConcurrentPromise(outcome);
       } catch (error) {
         if (error instanceof OrgRateLimitCacheNotReadyError) {
           return addCorsHeaders(
@@ -1555,7 +1581,11 @@ export async function handleChatCompletionsPOST(
       executionCtx: options.executionCtx,
     });
     const modelCatalogPromise = skipCatalogLookup
-      ? Promise.resolve({ kind: "ready" as const, model: null })
+      ? Promise.resolve({
+          kind: "ready" as const,
+          model: null,
+          stale: false,
+        })
       : options.executionCtx
         ? getGatewayModelByIdCacheOnly(model, {
             executionCtx: options.executionCtx,
@@ -1564,6 +1594,7 @@ export async function handleChatCompletionsPOST(
             .then((catalogModel) => ({
               kind: "ready" as const,
               model: catalogModel,
+              stale: false,
             }))
             // error-policy:J4 non-Worker tools retain the explicit
             // name-pattern fallback when optional catalog metadata fails.
@@ -1575,7 +1606,11 @@ export async function handleChatCompletionsPOST(
                   error: error instanceof Error ? error.message : String(error),
                 },
               );
-              return { kind: "ready" as const, model: null };
+              return {
+                kind: "ready" as const,
+                model: null,
+                stale: false,
+              };
             });
     const shouldBlockUserPromise = moderationAlreadyChecked
       ? Promise.resolve({ kind: "ready" as const, blocked: false })
@@ -1586,6 +1621,17 @@ export async function handleChatCompletionsPOST(
         : contentModerationService
             .shouldBlockUser(user.id)
             .then((blocked) => ({ kind: "ready" as const, blocked }));
+    // Promise.all attaches a rejection observer to every input immediately and
+    // remains fail-fast. Wrapping the aggregate records that failure until the
+    // rate-limit verdict has been applied, including 429 and early-return paths.
+    const dependencyResolutionsPromise = observeConcurrentPromise(
+      Promise.all([
+        monetizedAppPromise,
+        pooledCredentialPromise,
+        modelCatalogPromise,
+        shouldBlockUserPromise,
+      ]),
+    );
 
     const orgRateLimited = await resolveOrgRateLimit();
     if (orgRateLimited) {
@@ -1598,12 +1644,7 @@ export async function handleChatCompletionsPOST(
       pooledCredentialResolution,
       modelCatalogResolution,
       moderationResolution,
-    ] = await Promise.all([
-      monetizedAppPromise,
-      pooledCredentialPromise,
-      modelCatalogPromise,
-      shouldBlockUserPromise,
-    ]);
+    ] = unwrapConcurrentPromise(await dependencyResolutionsPromise);
     if (
       appResolution.kind !== "ready" ||
       pooledCredentialResolution.kind !== "ready" ||

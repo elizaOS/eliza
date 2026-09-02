@@ -684,7 +684,18 @@ test("admission transport failures retain their cause without becoming balance w
 
   expect(error).toBeInstanceOf(InferenceAdmissionUnavailableError);
   expect(error).not.toBeInstanceOf(TestInferenceBalanceCacheWarmingError);
-  expect(error).toMatchObject({ cause: gateCause });
+  expect(error).toMatchObject({
+    cause: gateCause,
+    code: "INFERENCE_ADMISSION_UNAVAILABLE",
+    context: {
+      organizationId: "org-1",
+      userId: "user-1",
+      model,
+      provider: "cerebras",
+      billingSource: "bitrouter",
+    },
+    severity: "ephemeral",
+  });
 });
 
 test("cold affiliate pricing hydrates policy and model rates without a synchronous reserve", async () => {
