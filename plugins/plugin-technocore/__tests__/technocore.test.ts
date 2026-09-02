@@ -1,11 +1,34 @@
 import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { TechnocoreService } from "../src/services/technocore";
+import { TechnocoreService, cleanText } from "../src/services/technocore";
 import { postMessageAction } from "../src/actions/postMessage";
 import { readRoomAction } from "../src/actions/readRoom";
 import { listRoomsAction } from "../src/actions/listRooms";
 import { kvSetAction, kvGetAction } from "../src/actions/kvStorage";
 import { technocorePlugin } from "../src/index";
+
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+function base58Decode(str: string): Buffer {
+	let num = 0n;
+	for (let i = 0; i < str.length; i++) {
+		const idx = BASE58_ALPHABET.indexOf(str[i]);
+		if (idx === -1) throw new Error(`Invalid base58 character ${str[i]}`);
+		num = num * 58n + BigInt(idx);
+	}
+	const hex = num.toString(16);
+	const hexPadded = hex.length % 2 === 0 ? hex : `0${hex}`;
+	let bytes = Buffer.from(hexPadded, "hex");
+
+	let leadingZeroes = 0;
+	for (let i = 0; i < str.length && str[i] === "1"; i++) {
+		leadingZeroes++;
+	}
+	if (leadingZeroes > 0) {
+		bytes = Buffer.concat([Buffer.alloc(leadingZeroes, 0), bytes]);
+	}
+	return bytes;
+}
 
 describe("Technocore Plugin Tests", () => {
 	it("should initialize TechnocoreService and derive valid did:key", () => {
@@ -22,6 +45,40 @@ describe("Technocore Plugin Tests", () => {
 
 		expect(service1.did).toEqual(service2.did);
 		expect(service1.did.startsWith("did:key:z6M")).toBe(true);
+	});
+
+	it("should decode DID key and verify pipe-delimited payload signature against decoded public key", () => {
+		const service = new TechnocoreService();
+		const room = "technocore";
+		const rawText = "Hello\r\n\tdecentralized \u200Bworld!";
+		const normalizedText = cleanText(rawText);
+		const nonce = service.getNonce();
+		const canonicalPayload = `${room}|${nonce}|${normalizedText}`;
+		const sigUrlSafe = service.signPayload(canonicalPayload);
+
+		// Decode the DID according to standard W3C did:key Ed25519 multicodec
+		expect(service.did.startsWith("did:key:z")).toBe(true);
+		const multicodec = base58Decode(service.did.slice(9));
+		// Multicodec 0xed01 prefix (2 bytes) + 32-byte Ed25519 raw public key
+		expect(multicodec[0]).toBe(0xed);
+		expect(multicodec[1]).toBe(0x01);
+		const rawPubKey = multicodec.subarray(2);
+		expect(rawPubKey.length).toBe(32);
+
+		// Construct SPKI from raw 32 bytes and verify
+		const spkiPrefix = Buffer.from("302a300506032b6570032100", "hex");
+		const fullSpki = Buffer.concat([spkiPrefix, rawPubKey]);
+		const pubKeyObj = crypto.createPublicKey({ key: fullSpki, format: "der", type: "spki" });
+
+		const sigBytes = Buffer.from(sigUrlSafe, "base64url");
+		const isValid = crypto.verify(null, Buffer.from(canonicalPayload, "utf-8"), pubKeyObj, sigBytes);
+		expect(isValid).toBe(true);
+	});
+
+	it("should normalize text and sweep hostile/invisible characters cleanly", () => {
+		const input = "  Line 1\r\nLine 2\t\twith   extra   spaces\u200B\uFEFF\u0000  ";
+		const cleaned = cleanText(input);
+		expect(cleaned).toBe("Line 1 Line 2 with extra spaces");
 	});
 
 	it("should generate strictly monotonic nonces across rapid calls", () => {
@@ -44,18 +101,16 @@ describe("Technocore Plugin Tests", () => {
 		expect(n3).toBeGreaterThan(n2);
 	});
 
-	it("should produce cryptographically valid signatures", () => {
-		const service = new TechnocoreService();
-		const payload = "technocore\n1725255600000000000\nHello decentralized world";
-		const sigUrlSafe = service.signPayload(payload);
+	it("should fail-closed when TechnocoreService is not registered in runtime", async () => {
+		const mockRuntimeNoService: any = {
+			getService: () => undefined,
+			getSetting: () => undefined,
+		};
+		const msg: any = { content: { text: "post to room test" } };
 
-		expect(sigUrlSafe).toBeDefined();
-		expect(sigUrlSafe.length).toBeGreaterThan(50);
-
-		// Verify signature using Node.js crypto.verify and service's public key
-		const sigBytes = Buffer.from(sigUrlSafe, "base64url");
-		const isValid = crypto.verify(null, Buffer.from(payload, "utf-8"), service.publicKey, sigBytes);
-		expect(isValid).toBe(true);
+		const res = await postMessageAction.handler(mockRuntimeNoService, msg);
+		expect(res.success).toBe(false);
+		expect(res.error).toContain("TechnocoreService is not registered");
 	});
 
 	it("should export full plugin structure with valid actions, provider, and service", () => {

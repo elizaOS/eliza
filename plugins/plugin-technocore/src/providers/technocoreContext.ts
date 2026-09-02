@@ -12,10 +12,16 @@ export const technocoreContextProvider: Provider = {
 	name: "technocoreContext",
 	get: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
 		try {
+			const service = runtime.getService?.("technocore") as TechnocoreService | undefined;
+			if (!service) {
+				return {
+					text: "[Technocore Protocol]: Service not initialized",
+				};
+			}
+
 			const defaultRoom =
 				(runtime.getSetting?.("TECHNOCORE_DEFAULT_ROOM") as string) || "technocore";
 
-			const service = getTechnocoreService(runtime);
 			const result = await service.readRoom(defaultRoom, 3);
 
 			const messages = result.messages || [];

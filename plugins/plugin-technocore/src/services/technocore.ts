@@ -25,6 +25,14 @@ function base58Encode(buffer: Buffer): string {
 	return encoded;
 }
 
+export function cleanText(input: string): string {
+	return input
+		.replace(/[\r\n\t]+/g, " ")
+		.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
 export class TechnocoreService extends Service {
 	static override serviceType = "technocore";
 	capabilityDescription =
@@ -66,7 +74,7 @@ export class TechnocoreService extends Service {
 		}
 
 		const rawPublic = this.publicKey.export({ type: "spki", format: "der" });
-		const rawPubBytes = rawPublic.subarray(rawPubPublicLength(rawPublic) - 32);
+		const rawPubBytes = rawPublic.subarray(rawPublic.length - 32);
 		const multicodecPub = Buffer.concat([MULTICODEC_ED25519, rawPubBytes]);
 		this.did = `did:key:z${base58Encode(multicodecPub)}`;
 	}
@@ -105,13 +113,13 @@ export class TechnocoreService extends Service {
 				}
 			}
 		}
-		if (method === "GET" && !url.searchParams.has("format")) {
+		if (!url.searchParams.has("format")) {
 			url.searchParams.set("format", "json");
 		}
 
 		const headers: Record<string, string> = {
 			"User-Agent": "elizaOS-TechnocorePlugin/1.0",
-			Accept: "application/json",
+			Accept: "application/json, text/plain, */*",
 		};
 
 		let payloadBody: string | undefined;
@@ -138,7 +146,16 @@ export class TechnocoreService extends Service {
 					throw new Error(`HTTP ${res.status}: ${errText}`);
 				}
 
-				return (await res.json()) as T;
+				const contentType = res.headers.get("content-type") || "";
+				if (contentType.includes("application/json")) {
+					return (await res.json()) as T;
+				}
+				const textResp = await res.text();
+				try {
+					return JSON.parse(textResp) as T;
+				} catch {
+					return { success: true, message: textResp } as unknown as T;
+				}
 			} catch (err) {
 				if (attempt === maxRetries) {
 					throw err;
@@ -151,8 +168,9 @@ export class TechnocoreService extends Service {
 	}
 
 	public async postMessage(room: string, text: string): Promise<TechnocoreRoomResponse> {
+		const cleanedText = cleanText(text);
 		const nonce = this.getNonce();
-		const payload = `${room}\n${nonce}\n${text}`;
+		const payload = `${room}|${nonce}|${cleanedText}`;
 		const sig = this.signPayload(payload);
 
 		return this.request<TechnocoreRoomResponse>(
@@ -160,7 +178,7 @@ export class TechnocoreService extends Service {
 			`/r/${room}`,
 			undefined,
 			{
-				text,
+				text: cleanedText,
 				nonce,
 				sig,
 				did: this.did,
@@ -189,8 +207,9 @@ export class TechnocoreService extends Service {
 		key: string,
 		value: string
 	): Promise<TechnocoreKVResponse> {
+		const cleanedValue = cleanText(value);
 		const nonce = this.getNonce();
-		const payload = `${namespace}|${key}|${nonce}|${value}`;
+		const payload = `${namespace}|${key}|${nonce}|${cleanedValue}`;
 		const sig = this.signPayload(payload);
 
 		return this.request<TechnocoreKVResponse>(
@@ -198,15 +217,11 @@ export class TechnocoreService extends Service {
 			`/kv/${namespace}/${key}`,
 			undefined,
 			{
-				value,
+				value: cleanedValue,
 				nonce,
 				sig,
 				did: this.did,
 			}
 		);
 	}
-}
-
-function rawPubPublicLength(buf: Buffer): number {
-	return buf.length;
 }

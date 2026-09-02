@@ -11,11 +11,12 @@ import { TechnocoreService } from "../services/technocore";
 
 function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
 	const service = runtime.getService?.("technocore") as TechnocoreService | undefined;
-	if (service) return service;
-	runtime.logger?.warn?.(
-		"[TechnocorePlugin] TechnocoreService was not found in runtime. Falling back to a transient service instance."
-	);
-	return new TechnocoreService(runtime);
+	if (!service) {
+		throw new Error(
+			"TechnocoreService is not registered or initialized in the runtime. Ensure technocorePlugin is added to plugins."
+		);
+	}
+	return service;
 }
 
 export const kvSetAction: Action = {
