@@ -214,7 +214,9 @@ describe("managed dedicated live-smoke workflow contract", () => {
       "steps.cleanup_reconciliation.outputs.agent_id != ''",
     );
     expect(headscaleIngress?.with?.script).toContain("headscale version");
-    expect(headscaleIngress?.with?.script).toContain("/var/log/nginx/access.log");
+    expect(headscaleIngress?.with?.script).toContain(
+      "/var/log/nginx/access.log",
+    );
     expect(headscaleIngress?.with?.script).toContain("ts2021_total=");
     expect(headscaleIngress?.with?.script).toContain("machine_register_total=");
     expect(headscaleIngress?.with?.script).toContain("response[1]");
@@ -232,8 +234,12 @@ describe("managed dedicated live-smoke workflow contract", () => {
       "managed-dedicated-canary-$CANARY_DIAGNOSTIC_SUFFIX",
     );
     expect(suffixJournal?.with?.script).toContain("::add-mask::$agent_id");
-    expect(suffixJournal?.with?.script).toContain("suffix_journal_mesh_category=");
-    expect(suffixJournal?.with?.script).toContain("suffix_journal_observation_present=");
+    expect(suffixJournal?.with?.script).toContain(
+      "suffix_journal_mesh_category=",
+    );
+    expect(suffixJournal?.with?.script).toContain(
+      "suffix_journal_observation_present=",
+    );
     expect(suffixJournal?.with?.script).not.toContain('echo "$journal"');
     expect(suffixJournal?.with?.script).not.toContain('echo "$block"');
 
