@@ -304,6 +304,45 @@ export function isRouteAuthenticatedPaidStandingPath(
 }
 
 /**
+ * Paid proxy routes own their combined identity, standing, and organization
+ * admission decision. The global session gate must not resolve the same
+ * Steward credential first, or a session request would perform an additional
+ * authoritative user lookup before the route's one-read cache decision.
+ */
+export function isRouteAuthenticatedPaidProxyPath(
+  method: string,
+  pathname: string,
+): boolean {
+  if (method === "OPTIONS") {
+    return (
+      isRouteAuthenticatedPaidProxyPath("GET", pathname) ||
+      isRouteAuthenticatedPaidProxyPath("POST", pathname)
+    );
+  }
+  if (method === "GET" || method === "HEAD") {
+    return (
+      /^\/api\/v1\/chain\/(?:nfts|tokens|transfers)\/[^/]+\/[^/]+\/?$/.test(
+        pathname,
+      ) ||
+      /^\/api\/v1\/market\/(?:candles|portfolio|price|token|trades)\/[^/]+\/[^/]+\/?$/.test(
+        pathname,
+      ) ||
+      /^\/api\/v1\/solana\/(?:assets|token-accounts|transactions)\/[^/]+\/?$/.test(
+        pathname,
+      ) ||
+      /^\/api\/v1\/apis\/birdeye\/.+/.test(pathname)
+    );
+  }
+  if (method !== "POST") return false;
+  return (
+    /^\/api\/v1\/proxy\/evm-rpc\/[^/]+\/?$/.test(pathname) ||
+    /^\/api\/v1\/proxy\/solana-rpc\/?$/.test(pathname) ||
+    /^\/api\/v1\/rpc\/[^/]+\/?$/.test(pathname) ||
+    /^\/api\/v1\/solana\/rpc\/?$/.test(pathname)
+  );
+}
+
+/**
  * Remote hosts reach these activation handlers before they have a Cloud
  * session. Keep this pre-auth delegation exact: a syntactically valid,
  * host-bound credential may reach only the two handlers introduced by the
@@ -327,6 +366,14 @@ export function isRouteAuthenticatedRemoteHostRequest(
       pathname,
     );
   return managedNetworkMatch?.[1] === credential.hostId;
+}
+
+/** Keeps any remote-host credential attempt out of unrelated paid route bypasses. */
+function hasRemoteHostCredentialAttempt(request: Request): boolean {
+  return (
+    request.headers.has("x-remote-host-id") ||
+    /^Bearer rhost_v1_/.test(request.headers.get("authorization") ?? "")
+  );
 }
 
 function isLoopbackHostname(hostname: string): boolean {
@@ -403,12 +450,16 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
     return;
   }
 
-  if (isRouteAuthenticatedPaidStandingPath(c.req.method, pathname)) {
+  if (isRouteAuthenticatedRemoteHostRequest(c.req.raw)) {
     await next();
     return;
   }
 
-  if (isRouteAuthenticatedRemoteHostRequest(c.req.raw)) {
+  if (
+    !hasRemoteHostCredentialAttempt(c.req.raw) &&
+    (isRouteAuthenticatedPaidStandingPath(c.req.method, pathname) ||
+      isRouteAuthenticatedPaidProxyPath(c.req.method, pathname))
+  ) {
     await next();
     return;
   }

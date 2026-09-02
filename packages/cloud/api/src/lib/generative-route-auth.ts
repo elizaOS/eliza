@@ -416,6 +416,8 @@ export async function admitFlatGenerativeOperation(params: {
 export async function requireGenerativeRouteCaller(
   c: AppContext,
   options: {
+    /** Effective request after any route-local credential rewrite. */
+    request?: Request;
     compatibility?: "hono" | "raw";
     rateLimitEndpoint?: EndpointType;
     /**
@@ -430,10 +432,11 @@ export async function requireGenerativeRouteCaller(
     deferStrongCredentialCheck?: boolean;
   } = {},
 ): Promise<GenerativeRouteCaller> {
+  const request = options.request ?? c.req.raw;
   const executionCtx = getGenerativeExecutionContext(c);
   if (!executionCtx) {
     if (options.compatibility === "raw") {
-      const { user, apiKey } = await requireAuthOrApiKeyWithOrg(c.req.raw);
+      const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
       return {
         user: { id: user.id, organization_id: user.organization_id },
         apiKeyId: apiKey?.id ?? null,
@@ -456,7 +459,7 @@ export async function requireGenerativeRouteCaller(
     "@/lib/services/inference-auth-context"
   );
   const resolveCallerAuth = () =>
-    resolveInferenceAuthContext(c.req.raw, {
+    resolveInferenceAuthContext(request, {
       traceId: c.get("traceId") ?? c.get("requestId"),
       cacheOnly: Boolean(executionCtx),
       executionCtx,
@@ -509,6 +512,9 @@ export async function requireGenerativeRouteCaller(
             limited.status === 429
               ? "Rate limit exceeded"
               : "Rate limiter is unavailable",
+            limited.status === 503
+              ? { retryable: true, retryAfterSeconds: 1 }
+              : undefined,
           );
         }
       }
@@ -569,7 +575,7 @@ export async function requireGenerativeRouteCaller(
   // authoritative compatibility path. API keys and Steward sessions never
   // reach this branch.
   if (options.compatibility === "raw") {
-    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(c.req.raw);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     return {
       user: { id: user.id, organization_id: user.organization_id },
       apiKeyId: apiKey?.id ?? null,
