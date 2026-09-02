@@ -1,17 +1,17 @@
 /**
- * Runs the module-replacing inference admission contract in a child process so
- * its Bun module mocks cannot leak into unrelated service suites.
+ * Runs the mock-heavy AI funding contract in a child process so Bun's global
+ * module replacements cannot leak into neighboring service suites.
  */
 import { expect, test } from "bun:test";
 
-test("organization inference admission contract passes in isolation", async () => {
+test("AI billing subscription funding contract passes in isolation", async () => {
   const child = Bun.spawn(
     [
       process.execPath,
       "test",
       "--config=/dev/null",
       "--timeout=60000",
-      `${import.meta.dir}/organization-inference-admission.fixture.mts`,
+      `${import.meta.dir}/ai-billing-subscription-funding.fixture.mts`,
     ],
     {
       cwd: import.meta.dir,
@@ -27,5 +27,5 @@ test("organization inference admission contract passes in isolation", async () =
   ]);
   expect(exitCode, `${stdout}\n${stderr}`).toBe(0);
   const passed = Number(/(\d+) pass/.exec(`${stdout}\n${stderr}`)?.[1] ?? 0);
-  expect(passed, `${stdout}\n${stderr}`).toBeGreaterThanOrEqual(17);
+  expect(passed, `${stdout}\n${stderr}`).toBeGreaterThanOrEqual(3);
 });

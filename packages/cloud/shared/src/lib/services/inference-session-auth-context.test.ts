@@ -29,6 +29,7 @@ let moderationReads = 0;
 let assertSessionActive: () => Promise<void>;
 const strongCredentialChecks: Array<Record<string, unknown>> = [];
 const ADMISSION = {
+  subscriptionFunded: false,
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
   rateLimits: {
     completionsRpm: 60,

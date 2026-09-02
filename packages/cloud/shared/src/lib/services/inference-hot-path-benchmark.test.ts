@@ -28,6 +28,7 @@ let revocationBoundaryCalls = 0;
 // Admission and app scope are part of the cached identity, so their
 // authoritative reads are allowed only while warming a cold miss.
 const ADMISSION = {
+  subscriptionFunded: false,
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
   rateLimits: {
     completionsRpm: 60,

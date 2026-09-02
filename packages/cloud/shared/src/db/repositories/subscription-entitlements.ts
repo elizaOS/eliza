@@ -6,7 +6,7 @@
 import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
-import { dbWrite, writeTransaction } from "../helpers";
+import { dbRead, writeTransaction } from "../helpers";
 import {
   type BillingSubscriptionRevision,
   billingSubscriptionRevisions,
@@ -127,7 +127,7 @@ export function deriveSubscriptionEntitlementValues(
 
 export class SubscriptionEntitlementsRepository {
   async find(organizationId: string): Promise<OrganizationEntitlement | undefined> {
-    const [row] = await dbWrite
+    const [row] = await dbRead
       .select()
       .from(organizationEntitlements)
       .where(eq(organizationEntitlements.organization_id, organizationId))

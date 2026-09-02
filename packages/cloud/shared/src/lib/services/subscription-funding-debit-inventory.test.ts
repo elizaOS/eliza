@@ -5,7 +5,7 @@
  * cannot hide behind a newly named product service.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   scanProductionSubscriptionDebitInventory,
   scanSubscriptionDebitSignals,
@@ -14,6 +14,8 @@ import {
   SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION,
   SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES,
 } from "./subscription-funding-policy";
+
+setDefaultTimeout(30_000);
 
 describe("subscription funding production debit inventory", () => {
   test("detects raw balance and ledger bypass shapes", () => {

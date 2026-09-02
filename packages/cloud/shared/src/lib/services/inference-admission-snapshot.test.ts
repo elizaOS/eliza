@@ -6,6 +6,7 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 
 const snapshot = {
+  subscriptionFunded: true,
   balance: { balanceUsd: 12, balanceAt: 1, balanceRevision: 7 },
   rateLimits: {
     completionsRpm: 120,
@@ -31,6 +32,11 @@ mock.module("./credits", () => ({
   creditsService: { getOrganizationBalanceSnapshot },
 }));
 
+const findSubscriptionEntitlement = mock(async () => ({ plan_key: "pro" }));
+mock.module("../../db/repositories/subscription-entitlements", () => ({
+  subscriptionEntitlementsRepository: { find: findSubscriptionEntitlement },
+}));
+
 const recalculateOrgTier = mock(async () => snapshot.rateLimits);
 mock.module("./org-rate-limits", () => ({
   recalculateOrgTier,
@@ -50,6 +56,7 @@ beforeEach(() => {
   cacheGet.mockClear();
   cacheSet.mockClear();
   getOrganizationBalanceSnapshot.mockClear();
+  findSubscriptionEntitlement.mockClear();
   recalculateOrgTier.mockClear();
   resetInferenceAdmissionMemoryCacheForTests();
 });
@@ -68,6 +75,7 @@ test("one remote read serves the projection and later isolate hits are local", a
   expect(cacheGet).toHaveBeenCalledTimes(1);
   expect(getOrganizationBalanceSnapshot).not.toHaveBeenCalled();
   expect(recalculateOrgTier).not.toHaveBeenCalled();
+  expect(findSubscriptionEntitlement).not.toHaveBeenCalled();
 });
 
 test("a miss registers authoritative hydration and fails closed", async () => {
@@ -84,5 +92,6 @@ test("a miss registers authoritative hydration and fails closed", async () => {
   await background[0];
   expect(getOrganizationBalanceSnapshot).toHaveBeenCalledTimes(1);
   expect(recalculateOrgTier).toHaveBeenCalledTimes(1);
+  expect(findSubscriptionEntitlement).toHaveBeenCalledTimes(1);
   expect(cacheSet).toHaveBeenCalledTimes(1);
 });

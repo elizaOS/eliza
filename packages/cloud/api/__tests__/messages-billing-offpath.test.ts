@@ -86,7 +86,7 @@ const resolveInferenceAuthContext = mock(
   async (): Promise<InferenceAuthResolution> => ({
     kind: "authorized",
     ctx: {
-      v: 2,
+      v: 3,
       cachedAt: 0,
       userId: USER,
       orgId: ORG,
@@ -168,11 +168,15 @@ const reserveCredits = mock(async () => {
   if (!routeReservation) throw new Error("routeReservation not set");
   return routeReservation;
 });
+// The mocked auth context carries no admission snapshot, so admission pays the
+// authoritative entitlement read; this harness has no subscription schema.
+const isSubscriptionFundedOrganization = mock(async () => false);
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
   billUsage,
   recordUsageAnalytics,
   reserveCredits,
+  isSubscriptionFundedOrganization,
 }));
 
 // Import the route AFTER the mocks so it binds to the stubs.
@@ -337,7 +341,7 @@ beforeEach(() => {
   resolveInferenceAuthContext.mockResolvedValue({
     kind: "authorized",
     ctx: {
-      v: 2,
+      v: 3,
       cachedAt: 0,
       userId: USER,
       orgId: ORG,
