@@ -244,6 +244,9 @@ describe("managed dedicated live-smoke workflow contract", () => {
       "headscale_control_unreachable",
     );
     expect(classifyMeshFailure?.with?.script).toContain(
+      "tailscale_register_request_not_sent",
+    );
+    expect(classifyMeshFailure?.with?.script).toContain(
       "private_mesh_observation_present",
     );
 

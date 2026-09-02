@@ -1367,6 +1367,12 @@ export interface DockerMeshJoinObservation {
   readonly defaultRoutePresent: boolean;
   readonly tunPresent: boolean;
   readonly headscaleReachable: boolean;
+  readonly controlKeyFetched: boolean;
+  readonly loginStarted: boolean;
+  readonly registerRequestSent: boolean;
+  readonly controlTransportFailed: boolean;
+  readonly tlsFailed: boolean;
+  readonly dnsFailed: boolean;
   readonly authKeyRejected: boolean;
   readonly interactiveAuthRequired: boolean;
   readonly tailscaleUpFailed: boolean;
@@ -1412,7 +1418,8 @@ export function classifyDockerMeshJoinObservation(output: string): DockerMeshJoi
   const socket = meshProbeSection(output, "socket", "status");
   const statusOutput = meshProbeSection(output, "status", "ip");
   const ipOutput = meshProbeSection(output, "ip", "logs");
-  const logs = meshProbeSection(output, "logs", "network");
+  const logs = meshProbeSection(output, "logs", "daemonlog");
+  const daemonLog = meshProbeSection(output, "daemonlog", "network");
   const network = meshProbeSection(output, "network", "end");
 
   let statusQuery: "success" | "error" = "error";
@@ -1456,6 +1463,12 @@ export function classifyDockerMeshJoinObservation(output: string): DockerMeshJoi
     defaultRoutePresent: /^route=present$/m.test(network),
     tunPresent: /^tun=present$/m.test(network),
     headscaleReachable: /^control=reachable$/m.test(network),
+    controlKeyFetched: /^control_key=true$/m.test(daemonLog),
+    loginStarted: /^login_started=true$/m.test(daemonLog),
+    registerRequestSent: /^register_request=true$/m.test(daemonLog),
+    controlTransportFailed: /^control_transport_failed=true$/m.test(daemonLog),
+    tlsFailed: /^tls_failed=true$/m.test(daemonLog),
+    dnsFailed: /^dns_failed=true$/m.test(daemonLog),
     authKeyRejected:
       /(?:auth(?:entication)? key|authkey).*(?:invalid|expired|already used)|(?:invalid|expired|already used).*(?:auth(?:entication)? key|authkey)/i.test(
         logs,
@@ -1484,6 +1497,12 @@ export function formatDockerMeshJoinObservation(observation: DockerMeshJoinObser
     `route=${observation.defaultRoutePresent}`,
     `tun=${observation.tunPresent}`,
     `control=${observation.headscaleReachable}`,
+    `control_key=${observation.controlKeyFetched}`,
+    `login_started=${observation.loginStarted}`,
+    `register_request=${observation.registerRequestSent}`,
+    `control_transport_failed=${observation.controlTransportFailed}`,
+    `tls_failed=${observation.tlsFailed}`,
+    `dns_failed=${observation.dnsFailed}`,
     `authkey_rejected=${observation.authKeyRejected}`,
     `interactive=${observation.interactiveAuthRequired}`,
     `up_failed=${observation.tailscaleUpFailed}`,
@@ -1558,6 +1577,15 @@ export async function probeDockerMeshJoinTerminalFailure(
     'code="$(curl -ksS --connect-timeout 3 --max-time 5 -o /dev/null -w "%{http_code}" "${url%/}/health" 2>/dev/null || true)"',
     'case "$code" in [1-5][0-9][0-9]) echo control=reachable ;; *) echo control=unreachable ;; esac',
   ].join("; ");
+  const daemonLogProbeScript = [
+    "log=/tmp/tailscaled.log",
+    'grep -Eiq "control server key from" "$log" 2>/dev/null && echo control_key=true || echo control_key=false',
+    'grep -Eiq "doLogin|client[.]Login|StartLoginInteractive" "$log" 2>/dev/null && echo login_started=true || echo login_started=false',
+    'grep -Eiq "RegisterReq:|register request" "$log" 2>/dev/null && echo register_request=true || echo register_request=false',
+    'grep -Eiq "fetch control key.*(failed|error|timeout)|control.*(dial|connect).*(failed|error|timeout|refused)|no route to host|network is unreachable" "$log" 2>/dev/null && echo control_transport_failed=true || echo control_transport_failed=false',
+    'grep -Eiq "tls handshake|x509:|certificate.*(invalid|expired|unknown)" "$log" 2>/dev/null && echo tls_failed=true || echo tls_failed=false',
+    'grep -Eiq "no such host|server misbehaving|temporary failure in name resolution" "$log" 2>/dev/null && echo dns_failed=true || echo dns_failed=false',
+  ].join("; ");
   let output: string;
   try {
     output = await ssh.exec(
@@ -1572,6 +1600,8 @@ export async function probeDockerMeshJoinTerminalFailure(
         `docker exec ${shellQuote(containerId)} tailscale --socket=/tmp/tailscaled.sock ip -4 2>/dev/null || true`,
         `echo ${MESH_PROBE_SECTION}logs`,
         `docker logs --tail 80 ${shellQuote(containerId)} 2>&1 || true`,
+        `echo ${MESH_PROBE_SECTION}daemonlog`,
+        `docker exec ${shellQuote(containerId)} sh -c ${shellQuote(daemonLogProbeScript)} 2>/dev/null || true`,
         `echo ${MESH_PROBE_SECTION}network`,
         `docker exec ${shellQuote(containerId)} sh -c ${shellQuote(networkProbeScript)} 2>/dev/null || true`,
         `echo ${MESH_PROBE_SECTION}end`,
