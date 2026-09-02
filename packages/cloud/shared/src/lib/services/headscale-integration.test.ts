@@ -7,6 +7,7 @@ import {
   inferHeadscaleUser,
   inferTailscaleHostname,
   normalizeHeadscaleSegment,
+  resolveRegistrationTimeoutMs,
 } from "./headscale-integration";
 
 const savedEnv = { ...process.env };
@@ -106,6 +107,8 @@ describe("Headscale container credentials", () => {
       ephemeral: false,
       aclTags: ["tag:agent"],
     });
+    expect(request).not.toHaveProperty("user");
+    expect(request).not.toHaveProperty("ensureUser");
     expect(prepared.preAuthKey).toBe("test-preauth-key");
   });
 
@@ -508,6 +511,24 @@ describe("waitForVPNRegistration adopts Headscale collision-renamed nodes (real 
     expect(renames).toEqual([`https://headscale.example/api/v1/node/8/rename/${baseName}`]);
   });
 
+  test("adopts a suffixed node that registered after attempt start but before polling", async () => {
+    const registrationStartedAt = new Date(Date.now() - 5_000);
+    const renames = stubHeadscale([
+      makeNode("3", baseName, "100.64.0.56", new Date(Date.now() - 60 * 60 * 1000)),
+      makeNode("8", `${baseName}-cnpx9uop`, "100.64.0.8", new Date(Date.now() - 1_000)),
+    ]);
+
+    const registration = await integration().waitForVPNRegistration(baseName, 5_000, {
+      excludeNodeId: "3",
+      registrationStartedAt,
+    });
+
+    expect(registration?.nodeId).toBe("8");
+    expect(registration?.ip).toBe("100.64.0.8");
+    expect(registration?.rename).toEqual({ outcome: "succeeded" });
+    expect(renames).toEqual([`https://headscale.example/api/v1/node/8/rename/${baseName}`]);
+  });
+
   test("a 5xx rename-back remains explicitly unresolved without losing adoption", async () => {
     // While the green node still holds the base name Headscale rejects the
     // rename; registration is already secured and must succeed regardless.
@@ -632,5 +653,19 @@ describe("normalizeHeadscaleSegment + registration-timeout default", () => {
 
   test("DEFAULT_REGISTRATION_TIMEOUT_MS falls back to 180s when env is unset", () => {
     expect(DEFAULT_REGISTRATION_TIMEOUT_MS).toBe(180_000);
+  });
+
+  test("rejects an override shorter than the container join observation budget", () => {
+    expect(() => resolveRegistrationTimeoutMs("5000")).toThrow(
+      "VPN_REGISTRATION_TIMEOUT_MS must be at least 180000",
+    );
+    expect(() => resolveRegistrationTimeoutMs("180000ms")).toThrow(
+      "VPN_REGISTRATION_TIMEOUT_MS must be a positive integer",
+    );
+  });
+
+  test("allows operators to extend but not shorten the observation budget", () => {
+    expect(resolveRegistrationTimeoutMs(undefined)).toBe(180_000);
+    expect(resolveRegistrationTimeoutMs("240000")).toBe(240_000);
   });
 });

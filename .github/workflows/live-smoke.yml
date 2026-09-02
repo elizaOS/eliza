@@ -25,6 +25,11 @@ on:
         required: false
         type: string
         default: ""
+      diagnose_canary_suffix:
+        description: "Read-only staging diagnosis for one exact failed dedicated-canary suffix; performs no lifecycle mutation"
+        required: false
+        type: string
+        default: ""
       cleanup_only:
         description: "Delete only the exact prior dedicated canary; never create a replacement"
         required: false
@@ -46,7 +51,7 @@ jobs:
     name: ${{ inputs.suite }}
     # cleanup_only is an exclusive destructive-recovery mode. Never run an
     # unrelated live suite under the same dispatch, regardless of suite input.
-    if: ${{ !inputs.cleanup_only && inputs.suite != 'dedicated' }}
+    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -193,7 +198,7 @@ jobs:
 
   dedicated:
     name: Managed dedicated staging canary
-    if: inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated'
+    if: inputs.diagnose_canary_suffix == '' && (inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated')
     runs-on: ubuntu-24.04
     environment: staging
     # Serialize this live lifecycle even when an `all` run overlaps a
@@ -503,10 +508,982 @@ jobs:
             echo "Managed dedicated canary passed with exact cleanup."
           fi
 
+  dedicated-diagnostic:
+    name: Read-only managed dedicated provision diagnosis
+    if: inputs.diagnose_canary_suffix != ''
+    runs-on: ubuntu-24.04
+    environment: staging
+    concurrency:
+      group: managed-dedicated-staging-canary
+      cancel-in-progress: false
+    timeout-minutes: 10
+    env:
+      CANARY_DIAGNOSTIC_SUFFIX: ${{ inputs.diagnose_canary_suffix }}
+      CANARY_RECOVERY_SUFFIX: ${{ inputs.stale_canary_suffix }}
+      CANARY_DIAGNOSTIC_CLEANUP_ONLY: ${{ inputs.cleanup_only && 'true' || 'false' }}
+      CANARY_DIAGNOSTIC_RAW_PATH: reports/managed-dedicated-provision-diagnostic.raw.json
+      CANARY_DIAGNOSTIC_EVIDENCE_PATH: reports/managed-dedicated-provision-diagnostic.json
+    steps:
+      - name: Checkout exact diagnostic source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
+      - name: Validate provision diagnostic contract
+        run: bun test packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.test.ts
+
+      - name: Query exact failed canary read-only
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=20000
+        run: |
+          set -euo pipefail
+          raw_ready=false
+          cleanup_incomplete_raw() {
+            if [[ "$raw_ready" != true ]]; then
+              rm -f -- "$CANARY_DIAGNOSTIC_RAW_PATH"
+            fi
+          }
+          trap cleanup_incomplete_raw EXIT
+          if [[ ! "$CANARY_DIAGNOSTIC_SUFFIX" =~ ^r[1-9][0-9]{7,19}a[1-9][0-9]{0,3}$ ]]; then
+            echo "::error::Diagnostic suffix is invalid."
+            exit 1
+          fi
+          if [[ -n "$CANARY_RECOVERY_SUFFIX" || "$CANARY_DIAGNOSTIC_CLEANUP_ONLY" == true ]]; then
+            echo "::error::Read-only diagnosis and lifecycle mutation inputs are mutually exclusive."
+            exit 1
+          fi
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "::error::Staging DATABASE_URL is unavailable."
+            exit 1
+          fi
+
+          mkdir -p reports
+          umask 077
+          PSQL_DATABASE_URL="$(
+            bun packages/cloud/scripts/admin/libpq-connection-url.ts
+          )"
+          echo "::add-mask::$PSQL_DATABASE_URL"
+          psql "$PSQL_DATABASE_URL" \
+            --no-psqlrc \
+            --no-align \
+            --tuples-only \
+            --quiet \
+            --set ON_ERROR_STOP=1 \
+            --set suffix="$CANARY_DIAGNOSTIC_SUFFIX" \
+            > "$CANARY_DIAGNOSTIC_RAW_PATH" <<'SQL'
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout = '20s';
+          WITH target AS (
+            SELECT
+              id,
+              status,
+              execution_tier,
+              database_status,
+              error_message,
+              error_count,
+              updated_at,
+              sandbox_id IS NOT NULL AS sandbox_id_present,
+              node_id IS NOT NULL AS node_id_present,
+              container_name IS NOT NULL AS container_name_present,
+              headscale_ip IS NOT NULL AS headscale_ip_present,
+              replacement_cleanup_sandbox_id IS NOT NULL AS replacement_sandbox_id_present,
+              replacement_cleanup_node_id IS NOT NULL AS replacement_node_id_present,
+              replacement_cleanup_container_name IS NOT NULL AS replacement_container_name_present,
+              replacement_cleanup_attempt_id IS NOT NULL AS replacement_attempt_id_present,
+              replacement_cleanup_container_id IS NOT NULL AS replacement_container_id_present,
+              replacement_cleanup_vpn_node_id IS NOT NULL AS replacement_vpn_node_id_present
+            FROM agent_sandboxes
+            WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
+          ),
+          newest_provision_job AS (
+            SELECT
+              jobs.status,
+              jobs.error,
+              jobs.result ->> 'error' AS result_error,
+              jobs.attempts,
+              jobs.max_attempts,
+              jobs.retryable_requeues,
+              jobs.execution_interruptions,
+              jobs.result_storage,
+              jobs.error_storage,
+              jobs.scheduled_for,
+              jobs.started_at,
+              jobs.completed_at,
+              jobs.created_at,
+              jobs.updated_at
+            FROM jobs
+            INNER JOIN target ON target.id::text = jobs.agent_id
+            WHERE jobs.type = 'agent_provision'
+            ORDER BY jobs.created_at DESC, jobs.id DESC
+            LIMIT 1
+          )
+          SELECT json_build_object(
+            'targetCount', (SELECT count(*) FROM target),
+            'agent', (
+              SELECT json_build_object(
+                'status', status,
+                'executionTier', execution_tier,
+                'databaseStatus', database_status,
+                'errorMessage', error_message,
+                'errorCount', error_count,
+                'updatedAt', updated_at,
+                'locator', json_build_object(
+                  'sandboxIdPresent', sandbox_id_present,
+                  'nodeIdPresent', node_id_present,
+                  'containerNamePresent', container_name_present,
+                  'headscaleIpPresent', headscale_ip_present
+                ),
+                'replacementLocator', json_build_object(
+                  'sandboxIdPresent', replacement_sandbox_id_present,
+                  'nodeIdPresent', replacement_node_id_present,
+                  'containerNamePresent', replacement_container_name_present,
+                  'attemptIdPresent', replacement_attempt_id_present,
+                  'containerIdPresent', replacement_container_id_present,
+                  'vpnNodeIdPresent', replacement_vpn_node_id_present
+                )
+              )
+              FROM target
+              LIMIT 1
+            ),
+            'provisionJob', (
+              SELECT json_build_object(
+                'status', status,
+                'error', error,
+                'resultError', result_error,
+                'attempts', attempts,
+                'maxAttempts', max_attempts,
+                'retryableRequeues', retryable_requeues,
+                'executionInterruptions', execution_interruptions,
+                'resultStorage', result_storage,
+                'errorStorage', error_storage,
+                'scheduledFor', scheduled_for,
+                'startedAt', started_at,
+                'completedAt', completed_at,
+                'createdAt', created_at,
+                'updatedAt', updated_at
+              )
+              FROM newest_provision_job
+            )
+          );
+          COMMIT;
+          SQL
+          raw_ready=true
+
+      - name: Classify privacy-safe provision diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'rm -f -- "$CANARY_DIAGNOSTIC_RAW_PATH"' EXIT
+          bun run packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.ts \
+            "$CANARY_DIAGNOSTIC_SUFFIX" \
+            "$CANARY_DIAGNOSTIC_RAW_PATH" \
+            "$CANARY_DIAGNOSTIC_EVIDENCE_PATH"
+
+      - name: Summarize replacement cleanup reconciliation eligibility
+        id: cleanup_reconciliation
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=20000
+        run: |
+          set -euo pipefail
+          PSQL_DATABASE_URL="$(bun packages/cloud/scripts/admin/libpq-connection-url.ts)"
+          echo "::add-mask::$PSQL_DATABASE_URL"
+          summary="$({
+            psql "$PSQL_DATABASE_URL" \
+              --no-psqlrc \
+              --no-align \
+              --tuples-only \
+              --quiet \
+              --set ON_ERROR_STOP=1 \
+              --set suffix="$CANARY_DIAGNOSTIC_SUFFIX" <<'SQL'
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout = '20s';
+          WITH target AS (
+            SELECT
+              id,
+              organization_id,
+              headscale_ip,
+              replacement_cleanup_created_at,
+              replacement_cleanup_sandbox_id IS NOT NULL AS cleanup_fence_present,
+              deletion_attempt_id IS NOT NULL AS deletion_attempt_present,
+              lifecycle_job_id IS NOT NULL AS lifecycle_job_present,
+              lifecycle_execution_generation IS NOT NULL AS lifecycle_generation_present,
+              (
+                COALESCE(
+                  replacement_cleanup_container_id,
+                  activation_container_id,
+                  CASE WHEN sandbox_id ~ '^[0-9a-f]{12,64}$' THEN sandbox_id END,
+                  replacement_cleanup_container_name,
+                  container_name
+                ) IS NOT NULL
+                AND COALESCE(replacement_cleanup_node_id, activation_node_id, node_id) IS NOT NULL
+              ) AS inspectable_candidate_present
+            FROM agent_sandboxes
+            WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
+          ),
+          latest_provision AS (
+            SELECT
+              jobs.id,
+              jobs.execution_generation IS NOT NULL AS execution_generation_present,
+              jobs.execution_quiesced_at IS NOT NULL AS execution_quiesced_present,
+              EXISTS (
+                SELECT 1
+                FROM job_execution_leases
+                WHERE job_execution_leases.job_id = jobs.id
+                  AND job_execution_leases.execution_generation = jobs.execution_generation
+                  AND job_execution_leases.expires_at > NOW()
+              ) AS live_execution_lease_present
+            FROM jobs
+            INNER JOIN target ON target.id::text = jobs.agent_id
+            WHERE jobs.type = 'agent_provision'
+            ORDER BY jobs.created_at DESC, jobs.id DESC
+            LIMIT 1
+          ),
+          eligible AS (
+            SELECT candidate.replacement_cleanup_created_at
+            FROM agent_sandboxes AS candidate
+            WHERE candidate.replacement_cleanup_sandbox_id IS NOT NULL
+              AND candidate.execution_tier IN ('dedicated', 'dedicated-always')
+              AND (
+                candidate.replacement_cleanup_attempt_id IS NULL
+                OR candidate.replacement_cleanup_created_at <= NOW() - INTERVAL '30 minutes'
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM jobs
+                WHERE jobs.organization_id = candidate.organization_id
+                  AND jobs.agent_id = candidate.id::text
+                  AND jobs.status IN ('pending', 'in_progress')
+                  AND jobs.type IN (
+                    'agent_provision',
+                    'agent_delete',
+                    'agent_suspend',
+                    'agent_resume',
+                    'agent_restart',
+                    'agent_upgrade',
+                    'agent_admin_canary_image',
+                    'agent_downgrade',
+                    'agent_sleep',
+                    'agent_wake'
+                  )
+              )
+          ),
+          facts AS (
+            SELECT
+              target.replacement_cleanup_created_at,
+              target.headscale_ip,
+              target.cleanup_fence_present,
+              target.deletion_attempt_present,
+              target.lifecycle_job_present,
+              target.lifecycle_generation_present,
+              target.inspectable_candidate_present,
+              target.replacement_cleanup_created_at <= NOW() - INTERVAL '30 minutes'
+                AS grace_elapsed,
+              (
+                SELECT count(*)
+                FROM jobs
+                WHERE jobs.organization_id = target.organization_id
+                  AND jobs.agent_id = target.id::text
+                  AND jobs.status IN ('pending', 'in_progress')
+                  AND jobs.type IN (
+                    'agent_provision',
+                    'agent_delete',
+                    'agent_suspend',
+                    'agent_resume',
+                    'agent_restart',
+                    'agent_upgrade',
+                    'agent_admin_canary_image',
+                    'agent_downgrade',
+                    'agent_sleep',
+                    'agent_wake'
+                  )
+              )::integer AS active_exclusive_jobs,
+              (
+                SELECT count(*)
+                FROM eligible
+                WHERE eligible.replacement_cleanup_created_at <
+                  target.replacement_cleanup_created_at
+              )::integer AS older_eligible_fences,
+              (SELECT count(*) FROM eligible)::integer AS total_eligible_fences
+            FROM target
+          )
+          SELECT json_build_object(
+            'targetCount', (SELECT count(*) FROM target),
+            'agentId', (SELECT id FROM target),
+            'headscaleIp', (SELECT headscale_ip FROM facts),
+            'cleanupFencePresent', COALESCE((SELECT cleanup_fence_present FROM facts), false),
+            'deletionAttemptPresent', COALESCE((SELECT deletion_attempt_present FROM facts), false),
+            'lifecycleJobPresent', COALESCE((SELECT lifecycle_job_present FROM facts), false),
+            'lifecycleGenerationPresent', COALESCE((SELECT lifecycle_generation_present FROM facts), false),
+            'provisionExecutionGenerationPresent', COALESCE((SELECT execution_generation_present FROM latest_provision), false),
+            'provisionExecutionQuiescedPresent', COALESCE((SELECT execution_quiesced_present FROM latest_provision), false),
+            'provisionLiveExecutionLeasePresent', COALESCE((SELECT live_execution_lease_present FROM latest_provision), false),
+            'inspectableCandidatePresent', COALESCE((SELECT inspectable_candidate_present FROM facts), false),
+            'cleanupCreatedAt', (SELECT replacement_cleanup_created_at FROM facts),
+            'graceElapsed', COALESCE((SELECT grace_elapsed FROM facts), false),
+            'activeExclusiveJobs', COALESCE((SELECT active_exclusive_jobs FROM facts), 0),
+            'olderEligibleFences', COALESCE((SELECT older_eligible_fences FROM facts), 0),
+            'totalEligibleFences', COALESCE((SELECT total_eligible_fences FROM facts), 0)
+          );
+          COMMIT;
+          SQL
+          } | sed '/^[[:space:]]*$/d' | head -n 1)"
+          jq -e '
+            keys == ["activeExclusiveJobs", "agentId", "cleanupCreatedAt", "cleanupFencePresent", "deletionAttemptPresent", "graceElapsed", "headscaleIp", "inspectableCandidatePresent", "lifecycleGenerationPresent", "lifecycleJobPresent", "olderEligibleFences", "provisionExecutionGenerationPresent", "provisionExecutionQuiescedPresent", "provisionLiveExecutionLeasePresent", "targetCount", "totalEligibleFences"] and
+            .targetCount == 1 and
+            (.agentId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")) and
+            (.cleanupFencePresent | type == "boolean") and
+            (
+              (
+                .cleanupFencePresent and
+                (.cleanupCreatedAt | type == "string") and
+                (.cleanupCreatedAt | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?(?:Z|[+-][0-9]{2}:[0-9]{2})$"))
+              ) or
+              ((.cleanupFencePresent | not) and .cleanupCreatedAt == null)
+            ) and
+            (.graceElapsed | type == "boolean") and
+            (.inspectableCandidatePresent | type == "boolean") and
+            (.deletionAttemptPresent | type == "boolean") and
+            (.lifecycleJobPresent | type == "boolean") and
+            (.lifecycleGenerationPresent | type == "boolean") and
+            (.provisionExecutionGenerationPresent | type == "boolean") and
+            (.provisionExecutionQuiescedPresent | type == "boolean") and
+            (.provisionLiveExecutionLeasePresent | type == "boolean") and
+            (.activeExclusiveJobs | type == "number") and
+            (.headscaleIp == null or (.headscaleIp | test("^100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.([0-9]{1,3})\\.([0-9]{1,3})$"))) and
+            (.olderEligibleFences | type == "number") and
+            (.totalEligibleFences | type == "number")
+          ' <<<"$summary" >/dev/null
+          agent_id="$(jq -r '.agentId' <<<"$summary")"
+          echo "::add-mask::$agent_id"
+          echo "agent_id=$agent_id" >> "$GITHUB_OUTPUT"
+          unset agent_id
+          headscale_ip="$(jq -r '.headscaleIp // ""' <<<"$summary")"
+          if [ -n "$headscale_ip" ]; then
+            echo "::add-mask::$headscale_ip"
+          fi
+          echo "headscale_ip=$headscale_ip" >> "$GITHUB_OUTPUT"
+          unset headscale_ip
+          echo "fence_present=$(jq -r '.cleanupFencePresent' <<<"$summary")" >> "$GITHUB_OUTPUT"
+          echo "inspectable_candidate_present=$(jq -r '.inspectableCandidatePresent' <<<"$summary")" >> "$GITHUB_OUTPUT"
+          echo "### Replacement cleanup reconciliation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '
+            "- cleanup fence present: `" + (.cleanupFencePresent | tostring) + "`\n" +
+            "- cleanup fence created: `" + (.cleanupCreatedAt // "none") + "`\n" +
+            "- inspectable candidate present: `" + (.inspectableCandidatePresent | tostring) + "`\n" +
+            "- deletion attempt present: `" + (.deletionAttemptPresent | tostring) + "`\n" +
+            "- lifecycle job present: `" + (.lifecycleJobPresent | tostring) + "`\n" +
+            "- lifecycle generation present: `" + (.lifecycleGenerationPresent | tostring) + "`\n" +
+            "- provision execution generation present: `" + (.provisionExecutionGenerationPresent | tostring) + "`\n" +
+            "- provision execution quiesced: `" + (.provisionExecutionQuiescedPresent | tostring) + "`\n" +
+            "- provision live execution lease: `" + (.provisionLiveExecutionLeasePresent | tostring) + "`\n" +
+            "- grace elapsed: `" + (.graceElapsed | tostring) + "`\n" +
+            "- active exclusive jobs: `" + (.activeExclusiveJobs | tostring) + "`\n" +
+            "- older eligible fences: `" + (.olderEligibleFences | tostring) + "`\n" +
+            "- total eligible fences: `" + (.totalEligibleFences | tostring) + "`"
+          ' <<<"$summary" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Inspect control-plane route to exact canary peer
+        if: steps.cleanup_reconciliation.outputs.headscale_ip != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          CANARY_HEADSCALE_IP: ${{ steps.cleanup_reconciliation.outputs.headscale_ip }}
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          envs: CANARY_HEADSCALE_IP
+          script: |
+            set -euo pipefail
+            [[ "$CANARY_HEADSCALE_IP" =~ ^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || exit 1
+            status_json="$(sudo tailscale status --json 2>/dev/null || true)"
+            backend="$(jq -r '.BackendState // "unknown"' <<<"$status_json" 2>/dev/null || echo unknown)"
+            self_ip=false
+            peer_present=false
+            peer_online=false
+            if jq -e '.Self.TailscaleIPs | type == "array" and length > 0' <<<"$status_json" >/dev/null 2>&1; then
+              self_ip=true
+            fi
+            if jq -e --arg ip "$CANARY_HEADSCALE_IP" '[.Peer[]? | select((.TailscaleIPs // []) | index($ip))] | length == 1' <<<"$status_json" >/dev/null 2>&1; then
+              peer_present=true
+            fi
+            if jq -e --arg ip "$CANARY_HEADSCALE_IP" '[.Peer[]? | select(((.TailscaleIPs // []) | index($ip)) and .Online == true)] | length == 1' <<<"$status_json" >/dev/null 2>&1; then
+              peer_online=true
+            fi
+            route_device="$(ip route get "$CANARY_HEADSCALE_IP" 2>/dev/null | awk '{ for (i = 1; i <= NF; i += 1) if ($i == "dev") { print $(i + 1); exit } }')"
+            route_tailnet=false
+            [ "$route_device" = tailscale0 ] && route_tailnet=true
+            ping_reachable=false
+            if timeout --signal=TERM --kill-after=2s 12s sudo tailscale ping --timeout=5s --c=1 "$CANARY_HEADSCALE_IP" >/dev/null 2>&1; then
+              ping_reachable=true
+            fi
+            health_reachable=false
+            health_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --connect-timeout 5 --max-time 10 "http://$CANARY_HEADSCALE_IP:2138/api/health" 2>/dev/null || true)"
+            case "$health_status" in
+              200|301|302|401) health_reachable=true ;;
+            esac
+            case "$backend" in
+              Running|Starting|Stopped|NeedsLogin|NeedsMachineAuth|NoState) ;;
+              *) backend=unknown ;;
+            esac
+            echo "control_plane_tailnet_backend=$backend"
+            echo "control_plane_tailnet_self_ip=$self_ip"
+            echo "control_plane_canary_peer_present=$peer_present"
+            echo "control_plane_canary_peer_online=$peer_online"
+            echo "control_plane_canary_route_tailscale0=$route_tailnet"
+            echo "control_plane_canary_ping_reachable=$ping_reachable"
+            echo "control_plane_canary_health_reachable=$health_reachable"
+            unset status_json backend self_ip peer_present peer_online route_device route_tailnet \
+              ping_reachable health_status health_reachable CANARY_HEADSCALE_IP
+
+      - name: Classify control-plane replacement cleanup failure
+        if: steps.cleanup_reconciliation.outputs.fence_present == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            block="$(
+              sudo journalctl \
+                -u eliza-provisioning-worker.service \
+                --since '5 minutes ago' \
+                -o cat \
+                --no-pager 2>/dev/null \
+                | awk '
+                    index($0, "[agent-sandbox] Replacement cleanup remains pending") {
+                      captured = $0
+                      remaining = 12
+                      next
+                    }
+                    remaining > 0 {
+                      captured = captured ORS $0
+                      remaining -= 1
+                    }
+                    END { print captured }
+                  ' \
+                || true
+            )"
+            lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
+            case "$lower" in
+              '') category='missing' ;;
+              *'permission denied'*|*'publickey'*|*'authentication methods failed'*) category='ssh_auth' ;;
+              *'timed out'*|*'timeout'*) category='ssh_timeout' ;;
+              *'connection refused'*|*'econnrefused'*) category='ssh_refused' ;;
+              *'could not resolve'*|*'enotfound'*|*'getaddrinfo'*) category='ssh_dns' ;;
+              *'connection reset'*|*'econnreset'*) category='ssh_reset' ;;
+              *'command exited with code'*) category='ssh_command_exit' ;;
+              *'connection error for'*) category='ssh_connect_error' ;;
+              *'stream error'*) category='ssh_stream_error' ;;
+              *'replacement secret cleanup receipt was missing or malformed'*) category='secret_receipt_invalid' ;;
+              *'replacement cleanup state receipt was malformed'*) category='state_receipt_invalid' ;;
+              *'replacement candidate observation receipt was missing or malformed'*) category='candidate_observation_receipt_invalid' ;;
+              *'replacement candidate proof conflicts'*) category='candidate_proof_conflict' ;;
+              *'replacement candidate proof id mismatch'*) category='candidate_proof_id_mismatch' ;;
+              *'exact replacement attempt label mismatch'*) category='exact_attempt_label_mismatch' ;;
+              *'replacement attempt label mismatch'*) category='attempt_label_mismatch' ;;
+              *'replacement container id mismatch'*) category='container_id_mismatch' ;;
+              *'cannot verify replacement identity'*'expected one inspect record'*) category='inspect_record_count' ;;
+              *'cannot verify replacement identity'*'malformed inspect record'*) category='inspect_record_malformed' ;;
+              *'cannot verify replacement identity'*'invalid docker id'*) category='inspect_docker_id_invalid' ;;
+              *'cannot prove id-less replacement'*'interrupted docker create may still materialize'*) category='docker_create_unresolved' ;;
+              *'exact replacement cleanup ssh authority is unavailable'*) category='cleanup_ssh_authority_unavailable' ;;
+              *'exact replacement cleanup node authority is incomplete'*) category='node_authority_invalid' ;;
+              *'exact replacement cleanup node record is no longer registered'*) category='node_authority_missing' ;;
+              *'exact replacement cleanup node authority changed'*) category='node_authority_drift' ;;
+              *"node "*" is not registered"*) category='node_not_registered' ;;
+              *'exact replacement vpn cleanup requires a durable headscale node id'*) category='vpn_node_id_unresolved' ;;
+              *'cannot clean invalid headscale node id'*) category='vpn_node_id_invalid' ;;
+              *"cannot prove headscale node "*" absent after cleanup"*) category='vpn_absence_unproven' ;;
+              *'vpn registration window remains open'*) category='vpn_registration_window_open' ;;
+              *'cannot recover vpn identity'*'without a node name'*) category='vpn_node_name_missing' ;;
+              *'cannot recover vpn identity'*'without a registration start time'*) category='vpn_registration_start_missing' ;;
+              *'cannot recover vpn identity'*'invalid registration start time'*) category='vpn_registration_start_invalid' ;;
+              *'cannot recover vpn identity'*'registration count exceeds the cleanup bound'*) category='vpn_registration_count_exceeded' ;;
+              *'cannot recover vpn identity'*'matching registrations'*) category='vpn_multiple_registrations' ;;
+              *'cannot recover vpn identity'*) category='vpn_identity_invalid' ;;
+              *"headscale api "*" failed: 401"*|*"headscale api "*" failed: 403"*) category='headscale_api_auth' ;;
+              *"headscale api "*" failed:"*) category='headscale_api_failure' ;;
+              *'cannot prove'*'absent'*) category='absence_unproven' ;;
+              *'sandbox provider cannot prove a persisted replacement absent'*) category='provider_contract_missing' ;;
+              *) category='unclassified' ;;
+            esac
+            signals=''
+            for signal in \
+              replacement_cleanup_unresolved replacement docker_sandbox docker_ssh secret receipt \
+              inspect identity attempt container headscale vpn node authority mismatch \
+              missing malformed unavailable invalid not_registered cannot_prove failed \
+              without registration matching exceeds bound \
+              exit succeeded disappeared release allocation; do
+              case "$signal:$lower" in
+                replacement_cleanup_unresolved:*'replacement cleanup is unresolved'*) matched=true ;;
+                docker_sandbox:*'docker-sandbox'*) matched=true ;;
+                docker_ssh:*'docker-ssh'*) matched=true ;;
+                not_registered:*'not registered'*) matched=true ;;
+                cannot_prove:*'cannot prove'*) matched=true ;;
+                *:*"${signal//_/-}"*) matched=true ;;
+                *) matched=false ;;
+              esac
+              if [ "$matched" = true ]; then
+                signals="${signals:+$signals,}$signal"
+              fi
+            done
+            unset block lower
+            echo "replacement_cleanup_failure_category=$category"
+            echo "replacement_cleanup_failure_signals=${signals:-none}"
+
+      - name: Classify private mesh observation failure
+        if: steps.cleanup_reconciliation.outputs.agent_id != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          CANARY_AGENT_ID: ${{ steps.cleanup_reconciliation.outputs.agent_id }}
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          envs: CANARY_AGENT_ID
+          script: |
+            set -euo pipefail
+            [[ "$CANARY_AGENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
+            block="$(
+              sudo journalctl \
+                -u eliza-provisioning-worker.service \
+                --since '4 hours ago' \
+                -o cat \
+                --no-pager 2>/dev/null \
+                | grep -F -B 12 -A 12 "$CANARY_AGENT_ID" \
+                | tail -n 1200 \
+                || true
+            )"
+            lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
+            observation="$(
+              printf '%s\n' "$lower" \
+                | sed -n 's/^.*docker candidate mesh observation before cleanup: //p' \
+                | tail -n 1
+            )"
+            case "$observation" in
+              *'authkey_rejected=true'*|*'interactive=true'*) category='mesh_auth_required' ;;
+              *'container=exited'*|*'container=dead'*) category='candidate_container_exited' ;;
+              *'socket=false'*'daemon=false'*) category='tailscale_daemon_unavailable' ;;
+              *'socket=false'*) category='tailscale_socket_missing' ;;
+              *'daemon=false'*) category='tailscale_daemon_missing' ;;
+              *'route=false'*) category='container_default_route_missing' ;;
+              *'tun=false'*) category='container_tun_missing' ;;
+              *'control=false'*) category='headscale_control_unreachable' ;;
+              *'dns_failed=true'*) category='headscale_dns_failure' ;;
+              *'tls_failed=true'*) category='headscale_tls_failure' ;;
+              *'control_transport_failed=true'*) category='headscale_control_transport_failure' ;;
+              *'control_key=false'*) category='headscale_control_key_not_fetched' ;;
+              *'login_started=false'*) category='tailscale_login_not_started' ;;
+              *'register_request=false'*) category='tailscale_register_request_not_sent' ;;
+              *'status=error'*) category='tailscale_status_unavailable' ;;
+              *'backend=needslogin'*) category='tailscale_needs_login' ;;
+              *'backend=needsmachineauth'*) category='tailscale_needs_machine_auth' ;;
+              *'backend=starting'*) category='tailscale_starting_without_ip' ;;
+              *'backend=stopped'*) category='tailscale_stopped' ;;
+              *'backend=running'*'ip=false'*) category='tailscale_running_without_ip' ;;
+              *'ip=true'*) category='candidate_ip_observed' ;;
+              '')
+                case "$lower" in
+              *'docker candidate cannot complete required headscale registration: auth_required'*) category='mesh_auth_required' ;;
+              *'docker candidate cannot complete required headscale registration: container_exited'*) category='candidate_container_exited' ;;
+              *'headscale registration does not match the exact docker candidate'*) category='candidate_identity_mismatch' ;;
+              *'auth error polling vpn'*) category='headscale_api_auth' ;;
+              *'headscale api '*' failed:'*) category='headscale_api_failure' ;;
+              *'headscale registration did not reach an exact observable completion'*) category='registration_unresolved' ;;
+              *'headscale rename completion'*) category='rename_unresolved' ;;
+              *'vpn registration failed'*) category='registration_failed' ;;
+              *'vpn registration timeout'*) category='registration_timeout' ;;
+              *' registered on vpn:'*) category='registration_observed' ;;
+              '') category='missing' ;;
+              *) category='unclassified' ;;
+                esac
+                ;;
+              *) category='observation_unclassified' ;;
+            esac
+            signals=''
+            for signal in \
+              auth_required container_exited identity_mismatch api_auth api_failure \
+              registration_failed registration_timeout registration_observed \
+              rename_unresolved exact_completion_unresolved; do
+              case "$signal:$lower" in
+                auth_required:*'required headscale registration: auth_required'*) matched=true ;;
+                container_exited:*'required headscale registration: container_exited'*) matched=true ;;
+                identity_mismatch:*'headscale registration does not match the exact docker candidate'*) matched=true ;;
+                api_auth:*'auth error polling vpn'*) matched=true ;;
+                api_failure:*'headscale api '*' failed:'*) matched=true ;;
+                registration_failed:*'vpn registration failed'*) matched=true ;;
+                registration_timeout:*'vpn registration timeout'*) matched=true ;;
+                registration_observed:*' registered on vpn:'*) matched=true ;;
+                rename_unresolved:*'headscale rename completion'*) matched=true ;;
+                exact_completion_unresolved:*'headscale registration did not reach an exact observable completion'*) matched=true ;;
+                *) matched=false ;;
+              esac
+              if [ "$matched" = true ]; then
+                signals="${signals:+$signals,}$signal"
+              fi
+            done
+            observation_present=false
+            [ -n "$observation" ] && observation_present=true
+            unset block lower
+            echo "private_mesh_failure_category=$category"
+            echo "private_mesh_failure_signals=${signals:-none}"
+            echo "private_mesh_observation_present=$observation_present"
+            if [ "$observation_present" = true ]; then
+              for field in container socket daemon status backend authorized authurl ip route tun control \
+                control_key login_started register_request control_transport_failed tls_failed dns_failed \
+                authkey_rejected interactive up_failed agent_started; do
+                value="$(printf '%s' "$observation" | tr ',' '\n' | sed -n "s/^${field}=//p" | tail -n 1)"
+                case "$field:$value" in
+                  container:running|container:paused|container:restarting|container:removing|container:exited|container:dead|container:created|container:unknown) ;;
+                  status:success|status:error) ;;
+                  backend:running|backend:starting|backend:stopped|backend:needslogin|backend:needsmachineauth|backend:nostate|backend:unknown) ;;
+                  authorized:true|authorized:false|authorized:unknown) ;;
+                  socket:true|socket:false|daemon:true|daemon:false|authurl:true|authurl:false|ip:true|ip:false|route:true|route:false|tun:true|tun:false|control:true|control:false|control_key:true|control_key:false|login_started:true|login_started:false|register_request:true|register_request:false|control_transport_failed:true|control_transport_failed:false|tls_failed:true|tls_failed:false|dns_failed:true|dns_failed:false|authkey_rejected:true|authkey_rejected:false|interactive:true|interactive:false|up_failed:true|up_failed:false|agent_started:true|agent_started:false) ;;
+                  *) value='unknown' ;;
+                esac
+                echo "private_mesh_observation_${field}=$value"
+              done
+            fi
+            unset observation observation_present CANARY_AGENT_ID
+
+      - name: Inspect exact private mesh candidate
+        if: steps.cleanup_reconciliation.outputs.fence_present == 'true' || steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          envs: CANARY_DIAGNOSTIC_SUFFIX
+          script: |
+            set -euo pipefail
+            set +e
+            raw="$(
+              timeout --signal=TERM --kill-after=5s 75s sudo systemd-run \
+                --quiet \
+                --wait \
+                --pipe \
+                --collect \
+                --uid=deploy \
+                --gid=deploy \
+                --property=EnvironmentFile=/opt/eliza/cloud/.env.local \
+                --property=WorkingDirectory=/opt/eliza \
+                --property=Environment=PATH=/home/deploy/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin \
+                /usr/bin/env bun --conditions=eliza-source \
+                packages/cloud/scripts/admin/managed-dedicated-mesh-state-diagnostic.ts \
+                "$CANARY_DIAGNOSTIC_SUFFIX" 2>&1
+            )"
+            probe_status=$?
+            set -e
+            diagnostic="$(printf '%s\n' "$raw" | sed -n 's/^MESH_DIAGNOSTIC=//p' | tail -n 1)"
+            unset raw
+            if [ -z "$diagnostic" ]; then
+              echo "::error::Exact private mesh diagnostic produced no closed artifact (status $probe_status)."
+              exit 1
+            fi
+            unset probe_status
+            jq -e '
+              keys == ["container", "logs", "schemaVersion", "tailscale", "targetCount"] and
+              .schemaVersion == 1 and
+              .targetCount == 1 and
+              (.container | keys == ["exitCode", "inspect", "status"]) and
+              (.container.inspect == "success" or .container.inspect == "error") and
+              (.container.status | IN("created", "running", "paused", "restarting", "removing", "exited", "dead", "unknown")) and
+              (.container.exitCode == null or (.container.exitCode | type == "number")) and
+              (.tailscale | keys == ["authUrlPresent", "backendState", "daemonPresent", "ipPresent", "machineAuthorized", "query", "socketPresent"]) and
+              (.tailscale.query == "success" or .tailscale.query == "error") and
+              (.tailscale.backendState == null or (.tailscale.backendState | IN("NeedsLogin", "NeedsMachineAuth", "NoState", "Running", "Starting", "Stopped"))) and
+              (.tailscale.machineAuthorized == null or (.tailscale.machineAuthorized | type == "boolean")) and
+              ([.tailscale.authUrlPresent, .tailscale.daemonPresent, .tailscale.ipPresent, .tailscale.socketPresent] | all(type == "boolean")) and
+              (.logs | keys == ["agentStarted", "authKeyRejected", "interactiveAuthRequired", "tailscaleUpFailed"]) and
+              ([.logs.agentStarted, .logs.authKeyRejected, .logs.interactiveAuthRequired, .logs.tailscaleUpFailed] | all(type == "boolean"))
+            ' <<<"$diagnostic" >/dev/null
+            jq -r '
+              "private_mesh_container_status=" + .container.status,
+              "private_mesh_container_exit_code=" + ((.container.exitCode // "none") | tostring),
+              "private_mesh_tailscale_query=" + .tailscale.query,
+              "private_mesh_tailscale_backend=" + (.tailscale.backendState // "unknown"),
+              "private_mesh_tailscale_machine_authorized=" + ((.tailscale.machineAuthorized // "unknown") | tostring),
+              "private_mesh_tailscale_auth_url=" + (.tailscale.authUrlPresent | tostring),
+              "private_mesh_tailscale_socket=" + (.tailscale.socketPresent | tostring),
+              "private_mesh_tailscale_daemon=" + (.tailscale.daemonPresent | tostring),
+              "private_mesh_tailscale_ip=" + (.tailscale.ipPresent | tostring),
+              "private_mesh_log_auth_key_rejected=" + (.logs.authKeyRejected | tostring),
+              "private_mesh_log_interactive_auth=" + (.logs.interactiveAuthRequired | tostring),
+              "private_mesh_log_tailscale_up_failed=" + (.logs.tailscaleUpFailed | tostring),
+              "private_mesh_log_agent_started=" + (.logs.agentStarted | tostring)
+            ' <<<"$diagnostic"
+            unset diagnostic
+
+      - name: Classify exact Headscale registration exchange
+        if: steps.cleanup_reconciliation.outputs.agent_id != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          CANARY_AGENT_ID: ${{ steps.cleanup_reconciliation.outputs.agent_id }}
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          envs: CANARY_AGENT_ID
+          script: |
+            set -euo pipefail
+            [[ "$CANARY_AGENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
+            block="$(
+              sudo journalctl \
+                -u headscale.service \
+                --since '4 hours ago' \
+                -o cat \
+                --no-pager 2>/dev/null \
+                | grep -F -B 12 -A 12 "$CANARY_AGENT_ID" \
+                | tail -n 1200 \
+                || true
+            )"
+            lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
+            request_seen=false
+            preauth_registration=false
+            invalid_key=false
+            expired_key=false
+            used_key=false
+            ownership_error=false
+            timed_out=false
+            tag_rejected=false
+            [ -n "$lower" ] && request_seen=true
+            case "$lower" in *'registering node with pre-auth key'*) preauth_registration=true ;; esac
+            case "$lower" in *'invalid authkey'*|*'invalid auth key'*|*'invalid pre auth key'*) invalid_key=true ;; esac
+            case "$lower" in *'authkey expired'*|*'auth key expired'*) expired_key=true ;; esac
+            case "$lower" in *'authkey already used'*|*'auth key already used'*) used_key=true ;; esac
+            case "$lower" in *'different machine key'*|*'ownership'*) ownership_error=true ;; esac
+            case "$lower" in *'registration timed out'*) timed_out=true ;; esac
+            case "$lower" in *'requested tags invalid or not permitted'*|*'advertise-tags'*'invalid'*) tag_rejected=true ;; esac
+            if [ "$invalid_key" = true ]; then
+              category='invalid_key'
+            elif [ "$expired_key" = true ]; then
+              category='expired_key'
+            elif [ "$used_key" = true ]; then
+              category='used_key'
+            elif [ "$ownership_error" = true ]; then
+              category='ownership_error'
+            elif [ "$timed_out" = true ]; then
+              category='registration_timed_out'
+            elif [ "$tag_rejected" = true ]; then
+              category='tag_rejected'
+            elif [ "$preauth_registration" = true ]; then
+              category='preauth_registration_seen'
+            elif [ "$request_seen" = true ]; then
+              category='agent_log_seen_without_preauth_registration'
+            else
+              category='no_exact_registration_log'
+            fi
+            unset block lower CANARY_AGENT_ID
+            echo "headscale_registration_category=$category"
+            echo "headscale_registration_request_seen=$request_seen"
+            echo "headscale_preauth_registration_seen=$preauth_registration"
+            echo "headscale_invalid_key_seen=$invalid_key"
+            echo "headscale_expired_key_seen=$expired_key"
+            echo "headscale_used_key_seen=$used_key"
+            echo "headscale_ownership_error_seen=$ownership_error"
+            echo "headscale_registration_timeout_seen=$timed_out"
+            echo "headscale_tag_rejection_seen=$tag_rejected"
+
+      - name: Summarize recent agent pre-auth key state
+        if: steps.cleanup_reconciliation.outputs.agent_id != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            raw="$(sudo headscale preauthkeys list --output json 2>/dev/null)"
+            summary="$(
+              jq -c '
+                def epoch:
+                  if type == "object" then (.seconds // 0 | tonumber)
+                  elif type == "string" then
+                    (sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601? // 0)
+                  else 0
+                  end;
+                [
+                  .[]
+                  | select((((.aclTags // .acl_tags // []) | index("tag:agent")) != null))
+                  | select(
+                      ((.createdAt // .created_at // null) | epoch) >= (now - 14400)
+                    )
+                ] as $keys
+                | {
+                    count: ($keys | length),
+                    used: ([$keys[] | select(.used == true)] | length),
+                    unused: ([$keys[] | select(.used != true)] | length),
+                    reusable: ([$keys[] | select(.reusable == true)] | length),
+                    expired: ([
+                      $keys[]
+                      | select(
+                          ((.expiration // null) | epoch) < now
+                        )
+                    ] | length)
+                  }
+              ' <<<"$raw"
+            )"
+            unset raw
+            jq -e '
+              keys == ["count", "expired", "reusable", "unused", "used"] and
+              ([.count, .expired, .reusable, .unused, .used] | all(type == "number")) and
+              .count >= 0 and .used >= 0 and .unused >= 0 and
+              .reusable >= 0 and .expired >= 0 and
+              .used + .unused == .count
+            ' <<<"$summary" >/dev/null
+            jq -r '
+              "headscale_recent_agent_key_count=" + (.count | tostring),
+              "headscale_recent_agent_key_used=" + (.used | tostring),
+              "headscale_recent_agent_key_unused=" + (.unused | tostring),
+              "headscale_recent_agent_key_reusable=" + (.reusable | tostring),
+              "headscale_recent_agent_key_expired=" + (.expired | tostring)
+            ' <<<"$summary"
+            unset summary
+
+      - name: Classify exact dedicated lifecycle journal
+        if: steps.cleanup_reconciliation.outputs.agent_id != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          CANARY_AGENT_ID: ${{ steps.cleanup_reconciliation.outputs.agent_id }}
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          envs: CANARY_AGENT_ID
+          script: |
+            set -euo pipefail
+            [[ "$CANARY_AGENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
+            block="$(
+              sudo journalctl \
+                -u eliza-provisioning-worker.service \
+                --since '4 hours ago' \
+                -o cat \
+                --no-pager 2>/dev/null \
+                | grep -F -B 12 -A 12 "$CANARY_AGENT_ID" \
+                | tail -n 1200 \
+                || true
+            )"
+            lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
+            signals=''
+            for signal in \
+              provision_completed heartbeat_grace heartbeat_disconnected \
+              terminal_database restart_enqueued disconnected_recovery \
+              delete_started delete_completed delete_failed credential_revocation; do
+              case "$signal:$lower" in
+                provision_completed:*'agent_provision completed'*) matched=true ;;
+                heartbeat_grace:*'heartbeat miss within grace window'*) matched=true ;;
+                heartbeat_disconnected:*'heartbeat failed past grace window, marking disconnected'*) matched=true ;;
+                terminal_database:*'terminal database liveness'*) matched=true ;;
+                restart_enqueued:*'enqueued restart for terminal database liveness failure'*) matched=true ;;
+                disconnected_recovery:*'disconnected recovery failed'*) matched=true ;;
+                delete_started:*'executing agent_delete'*|*'deleting agent'*) matched=true ;;
+                delete_completed:*'agent_delete completed'*) matched=true ;;
+                delete_failed:*'marked sandbox as deletion_failed'*|*'unknown agent_delete failure'*) matched=true ;;
+                credential_revocation:*'inference revocation'*|*'revokeforagent'*) matched=true ;;
+                *) matched=false ;;
+              esac
+              if [ "$matched" = true ]; then
+                signals="${signals:+$signals,}$signal"
+              fi
+            done
+            case "$lower" in
+              *'terminal database liveness'*) heartbeat_category='database_terminal' ;;
+              *'containerruntimefailurekind'*'oom_killed'*) heartbeat_category='container_oom_killed' ;;
+              *'containerruntimefailurekind'*'module_resolution'*) heartbeat_category='container_module_resolution' ;;
+              *'containerruntimefailurekind'*'heap_oom'*) heartbeat_category='container_heap_oom' ;;
+              *'containerruntimefailurekind'*'startup_failed'*) heartbeat_category='container_startup_failed' ;;
+              *'containerruntimefailurekind'*'terminal_database'*) heartbeat_category='container_database_terminal' ;;
+              *'containerruntimefailurekind'*'memory_watchdog_restart'*) heartbeat_category='container_memory_watchdog_restart' ;;
+              *'containerruntimefailurekind'*'port_conflict'*) heartbeat_category='container_port_conflict' ;;
+              *'containerruntimefailurekind'*'mesh_auth'*) heartbeat_category='container_mesh_auth' ;;
+              *'containerruntimefailurekind'*'restarting'*) heartbeat_category='container_restarting' ;;
+              *'containerruntimefailurekind'*'exited_nonzero'*) heartbeat_category='container_exited_nonzero' ;;
+              *'containerruntimefailurekind'*'exited_zero'*) heartbeat_category='container_exited_zero' ;;
+              *'containerruntimefailurekind'*'unhealthy'*) heartbeat_category='container_unhealthy' ;;
+              *'containerruntimefailurekind'*'starting'*) heartbeat_category='container_starting' ;;
+              *'containerruntimefailurekind'*'not_running'*) heartbeat_category='container_not_running' ;;
+              *'containerruntimefailurekind'*'inspect_unavailable'*) heartbeat_category='container_inspect_unavailable' ;;
+              *'reconcileoutcome'*'container-dead'*) heartbeat_category='container_dead' ;;
+              *'reconcileoutcome'*'ip-unresolvable'*) heartbeat_category='tailnet_ip_unresolvable' ;;
+              *'reconcileoutcome'*'unrepairable'*) heartbeat_category='tailnet_unrepairable' ;;
+              *'api/health returned '*) heartbeat_category='health_http_status' ;;
+              *'connection refused'*|*'econnrefused'*) heartbeat_category='connection_refused' ;;
+              *'no route to host'*|*'network is unreachable'*) heartbeat_category='tailnet_route_unreachable' ;;
+              *'timed out'*|*'timeout'*) heartbeat_category='timeout' ;;
+              *'fetch failed'*) heartbeat_category='fetch_transport' ;;
+              *) heartbeat_category='unclassified' ;;
+            esac
+            case "$lower" in
+              *'inference revocation boundary is unavailable'*) delete_category='inference_revocation_unavailable' ;;
+              *'inference revocation durable object binding is missing'*) delete_category='inference_revocation_binding_missing' ;;
+              *'refusing to delete without a current backup'*) delete_category='pre_delete_capture_refused' ;;
+              *'failed to delete sandbox'*) delete_category='sandbox_stop_failed' ;;
+              *'agent deletion ownership changed'*|*'agent row delete lost its lifecycle ownership'*) delete_category='database_ownership_lost' ;;
+              *'marked sandbox as deletion_failed'*) delete_category='permanent_failure_unclassified' ;;
+              *) delete_category='none' ;;
+            esac
+            unset block lower CANARY_AGENT_ID
+            echo "dedicated_lifecycle_signals=${signals:-none}"
+            echo "dedicated_heartbeat_failure_category=$heartbeat_category"
+            echo "dedicated_delete_failure_category=$delete_category"
+
+      - name: Upload privacy-safe provision diagnostic
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: managed-dedicated-provision-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/managed-dedicated-provision-diagnostic.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summarize classified provision result
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun -e '
+            import { readFileSync } from "node:fs";
+            const evidence = JSON.parse(
+              readFileSync(process.env.CANARY_DIAGNOSTIC_EVIDENCE_PATH, "utf8"),
+            );
+            const job = evidence.provisionJob;
+            console.log("### Managed dedicated provision diagnostic");
+            console.log("");
+            console.log("- exact target count: `" + evidence.targetCount + "`");
+            console.log("- sandbox status: `" + evidence.sandbox.status + "`");
+            console.log("- database status: `" + evidence.sandbox.databaseStatus + "`");
+            console.log("- sandbox error class: `" + evidence.sandbox.errorCode + "`");
+            console.log("- provision job status: `" + job.status + "`");
+            console.log("- provision job error class: `" + job.errorCode + "`");
+            console.log("- persisted result class: `" + job.resultErrorCode + "`");
+            console.log("- attempts: `" + job.attempts + "/" + job.maxAttempts + "`");
+            console.log("- retryable requeues: `" + job.retryableRequeues + "`");
+            console.log("- execution interruptions: `" + job.executionInterruptions + "`");
+            console.log("- replacement intent present: `" + evidence.sandbox.replacementLocator.attemptIdPresent + "`");
+            console.log("- replacement Docker id present: `" + evidence.sandbox.replacementLocator.containerIdPresent + "`");
+            console.log("- replacement VPN id present: `" + evidence.sandbox.replacementLocator.vpnNodeIdPresent + "`");
+          ' >> "$GITHUB_STEP_SUMMARY"
+
   shared-staging-onboarding:
     name: Shared staging onboarding
     needs: smoke
-    if: ${{ always() && !inputs.cleanup_only && (inputs.suite == 'all' || inputs.suite == 'cloud') }}
+    if: ${{ always() && inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && (inputs.suite == 'all' || inputs.suite == 'cloud') }}
     environment: staging
     runs-on: ubuntu-24.04
     timeout-minutes: 20

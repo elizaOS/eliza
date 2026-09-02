@@ -10,19 +10,18 @@ import { buildEnsureNetworkCmd } from "../docker-sandbox-utils";
 describe("buildEnsureNetworkCmd", () => {
   test("inspects first, creates only if missing", () => {
     const cmd = buildEnsureNetworkCmd("containers-isolated");
-    expect(cmd).toBe(
-      "docker network inspect 'containers-isolated' >/dev/null 2>&1 || " +
-        "docker network create --driver bridge 'containers-isolated' >/dev/null 2>&1 || " +
-        "docker network inspect 'containers-isolated' >/dev/null",
-    );
+    const firstInspect = cmd.indexOf("docker network inspect 'containers-isolated'");
+    const create = cmd.indexOf("docker network create --driver bridge 'containers-isolated'");
+    expect(firstInspect).toBeGreaterThan(-1);
+    expect(create).toBeGreaterThan(firstInspect);
   });
 
   test("re-inspects after create to survive a concurrent create race", () => {
     const cmd = buildEnsureNetworkCmd("net");
-    // inspect ... || create ... || inspect ...  → three clauses
-    expect(cmd.split("||").length).toBe(3);
-    expect(cmd.startsWith("docker network inspect")).toBe(true);
-    expect(cmd.trim().endsWith("docker network inspect 'net' >/dev/null")).toBe(true);
+    expect(cmd.match(/docker network inspect 'net'/g)).toHaveLength(2);
+    expect(
+      cmd.indexOf("docker network inspect 'net'", cmd.indexOf("docker network create")),
+    ).toBeGreaterThan(cmd.indexOf("docker network create"));
   });
 
   test("only ever creates a plain bridge network (no implicit subnet)", () => {
@@ -36,5 +35,12 @@ describe("buildEnsureNetworkCmd", () => {
     // single quote is closed/escaped/reopened, never left bare
     expect(cmd).toContain(`'a'"'"'b'`);
     expect(cmd).not.toContain(" a'b ");
+  });
+
+  test("emits only fixed diagnostics after the race-safe retry fails", () => {
+    const cmd = buildEnsureNetworkCmd("net");
+    expect(cmd).toContain("docker info >/dev/null 2>&1");
+    expect(cmd).toContain("[docker-network] daemon-unavailable");
+    expect(cmd).toContain("[docker-network] ensure-failed");
   });
 });

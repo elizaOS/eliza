@@ -1037,6 +1037,90 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("agent_provision retains the typed startup cause in the durable retry error", async () => {
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => true,
+      releaseProviderAdmission: async () => {},
+    });
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION), service);
+    const meshCause = new Error(
+      "Docker candidate cannot complete required Headscale registration: auth_required",
+    );
+    stub("provision", {
+      success: false,
+      retryable: true,
+      error: "Headscale routing is required, but no headscale_ip was registered",
+      failureCause: new Error("Replacement cleanup is unresolved", { cause: meshCause }),
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION, service);
+      expect(res).toMatchObject({ retried: 1, failed: 0 });
+      const durableError = String(ctx.retryLaterSpy.mock.calls[0]?.[1]);
+      expect(durableError).toContain("Replacement cleanup is unresolved");
+      expect(durableError).toContain(
+        "Docker candidate cannot complete required Headscale registration: auth_required",
+      );
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_provision cleanup-only retry preserves the first startup failure", async () => {
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => true,
+      releaseProviderAdmission: async () => {},
+    });
+    const ctx = harness(
+      makeJob(
+        JOB_TYPES.AGENT_PROVISION,
+        {},
+        {
+          result: {
+            cloudAgentId: AGENT,
+            status: "provisioning",
+            error:
+              "Sandbox health check timed out; replacement cleanup remains pending: first cleanup failure",
+          },
+          error:
+            "RetryableProvisionTransportError: first startup failure\ncaused by: Error: Docker candidate cannot complete required Headscale registration: auth_required",
+        },
+      ),
+      service,
+    );
+    stub("provision", {
+      success: false,
+      retryable: true,
+      error: "Replacement cleanup is still pending: second cleanup failure",
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION, service);
+      expect(res).toMatchObject({ retried: 1, failed: 0 });
+      const preserved =
+        "Sandbox health check timed out; replacement cleanup remains pending: second cleanup failure";
+      expect(ctx.updateSpy.mock.calls[0]?.[1]?.result).toMatchObject({ error: preserved });
+      const durableError = String(ctx.retryLaterSpy.mock.calls[0]?.[1]);
+      expect(durableError).toBe(
+        "RetryableProvisionTransportError: first startup failure\ncaused by: Error: Docker candidate cannot complete required Headscale registration: auth_required",
+      );
+      expect(durableError).not.toContain("second cleanup failure");
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("agent_provision retryable transport settles when the database bound is exhausted", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION, {}, { retryable_requeues: 5 }));
     ctx.retryLaterSpy.mockImplementation(async (retrySnapshot) => ({
