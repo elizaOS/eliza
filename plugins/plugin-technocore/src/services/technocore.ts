@@ -168,14 +168,15 @@ export class TechnocoreService extends Service {
 	}
 
 	public async postMessage(room: string, text: string): Promise<TechnocoreRoomResponse> {
+		const cleanRoom = cleanText(room).replaceAll("|", "");
 		const cleanedText = cleanText(text);
 		const nonce = this.getNonce();
-		const payload = `${room}|${nonce}|${cleanedText}`;
+		const payload = `${cleanRoom}|${nonce}|${cleanedText}`;
 		const sig = this.signPayload(payload);
 
 		return this.request<TechnocoreRoomResponse>(
 			"POST",
-			`/r/${room}`,
+			`/r/${cleanRoom}`,
 			undefined,
 			{
 				text: cleanedText,
@@ -207,14 +208,16 @@ export class TechnocoreService extends Service {
 		key: string,
 		value: string
 	): Promise<TechnocoreKVResponse> {
+		const cleanNs = cleanText(namespace).replaceAll("|", "");
+		const cleanKey = cleanText(key).replaceAll("|", "");
 		const cleanedValue = cleanText(value);
 		const nonce = this.getNonce();
-		const payload = `${namespace}|${key}|${nonce}|${cleanedValue}`;
+		const payload = `${cleanNs}|${cleanKey}|${nonce}|${cleanedValue}`;
 		const sig = this.signPayload(payload);
 
 		return this.request<TechnocoreKVResponse>(
 			"POST",
-			`/kv/${namespace}/${key}`,
+			`/kv/${cleanNs}/${cleanKey}`,
 			undefined,
 			{
 				value: cleanedValue,
