@@ -134,8 +134,12 @@ export default defineConfig({
 				// Directory subpath: the generic rules below map a subpath to a
 				// sibling `.ts` FILE, which misses barrel directories. Anchor it
 				// like steward-session-client above.
-				find: "@elizaos/shared/elizacloud",
+				find: /^@elizaos\/shared\/elizacloud$/,
 				replacement: path.join(sharedSrc, "elizacloud/index.ts"),
+			},
+			{
+				find: /^@elizaos\/shared\/contracts$/,
+				replacement: path.join(sharedSrc, "contracts/index.ts"),
 			},
 			{
 				find: /^@elizaos\/shared\/(.*)\.js$/,
