@@ -8,11 +8,14 @@
  * `onStatusChange("connected")` + `onReconnect()`, and an exhausted loop still
  * emitted `onStatusChange("disconnected")` + `onReconnectExhausted()`. Because
  * `CloudManager.disconnect()` calls `stop()` and nulls its proxy, those stale
- * callbacks fire a state-machine transition after teardown. These tests drive
- * the real `ConnectionMonitor` with a client whose `provision()` is a
- * test-controlled deferred, so `stop()` can be interleaved with the exact
- * await points inside the loop. Uses vitest fake timers; the client stub is the
- * only mock — the monitor under test is real.
+ * callbacks fire a state-machine transition after teardown. The earliest await
+ * is `tick()`'s own `client.heartbeat()`; a `stop()` there must also abandon
+ * the tick before it reaches `onDisconnect()`/`attemptReconnect()`, since the
+ * loop inherits its lifecycle token from that pre-heartbeat capture. These
+ * tests drive the real `ConnectionMonitor` with a client whose `heartbeat()`
+ * and `provision()` are test-controlled deferreds, so `stop()` can be
+ * interleaved with the exact await points. Uses vitest fake timers; the client
+ * stub is the only mock — the monitor under test is real.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectionMonitor } from "../src/cloud/reconnect";
@@ -42,6 +45,57 @@ describe("ConnectionMonitor.stop() cancels in-flight reconnect (#29941)", () => 
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("suppresses onDisconnect/onReconnect when stop() runs during the heartbeat await", async () => {
+    // The earliest await in a tick is `client.heartbeat()`. If stop() lands
+    // while a tick is parked there, the stale continuation must not fire
+    // onDisconnect() or enter attemptReconnect() after teardown — and even a
+    // successful provision() that follows must emit nothing. Before threading
+    // the lifecycle token from tick() (captured *before* the heartbeat await)
+    // into attemptReconnect(), the loop captured the already-incremented token
+    // as its own baseline, so this exact interleaving reconnected after stop().
+    const heartbeatGate = deferred<boolean>();
+    const client = {
+      heartbeat: vi.fn().mockReturnValue(heartbeatGate.promise),
+      provision: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ConstructorParameters<typeof ConnectionMonitor>[0];
+
+    const onDisconnect = vi.fn();
+    const onReconnect = vi.fn();
+    const statusChanges: string[] = [];
+    const monitor = new ConnectionMonitor(
+      client,
+      "agent-hb",
+      {
+        onDisconnect,
+        onReconnect,
+        onStatusChange: (s) => statusChanges.push(s),
+      },
+      HEARTBEAT_INTERVAL_MS,
+      1
+    );
+
+    monitor.start();
+    // Fire the interval so tick() runs and parks inside `await heartbeat()`.
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    expect((client.heartbeat as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
+    expect((client.provision as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+
+    // Tear down while the tick is still awaiting the heartbeat.
+    monitor.stop();
+    expect(monitor.isMonitoring()).toBe(false);
+
+    // The heartbeat now resolves "dead" *after* stop(). The stale tick must
+    // abandon itself: no onDisconnect(), no provision(), no onReconnect(), and
+    // no status transition at all.
+    heartbeatGate.resolve(false);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onDisconnect).not.toHaveBeenCalled();
+    expect(onReconnect).not.toHaveBeenCalled();
+    expect((client.provision as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    expect(statusChanges).toEqual([]);
   });
 
   it("suppresses onReconnect/onStatusChange when stop() runs during the provision await", async () => {

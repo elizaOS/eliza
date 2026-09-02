@@ -27,11 +27,12 @@ export class ConnectionMonitor {
   private consecutiveFailures = 0;
   private reconnecting = false;
   /**
-   * Monotonic lifecycle token. `attemptReconnect()` captures the current value
-   * at entry; `stop()` increments it. After every `await` point the loop
-   * compares its captured token to the live one and early-returns without
-   * firing any callback when they differ — this is the only way to cancel a
-   * detached retry loop that is mid-`provision()` or mid-backoff-sleep when
+   * Monotonic lifecycle token. `tick()` captures the current value before its
+   * heartbeat await and threads it into `attemptReconnect()`; `stop()`
+   * increments it. After every `await` point the loop compares its captured
+   * token to the live one and early-returns without firing any callback when
+   * they differ — this is the only way to cancel a detached tick/retry loop
+   * that is mid-`heartbeat()`, mid-`provision()`, or mid-backoff-sleep when
    * `stop()` runs, so no onStatusChange/onReconnect/onReconnectExhausted fires
    * after teardown and a dead monitor's backoff sleep cannot keep it alive.
    */
@@ -76,7 +77,18 @@ export class ConnectionMonitor {
   private async tick(): Promise<void> {
     if (this.reconnecting) return;
 
+    // Capture the lifecycle token before the heartbeat await. stop() bumps the
+    // token while a tick is parked here; without this checkpoint the stale
+    // continuation would fire onDisconnect() and enter attemptReconnect() after
+    // teardown, and that loop would capture the already-incremented token as
+    // its own baseline — defeating every downstream checkpoint.
+    const token = this.runToken;
+
     const alive = await this.client.heartbeat(this.agentId).catch(() => false);
+
+    // stop() may have run during the heartbeat await. Abandon this stale tick so
+    // a torn-down monitor fires no callback and starts no reconnect loop.
+    if (this.runToken !== token) return;
 
     if (alive) {
       if (this.consecutiveFailures > 0) {
@@ -97,15 +109,15 @@ export class ConnectionMonitor {
       // retry attempts fail. This avoids a misleading disconnected→
       // reconnecting flicker for callers.
       this.callbacks.onDisconnect();
-      await this.attemptReconnect();
+      await this.attemptReconnect(token);
     }
   }
 
-  private async attemptReconnect(): Promise<void> {
-    // Capture the lifecycle token for this loop. stop() bumps runToken, which
-    // lets every post-await checkpoint below detect that this loop was
-    // cancelled and abandon it silently.
-    const token = this.runToken;
+  private async attemptReconnect(token: number): Promise<void> {
+    // The lifecycle token is captured by tick() before its heartbeat await and
+    // threaded in here, so a stop() during that await is already reflected. stop()
+    // bumps runToken, which lets every post-await checkpoint below detect that
+    // this loop was cancelled and abandon it silently.
     this.reconnecting = true;
     this.callbacks.onStatusChange?.("reconnecting");
 
