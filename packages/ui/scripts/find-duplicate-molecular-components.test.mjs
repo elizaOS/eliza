@@ -395,6 +395,6 @@ test("molecular report includes roles, dependencies, and source evidence", () =>
   assert.match(markdown, /Reviewed clusters/);
   assert.doesNotMatch(markdown, /-candidate\*\*/);
   assert.doesNotMatch(markdown, /Decision: \*\*duplicate-implementation\*\*/);
-  assert.match(markdown, /shared-lifecycle-owner/);
+  assert.match(markdown, /distinct-domain-compositions/);
   assert.match(markdown, /packages\//);
 });

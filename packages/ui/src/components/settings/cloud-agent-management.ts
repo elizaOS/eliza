@@ -3,19 +3,19 @@
  * Callers provide the management-token boundary and retain their own rendering contracts.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client, ElizaClient } from "../../../api";
-import { resolveCloudAgentApiBase } from "../../../api/client-cloud";
-import type { CloudCompatAgent } from "../../../api/client-types-cloud";
-import { getBootConfig } from "../../../config/boot-config";
-import { useBranding } from "../../../config/branding";
-import { useAppSelector } from "../../../state";
-import { upsertAndActivateAgentProfile } from "../../../state/agent-profiles";
-import { clearStalePairCredentialsForAgent } from "../../../state/cloud-pair-token";
+import { client, ElizaClient } from "../../api";
+import { resolveCloudAgentApiBase } from "../../api/client-cloud";
+import type { CloudCompatAgent } from "../../api/client-types-cloud";
+import { getBootConfig } from "../../config/boot-config";
+import { useBranding } from "../../config/branding";
+import { useAppSelector } from "../../state";
+import { upsertAndActivateAgentProfile } from "../../state/agent-profiles";
+import { clearStalePairCredentialsForAgent } from "../../state/cloud-pair-token";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
   savePersistedActiveServer,
-} from "../../../state/persistence";
+} from "../../state/persistence";
 
 const DELETE_POLL_TIMEOUT_MS = 60_000;
 const DELETE_POLL_INTERVAL_MS = 1_500;
