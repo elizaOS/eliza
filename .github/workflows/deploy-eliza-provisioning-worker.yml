@@ -75,6 +75,7 @@ jobs:
         env:
           BRANCH: ${{ steps.env.outputs.branch }}
           EFFECT_DIGEST: ${{ inputs.effect_digest }}
+          GH_TOKEN: ${{ github.token }}
           PUSH_SHA: ${{ github.sha }}
           REQUESTED_SHA: ${{ github.event.inputs.deployment_sha }}
           TARGET_ENVIRONMENT: ${{ steps.env.outputs.environment }}
@@ -91,24 +92,25 @@ jobs:
               echo "::error::deployment_sha must be a lowercase 40-hex commit"
               exit 1
             }
-            verify_dir=$(mktemp -d)
-            trap 'rm -rf "$verify_dir"' EXIT
-            git -C "$verify_dir" init --quiet
-            git -C "$verify_dir" fetch --quiet --no-tags --depth=1 \
-              "https://github.com/${GITHUB_REPOSITORY}.git" "$REQUESTED_SHA"
-            deployment_sha=$(git -C "$verify_dir" rev-parse FETCH_HEAD)
+            deployment_sha=$(gh api \
+              "repos/${GITHUB_REPOSITORY}/commits/${REQUESTED_SHA}" \
+              --jq '.sha')
             [ "$deployment_sha" = "$REQUESTED_SHA" ] || {
-              echo "::error::Fetched commit does not match requested deployment_sha"
+              echo "::error::Resolved commit does not match requested deployment_sha"
               exit 1
             }
           else
-            deployment_sha=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/heads/$BRANCH" | awk 'NR == 1 { print $1 }')
+            deployment_sha=$(gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BRANCH}" \
+              --jq '.object.sha')
           fi
           [[ "$deployment_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Could not resolve immutable deployment SHA for $BRANCH"; exit 1; }
           if [ -n "$EFFECT_DIGEST" ]; then
             [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid reconciled effect digest"; exit 1; }
             [ -n "$REQUESTED_SHA" ] || { echo "::error::Reconciled deploy requires deployment_sha"; exit 1; }
-            current_sha="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/heads/$BRANCH" | awk 'NR == 1 { print $1 }')"
+            current_sha="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BRANCH}" \
+              --jq '.object.sha')"
             [ "$current_sha" = "$deployment_sha" ] || {
               echo "::error::$BRANCH is $current_sha, not reconciled source $deployment_sha"
               exit 1

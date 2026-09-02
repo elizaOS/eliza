@@ -81,6 +81,9 @@ describe("provisioning worker deployment contract", () => {
   it("resolves one immutable SHA and deploys exactly that snapshot", () => {
     expect(workflow).toContain('deployment_sha="$PUSH_SHA"');
     expect(workflow).toContain(
+      '"repos/$' + '{GITHUB_REPOSITORY}/git/ref/heads/$' + '{BRANCH}"',
+    );
+    expect(workflow).not.toContain(
       'git ls-remote "https://github.com/$' + '{GITHUB_REPOSITORY}.git"',
     );
     expect(workflow).toContain(
@@ -106,8 +109,9 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain('[ "$TARGET_ENVIRONMENT" = "staging" ] || {');
     expect(workflow).toContain('[[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {');
     expect(workflow).toContain(
-      '"https://github.com/$' + '{GITHUB_REPOSITORY}.git" "$REQUESTED_SHA"',
+      '"repos/$' + '{GITHUB_REPOSITORY}/commits/$' + '{REQUESTED_SHA}"',
     );
+    expect(workflow).toContain("GH_TOKEN: $" + "{{ github.token }}");
     expect(workflow).toContain('[ "$deployment_sha" = "$REQUESTED_SHA" ] || {');
     expect(workflow).toContain(
       "($" +
