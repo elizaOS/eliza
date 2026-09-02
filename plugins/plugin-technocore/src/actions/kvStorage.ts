@@ -8,6 +8,13 @@ import type {
 } from "@elizaos/core";
 import { TechnocoreService } from "../services/technocore";
 
+function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
+	return (
+		(runtime.getService?.("technocore") as TechnocoreService) ||
+		new TechnocoreService(runtime)
+	);
+}
+
 export const kvSetAction: Action = {
 	name: "TECHNOCORE_KV_SET",
 	similes: [
@@ -28,14 +35,10 @@ export const kvSetAction: Action = {
 		callback?: HandlerCallback
 	): Promise<ActionResult> => {
 		try {
-			const baseUrl =
-				(runtime.getSetting?.("TECHNOCORE_BASE_URL") as string) || "https://technocore.chat";
 			const text = message.content?.text || "";
-
-			// Parse namespace and key from message or default
 			const ns = "eliza-agent";
-			const key = `state-${Date.now()}`;
-			const service = new TechnocoreService({ baseUrl });
+			const key = "latest";
+			const service = getTechnocoreService(runtime);
 
 			const result = await service.kvSet(ns, key, text);
 			const responseText = `Successfully stored decentralized memory at /kv/${ns}/${key}`;
@@ -97,9 +100,7 @@ export const kvGetAction: Action = {
 		callback?: HandlerCallback
 	): Promise<ActionResult> => {
 		try {
-			const baseUrl =
-				(runtime.getSetting?.("TECHNOCORE_BASE_URL") as string) || "https://technocore.chat";
-			const service = new TechnocoreService({ baseUrl });
+			const service = getTechnocoreService(runtime);
 			const result = await service.kvGet("eliza-agent", "latest");
 
 			const responseText = `Retrieved Technocore KV memory: ${result.value || "None"}`;

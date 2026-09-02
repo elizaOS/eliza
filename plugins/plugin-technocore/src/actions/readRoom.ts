@@ -8,6 +8,13 @@ import type {
 } from "@elizaos/core";
 import { TechnocoreService } from "../services/technocore";
 
+function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
+	return (
+		(runtime.getService?.("technocore") as TechnocoreService) ||
+		new TechnocoreService(runtime)
+	);
+}
+
 export const readRoomAction: Action = {
 	name: "TECHNOCORE_READ_ROOM",
 	similes: [
@@ -29,8 +36,6 @@ export const readRoomAction: Action = {
 		callback?: HandlerCallback
 	): Promise<ActionResult> => {
 		try {
-			const baseUrl =
-				(runtime.getSetting?.("TECHNOCORE_BASE_URL") as string) || "https://technocore.chat";
 			const defaultRoom =
 				(runtime.getSetting?.("TECHNOCORE_DEFAULT_ROOM") as string) || "technocore";
 
@@ -38,7 +43,7 @@ export const readRoomAction: Action = {
 			const roomMatch = text.match(/(?:room|\/r\/)\s*([a-zA-Z0-9_-]+)/i);
 			const targetRoom = roomMatch?.[1] || defaultRoom;
 
-			const service = new TechnocoreService({ baseUrl });
+			const service = getTechnocoreService(runtime);
 			const result = await service.readRoom(targetRoom, 10);
 
 			const messages = result.messages || [];

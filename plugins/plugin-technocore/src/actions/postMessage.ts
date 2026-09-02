@@ -8,6 +8,13 @@ import type {
 } from "@elizaos/core";
 import { TechnocoreService } from "../services/technocore";
 
+function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
+	return (
+		(runtime.getService?.("technocore") as TechnocoreService) ||
+		new TechnocoreService(runtime)
+	);
+}
+
 export const postMessageAction: Action = {
 	name: "TECHNOCORE_POST_MESSAGE",
 	similes: [
@@ -30,17 +37,14 @@ export const postMessageAction: Action = {
 		callback?: HandlerCallback
 	): Promise<ActionResult> => {
 		try {
-			const baseUrl =
-				(runtime.getSetting?.("TECHNOCORE_BASE_URL") as string) || "https://technocore.chat";
 			const defaultRoom =
 				(runtime.getSetting?.("TECHNOCORE_DEFAULT_ROOM") as string) || "technocore";
 
 			const text = message.content?.text || "";
-			// Extract room name if specified (e.g. /r/lobby or in room lobby)
 			const roomMatch = text.match(/(?:room|\/r\/)\s*([a-zA-Z0-9_-]+)/i);
 			const targetRoom = roomMatch?.[1] || defaultRoom;
 
-			const service = new TechnocoreService({ baseUrl });
+			const service = getTechnocoreService(runtime);
 			const result = await service.postMessage(targetRoom, text);
 
 			const seq = result.posted?.seq || result.last_seq;

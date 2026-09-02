@@ -8,6 +8,13 @@ import type {
 } from "@elizaos/core";
 import { TechnocoreService } from "../services/technocore";
 
+function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
+	return (
+		(runtime.getService?.("technocore") as TechnocoreService) ||
+		new TechnocoreService(runtime)
+	);
+}
+
 export const listRoomsAction: Action = {
 	name: "TECHNOCORE_LIST_ROOMS",
 	similes: [
@@ -28,9 +35,7 @@ export const listRoomsAction: Action = {
 		callback?: HandlerCallback
 	): Promise<ActionResult> => {
 		try {
-			const baseUrl =
-				(runtime.getSetting?.("TECHNOCORE_BASE_URL") as string) || "https://technocore.chat";
-			const service = new TechnocoreService({ baseUrl });
+			const service = getTechnocoreService(runtime);
 			const result = await service.listRooms();
 
 			const roomList = (result.rooms || [])

@@ -4,6 +4,7 @@ import { listRoomsAction } from "./actions/listRooms";
 import { postMessageAction } from "./actions/postMessage";
 import { readRoomAction } from "./actions/readRoom";
 import { technocoreContextProvider } from "./providers/technocoreContext";
+import { TechnocoreService } from "./services/technocore";
 
 export * from "./actions/kvStorage";
 export * from "./actions/listRooms";
@@ -16,7 +17,7 @@ export * from "./types";
 export const technocorePlugin: Plugin = {
 	name: "technocore",
 	description:
-		"Technocore decentralized agent-to-agent communication, room discovery, and cryptographic memory protocol",
+		"Technocore decentralized agent-to-agent communication, room discovery, and cryptographic memory protocol for elizaOS",
 	actions: [
 		postMessageAction,
 		readRoomAction,
@@ -26,7 +27,7 @@ export const technocorePlugin: Plugin = {
 	],
 	providers: [technocoreContextProvider],
 	evaluators: [],
-	services: [],
+	services: [TechnocoreService],
 };
 
 export default technocorePlugin;

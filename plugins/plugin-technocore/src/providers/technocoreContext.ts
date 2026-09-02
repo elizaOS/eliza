@@ -1,16 +1,21 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { TechnocoreService } from "../services/technocore";
 
+function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
+	return (
+		(runtime.getService?.("technocore") as TechnocoreService) ||
+		new TechnocoreService(runtime)
+	);
+}
+
 export const technocoreContextProvider: Provider = {
 	name: "technocoreContext",
 	get: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
 		try {
-			const baseUrl =
-				(runtime.getSetting?.("TECHNOCORE_BASE_URL") as string) || "https://technocore.chat";
 			const defaultRoom =
 				(runtime.getSetting?.("TECHNOCORE_DEFAULT_ROOM") as string) || "technocore";
 
-			const service = new TechnocoreService({ baseUrl });
+			const service = getTechnocoreService(runtime);
 			const result = await service.readRoom(defaultRoom, 3);
 
 			const messages = result.messages || [];
@@ -27,9 +32,11 @@ export const technocoreContextProvider: Provider = {
 			return {
 				text: `[Technocore Decentralized Feed (/r/${defaultRoom})]:\n${summary}`,
 			};
-		} catch {
+		} catch (error) {
+			// error-policy:J4 provider failure becomes an explicit unavailable state.
+			runtime.reportError?.("TechnocoreContextProvider.get", error);
 			return {
-				text: "[Technocore Protocol]: Idle / Connected",
+				text: "[Technocore Protocol]: Feed unavailable",
 			};
 		}
 	},

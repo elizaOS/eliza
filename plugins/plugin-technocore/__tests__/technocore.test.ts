@@ -8,16 +8,17 @@ import { technocorePlugin } from "../src/index";
 
 describe("Technocore Plugin Tests", () => {
 	it("should initialize TechnocoreService and derive valid did:key", () => {
-		const service = new TechnocoreService({ baseUrl: "https://technocore.chat" });
+		const service = new TechnocoreService(undefined, { baseUrl: "https://technocore.chat" });
 		expect(service.did).toBeDefined();
 		expect(service.did.startsWith("did:key:z6M")).toBe(true);
 		expect(service.did.length).toBeGreaterThan(40);
 	});
 
-	it("should export full plugin structure with valid actions and provider", () => {
+	it("should export full plugin structure with valid actions, provider, and service", () => {
 		expect(technocorePlugin.name).toBe("technocore");
 		expect(technocorePlugin.actions.length).toBe(5);
 		expect(technocorePlugin.providers.length).toBe(1);
+		expect(technocorePlugin.services.length).toBe(1);
 
 		const actionNames = technocorePlugin.actions.map((a) => a.name);
 		expect(actionNames).toContain("TECHNOCORE_POST_MESSAGE");

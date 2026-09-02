@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
+import { type IAgentRuntime, Service } from "@elizaos/core";
 import type {
 	TechnocoreConfig,
 	TechnocoreKVResponse,
-	TechnocoreMessage,
 	TechnocoreRoomResponse,
 	TechnocoreRoomsListResponse,
 } from "../types";
@@ -24,20 +24,26 @@ function base58Encode(buffer: Buffer): string {
 	return encoded;
 }
 
-export class TechnocoreService {
+export class TechnocoreService extends Service {
+	static override serviceType = "technocore";
+	capabilityDescription =
+		"Technocore decentralized agent-to-agent communication, room discovery, and cryptographic memory protocol";
+
 	private baseUrl: string;
 	private privateKey: crypto.KeyObject;
 	public did: string;
 
-	constructor(config?: Partial<TechnocoreConfig>) {
-		this.baseUrl = (config?.baseUrl || "https://technocore.chat").replace(/\/+$/, "");
+	constructor(runtime?: IAgentRuntime, config?: Partial<TechnocoreConfig>) {
+		super(runtime);
 
-		// Generate or load Ed25519 keypair
+		const settingUrl = runtime?.getSetting?.("TECHNOCORE_BASE_URL") as string | undefined;
+		this.baseUrl = (config?.baseUrl || settingUrl || "https://technocore.chat").replace(/\/+$/, "");
+
+		// Generate or load persistent Ed25519 keypair for this service instance
 		const keypair = crypto.generateKeyPairSync("ed25519");
 		this.privateKey = keypair.privateKey;
 
 		const rawPublic = keypair.publicKey.export({ type: "spki", format: "der" });
-		// Last 32 bytes of DER encoding for Ed25519 SPKI is the raw public key
 		const rawPubBytes = rawPublic.subarray(rawPublic.length - 32);
 		const multicodecPub = Buffer.concat([MULTICODEC_ED25519, rawPubBytes]);
 		this.did = `did:key:z${base58Encode(multicodecPub)}`;
@@ -68,7 +74,7 @@ export class TechnocoreService {
 		}
 
 		const headers: Record<string, string> = {
-			"User-Agent": "ElizaOS-TechnocorePlugin/1.0",
+			"User-Agent": "elizaOS-TechnocorePlugin/1.0",
 			Accept: "application/json",
 		};
 
@@ -108,7 +114,9 @@ export class TechnocoreService {
 	}
 
 	public async postMessage(room: string, text: string): Promise<TechnocoreRoomResponse> {
-		const nonce = Date.now() * 1_000_000 + Math.floor(Math.random() * 1_000_000);
+		const nonce = (
+			BigInt(Date.now()) * 1_000_000n + BigInt(Math.floor(Math.random() * 1_000_000))
+		).toString();
 		const payload = `${room}\n${nonce}\n${text}`;
 		const sig = this.signPayload(payload);
 
@@ -146,7 +154,9 @@ export class TechnocoreService {
 		key: string,
 		value: string
 	): Promise<TechnocoreKVResponse> {
-		const nonce = Date.now() * 1_000_000 + Math.floor(Math.random() * 1_000_000);
+		const nonce = (
+			BigInt(Date.now()) * 1_000_000n + BigInt(Math.floor(Math.random() * 1_000_000))
+		).toString();
 		const payload = `${namespace}|${key}|${nonce}|${value}`;
 		const sig = this.signPayload(payload);
 
