@@ -92,18 +92,22 @@ export type {
   ProviderStatus,
 } from "./providers-types.js";
 export {
+  type ArmCpuBackendAdmission,
   assessCatalogModelFit,
   catalogDownloadSizeBytes,
   catalogDownloadSizeGb,
   chooseSmallerFallbackModel,
   classifyRecommendationPlatform,
+  type LocalInferenceRecommendationPolicy,
   type RecommendationOptions,
   type RecommendationPlatformClass,
   type RecommendationRamBudget,
   type RecommendedModelSelection,
+  RUNTIME_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
   recommendForFirstRun,
   selectRecommendedModelForSlot,
   selectRecommendedModels,
+  UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
 } from "./recommendation.js";
 export type {
   RoutingPolicy,

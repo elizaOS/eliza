@@ -40,10 +40,22 @@ export interface RecommendationRamBudget {
   recommendedMb: number;
 }
 
+export type ArmCpuBackendAdmission = "allow-unknown" | "require-neon";
+
+/** Product-owned choices that must not be inferred from generic hardware fit. */
+export interface LocalInferenceRecommendationPolicy {
+  mobileSlotLadders: Readonly<
+    Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
+  >;
+  armCpuBackendAdmission: ArmCpuBackendAdmission;
+}
+
 export interface RecommendationOptions {
   binaryKernels?: Partial<Record<string, boolean>> | null;
   /** Validated manifest budgets projected by a runtime host; no filesystem API is used here. */
   ramBudgets?: Readonly<Record<string, RecommendationRamBudget>>;
+  /** Host/product policy for recommendation eligibility, independent of RAM fit. */
+  policy?: LocalInferenceRecommendationPolicy;
 }
 
 const BYTES_PER_GB = 1024 ** 3;
@@ -55,15 +67,29 @@ const TIER_4B: Eliza1TierId = "eliza-1-4b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
 const TIER_27B: Eliza1TierId = "eliza-1-27b";
 
-/** Mobile intentionally uses 2B for the small slot and 4B then 2B for large. */
+export const RUNTIME_LOCAL_INFERENCE_RECOMMENDATION_POLICY: LocalInferenceRecommendationPolicy =
+  {
+    mobileSlotLadders: {
+      TEXT_SMALL: [TIER_2B],
+      TEXT_LARGE: [TIER_4B, TIER_2B],
+    },
+    armCpuBackendAdmission: "require-neon",
+  };
+
+export const UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY: LocalInferenceRecommendationPolicy =
+  {
+    mobileSlotLadders: {
+      TEXT_SMALL: [TIER_4B],
+      TEXT_LARGE: [TIER_4B],
+    },
+    armCpuBackendAdmission: "allow-unknown",
+  };
+
 const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
-  mobile: {
-    TEXT_SMALL: [TIER_2B],
-    TEXT_LARGE: [TIER_4B, TIER_2B],
-  },
+  mobile: RUNTIME_LOCAL_INFERENCE_RECOMMENDATION_POLICY.mobileSlotLadders,
   "apple-silicon": {
     TEXT_SMALL: [TIER_2B, TIER_4B],
     TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B],
@@ -118,10 +144,15 @@ function effectiveMemoryGb(probe: HardwareProbe): number {
   return probe.totalRamGb * 0.5;
 }
 
-function hasUsableCpuBackend(hardware: HardwareProbe): boolean {
+function hasUsableCpuBackend(
+  hardware: HardwareProbe,
+  policy: LocalInferenceRecommendationPolicy,
+): boolean {
   if (hardware.gpu) return true;
   if (hardware.arch !== "arm64" && hardware.arch !== "arm") return true;
-  return hardware.cpuFeatures?.neon === true;
+  return policy.armCpuBackendAdmission === "require-neon"
+    ? hardware.cpuFeatures?.neon === true
+    : hardware.cpuFeatures?.neon !== false;
 }
 
 export function assessCatalogModelFit(
@@ -130,7 +161,6 @@ export function assessCatalogModelFit(
   _catalog: readonly CatalogModel[] = MODEL_CATALOG,
   options: RecommendationOptions = {},
 ): HardwareFitLevel {
-  if (!hasUsableCpuBackend(hardware)) return "wontfit";
   const mobile = classifyRecommendationPlatform(hardware) === "mobile";
   const memoryGb = mobile ? hardware.totalRamGb : effectiveMemoryGb(hardware);
   const memoryMb = memoryGb * MB_PER_GB;
@@ -178,8 +208,15 @@ function rankedCandidates(
   options: RecommendationOptions,
 ): CatalogModel[] {
   const platformClass = classifyRecommendationPlatform(hardware);
+  const policy =
+    options.policy ?? RUNTIME_LOCAL_INFERENCE_RECOMMENDATION_POLICY;
+  if (!hasUsableCpuBackend(hardware, policy)) return [];
   const byId = new Map(catalog.map((model) => [model.id, model]));
-  const ladder = SLOT_LADDERS[platformClass][slot].flatMap((id) => {
+  const slotLadders =
+    platformClass === "mobile"
+      ? policy.mobileSlotLadders
+      : SLOT_LADDERS[platformClass];
+  const ladder = slotLadders[slot].flatMap((id) => {
     const model = byId.get(id);
     return model ? [model] : [];
   });

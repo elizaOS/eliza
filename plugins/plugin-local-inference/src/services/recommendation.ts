@@ -13,6 +13,7 @@ import {
 	MODEL_CATALOG,
 	type RecommendationPlatformClass,
 	type RecommendedModelSelection,
+	RUNTIME_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
 	recommendForFirstRun,
 	type RecommendationOptions as SharedRecommendationOptions,
 	selectRecommendedModelForSlot as selectSharedRecommendedModelForSlot,
@@ -72,7 +73,11 @@ function sharedOptions(
 			];
 		}),
 	);
-	return { binaryKernels: options.binaryKernels, ramBudgets };
+	return {
+		binaryKernels: options.binaryKernels,
+		ramBudgets,
+		policy: RUNTIME_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
+	};
 }
 
 export function assessCatalogModelFit(
