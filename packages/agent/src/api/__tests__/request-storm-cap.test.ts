@@ -39,7 +39,7 @@ describe("request storm cap", () => {
 
   it("allows a legitimate burst, then caps a sustained storm with 429", () => {
     const req = mockReq({ authorization: "Bearer storm-session-token" });
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 80; i++) {
       expect(maybeCapRequestStorm(req, mockRes(), "/api/notifications")).toBe(
         false,
       );
@@ -52,7 +52,7 @@ describe("request storm cap", () => {
 
   it("refills over time so a backed-off client recovers", () => {
     const req = mockReq({ authorization: "Bearer refill-token" });
-    for (let i = 0; i < 30; i++)
+    for (let i = 0; i < 80; i++)
       maybeCapRequestStorm(req, mockRes(), "/api/status");
     expect(maybeCapRequestStorm(req, mockRes(), "/api/status")).toBe(true);
     vi.setSystemTime(1_000_000_000 + 2_000);
@@ -82,7 +82,7 @@ describe("request storm cap", () => {
   it("does not exempt unrelated paths that merely contain an exempt marker", () => {
     for (const pathname of ["/api/newsletter/ws-status", "/api/voiceover"]) {
       const req = mockReq({ authorization: `Bearer ${pathname}` });
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 80; i++) {
         expect(maybeCapRequestStorm(req, mockRes(), pathname)).toBe(false);
       }
       expect(maybeCapRequestStorm(req, mockRes(), pathname)).toBe(true);
@@ -108,7 +108,7 @@ describe("request storm cap", () => {
     process.env.ELIZA_API_TOKEN = "internal-self-token";
     __resetRequestStormCapForTests();
     const req = mockReq({ authorization: "Bearer internal-self-token" });
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 80; i++) {
       expect(maybeCapRequestStorm(req, mockRes(), "/api/views")).toBe(false);
     }
     expect(maybeCapRequestStorm(req, mockRes(), "/api/views")).toBe(true);
@@ -137,7 +137,7 @@ describe("request storm cap", () => {
 
   it("isolates budgets per session", () => {
     const a = mockReq({ authorization: "Bearer session-a" });
-    for (let i = 0; i < 31; i++)
+    for (let i = 0; i < 81; i++)
       maybeCapRequestStorm(a, mockRes(), "/api/status");
     const b = mockReq({ authorization: "Bearer session-b" });
     expect(maybeCapRequestStorm(b, mockRes(), "/api/status")).toBe(false);

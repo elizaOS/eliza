@@ -16,7 +16,12 @@ import { logger } from "@elizaos/core";
 import { isLoopbackRemoteAddress } from "@elizaos/shared";
 import { resolveSelfApiCredential } from "@elizaos/shared/runtime-env";
 
-const BUCKET_CAPACITY = 30;
+// One cold dashboard hydration fans out across the independent product
+// surfaces (chat, views, plugins, approvals, notifications, and settings).
+// Leave room for two complete hydration bursts so a reconnect or immediate
+// reload cannot throttle its own recovery. The 10 req/s refill still caps the
+// observed 20 req/s runaway poller after a short sustained interval.
+const BUCKET_CAPACITY = 80;
 const REFILL_PER_SECOND = 10;
 const RETRY_AFTER_SECONDS = 3;
 const IDLE_EVICT_MS = 10 * 60 * 1000;
