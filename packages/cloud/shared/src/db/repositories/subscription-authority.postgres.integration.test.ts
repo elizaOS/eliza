@@ -366,7 +366,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     }
   });
 
-  test("serializes allowance settlement behind the organization lock", async () => {
+  test("serializes and caps allowance settlement under process clock skew", async () => {
     await setupClient!.query(
       `INSERT INTO billing_subscriptions (
         id, organization_id, provider_environment, stripe_customer_id,
@@ -430,7 +430,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
             organizationId: CLOCK_ORG,
             logicalOperationId: "operation.database.clock",
             operation: "ai_inference",
-            actualAmount: microsToMoney(1_000_000n),
+            actualAmount: microsToMoney(2_000_000n),
             occurredAt: new Date("2026-08-31T00:00:00.000Z"),
           })
           .then((settlement) => {
@@ -442,12 +442,36 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         await locker.query("COMMIT");
         await expect(settlementPromise).resolves.toMatchObject({
           replayed: false,
+          collectedAmount: "1.000000",
+          uncollectedOverageAmount: "1.000000",
           reservation: { status: "finalized" },
         });
       } finally {
         await locker.query("ROLLBACK");
         await locker.end();
       }
+      const finalizedAllocations = await setupClient!.query(
+        `SELECT source, reserved_amount::text, finalized_amount::text, released_amount::text
+         FROM billing_funding_allocations
+         WHERE reservation_id=$1
+         ORDER BY source`,
+        [result.reservation.id],
+      );
+      expect(finalizedAllocations.rows).toEqual([
+        {
+          source: "allowance",
+          reserved_amount: "1.000000",
+          finalized_amount: "1.000000",
+          released_amount: "0.000000",
+        },
+      ]);
+      const persistedSettlement = await setupClient!.query(
+        `SELECT uncollected_overage_amount::text
+         FROM billing_funding_reservations
+         WHERE id=$1`,
+        [result.reservation.id],
+      );
+      expect(persistedSettlement.rows).toEqual([{ uncollected_overage_amount: "1.000000" }]);
     } finally {
       setSystemTime();
     }

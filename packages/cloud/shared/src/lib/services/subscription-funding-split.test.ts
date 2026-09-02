@@ -4,7 +4,10 @@
  */
 import { describe, expect, test } from "bun:test";
 import { microsToMoney } from "../../db/repositories/subscription-funding-reservations";
-import { splitSubscriptionFundingSources } from "./subscription-funding";
+import {
+  capSubscriptionFundingSettlement,
+  splitSubscriptionFundingSources,
+} from "./subscription-funding";
 
 describe("subscription funding source split", () => {
   test("uses allowance first and sends only the remainder to purchased credits", () => {
@@ -43,6 +46,32 @@ describe("subscription funding source split", () => {
     ).toEqual({
       allowanceAmount: "0.750000",
       purchasedCreditAmount: "0.000000",
+    });
+  });
+});
+
+describe("subscription funding settlement cap", () => {
+  test("settles the reserved amount and reports excess usage without a second charge", () => {
+    expect(
+      capSubscriptionFundingSettlement({
+        requestedActualAmount: microsToMoney(1_500_000n),
+        reservedAmount: microsToMoney(1_000_000n),
+      }),
+    ).toEqual({
+      collectedAmount: "1.000000",
+      uncollectedOverageAmount: "0.500000",
+    });
+  });
+
+  test("reports no overage when the reservation covers actual usage", () => {
+    expect(
+      capSubscriptionFundingSettlement({
+        requestedActualAmount: microsToMoney(750_000n),
+        reservedAmount: microsToMoney(1_000_000n),
+      }),
+    ).toEqual({
+      collectedAmount: "0.750000",
+      uncollectedOverageAmount: "0.000000",
     });
   });
 });

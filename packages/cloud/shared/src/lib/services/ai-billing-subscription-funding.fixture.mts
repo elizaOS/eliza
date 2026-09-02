@@ -54,8 +54,9 @@ const fundingReserve = mock(async () => ({
 }));
 const fundingSettle = mock(async () => ({
   reservation: { id: "funding-root" },
-  overageReservation: { id: "funding-overage" },
   replayed: false,
+  collectedAmount: "0.015000",
+  uncollectedOverageAmount: "0.005000",
 }));
 mock.module("./subscription-funding", () => ({
   subscriptionFundingService: { reserve: fundingReserve, settle: fundingSettle },
@@ -129,9 +130,9 @@ test("paid inference reserves and settles with the exact request identity", asyn
   await expect(reservation.reconcile(0.02)).resolves.toMatchObject({
     reservedAmount: 0.015,
     actualCost: 0.02,
-    collectedAmount: 0.02,
-    adjustmentType: "overage",
-    settlementTransactionIds: ["funding-root", "funding-overage"],
+    collectedAmount: 0.015,
+    adjustmentType: "uncollected_overage",
+    settlementTransactionIds: ["funding-root"],
   });
   expect(fundingSettle).toHaveBeenCalledWith(
     expect.objectContaining({
