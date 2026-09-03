@@ -877,7 +877,16 @@ schema preflight.
   no host or database mutation, but "online" is insufficient fleet health.
   Deployment receipts must therefore distinguish runner startup failure from
   host deployment failure, and operators should alert on repeated no-log job
-  terminations.
+  terminations. After merge, the same `_diag/pages` collision recurred on
+  runners 11, 13, and 15 while the repository-wide emergency gate already said
+  `HETZNER_FLEET_ONLINE=false`. The provisioning deployment was the exception:
+  it ignored that gate and hard-routed both admission and mutation to the
+  unhealthy generic runner labels. The workflow now uses the canonical
+  fail-closed selector for both jobs: hosted `ubuntu-24.04` unless the fleet is
+  explicitly set to lowercase `true`, otherwise the quarantinable
+  `[self-hosted, hetzner-robot]` pool. The per-slot repair remains the
+  repository-owned `cloud/runners/repair-runner-slot.sh` runbook; deployment no
+  longer depends on those repairs completing before a release can proceed.
 - The provisioning host no longer needs outbound Git authentication, removing
   a mutable credential/configuration dependency from disaster recovery and
   ordinary rollout.
