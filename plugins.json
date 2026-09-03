@@ -1,1 +1,12 @@
-{ "plugins": [] }
+{
+  "plugins": [
+    {
+      "name": "opticparse-eliza-plugin",
+      "package": "opticparse-eliza-plugin",
+      "description": "Autonomous Multimodal Vision Web Scraper & x402 Micropayments for ElizaOS Agents without CSS selectors",
+      "category": "web-scraping",
+      "version": "1.0.0",
+      "repository": "https://github.com/parastejpal987-cmyk/opticparse-public"
+    }
+  ]
+}
