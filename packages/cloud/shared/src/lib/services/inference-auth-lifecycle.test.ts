@@ -15,6 +15,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 
 // ── Captured side effects + per-test repository state ───────────────────────
 const invalidatedHashBatches: string[][] = [];
@@ -30,7 +31,7 @@ let orgApiKeys: Array<{ key_hash: string }> = [];
 let userRecord: Record<string, unknown> | undefined;
 let readUserRecordOverride: Record<string, unknown> | undefined;
 let useReadUserRecordOverride = false;
-let failNextBindingActivation = false;
+let bindingActivationFailuresRemaining = 0;
 let failProjectionFenceKey: string | null = null;
 let listByOrganizationUsers: unknown[] = [];
 let listByUserError: Error | null = null;
@@ -60,9 +61,12 @@ mock.module("./inference-credential-revocation", () => ({
     active: boolean,
   ) => {
     lifecycleEvents.push(`session-binding:${orgId}:${userId}:${stewardUserId}:${active}`);
-    if (active && failNextBindingActivation) {
-      failNextBindingActivation = false;
-      throw new Error("binding activation unavailable");
+    if (active && bindingActivationFailuresRemaining > 0) {
+      bindingActivationFailuresRemaining -= 1;
+      throw new ElizaError("binding activation unavailable", {
+        code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE",
+        severity: "ephemeral",
+      });
     }
   },
   revokeInferenceSessionsThrough: async (orgId: string, userId: string) => {
@@ -196,6 +200,11 @@ mock.module("../cache/client", () => ({
     del: async (key: string) => {
       deletedCacheKeys.push(key);
     },
+    delConfirmed: async (key: string) => {
+      deletedCacheKeys.push(key);
+      return true;
+    },
+    delPatternConfirmed: async () => true,
   },
 }));
 
@@ -213,7 +222,7 @@ beforeEach(() => {
   userRecord = undefined;
   readUserRecordOverride = undefined;
   useReadUserRecordOverride = false;
-  failNextBindingActivation = false;
+  bindingActivationFailuresRemaining = 0;
   failProjectionFenceKey = null;
   listByOrganizationUsers = [];
   listByUserError = null;
@@ -365,14 +374,41 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     expect(invalidatedSessionBatches).toEqual([]);
   });
 
-  test("fresh Steward identity initialization rejects active-binding failure", async () => {
+  test("fresh Steward identity initialization retries a transient active-binding failure", async () => {
     const { usersService } = await import("./users");
     const user = await usersService.createFreshStewardSignupUser({
       email: "fresh@example.com",
       organization_id: "o1",
       steward_user_id: "steward-new",
     });
-    failNextBindingActivation = true;
+    bindingActivationFailuresRemaining = 1;
+
+    await expect(
+      usersService.initializeFreshStewardIdentity({
+        user,
+        stewardUserId: "steward-new",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(lifecycleEvents).toEqual([
+      "user-create:u-fresh",
+      "identity-upsert:u-fresh:steward-new",
+      "session-binding:o1:u-fresh:steward-new:true",
+      "session-binding:o1:u-fresh:steward-new:true",
+    ]);
+    expect(repositoryReads).toEqual([]);
+    expect(deletedCacheKeys).toEqual([]);
+    expect(invalidatedSessionBatches).toEqual([]);
+  });
+
+  test("fresh Steward identity initialization rejects a persistent active-binding failure", async () => {
+    const { usersService } = await import("./users");
+    const user = await usersService.createFreshStewardSignupUser({
+      email: "fresh@example.com",
+      organization_id: "o1",
+      steward_user_id: "steward-new",
+    });
+    bindingActivationFailuresRemaining = 2;
 
     await expect(
       usersService.initializeFreshStewardIdentity({
@@ -385,10 +421,8 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       "user-create:u-fresh",
       "identity-upsert:u-fresh:steward-new",
       "session-binding:o1:u-fresh:steward-new:true",
+      "session-binding:o1:u-fresh:steward-new:true",
     ]);
-    expect(repositoryReads).toEqual([]);
-    expect(deletedCacheKeys).toEqual([]);
-    expect(invalidatedSessionBatches).toEqual([]);
   });
 
   test("fresh Steward identity initialization rejects a missing organization", async () => {
@@ -565,7 +599,7 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       email: null,
       steward_user_id: "steward-old",
     };
-    failNextBindingActivation = true;
+    bindingActivationFailuresRemaining = 1;
 
     const { usersService } = await import("./users");
     await expect(usersService.upsertStewardIdentity("u1", "steward-new")).rejects.toThrow(
