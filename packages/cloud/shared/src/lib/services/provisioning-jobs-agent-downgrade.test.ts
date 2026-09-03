@@ -19,7 +19,7 @@ const EMPTY_RECOVERY = {
   unchanged: 0,
   failures: [],
 };
-const provisioningJobService = new ProvisioningJobService({
+const _provisioningJobService = new ProvisioningJobService({
   acquireProviderAdmission: async () => true,
   releaseProviderAdmission: async () => undefined,
 });
