@@ -319,7 +319,10 @@ export default function JoinPage(): React.JSX.Element {
             {signOutButton}
           </div>
         ) : adoptionReview ? (
-          <div className="flex w-full flex-col items-center gap-4">
+          <div
+            className="flex w-full flex-col items-center gap-4"
+            data-testid="dedicated-adoption-review"
+          >
             <h1 className="font-poppins text-lg font-semibold text-white">
               {t("cloud.join.dedicatedAdoptionTitle", {
                 defaultValue: "Bring this Dedicated Eliza online?",
@@ -414,6 +417,7 @@ export default function JoinPage(): React.JSX.Element {
                 variant="ghostMuted"
                 size="wide"
                 type="button"
+                data-testid="dedicated-adoption-cancel"
                 onClick={() => settleDedicatedAdoption(null)}
               >
                 {t("cloud.join.dedicatedAdoptionCancel", {
@@ -424,6 +428,7 @@ export default function JoinPage(): React.JSX.Element {
                 variant="surface"
                 size="wide"
                 type="button"
+                data-testid="dedicated-adoption-confirm"
                 onClick={() =>
                   settleDedicatedAdoption({
                     action: "adopt_existing_dedicated",
