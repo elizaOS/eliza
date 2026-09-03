@@ -101,8 +101,9 @@ describe("number parsing utilities", () => {
     expect(() => parseClampedInteger("3", { min: 10, max: 5 })).toThrow(
       RangeError,
     );
-    expect(() => parseClampedInteger("3", { min: 10, max: 5, fallback: 1 }))
-      .toThrow(RangeError);
+    expect(() =>
+      parseClampedInteger("3", { min: 10, max: 5, fallback: 1 }),
+    ).toThrow(RangeError);
     expect(() => parseClampedInteger("", { min: 10, max: 5 })).toThrow(
       RangeError,
     );
