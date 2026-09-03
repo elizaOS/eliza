@@ -489,6 +489,26 @@ describe("dedicated-agent-proxy — trace ingress", () => {
     expect(JSON.stringify(warnCalls)).not.toContain(invalidTrace);
   });
 
+  test("an invalid trace is not echoed back on the response either", async () => {
+    // The upstream request and the logs were already pinned above. The
+    // response header is the third place the caller-supplied value can escape,
+    // and it is written from a separate copy of the id in the timing recorder:
+    // dropping the validation there fails no assertion without this one.
+    const invalidTrace = "0123456789ABCDEF0123456789ABCDEF";
+    const request = makeRequest("agent-local-token", undefined, {
+      "X-Eliza-Trace-Id": invalidTrace,
+    });
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.headers.get("x-eliza-trace-id")).toBeNull();
+  });
+
   test("does not write the always-on timing log for a traced non-chat request", async () => {
     const request = makeRequest("agent-local-token", undefined, {
       "X-Eliza-Trace-Id": "0123456789abcdef0123456789abcdef",
@@ -1681,6 +1701,20 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(captured).not.toBeNull(); // forwarded to the CP
+  });
+
+  test("a phase that throws still reports its duration", async () => {
+    // `measure` records in a `finally`, so a rejected phase is still timed.
+    // That is the case an operator most needs: without it, the one request
+    // that failed auth is also the one with no `dedicated_auth` sample.
+    authResult = "throw";
+    const r = makeRequest(undefined, ORIGIN);
+
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    const serverTiming = res.headers.get("server-timing") ?? "";
+    expect(serverTiming).toMatch(/dedicated_auth;dur=\d+(?:\.\d+)?/);
+    expect(serverTiming).toMatch(/dedicated_total;dur=\d+(?:\.\d+)?/);
   });
 });
 
