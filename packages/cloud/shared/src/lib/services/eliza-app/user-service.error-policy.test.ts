@@ -62,8 +62,11 @@ mock.module("../../utils/phone-normalization", () => ({
 mock.module("../api-keys", () => ({ apiKeysService: { create: createApiKey } }));
 mock.module("../credits", () => ({
   creditsService: { addCredits },
+  COST_BUFFER: 1.5,
   InsufficientCreditsError: class InsufficientCreditsError extends Error {},
+  MIN_RESERVATION: 0.000001,
   ReservationNotFoundError: class ReservationNotFoundError extends Error {},
+  RESERVATION_SWEEP_GRACE_MS: 7_200_000,
 }));
 mock.module("../signup-code", () => ({ redeemSignupCode: mock() }));
 

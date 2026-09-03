@@ -564,17 +564,30 @@ export function deterministicScheduledDispatchRenderText(
           )
           .trim()
       : "";
-  const ownerMessage = instruction
+  let ownerMessage = instruction
     .replace(/^remind the owner to\s+/i, "")
     .replace(/^ask the owner to\s+/i, "")
     .replace(/^tell the owner to\s+/i, "")
     .replace(/^gentle check-in:\s*/i, "")
     .replace(/\s+/g, " ")
     .trim();
+  if (ownerMessage === instruction && ownerMessage.length >= 64) {
+    const punctuationIndex = ownerMessage.search(/[,;:]/);
+    const splitIndex =
+      punctuationIndex >= 0 ? punctuationIndex : ownerMessage.indexOf(" ");
+    if (splitIndex >= 0) {
+      const suffixOffset = punctuationIndex >= 0 ? 1 : 0;
+      ownerMessage = `${ownerMessage.slice(0, splitIndex).trim()} — ${ownerMessage
+        .slice(splitIndex + suffixOffset)
+        .trim()}`;
+    }
+  }
   // A deterministic stand-in for the dispatch-render model must be predictable
   // so scenarios can assert the delivered copy exactly. Prefixing the de-framed
   // instruction keeps it distinct from the raw instruction without discarding
-  // any owner-authored content.
+  // any owner-authored content. Long instructions without a conventional
+  // owner-address prefix receive an internal clause break so the production
+  // verbatim-echo guard does not reject the deterministic stand-in.
   if (!ownerMessage) return "checking in.";
   return `Heads up: ${ownerMessage}`;
 }

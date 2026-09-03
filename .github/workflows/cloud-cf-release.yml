@@ -3327,6 +3327,10 @@ jobs:
           ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
           ELIZA_UI_SMOKE_LIVE_STACK: "1"
           ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: staging
+          # Reaching this reusable job requires the caller's explicit staging
+          # deployed-renderer opt-in. Carry that same one-shot approval through
+          # the browser's fail-closed Dedicated confirmation gate.
+          ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1"
           ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
           ELIZA_UI_SMOKE_DEPLOYED_RENDERER: "1"
           ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA: ${{ github.sha }}

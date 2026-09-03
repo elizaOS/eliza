@@ -164,9 +164,11 @@ test("warm shared-cloud tab recovers its cookie-only session without dropping th
     await fulfillJson(route, 200, { token: refreshedToken, expiresIn: 3_600 });
   });
   await installDefaultAppRoutes(page);
+  await seedStewardSession(page, { token: initialToken });
   await seedAppStorage(page, {
     [VOICE_PREFIX_DONE_STORAGE_KEY]: "1",
     "eliza:mobile-runtime-mode": "cloud",
+    "eliza:ui-shell-mode": "web",
     "elizaos:active-server": JSON.stringify({
       id: `cloud:${agentId}`,
       kind: "cloud",
@@ -174,7 +176,6 @@ test("warm shared-cloud tab recovers its cookie-only session without dropping th
       apiBase,
       accessToken: "shared-agent-token",
     }),
-    [STEWARD_SESSION_TOKEN_KEY]: initialToken,
   });
 
   await openAppPath(page, "/settings");

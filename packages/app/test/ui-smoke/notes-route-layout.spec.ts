@@ -145,7 +145,21 @@ test("Notes keeps readable cards clear of the composer in short landscape", asyn
   expect(Math.abs(first.x - second.x)).toBeLessThanOrEqual(2);
   expect(second.y).toBeGreaterThan(first.y + first.height);
   expect(rectanglesOverlap(first, composer)).toBe(false);
-  expect(rectanglesOverlap(second, composer)).toBe(false);
+  const visibleSecondBottom = await cards.nth(1).evaluate((card) => {
+    let bottom = card.getBoundingClientRect().bottom;
+    let ancestor = card.parentElement;
+    while (ancestor) {
+      const style = getComputedStyle(ancestor);
+      if (/(auto|scroll|hidden|clip)/.test(style.overflowY)) {
+        bottom = Math.min(bottom, ancestor.getBoundingClientRect().bottom);
+      }
+      ancestor = ancestor.parentElement;
+    }
+    return bottom;
+  });
+  // The DOM box includes clipped content; compare the actually visible card
+  // edge after every scroll/clip ancestor with the shell composer instead.
+  expect(visibleSecondBottom).toBeLessThanOrEqual(composer.y);
   const viewport = page.viewportSize();
   expect(viewport).not.toBeNull();
   if (!viewport) throw new Error("Expected the configured landscape viewport");
