@@ -897,6 +897,26 @@ describe("repository ruleset contract", () => {
     ).toBeFalse();
   });
 
+  test("fails closed when the readback principal cannot see bypass actors", () => {
+    const state = stateWithManifests();
+    const actual = structuredClone(state.details["101"]);
+    delete actual.bypass_actors;
+    state.details["101"] = actual;
+    const result = runHelper(state, [
+      "--manifest",
+      manifestPath("main"),
+      "--check",
+      "--repo",
+      "test/repo",
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("omitted bypass_actors");
+    expect(result.stderr).toContain("principal must have write access");
+    expect(
+      result.requests.some((request) => request.method !== "GET"),
+    ).toBeFalse();
+  });
+
   test("fails closed on an unknown live rule parameter", () => {
     const state = stateWithManifests();
     const actual = structuredClone(state.details["102"]);
@@ -1050,12 +1070,13 @@ describe("repository ruleset contract", () => {
     expect(setupNode.with).toEqual({ "node-version": "24.15.0" });
     const credential = drift.jobs.readback.steps.find(
       (step: Record<string, any>) =>
-        step.name === "Require the Administration-read credential",
+        step.name === "Require the ruleset-visible read credential",
     );
     expect(credential.env.GH_TOKEN).toBe(
       "${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}",
     );
     expect(credential.run).toContain('if [ -z "${GH_TOKEN:-}" ]');
+    expect(credential.run).toContain("principal has write access");
     const readback = drift.jobs.readback.steps.at(-1);
     expect(readback.env.GH_TOKEN).toBe(
       "${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}",

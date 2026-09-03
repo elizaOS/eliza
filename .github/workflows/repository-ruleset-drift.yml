@@ -36,12 +36,12 @@ jobs:
         with:
           node-version: "24.15.0"
 
-      - name: Require the Administration-read credential
+      - name: Require the ruleset-visible read credential
         env:
           GH_TOKEN: ${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}
         run: |
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::REPOSITORY_RULESET_READ_TOKEN is required with repository Administration: read permission"
+            echo "::error::REPOSITORY_RULESET_READ_TOKEN is required; use a read-scoped token whose principal has write access to the ruleset so GitHub returns bypass_actors"
             exit 1
           fi
 

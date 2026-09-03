@@ -114,13 +114,19 @@ configuration parity only; owner audit-log review plus red/green and direct-push
 canaries remain required after an authorized apply.
 
 External readback requires an owner-provisioned
-`REPOSITORY_RULESET_READ_TOKEN` repository Actions secret with repository
-`Administration: read`; the workflow-scoped `GITHUB_TOKEN` cannot request that
-repository permission and is never used for this readback. Owners must first
-make `develop` admission effective and complete its semantic readback and owner
-canaries, then provision the read-only token. The token must be removed before
-admission is weakened. Until that protection-before-token sequence is complete,
-the credential is expected to be absent and any external dispatch fails closed.
+`REPOSITORY_RULESET_READ_TOKEN` repository Actions secret. Use a fine-grained
+token limited to this repository and read-only `Metadata`; the credential's
+user principal must separately have write access to the ruleset. GitHub omits
+`bypass_actors` from a ruleset detail response when that principal lacks write
+access, and the helper fails closed on the missing field because it cannot then
+certify the no-bypass policy. The workflow performs GET requests only; the
+token's read-only scope prevents its use by the workflow for ruleset mutation.
+The workflow-scoped `GITHUB_TOKEN` is never used for this readback. Owners must
+first make `develop` admission effective and complete its semantic readback and
+owner canaries, then provision the read-only token. The token must be removed
+before admission is weakened. Until that protection-before-token sequence is
+complete, the credential is expected to be absent and any external dispatch
+fails closed.
 
 The disabled develop candidate is checked by source contract tests, not treated
 as live configuration. Merging this source alone cannot make the readback green.

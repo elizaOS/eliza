@@ -307,6 +307,14 @@ if (rulesetId === null) {
 }
 
 const actual = rulesetDetail(rulesetId);
+if (
+  !Object.hasOwn(actual, "bypass_actors") ||
+  !Array.isArray(actual.bypass_actors)
+) {
+  fail(
+    "repository ruleset detail omitted bypass_actors; the readback credential principal must have write access to the ruleset so no-bypass policy can be certified",
+  );
+}
 const sortObjectKeys = (value) => {
   if (Array.isArray(value)) return value.map(sortObjectKeys);
   if (!value || typeof value !== "object") return value;
