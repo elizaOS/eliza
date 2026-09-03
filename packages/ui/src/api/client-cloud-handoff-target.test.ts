@@ -146,6 +146,42 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
     });
 
     expect(getCloudCompatAgent).not.toHaveBeenCalled();
+    // The poll this test is named for: absent a dedicated target, the probe
+    // must read `agentId` — an assertion that fails if the probe short-circuits
+    // to null instead of polling at all.
+    expect(fetch).toHaveBeenCalledWith(
+      `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/v1/eliza/agents/agent-self`,
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
+      }),
+    );
+  });
+
+  it("still switches when the source IS a shared adapter and a dedicated target is given", async () => {
+    // The Phase-1 migration itself: shared-adapter source plus a separately
+    // provisioned dedicated target. Guards the `!dedicatedAgentId` term of the
+    // short-circuit — without it every real handoff times out.
+    const adapterBase =
+      "https://elizacloud.ai/api/v1/eliza/agents/00000000-0000-4000-8000-00000000000a";
+    const { client } = fakeClient({ "dedicated-1": runningDedicated() });
+    const onSwitch = vi.fn();
+    const result = await client.startCloudAgentHandoff({
+      agentId: "shared-1",
+      sharedApiBase: adapterBase,
+      conversationId: "shared-1",
+      dedicatedAgentId: "dedicated-1",
+      cloudApiBase: "https://www.elizacloud.ai",
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 200,
+      log: () => {},
+    });
+
+    expect(onSwitch).toHaveBeenCalledWith("https://dedicated-1.elizacloud.ai");
+    expect(
+      result.status === "switched" || result.status === "switched-empty",
+    ).toBe(true);
   });
 
   it("uses the agent-scoped local Cloud proxy when no public agent URL exists", async () => {
