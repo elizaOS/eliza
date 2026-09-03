@@ -25,6 +25,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import { getErrorStatusCode, nextJsonFromCaughtError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { exposedVoiceCloneFailureReason } from "@/lib/services/voice-clone-failure";
 import { voiceCloningService } from "@/lib/services/voice-cloning";
 import { logger } from "@/lib/utils/logger";
 
@@ -63,7 +64,10 @@ async function __hono_GET(request: Request) {
           jobType: job.jobType,
           status: job.status,
           progress: job.progress,
-          errorMessage: job.errorMessage,
+          errorMessage: exposedVoiceCloneFailureReason(
+            job.errorMessage,
+            job.status === "reconciliation_required",
+          ),
           reconciliationRequired: job.status === "reconciliation_required",
           providerState:
             typeof metadata.providerSubmissionState === "string"
