@@ -34,23 +34,41 @@ function makePerson(
     handle: string;
   }>,
 ): RelationshipsPersonDetail {
+  const platform = overrides.platform ?? "test_platform";
   const person: RelationshipsPersonDetail = {
-    id: "person-1",
+    groupId: "person-1",
+    primaryEntityId: "entity-1",
+    memberEntityIds: ["entity-1"],
     displayName: "Test",
+    aliases: [],
+    platforms: [platform],
     identities: [
       {
         entityId: "entity-1",
-        platforms: [overrides.platform ?? "test_platform"],
+        platforms: [platform],
         names: overrides.name ? [overrides.name] : [],
-        handles: overrides.handle ? [{ handle: overrides.handle }] : [],
-        avatarUrl: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        handles: overrides.handle
+          ? [{ entityId: "entity-1", platform, handle: overrides.handle }]
+          : [],
       },
     ],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  } as RelationshipsPersonDetail;
+    emails: [],
+    phones: [],
+    websites: [],
+    preferredCommunicationChannel: null,
+    categories: [],
+    tags: [],
+    factCount: 0,
+    relationshipCount: 0,
+    isOwner: false,
+    profiles: [],
+    facts: [],
+    recentConversations: [],
+    relevantMemories: [],
+    relationships: [],
+    identityEdges: [],
+    userPersonalityPreferences: [],
+  };
   return person;
 }
 
