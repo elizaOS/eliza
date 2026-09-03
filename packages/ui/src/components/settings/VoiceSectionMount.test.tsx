@@ -309,3 +309,45 @@ describe("VoiceSectionMount — mount fetch failures fall back to defaults (list
     expect(unhandled).toEqual([]);
   });
 });
+
+describe("VoiceSectionMount — mount preserves explicit local consent when the server is silent", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    clientMock.updateConfig.mockResolvedValue({});
+    clientMock.getLocalInferenceDeviceTier.mockResolvedValue({
+      tier: "GOOD",
+      reason: "",
+    });
+  });
+
+  afterEach(() => cleanup());
+
+  it.each([
+    [
+      "failed fetch",
+      () =>
+        clientMock.getConfig.mockRejectedValue(new Error("config fetch down")),
+    ],
+    ["empty server blob", () => clientMock.getConfig.mockResolvedValue({})],
+  ])(
+    "keeps a persisted opt-in across mount on %s",
+    async (_label, arrangeServer) => {
+      arrangeServer();
+      window.localStorage.setItem(
+        "eliza:voice:os-intent-auto-start-voice",
+        "true",
+      );
+      render(<VoiceSectionMount />);
+      const toggle = await screen.findByTestId(
+        "voice-section-intent-autostart-voice",
+      );
+      await waitFor(() =>
+        expect(toggle.getAttribute("aria-checked")).toBe("true"),
+      );
+      expect(loadOsIntentAutoStartConsent()).toEqual({
+        voice: true,
+        transcription: false,
+      });
+    },
+  );
+});
