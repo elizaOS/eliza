@@ -277,6 +277,7 @@ exit 1
     "EXPECTED_TELEGRAM_BOT_USERNAME_FIXTURE",
     "EXPECTED_TELEGRAM_BOT_TOKEN_FIXTURE",
     "EXPECTED_TELEGRAM_WEBHOOK_SECRET_FIXTURE",
+    ...protectedNames.map((name) => `WORKER_${name}`),
   ]) {
     delete inheritedEnvironment[name];
   }
@@ -677,6 +678,33 @@ describe("protected gateway-webhook deployment workflow", () => {
     ).toContain(
       "Required protected staging Telegram GitHub environment secret is absent or blank: ELIZA_APP_TELEGRAM_BOT_TOKEN",
     );
+  });
+
+  test("ignores inherited protected Worker credentials", () => {
+    const name = "ELIZA_APP_TELEGRAM_BOT_TOKEN" as const;
+    const workerName = `WORKER_${name}`;
+    const inheritedValue = Bun.env[workerName];
+    Bun.env[workerName] = protectedValues[name];
+
+    try {
+      const missing = verifyRailwayVariableInventory(
+        "staging",
+        {},
+        { [name]: undefined },
+      );
+      expect(missing.exitCode).toBe(1);
+      expect(
+        `${missing.stdout.toString()}${missing.stderr.toString()}`,
+      ).toContain(
+        `Required protected staging Telegram GitHub environment secret is absent or blank: ${name}`,
+      );
+    } finally {
+      if (inheritedValue === undefined) {
+        delete Bun.env[workerName];
+      } else {
+        Bun.env[workerName] = inheritedValue;
+      }
+    }
   });
 
   test("requires the complete protected-environment credential set", () => {
