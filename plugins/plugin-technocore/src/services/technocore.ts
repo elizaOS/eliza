@@ -40,6 +40,9 @@ export function cleanText(input: string): string {
 		.trim();
 }
 
+const ROOM_STOPWORDS =
+	/^(the|a|an|this|that|these|those|my|our|your|any|all|chat|with|for|about|where|when|which|who|whom|whose|why|how|is|are|was|were|be|been|being|to|in|at|from|into|on|of|and|or|but|if)$/i;
+
 export function extractTargetRoom(
 	text: string,
 	defaultRoom: string,
@@ -54,24 +57,16 @@ export function extractTargetRoom(
 		return explicitSlash[1];
 	}
 
-	const prefixMatch = text.match(/\b([a-zA-Z0-9_-]+)\s+room\b/i);
-	if (
-		prefixMatch?.[1] &&
-		!/^(the|a|an|this|that|my|any|chat|our|to|in|at|from|into|on|of|current|main|default)$/i.test(
-			prefixMatch[1]
-		)
-	) {
-		return prefixMatch[1];
+	// Suffix pattern takes precedence over preceding verbs/tokens (e.g. "read room current" -> "current")
+	const suffixMatch = text.match(/\broom\s*[:=]?\s*([a-zA-Z0-9_-]+)/i);
+	if (suffixMatch?.[1] && !ROOM_STOPWORDS.test(suffixMatch[1])) {
+		return suffixMatch[1];
 	}
 
-	const suffixMatch = text.match(/\broom\s*[:=]?\s*([a-zA-Z0-9_-]+)/i);
-	if (
-		suffixMatch?.[1] &&
-		!/^(the|a|an|this|that|with|for|about|where|when|is|are|to|in|at|from|into|on|of)$/i.test(
-			suffixMatch[1]
-		)
-	) {
-		return suffixMatch[1];
+	// Prefix pattern allows natural trailing room notation (e.g. "read the general room" -> "general")
+	const prefixMatch = text.match(/\b([a-zA-Z0-9_-]+)\s+room\b/i);
+	if (prefixMatch?.[1] && !ROOM_STOPWORDS.test(prefixMatch[1])) {
+		return prefixMatch[1];
 	}
 
 	return defaultRoom;
