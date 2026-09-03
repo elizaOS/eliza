@@ -41,6 +41,20 @@ describe("describeCaptureFailure", () => {
     ).toBe(true);
   });
 
+  it("treats browser and native recognizer silence codes as normal silence", () => {
+    expect(
+      isNoSpeechCaptureFailure(new Error("SpeechRecognition error: no-speech")),
+    ).toBe(true);
+    expect(
+      isNoSpeechCaptureFailure(new Error("Speech recognition error: no_match")),
+    ).toBe(true);
+    expect(
+      isNoSpeechCaptureFailure(
+        new Error("Speech recognition error: speech_timeout"),
+      ),
+    ).toBe(true);
+  });
+
   it("keeps actionable capture failures visible", () => {
     expect(
       isNoSpeechCaptureFailure(

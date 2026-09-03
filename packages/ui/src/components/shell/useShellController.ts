@@ -403,7 +403,12 @@ export function isNoSpeechCaptureFailure(err: unknown): boolean {
   const normalized = message.toLowerCase();
   return (
     normalized.includes("no microphone audio was captured") ||
-    normalized.includes("empty transcript")
+    normalized.includes("empty transcript") ||
+    normalized.includes("no-speech") ||
+    normalized.includes("no_match") ||
+    normalized.includes("no match") ||
+    normalized.includes("speech_timeout") ||
+    normalized.includes("speech timeout")
   );
 }
 
