@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { createAgentBackupObjectStore } from "./agent-backup-object-store";
 import {
   createExactRuntimeR2Backend,
   DEFAULT_IMMUTABLE_UPLOAD_DURATION_MS,
@@ -25,6 +26,7 @@ import type {
   RuntimeR2MultipartUpload,
   RuntimeR2ObjectMetadata,
 } from "./r2-runtime-binding";
+import { createS3CompatibleClient } from "./s3-compatible-client";
 
 const BACKEND_FINGERPRINT = `sha256:${"a".repeat(64)}`;
 const KEY = "agent-sandbox-backups/org-a/generation-a/object-a";
@@ -69,12 +71,18 @@ function providerError(code: string, status: number): Error {
 }
 
 function requestControl(
-  input: { signal?: AbortSignal; deadline?: Date; late?: Promise<void>[] } = {},
+  input: {
+    signal?: AbortSignal;
+    deadline?: Date;
+    late?: Promise<void>[];
+    registrationError?: unknown;
+  } = {},
 ): MultipartObjectRequestControl {
   return {
     signal: input.signal,
     deadline: input.deadline ?? new Date(Date.now() + 60_000),
     registerLateSettlement(settlement) {
+      if (input.registrationError !== undefined) throw input.registrationError;
       input.late?.push(settlement);
     },
   };
@@ -99,6 +107,8 @@ class FakeRuntimeMultipartBucket implements RuntimeR2Bucket {
   readonly uploads = new Map<string, FakeUploadState>();
   readonly objects = new Map<string, FakeStoredObject>();
   readonly createGates: Deferred<void>[] = [];
+  readonly completeGates: Deferred<void>[] = [];
+  readonly abortGates: Deferred<void>[] = [];
   readonly uploadGates = new Map<number, Deferred<void>>();
   readonly partResponseLoss = new Set<number>();
   readonly providerBodies = new Map<number, Uint8Array>();
@@ -112,10 +122,15 @@ class FakeRuntimeMultipartBucket implements RuntimeR2Bucket {
   completeFailuresBeforePersist = 0;
   completeRejectsUndefined = false;
   driftCompletedBody = false;
+  driftGetEtag = false;
   forgeCompletedMetadata = false;
+  readonly abortFailures: unknown[] = [];
+  readonly headFailures: unknown[] = [];
+  workersNoSuchUploadErrors = false;
 
   async head(key: string): Promise<RuntimeR2ObjectMetadata | null> {
     this.callOrder.push("head");
+    if (this.headFailures.length > 0) throw this.headFailures.shift();
     const object = this.objects.get(key);
     if (!object) return null;
     const size = object.parts.reduce((total, part) => total + part.byteLength, 0);
@@ -138,7 +153,7 @@ class FakeRuntimeMultipartBucket implements RuntimeR2Bucket {
     const bucket = this;
     return {
       size: parts.reduce((total, part) => total + part.byteLength, 0),
-      etag: object.etag,
+      etag: this.driftGetEtag ? `${object.etag}-drift` : object.etag,
       version: object.version,
       customMetadata: object.options.customMetadata,
       body: new ReadableStream<Uint8Array>({
@@ -201,7 +216,7 @@ class FakeRuntimeMultipartBucket implements RuntimeR2Bucket {
       key: state.key,
       uploadId: state.uploadId,
       uploadPart: async (partNumber, body) => {
-        if (state.aborted) throw providerError("NoSuchUpload", 404);
+        if (state.aborted || !this.uploads.has(state.uploadId)) throw this.noSuchUploadError();
         if (!(body instanceof Uint8Array)) throw new Error("expected byte part");
         this.callOrder.push(`part-${partNumber}`);
         this.providerBodies.set(partNumber, body);
@@ -216,9 +231,11 @@ class FakeRuntimeMultipartBucket implements RuntimeR2Bucket {
         return { partNumber, etag };
       },
       complete: async (parts) => {
-        if (state.aborted) throw providerError("NoSuchUpload", 404);
+        if (state.aborted || !this.uploads.has(state.uploadId)) throw this.noSuchUploadError();
         this.completeCalls += 1;
         this.callOrder.push("complete");
+        const gate = this.completeGates.shift();
+        if (gate) await gate.promise;
         if (this.completeFailuresBeforePersist > 0) {
           this.completeFailuresBeforePersist -= 1;
           if (this.completeRejectsUndefined) await Promise.reject(undefined);
@@ -255,10 +272,20 @@ class FakeRuntimeMultipartBucket implements RuntimeR2Bucket {
       abort: async () => {
         this.abortCalls += 1;
         this.callOrder.push("abort");
+        if (state.aborted || !this.uploads.has(state.uploadId)) throw this.noSuchUploadError();
+        const gate = this.abortGates.shift();
+        if (gate) await gate.promise;
+        if (this.abortFailures.length > 0) throw this.abortFailures.shift();
         state.aborted = true;
         this.uploads.delete(state.uploadId);
       },
     };
+  }
+
+  private noSuchUploadError(): Error {
+    return this.workersNoSuchUploadErrors
+      ? new Error("put: The specified multipart upload does not exist. (10024)")
+      : providerError("NoSuchUpload", 404);
   }
 }
 
@@ -290,14 +317,19 @@ class FakeS3MultipartClient {
       parts: readonly Uint8Array[];
       metadata: Record<string, string>;
       etag: string;
-      version: string;
+      version?: string;
     }
   >();
   readonly signals: AbortSignal[] = [];
   readonly commands: string[] = [];
   readonly abortInputs: Array<{ bucket: string; key: string; uploadId: string }> = [];
+  readonly listPartsGates: Deferred<void>[] = [];
   createEchoBucket: string | undefined;
   createEchoKey: string | undefined;
+  readonly createFailures: unknown[] = [];
+  readonly getFailures: unknown[] = [];
+  abortKeepsUploadAttempts = 0;
+  omitObjectVersion = false;
   nextUploadId = 1;
 
   async send(
@@ -312,6 +344,7 @@ class FakeS3MultipartClient {
     const uploadId = String(input.UploadId ?? "");
 
     if (name === "CreateMultipartUploadCommand") {
+      if (this.createFailures.length > 0) throw this.createFailures.shift();
       const nextUploadId = `s3-upload-${this.nextUploadId++}`;
       this.uploads.set(nextUploadId, {
         key,
@@ -337,6 +370,8 @@ class FakeS3MultipartClient {
       return { ETag: etag, ChecksumSHA256: checksum };
     }
     if (name === "ListPartsCommand") {
+      const gate = this.listPartsGates.shift();
+      if (gate) await gate.promise;
       const upload = this.uploads.get(uploadId);
       if (!upload) throw providerError("NoSuchUpload", 404);
       return {
@@ -368,7 +403,7 @@ class FakeS3MultipartClient {
         parts: Object.freeze(parts),
         metadata: upload.metadata,
         etag: `s3-object-etag-${uploadId}`,
-        version: `s3-version-${uploadId}`,
+        version: this.omitObjectVersion ? undefined : `s3-version-${uploadId}`,
       });
       this.uploads.delete(uploadId);
       return { Key: key, Bucket: input.Bucket };
@@ -379,7 +414,12 @@ class FakeS3MultipartClient {
         key,
         uploadId,
       });
-      if (!this.uploads.delete(uploadId)) throw providerError("NoSuchUpload", 404);
+      if (!this.uploads.has(uploadId)) throw providerError("NoSuchUpload", 404);
+      if (this.abortKeepsUploadAttempts > 0) {
+        this.abortKeepsUploadAttempts -= 1;
+        return {};
+      }
+      this.uploads.delete(uploadId);
       return {};
     }
     if (name === "HeadObjectCommand") {
@@ -393,6 +433,7 @@ class FakeS3MultipartClient {
       };
     }
     if (name === "GetObjectCommand") {
+      if (this.getFailures.length > 0) throw this.getFailures.shift();
       const object = this.objects.get(key);
       if (!object) throw providerError("NoSuchKey", 404);
       let index = 0;
@@ -418,7 +459,18 @@ class FakeS3MultipartClient {
   }
 }
 
-function s3Backend(client: FakeS3MultipartClient): ExactObjectStorageBackend {
+function s3Backend(
+  client: FakeS3MultipartClient,
+  input: { singleAttempt?: boolean } = {},
+): ExactObjectStorageBackend {
+  const transport = createS3CompatibleClient({
+    endpoint: "http://127.0.0.1:9",
+    region: "fsn1",
+    accessKeyId: "test-access-key",
+    secretAccessKey: "test-secret-key",
+    maxAttempts: input.singleAttempt === false ? 3 : 1,
+  });
+  transport.send = client.send.bind(client) as typeof transport.send;
   return {
     locator: {
       transport: "s3-compatible",
@@ -428,7 +480,7 @@ function s3Backend(client: FakeS3MultipartClient): ExactObjectStorageBackend {
       bucket: "private-backup-bucket",
       region: "fsn1",
     },
-    s3Client: client,
+    s3Client: transport,
   } as unknown as ExactObjectStorageBackend;
 }
 
@@ -471,6 +523,178 @@ async function expectCode(promise: Promise<unknown>, code: string): Promise<void
 }
 
 describe("exact multipart object upload", () => {
+  test("pins every store multipart wrapper to its captured backend authority", async () => {
+    const ownerBucket = new FakeRuntimeMultipartBucket();
+    const foreignBucket = new FakeRuntimeMultipartBucket();
+    const store = await createAgentBackupObjectStore({
+      provider: "cloudflare-r2",
+      transport: "worker-r2",
+      endpointAlias: "r2-owner-eu",
+      accountIdentity: "cloudflare-owner-account",
+      bindingIdentity: "BACKUP_OWNER",
+      bucket: "sandbox-backup-owner",
+      region: "auto",
+      bucketBinding: ownerBucket,
+    });
+    const foreignBackend = runtimeBackend(foreignBucket);
+    const part = bytePart(23, 0x0f);
+    const createInput = {
+      backend: foreignBackend,
+      key: KEY,
+      expectedSize: part.byteLength,
+      expectedSha256: sha256(part),
+      control: requestControl(),
+    };
+    const session = await store.createMultipart(createInput);
+    expect(ownerBucket.createCalls).toBe(1);
+    expect(foreignBucket.createCalls).toBe(0);
+
+    const rehydrateInput = {
+      backend: foreignBackend,
+      key: session.handle.key,
+      uploadId: session.handle.uploadId,
+      expectedSize: session.handle.expectedSize,
+      expectedSha256: session.handle.expectedSha256,
+      contentType: session.handle.contentType,
+      receipt: session.handle.toJSON(),
+    };
+    const rehydrated = await store.rehydrateMultipartHandle(rehydrateInput);
+    expect(rehydrated.handleFingerprint).toBe(session.handle.handleFingerprint);
+
+    const resumeInput = {
+      backend: foreignBackend,
+      handle: rehydrated,
+      acknowledgedParts: [],
+      control: requestControl(),
+    };
+    const resumed = await store.resumeMultipart(resumeInput);
+    await resumed.abort(requestControl());
+    expect(ownerBucket.abortCalls).toBe(1);
+    expect(foreignBucket.abortCalls).toBe(0);
+  });
+
+  test("snapshots mutable runtime and S3 backends for the whole session", async () => {
+    const runtimeOwner = new FakeRuntimeMultipartBucket();
+    const runtimeForeign = new FakeRuntimeMultipartBucket();
+    const mutableRuntimeBackend = runtimeBackend(runtimeOwner);
+    const runtimePart = bytePart(17, 0x10);
+    const runtimeCreation = createMultipartObjectUpload({
+      backend: mutableRuntimeBackend,
+      key: `${KEY}-runtime-snapshot`,
+      expectedSize: runtimePart.byteLength,
+      expectedSha256: sha256(runtimePart),
+      control: requestControl(),
+    });
+    Object.assign(mutableRuntimeBackend, { runtimeBucket: runtimeForeign });
+    const runtimeSession = await runtimeCreation;
+    await uploadAll(runtimeSession, [runtimePart]);
+    await runtimeSession.complete(requestControl());
+    expect(runtimeOwner.objects.has(`${KEY}-runtime-snapshot`)).toBe(true);
+    expect(runtimeForeign.objects.size).toBe(0);
+
+    const s3Owner = new FakeS3MultipartClient();
+    const s3Foreign = new FakeS3MultipartClient();
+    const mutableS3Backend = s3Backend(s3Owner);
+    const s3Part = bytePart(19, 0x11);
+    const s3Session = await createMultipartObjectUpload({
+      backend: mutableS3Backend,
+      key: `${KEY}-s3-snapshot`,
+      expectedSize: s3Part.byteLength,
+      expectedSha256: sha256(s3Part),
+      control: requestControl(),
+    });
+    Object.assign(mutableS3Backend, { s3Client: s3Foreign });
+    await s3Session.uploadPart({ partNumber: 1, body: s3Part, control: requestControl() });
+    await s3Session.complete(requestControl());
+    expect(s3Owner.objects.has(`${KEY}-s3-snapshot`)).toBe(true);
+    expect(s3Foreign.commands).toEqual([]);
+  });
+
+  test("snapshots the resume handle before asynchronous authority validation", async () => {
+    const ownerBucket = new FakeRuntimeMultipartBucket();
+    const foreignBucket = new FakeRuntimeMultipartBucket();
+    const part = bytePart(13, 0x12);
+    const owner = await createRuntimeSession({
+      bucket: ownerBucket,
+      parts: [part],
+      key: `${KEY}-resume-owner`,
+    });
+    const foreignFirst = await createRuntimeSession({
+      bucket: foreignBucket,
+      parts: [part],
+      key: `${KEY}-resume-foreign-first`,
+    });
+    const foreignSecond = await createRuntimeSession({
+      bucket: foreignBucket,
+      parts: [part],
+      key: `${KEY}-resume-foreign-second`,
+    });
+    const mutableHandle = {
+      ...owner.handle,
+      endpointAlias: owner.handle.endpointAlias,
+      bucket: owner.handle.bucket,
+      region: owner.handle.region,
+      key: owner.handle.key,
+      uploadId: owner.handle.uploadId,
+    } as MultipartObjectUploadHandle;
+    const mutableInput = {
+      backend: runtimeBackend(ownerBucket),
+      handle: mutableHandle,
+      acknowledgedParts: [],
+      control: requestControl(),
+    };
+    const resumedPromise = resumeMultipartObjectUpload(mutableInput);
+    mutableInput.handle = foreignSecond.handle;
+    Object.assign(mutableHandle, {
+      key: foreignFirst.handle.key,
+      uploadId: foreignFirst.handle.uploadId,
+      handleFingerprint: foreignFirst.handle.handleFingerprint,
+    });
+    const resumed = await resumedPromise;
+    expect(resumed.handle.handleFingerprint).toBe(owner.handle.handleFingerprint);
+
+    await resumed.abort(requestControl());
+    await foreignFirst.abort(requestControl());
+    await foreignSecond.abort(requestControl());
+  });
+
+  test("snapshots mutable durable receipts before asynchronous validation", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const part = bytePart(13, 0x13);
+    const original = await createRuntimeSession({ bucket, parts: [part] });
+    const partReceipt = await original.uploadPart({
+      partNumber: 1,
+      body: part,
+      control: requestControl(),
+    });
+    const mutablePartReceipt = { ...partReceipt };
+    const resume = resumeMultipartObjectUpload({
+      backend: runtimeBackend(bucket),
+      handle: original.handle,
+      acknowledgedParts: [mutablePartReceipt],
+      control: requestControl(),
+    });
+    mutablePartReceipt.etag = "mutated-after-call";
+    const resumed = await resume;
+    expect(resumed.acknowledgedParts()).toEqual([partReceipt]);
+
+    const mutableHandleReceipt = { ...original.handle.toJSON() };
+    const rehydration = rehydrateMultipartObjectUploadHandle({
+      backend: runtimeBackend(bucket),
+      key: original.handle.key,
+      uploadId: original.handle.uploadId,
+      expectedSize: original.handle.expectedSize,
+      expectedSha256: original.handle.expectedSha256,
+      contentType: original.handle.contentType,
+      receipt: mutableHandleReceipt,
+    });
+    mutableHandleReceipt.handleFingerprint = `sha256:${"f".repeat(64)}`;
+    await expect(rehydration).resolves.toMatchObject({
+      handleFingerprint: original.handle.handleFingerprint,
+    });
+    await resumed.abort(requestControl());
+  });
+
   test("uploads three fixed parts without whole-object concatenation and keeps JSON private", async () => {
     const bucket = new FakeRuntimeMultipartBucket();
     const parts = [
@@ -584,6 +808,80 @@ describe("exact multipart object upload", () => {
     );
   });
 
+  test("returns the public unsupported code before provider effects", async () => {
+    const bucket: RuntimeR2Bucket = {
+      async head() {
+        return null;
+      },
+      async get() {
+        return null;
+      },
+      async put() {
+        return null;
+      },
+      async delete() {},
+    };
+    await expectCode(
+      createMultipartObjectUpload({
+        backend: runtimeBackend(bucket),
+        key: KEY,
+        expectedSize: 1,
+        expectedSha256: sha256(new Uint8Array([1])),
+        control: requestControl(),
+      }),
+      "OBJECT_STORAGE_MULTIPART_UNSUPPORTED",
+    );
+  });
+
+  test("distinguishes authoritative S3 create rejection from unsupported multipart", async () => {
+    const rejected = new FakeS3MultipartClient();
+    rejected.createFailures.push(providerError("AccessDenied", 403));
+    await expectCode(
+      createMultipartObjectUpload({
+        backend: s3Backend(rejected),
+        key: KEY,
+        expectedSize: 1,
+        expectedSha256: sha256(new Uint8Array([2])),
+        control: requestControl(),
+      }),
+      "OBJECT_STORAGE_MULTIPART_CREATE_FAILED",
+    );
+    expect(rejected.commands).toEqual(["CreateMultipartUploadCommand"]);
+    expect(rejected.uploads.size).toBe(0);
+
+    const unsupported = new FakeS3MultipartClient();
+    unsupported.createFailures.push(providerError("NotImplemented", 501));
+    await expectCode(
+      createMultipartObjectUpload({
+        backend: s3Backend(unsupported),
+        key: KEY,
+        expectedSize: 1,
+        expectedSha256: sha256(new Uint8Array([3])),
+        control: requestControl(),
+      }),
+      "OBJECT_STORAGE_MULTIPART_UNSUPPORTED",
+    );
+    expect(unsupported.commands).toEqual(["CreateMultipartUploadCommand"]);
+    expect(unsupported.uploads.size).toBe(0);
+  });
+
+  test("rejects hidden S3 create retries before any provider effect", async () => {
+    const client = new FakeS3MultipartClient();
+    const part = bytePart(5, 0x4f);
+    await expectCode(
+      createMultipartObjectUpload({
+        backend: s3Backend(client, { singleAttempt: false }),
+        key: KEY,
+        expectedSize: part.byteLength,
+        expectedSha256: sha256(part),
+        control: requestControl(),
+      }),
+      "OBJECT_STORAGE_MULTIPART_INVALID",
+    );
+    expect(client.commands).toEqual([]);
+    expect(client.uploads.size).toBe(0);
+  });
+
   test("accepts exactly 1024 UTF-8 key bytes and rejects the next code point", async () => {
     const bucket = new FakeRuntimeMultipartBucket();
     const part = bytePart(7, 0x5a);
@@ -666,6 +964,25 @@ describe("exact multipart object upload", () => {
     expect(String(failure)).not.toContain("private-backup-bucket");
   });
 
+  test("keeps create indeterminate when post-effect cleanup registration throws", async () => {
+    const client = new FakeS3MultipartClient();
+    client.createEchoKey = `${KEY}-foreign`;
+    const part = bytePart(17, 0x5d);
+    await expectCode(
+      createMultipartObjectUpload({
+        backend: s3Backend(client),
+        key: KEY,
+        expectedSize: part.byteLength,
+        expectedSha256: sha256(part),
+        control: requestControl({ registrationError: new Error("registration unavailable") }),
+      }),
+      "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE",
+    );
+    await Bun.sleep(1);
+    expect(client.abortInputs).toHaveLength(1);
+    expect(client.uploads.size).toBe(0);
+  });
+
   test("never retries an indeterminate create and aborts a late resolved handle", async () => {
     const bucket = new FakeRuntimeMultipartBucket();
     const gate = deferred<void>();
@@ -693,6 +1010,54 @@ describe("exact multipart object upload", () => {
     expect(lost.createCalls).toBe(1);
   });
 
+  test("owns a provider result that settles between cancellation and the race observer", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const gate = deferred<void>();
+    bucket.createGates.push(gate);
+    const originalLate: Promise<void>[] = [];
+    const stolenLate: Promise<void>[] = [];
+    const controller = new AbortController();
+    const control = requestControl({ signal: controller.signal, late: originalLate });
+    const part = bytePart(19, 0x68);
+    const creation = createRuntimeSession({ bucket, parts: [part], control });
+    while (bucket.createCalls === 0) await Promise.resolve();
+
+    Object.assign(control, {
+      registerLateSettlement(settlement: Promise<void>) {
+        stolenLate.push(settlement);
+      },
+    });
+    controller.abort();
+    gate.resolve();
+
+    await expectCode(creation, "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE");
+    expect(originalLate).toHaveLength(1);
+    expect(stolenLate).toHaveLength(0);
+    await Promise.all(originalLate);
+    expect(bucket.abortCalls).toBe(1);
+    expect(bucket.uploads.size).toBe(0);
+  });
+
+  test("keeps a failed late-created upload cleanup observable to the durable caller", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const gate = deferred<void>();
+    bucket.createGates.push(gate);
+    bucket.abortFailures.push(providerError("InternalError", 500));
+    const late: Promise<void>[] = [];
+    const part = bytePart(29, 0x67);
+    const creation = createRuntimeSession({
+      bucket,
+      parts: [part],
+      control: requestControl({ deadline: new Date(Date.now() + 10), late }),
+    });
+    await expectCode(creation, "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE");
+    expect(late).toHaveLength(1);
+    gate.resolve();
+    await expect(late[0]).rejects.toMatchObject({ name: "InternalError" });
+    expect(bucket.abortCalls).toBe(1);
+    expect(bucket.uploads.size).toBe(1);
+  });
+
   test("replays the same response-lost part but rejects a different body", async () => {
     const bucket = new FakeRuntimeMultipartBucket();
     const part = bytePart(37, 0x77);
@@ -715,6 +1080,27 @@ describe("exact multipart object upload", () => {
       session.uploadPart({ partNumber: 1, body: different, control: requestControl() }),
       "OBJECT_STORAGE_MULTIPART_PART_CONFLICT",
     );
+  });
+
+  test("snapshots a mutable part number before asynchronous dispatch", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const parts = [bytePart(MULTIPART_OBJECT_PART_BYTES, 0x78), bytePart(1, 0x79)];
+    const session = await createRuntimeSession({ bucket, parts });
+    const mutableInput = {
+      partNumber: 1,
+      body: parts[0]!,
+      control: requestControl(),
+    };
+    const upload = session.uploadPart(mutableInput);
+    mutableInput.partNumber = 2;
+    await expect(upload).resolves.toMatchObject({
+      partNumber: 1,
+      sizeBytes: MULTIPART_OBJECT_PART_BYTES,
+    });
+    const providerParts = bucket.uploads.get(session.handle.uploadId)?.parts;
+    expect(providerParts?.has(1)).toBe(true);
+    expect(providerParts?.has(2)).toBe(false);
+    await session.abort(requestControl());
   });
 
   test("retains the private provider copy until late settlement then zeroizes it", async () => {
@@ -784,6 +1170,54 @@ describe("exact multipart object upload", () => {
     ).resolves.toMatchObject({ partNumber: 2, providerAcknowledged: true });
   }, 30_000);
 
+  test("does not let a canceled queued part release a newer buffer", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const abortGate = deferred<void>();
+    const uploadGate = deferred<void>();
+    bucket.abortGates.push(abortGate);
+    bucket.abortFailures.push(
+      providerError("InternalError", 500),
+      providerError("InternalError", 500),
+    );
+    bucket.uploadGates.set(1, uploadGate);
+    const parts = [
+      bytePart(MULTIPART_OBJECT_PART_BYTES, 0x8b),
+      bytePart(MULTIPART_OBJECT_PART_BYTES, 0x8c),
+      bytePart(1, 0x8d),
+    ];
+    const session = await createRuntimeSession({ bucket, parts });
+    const abort = session.abort(requestControl());
+    while (bucket.abortCalls === 0) await Promise.resolve();
+
+    const canceled = session.uploadPart({
+      partNumber: 1,
+      body: parts[0]!,
+      control: requestControl({ deadline: new Date(Date.now() + 10) }),
+    });
+    await expectCode(canceled, "OBJECT_STORAGE_MULTIPART_DEADLINE_EXCEEDED");
+    const retained = session.uploadPart({
+      partNumber: 1,
+      body: parts[0]!,
+      control: requestControl(),
+    });
+
+    abortGate.resolve();
+    await expectCode(abort, "OBJECT_STORAGE_MULTIPART_ABORT_UNCONFIRMED");
+    while (!bucket.providerBodies.has(1)) await Promise.resolve();
+    await expectCode(
+      session.uploadPart({
+        partNumber: 2,
+        body: parts[1]!,
+        control: requestControl(),
+      }),
+      "OBJECT_STORAGE_MULTIPART_BACKPRESSURE",
+    );
+
+    uploadGate.resolve();
+    await retained;
+    await session.abort(requestControl());
+  }, 30_000);
+
   test("propagates caller cancellation while keeping the provider settlement observable", async () => {
     const bucket = new FakeRuntimeMultipartBucket();
     const gate = deferred<void>();
@@ -836,6 +1270,20 @@ describe("exact multipart object upload", () => {
     expect(bucket.callOrder.slice(-5)).toEqual(["complete", "head", "complete", "head", "get"]);
   });
 
+  test("returns completion-unconfirmed after both exact attempts remain absent", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    bucket.completeFailuresBeforePersist = 2;
+    const part = bytePart(41, 0xce);
+    const session = await createRuntimeSession({ bucket, parts: [part] });
+    await uploadAll(session, [part]);
+    await expectCode(
+      session.complete(requestControl()),
+      "OBJECT_STORAGE_MULTIPART_COMPLETE_UNCONFIRMED",
+    );
+    expect(bucket.completeCalls).toBe(2);
+    expect(bucket.callOrder.slice(-4)).toEqual(["complete", "head", "complete", "head"]);
+  });
+
   test("refuses forged metadata and body drift after ambiguous completion", async () => {
     const part = bytePart(47, 0xdd);
     for (const mutation of ["metadata", "body"] as const) {
@@ -855,6 +1303,76 @@ describe("exact multipart object upload", () => {
       );
       expect(bucket.completeCalls).toBe(1);
     }
+  });
+
+  test("keeps an S3 GET transport failure unconfirmed instead of inventing drift", async () => {
+    const client = new FakeS3MultipartClient();
+    const part = bytePart(49, 0xdf);
+    const session = await createMultipartObjectUpload({
+      backend: s3Backend(client),
+      key: `${KEY}-s3-get-failure`,
+      expectedSize: part.byteLength,
+      expectedSha256: sha256(part),
+      control: requestControl(),
+    });
+    await session.uploadPart({ partNumber: 1, body: part, control: requestControl() });
+    client.getFailures.push(providerError("SlowDown", 503));
+    await expectCode(
+      session.complete(requestControl()),
+      "OBJECT_STORAGE_MULTIPART_COMPLETE_UNCONFIRMED",
+    );
+    expect(client.objects.has(`${KEY}-s3-get-failure`)).toBe(true);
+  });
+
+  test("classifies an S3 conditional GET mismatch as exact generation conflict", async () => {
+    const client = new FakeS3MultipartClient();
+    client.omitObjectVersion = true;
+    const part = bytePart(51, 0xe0);
+    const session = await createMultipartObjectUpload({
+      backend: s3Backend(client),
+      key: `${KEY}-s3-get-precondition`,
+      expectedSize: part.byteLength,
+      expectedSha256: sha256(part),
+      control: requestControl(),
+    });
+    await session.uploadPart({ partNumber: 1, body: part, control: requestControl() });
+    client.getFailures.push(providerError("PreconditionFailed", 412));
+    await expectCode(
+      session.complete(requestControl()),
+      "OBJECT_STORAGE_MULTIPART_COMPLETE_CONFLICT",
+    );
+  });
+
+  test("classifies a disappeared exact S3 version as generation conflict", async () => {
+    const client = new FakeS3MultipartClient();
+    const part = bytePart(53, 0xe1);
+    const session = await createMultipartObjectUpload({
+      backend: s3Backend(client),
+      key: `${KEY}-s3-get-version-missing`,
+      expectedSize: part.byteLength,
+      expectedSha256: sha256(part),
+      control: requestControl(),
+    });
+    await session.uploadPart({ partNumber: 1, body: part, control: requestControl() });
+    client.getFailures.push(providerError("NoSuchVersion", 404));
+    await expectCode(
+      session.complete(requestControl()),
+      "OBJECT_STORAGE_MULTIPART_COMPLETE_CONFLICT",
+    );
+  });
+
+  test("keeps the exact R2 conflict when response-body cleanup registration throws", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    bucket.driftGetEtag = true;
+    const part = bytePart(31, 0xde);
+    const session = await createRuntimeSession({ bucket, parts: [part] });
+    await uploadAll(session, [part]);
+    await expectCode(
+      session.complete(
+        requestControl({ registrationError: new Error("registration unavailable") }),
+      ),
+      "OBJECT_STORAGE_MULTIPART_COMPLETE_CONFLICT",
+    );
   });
 
   test("serializes abort behind an in-flight part settlement", async () => {
@@ -877,6 +1395,230 @@ describe("exact multipart object upload", () => {
     await Promise.all(late);
     await abort;
     expect(bucket.callOrder.slice(-2)).toEqual(["part-1", "abort"]);
+  });
+
+  test("honors a queued abort deadline while an earlier provider call is unsettled", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const gate = deferred<void>();
+    bucket.uploadGates.set(1, gate);
+    const late: Promise<void>[] = [];
+    const part = bytePart(31, 0xed);
+    const session = await createRuntimeSession({ bucket, parts: [part] });
+    await expectCode(
+      session.uploadPart({
+        partNumber: 1,
+        body: part,
+        control: requestControl({ deadline: new Date(Date.now() + 10), late }),
+      }),
+      "OBJECT_STORAGE_MULTIPART_DEADLINE_EXCEEDED",
+    );
+
+    const queuedAbort = session.abort(requestControl({ deadline: new Date(Date.now() + 10) }));
+    const abortOutcome = await Promise.race([
+      queuedAbort.then(
+        () => "resolved" as const,
+        (error: unknown) => error,
+      ),
+      Bun.sleep(80).then(() => "pending" as const),
+    ]);
+    expect(abortOutcome).toBeInstanceOf(ObjectStorageLifecycleError);
+    expect((abortOutcome as ObjectStorageLifecycleError).code).toBe(
+      "OBJECT_STORAGE_MULTIPART_DEADLINE_EXCEEDED",
+    );
+    expect(bucket.abortCalls).toBe(0);
+
+    gate.resolve();
+    await Promise.all(late);
+    await session.abort(requestControl());
+    expect(bucket.abortCalls).toBe(1);
+  });
+
+  test("wipes and releases an undispatched part when its queued deadline expires", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const part = bytePart(43, 0xee);
+    const session = await createRuntimeSession({ bucket, parts: [part] });
+    await uploadAll(session, [part]);
+    const gate = deferred<void>();
+    bucket.completeGates.push(gate);
+    const completeLate: Promise<void>[] = [];
+    await expectCode(
+      session.complete(requestControl({ deadline: new Date(Date.now() + 10), late: completeLate })),
+      "OBJECT_STORAGE_MULTIPART_DEADLINE_EXCEEDED",
+    );
+
+    await expectCode(
+      session.uploadPart({
+        partNumber: 1,
+        body: part,
+        control: requestControl({ deadline: new Date(Date.now() + 10) }),
+      }),
+      "OBJECT_STORAGE_MULTIPART_DEADLINE_EXCEEDED",
+    );
+    await expectCode(
+      session.uploadPart({
+        partNumber: 1,
+        body: part,
+        control: requestControl({ deadline: new Date(Date.now() + 10) }),
+      }),
+      "OBJECT_STORAGE_MULTIPART_DEADLINE_EXCEEDED",
+    );
+    expect(part.every((byte) => byte === 0xee)).toBe(true);
+
+    gate.resolve();
+    await Promise.all(completeLate);
+  });
+
+  test("returns abort-unconfirmed with both provider failures preserved", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const first = providerError("InternalError", 500);
+    const second = providerError("SlowDown", 503);
+    bucket.abortFailures.push(first, second);
+    const part = bytePart(37, 0xef);
+    const session = await createRuntimeSession({ bucket, parts: [part] });
+    let failure: unknown;
+    try {
+      await session.abort(requestControl());
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(ObjectStorageLifecycleError);
+    expect((failure as ObjectStorageLifecycleError).code).toBe(
+      "OBJECT_STORAGE_MULTIPART_ABORT_UNCONFIRMED",
+    );
+    expect((failure as Error & { cause?: unknown }).cause).toBeInstanceOf(AggregateError);
+    expect(((failure as Error & { cause: AggregateError }).cause as AggregateError).errors).toEqual(
+      [first, second],
+    );
+    expect(bucket.abortCalls).toBe(2);
+    expect(bucket.uploads.size).toBe(1);
+  });
+
+  test("does not report abort success when a lost completion already committed the object", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    bucket.loseCompleteResponse = true;
+    bucket.headFailures.push(providerError("InternalError", 500));
+    const part = bytePart(39, 0xf0);
+    const session = await createRuntimeSession({ bucket, parts: [part] });
+    await uploadAll(session, [part]);
+    await expectCode(
+      session.complete(requestControl()),
+      "OBJECT_STORAGE_MULTIPART_COMPLETE_UNCONFIRMED",
+    );
+    expect(bucket.objects.has(KEY)).toBe(true);
+    expect(bucket.uploads.size).toBe(0);
+
+    await expectCode(session.abort(requestControl()), "OBJECT_STORAGE_MULTIPART_ABORT_UNCONFIRMED");
+    await expect(session.complete(requestControl())).resolves.toMatchObject({
+      verifiedPresent: true,
+    });
+    expect(bucket.objects.has(KEY)).toBe(true);
+    expect(bucket.completeCalls).toBe(1);
+  });
+
+  test("repeats S3 abort until ListParts proves the upload absent", async () => {
+    const client = new FakeS3MultipartClient();
+    client.abortKeepsUploadAttempts = 1;
+    const part = bytePart(43, 0xf0);
+    const session = await createMultipartObjectUpload({
+      backend: s3Backend(client),
+      key: KEY,
+      expectedSize: part.byteLength,
+      expectedSha256: sha256(part),
+      control: requestControl(),
+    });
+    await session.abort(requestControl());
+    expect(client.commands.slice(-4)).toEqual([
+      "AbortMultipartUploadCommand",
+      "ListPartsCommand",
+      "AbortMultipartUploadCommand",
+      "ListPartsCommand",
+    ]);
+    expect(client.abortInputs).toHaveLength(2);
+    expect(client.uploads.size).toBe(0);
+  });
+
+  test("recognizes Workers R2 NoSuchUpload code 10024 on every terminal operation", async () => {
+    const part = bytePart(47, 0xf1);
+
+    const uploadBucket = new FakeRuntimeMultipartBucket();
+    uploadBucket.workersNoSuchUploadErrors = true;
+    const uploadOriginal = await createRuntimeSession({ bucket: uploadBucket, parts: [part] });
+    uploadBucket.uploads.delete(uploadOriginal.handle.uploadId);
+    const uploadResumed = await resumeMultipartObjectUpload({
+      backend: runtimeBackend(uploadBucket),
+      handle: uploadOriginal.handle,
+      acknowledgedParts: [],
+      control: requestControl(),
+    });
+    await expectCode(
+      uploadResumed.uploadPart({ partNumber: 1, body: part, control: requestControl() }),
+      "OBJECT_STORAGE_MULTIPART_NO_SUCH_UPLOAD",
+    );
+
+    const completeBucket = new FakeRuntimeMultipartBucket();
+    completeBucket.workersNoSuchUploadErrors = true;
+    const completeOriginal = await createRuntimeSession({ bucket: completeBucket, parts: [part] });
+    await uploadAll(completeOriginal, [part]);
+    completeBucket.uploads.delete(completeOriginal.handle.uploadId);
+    const completeResumed = await resumeMultipartObjectUpload({
+      backend: runtimeBackend(completeBucket),
+      handle: completeOriginal.handle,
+      acknowledgedParts: completeOriginal.acknowledgedParts(),
+      control: requestControl(),
+    });
+    await expectCode(
+      completeResumed.complete(requestControl()),
+      "OBJECT_STORAGE_MULTIPART_NO_SUCH_UPLOAD",
+    );
+
+    const abortBucket = new FakeRuntimeMultipartBucket();
+    abortBucket.workersNoSuchUploadErrors = true;
+    const abortOriginal = await createRuntimeSession({ bucket: abortBucket, parts: [part] });
+    abortBucket.uploads.delete(abortOriginal.handle.uploadId);
+    const abortResumed = await resumeMultipartObjectUpload({
+      backend: runtimeBackend(abortBucket),
+      handle: abortOriginal.handle,
+      acknowledgedParts: [],
+      control: requestControl(),
+    });
+    await expect(abortResumed.abort(requestControl())).resolves.toBeUndefined();
+    expect(abortBucket.abortCalls).toBe(1);
+  });
+
+  test("returns a resume deadline while the late S3 inventory remains externally owned", async () => {
+    const client = new FakeS3MultipartClient();
+    const backend = s3Backend(client);
+    const part = bytePart(53, 0xf2);
+    const original = await createMultipartObjectUpload({
+      backend,
+      key: KEY,
+      expectedSize: part.byteLength,
+      expectedSha256: sha256(part),
+      control: requestControl(),
+    });
+    const gate = deferred<void>();
+    client.listPartsGates.push(gate);
+    const late: Promise<void>[] = [];
+    const resumed = resumeMultipartObjectUpload({
+      backend,
+      handle: original.handle,
+      acknowledgedParts: [],
+      control: requestControl({ deadline: new Date(Date.now() + 10), late }),
+    });
+    const outcome = await Promise.race([
+      resumed.then(
+        () => "resolved" as const,
+        (error: unknown) => error,
+      ),
+      Bun.sleep(80).then(() => "pending" as const),
+    ]);
+    expect(outcome).toBeInstanceOf(ObjectStorageLifecycleError);
+    expect((outcome as ObjectStorageLifecycleError).code).toBe(
+      "OBJECT_STORAGE_MULTIPART_DEADLINE_EXCEEDED",
+    );
+    expect(late).toHaveLength(1);
+    gate.resolve();
+    await Promise.all(late);
   });
 
   test("reconciles a committed S3 upload after crash and fails closed on drift or absence", async () => {

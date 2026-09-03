@@ -8,12 +8,17 @@ import {
   ObjectLocatorReceipt,
   ObjectStorageLifecycleError,
 } from "./object-store";
-import type { ProviderRequestContext } from "./object-store-multipart-control";
+import {
+  type ProviderRequestContext,
+  reportMultipartCleanupFailure,
+} from "./object-store-multipart-control";
 import {
   isNotFound,
   lifecycle,
   MULTIPART_SHA256_METADATA_KEY,
   type MultipartObjectUploadHandle,
+  providerCode,
+  providerStatus,
   sha256HexToBase64,
 } from "./object-store-multipart-types";
 import type { RuntimeR2Object, RuntimeR2ObjectMetadata } from "./r2-runtime-binding";
@@ -78,8 +83,10 @@ function registerStreamCancellation(
   let cleanup: Promise<void>;
   try {
     cleanup = Promise.resolve(body.cancel()).then(() => undefined);
-  } catch {
-    return;
+  } catch (error) {
+    // error-policy:J5 the rejected cleanup Promise is observed by the durable
+    // registerCleanup hook immediately below.
+    cleanup = Promise.reject(error);
   }
   context.registerCleanup(cleanup);
 }
@@ -145,6 +152,8 @@ async function headCompletedObject(input: {
       declaredSha256: object.Metadata?.[MULTIPART_SHA256_METADATA_KEY] ?? null,
     };
   } catch (error) {
+    // error-policy:J3 only the provider's authoritative not-found shape is
+    // normalized to absence; every other HEAD failure is preserved.
     if (isNotFound(error)) return null;
     throw error;
   }
@@ -183,7 +192,15 @@ async function openCompletedBody(input: {
       metadata.customMetadata?.[MULTIPART_SHA256_METADATA_KEY] !== input.head.declaredSha256 ||
       !metadata.body
     ) {
-      if (metadata.body) registerStreamCancellation(metadata.body, input.context);
+      if (metadata.body) {
+        try {
+          registerStreamCancellation(metadata.body, input.context);
+        } catch (error) {
+          // error-policy:J6 exact generation conflict remains authoritative
+          // while failed R2 body-cleanup registration is reported separately.
+          reportMultipartCleanupFailure("conflicting-r2-response-body", error);
+        }
+      }
       throw lifecycle(
         "OBJECT_STORAGE_MULTIPART_COMPLETE_CONFLICT",
         "Multipart verification GET changed exact object generation",
@@ -205,20 +222,25 @@ async function openCompletedBody(input: {
         { abortSignal: input.context.signal },
       ),
       async (lateOutput) => {
-        try {
-          await streamFromS3Body(lateOutput.Body).cancel();
-        } catch {
-          // error-policy:J6 late response cleanup is best effort.
-        }
+        await streamFromS3Body(lateOutput.Body).cancel();
       },
     );
   } catch (error) {
+    // error-policy:J2 authoritative conditional mismatch/disappearance proves
+    // generation drift; transient/foreign GET failures remain unconfirmed.
     if (error instanceof ObjectStorageLifecycleError) throw error;
-    throw lifecycle(
-      "OBJECT_STORAGE_MULTIPART_COMPLETE_CONFLICT",
-      "Multipart verification GET could not read the exact completed object",
-      error,
-    );
+    if (
+      isNotFound(error) ||
+      providerStatus(error) === 412 ||
+      providerCode(error) === "PreconditionFailed"
+    ) {
+      throw lifecycle(
+        "OBJECT_STORAGE_MULTIPART_COMPLETE_CONFLICT",
+        "Multipart verification GET could not retain the HEAD object generation",
+        error,
+      );
+    }
+    throw error;
   }
   const version = normalizedObjectVersion(output.VersionId);
   if (
@@ -230,8 +252,10 @@ async function openCompletedBody(input: {
   ) {
     try {
       registerStreamCancellation(streamFromS3Body(output.Body), input.context);
-    } catch {
-      // error-policy:J6 exact conflict remains authoritative.
+    } catch (error) {
+      // error-policy:J6 exact generation conflict remains authoritative while
+      // teardown failure is reported without provider locator details.
+      reportMultipartCleanupFailure("conflicting-s3-response-body", error);
     }
     throw lifecycle(
       "OBJECT_STORAGE_MULTIPART_COMPLETE_CONFLICT",
@@ -277,19 +301,33 @@ async function drainCompletedBody(input: {
       );
     }
   } catch (error) {
+    // error-policy:J2 retain the exact verification failure after arranging
+    // best-effort reader cancellation under durable settlement ownership.
     let cleanup: Promise<void> | null = null;
     try {
       cleanup = Promise.resolve(reader.cancel()).then(() => undefined);
-    } catch {
-      // error-policy:J6 reader may already be closed.
+    } catch (cleanupError) {
+      // error-policy:J5 the rejected cleanup Promise is observed by the
+      // registerCleanup hook immediately below.
+      cleanup = Promise.reject(cleanupError);
     }
-    if (cleanup) input.context.registerCleanup(cleanup);
+    if (cleanup) {
+      try {
+        input.context.registerCleanup(cleanup);
+      } catch (registrationError) {
+        // error-policy:J6 exact body verification remains authoritative while
+        // failed cleanup registration is reported separately.
+        reportMultipartCleanupFailure("verification-reader-cancellation", registrationError);
+      }
+    }
     throw error;
   } finally {
     try {
       reader.releaseLock();
-    } catch {
-      // error-policy:J6 a cancelled read can settle after this call.
+    } catch (error) {
+      // error-policy:J6 a cancelled read can settle after this call; releasing
+      // its local lock is best effort and must not replace verification.
+      reportMultipartCleanupFailure("verification-reader-release", error);
     }
   }
 }
@@ -334,6 +372,8 @@ export async function reconcileCompletedObject(input: {
       verifiedPresent: true as const,
     });
   } catch (error) {
+    // error-policy:J2 translate foreign provider/stream failures into the
+    // stable unconfirmed code while retaining their cause.
     if (error instanceof ObjectStorageLifecycleError) throw error;
     throw lifecycle(
       "OBJECT_STORAGE_MULTIPART_COMPLETE_UNCONFIRMED",

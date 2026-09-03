@@ -34,6 +34,7 @@ export interface S3CompatibleClientConfig {
 
 let cached: S3Client | null | undefined;
 let singleAttemptCached: S3Client | null | undefined;
+const singleAttemptClients = new WeakSet<S3Client>();
 
 /**
  * Construct a client without consulting process-global storage configuration.
@@ -41,7 +42,7 @@ let singleAttemptCached: S3Client | null | undefined;
  * backend for the entire operation.
  */
 export function createS3CompatibleClient(config: S3CompatibleClientConfig): S3Client {
-  return new S3Client({
+  const client = new S3Client({
     region: config.region,
     endpoint: config.endpoint,
     forcePathStyle: config.forcePathStyle ?? false,
@@ -52,6 +53,13 @@ export function createS3CompatibleClient(config: S3CompatibleClientConfig): S3Cl
     maxAttempts: config.maxAttempts,
     responseChecksumValidation: config.responseChecksumValidation,
   });
+  if (config.maxAttempts === 1) singleAttemptClients.add(client);
+  return client;
+}
+
+/** True only for clients whose retry policy was fixed by this module at construction. */
+export function isSingleAttemptObjectStorageClient(client: S3Client): boolean {
+  return singleAttemptClients.has(client);
 }
 
 function readBool(value: string | undefined): boolean | undefined {
@@ -163,6 +171,7 @@ export function getSingleAttemptObjectStorageClient(): S3Client | null {
     credentials,
     maxAttempts: 1,
   });
+  singleAttemptClients.add(singleAttemptCached);
   return singleAttemptCached;
 }
 

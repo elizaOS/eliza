@@ -8,12 +8,17 @@
  */
 
 import { ObjectStorageLifecycleError } from "./object-store";
-import { createRequestContext, lateAbortCreatedUpload } from "./object-store-multipart-control";
+import {
+  createRequestContext,
+  lateAbortCreatedUpload,
+  registerMultipartCleanupWithoutMasking,
+} from "./object-store-multipart-control";
 import {
   createProviderHandle,
   providerHandleForRuntime,
   providerHandleForS3,
   requireRuntimeMultipart,
+  requireSingleAttemptS3Create,
   type S3MultipartBackend,
   verifyS3Resume,
 } from "./object-store-multipart-providers";
@@ -30,6 +35,7 @@ import {
   type ResumeMultipartObjectUploadInput,
   requireBackend,
   requirePlan,
+  snapshotMultipartPartReceipt,
   validateReceiptForHandle,
 } from "./object-store-multipart-types";
 import { reconcileCompletedObject } from "./object-store-multipart-verification";
@@ -64,10 +70,14 @@ export async function createMultipartObjectUpload(
   const context = createRequestContext(input.control);
   try {
     context.ensureActive();
+    requireSingleAttemptS3Create(backend);
+    context.ensureActive();
     let provider: ProviderMultipartHandle;
     try {
       provider = await createProviderHandle({ backend, plan, context });
     } catch (error) {
+      // error-policy:J2 preserve stable lifecycle codes and translate every
+      // other provider outcome with its original cause.
       if (
         error instanceof ObjectStorageLifecycleError &&
         (error.code === "OBJECT_STORAGE_MULTIPART_UNSUPPORTED" ||
@@ -89,10 +99,15 @@ export async function createMultipartObjectUpload(
       );
     }
     if (provider.key !== plan.key) {
-      context.registerCleanup(lateAbortCreatedUpload(provider));
+      const registrationError = registerMultipartCleanupWithoutMasking(
+        context,
+        lateAbortCreatedUpload(provider),
+        "created-upload-key-mismatch",
+      );
       throw lifecycle(
         "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE",
         "Multipart provider returned a handle for another exact key",
+        registrationError ?? undefined,
       );
     }
     try {
@@ -101,11 +116,22 @@ export async function createMultipartObjectUpload(
       context.ensureActive();
       return createMultipartSession({ backend, provider, handle });
     } catch (error) {
-      context.registerCleanup(lateAbortCreatedUpload(provider));
+      // error-policy:J2 a created provider upload now requires registered
+      // cleanup before the handle-construction failure is wrapped with cause.
+      const registrationError = registerMultipartCleanupWithoutMasking(
+        context,
+        lateAbortCreatedUpload(provider),
+        "created-upload-handle-failure",
+      );
       throw lifecycle(
         "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE",
         "Multipart handle could not be returned safely after provider creation",
-        error,
+        registrationError === null
+          ? error
+          : new AggregateError(
+              [error, registrationError],
+              "Multipart handle and cleanup registration failed",
+            ),
       );
     }
   } finally {
@@ -124,28 +150,31 @@ export async function resumeMultipartObjectUpload(
   input: ResumeMultipartObjectUploadInput,
 ): Promise<MultipartObjectUploadSession> {
   const backend = requireBackend(input.backend);
-  await assertHandleMatchesBackend(backend, input.handle);
-  const acknowledgedParts = Object.freeze([...(input.acknowledgedParts ?? [])]);
-  const partNumbers = new Set<number>();
-  for (const receipt of acknowledgedParts) {
-    validateReceiptForHandle(input.handle, receipt);
-    if (partNumbers.has(receipt.partNumber)) {
-      throw lifecycle(
-        "OBJECT_STORAGE_MULTIPART_HANDLE_MISMATCH",
-        "Multipart resume received duplicate part receipts",
-      );
-    }
-    partNumbers.add(receipt.partNumber);
-  }
-
+  const acknowledgedParts = Object.freeze(
+    (input.acknowledgedParts ?? []).map(snapshotMultipartPartReceipt),
+  );
   const context = createRequestContext(input.control);
   try {
     context.ensureActive();
+    const handle = await assertHandleMatchesBackend(backend, input.handle);
+    context.ensureActive();
+    const partNumbers = new Set<number>();
+    for (const receipt of acknowledgedParts) {
+      validateReceiptForHandle(handle, receipt);
+      if (partNumbers.has(receipt.partNumber)) {
+        throw lifecycle(
+          "OBJECT_STORAGE_MULTIPART_HANDLE_MISMATCH",
+          "Multipart resume received duplicate part receipts",
+        );
+      }
+      partNumbers.add(receipt.partNumber);
+    }
+
     if (backend.runtimeBucket) {
       const multipart = requireRuntimeMultipart(backend);
-      const resumed = multipart.resumeMultipartUpload(input.handle.key, input.handle.uploadId);
+      const resumed = multipart.resumeMultipartUpload(handle.key, handle.uploadId);
       const provider = providerHandleForRuntime(resumed);
-      if (provider.key !== input.handle.key || provider.uploadId !== input.handle.uploadId) {
+      if (provider.key !== handle.key || provider.uploadId !== handle.uploadId) {
         throw lifecycle(
           "OBJECT_STORAGE_MULTIPART_HANDLE_MISMATCH",
           "Worker R2 resumed another exact multipart handle",
@@ -154,7 +183,7 @@ export async function resumeMultipartObjectUpload(
       return createMultipartSession({
         backend,
         provider,
-        handle: input.handle,
+        handle,
         acknowledgedParts,
       });
     }
@@ -164,11 +193,13 @@ export async function resumeMultipartObjectUpload(
     try {
       resumeState = await verifyS3Resume({
         backend: s3Backend,
-        handle: input.handle,
+        handle,
         acknowledgedParts,
         context,
       });
     } catch (error) {
+      // error-policy:J2 preserve exact lifecycle failures and translate any
+      // foreign inventory failure with its original cause.
       if (error instanceof ObjectStorageLifecycleError) throw error;
       throw lifecycle(
         "OBJECT_STORAGE_MULTIPART_PART_FAILED",
@@ -176,16 +207,16 @@ export async function resumeMultipartObjectUpload(
         error,
       );
     }
-    const provider = providerHandleForS3(s3Backend, input.handle.key, input.handle.uploadId);
+    const provider = providerHandleForS3(s3Backend, handle.key, handle.uploadId);
     if (resumeState === "active") {
       return createMultipartSession({
         backend,
         provider,
-        handle: input.handle,
+        handle,
         acknowledgedParts,
       });
     }
-    if (!hasEveryExactPart(input.handle, acknowledgedParts)) {
+    if (!hasEveryExactPart(handle, acknowledgedParts)) {
       throw lifecycle(
         "OBJECT_STORAGE_MULTIPART_NO_SUCH_UPLOAD",
         "Multipart upload disappeared without every exact durable part receipt",
@@ -193,7 +224,7 @@ export async function resumeMultipartObjectUpload(
     }
     const completedReceipt = await reconcileCompletedObject({
       backend,
-      handle: input.handle,
+      handle,
       context,
     });
     if (!completedReceipt) {
@@ -205,12 +236,11 @@ export async function resumeMultipartObjectUpload(
     return createMultipartSession({
       backend,
       provider,
-      handle: input.handle,
+      handle,
       acknowledgedParts,
       completedReceipt,
     });
   } finally {
-    await context.waitForSettlements();
     context.dispose();
   }
 }

@@ -313,7 +313,11 @@ export function requireBackend(backend: ExactObjectStorageBackend): ExactObjectS
       "Multipart object upload requires exact backend authority",
     );
   }
-  return backend;
+  const frozenLocator = Object.freeze({ ...locator });
+  if (backend.runtimeBucket) {
+    return Object.freeze({ locator: frozenLocator, runtimeBucket: backend.runtimeBucket });
+  }
+  return Object.freeze({ locator: frozenLocator, s3Client: backend.s3Client });
 }
 
 export function requireUploadId(uploadId: unknown): string {
@@ -366,11 +370,19 @@ export function providerCode(error: unknown): string | null {
 
 export function isNotFound(error: unknown): boolean {
   const code = providerCode(error);
-  return providerStatus(error) === 404 && (code === "NotFound" || code === "NoSuchKey");
+  return (
+    providerStatus(error) === 404 &&
+    (code === "NotFound" || code === "NoSuchKey" || code === "NoSuchVersion" || code === "404")
+  );
 }
 
 export function isNoSuchUpload(error: unknown): boolean {
-  return providerStatus(error) === 404 && providerCode(error) === "NoSuchUpload";
+  return (
+    (providerStatus(error) === 404 && providerCode(error) === "NoSuchUpload") ||
+    // Workers R2 appends its numeric error code to Error.message and does not
+    // expose the S3 HTTP/code fields; 10024 is the documented NoSuchUpload code.
+    (error instanceof Error && /\(10024\)\s*$/.test(error.message))
+  );
 }
 
 export function isAuthoritativeCreateFailure(error: unknown): boolean {
@@ -505,12 +517,17 @@ export async function rehydrateMultipartObjectUploadHandle(
 ): Promise<MultipartObjectUploadHandle> {
   const backend = requireBackend(input.backend);
   const plan = requirePlan(input);
+  const uploadId = requireUploadId(input.uploadId);
+  const receipt =
+    input.receipt !== null && typeof input.receipt === "object"
+      ? Object.freeze({ ...input.receipt })
+      : input.receipt;
   const expected = await buildHandle({
     backend,
     plan,
-    uploadId: requireUploadId(input.uploadId),
+    uploadId,
   });
-  if (!serializedHandleMatches(expected, input.receipt)) {
+  if (!serializedHandleMatches(expected, receipt)) {
     throw lifecycle(
       "OBJECT_STORAGE_MULTIPART_HANDLE_MISMATCH",
       "Serialized multipart receipt does not match its private exact locator",
@@ -522,36 +539,76 @@ export async function rehydrateMultipartObjectUploadHandle(
 export async function assertHandleMatchesBackend(
   backend: ExactObjectStorageBackend,
   handle: MultipartObjectUploadHandle,
-): Promise<void> {
+): Promise<MultipartObjectUploadHandle> {
   if (!handle || typeof handle !== "object") {
     throw lifecycle(
       "OBJECT_STORAGE_MULTIPART_HANDLE_MISMATCH",
       "Multipart resume requires an exact upload handle",
     );
   }
-  const plan = requirePlan(handle);
-  const expected = await buildHandle({ backend, plan, uploadId: handle.uploadId });
+  const actual = Object.freeze({
+    version: handle.version,
+    transport: handle.transport,
+    provider: handle.provider,
+    endpointAlias: handle.endpointAlias,
+    backendIdentityFingerprint: handle.backendIdentityFingerprint,
+    bucket: handle.bucket,
+    region: handle.region,
+    key: handle.key,
+    uploadId: handle.uploadId,
+    keyFingerprint: handle.keyFingerprint,
+    uploadIdFingerprint: handle.uploadIdFingerprint,
+    planFingerprint: handle.planFingerprint,
+    handleFingerprint: handle.handleFingerprint,
+    expectedSize: handle.expectedSize,
+    expectedSha256: handle.expectedSha256,
+    contentType: handle.contentType,
+    partSizeBytes: handle.partSizeBytes,
+    partCount: handle.partCount,
+  });
+  const plan = requirePlan(actual);
+  const expected = await buildHandle({ backend, plan, uploadId: actual.uploadId });
   if (
-    handle.version !== expected.version ||
-    handle.transport !== expected.transport ||
-    handle.provider !== expected.provider ||
-    handle.endpointAlias !== expected.endpointAlias ||
-    handle.backendIdentityFingerprint !== expected.backendIdentityFingerprint ||
-    handle.bucket !== expected.bucket ||
-    handle.region !== expected.region ||
-    handle.keyFingerprint !== expected.keyFingerprint ||
-    handle.uploadIdFingerprint !== expected.uploadIdFingerprint ||
-    handle.planFingerprint !== expected.planFingerprint ||
-    handle.handleFingerprint !== expected.handleFingerprint ||
-    handle.partSizeBytes !== expected.partSizeBytes ||
-    handle.partCount !== expected.partCount ||
-    handle.contentType !== expected.contentType
+    actual.version !== expected.version ||
+    actual.transport !== expected.transport ||
+    actual.provider !== expected.provider ||
+    actual.endpointAlias !== expected.endpointAlias ||
+    actual.backendIdentityFingerprint !== expected.backendIdentityFingerprint ||
+    actual.bucket !== expected.bucket ||
+    actual.region !== expected.region ||
+    actual.keyFingerprint !== expected.keyFingerprint ||
+    actual.uploadIdFingerprint !== expected.uploadIdFingerprint ||
+    actual.planFingerprint !== expected.planFingerprint ||
+    actual.handleFingerprint !== expected.handleFingerprint ||
+    actual.partSizeBytes !== expected.partSizeBytes ||
+    actual.partCount !== expected.partCount ||
+    actual.contentType !== expected.contentType
   ) {
     throw lifecycle(
       "OBJECT_STORAGE_MULTIPART_HANDLE_MISMATCH",
       "Multipart upload handle does not match the exact backend and object plan",
     );
   }
+  return expected;
+}
+
+export function snapshotMultipartPartReceipt(
+  receipt: MultipartObjectPartReceipt,
+): MultipartObjectPartReceipt {
+  if (!receipt || typeof receipt !== "object") {
+    throw lifecycle(
+      "OBJECT_STORAGE_MULTIPART_HANDLE_MISMATCH",
+      "Multipart resume requires exact provider-acknowledged part receipts",
+    );
+  }
+  return Object.freeze({
+    handleFingerprint: receipt.handleFingerprint,
+    partNumber: receipt.partNumber,
+    sizeBytes: receipt.sizeBytes,
+    bodySha256: receipt.bodySha256,
+    etag: receipt.etag,
+    providerAcknowledged: receipt.providerAcknowledged,
+  }) as MultipartObjectPartReceipt;
 }
 
 export function validateReceiptForHandle(
