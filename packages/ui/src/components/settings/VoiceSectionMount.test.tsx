@@ -384,4 +384,30 @@ describe("VoiceSectionMount — mount preserves explicit local consent when the 
       window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
     ).toBe("always-on");
   });
+
+  it("lets an explicit server false revoke a stale local opt-in", async () => {
+    clientMock.getConfig.mockResolvedValue({
+      messages: {
+        voice: {
+          osIntentAutoStartVoice: false,
+          osIntentAutoStartTranscription: false,
+        },
+      },
+    });
+    window.localStorage.setItem(
+      "eliza:voice:os-intent-auto-start-voice",
+      "true",
+    );
+    render(<VoiceSectionMount />);
+    const toggle = await screen.findByTestId(
+      "voice-section-intent-autostart-voice",
+    );
+    await waitFor(() =>
+      expect(toggle.getAttribute("aria-checked")).toBe("false"),
+    );
+    expect(loadOsIntentAutoStartConsent()).toEqual({
+      voice: false,
+      transcription: false,
+    });
+  });
 });
