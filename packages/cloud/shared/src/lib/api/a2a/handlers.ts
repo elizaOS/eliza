@@ -7,6 +7,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { a2aTaskStoreService, type TaskStoreEntry } from "../../services/a2a-task-store";
 import { contentModerationService } from "../../services/content-moderation";
+import { resolveOutboundMessageStanding } from "../../services/outbound-message-standing";
 import { logger } from "../../utils/logger";
 import { parseUntrustedA2AMessageSendParams } from "./request-validation";
 import {
@@ -44,6 +45,28 @@ import {
   type TaskGetParams,
   type TaskState,
 } from "./types";
+
+const A2A_NO_PROVIDER_SKILLS = new Set([
+  "chat_with_agent",
+  "check_balance",
+  "get_usage",
+  "list_agents",
+  "save_memory",
+  "retrieve_memories",
+  "list_containers",
+  "create_conversation",
+  "delete_memory",
+  "get_conversation_context",
+  "video_generation",
+  "generate_video",
+  "get_user_profile",
+  "profile",
+]);
+
+/** Unknown skills fall through to chat completion and therefore require standing. */
+export function a2aSkillCanDispatchProvider(skillId: string | undefined): boolean {
+  return !skillId || !A2A_NO_PROVIDER_SKILLS.has(skillId);
+}
 
 // Task store helpers
 async function getTaskStore(
@@ -107,16 +130,32 @@ export async function handleMessageSend(
     throw new Error("Message must contain at least one part");
   }
 
-  // Check if user is blocked due to moderation violations
-  if (await contentModerationService.shouldBlockUser(ctx.user.id)) {
-    throw new Error("Account suspended due to policy violations");
-  }
-
   // Extract text content for moderation
   const textContent = message.parts
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
     .map((p) => p.text)
     .join("\n");
+
+  const requestedSkill = message.parts.find(
+    (part): part is { type: "data"; data: Record<string, unknown> } => part.type === "data",
+  )?.data.skill;
+  const skillId = typeof requestedSkill === "string" ? requestedSkill : undefined;
+  if (a2aSkillCanDispatchProvider(skillId)) {
+    const standing = await resolveOutboundMessageStanding(ctx.user.organization_id, ctx.user.id);
+    if (!standing.allowed) {
+      logger.error("[A2A] Account standing denied provider-capable skill", {
+        organizationId: ctx.user.organization_id,
+        userId: ctx.user.id,
+        skillId: skillId ?? "chat_completion",
+        reason: standing.reason,
+        source: standing.source,
+        providerDispatched: false,
+      });
+      throw new Error(`Account standing denied: ${standing.reason}`);
+    }
+  } else if (await contentModerationService.shouldBlockUser(ctx.user.id)) {
+    throw new Error("Account suspended due to policy violations");
+  }
 
   if (textContent) {
     contentModerationService.moderateInBackground(textContent, ctx.user.id, undefined, (result) => {
