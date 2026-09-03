@@ -162,6 +162,44 @@ function resolveCartesiaVoiceId(env: AppEnv["Bindings"]): string {
 const MAX_CARTESIA_PCM_BYTES = 16 * 1024 * 1024;
 
 /**
+ * Keep cache capture below the cache service's per-entry ceiling. Exceeding
+ * this limit cancels only the tee used for cache population; the caller's
+ * primary stream remains complete and unmodified.
+ */
+const MAX_FIRST_LINE_CACHE_CAPTURE_BYTES = 256 * 1024;
+
+async function captureExactAudioForCache(
+  stream: ReadableStream<Uint8Array>,
+): Promise<Uint8Array<ArrayBuffer> | null> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      if (!result.value) continue;
+      total += result.value.byteLength;
+      if (total > MAX_FIRST_LINE_CACHE_CAPTURE_BYTES) {
+        await reader.cancel("TTS cache capture exceeded the per-entry limit");
+        return null;
+      }
+      chunks.push(result.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (total === 0) return null;
+  const merged = new Uint8Array(new ArrayBuffer(total));
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return merged;
+}
+
+/**
  * POST /api/v1/voice/tts
  * Converts text to speech using the voice synthesis service.
  * Supports custom user voices and tracks usage statistics.
@@ -174,6 +212,10 @@ async function __hono_POST(c: AppContext) {
   let reservation: CreditReservation | undefined;
   let settleUnknown: (() => Promise<unknown>) | undefined;
   let markProviderDispatched: (() => Promise<void>) | undefined;
+  let providerWorkMayHaveStarted = false;
+  let settlementOrganizationId = "unavailable";
+  let settlementProvider = "unknown";
+  let settlementUserId = "unavailable";
   const request = c.req.raw;
   const env = c.env;
   const requestStart = Date.now();
@@ -262,6 +304,8 @@ async function __hono_POST(c: AppContext) {
       organizationId: () => user.organization_id,
       credential: () => credential,
     });
+    settlementOrganizationId = user.organization_id;
+    settlementUserId = user.id;
     timings.authMs = Date.now() - requestStart;
     const admissionStart = Date.now();
     if (pendingResponse) return pendingResponse;
@@ -653,7 +697,11 @@ async function __hono_POST(c: AppContext) {
     let audioStream: ReadableStream<Uint8Array> | undefined;
     let synthesisEngine: "elevenlabs" | "cartesia" = "elevenlabs";
     let cartesiaMp3ContentType = "audio/mpeg";
-    await markProviderDispatched?.();
+    settlementProvider = providerSelection.provider;
+    const markPaidTtsProviderDispatch = async () => {
+      await markProviderDispatched?.();
+      providerWorkMayHaveStarted = true;
+    };
     if (cartesiaEligible && cartesiaApiKey) {
       if (wantWav) {
         const cartesia = await synthesizeCartesiaWav({
@@ -662,6 +710,7 @@ async function __hono_POST(c: AppContext) {
           text,
           sampleRate: WAV_PCM_SAMPLE_RATE,
           maxPcmBytes: MAX_CARTESIA_PCM_BYTES,
+          beforeProviderDispatch: markPaidTtsProviderDispatch,
         });
         wav = cartesia.wav;
         synthesisEngine = "cartesia";
@@ -699,6 +748,7 @@ async function __hono_POST(c: AppContext) {
           apiKey: cartesiaApiKey,
           voiceId: cartesiaVoiceId,
           text,
+          beforeProviderDispatch: markPaidTtsProviderDispatch,
         });
         audioStream = cartesia.body;
         cartesiaMp3ContentType = cartesia.contentType;
@@ -709,6 +759,7 @@ async function __hono_POST(c: AppContext) {
     if (wav === undefined) {
       if (audioStream === undefined) {
         const elevenlabs = getElevenLabsService(env);
+        await markPaidTtsProviderDispatch();
         audioStream = await elevenlabs.textToSpeech({
           text,
           voiceId,
@@ -807,16 +858,20 @@ async function __hono_POST(c: AppContext) {
     if (executionCtx) executionCtx.waitUntil(billingTask);
     else void billingTask;
 
-    // ---------------------------------------------------------------------
-    // First-line cache populate path.
-    //
-    // Re-synthesise JUST the snipped first sentence and store it (the
-    // already-streamed-out bytes can't be sliced reliably at sentence
-    // boundaries — mp3 frames aren't aligned). The fan-out is bounded by
-    // the ≤ 10-word snip cap and skipped entirely on bypass / no-snip.
-    // ---------------------------------------------------------------------
-    if (!wantWav && snipResult && !cacheBypass) {
-      void (async () => {
+    // Populate only when the cache key describes the complete input. Tee the
+    // already-produced provider stream so cache warming never performs a
+    // second, unmetered synthesis. Partial first sentences are deliberately
+    // not warmed because MP3 frames cannot be sliced losslessly.
+    if (
+      !wantWav &&
+      audioStream &&
+      snipResult &&
+      !cacheBypass &&
+      snipResult.endOffset === text.trimEnd().length
+    ) {
+      const [responseStream, cacheStream] = audioStream.tee();
+      audioStream = responseStream;
+      const cacheTask = (async () => {
         try {
           const cacheService = getCloudFirstLineCacheService();
           const cacheKey = {
@@ -830,37 +885,14 @@ async function __hono_POST(c: AppContext) {
             normalizedText: snipResult.normalized,
             scope: cacheScope,
           };
-          if (await cacheService.has(cacheKey)) return;
-          const snipStream =
-            synthesisEngine === "cartesia" && cartesiaApiKey
-              ? (
-                  await synthesizeCartesiaBytes({
-                    apiKey: cartesiaApiKey,
-                    voiceId: cartesiaVoiceId,
-                    text: snipResult.raw,
-                  })
-                ).body
-              : await getElevenLabsService(env).textToSpeech({
-                  text: snipResult.raw,
-                  voiceId,
-                  modelId,
-                });
-          const reader = snipStream.getReader();
-          const chunks: Uint8Array[] = [];
-          let total = 0;
-          while (true) {
-            const r = await reader.read();
-            if (r.done) break;
-            const chunk = r.value as Uint8Array;
-            chunks.push(chunk);
-            total += chunk.byteLength;
-          }
-          if (total === 0) return;
-          const merged = new Uint8Array(total);
-          let off = 0;
-          for (const c of chunks) {
-            merged.set(c, off);
-            off += c.byteLength;
+          const merged = await captureExactAudioForCache(cacheStream);
+          if (!merged) {
+            logger.info("[Voice TTS API] first-line cache capture skipped", {
+              provider: synthesisEngine,
+              reason: "empty_or_over_entry_limit",
+              traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+            });
+            return;
           }
           await cacheService.put({
             ...cacheKey,
@@ -871,14 +903,20 @@ async function __hono_POST(c: AppContext) {
             wordCount: snipResult.wordCount,
           });
           logger.info(
-            `[Voice TTS API] first-line cache POPULATE ok (${cacheScope}, ${total}B, words=${snipResult.wordCount})`,
+            `[Voice TTS API] first-line cache POPULATE ok (${cacheScope}, ${merged.byteLength}B, words=${snipResult.wordCount})`,
           );
         } catch (err) {
+          // error-policy:J7 cache population is an off-response-path
+          // optimization; failures are observable and never alter audio.
           logger.warn?.("[Voice TTS API] first-line cache populate failed", {
             errorType: err instanceof Error ? err.name : "unknown",
+            provider: synthesisEngine,
+            traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
           });
         }
       })();
+      if (executionCtx) executionCtx.waitUntil(cacheTask);
+      else void cacheTask;
     }
 
     // WAV path: raw PCM (Cartesia frames or the ElevenLabs PCM stream)
@@ -915,11 +953,23 @@ async function __hono_POST(c: AppContext) {
     });
 
     if (reservation) {
-      const release = reservation.reconcile(0);
+      const settlement =
+        providerWorkMayHaveStarted && settleUnknown
+          ? settleUnknown()
+          : reservation.reconcile(0);
       const executionCtx = getGenerativeExecutionContext(c);
-      if (executionCtx) executionCtx.waitUntil(release);
-      else await release;
-      logger.info("[Voice TTS API] Released credits after error");
+      if (executionCtx) executionCtx.waitUntil(settlement);
+      else await settlement;
+      logger.warn("[Voice TTS API] Settled failed paid synthesis", {
+        organizationId: settlementOrganizationId,
+        provider: settlementProvider,
+        providerDispatchState: providerWorkMayHaveStarted
+          ? "possibly_dispatched"
+          : "not_dispatched",
+        settlement: providerWorkMayHaveStarted ? "unknown" : "released",
+        traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+        userId: settlementUserId,
+      });
     }
 
     const apiError =
