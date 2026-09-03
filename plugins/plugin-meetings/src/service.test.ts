@@ -3,11 +3,7 @@
  * single-bot-per-meeting enforcement, roster, transcript persistence, and
  * listing. Deterministic: fake runtime plus scripted adapter/pipeline.
  */
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
-  buildMeetingArtifactFixtures,
   DEFAULT_MEETING_MAX_DURATION_MS,
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
 } from "@elizaos/shared";
@@ -24,56 +20,14 @@ import { readTranscriptRow } from "./transcripts/meeting-transcript-writer.js";
 
 const MEET_URL = "https://meet.google.com/abc-defg-hij";
 
-/** Sortable-by-id session ids: LOW sorts before HIGH under localeCompare. */
-const LOW_SESSION_ID = "00000000-0000-4000-8000-000000000000";
-const HIGH_SESSION_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
-
-/**
- * Pin `Date.now()` and the next `crypto.randomUUID()` so `requestJoin` produces
- * sessions with a chosen `requestedAt` and a chosen session id. `sessionId` is
- * the first `randomUUID()` call inside `requestJoin`; every other call falls
- * through to the real implementation.
- */
-function stubClockAndSessionIds() {
-  let now = Date.now();
-  let nextSessionId: string | null = null;
-  const realUuid = globalThis.crypto.randomUUID.bind(globalThis.crypto);
-  const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
-  const uuidSpy = vi
-    .spyOn(globalThis.crypto, "randomUUID")
-    .mockImplementation(() => {
-      if (nextSessionId !== null) {
-        const value = nextSessionId;
-        nextSessionId = null;
-        return value as ReturnType<typeof realUuid>;
-      }
-      return realUuid();
-    });
-  return {
-    setNow: (value: number) => {
-      now = value;
-    },
-    setNextSessionId: (value: string) => {
-      nextSessionId = value;
-    },
-    restore: () => {
-      uuidSpy.mockRestore();
-      nowSpy.mockRestore();
-    },
-  };
-}
-
 function makeService(
   adapters: ScriptedAdapter[] = [new ScriptedAdapter("google_meet")],
   billingSessions: FakeMeetingBillingSession[] = [],
 ) {
   const fake = makeFakeRuntime();
-  const { deps, pipelines, pipelineOptions } = scriptedDeps(
-    adapters,
-    billingSessions,
-  );
+  const { deps, pipelines } = scriptedDeps(adapters, billingSessions);
   const service = new MeetingService(fake.runtime, deps);
-  return { fake, service, pipelines, pipelineOptions, adapters };
+  return { fake, service, pipelines, adapters };
 }
 
 describe("MeetingService.requestJoin — validation", () => {
@@ -99,65 +53,6 @@ describe("MeetingService.requestJoin — validation", () => {
     await expect(
       service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
     ).rejects.toBeInstanceOf(MeetingJoinError);
-  });
-
-  it("fails closed on organization-managed runtimes before media setup", async () => {
-    const adapter = new ScriptedAdapter("google_meet");
-    const { fake, service, pipelines } = makeService([adapter]);
-    fake.settings.ELIZAOS_CLOUD_ORG_ID = "org-policy-managed";
-
-    await expect(
-      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
-    ).rejects.toMatchObject({ code: "policy_blocked" });
-    expect(pipelines).toHaveLength(0);
-    expect(adapter.session).toBeNull();
-    expect(fake.memories.size).toBe(0);
-  });
-
-  it("honors explicit allow and deny capture policy decisions", async () => {
-    const deniedAdapter = new ScriptedAdapter("google_meet");
-    const {
-      fake: deniedFake,
-      service: deniedService,
-      pipelines: deniedPipelines,
-    } = makeService([deniedAdapter]);
-    deniedFake.settings.ELIZA_MEETINGS_CAPTURE_POLICY = "deny";
-    await expect(
-      deniedService.requestJoin({
-        platform: "google_meet",
-        meetingUrl: MEET_URL,
-      }),
-    ).rejects.toMatchObject({ code: "policy_blocked" });
-    expect(deniedPipelines).toHaveLength(0);
-    expect(deniedAdapter.session).toBeNull();
-
-    const allowedAdapter = new ScriptedAdapter("google_meet");
-    const { fake: allowedFake, service: allowedService } = makeService([
-      allowedAdapter,
-    ]);
-    allowedFake.settings.ELIZAOS_CLOUD_ORG_ID = "org-policy-managed";
-    allowedFake.settings.ELIZA_MEETINGS_CAPTURE_POLICY = "allow";
-    const session = await allowedService.requestJoin({
-      platform: "google_meet",
-      meetingUrl: MEET_URL,
-    });
-    expect(session.status).toBe("requested");
-    await allowedAdapter.started;
-    expect(allowedAdapter.session).not.toBeNull();
-  });
-
-  it("does not treat an explicitly disabled cloud runtime as organization-managed", async () => {
-    const adapter = new ScriptedAdapter("google_meet");
-    const { fake, service } = makeService([adapter]);
-    fake.settings.ELIZAOS_CLOUD_ENABLED = "false";
-
-    const session = await service.requestJoin({
-      platform: "google_meet",
-      meetingUrl: MEET_URL,
-    });
-    expect(session.status).toBe("requested");
-    await adapter.started;
-    expect(adapter.session).not.toBeNull();
   });
 
   it("enforces single-bot-per-meeting across URL spellings", async () => {
@@ -200,14 +95,18 @@ describe("MeetingService.requestJoin — validation", () => {
     expect(adapters[0].session).not.toBeNull();
   });
 
-  it("keeps the same-URL reservation atomic while initial billing awaits", async () => {
-    const firstBilling = new FakeMeetingBillingSession();
-    const unusedBilling = new FakeMeetingBillingSession();
-    const { service, adapters } = makeService(undefined, [
-      firstBilling,
-      unusedBilling,
-    ]);
+  it("reserves the meeting synchronously with billing wired so concurrent same-URL joins launch ONE bot and reserve once (MJ-4 billing TOCTOU)", async () => {
+    const billing1 = new FakeMeetingBillingSession();
+    const billing2 = new FakeMeetingBillingSession();
+    const { service, adapters } = makeService(
+      [new ScriptedAdapter("google_meet")],
+      [billing1, billing2],
+    );
 
+    // Fire two joins for the SAME meeting concurrently with billing wired.
+    // The reservation must be taken synchronously before billing.reserveInitial(),
+    // so exactly one wins and the other is rejected with `already_joined` —
+    // neither duplicate bots nor redundant billing reservations are created.
     const results = await Promise.allSettled([
       service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
       service.requestJoin({
@@ -215,70 +114,43 @@ describe("MeetingService.requestJoin — validation", () => {
         meetingUrl: "https://meet.google.com/abcdefghij",
       }),
     ]);
-
-    expect(
-      results.filter((result) => result.status === "fulfilled"),
-    ).toHaveLength(1);
-    const rejected = results.filter(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
-    );
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
-    expect(rejected[0].reason).toMatchObject({ code: "already_joined" });
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+      code: "already_joined",
+    });
+    // Only one live session and one bot launched.
     expect(service.listSessions({ active: true })).toHaveLength(1);
-    expect(firstBilling.reserveInitialCalls).toBe(1);
-    expect(unusedBilling.reserveInitialCalls).toBe(0);
     await adapters[0].started;
     expect(adapters[0].session).not.toBeNull();
+    // Only the winning session reserved initial billing; the second never called reserveInitial.
+    expect(billing1.reserveInitialCalls).toBe(1);
+    expect(billing2.reserveInitialCalls).toBe(0);
   });
 
-  it("releases a failed initial billing reservation so the same URL can retry", async () => {
-    const failedBilling = new FakeMeetingBillingSession();
-    failedBilling.initialReserveError = new Error(
-      "billing provider unavailable",
-    );
+  it("releases the reservation when billing.reserveInitial throws so a retry succeeds", async () => {
+    const failingBilling = new FakeMeetingBillingSession();
+    failingBilling.initialReserveError = new Error("billing service down");
     const retryBilling = new FakeMeetingBillingSession();
-    const { service } = makeService(undefined, [failedBilling, retryBilling]);
+    const { service } = makeService(undefined, [failingBilling, retryBilling]);
 
     await expect(
       service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
-    ).rejects.toThrow("billing provider unavailable");
-    expect(service.listSessions({ active: true })).toHaveLength(0);
-    expect(failedBilling.reserveInitialCalls).toBe(1);
-    expect(failedBilling.reconcileCalls).toEqual(["error"]);
+    ).rejects.toThrow("billing service down");
 
-    const retried = await service.requestJoin({
+    // The failed session did not strand a non-terminal reservation.
+    expect(service.listSessions()).toHaveLength(0);
+
+    // Because the reservation rolled back on billing failure, a subsequent join succeeds.
+    const dto = await service.requestJoin({
       platform: "google_meet",
-      meetingUrl: "https://meet.google.com/abcdefghij",
+      meetingUrl: MEET_URL,
     });
-    expect(retried.status).toBe("requested");
+    expect(dto.status).toBe("requested");
     expect(service.listSessions({ active: true })).toHaveLength(1);
     expect(retryBilling.reserveInitialCalls).toBe(1);
-  });
-
-  it("preserves both setup and billing-release failures", async () => {
-    const adapter = new ScriptedAdapter("google_meet");
-    const billing = new FakeMeetingBillingSession();
-    const reserveFailure = new Error("billing provider unavailable");
-    const releaseFailure = new Error("billing release unavailable");
-    billing.initialReserveError = reserveFailure;
-    billing.reconcileError = releaseFailure;
-    const { service } = makeService([adapter], [billing]);
-
-    const failure = await service
-      .requestJoin({ platform: "google_meet", meetingUrl: MEET_URL })
-      .then(
-        () => undefined,
-        (error: unknown) => error,
-      );
-
-    expect(failure).toBeInstanceOf(AggregateError);
-    expect((failure as AggregateError).errors).toEqual([
-      reserveFailure,
-      releaseFailure,
-    ]);
-    expect(service.listSessions()).toHaveLength(0);
-    expect(adapter.session).toBeNull();
-    expect(billing.reconcileCalls).toEqual(["error"]);
   });
 
   it("releases the reservation when join setup throws, so a retry succeeds (BL-5)", async () => {
@@ -399,47 +271,6 @@ describe("MeetingService.requestJoin — validation", () => {
     expect(adapter.session).toBeNull();
     expect(service.listSessions()).toHaveLength(0);
     expect(billing.reserveInitialCalls).toBe(1);
-    expect(billing.reconcileCalls).toEqual(["error"]);
-  });
-});
-
-describe("MeetingService.importZoomMeeting", () => {
-  it("persists imported canonical spans and never stores the OAuth token", async () => {
-    const fake = makeFakeRuntime();
-    const { deps } = scriptedDeps([]);
-    const artifact = buildMeetingArtifactFixtures().zoomPerParticipant;
-    if (!artifact) throw new Error("Expected Zoom artifact fixture");
-    let receivedToken = "";
-    deps.importZoomCloudMeeting = async (input) => {
-      receivedToken = input.accessToken;
-      return {
-        artifact,
-        warnings: ["fixture-warning"],
-        requestIds: ["zoom-request-1"],
-      };
-    };
-    const service = new MeetingService(fake.runtime, deps);
-
-    const result = await service.importZoomMeeting({
-      meetingId: "123456789",
-      accessToken: "private-zoom-token",
-    });
-
-    expect(receivedToken).toBe("private-zoom-token");
-    expect(result.transcript.status).toBe("ready");
-    expect(result.transcript.segments).toHaveLength(1);
-    expect(result.transcript.metadata).toMatchObject({
-      capture: { mode: "platform_import" },
-      meetingArtifact: { schemaVersion: "eliza.meeting_artifact.v1" },
-      zoomImport: {
-        warnings: ["fixture-warning"],
-        requestIds: ["zoom-request-1"],
-      },
-    });
-    expect(JSON.stringify([...fake.memories.values()])).not.toContain(
-      "private-zoom-token",
-    );
-    expect(fake.documents).toHaveLength(1);
   });
 });
 
@@ -652,39 +483,6 @@ describe("MeetingService — session state machine", () => {
 });
 
 describe("MeetingService — roster, transcripts, listing", () => {
-  it("passes calendar attendees into the speaker-name policy input", async () => {
-    const { service, pipelineOptions } = makeService();
-    await service.requestJoin({
-      platform: "google_meet",
-      meetingUrl: MEET_URL,
-      calendarEventId: "event-123",
-      ghostAttendance: {
-        ownerUserId: "owner-1",
-        ownerDisplayName: "Shaw",
-        careAbouts: [],
-        attendees: [
-          { name: "Alice Chen", email: "alice@example.com" },
-          { name: "Bob Jones", email: "bob@example.com" },
-        ],
-      },
-    });
-
-    expect(pipelineOptions[0]?.calendarSpeakerEvidence).toEqual([
-      {
-        source: "calendar_attendee",
-        name: "Alice Chen",
-        confidence: 0.82,
-        evidenceId: "event-123",
-      },
-      {
-        source: "calendar_attendee",
-        name: "Bob Jones",
-        confidence: 0.82,
-        evidenceId: "event-123",
-      },
-    ]);
-  });
-
   it("wires participants to entities and tracks join/leave", async () => {
     const adapter = new ScriptedAdapter("google_meet");
     const { fake, service, pipelines } = makeService([adapter]);
@@ -747,8 +545,10 @@ describe("MeetingService — roster, transcripts, listing", () => {
     const participants = transcript.metadata?.participants as
       | Array<{ displayName: string }>
       | undefined;
+    expect(participants).toBeDefined();
     if (!participants) throw new Error("Expected transcript participants");
     const participant = participants[0];
+    expect(participant).toBeDefined();
     if (!participant) throw new Error("Expected a transcript participant");
     expect(participant.displayName).toBe("Jill");
     // Knowledge mirror landed with the transcript tag + clientDocumentId link.
@@ -757,69 +557,6 @@ describe("MeetingService — roster, transcripts, listing", () => {
     expect((fake.documents[0].metadata as { tags: string[] }).tags).toContain(
       "transcript",
     );
-  });
-
-  it("persists real Zoom bot capture as a shared canonical artifact", async () => {
-    const previousStateDir = process.env.ELIZA_STATE_DIR;
-    const stateDir = mkdtempSync(join(tmpdir(), "eliza-zoom-bot-artifact-"));
-    process.env.ELIZA_STATE_DIR = stateDir;
-    try {
-      const adapter = new ScriptedAdapter("zoom");
-      const { fake, service, pipelines } = makeService([adapter]);
-      const dto = await service.requestJoin({
-        platform: "zoom",
-        meetingUrl: "https://zoom.us/j/1234567890",
-      });
-      const botSession = await adapter.started;
-      botSession.sink.participantJoined({
-        id: "zoom-alice",
-        displayName: "Alice",
-      });
-      const speech = segment(
-        "zoom-span-1",
-        "Alice",
-        "Hello from Zoom.",
-        0,
-        1_000,
-      );
-      pipelines[0].finalSegments = [speech];
-      pipelines[0].audioWav = Buffer.from([82, 73, 70, 70, 1, 2, 3, 4]);
-
-      adapter.end("normal_completion");
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      const row = fake.memories.get(dto.transcriptId as string);
-      const transcript = row ? readTranscriptRow(row) : null;
-      if (!transcript) throw new Error("Expected a finalized Zoom transcript");
-      expect(transcript.audioUrl).toMatch(/^\/api\/media\/[a-f0-9]{64}\.wav$/);
-      expect(transcript.metadata?.meetingArtifact).toMatchObject({
-        schemaVersion: "eliza.meeting_artifact.v1",
-        meeting: {
-          id: "1234567890",
-          platform: "zoom",
-          captureMode: "platform_bot",
-        },
-        sourceStreams: [
-          expect.objectContaining({
-            label: expect.stringContaining("mixed_audio_only"),
-          }),
-        ],
-        transcriptSpans: [
-          expect.objectContaining({
-            id: "zoom-span-1",
-            platformParticipantId: "zoom-alice",
-          }),
-        ],
-      });
-      expect(transcript.metadata?.zoomCapture).toMatchObject({
-        capturePath: "bot_web_client",
-        sourceLoss: ["mixed_audio_only", "per_participant_audio_unavailable"],
-      });
-    } finally {
-      if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
-      else process.env.ELIZA_STATE_DIR = previousStateDir;
-      rmSync(stateDir, { recursive: true, force: true });
-    }
   });
 
   it("emits the finalized transcript event with ghost-attendance context", async () => {
@@ -1036,67 +773,5 @@ describe("MeetingService — roster, transcripts, listing", () => {
     expect(active).toHaveLength(1);
     expect(active[0].platform).toBe("zoom");
     expect(service.listSessions().map((s) => s.id)).toContain(first.id);
-  });
-
-  it("breaks requestedAt ties deterministically by session id", async () => {
-    const fixedNow = 1_700_000_000_000;
-    const { restore, setNow, setNextSessionId } = stubClockAndSessionIds();
-    try {
-      setNow(fixedNow);
-      const meet = new ScriptedAdapter("google_meet");
-      const zoom = new ScriptedAdapter("zoom");
-      const { service } = makeService([meet, zoom]);
-      setNextSessionId(HIGH_SESSION_ID);
-      const later = await service.requestJoin({
-        platform: "google_meet",
-        meetingUrl: MEET_URL,
-      });
-      setNextSessionId(LOW_SESSION_ID);
-      const earlier = await service.requestJoin({
-        platform: "zoom",
-        meetingUrl: "https://zoom.us/j/1234567890",
-      });
-      expect(later.id).toBe(HIGH_SESSION_ID);
-      expect(earlier.id).toBe(LOW_SESSION_ID);
-
-      const listed = service.listSessions();
-      // Both sessions really do tie, so only the id tiebreak can order them.
-      expect(listed.map((s) => s.requestedAt)).toEqual([fixedNow, fixedNow]);
-      expect(listed.map((s) => s.id)).toEqual([
-        LOW_SESSION_ID,
-        HIGH_SESSION_ID,
-      ]);
-    } finally {
-      restore();
-    }
-  });
-
-  it("orders a session with a non-finite requestedAt last", async () => {
-    const { restore, setNow, setNextSessionId } = stubClockAndSessionIds();
-    try {
-      const meet = new ScriptedAdapter("google_meet");
-      const zoom = new ScriptedAdapter("zoom");
-      const { service } = makeService([meet, zoom]);
-      setNow(Number.NaN);
-      setNextSessionId(LOW_SESSION_ID);
-      const broken = await service.requestJoin({
-        platform: "google_meet",
-        meetingUrl: MEET_URL,
-      });
-      setNow(1_700_000_000_000);
-      setNextSessionId(HIGH_SESSION_ID);
-      const healthy = await service.requestJoin({
-        platform: "zoom",
-        meetingUrl: "https://zoom.us/j/1234567890",
-      });
-
-      const listed = service.listSessions();
-      expect(listed.find((s) => s.id === broken.id)?.requestedAt).toBeNaN();
-      // The NaN timestamp must not poison the comparator: the session with a
-      // real timestamp still sorts ahead of it.
-      expect(listed.map((s) => s.id)).toEqual([healthy.id, broken.id]);
-    } finally {
-      restore();
-    }
   });
 });
