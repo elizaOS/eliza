@@ -273,8 +273,8 @@ async function applyMigration(
 }
 
 export async function applyCandidateMigrations(client: CandidateFixtureQueryClient): Promise<void> {
-  await applyMigration(client, "0370_agent_backup_restore_v3_candidates");
-  await applyMigration(client, "0371_agent_backup_restore_v3_candidate_guards");
+  await applyMigration(client, "0376_agent_backup_restore_v3_candidates");
+  await applyMigration(client, "0377_agent_backup_restore_v3_candidate_guards");
 }
 
 export async function seedCandidateAuthority(
