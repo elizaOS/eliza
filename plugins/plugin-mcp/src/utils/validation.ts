@@ -35,6 +35,7 @@ export interface ToolSelection {
 
 const MAX_TOOL_ARGUMENTS_JSON_BYTES = 1024 * 1024;
 const TOOL_SCHEMA_VALIDATION_TIMEOUT_MS = 250;
+const TOOL_SCHEMA_WORKER_STARTUP_TIMEOUT_MS = 2_000;
 const MAX_CONCURRENT_SCHEMA_VALIDATIONS = 4;
 let activeSchemaValidations = 0;
 
@@ -51,18 +52,21 @@ const SCHEMA_WORKER_SOURCE = `
   const AjvImport = require(workerData.ajvModulePath);
   const Ajv = AjvImport.default ?? AjvImport;
 
-  try {
-    const schema = JSON.parse(workerData.schemaJson);
-    const data = JSON.parse(workerData.dataJson);
-    const validate = new Ajv({ allErrors: true }).compile(schema);
-    const valid = validate(data);
-    parentPort.postMessage({ success: Boolean(valid), errors: validate.errors ?? [] });
-  } catch (error) {
-    parentPort.postMessage({
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  parentPort.postMessage({ ready: true });
+  parentPort.once("message", ({ schemaJson, dataJson }) => {
+    try {
+      const schema = JSON.parse(schemaJson);
+      const data = JSON.parse(dataJson);
+      const validate = new Ajv({ allErrors: true }).compile(schema);
+      const valid = validate(data);
+      parentPort.postMessage({ success: Boolean(valid), errors: validate.errors ?? [] });
+    } catch (error) {
+      parentPort.postMessage({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
 `;
 
 function serializeToolArguments(
@@ -143,17 +147,17 @@ async function validateUntrustedToolArguments(
           stackSizeMb: 4,
         },
         workerData: {
-          schemaJson,
-          dataJson: serialized.json,
           ajvModulePath: AJV_WORKER_MODULE_PATH,
         },
       });
       let settled = false;
+      let evaluationTimer: ReturnType<typeof setTimeout> | undefined;
 
       const finish = (result: ValidationResult<unknown>): void => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        clearTimeout(startupTimer);
+        if (evaluationTimer) clearTimeout(evaluationTimer);
         worker.removeAllListeners();
         void worker.terminate().then(
           () => resolve(result),
@@ -161,22 +165,36 @@ async function validateUntrustedToolArguments(
         );
       };
 
-      const timer = setTimeout(() => {
+      const startupTimer = setTimeout(() => {
         finish({
           success: false,
-          error: `MCP JSON schema validation exceeded ${TOOL_SCHEMA_VALIDATION_TIMEOUT_MS}ms`,
+          error: `MCP JSON schema validation worker startup exceeded ${TOOL_SCHEMA_WORKER_STARTUP_TIMEOUT_MS}ms`,
         });
-      }, TOOL_SCHEMA_VALIDATION_TIMEOUT_MS);
+      }, TOOL_SCHEMA_WORKER_STARTUP_TIMEOUT_MS);
 
-      worker.once("message", (message: SchemaWorkerResult & { errors?: unknown }) => {
-        if (message.success) {
-          finish({ success: true, data });
-        } else if (message.error) {
-          finish({ success: false, error: `schema validation failed: ${message.error}` });
-        } else {
-          finish({ success: false, error: formatWorkerErrors(message.errors) });
+      worker.on(
+        "message",
+        (message: SchemaWorkerResult & { ready?: boolean; errors?: unknown }) => {
+          if (message.ready) {
+            clearTimeout(startupTimer);
+            evaluationTimer = setTimeout(() => {
+              finish({
+                success: false,
+                error: `MCP JSON schema validation exceeded ${TOOL_SCHEMA_VALIDATION_TIMEOUT_MS}ms`,
+              });
+            }, TOOL_SCHEMA_VALIDATION_TIMEOUT_MS);
+            worker.postMessage({ schemaJson, dataJson: serialized.json });
+            return;
+          }
+          if (message.success) {
+            finish({ success: true, data });
+          } else if (message.error) {
+            finish({ success: false, error: `schema validation failed: ${message.error}` });
+          } else {
+            finish({ success: false, error: formatWorkerErrors(message.errors) });
+          }
         }
-      });
+      );
       worker.once("error", (error) => {
         const message = error instanceof Error ? error.message : String(error);
         finish({ success: false, error: `schema validation failed: ${message}` });

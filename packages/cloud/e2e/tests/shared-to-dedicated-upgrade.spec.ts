@@ -52,9 +52,16 @@ import { pollSandboxStatus } from "../src/helpers/provisioning";
 import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
 import { expect, test } from "../src/helpers/test-fixtures";
 
-// API-only (no browser). The transcript uses deterministic capability-wall
-// turns so this integration proof never needs a provider or a paid action.
-test.use({ stackOptions: { frontend: false } });
+// API-only (no browser). Route the configurable Shared default through the
+// context-echo mock so both successful turns create a real durable transcript
+// without relying on a paid provider.
+test.use({
+  stackOptions: {
+    frontend: false,
+    mockLlmEchoContext: true,
+    env: { ELIZAOS_CLOUD_SMALL_MODEL: "openai/gpt-4o-mini" },
+  },
+});
 
 interface DedicatedQuote {
   action: "activate_dedicated";
