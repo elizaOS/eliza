@@ -225,6 +225,7 @@
             "group": "App developer guides",
             "pages": [
               "guides/sandbox",
+            "guides/local-memory",
               "development/shared-dev-server",
               "apps/ui-library",
               "apps/desktop-local-development",
