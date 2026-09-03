@@ -10,7 +10,10 @@ import { resetUiRegistryHostForTests } from "../registry-host";
 import {
   ALL_TAB_GROUPS,
   BUILTIN_ROUTE_IDS,
+  LAUNCHER_AOSP_ONLY_VIEW_IDS,
   LEGACY_PREFIX_TAB_ALIASES,
+  NATIVE_OS_VIEW_IDS,
+  pathForTab,
   resolveBuiltinRouteDescriptor,
   resolveLegacyBuiltinRoute,
   TAB_PATHS,
@@ -240,4 +243,92 @@ describe("navigation index: no reintroduced hardcoded prefix alias record", () =
     expect(source).not.toMatch(/if\s*\(\s*sub\s*===\s*"documents"\s*\)/);
     expect(source).not.toMatch(/if\s*\(\s*sub\s*===\s*"select"\s*\)/);
   });
+});
+
+/**
+ * `NATIVE_OS_VIEW_IDS` is a ROUTER-level filter: `App.tsx:1668` sends any tab
+ * whose builtin id is in this list through the plugin-owned native-OS renderer
+ * (`listAppShellPages()`), falling back to a legacy renderer. Membership is
+ * therefore a claim about how a surface renders, not merely where it appears.
+ *
+ * `LAUNCHER_AOSP_ONLY_VIEW_IDS` composes that list plus `files`, and
+ * `launcher-curation.ts:99` states the intent outright — it is sourced from the
+ * canonical list "so this launcher gate and the router-level
+ * `NATIVE_OS_VIEW_IDS` filter never drift."
+ *
+ * The launcher half of that claim is well covered by
+ * `components/pages/launcher-curation.test.ts`. The router half is asserted
+ * here, because the drift the launcher tests cannot see is the one that adds a
+ * cross-platform view to the native-OS filter: the launcher keeps listing it
+ * and stays green while the router quietly changes how it renders.
+ */
+describe("the native-OS / launcher view seam", () => {
+  it("routes exactly the four native-OS surfaces", () => {
+    expect([...NATIVE_OS_VIEW_IDS]).toEqual([
+      "phone",
+      "messages",
+      "contacts",
+      "camera",
+    ]);
+  });
+
+  it("adds exactly Files to the launcher list, and appends it last", () => {
+    expect([...LAUNCHER_AOSP_ONLY_VIEW_IDS]).toEqual([
+      ...NATIVE_OS_VIEW_IDS,
+      "files",
+    ]);
+  });
+
+  /**
+   * Pinned by SUBTRACTION rather than as a second hand-written list, so adding
+   * a genuinely new native-OS surface does not need this assertion edited,
+   * while promoting a launcher-only view into the router filter still fails.
+   */
+  it("keeps Files launcher-only and out of the router filter", () => {
+    const nativeOs = new Set<string>(NATIVE_OS_VIEW_IDS);
+    const launcherOnly = LAUNCHER_AOSP_ONLY_VIEW_IDS.filter(
+      (id) => !nativeOs.has(id),
+    );
+    expect(launcherOnly).toEqual(["files"]);
+    expect(nativeOs.has("files")).toBe(false);
+  });
+
+  /**
+   * The reason the asymmetry exists, made concrete: the native-OS surfaces are
+   * root-path shells, whereas Files is an `/apps/` view that stays routable on
+   * web, desktop and iOS. Putting it in the router filter would send
+   * `/apps/files` down the native-OS renderer path wherever that surface is
+   * enabled.
+   */
+  it("separates root-path native shells from the /apps view", () => {
+    expect(NATIVE_OS_VIEW_IDS.map((id) => pathForTab(id))).toEqual([
+      "/phone",
+      "/messages",
+      "/contacts",
+      "/camera",
+    ]);
+    expect(pathForTab("files")).toBe("/apps/files");
+  });
+
+  it("lists no id twice in either list", () => {
+    expect([...new Set(NATIVE_OS_VIEW_IDS)]).toEqual([...NATIVE_OS_VIEW_IDS]);
+    expect([...new Set(LAUNCHER_AOSP_ONLY_VIEW_IDS)]).toEqual([
+      ...LAUNCHER_AOSP_ONLY_VIEW_IDS,
+    ]);
+  });
+
+  // A generated table over an empty list registers zero cases and reports
+  // green, so pin the arity the tables below are generated from.
+  it("covers every launcher-gated view", () => {
+    expect(NATIVE_OS_VIEW_IDS).toHaveLength(4);
+    expect(LAUNCHER_AOSP_ONLY_VIEW_IDS).toHaveLength(5);
+  });
+
+  it.each(LAUNCHER_AOSP_ONLY_VIEW_IDS)(
+    "%s is a builtin route with a tab path, so the gate cannot list a dead id",
+    (id) => {
+      expect(BUILTIN_ROUTE_IDS as readonly string[]).toContain(id);
+      expect((TAB_PATHS as Record<string, string>)[id]).toBe(pathForTab(id));
+    },
+  );
 });
