@@ -42,12 +42,10 @@ describe("Personal Shared Telegram edge deploy contract", () => {
   test("sources both Telegram credentials from the protected environment", () => {
     const token = prepare.env?.ELIZA_APP_TELEGRAM_BOT_TOKEN ?? "";
     const webhookSecret = prepare.env?.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET ?? "";
-    expect(token).toContain("secrets[format(");
-    expect(token).toContain("'ELIZA_APP_TELEGRAM_'");
-    expect(token).toContain("'BOT_TOKEN'");
-    expect(webhookSecret).toContain("secrets[format(");
-    expect(webhookSecret).toContain("'ELIZA_APP_TELEGRAM_'");
-    expect(webhookSecret).toContain("'WEBHOOK_SECRET'");
+    expect(token).toBe("$" + "{{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}");
+    expect(webhookSecret).toBe(
+      "$" + "{{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}",
+    );
   });
 
   test("includes both credentials in the atomic Worker version", () => {
