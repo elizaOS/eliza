@@ -216,8 +216,8 @@ Run `npx openzoo@0.50.96` and point `OPENAI_BASE_URL` at `http://localhost:8402/
 OpenZoo has no signup, and the proxy ignores the key: set `OPENAI_API_KEY` to any non-empty value (e.g. `sk-openzoo`). Two properties of the hosted gateway are checkable without installing anything or spending anything:
 
 ```console
-$ curl -s -o /dev/null -w '%{http_code} %{size_download}\n' https://api.openzoo.fun/v1/models
-200 334537
+$ curl -s -o /dev/null -w '%{http_code}\n' https://api.openzoo.fun/v1/models
+200
 
 $ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://api.openzoo.fun/v1/chat/completions \
     -H 'Authorization: Bearer sk-openzoo' -H 'Content-Type: application/json' \
@@ -225,7 +225,7 @@ $ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://api.openzoo.fun/v1/ch
 402
 ```
 
-That is, `GET /v1/models` is free, and a completion sent with only a bearer token is refused with `402` and an x402 `accepts` array rather than served. This plugin sends only a bearer token, so point it at the local proxy, which performs the x402 payment on each request.
+That is, `GET /v1/models` is free — it returns the model catalog, whose size changes as models come and go, so only the status code is asserted here — and a completion sent with only a bearer token is refused with `402` and an x402 `accepts` array rather than served. This plugin sends only a bearer token, so point it at the local proxy, which performs the x402 payment on each request.
 
 Usage telemetry attributes these requests to `openai`, since the plugin sees an OpenAI-compatible endpoint. Per-request billing attribution is available from the gateway's own receipts.
 
