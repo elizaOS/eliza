@@ -12,8 +12,13 @@ import {
   validatePlanBundle,
   validateReceiptArtifactAttestation,
   verifySourcePreMutationSnapshot,
+  writeReconcileFailureAnnotation,
+  writeReconcileWarningAnnotation,
 } from "../gateway-webhook-reconcile.mjs";
-import { providerDeploymentIdDigest } from "../gateway-webhook-transaction-journal.mjs";
+import {
+  providerDeploymentIdDigest,
+  RedactedActionError,
+} from "../gateway-webhook-transaction-journal.mjs";
 
 const priorId = "00000000-0000-4000-8000-000000000001";
 const candidateId = "00000000-0000-4000-8000-000000000002";
@@ -1894,5 +1899,121 @@ describe("GitHub deployment receipt artifact adapter", () => {
     expect(validated.receiptSemanticDigest).toBe(
       deploymentReceiptSemanticDigest(config.receipt),
     );
+  });
+});
+
+describe("Gateway webhook reconcile Actions annotations", () => {
+  test("redacts provider exception metadata and encodes one safe annotation", () => {
+    const canaries = [
+      "fake-secret-reconcile-canary",
+      "987654321-resource-id",
+      '{"httpBody":"private"}',
+      "line one\r\n::error::injected-command",
+    ];
+    const providerError = Object.assign(new Error(canaries.join(" ")), {
+      argv: ["railway", "--environment", canaries[1]],
+      body: canaries[2],
+      resourceId: canaries[1],
+      stderr: canaries[3],
+    });
+    let output = "";
+    writeReconcileFailureAnnotation(
+      { write: (value: string) => (output += value) },
+      providerError,
+    );
+
+    expect(output).toBe(
+      "::error::gateway-webhook-reconcile failure-class=external-dependency-failure\n",
+    );
+    for (const canary of canaries) expect(output).not.toContain(canary);
+    expect(output.slice(0, -1)).not.toMatch(/[\r\n]/);
+  });
+
+  test("rejects untrusted warning data instead of forming another command", () => {
+    const injected = "fake-secret-warning%\r\n::error::forged-provider-message";
+    let output = "";
+    writeReconcileWarningAnnotation(
+      { write: (value: string) => (output += value) },
+      injected,
+    );
+
+    expect(output).toBe(
+      "::warning::gateway-webhook-reconcile failure-class=external-dependency-failure\n",
+    );
+    expect(output).not.toContain(injected);
+    expect(output).not.toContain("forged-provider-message");
+    expect(output.slice(0, -1)).not.toMatch(/[\r\n]/);
+  });
+
+  test("replaces a Railway process error before propagating it", async () => {
+    const processCanary =
+      "fake-secret-process\r\n::error::stderr-body-resource-778899";
+    const client = new RailwayCliClient({
+      scope,
+      execute: async () => {
+        throw Object.assign(new Error(processCanary), {
+          argv: ["railway", "api", "--variables", processCanary],
+          body: processCanary,
+          resourceId: "778899",
+          stderr: processCanary,
+        });
+      },
+    });
+    let caught: unknown;
+    try {
+      await client.listDeployments();
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(RedactedActionError);
+    if (!(caught instanceof RedactedActionError)) {
+      throw new Error("expected a classified Railway CLI failure");
+    }
+    expect(caught.message).toBe("Railway CLI request failed");
+    expect(caught.diagnosticClass).toBe("railway-cli-request-failure");
+    const propagated = `${caught.name}\n${caught.message}\n${caught.stack ?? ""}\n${JSON.stringify(caught)}`;
+    expect(propagated).not.toContain(processCanary);
+    expect(propagated).not.toContain("778899");
+
+    let output = "";
+    writeReconcileFailureAnnotation(
+      { write: (value: string) => (output += value) },
+      caught,
+    );
+    expect(output).toBe(
+      "::error::gateway-webhook-reconcile failure-class=railway-cli-request-failure\n",
+    );
+  });
+
+  test("classifies a lost rollback acknowledgement without exception data", async () => {
+    const canary =
+      "fake-secret-rollback\r\n::warning::provider-body-and-resource-id";
+    const warnings: string[] = [];
+    const harness = createHarness({
+      candidateStatus: "FAILED",
+      active: candidateId,
+      rollback: async () => {
+        throw Object.assign(new Error(canary), {
+          body: canary,
+          resourceId: "1122334455",
+          stderr: canary,
+        });
+      },
+    });
+    harness.dependencies.warn = (diagnosticClass: string) => {
+      warnings.push(diagnosticClass);
+    };
+
+    await expect(
+      reconcileGatewayWebhook(
+        { ...config },
+        await bundle(),
+        harness.dependencies,
+      ),
+    ).rejects.toThrow("acknowledgement is unresolved");
+    expect(warnings).toEqual(["rollback-acknowledgement-unresolved"]);
+    expect(warnings.join("\n")).not.toContain(canary);
+    expect(warnings.join("\n")).not.toContain("1122334455");
   });
 });

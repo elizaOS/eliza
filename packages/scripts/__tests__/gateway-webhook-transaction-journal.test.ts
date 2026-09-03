@@ -21,6 +21,7 @@ import {
   commitPreparedOpen,
   currentRecoveryJob,
   decryptCandidateEnvelope,
+  encodeWorkflowCommandData,
   encryptCandidateEnvelope,
   exactArtifactFilesFromZip,
   findPreparedOpenArtifact,
@@ -38,12 +39,14 @@ import {
   preparedOpenDescriptor,
   publishEncryptedPlan,
   RECORD_PREFIX,
+  RedactedActionError,
   readJournalState,
   reduceJournal,
   restoreEncryptedPlan,
   validateCurrentRecoveryAttempt,
   validatePreparedOpenArtifact,
   validateSourceAttempt,
+  writeRedactedActionFailure,
 } from "../gateway-webhook-transaction-journal.mjs";
 
 const repository = "elizaOS/eliza";
@@ -792,7 +795,7 @@ describe("durable Gateway transaction journal", () => {
     response = new Response(Buffer.from("x", "utf8"), {
       status: 410,
     });
-    await expect(api.downloadArtifact("700", 7)).rejects.toThrow("(410)");
+    await expect(api.downloadArtifact("700", 7)).rejects.toThrow("(HTTP 410)");
 
     response = new Response(Buffer.from("x", "utf8"), {
       status: 200,
@@ -3649,5 +3652,95 @@ describe("durable Gateway transaction journal", () => {
         attestResolutionArtifact(apiFor(overrides), marker),
       ).rejects.toThrow("resolution artifact");
     }
+  });
+});
+
+describe("Gateway webhook journal Actions annotations", () => {
+  test("encodes workflow-command data in the required order", () => {
+    expect(encodeWorkflowCommandData("safe%context\r\nnext")).toBe(
+      "safe%25context%0D%0Anext",
+    );
+  });
+
+  test("redacts external exception fields and command-injection payloads", () => {
+    const canaries = [
+      "fake-secret-journal-canary",
+      "123456789-resource-id",
+      '{"providerBody":"private"}',
+      "first line\r\n::warning::injected-command",
+    ];
+    const providerError = Object.assign(new Error(canaries.join(" ")), {
+      argv: ["provider", "--token", canaries[0]],
+      body: canaries[2],
+      resourceId: canaries[1],
+      stderr: canaries[3],
+    });
+    let output = "";
+    writeRedactedActionFailure(
+      { write: (value: string) => (output += value) },
+      "gateway-webhook-journal",
+      providerError,
+    );
+
+    expect(output).toBe(
+      "::error::gateway-webhook-journal failure-class=external-dependency-failure\n",
+    );
+    for (const canary of canaries) expect(output).not.toContain(canary);
+    expect(output.slice(0, -1)).not.toMatch(/[\r\n]/);
+  });
+
+  test("does not carry a GitHub endpoint or HTTP body in the propagated error", async () => {
+    const endpointCanary =
+      "/actions/artifacts/123456789-endpoint-resource-canary";
+    const bodyCanary =
+      "fake-secret-http-body%\r\n::error::provider-body-injection";
+    const api = new GitHubApi({
+      token: "test-token",
+      repository,
+      fetchImpl: async () => new Response(bodyCanary, { status: 502 }),
+    });
+    let caught: unknown;
+    try {
+      await api.request("GET", endpointCanary);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(RedactedActionError);
+    if (!(caught instanceof RedactedActionError)) {
+      throw new Error("expected a classified GitHub API failure");
+    }
+    expect(caught.message).toBe("GitHub API request failed (HTTP 502)");
+    expect(caught.diagnosticClass).toBe("github-api-request-failure");
+    const propagated = `${caught.name}\n${caught.message}\n${caught.stack ?? ""}\n${JSON.stringify(caught)}`;
+    expect(propagated).not.toContain(endpointCanary);
+    expect(propagated).not.toContain(bodyCanary);
+
+    let output = "";
+    writeRedactedActionFailure(
+      { write: (value: string) => (output += value) },
+      "gateway-webhook-journal",
+      caught,
+    );
+    expect(output).toBe(
+      "::error::gateway-webhook-journal failure-class=github-api-request-failure\n",
+    );
+  });
+
+  test("keeps a safe fail-closed class without emitting its raw message", () => {
+    const rawMessage =
+      "fake-secret-validation\r\n::notice::forged-provider-body";
+    let output = "";
+    writeRedactedActionFailure(
+      { write: (value: string) => (output += value) },
+      "gateway-webhook-journal",
+      new RedactedActionError(rawMessage),
+    );
+
+    expect(output).toBe(
+      "::error::gateway-webhook-journal failure-class=fail-closed-validation\n",
+    );
+    expect(output).not.toContain(rawMessage);
+    expect(output).not.toContain("forged-provider-body");
   });
 });

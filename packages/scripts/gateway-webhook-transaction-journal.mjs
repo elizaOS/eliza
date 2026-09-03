@@ -86,8 +86,98 @@ const TRUSTED_RECOVERY_PATHS = new Set([
   ".github/workflows/recover-gateway-webhook-transactions.yml",
 ]);
 
-function fail(message) {
-  throw new Error(message);
+const ACTION_ANNOTATION_LEVELS = new Set(["error", "warning", "notice"]);
+const ACTION_ANNOTATION_COMPONENTS = new Set([
+  "gateway-webhook",
+  "gateway-webhook-journal",
+  "gateway-webhook-reconcile",
+]);
+const ACTION_DIAGNOSTIC_CLASSES = new Set([
+  "external-dependency-failure",
+  "fail-closed-validation",
+  "github-api-request-failure",
+  "github-api-response-invalid",
+  "github-artifact-download-failure",
+  "railway-cli-request-failure",
+  "rollback-acknowledgement-unresolved",
+]);
+
+export class RedactedActionError extends Error {
+  constructor(message, diagnosticClass = "fail-closed-validation") {
+    super(message);
+    this.name = "RedactedActionError";
+    this.diagnosticClass = ACTION_DIAGNOSTIC_CLASSES.has(diagnosticClass)
+      ? diagnosticClass
+      : "fail-closed-validation";
+  }
+}
+
+export function encodeWorkflowCommandData(value) {
+  return String(value)
+    .replace(/%/g, "%25")
+    .replace(/\r/g, "%0D")
+    .replace(/\n/g, "%0A");
+}
+
+export function httpStatusForDiagnostic(response) {
+  try {
+    const status = response?.status;
+    return Number.isInteger(status) && status >= 100 && status <= 599
+      ? String(status)
+      : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+export function formatRedactedActionAnnotation(
+  level,
+  component,
+  diagnosticClass,
+) {
+  const safeLevel = ACTION_ANNOTATION_LEVELS.has(level) ? level : "error";
+  const safeComponent = ACTION_ANNOTATION_COMPONENTS.has(component)
+    ? component
+    : "gateway-webhook";
+  const safeDiagnosticClass = ACTION_DIAGNOSTIC_CLASSES.has(diagnosticClass)
+    ? diagnosticClass
+    : "external-dependency-failure";
+  const data = encodeWorkflowCommandData(
+    `${safeComponent} failure-class=${safeDiagnosticClass}`,
+  );
+  return `::${safeLevel}::${data}`;
+}
+
+export function writeRedactedActionAnnotation(
+  stream,
+  level,
+  component,
+  diagnosticClass,
+) {
+  const annotation = formatRedactedActionAnnotation(
+    level,
+    component,
+    diagnosticClass,
+  );
+  stream.write(`${annotation}\n`);
+  return annotation;
+}
+
+export function writeRedactedActionFailure(stream, component, error) {
+  const diagnosticClass =
+    error instanceof RedactedActionError
+      ? error.diagnosticClass
+      : "external-dependency-failure";
+  return writeRedactedActionAnnotation(
+    stream,
+    "error",
+    component,
+    diagnosticClass,
+  );
+}
+
+function fail(message, diagnosticClass = "fail-closed-validation") {
+  throw new RedactedActionError(message, diagnosticClass);
 }
 
 function exactKeys(value, expected) {
@@ -1204,44 +1294,82 @@ export class GitHubApi {
   }
 
   async request(method, endpoint, body) {
-    const response = await this.fetchImpl(
-      `${this.apiUrl}/repos/${this.repository}${endpoint}`,
-      {
-        method,
-        headers: {
-          Accept: "application/vnd.github+json",
-          Authorization: `Bearer ${this.token}`,
-          "Content-Type": "application/json",
-          "X-GitHub-Api-Version": API_VERSION,
+    let response;
+    try {
+      response = await this.fetchImpl(
+        `${this.apiUrl}/repos/${this.repository}${endpoint}`,
+        {
+          method,
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${this.token}`,
+            "Content-Type": "application/json",
+            "X-GitHub-Api-Version": API_VERSION,
+          },
+          body: body === undefined ? undefined : JSON.stringify(body),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      },
-    );
-    const text = await response.text();
+      );
+    } catch {
+      fail("GitHub API request failed", "github-api-request-failure");
+    }
     if (!response.ok) {
       fail(
-        `GitHub ${method} ${endpoint} failed (${response.status}): ${text.slice(0, 200)}`,
+        `GitHub API request failed (HTTP ${httpStatusForDiagnostic(response)})`,
+        "github-api-request-failure",
       );
     }
-    return text ? JSON.parse(text) : null;
+    let text;
+    try {
+      text = await response.text();
+    } catch {
+      fail("GitHub API response read failed", "github-api-request-failure");
+    }
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch {
+      fail(
+        "GitHub API response was not valid JSON",
+        "github-api-response-invalid",
+      );
+    }
   }
 
   async downloadArtifact(artifactId, maximumBytes) {
-    const response = await this.fetchImpl(
-      `${this.apiUrl}/repos/${this.repository}/actions/artifacts/${artifactId}/zip`,
-      {
-        headers: {
-          Accept: "application/vnd.github+json",
-          Authorization: `Bearer ${this.token}`,
-          "X-GitHub-Api-Version": API_VERSION,
+    let response;
+    try {
+      response = await this.fetchImpl(
+        `${this.apiUrl}/repos/${this.repository}/actions/artifacts/${artifactId}/zip`,
+        {
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${this.token}`,
+            "X-GitHub-Api-Version": API_VERSION,
+          },
+          redirect: "follow",
         },
-        redirect: "follow",
-      },
-    );
-    if (!response.ok) {
-      fail(`GitHub artifact download failed (${response.status})`);
+      );
+    } catch {
+      fail(
+        "GitHub artifact download request failed",
+        "github-artifact-download-failure",
+      );
     }
-    return boundedResponseBytes(response, maximumBytes);
+    if (!response.ok) {
+      fail(
+        `GitHub artifact download failed (HTTP ${httpStatusForDiagnostic(response)})`,
+        "github-artifact-download-failure",
+      );
+    }
+    try {
+      return await boundedResponseBytes(response, maximumBytes);
+    } catch (error) {
+      if (error instanceof RedactedActionError) throw error;
+      fail(
+        "GitHub artifact response read failed",
+        "github-artifact-download-failure",
+      );
+    }
   }
 }
 
@@ -4218,7 +4346,11 @@ export async function main(
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main().catch((error) => {
-    console.error(`::error::${error.message}`);
+    writeRedactedActionFailure(
+      process.stderr,
+      "gateway-webhook-journal",
+      error,
+    );
     process.exitCode = 1;
   });
 }

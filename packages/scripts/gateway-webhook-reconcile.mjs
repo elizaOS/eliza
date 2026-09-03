@@ -18,9 +18,13 @@ import { inflateRawSync } from "node:zlib";
 import {
   decryptCandidateEnvelope,
   GitHubApi,
+  httpStatusForDiagnostic,
   main as journalMain,
   providerDeploymentIdDigest,
+  RedactedActionError,
   readJournalState,
+  writeRedactedActionAnnotation,
+  writeRedactedActionFailure,
 } from "./gateway-webhook-transaction-journal.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -81,8 +85,21 @@ function observedStatusMatches(observedStatus, currentStatus) {
   );
 }
 
-function fail(message) {
-  throw new Error(message);
+function fail(message, diagnosticClass = "fail-closed-validation") {
+  throw new RedactedActionError(message, diagnosticClass);
+}
+
+export function writeReconcileFailureAnnotation(stream, error) {
+  return writeRedactedActionFailure(stream, "gateway-webhook-reconcile", error);
+}
+
+export function writeReconcileWarningAnnotation(stream, diagnosticClass) {
+  return writeRedactedActionAnnotation(
+    stream,
+    "warning",
+    "gateway-webhook-reconcile",
+    diagnosticClass,
+  );
 }
 
 function canonical(value) {
@@ -1360,10 +1377,8 @@ async function createAndIssueRollback(
     acknowledged = await dependencies.railway.rollback(
       bundle.plan.priorActiveDeploymentId,
     );
-  } catch (error) {
-    dependencies.warn?.(
-      `rollback acknowledgement remains unresolved: ${error.message}`,
-    );
+  } catch {
+    dependencies.warn?.("rollback-acknowledgement-unresolved");
     fail(
       "Railway rollback acknowledgement is unresolved; the durable intent will be observed by a later run",
     );
@@ -1682,15 +1697,30 @@ export class RailwayCliClient {
   }
 
   async query(document, variables, timeout = 20_000) {
-    const { stdout } = await this.execute(
-      "railway",
-      ["api", document, "--variables", JSON.stringify(variables), "--compact"],
-      {
-        env: this.environment,
-        timeout,
-        maxBuffer: 4 * 1024 * 1024,
-      },
-    );
+    let stdout;
+    try {
+      const result = await this.execute(
+        "railway",
+        [
+          "api",
+          document,
+          "--variables",
+          JSON.stringify(variables),
+          "--compact",
+        ],
+        {
+          env: this.environment,
+          timeout,
+          maxBuffer: 4 * 1024 * 1024,
+        },
+      );
+      stdout = result?.stdout;
+    } catch {
+      fail("Railway CLI request failed", "railway-cli-request-failure");
+    }
+    if (typeof stdout !== "string") {
+      fail("Railway returned non-text GraphQL output");
+    }
     let payload;
     try {
       payload = JSON.parse(stdout);
@@ -1900,32 +1930,62 @@ export class GitHubReceiptArtifactClient {
   }
 
   async attestReceipt(config) {
-    const artifact = await this.api.request(
-      "GET",
-      `/actions/artifacts/${config.receiptArtifactId}`,
-    );
-    const sourceRun = await this.api.request(
-      "GET",
-      `/actions/runs/${config.sourceRunId}/attempts/${config.sourceRunAttempt}`,
-    );
-    const response = await this.fetchImpl(
-      `${this.apiUrl}/repos/${this.repository}/actions/artifacts/${config.receiptArtifactId}/zip`,
-      {
-        headers: {
-          Accept: "application/vnd.github+json",
-          Authorization: `Bearer ${this.token}`,
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-        redirect: "follow",
-      },
-    );
-    if (!response.ok) {
-      fail(`GitHub receipt artifact download failed (${response.status})`);
+    let artifact;
+    let sourceRun;
+    try {
+      artifact = await this.api.request(
+        "GET",
+        `/actions/artifacts/${config.receiptArtifactId}`,
+      );
+      sourceRun = await this.api.request(
+        "GET",
+        `/actions/runs/${config.sourceRunId}/attempts/${config.sourceRunAttempt}`,
+      );
+    } catch (error) {
+      if (error instanceof RedactedActionError) throw error;
+      fail(
+        "GitHub receipt metadata request failed",
+        "github-api-request-failure",
+      );
     }
-    const archiveBytes = await boundedResponseBytes(
-      response,
-      MAX_RECEIPT_ARCHIVE_BYTES,
-    );
+    let response;
+    try {
+      response = await this.fetchImpl(
+        `${this.apiUrl}/repos/${this.repository}/actions/artifacts/${config.receiptArtifactId}/zip`,
+        {
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${this.token}`,
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+          redirect: "follow",
+        },
+      );
+    } catch {
+      fail(
+        "GitHub receipt artifact download request failed",
+        "github-artifact-download-failure",
+      );
+    }
+    if (!response.ok) {
+      fail(
+        `GitHub receipt artifact download failed (HTTP ${httpStatusForDiagnostic(response)})`,
+        "github-artifact-download-failure",
+      );
+    }
+    let archiveBytes;
+    try {
+      archiveBytes = await boundedResponseBytes(
+        response,
+        MAX_RECEIPT_ARCHIVE_BYTES,
+      );
+    } catch (error) {
+      if (error instanceof RedactedActionError) throw error;
+      fail(
+        "GitHub receipt artifact response read failed",
+        "github-artifact-download-failure",
+      );
+    }
     return { artifact, sourceRun, archiveBytes };
   }
 }
@@ -2075,7 +2135,8 @@ async function defaultDependencies(config, environment) {
     wallNow: () => Date.now(),
     sleep: (milliseconds) =>
       new Promise((resolve) => setTimeout(resolve, milliseconds)),
-    warn: (message) => process.stderr.write(`::warning::${message}\n`),
+    warn: (diagnosticClass) =>
+      writeReconcileWarningAnnotation(process.stderr, diagnosticClass),
   };
 }
 
@@ -2175,7 +2236,7 @@ if (
   import.meta.url === new URL(`file://${process.argv[1]}`).href
 ) {
   main().catch((error) => {
-    process.stderr.write(`::error::${error.message}\n`);
+    writeReconcileFailureAnnotation(process.stderr, error);
     process.exitCode = 1;
   });
 }
