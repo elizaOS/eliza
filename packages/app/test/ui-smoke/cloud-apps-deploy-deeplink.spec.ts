@@ -162,9 +162,36 @@ test.beforeEach(async ({ page }) => {
   // Desktop-platform signal BEFORE boot: registers the `cloud-apps` app-shell
   // page (web builds route Applications through CloudRouterShell instead).
   await page.addInitScript(() => {
-    (
-      window as unknown as { __electrobunWindowId?: number }
-    ).__electrobunWindowId = 1;
+    const secureStore = new Map<string, string>();
+    const host = window as unknown as Record<string, unknown>;
+    host.__electrobunWindowId = 1;
+    host.__ELIZA_ELECTROBUN_RPC__ = {
+      request: {
+        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
+        desktopRegisterShortcut: async () => ({ success: true }),
+        desktopSetTrayMenu: async () => undefined,
+        secureStoreGet: async ({ kind }: { kind: string }) =>
+          secureStore.has(kind)
+            ? { ok: true, value: secureStore.get(kind) }
+            : { ok: false, reason: "not_found" },
+        secureStoreSet: async ({
+          kind,
+          value,
+        }: {
+          kind: string;
+          value: string;
+        }) => {
+          secureStore.set(kind, value);
+          return { ok: true };
+        },
+        secureStoreDelete: async ({ kind }: { kind: string }) => ({
+          ok: true,
+          deleted: secureStore.delete(kind),
+        }),
+      },
+      onMessage: () => undefined,
+      offMessage: () => undefined,
+    };
   });
   await seedStewardSession(page, {
     jwt: true,

@@ -1,10 +1,10 @@
 # @elizaos/shared
 
-Shared cross-platform contract library for elizaOS: types, configuration schemas, API contracts, and runtime utilities consumed by every layer of the stack.
+Shared cross-platform compatibility and utility library for elizaOS: types, configuration schemas, API contracts, and runtime-safe helpers consumed by every layer of the stack.
 
 ## Purpose / role
 
-`@elizaos/shared` is the lowest-level internal package that can be imported by both Node.js server code and browser/React code without pulling in either runtime's native modules. It provides the HTTP API contract types, the full elizaOS configuration schema, Eliza Cloud helpers, local-inference metadata, brand tokens, connector status types, auth session helpers, and miscellaneous utilities. Consumers include `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/ui`, `@elizaos/app`, `@elizaos/cloud-api`, `@elizaos/cloud-shared`, `eliza-app`, and the browser extension.
+`@elizaos/shared` is the cross-host compatibility and utility package that can be imported by Node.js server code and browser/React code without pulling in core's Node-only runtime modules. It provides the HTTP API contract types, the full elizaOS configuration schema, Eliza Cloud helpers, local-inference metadata, brand tokens, connector status types, auth session helpers, and miscellaneous utilities. It may depend on browser/edge-safe `@elizaos/core` exports for runtime-owned contracts and helpers, and re-exports some of them to preserve existing shared import paths. `@elizaos/core` does not depend on this package. Consumers include `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/ui`, `@elizaos/app`, `@elizaos/cloud-api`, `@elizaos/cloud-shared`, `eliza-app`, and the browser extension.
 
 The barrel must stay runtime-agnostic: the only React touchpoint is a type-only `import type { ReactNode } from "react"` in `config/config-catalog.ts`, which is erased at compile time, so the root `src/index.ts` is safe to import from a Node.js or Bun server boot path.
 
