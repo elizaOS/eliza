@@ -78,15 +78,23 @@ describe("defaultPrivacyRedactor", () => {
 
   it("scans adversarial coordinate-like text in linear time", () => {
     const input = `{"coords":{"latitude":0,"longitude":0${',"A":+\t'.repeat(50_000)}}}`;
+    const startedAt = performance.now();
     expect(defaultPrivacyRedactor(input)).toBe("{[REDACTED_GEO]}");
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
   });
 
   it("scans many overlapping malformed coordinate candidates in linear time", () => {
     // Every "coords" marker starts a candidate whose scan runs to the end of
     // the unterminated input; a non-monotonic cursor would rescan each
     // remaining suffix and go quadratic.
+    // The result assertions below hold for a quadratic scan too, so the
+    // elapsed-time bound is what actually detects a non-monotonic cursor:
+    // this input takes ~15ms linear and ~117s quadratic, and the package's
+    // 120s `testTimeout` is too loose to catch the difference on its own.
     const input = '"coords":{"latitude":0,"longitude":0,'.repeat(50_000);
+    const startedAt = performance.now();
     const out = defaultPrivacyRedactor(input) as string;
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
     expect(out).toContain("[REDACTED_GEO]");
     expect(out).not.toContain('"latitude":0');
   });
