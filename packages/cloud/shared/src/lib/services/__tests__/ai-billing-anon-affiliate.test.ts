@@ -20,6 +20,7 @@ process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 import * as realPricing from "../../pricing";
+import * as realCredits from "../credits";
 
 // Deterministic cost so the affiliate math is predictable (no pricing catalog).
 mock.module("../../pricing", () => ({
@@ -41,6 +42,11 @@ mock.module("../../../db/repositories/affiliates", () => ({
     })),
   },
 }));
+mock.module("../../../db/repositories/subscription-entitlements", () => ({
+  subscriptionEntitlementsRepository: {
+    find: mock(async () => undefined),
+  },
+}));
 
 // The outbox processor is the post-settlement cashable-earnings boundary.
 const processAffiliatePayoutBySource = mock(async () => ({
@@ -59,8 +65,8 @@ const reserve = mock(async (params: unknown) => ({
   params,
 }));
 mock.module("../credits", () => ({
-  creditsService: { reserve },
-  InsufficientCreditsError: class InsufficientCreditsError extends Error {},
+  ...realCredits,
+  creditsService: { ...realCredits.creditsService, reserve },
 }));
 
 // Side-effect writers billUsage calls — stub so the test needs no DB rows.

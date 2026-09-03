@@ -40,6 +40,7 @@ import type {
   SharedRuntimePublicGrounding,
   SharedRuntimeReminderActionProvenance,
 } from "../../../db/schemas/shared-runtime-history";
+import { getDefaultModels } from "../../eliza/config";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import { hasLanguageModelProviderConfigured } from "../../providers/language-model";
@@ -273,9 +274,9 @@ export interface RunSharedAgentTurnStreamResult {
 }
 
 /**
- * The shared default when an agent configures no model: the bare Cerebras small
- * id, which `getLanguageModel` sends straight to Cerebras (fast + cheap, no
- * gateway hop). Big-model agents can still set another bare Cerebras model.
+ * The canonical shared default when an agent configures no model. Cloud may
+ * override it through `ELIZAOS_CLOUD_SMALL_MODEL`; otherwise the bare Cerebras
+ * small id goes straight to Cerebras (fast + cheap, no gateway hop).
  */
 const DEFAULT_SHARED_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
 
@@ -326,7 +327,8 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
   if (configured && hasLanguageModelProviderConfigured(configured)) {
     return configured;
   }
-  return hasLanguageModelProviderConfigured(DEFAULT_SHARED_MODEL) ? DEFAULT_SHARED_MODEL : null;
+  const defaultModel = getDefaultModels().small.trim() || DEFAULT_SHARED_MODEL;
+  return hasLanguageModelProviderConfigured(defaultModel) ? defaultModel : null;
 }
 
 /**

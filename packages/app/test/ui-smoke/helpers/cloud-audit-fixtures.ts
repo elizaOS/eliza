@@ -6,7 +6,11 @@
  * session-not-ready loading spinner instead of the real analytics/earnings
  * tab. Keeping one source of truth avoids drift between the two specs.
  */
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  STEWARD_ACTIVE_SCOPE_KEY,
+  STEWARD_TOKEN_KEY,
+  STEWARD_TOKEN_SCOPE_KEY,
+} from "@elizaos/shared/steward-session-client";
 import type { Page } from "@playwright/test";
 
 function makeJwt(payload: Record<string, unknown>): string {
@@ -22,8 +26,11 @@ export async function seedStewardToken(page: Page): Promise<void> {
     exp: Math.floor(Date.now() / 1000) + 3600,
   });
   await page.addInitScript(
-    ({ key, value }) => {
+    ({ activeScopeKey, key, tokenScopeKey, value }) => {
+      const scope = "eliza-cloud:production";
       localStorage.setItem(key, value);
+      localStorage.setItem(tokenScopeKey, scope);
+      localStorage.setItem(activeScopeKey, scope);
       localStorage.setItem("eliza:first-run-complete", "1");
       localStorage.setItem("eliza:setup:step", "activate");
       localStorage.setItem(
@@ -36,7 +43,12 @@ export async function seedStewardToken(page: Page): Promise<void> {
         }),
       );
     },
-    { key: STEWARD_TOKEN_KEY, value: token },
+    {
+      activeScopeKey: STEWARD_ACTIVE_SCOPE_KEY,
+      key: STEWARD_TOKEN_KEY,
+      tokenScopeKey: STEWARD_TOKEN_SCOPE_KEY,
+      value: token,
+    },
   );
 }
 
@@ -200,6 +212,22 @@ const prefix = (p: string) => (pathname: string) => pathname.startsWith(p);
 
 // NOTE: table order matters — first match wins.
 const STUB_RULES: StubRule[] = [
+  {
+    match: (pathname) =>
+      pathname === "/auth/providers" || pathname === "/steward/auth/providers",
+    body: {
+      passkey: false,
+      email: true,
+      sms: true,
+      siwe: false,
+      siws: false,
+      google: true,
+      discord: true,
+      github: false,
+      twitter: false,
+      oauth: ["google", "discord"],
+    },
+  },
   // StewardProviderRuntime mirrors the seeded browser token into the server's
   // HttpOnly session cookie before protected Cloud routes render.
   {
@@ -971,6 +999,9 @@ export async function installCloudApiStubs(page: Page): Promise<void> {
   // /api/crypto/*, /api/mcp/*, /api/characters/*, /api/invites/*,
   // /api/admin/*, /api/my-agents/*, /api/organizations/* …
   await page.route("**/api/**", handle);
+  // Steward provider discovery is rooted at /auth rather than /api.
+  await page.route("**/auth/**", handle);
+  await page.route("**/steward/**", handle);
   // The admin RPC-status probe has no /api prefix (worker route /admin/rpc-status).
   await page.route("**/admin/rpc-status*", handle);
 }

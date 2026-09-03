@@ -183,6 +183,7 @@ const admitOrganizationInference = mock(
 );
 mock.module("../organization-inference-admission", () => ({
   admitOrganizationInference,
+  InferenceAdmissionUnavailableError: class InferenceAdmissionUnavailableError extends Error {},
 }));
 mock.module("../ai-billing", () => ({
   estimateInputTokens,
