@@ -200,6 +200,11 @@ mock.module("../cache/client", () => ({
     del: async (key: string) => {
       deletedCacheKeys.push(key);
     },
+    delConfirmed: async (key: string) => {
+      deletedCacheKeys.push(key);
+      return true;
+    },
+    delPatternConfirmed: async () => true,
   },
 }));
 
