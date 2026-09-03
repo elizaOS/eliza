@@ -12,11 +12,11 @@
  * `life_entity_attributes`. The `(agent_id, entity_id)` pair is unique;
  * `entityId === "self"` is the special user node.
  *
- * `life_relationships_v2` stores typed edges. `(agent_id, from_entity_id,
- * to_entity_id, type)` is unique for active edges (a retired edge of the
- * same triple may co-exist with a new active one). `cadence_days` is
- * surfaced as a column-level shortcut for the cadence-overdue filter even
- * though it also appears inside `metadata_json`.
+ * `life_relationships_v2` stores typed edges. Existing deployments may contain
+ * more than one active edge for an `(agent_id, from_entity_id, to_entity_id,
+ * type)` tuple, so migrations must detect ambiguity rather than impose a new
+ * global constraint. `cadence_days` is surfaced as a column-level shortcut for
+ * the cadence-overdue filter even though it also appears inside `metadata_json`.
  */
 
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "@elizaos/shared";
@@ -170,9 +170,8 @@ export const lifeRelationshipAuditEvents = appLifeopsPgSchema.table(
 );
 
 /**
- * Durable control plane for retiring Core RelationshipsService persistence.
- * Cutover is per agent and is activated only after source rows have been
- * archived, projected, and read back in one serializable transaction.
+ * Durable control plane for verifying a non-destructive Core
+ * RelationshipsService copy.
  */
 export const coreRelationshipsMigrationState = appLifeopsPgSchema.table(
   "core_relationships_migration_state",
@@ -181,13 +180,13 @@ export const coreRelationshipsMigrationState = appLifeopsPgSchema.table(
     status: text("status").notNull(),
     sourceDigest: text("source_digest").notNull(),
     inventoryJson: text("inventory_json").notNull(),
+    relationshipsWorldId: text("relationships_world_id").notNull(),
     startedAt: text("started_at").notNull(),
     verifiedAt: text("verified_at"),
-    cutoverAt: text("cutover_at"),
   },
 );
 
-/** Verbatim, hash-addressed source rows retained after non-destructive cutover. */
+/** Verbatim, hash-addressed source rows retained after verification. */
 export const coreRelationshipsSourceRecords = appLifeopsPgSchema.table(
   "core_relationships_source_records",
   {

@@ -7,9 +7,10 @@
  */
 
 export {
+  type CoreRelationshipsMigrationDatabase,
   type CoreRelationshipsMigrationReport,
+  type CoreRelationshipsMigrationSession,
   type CoreRelationshipsSourceKind,
-  type CoreRelationshipsSqlExecutor,
   migrateCoreRelationshipsToKnowledgeGraph,
 } from "./core-relationships-migration.ts";
 export { EntityStore } from "./entity-store.ts";

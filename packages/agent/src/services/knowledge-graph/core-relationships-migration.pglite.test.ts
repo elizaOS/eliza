@@ -1,14 +1,15 @@
 /**
- * Real-PGlite coverage for the Core relationships migration and cutover.
- * The test drives actual PostgreSQL-compatible tables, verifies lossless source
- * archival and canonical projection, reruns after a source change, then proves
- * database-enforced cutover rejects legacy writes without deleting source rows.
+ * Real-PGlite coverage for Core relationships migration verification.
+ * The test verifies lossless archival, collision handling, provenance-owned
+ * entity replay, and embedded-handle reconciliation without changing source
+ * authority or deleting source rows.
  */
 
 import { PGlite } from "@electric-sql/pglite";
+import { stringToUuid } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  type CoreRelationshipsSqlExecutor,
+  type CoreRelationshipsMigrationDatabase,
   migrateCoreRelationshipsToKnowledgeGraph,
 } from "./core-relationships-migration.ts";
 
@@ -18,16 +19,44 @@ const COMPONENT_ID = "00000000-0000-4000-8000-000000000003";
 const RELATIONSHIP_ID = "00000000-0000-4000-8000-000000000004";
 const IDENTITY_ID = "00000000-0000-4000-8000-000000000005";
 const CANDIDATE_ID = "00000000-0000-4000-8000-000000000006";
+const UNRELATED_COMPONENT_ID = "00000000-0000-4000-8000-000000000008";
+const COINCIDENT_IDENTITY_ID = "00000000-0000-4000-8000-000000000009";
+const RELATIONSHIPS_WORLD_ID = stringToUuid(`relationships-world-${AGENT_ID}`);
 
 describe("Core relationships migration — real PGlite", () => {
   let database: PGlite;
-  let exec: CoreRelationshipsSqlExecutor;
+  let migrationDatabase: CoreRelationshipsMigrationDatabase;
+  const execute = async (
+    statement: string,
+  ): Promise<Array<Record<string, unknown>>> => {
+    const result = await database.query<Record<string, unknown>>(statement);
+    return result.rows;
+  };
 
   beforeAll(async () => {
     database = new PGlite();
-    exec = async (statement) => {
-      const result = await database.query<Record<string, unknown>>(statement);
-      return result.rows;
+    migrationDatabase = {
+      execute,
+      transaction: async (callback, options) => {
+        expect(options).toEqual({ isolationLevel: "serializable" });
+        await database.exec("BEGIN ISOLATION LEVEL SERIALIZABLE");
+        let firstStatement = "";
+        try {
+          const result = await callback({
+            execute: async (statement) => {
+              firstStatement ||= statement;
+              return execute(statement);
+            },
+          });
+          await database.exec("COMMIT");
+          return result;
+        } catch (error) {
+          await database.exec("ROLLBACK");
+          throw error;
+        } finally {
+          expect(firstStatement.trimStart()).toMatch(/^LOCK TABLE entities,/);
+        }
+      },
     };
     await database.exec(`
       CREATE TABLE entities (
@@ -88,15 +117,23 @@ describe("Core relationships migration — real PGlite", () => {
         kind text NOT NULL, details_json text NOT NULL, created_at text NOT NULL
       );
     `);
+    await database.exec(`INSERT INTO app_lifeops.life_entities VALUES (
+      'self', '${AGENT_ID}', 'person', 'self', NULL, '[]', 'owner_only',
+      NULL, NULL, NULL, NULL, '2025-12-01T00:00:00Z', '2025-12-01T00:00:00Z'
+    )`);
     await database.exec(`
       INSERT INTO entities VALUES
         ('${AGENT_ID}', '${AGENT_ID}', '2026-01-01T00:00:00Z', ARRAY['Owner'], '{"role":"owner"}'),
         ('${CONTACT_ID}', '${AGENT_ID}', '2026-01-02T00:00:00Z', ARRAY['Ada'], '{"displayName":"Ada"}');
       INSERT INTO components VALUES (
-        '${COMPONENT_ID}', '${CONTACT_ID}', '${AGENT_ID}', '${AGENT_ID}', '${AGENT_ID}',
+        '${COMPONENT_ID}', '${CONTACT_ID}', '${AGENT_ID}', '${AGENT_ID}', '${RELATIONSHIPS_WORLD_ID}',
         '${AGENT_ID}', 'contact_info',
-        '{"categories":["friend"],"tags":["vip"],"preferences":{"channel":"signal"},"customFields":{"birthday":"1815-12-10"},"privacyLevel":"private","lastModified":"2026-02-01T00:00:00Z","handles":[{"id":"handle-1","platform":"signal","identifier":"ada"}],"interactions":[{"id":"interaction-1","platform":"signal","direction":"inbound","summary":"hello","externalRef":"message-1","occurredAt":"2026-02-02T00:00:00Z"}],"followupThresholdDays":14,"lastInteractionAt":"2026-02-02T00:00:00Z","relationshipGoal":{"goalText":"Stay in touch","targetCadenceDays":7,"setAt":"2026-02-01T00:00:00Z"},"relationshipStatus":"blocked"}',
+        '{"categories":["friend"],"tags":["vip"],"preferences":{"channel":"signal"},"customFields":{"birthday":"1815-12-10"},"privacyLevel":"private","lastModified":"2026-02-01T00:00:00Z","handles":[{"id":"handle-1","platform":"signal","identifier":"ada"},{"id":"handle-2","platform":"matrix","identifier":"@ada:example.org"}],"interactions":[{"id":"interaction-1","platform":"signal","direction":"inbound","summary":"hello","externalRef":"message-1","occurredAt":"2026-02-02T00:00:00Z"}],"followupThresholdDays":14,"lastInteractionAt":"2026-02-02T00:00:00Z","relationshipGoal":{"goalText":"Stay in touch","targetCadenceDays":7,"setAt":"2026-02-01T00:00:00Z"},"relationshipStatus":"blocked"}',
         '2026-02-01T00:00:00Z'
+      );
+      INSERT INTO components VALUES (
+        '${UNRELATED_COMPONENT_ID}', '${CONTACT_ID}', '${AGENT_ID}', '${AGENT_ID}', '${AGENT_ID}',
+        '${AGENT_ID}', 'contact_info', '{"unrelated":true}', '2026-02-01T00:00:00Z'
       );
       INSERT INTO relationships VALUES (
         '${RELATIONSHIP_ID}', '2026-02-03T00:00:00Z', '${AGENT_ID}', '${CONTACT_ID}',
@@ -107,6 +144,11 @@ describe("Core relationships migration — real PGlite", () => {
         '${IDENTITY_ID}', '${CONTACT_ID}', '${AGENT_ID}', 'discord', 'ada#1', true, 0.9,
         'connector', '2026-02-01T00:00:00Z', '2026-02-04T00:00:00Z',
         '["message-3"]', '2026-02-01T00:00:00Z'
+      );
+      INSERT INTO entity_identities VALUES (
+        '${COINCIDENT_IDENTITY_ID}', '${CONTACT_ID}', '${AGENT_ID}', 'signal', 'ada', true, 0.8,
+        'connector', '2026-02-01T00:00:00Z', '2026-02-04T00:00:00Z',
+        '["message-signal"]', '2026-02-01T00:00:00Z'
       );
       INSERT INTO entity_merge_candidates VALUES (
         '${CANDIDATE_ID}', '${AGENT_ID}', '${AGENT_ID}', '${CONTACT_ID}', 0.95,
@@ -120,14 +162,14 @@ describe("Core relationships migration — real PGlite", () => {
     await database.close();
   });
 
-  it("archives, projects, resumes, verifies, and cuts over without deleting source rows", async () => {
+  it("archives, projects, resumes, and verifies without deleting source rows", async () => {
     await database.exec(`INSERT INTO app_lifeops.life_relationships_v2 VALUES (
       '${RELATIONSHIP_ID}', '${AGENT_ID}', 'self', '${CONTACT_ID}', 'unrelated', '{}',
       NULL, NULL, NULL, 0, NULL, '[]', 1, 'manual', 'active', NULL, NULL,
       '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z'
     )`);
     await expect(
-      migrateCoreRelationshipsToKnowledgeGraph(exec, {
+      migrateCoreRelationshipsToKnowledgeGraph(migrationDatabase, {
         agentId: AGENT_ID,
         now: "2026-02-28T00:00:00.000Z",
       }),
@@ -135,12 +177,12 @@ describe("Core relationships migration — real PGlite", () => {
       `Canonical relationship id collision for ${RELATIONSHIP_ID}`,
     );
     expect(
-      await exec(
+      await execute(
         "SELECT count(*)::int AS count FROM app_lifeops.core_relationships_source_records",
       ),
     ).toEqual([{ count: 0 }]);
     expect(
-      await exec(
+      await execute(
         `SELECT type, source FROM app_lifeops.life_relationships_v2
          WHERE relationship_id = '${RELATIONSHIP_ID}'`,
       ),
@@ -149,43 +191,76 @@ describe("Core relationships migration — real PGlite", () => {
       `DELETE FROM app_lifeops.life_relationships_v2 WHERE relationship_id = '${RELATIONSHIP_ID}'`,
     );
 
-    const first = await migrateCoreRelationshipsToKnowledgeGraph(exec, {
-      agentId: AGENT_ID,
-      now: "2026-03-01T00:00:00.000Z",
-    });
+    await database.exec(`INSERT INTO app_lifeops.life_relationships_v2 VALUES (
+      'other-active-contact', '${AGENT_ID}', 'self', '${CONTACT_ID}', 'identity_link', '{}',
+      NULL, NULL, NULL, 0, NULL, '[]', 1, 'manual', 'active', NULL, NULL,
+      '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z'
+    )`);
+    await expect(
+      migrateCoreRelationshipsToKnowledgeGraph(migrationDatabase, {
+        agentId: AGENT_ID,
+        now: "2026-02-28T01:00:00.000Z",
+      }),
+    ).rejects.toThrow(/Canonical active-edge collision/);
+    await database.exec(
+      "DELETE FROM app_lifeops.life_relationships_v2 WHERE relationship_id = 'other-active-contact'",
+    );
+
+    await database.exec(`INSERT INTO app_lifeops.life_entities VALUES (
+      '${CONTACT_ID}', '${AGENT_ID}', 'person', 'Unrelated Ada', NULL, '[]',
+      'owner_agent_admin', NULL, NULL, NULL, NULL,
+      '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z'
+    )`);
+    await expect(
+      migrateCoreRelationshipsToKnowledgeGraph(migrationDatabase, {
+        agentId: AGENT_ID,
+        now: "2026-02-28T02:00:00.000Z",
+      }),
+    ).rejects.toThrow(/exists without matching migration provenance/);
+    await database.exec(
+      `DELETE FROM app_lifeops.life_entities WHERE entity_id = '${CONTACT_ID}'`,
+    );
+
+    const first = await migrateCoreRelationshipsToKnowledgeGraph(
+      migrationDatabase,
+      {
+        agentId: AGENT_ID,
+        now: "2026-03-01T00:00:00.000Z",
+      },
+    );
     expect(first).toMatchObject({
       status: "verified",
       inventory: {
         entity: 2,
         contact_component: 1,
         relationship: 1,
-        identity: 1,
+        identity: 2,
         merge_candidate: 1,
       },
-      archivedRecords: 6,
-      projectedRecords: 6,
+      archivedRecords: 7,
+      projectedRecords: 7,
     });
 
-    const archived = await exec(
+    const archived = await execute(
       `SELECT source_kind, source_id, payload_json FROM app_lifeops.core_relationships_source_records
        WHERE agent_id = '${AGENT_ID}' ORDER BY source_kind, source_id`,
     );
-    expect(archived).toHaveLength(6);
+    expect(archived).toHaveLength(7);
     expect(
       archived.find((row) => row.source_kind === "contact_component")
         ?.payload_json,
     ).toContain("Stay in touch");
     expect(
-      await exec(
+      await execute(
         `SELECT entity_id, preferred_name FROM app_lifeops.life_entities
          WHERE agent_id = '${AGENT_ID}' ORDER BY entity_id`,
       ),
     ).toEqual([
       { entity_id: CONTACT_ID, preferred_name: "Ada" },
-      { entity_id: "self", preferred_name: "Owner" },
+      { entity_id: "self", preferred_name: "self" },
     ]);
     const contactEdge = (
-      await exec(
+      await execute(
         `SELECT cadence_days, state_last_interaction_at, state_interaction_count,
                 evidence_json, metadata_json, status, retired_at, retired_reason
          FROM app_lifeops.life_relationships_v2
@@ -203,15 +278,69 @@ describe("Core relationships migration — real PGlite", () => {
     expect(contactEdge.evidence_json).toContain("message-1");
     expect(contactEdge.metadata_json).toContain("birthday");
     expect(
-      await exec(
+      await execute(
         `SELECT verified, confidence, evidence_json FROM app_lifeops.life_entity_identities
-         WHERE entity_id = '${CONTACT_ID}'`,
+         WHERE entity_id = '${CONTACT_ID}' AND platform = 'discord'`,
       ),
     ).toEqual([
-      { verified: true, confidence: 0.9, evidence_json: '["message-3"]' },
+      {
+        verified: true,
+        confidence: 0.9,
+        evidence_json: `["core-identity:${IDENTITY_ID}","message-3"]`,
+      },
     ]);
+    const signalClaims = await execute(
+      `SELECT id, platform, handle, connector_account_id, added_via, verified,
+              confidence, evidence_json
+       FROM app_lifeops.life_entity_identities
+       WHERE entity_id = '${CONTACT_ID}' AND platform = 'signal'`,
+    );
+    expect(signalClaims).toHaveLength(1);
+    expect(signalClaims[0]).toMatchObject({
+      id: `core-handle:${COMPONENT_ID}:handle-1`,
+      platform: "signal",
+      handle: "ada",
+      connector_account_id: "default",
+      added_via: "import",
+      verified: true,
+      confidence: 1,
+    });
+    expect(signalClaims[0]?.evidence_json).toContain("message-signal");
+    expect(signalClaims[0]?.evidence_json).toContain(
+      `core-identity:${COINCIDENT_IDENTITY_ID}`,
+    );
     expect(
-      await exec(
+      await execute(`SELECT target_id
+        FROM app_lifeops.core_relationships_migration_records
+        WHERE source_kind = 'identity' AND source_id = '${COINCIDENT_IDENTITY_ID}'`),
+    ).toEqual([{ target_id: `core-handle:${COMPONENT_ID}:handle-1` }]);
+    await database.exec(`UPDATE components SET data = jsonb_set(
+      data, '{handles,0,identifier}', '"ada-mutated"'::jsonb)
+      WHERE id = '${COMPONENT_ID}'`);
+    await expect(
+      migrateCoreRelationshipsToKnowledgeGraph(migrationDatabase, {
+        agentId: AGENT_ID,
+        now: "2026-03-01T01:00:00.000Z",
+      }),
+    ).rejects.toThrow(/Canonical contact handle id collision/);
+    await database.exec(`UPDATE components SET data = jsonb_set(
+      data, '{handles,0,identifier}', '"ada"'::jsonb)
+      WHERE id = '${COMPONENT_ID}'`);
+
+    await database.exec(`UPDATE app_lifeops.life_entity_identities
+      SET entity_id = 'self'
+      WHERE id = 'core-handle:${COMPONENT_ID}:handle-1'`);
+    await expect(
+      migrateCoreRelationshipsToKnowledgeGraph(migrationDatabase, {
+        agentId: AGENT_ID,
+        now: "2026-03-01T02:00:00.000Z",
+      }),
+    ).rejects.toThrow(/Canonical contact handle id collision/);
+    await database.exec(`UPDATE app_lifeops.life_entity_identities
+      SET entity_id = '${CONTACT_ID}'
+      WHERE id = 'core-handle:${COMPONENT_ID}:handle-1'`);
+    expect(
+      await execute(
         `SELECT status, payload_json FROM app_lifeops.core_relationships_merge_lineage
          WHERE candidate_id = '${CANDIDATE_ID}'`,
       ),
@@ -222,7 +351,7 @@ describe("Core relationships migration — real PGlite", () => {
       }),
     ]);
     expect(
-      await exec(
+      await execute(
         `SELECT relationship_id, kind, details_json
          FROM app_lifeops.life_relationship_audit_events
          WHERE agent_id = '${AGENT_ID}' ORDER BY relationship_id`,
@@ -239,36 +368,126 @@ describe("Core relationships migration — real PGlite", () => {
         details_json: expect.stringContaining("sourceHash"),
       }),
     ]);
+    await database.exec(`INSERT INTO app_lifeops.life_relationships_v2 VALUES (
+      'duplicate-active-edge', '${AGENT_ID}', 'self', '${CONTACT_ID}', 'identity_link', '{}',
+      NULL, NULL, NULL, 0, NULL, '[]', 1, 'manual', 'active', NULL, NULL,
+      '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z'
+    )`);
+    await expect(
+      migrateCoreRelationshipsToKnowledgeGraph(migrationDatabase, {
+        agentId: AGENT_ID,
+        now: "2026-03-01T12:00:00.000Z",
+      }),
+    ).rejects.toThrow(/Canonical active-edge collision/);
+    await database.exec(`DELETE FROM app_lifeops.life_relationships_v2
+      WHERE relationship_id = 'duplicate-active-edge'`);
 
-    await database.exec(`UPDATE components SET data = data || '{"followupThresholdDays":21}'::jsonb
+    await database.exec(`UPDATE app_lifeops.life_entities SET
+      full_name = 'Augusta Ada King', tags_json = '["canonical"]',
+      visibility = 'owner_only', state_last_observed_at = '2026-03-01T10:00:00.000Z'
+      WHERE agent_id = '${AGENT_ID}' AND entity_id = '${CONTACT_ID}'`);
+    await database.exec(`UPDATE app_lifeops.life_entity_identities SET
+      display_name = 'Canonical Ada', verified = TRUE, confidence = 1,
+      added_at = '2025-01-01T00:00:00.000Z', added_via = 'manual',
+      evidence_json = (evidence_json::jsonb || '["canonical-evidence"]'::jsonb)::text
+      WHERE agent_id = '${AGENT_ID}' AND platform IN ('discord', 'signal')`);
+    await database.exec(`UPDATE components
+      SET data = (data - 'handles') || '{"followupThresholdDays":21}'::jsonb
       WHERE id = '${COMPONENT_ID}'`);
-    const resumed = await migrateCoreRelationshipsToKnowledgeGraph(exec, {
-      agentId: AGENT_ID,
-      now: "2026-03-02T00:00:00.000Z",
-    });
+    await database.exec(`UPDATE entities SET names = ARRAY['Ada Lovelace']
+      WHERE id = '${CONTACT_ID}'`);
+    const resumed = await migrateCoreRelationshipsToKnowledgeGraph(
+      migrationDatabase,
+      {
+        agentId: AGENT_ID,
+        now: "2026-03-02T00:00:00.000Z",
+      },
+    );
     expect(resumed.sourceDigest).not.toBe(first.sourceDigest);
     expect(
-      await exec(
+      await execute(
         `SELECT payload_json FROM app_lifeops.core_relationships_source_records
          WHERE source_kind = 'contact_component' AND source_id = '${COMPONENT_ID}'`,
       ),
     ).toEqual([{ payload_json: expect.stringContaining("21") }]);
+    expect(
+      await execute(`SELECT preferred_name, full_name, tags_json, visibility,
+          state_last_observed_at FROM app_lifeops.life_entities
+        WHERE agent_id = '${AGENT_ID}' AND entity_id = '${CONTACT_ID}'`),
+    ).toEqual([
+      {
+        preferred_name: "Ada Lovelace",
+        full_name: "Augusta Ada King",
+        tags_json: '["canonical"]',
+        visibility: "owner_only",
+        state_last_observed_at: "2026-03-01T10:00:00.000Z",
+      },
+    ]);
+    expect(
+      await execute(`SELECT platform, display_name, verified, confidence, added_at,
+          added_via, evidence_json FROM app_lifeops.life_entity_identities
+        WHERE agent_id = '${AGENT_ID}' AND platform IN ('discord', 'signal')
+        ORDER BY platform`),
+    ).toEqual([
+      expect.objectContaining({
+        platform: "discord",
+        display_name: "Canonical Ada",
+        verified: true,
+        confidence: 1,
+        added_at: "2025-01-01T00:00:00.000Z",
+        added_via: "manual",
+        evidence_json: expect.stringContaining("canonical-evidence"),
+      }),
+      expect.objectContaining({
+        platform: "signal",
+        display_name: "Canonical Ada",
+        verified: true,
+        confidence: 1,
+        added_at: "2025-01-01T00:00:00.000Z",
+        added_via: "manual",
+        evidence_json: expect.stringContaining("message-signal"),
+      }),
+    ]);
+    expect(
+      await execute(`SELECT id FROM app_lifeops.life_entity_identities
+        WHERE agent_id = '${AGENT_ID}' AND platform = 'matrix'`),
+    ).toEqual([]);
+
+    await database.exec(`UPDATE app_lifeops.life_entities
+      SET preferred_name = 'Countess Ada', updated_at = '2026-03-02T01:00:00.000Z'
+      WHERE agent_id = '${AGENT_ID}' AND entity_id = '${CONTACT_ID}'`);
+    await database.exec(`UPDATE entities SET names = ARRAY['Ada Byron']
+      WHERE id = '${CONTACT_ID}'`);
+    const enrichedReplay = await migrateCoreRelationshipsToKnowledgeGraph(
+      migrationDatabase,
+      { agentId: AGENT_ID, now: "2026-03-02T02:00:00.000Z" },
+    );
+    expect(
+      await execute(`SELECT preferred_name, full_name FROM app_lifeops.life_entities
+        WHERE agent_id = '${AGENT_ID}' AND entity_id = '${CONTACT_ID}'`),
+    ).toEqual([
+      { preferred_name: "Countess Ada", full_name: "Augusta Ada King" },
+    ]);
+    expect(
+      await execute(`SELECT value_json FROM app_lifeops.life_entity_attributes
+        WHERE agent_id = '${AGENT_ID}' AND entity_id = '${CONTACT_ID}'
+          AND key = 'legacy.core.migration_entity'`),
+    ).toEqual([{ value_json: expect.stringContaining('"owned":false') }]);
 
     await database.exec(`INSERT INTO app_lifeops.core_relationships_source_records
       (agent_id, source_kind, source_id, source_hash, payload_json, archived_at)
       VALUES ('${AGENT_ID}', 'entity', 'disappeared-source', 'stale', '{}',
         '2026-03-02T12:00:00.000Z')`);
     await expect(
-      migrateCoreRelationshipsToKnowledgeGraph(exec, {
+      migrateCoreRelationshipsToKnowledgeGraph(migrationDatabase, {
         agentId: AGENT_ID,
-        activateCutover: true,
         now: "2026-03-02T12:01:00.000Z",
       }),
     ).rejects.toThrow(
-      "Core relationships source rows disappeared after archival; refusing cutover",
+      "Core relationships source rows disappeared after archival; refusing verification",
     );
     expect(
-      await exec(
+      await execute(
         `SELECT status FROM app_lifeops.core_relationships_migration_state
          WHERE agent_id = '${AGENT_ID}'`,
       ),
@@ -276,34 +495,30 @@ describe("Core relationships migration — real PGlite", () => {
     await database.exec(`DELETE FROM app_lifeops.core_relationships_source_records
       WHERE agent_id = '${AGENT_ID}' AND source_id = 'disappeared-source'`);
 
-    const cutover = await migrateCoreRelationshipsToKnowledgeGraph(exec, {
-      agentId: AGENT_ID,
-      activateCutover: true,
-      now: "2026-03-03T00:00:00.000Z",
-    });
-    expect(cutover.status).toBe("cutover");
     await expect(
       database.exec(
-        `UPDATE components SET data = '{}' WHERE id = '${COMPONENT_ID}'`,
+        `UPDATE components SET data = '{"stillUnrelated":true}'
+         WHERE id = '${UNRELATED_COMPONENT_ID}'`,
       ),
-    ).rejects.toThrow(/persistence is cut over/);
-    await expect(
-      database.exec(
-        `UPDATE relationships SET metadata = '{}' WHERE id = '${RELATIONSHIP_ID}'`,
-      ),
-    ).rejects.toThrow(/persistence is cut over/);
-    await expect(
-      database.exec(`INSERT INTO components VALUES (
-        '00000000-0000-4000-8000-000000000099', '${CONTACT_ID}', '${AGENT_ID}',
-        '${AGENT_ID}', '${AGENT_ID}', '${AGENT_ID}', 'unrelated_component', '{}', now())`),
     ).resolves.toBeDefined();
+    const replay = await migrateCoreRelationshipsToKnowledgeGraph(
+      migrationDatabase,
+      { agentId: AGENT_ID, now: "2026-03-04T00:00:00.000Z" },
+    );
+    expect(replay).toMatchObject({
+      status: "verified",
+      sourceDigest: enrichedReplay.sourceDigest,
+    });
     expect(
-      await exec(
-        `SELECT count(*)::int AS count FROM components WHERE type = 'contact_info'`,
+      await execute(
+        `SELECT status, verified_at
+         FROM app_lifeops.core_relationships_migration_state WHERE agent_id = '${AGENT_ID}'`,
       ),
-    ).toEqual([{ count: 1 }]);
-    expect(
-      await exec("SELECT count(*)::int AS count FROM relationships"),
-    ).toEqual([{ count: 1 }]);
+    ).toEqual([
+      {
+        status: "verified",
+        verified_at: "2026-03-04T00:00:00.000Z",
+      },
+    ]);
   });
 });
