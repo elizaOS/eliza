@@ -178,6 +178,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-coding-tools",
   "plugin-commands",
   "plugin-computeruse",
+  "plugin-contacts",
   "plugin-discord",
   "plugin-elizacloud",
   "plugin-health",
@@ -194,6 +195,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-video",
   "plugin-vision",
   "plugin-whatsapp",
+  "plugin-wifi",
   "plugin-workflow",
 ]);
 const pluginPdfSrc = path.join(elizaWorkspaceRoot, "plugins", "plugin-pdf");
