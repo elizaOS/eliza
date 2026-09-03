@@ -5,16 +5,16 @@
 import { describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer } from "node:http";
 import {
   validateLocalBunReleaseUrl,
   waitForBunReleaseServer,
 } from "../ci-await-bun-release-server.mjs";
 import {
-  DEFAULT_FETCH_TIMEOUT_MS,
   bunReleaseUrls,
+  DEFAULT_FETCH_TIMEOUT_MS,
   detectLinuxAvx2,
   ensureBunReleaseZip,
   resolveBunAsset,
