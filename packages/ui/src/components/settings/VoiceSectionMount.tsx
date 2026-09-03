@@ -23,6 +23,7 @@ import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
 import { useBranding } from "../../config/branding";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import {
+  loadContinuousChatMode,
   loadOsIntentAutoStartConsent,
   loadWakeWordEnabled,
   saveContinuousChatMode,
@@ -84,12 +85,14 @@ function readStoredVoicePrefs(
   // intentionally dropped here — see the removal note in VoiceSection.tsx.
   // Server silence is not revocation: when the fetch failed or the server blob
   // has no explicit value (fresh/offline server), fall back to the device-local
-  // mirror so a mount never clobbers explicit user consent with a default.
+  // mirrors so a mount never clobbers explicit user prefs with defaults.
+  // Continuous mode resolves through its loader (not the raw key) so the
+  // appliance query-param override keeps working.
   const localConsent = loadOsIntentAutoStartConsent();
   return {
     continuous: isContinuousMode(stored.continuous)
       ? stored.continuous
-      : DEFAULT_VOICE_SECTION_PREFS.continuous,
+      : loadContinuousChatMode(),
     osIntentAutoStartVoice:
       typeof stored.osIntentAutoStartVoice === "boolean"
         ? stored.osIntentAutoStartVoice

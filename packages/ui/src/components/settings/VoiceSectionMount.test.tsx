@@ -323,31 +323,65 @@ describe("VoiceSectionMount — mount preserves explicit local consent when the 
   afterEach(() => cleanup());
 
   it.each([
-    [
-      "failed fetch",
-      () =>
-        clientMock.getConfig.mockRejectedValue(new Error("config fetch down")),
-    ],
-    ["empty server blob", () => clientMock.getConfig.mockResolvedValue({})],
+    {
+      label: "failed fetch, voice opt-in",
+      seedKey: "eliza:voice:os-intent-auto-start-voice",
+      seedOn: "voice",
+      arrange() {
+        clientMock.getConfig.mockRejectedValue(new Error("config fetch down"));
+      },
+    },
+    {
+      label: "empty server blob, voice opt-in",
+      seedKey: "eliza:voice:os-intent-auto-start-voice",
+      seedOn: "voice",
+      arrange() {
+        clientMock.getConfig.mockResolvedValue({});
+      },
+    },
+    {
+      label: "empty server blob, transcription opt-in",
+      seedKey: "eliza:voice:os-intent-auto-start-transcription",
+      seedOn: "transcription",
+      arrange() {
+        clientMock.getConfig.mockResolvedValue({});
+      },
+    },
   ])(
-    "keeps a persisted opt-in across mount on %s",
-    async (_label, arrangeServer) => {
-      arrangeServer();
-      window.localStorage.setItem(
-        "eliza:voice:os-intent-auto-start-voice",
-        "true",
-      );
+    "keeps a persisted opt-in across mount on $label",
+    async ({ arrange, seedKey, seedOn }) => {
+      arrange();
+      window.localStorage.setItem(seedKey, "true");
       render(<VoiceSectionMount />);
       const toggle = await screen.findByTestId(
-        "voice-section-intent-autostart-voice",
+        `voice-section-intent-autostart-${seedOn}`,
       );
       await waitFor(() =>
         expect(toggle.getAttribute("aria-checked")).toBe("true"),
       );
       expect(loadOsIntentAutoStartConsent()).toEqual({
-        voice: true,
-        transcription: false,
+        voice: seedOn === "voice",
+        transcription: seedOn === "transcription",
       });
     },
   );
+
+  it("keeps a persisted continuous-chat mode across mount when the fetch fails", async () => {
+    clientMock.getConfig.mockRejectedValue(new Error("config fetch down"));
+    window.localStorage.setItem(
+      "eliza:voice:continuous-chat-mode",
+      "always-on",
+    );
+    render(<VoiceSectionMount />);
+    const row = await screen.findByTestId("voice-section-continuous-row");
+    await waitFor(() => {
+      const active = row.querySelector(
+        "button[data-mode='always-on'][data-active='true']",
+      );
+      expect(active).toBeTruthy();
+    });
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).toBe("always-on");
+  });
 });
