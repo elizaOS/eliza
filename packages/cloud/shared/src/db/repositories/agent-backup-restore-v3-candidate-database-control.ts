@@ -20,6 +20,16 @@ function abortError(operation: string, cause?: unknown): DOMException {
   return error;
 }
 
+/** Snapshot caller-owned control fields once while preserving live abort semantics. */
+export function snapshotAgentBackupRestoreV3OperationControl(
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+): Readonly<AgentBackupRestoreV3OperationControl> {
+  return Object.freeze({
+    signal: control.signal,
+    deadlineEpochMs: control.deadlineEpochMs,
+  });
+}
+
 export function assertAgentBackupRestoreV3OperationControl(
   control: Readonly<AgentBackupRestoreV3OperationControl>,
   operation: string,

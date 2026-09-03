@@ -44,6 +44,7 @@ import {
   applyAgentBackupRestoreV3TransactionDeadline,
   assertAgentBackupRestoreV3OperationControl,
   isAgentBackupRestoreV3AmbiguousCommitResponse,
+  snapshotAgentBackupRestoreV3OperationControl,
   throwIfAgentBackupRestoreV3DatabaseDeadline,
 } from "./agent-backup-restore-v3-candidate-database-control";
 
@@ -266,6 +267,7 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     request: CandidateBeginRequest,
     control: Readonly<AgentBackupRestoreV3OperationControl>,
   ): Promise<AgentBackupRestoreV3StagingSession> {
+    control = snapshotAgentBackupRestoreV3OperationControl(control);
     assertAgentBackupRestoreV3OperationControl(control, "Restore-v3 candidate begin");
     const authority = parseAgentBackupRestoreV3AuthorityFence(request.authority);
     const manifest = await parseAgentBackupManifestV3(request.manifest);
@@ -488,6 +490,7 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     recordInput: Readonly<AgentBackupRestoreV3StagedRecord>,
     control: Readonly<AgentBackupRestoreV3OperationControl>,
   ): Promise<CandidateRecordReceipt> {
+    control = snapshotAgentBackupRestoreV3OperationControl(control);
     // Copy all caller-owned fields, especially payload bytes, before the first yield.
     const payload = Uint8Array.from(recordInput.payload);
     const entry =
@@ -508,9 +511,13 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
       entry,
       payload,
     };
-    return this.#stageRecord(sessionInput, copied, control).finally(() => {
+    try {
+      return this.#stageRecord(sessionInput, copied, control);
+    } finally {
+      // #stageRecord hashes and validates the copy before its first await. No
+      // plaintext is needed while PostgreSQL settles the durable receipt.
       payload.fill(0);
-    });
+    }
   }
 
   async #stageRecord(
@@ -640,6 +647,7 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     receiptInput: Readonly<CandidateComponentReceipt>,
     control: Readonly<AgentBackupRestoreV3OperationControl>,
   ): Promise<CandidateComponentReceipt> {
+    control = snapshotAgentBackupRestoreV3OperationControl(control);
     const copied = {
       componentIndex: receiptInput.componentIndex,
       componentName: receiptInput.componentName,
@@ -768,7 +776,11 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     reason: "staging-failed",
     control: Readonly<AgentBackupRestoreV3OperationControl>,
   ): Promise<true> {
+    control = snapshotAgentBackupRestoreV3OperationControl(control);
     assertAgentBackupRestoreV3OperationControl(control, "Restore-v3 candidate abort");
+    if (reason !== "staging-failed") {
+      throw conflict("Restore-v3 candidate abort reason is invalid");
+    }
     const session = parseAgentBackupRestoreV3StagingSession(sessionInput);
     const suppliedTokenSha256 = sha256Utf8(session.executionToken);
     if (

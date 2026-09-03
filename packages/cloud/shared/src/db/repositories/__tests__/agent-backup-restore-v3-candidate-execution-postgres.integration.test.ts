@@ -649,6 +649,73 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
         cleanupReceiptSha256: fixtureSha256("same-generation-cleanup-receipt"),
       });
 
+      const expiringOwner = "postgres-cleanup-expiring-owner";
+      const expiringGeneration = "30000000-0000-4000-8000-000000000014";
+      const expiringClaim = await cleanupRepository.claimAgentBackupRestoreV3CandidateCleanup({
+        control: cleanupControl,
+        ownerId: expiringOwner,
+        generation: expiringGeneration,
+        leaseMs: 1_000,
+      });
+      if (!expiringClaim) throw new Error("expiring cleanup claim returned no authority");
+      const olderPendingId = randomUUID();
+      const olderPendingRestoreAttemptId = randomUUID();
+      const olderPendingAt = new Date(Date.now() - 60_000);
+      await control.query(
+        `INSERT INTO agent_backup_restore_v3_candidate_cleanup_outbox (
+          id, organization_id, agent_id, backup_id, restore_attempt_id,
+          operation_id, cleanup_command_sha256, next_attempt_at, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
+        [
+          olderPendingId,
+          fixture.authority.organizationId,
+          fixture.authority.agentId,
+          fixture.authority.backupId,
+          olderPendingRestoreAttemptId,
+          fixture.authority.operationId,
+          fixtureSha256(`cleanup-command:${olderPendingId}`),
+          olderPendingAt,
+        ],
+      );
+      await control.query(
+        `UPDATE agent_backup_restore_v3_candidate_cleanup_outbox
+        SET state = 'pending' WHERE id = $1`,
+        [olderPendingId],
+      );
+      await control.query("SELECT pg_sleep(1.05)");
+      const reclaimedExact = await cleanupRepository.claimAgentBackupRestoreV3CandidateCleanup({
+        control: cleanupControl,
+        ownerId: expiringOwner,
+        generation: expiringGeneration,
+        leaseMs: 10_000,
+      });
+      expect(reclaimedExact?.cleanupId).toBe(expiringClaim.cleanupId);
+      expect(reclaimedExact?.attempt).toBe(expiringClaim.attempt + 1);
+      expect(reclaimedExact?.replayed).toBe(false);
+      const exactGenerationRows = await control.query<{ count: number }>(
+        `SELECT count(*)::integer AS count
+        FROM agent_backup_restore_v3_candidate_cleanup_outbox
+        WHERE state = 'leased' AND claim_owner = $1 AND claim_generation = $2`,
+        [expiringOwner, expiringGeneration],
+      );
+      expect(exactGenerationRows.rows[0]?.count).toBe(1);
+      const olderPending = await control.query<{ state: string }>(
+        `SELECT state FROM agent_backup_restore_v3_candidate_cleanup_outbox WHERE id = $1`,
+        [olderPendingId],
+      );
+      expect(olderPending.rows[0]?.state).toBe("pending");
+      if (!reclaimedExact) throw new Error("expired exact cleanup claim was not reclaimed");
+      await cleanupRepository.settleAgentBackupRestoreV3CandidateCleanup({
+        control: cleanupControl,
+        fence: {
+          cleanupId: reclaimedExact.cleanupId,
+          ownerId: reclaimedExact.ownerId,
+          generation: reclaimedExact.generation,
+          attempt: reclaimedExact.attempt,
+        },
+        cleanupReceiptSha256: fixtureSha256("reclaimed-exact-cleanup-receipt"),
+      });
+
       const lostOwner = "postgres-cleanup-lost-terminal";
       const lostGeneration = "30000000-0000-4000-8000-000000000011";
       let terminalizedCleanupId: string | undefined;

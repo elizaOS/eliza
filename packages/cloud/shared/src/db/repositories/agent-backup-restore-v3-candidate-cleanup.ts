@@ -18,6 +18,7 @@ import {
 import {
   applyAgentBackupRestoreV3TransactionDeadline,
   assertAgentBackupRestoreV3OperationControl,
+  snapshotAgentBackupRestoreV3OperationControl,
   throwIfAgentBackupRestoreV3DatabaseDeadline,
 } from "./agent-backup-restore-v3-candidate-database-control";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
@@ -213,6 +214,10 @@ export async function claimAgentBackupRestoreV3CandidateCleanup(input: {
   readonly leaseMs: number;
   readonly control: Readonly<AgentBackupRestoreV3OperationControl>;
 }): Promise<AgentBackupRestoreV3CandidateCleanupClaim | null> {
+  input = Object.freeze({
+    ...input,
+    control: snapshotAgentBackupRestoreV3OperationControl(input.control),
+  });
   assertAgentBackupRestoreV3OperationControl(input.control, "Restore-v3 candidate cleanup claim");
   const ownerId = requireOwner(input.ownerId);
   const generation = requireUuid(input.generation, "generation");
@@ -250,27 +255,31 @@ export async function claimAgentBackupRestoreV3CandidateCleanup(input: {
         }
       }
 
-      await applyAgentBackupRestoreV3TransactionDeadline(
-        tx,
-        input.control,
-        "Restore-v3 candidate cleanup claim",
-      );
-      const [due] = await tx
-        .select()
-        .from(agentBackupRestoreV3CandidateCleanupOutbox)
-        .where(sql`(
-          (${agentBackupRestoreV3CandidateCleanupOutbox.state} = 'pending'
-            AND ${agentBackupRestoreV3CandidateCleanupOutbox.next_attempt_at} <= clock_timestamp())
-          OR (${agentBackupRestoreV3CandidateCleanupOutbox.state} = 'leased'
-            AND ${agentBackupRestoreV3CandidateCleanupOutbox.lease_expires_at} <= clock_timestamp())
-        )`)
-        .orderBy(
-          asc(agentBackupRestoreV3CandidateCleanupOutbox.next_attempt_at),
-          asc(agentBackupRestoreV3CandidateCleanupOutbox.created_at),
-          asc(agentBackupRestoreV3CandidateCleanupOutbox.id),
-        )
-        .for("update", { skipLocked: true })
-        .limit(1);
+      let due = exact;
+      if (!due) {
+        await applyAgentBackupRestoreV3TransactionDeadline(
+          tx,
+          input.control,
+          "Restore-v3 candidate cleanup claim",
+        );
+        const [selected] = await tx
+          .select()
+          .from(agentBackupRestoreV3CandidateCleanupOutbox)
+          .where(sql`(
+            (${agentBackupRestoreV3CandidateCleanupOutbox.state} = 'pending'
+              AND ${agentBackupRestoreV3CandidateCleanupOutbox.next_attempt_at} <= clock_timestamp())
+            OR (${agentBackupRestoreV3CandidateCleanupOutbox.state} = 'leased'
+              AND ${agentBackupRestoreV3CandidateCleanupOutbox.lease_expires_at} <= clock_timestamp())
+          )`)
+          .orderBy(
+            asc(agentBackupRestoreV3CandidateCleanupOutbox.next_attempt_at),
+            asc(agentBackupRestoreV3CandidateCleanupOutbox.created_at),
+            asc(agentBackupRestoreV3CandidateCleanupOutbox.id),
+          )
+          .for("update", { skipLocked: true })
+          .limit(1);
+        due = selected;
+      }
       if (!due) {
         assertAgentBackupRestoreV3OperationControl(
           input.control,
@@ -391,6 +400,10 @@ export async function settleAgentBackupRestoreV3CandidateCleanup(input: {
   readonly cleanupReceiptSha256: string;
   readonly control: Readonly<AgentBackupRestoreV3OperationControl>;
 }): Promise<AgentBackupRestoreV3CandidateCleanupOutcome> {
+  input = Object.freeze({
+    ...input,
+    control: snapshotAgentBackupRestoreV3OperationControl(input.control),
+  });
   assertAgentBackupRestoreV3OperationControl(input.control, "Restore-v3 candidate cleanup settle");
   const fence = requireFence(input.fence);
   const receiptSha256 = computeAgentBackupRestoreV3CleanupReceiptSha256(input.cleanupReceiptSha256);
@@ -495,6 +508,10 @@ export async function deferAgentBackupRestoreV3CandidateCleanup(input: {
   readonly delayMs: number;
   readonly control: Readonly<AgentBackupRestoreV3OperationControl>;
 }): Promise<AgentBackupRestoreV3CandidateCleanupOutcome> {
+  input = Object.freeze({
+    ...input,
+    control: snapshotAgentBackupRestoreV3OperationControl(input.control),
+  });
   assertAgentBackupRestoreV3OperationControl(input.control, "Restore-v3 candidate cleanup defer");
   const fence = requireFence(input.fence);
   const delayMs = requireBoundedInteger(input.delayMs, "delayMs", 1, MAX_CLEANUP_DEFER_MS);
@@ -596,6 +613,10 @@ export async function quarantineAgentBackupRestoreV3CandidateCleanup(input: {
   readonly reason: string;
   readonly control: Readonly<AgentBackupRestoreV3OperationControl>;
 }): Promise<AgentBackupRestoreV3CandidateCleanupOutcome> {
+  input = Object.freeze({
+    ...input,
+    control: snapshotAgentBackupRestoreV3OperationControl(input.control),
+  });
   assertAgentBackupRestoreV3OperationControl(
     input.control,
     "Restore-v3 candidate cleanup quarantine",
