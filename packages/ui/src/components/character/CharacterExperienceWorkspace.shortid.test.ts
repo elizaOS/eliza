@@ -7,7 +7,7 @@
  * `truncateWellFormed(toWellFormedUnicode(value),12)` to never split.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { shortId } from "./CharacterExperienceWorkspace";
 
 function isWellFormed(value: string): boolean {
