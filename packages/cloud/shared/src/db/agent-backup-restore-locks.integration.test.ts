@@ -2986,13 +2986,24 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     }
   }, 30_000);
 
-  test("GC tombstone fences a concurrent begin before it can resurrect cleanup", async () => {
+  test("GC orders owner erasure and fences a concurrent begin without resurrection", async () => {
     if (!isolatedDsn) throw new Error("real PostgreSQL harness was not initialized");
     const setup = new Client({ connectionString: isolatedDsn });
+    const attemptBlocker = new Client({ connectionString: isolatedDsn });
+    const candidateBlocker = new Client({ connectionString: isolatedDsn });
     const gc = new Client({ connectionString: isolatedDsn });
     const begin = new Client({ connectionString: isolatedDsn });
+    const eraser = new Client({ connectionString: isolatedDsn });
     const observer = new Client({ connectionString: isolatedDsn });
-    await Promise.all([setup.connect(), gc.connect(), begin.connect(), observer.connect()]);
+    await Promise.all([
+      setup.connect(),
+      attemptBlocker.connect(),
+      candidateBlocker.connect(),
+      gc.connect(),
+      begin.connect(),
+      eraser.connect(),
+      observer.connect(),
+    ]);
     const schemaName = `restore_v3_gc_fence_${randomUUID().replaceAll("-", "")}`;
     const organizationId = "00000000-0000-4000-8000-00000000c501";
     const agentId = "00000000-0000-4000-8000-00000000c502";
@@ -3020,15 +3031,19 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     const terminalCommandSha256 = "a".repeat(64);
     const gcCommandSha256 = "b".repeat(64);
     const replayCleanupCommandSha256 = "c".repeat(64);
+    let gcInsert: Promise<void> | undefined;
     let cleanupInsert: Promise<void> | undefined;
+    let ownerErasure: Promise<void> | undefined;
+    let gcError: unknown;
     let cleanupError: unknown;
+    let ownerErasureError: unknown;
     let gcCommitted = false;
     let schemaCreated = false;
     try {
       await setup.query("CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public");
       await setup.query(`CREATE SCHEMA "${schemaName}"`);
       schemaCreated = true;
-      for (const client of [setup, gc, begin, observer]) {
+      for (const client of [setup, attemptBlocker, candidateBlocker, gc, begin, eraser, observer]) {
         await client.query(`SET search_path TO "${schemaName}", public`);
       }
       await createRestoreV3CandidatePrerequisiteTables(setup);
@@ -3173,21 +3188,80 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         ],
       );
       await setup.query(RESTORE_V3_CANDIDATE_MIGRATIONS[1]!);
+      await setup.query("DELETE FROM agent_backup_catalog_authorities WHERE organization_id = $1", [
+        organizationId,
+      ]);
+
+      await candidateBlocker.query("BEGIN");
+      const candidateBlockerPid = await candidateBlocker.query<{ pid: number }>(
+        "SELECT pg_backend_pid() AS pid",
+      );
+      await candidateBlocker.query(
+        "SELECT id FROM agent_backup_restore_v3_candidates WHERE id = $1 FOR UPDATE",
+        [candidateId],
+      );
+      await attemptBlocker.query("BEGIN");
+      const attemptBlockerPid = await attemptBlocker.query<{ pid: number }>(
+        "SELECT pg_backend_pid() AS pid",
+      );
+      await attemptBlocker.query(
+        'SELECT "lock_agent_backup_restore_v3_attempt"($1::uuid, $2::uuid)',
+        [organizationId, restoreAttemptId],
+      );
 
       await gc.query("BEGIN");
       const gcPid = await gc.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
-      await gc.query(
-        `INSERT INTO agent_backup_restore_v3_candidate_gc_tombstones (
-          id, candidate_id, cleanup_outbox_id, organization_id, agent_id, backup_id,
-          restore_attempt_id, operation_id, terminal_state, terminal_evidence_sha256,
-          retention_until, gc_command_sha256
-        ) SELECT $1, candidate.id, candidate.cleanup_outbox_id, candidate.organization_id,
-          candidate.agent_id, candidate.backup_id, candidate.restore_attempt_id,
-          candidate.operation_id, candidate.state, candidate.abort_reason_sha256,
-          candidate.retention_until, $2
-        FROM agent_backup_restore_v3_candidates AS candidate WHERE candidate.id = $3`,
-        [tombstoneId, gcCommandSha256, candidateId],
+      gcInsert = gc
+        .query(
+          `INSERT INTO agent_backup_restore_v3_candidate_gc_tombstones (
+            id, candidate_id, cleanup_outbox_id, organization_id, agent_id, backup_id,
+            restore_attempt_id, operation_id, terminal_state, terminal_evidence_sha256,
+            retention_until, gc_command_sha256
+          ) SELECT $1, candidate.id, candidate.cleanup_outbox_id, candidate.organization_id,
+            candidate.agent_id, candidate.backup_id, candidate.restore_attempt_id,
+            candidate.operation_id, candidate.state, candidate.abort_reason_sha256,
+            candidate.retention_until, $2
+          FROM agent_backup_restore_v3_candidates AS candidate WHERE candidate.id = $3`,
+          [tombstoneId, gcCommandSha256, candidateId],
+        )
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            gcError = error;
+          },
+        );
+      const advisoryWait = await waitUntilAdvisoryBlockedBy(
+        observer,
+        attemptBlockerPid.rows[0]!.pid,
       );
+      expect(advisoryWait.pid).toBe(gcPid.rows[0]!.pid);
+
+      await eraser.query("BEGIN");
+      const ownerProbe = await eraser.query<{ id: string }>(
+        "SELECT id FROM organizations WHERE id = $1 FOR UPDATE NOWAIT",
+        [organizationId],
+      );
+      expect(ownerProbe.rows).toEqual([{ id: organizationId }]);
+      await eraser.query("ROLLBACK");
+
+      await attemptBlocker.query("ROLLBACK");
+      expect(await waitUntilBlockedBy(observer, candidateBlockerPid.rows[0]!.pid)).toBe(
+        gcPid.rows[0]!.pid,
+      );
+
+      await eraser.query("BEGIN");
+      const eraserPid = await eraser.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      let erasedRows: number | null = null;
+      ownerErasure = eraser.query("DELETE FROM organizations WHERE id = $1", [organizationId]).then(
+        (result) => {
+          erasedRows = result.rowCount;
+        },
+        (error: unknown) => {
+          ownerErasureError = error;
+        },
+      );
+      expect(await waitUntilBlockedBy(observer, gcPid.rows[0]!.pid)).toBe(eraserPid.rows[0]!.pid);
+
       cleanupInsert = begin
         .query(
           `INSERT INTO agent_backup_restore_v3_candidate_cleanup_outbox (
@@ -3213,23 +3287,32 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       const blocked = await waitUntilAdvisoryBlockedBy(observer, gcPid.rows[0]!.pid);
       expect(blocked.wait_event_type).toBe("Lock");
       expect(blocked.wait_event).toBe("advisory");
+      await candidateBlocker.query("ROLLBACK");
+      await gcInsert;
+      expect(gcError).toBeUndefined();
       await gc.query("COMMIT");
       gcCommitted = true;
-      await cleanupInsert;
+      await Promise.all([cleanupInsert, ownerErasure]);
+      expect(ownerErasureError).toBeUndefined();
+      expect(erasedRows).toBe(1);
       expect(String(cleanupError)).toContain(
         "restore-v3 restore attempt is permanently closed by GC tombstone",
       );
       const persisted = await observer.query<{
+        organizations: string;
         cleanups: string;
         candidates: string;
         tombstones: string;
       }>(`SELECT
+        (SELECT count(*)::text FROM organizations) AS organizations,
         (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_cleanup_outbox)
           AS cleanups,
         (SELECT count(*)::text FROM agent_backup_restore_v3_candidates) AS candidates,
         (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_gc_tombstones)
           AS tombstones`);
-      expect(persisted.rows).toEqual([{ cleanups: "0", candidates: "0", tombstones: "1" }]);
+      expect(persisted.rows).toEqual([
+        { organizations: "1", cleanups: "0", candidates: "0", tombstones: "1" },
+      ]);
 
       for (const [isolation, cleanupIdForIsolation] of [
         ["REPEATABLE READ", "00000000-0000-4000-8000-00000000c510"],
@@ -3277,10 +3360,62 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
           { cleanups: "0", candidates: "0", tombstones: "1" },
         ]);
       }
+
+      const erasedInsideTransaction = await eraser.query<{
+        organizations: string;
+        tombstones: string;
+      }>(`SELECT (SELECT count(*)::text FROM organizations) AS organizations,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_gc_tombstones)
+          AS tombstones`);
+      expect(erasedInsideTransaction.rows).toEqual([{ organizations: "0", tombstones: "0" }]);
+      await eraser.query("ROLLBACK");
+
+      const afterErasureRollback = await observer.query<{
+        organizations: string;
+        tombstones: string;
+      }>(`SELECT (SELECT count(*)::text FROM organizations) AS organizations,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_gc_tombstones)
+          AS tombstones`);
+      expect(afterErasureRollback.rows).toEqual([{ organizations: "1", tombstones: "1" }]);
+
+      await eraser.query("BEGIN");
+      const committedErasure = await eraser.query("DELETE FROM organizations WHERE id = $1", [
+        organizationId,
+      ]);
+      expect(committedErasure.rowCount).toBe(1);
+      await eraser.query("COMMIT");
+      const afterCommittedErasure = await observer.query<{
+        organizations: string;
+        cleanups: string;
+        candidates: string;
+        tombstones: string;
+      }>(`SELECT (SELECT count(*)::text FROM organizations) AS organizations,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_cleanup_outbox)
+          AS cleanups,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidates) AS candidates,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_gc_tombstones)
+          AS tombstones`);
+      expect(afterCommittedErasure.rows).toEqual([
+        { organizations: "0", cleanups: "0", candidates: "0", tombstones: "0" },
+      ]);
     } finally {
+      await Promise.allSettled([
+        attemptBlocker.query("ROLLBACK"),
+        candidateBlocker.query("ROLLBACK"),
+      ]);
+      if (gcInsert) await gcInsert;
       if (!gcCommitted) await gc.query("ROLLBACK").catch(() => undefined);
       if (cleanupInsert) await cleanupInsert;
-      await Promise.allSettled([gc.end(), begin.end(), observer.end()]);
+      if (ownerErasure) await ownerErasure;
+      await Promise.allSettled([begin.query("ROLLBACK"), eraser.query("ROLLBACK")]);
+      await Promise.allSettled([
+        attemptBlocker.end(),
+        candidateBlocker.end(),
+        gc.end(),
+        begin.end(),
+        eraser.end(),
+        observer.end(),
+      ]);
       if (schemaCreated) {
         await setup.query("SET search_path TO public");
         await setup.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);

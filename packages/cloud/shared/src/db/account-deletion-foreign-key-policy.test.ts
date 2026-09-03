@@ -27,7 +27,7 @@ describe("account deletion full-schema foreign-key policy", () => {
       .update(descriptors.map(serializeDescriptor).join("\n"))
       .digest("hex");
 
-    expect(descriptors).toHaveLength(250);
+    expect(descriptors).toHaveLength(251);
     expect(digest).toBe(ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256);
   });
 
@@ -37,7 +37,7 @@ describe("account deletion full-schema foreign-key policy", () => {
       action: classifyAccountDeletionForeignKey(descriptor),
     }));
 
-    expect(classified).toHaveLength(250);
+    expect(classified).toHaveLength(251);
     expect(classified.every(({ action }) => Boolean(action))).toBe(true);
     expect(classified.filter(({ action }) => action === "reconcile_external_resource").length).toBe(
       75,
@@ -109,6 +109,23 @@ describe("account deletion full-schema foreign-key policy", () => {
     expect(
       restoreV3Relationships.map((descriptor) => classifyAccountDeletionForeignKey(descriptor)),
     ).toEqual(["reconcile_external_resource", "reconcile_external_resource"]);
+  });
+
+  test("deletes terminal restore-v3 GC proof with its owning organization", () => {
+    const gcTombstone = listAccountDeletionForeignKeys().find(
+      ({ sourceTable, sourceColumns }) =>
+        sourceTable === "agent_backup_restore_v3_candidate_gc_tombstones" &&
+        sourceColumns === "organization_id",
+    );
+
+    expect(gcTombstone).toEqual({
+      sourceTable: "agent_backup_restore_v3_candidate_gc_tombstones",
+      sourceColumns: "organization_id",
+      targetTable: "organizations",
+      targetColumns: "id",
+      onDelete: "cascade",
+    });
+    expect(classifyAccountDeletionForeignKey(gcTombstone!)).toBe("delete_private_data");
   });
 
   test("anonymizes all four billing-cancel subject relationships", () => {

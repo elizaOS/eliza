@@ -720,9 +720,9 @@ export const agentBackupRestoreV3CandidateTerminalCommands = pgTable(
 );
 
 /**
- * Permanent proof left by the only bounded terminal-GC path. The trigger
+ * Tenant-lifetime proof left by the only bounded terminal-GC path. The trigger
  * verifies the 30-day retention horizon and terminal cleanup before deleting
- * child ledgers; the tombstone itself remains immutable.
+ * child ledgers; terminal owner erasure is the only deletion path.
  */
 export const agentBackupRestoreV3CandidateGcTombstones = pgTable(
   "agent_backup_restore_v3_candidate_gc_tombstones",
@@ -730,7 +730,9 @@ export const agentBackupRestoreV3CandidateGcTombstones = pgTable(
     id: uuid("id").primaryKey(),
     candidate_id: uuid("candidate_id").notNull(),
     cleanup_outbox_id: uuid("cleanup_outbox_id").notNull(),
-    organization_id: uuid("organization_id").notNull(),
+    organization_id: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
     agent_id: uuid("agent_id").notNull(),
     backup_id: uuid("backup_id").notNull(),
     restore_attempt_id: uuid("restore_attempt_id").notNull(),

@@ -406,7 +406,7 @@ CREATE TABLE IF NOT EXISTS "agent_backup_restore_v3_candidate_gc_tombstones" (
   "id" uuid PRIMARY KEY,
   "candidate_id" uuid NOT NULL,
   "cleanup_outbox_id" uuid NOT NULL,
-  "organization_id" uuid NOT NULL,
+  "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
   "agent_id" uuid NOT NULL,
   "backup_id" uuid NOT NULL,
   "restore_attempt_id" uuid NOT NULL,

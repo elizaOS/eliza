@@ -704,7 +704,7 @@ describe("0375/0376 restore-v3 candidate authority", () => {
     );
   });
 
-  test("serializes permanent attempt closure before begin and GC relation locks", () => {
+  test("serializes tenant-lifetime attempt closure before begin and GC relation locks", () => {
     expect(FOUNDATION).toContain('"agent_backup_restore_v3_candidate_gc_attempt_uidx"');
     expect(CANDIDATE_SCHEMA).toContain(
       'uniqueIndex("agent_backup_restore_v3_candidate_gc_attempt_uidx")',
@@ -734,8 +734,12 @@ describe("0375/0376 restore-v3 candidate authority", () => {
       candidateGuard.indexOf('PERFORM "lock_agent_backup_restore_v3_current_authority"'),
     );
     expect(gcGuard.indexOf(attemptLock)).toBeLessThan(
+      gcGuard.indexOf('PERFORM 1 FROM "organizations"'),
+    );
+    expect(gcGuard.indexOf('PERFORM 1 FROM "organizations"')).toBeLessThan(
       gcGuard.indexOf('SELECT * INTO candidate FROM "agent_backup_restore_v3_candidates"'),
     );
+    expect(gcGuard).toContain('WHERE "id" = NEW."organization_id" FOR KEY SHARE');
   });
 
   test("locks terminal candidates before cleanup and retains only completed cleanup proof", () => {
@@ -784,7 +788,7 @@ describe("0375/0376 restore-v3 candidate authority", () => {
       "terminal state requires its append-only command",
       "INTERVAL '30 days'",
       "GC requires one exact terminal candidate past retention",
-      "GC tombstones are permanent",
+      "GC tombstones remain immutable until terminal owner erasure",
     ])
       expect(FOUNDATION + GUARDS).toContain(proof);
     expect(GUARDS.match(/BEFORE TRUNCATE/g)).toHaveLength(6);
@@ -1354,7 +1358,35 @@ describe("0375/0376 restore-v3 candidate authority", () => {
     }
   }, 60_000);
 
-  test("permits only a cleanup-proven terminal GC and preserves its tombstone", async () => {
+  test("rolls back owner erasure while a GC tombstone is not completed", async () => {
+    const database = await prerequisiteDatabase();
+    try {
+      await applyFoundation(database);
+      await database.exec(`INSERT INTO organizations VALUES ('${IDS.organization}')`);
+      await database.exec(`INSERT INTO agent_backup_restore_v3_candidate_gc_tombstones (
+        id, candidate_id, cleanup_outbox_id, organization_id, agent_id, backup_id,
+        restore_attempt_id, operation_id, terminal_state, terminal_evidence_sha256,
+        retention_until, gc_command_sha256
+      ) VALUES ('${IDS.gc}', '${IDS.candidate}', '${IDS.cleanup}', '${IDS.organization}',
+        '${IDS.agent}', '${IDS.backup}', '${IDS.restoreAttempt}', '${IDS.operation}',
+        'aborted', '${ABORT_REASON_SHA256}', statement_timestamp() - INTERVAL '10 days',
+        '${sha256("gc-command")}')`);
+      await applyGuards(database);
+
+      await expect(
+        database.exec(`DELETE FROM organizations WHERE id = '${IDS.organization}'`),
+      ).rejects.toThrow(/GC tombstones remain immutable until terminal owner erasure/);
+      const persisted = await database.query<{ organizations: number; tombstones: number }>(`
+        SELECT (SELECT count(*)::integer FROM organizations) AS organizations,
+          (SELECT count(*)::integer FROM agent_backup_restore_v3_candidate_gc_tombstones)
+            AS tombstones`);
+      expect(persisted.rows).toEqual([{ organizations: 1, tombstones: 1 }]);
+    } finally {
+      await database.close();
+    }
+  }, 60_000);
+
+  test("permits cleanup-proven terminal GC and erases its proof only with the owner", async () => {
     const database = await prerequisiteDatabase();
     try {
       await applyFoundation(database);
@@ -1379,7 +1411,10 @@ describe("0375/0376 restore-v3 candidate authority", () => {
       ]);
       await expect(
         database.exec(`DELETE FROM agent_backup_restore_v3_candidate_gc_tombstones`),
-      ).rejects.toThrow(/GC tombstones are permanent/);
+      ).rejects.toThrow(/GC tombstones remain immutable until terminal owner erasure/);
+      await expect(
+        database.exec(`TRUNCATE agent_backup_restore_v3_candidate_gc_tombstones`),
+      ).rejects.toThrow(/cannot be truncated/);
       const replayCleanupId = "00000000-0000-4000-8000-00000000a101";
       const replayCandidateId = "00000000-0000-4000-8000-00000000a102";
       await expect(
@@ -1417,6 +1452,17 @@ describe("0375/0376 restore-v3 candidate authority", () => {
         (SELECT count(*)::integer FROM agent_backup_restore_v3_candidate_gc_tombstones)
           AS tombstones`);
       expect(afterReplay.rows).toEqual([{ candidates: 0, cleanups: 0, tombstones: 1 }]);
+
+      await database.exec(`DELETE FROM agent_backup_catalog_authorities
+        WHERE organization_id = '${IDS.organization}'`);
+      await database.exec(`DELETE FROM organizations WHERE id = '${IDS.organization}'`);
+      const afterOwnerErasure = await database.query<{
+        organizations: number;
+        tombstones: number;
+      }>(`SELECT (SELECT count(*)::integer FROM organizations) AS organizations,
+        (SELECT count(*)::integer FROM agent_backup_restore_v3_candidate_gc_tombstones)
+          AS tombstones`);
+      expect(afterOwnerErasure.rows).toEqual([{ organizations: 0, tombstones: 0 }]);
     } finally {
       await database.close();
     }

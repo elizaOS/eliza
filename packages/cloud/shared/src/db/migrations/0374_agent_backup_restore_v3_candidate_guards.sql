@@ -1244,6 +1244,13 @@ BEGIN
   END IF;
   PERFORM "lock_agent_backup_restore_v3_attempt"(
     NEW."organization_id", NEW."restore_attempt_id");
+  -- Match owner erasure order before taking candidate and cleanup row locks.
+  PERFORM 1 FROM "organizations"
+  WHERE "id" = NEW."organization_id" FOR KEY SHARE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'restore-v3 GC requires its owning organization'
+      USING ERRCODE = '55000';
+  END IF;
   SELECT * INTO candidate FROM "agent_backup_restore_v3_candidates"
   WHERE "id" = NEW."candidate_id" FOR UPDATE;
   IF NOT FOUND OR candidate."state" NOT IN ('sealed', 'aborted')
@@ -1295,7 +1302,14 @@ $$;
 CREATE OR REPLACE FUNCTION "reject_agent_backup_restore_v3_gc_tombstone_mutation"()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  RAISE EXCEPTION 'restore-v3 GC tombstones are permanent: %', OLD."id"
+  IF TG_OP = 'DELETE' AND pg_trigger_depth() = 2
+    AND OLD."state" = 'completed'
+    AND NOT EXISTS (
+      SELECT 1 FROM "organizations" WHERE "id" = OLD."organization_id"
+    ) THEN
+    RETURN OLD;
+  END IF;
+  RAISE EXCEPTION 'restore-v3 GC tombstones remain immutable until terminal owner erasure: %', OLD."id"
     USING ERRCODE = '55000';
 END;
 $$;
