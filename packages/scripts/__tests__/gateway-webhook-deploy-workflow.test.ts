@@ -251,17 +251,11 @@ exit 98
     join(binRoot, "node"),
     `#!/bin/sh
 set -eu
-matches_expected_or_defers_blank_inventory() {
-  value="$1"
-  expected="$2"
-  [ "$value" = "$expected" ] ||
-    { [ -n "$value" ] && [ -z "$(printf '%s' "$value" | tr -d '[:space:]')" ]; }
-}
 if [ "$1" = "packages/cloud/scripts/verify-telegram-bot-identity.mjs" ] &&
-   matches_expected_or_defers_blank_inventory "\${TELEGRAM_BOT_TOKEN:-}" "$EXPECTED_TELEGRAM_BOT_TOKEN_FIXTURE" &&
-   matches_expected_or_defers_blank_inventory "\${TELEGRAM_WEBHOOK_SECRET:-}" "$EXPECTED_TELEGRAM_WEBHOOK_SECRET_FIXTURE" &&
-   [ -n "\${TELEGRAM_EXPECTED_BOT_ID:-}" ] &&
-   [ -n "\${TELEGRAM_EXPECTED_BOT_USERNAME:-}" ] &&
+   [ "\${TELEGRAM_BOT_TOKEN:-}" = "$EXPECTED_TELEGRAM_BOT_TOKEN_FIXTURE" ] &&
+   [ "\${TELEGRAM_WEBHOOK_SECRET:-}" = "$EXPECTED_TELEGRAM_WEBHOOK_SECRET_FIXTURE" ] &&
+   [ "\${TELEGRAM_EXPECTED_BOT_ID:-}" = "$EXPECTED_TELEGRAM_BOT_ID_FIXTURE" ] &&
+   [ "\${TELEGRAM_EXPECTED_BOT_USERNAME:-}" = "$EXPECTED_TELEGRAM_BOT_USERNAME_FIXTURE" ] &&
    [ "$TELEGRAM_ATTESTATION_CONTEXT" = "$TARGET_ENVIRONMENT" ]; then
   exit 0
 fi
@@ -279,6 +273,8 @@ exit 1
     "TELEGRAM_EXPECTED_BOT_ID",
     "TELEGRAM_EXPECTED_BOT_USERNAME",
     "TELEGRAM_ATTESTATION_CONTEXT",
+    "EXPECTED_TELEGRAM_BOT_ID_FIXTURE",
+    "EXPECTED_TELEGRAM_BOT_USERNAME_FIXTURE",
     "EXPECTED_TELEGRAM_BOT_TOKEN_FIXTURE",
     "EXPECTED_TELEGRAM_WEBHOOK_SECRET_FIXTURE",
   ]) {
@@ -292,6 +288,9 @@ exit 1
         EXPECTED_AGENT_BASE_DOMAIN: canonical.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
         EXPECTED_CLOUD_URL: canonical.ELIZA_CLOUD_URL,
         EXPECTED_ROUTER_ORIGIN: canonical.AGENT_ROUTER_ORIGIN_HOST,
+        EXPECTED_TELEGRAM_BOT_ID_FIXTURE: canonical.ELIZA_APP_TELEGRAM_BOT_ID,
+        EXPECTED_TELEGRAM_BOT_USERNAME_FIXTURE:
+          canonical.ELIZA_APP_TELEGRAM_BOT_USERNAME,
         EXPECTED_TELEGRAM_BOT_TOKEN_FIXTURE:
           expectedTelegramConsumerValues.TELEGRAM_BOT_TOKEN,
         EXPECTED_TELEGRAM_WEBHOOK_SECRET_FIXTURE:
@@ -589,6 +588,38 @@ describe("protected gateway-webhook deployment workflow", () => {
       );
     }
 
+    const wrongBotIdRun = (variables.run ?? "").replace(
+      '"TELEGRAM_EXPECTED_BOT_ID=$TELEGRAM_EXPECTED_BOT_ID"',
+      '"TELEGRAM_EXPECTED_BOT_ID=$TELEGRAM_EXPECTED_BOT_USERNAME"',
+    );
+    expect(wrongBotIdRun).not.toBe(variables.run);
+    const wrongBotIdTranslation = verifyRailwayVariableInventory(
+      "staging",
+      {},
+      {},
+      { ...variables, run: wrongBotIdRun },
+    );
+    expect(wrongBotIdTranslation.exitCode).toBe(1);
+    expect(wrongBotIdTranslation.stderr.toString()).toContain(
+      "Telegram identity attestation failed for staging (not_configured)",
+    );
+
+    const wrongBotUsernameRun = (variables.run ?? "").replace(
+      '"TELEGRAM_EXPECTED_BOT_USERNAME=$TELEGRAM_EXPECTED_BOT_USERNAME"',
+      '"TELEGRAM_EXPECTED_BOT_USERNAME=$TELEGRAM_EXPECTED_BOT_ID"',
+    );
+    expect(wrongBotUsernameRun).not.toBe(variables.run);
+    const wrongBotUsernameTranslation = verifyRailwayVariableInventory(
+      "staging",
+      {},
+      {},
+      { ...variables, run: wrongBotUsernameRun },
+    );
+    expect(wrongBotUsernameTranslation.exitCode).toBe(1);
+    expect(wrongBotUsernameTranslation.stderr.toString()).toContain(
+      "Telegram identity attestation failed for staging (not_configured)",
+    );
+
     for (const [consumerName, correctSource, wrongSource] of [
       [
         "TELEGRAM_BOT_TOKEN",
@@ -671,13 +702,9 @@ describe("protected gateway-webhook deployment workflow", () => {
             expect(output).toContain(
               `Required protected ${target} Blooio Railway variable name is absent or blank: ${name}`,
             );
-          } else if (missingValue !== " \t ") {
-            expect(output).toContain(
-              `Telegram identity attestation failed for ${target} (not_configured)`,
-            );
           } else {
             expect(output).toContain(
-              `Required protected ${target} Telegram Railway variable name is absent or blank: ${name}`,
+              `Telegram identity attestation failed for ${target} (not_configured)`,
             );
           }
           for (const value of Object.values(protectedValues)) {
