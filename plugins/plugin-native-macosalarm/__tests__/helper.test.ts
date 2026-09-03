@@ -11,12 +11,17 @@ function createFakeSpawn(options: {
   closeCode?: number;
   error?: Error;
   stdinError?: Error;
-}): { spawn: HelperSpawn; requests: string[] } {
+}): { spawn: HelperSpawn; requests: string[]; killed: string[] } {
   const requests: string[] = [];
+  const killed: string[] = [];
   const spawn: HelperSpawn = vi.fn(() => {
     const proc = new EventEmitter() as ReturnType<HelperSpawn>;
     proc.stdout = new PassThrough() as never;
     proc.stderr = new PassThrough() as never;
+    proc.kill = ((signal?: NodeJS.Signals | number) => {
+      killed.push(String(signal));
+      return true;
+    }) as never;
     proc.stdin = new Writable({
       write(chunk, _encoding, callback) {
         requests.push(chunk.toString());
@@ -40,7 +45,7 @@ function createFakeSpawn(options: {
     return proc;
   });
 
-  return { spawn, requests };
+  return { spawn, requests, killed };
 }
 
 describe("runHelper", () => {
@@ -113,6 +118,30 @@ describe("runHelper", () => {
         { spawnImpl: fakeSpawn, binPathOverride: "/tmp/helper" },
       ),
     ).rejects.toThrow("EPIPE");
+  });
+
+  it("terminates the child on stdin EPIPE instead of orphaning it", async () => {
+    // Regression: the stdin-error path rejected while cancelling the only
+    // timeout that could reclaim the child, orphaning a live helper. Use a
+    // real child with fd 0 already closed (pre-spawned, so the EPIPE is
+    // deterministic rather than racing child startup) and assert actual
+    // process teardown, mirroring the timeout-path regression test.
+    const child = spawn("sh", ["-c", "exec 0<&-; sleep 30"]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const spawnImpl: HelperSpawn = () => child as never;
+
+    await expect(
+      runHelper(
+        { action: "list" },
+        { spawnImpl, binPathOverride: "/tmp/helper", timeoutMs: 5000 },
+      ),
+    ).rejects.toThrow(/EPIPE/);
+
+    // Let the SIGTERM be delivered and the process reaped.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    expect(child.killed).toBe(true);
+    expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
   });
 
   it("kills the spawned helper child when the timeout fires", async () => {
