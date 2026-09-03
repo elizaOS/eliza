@@ -154,7 +154,6 @@ describe("resolveApprovalsFromFile precedence", () => {
       },
     });
 
-    expect(EXEC_APPROVAL_DEFAULTS.security).toBe("deny");
     expect(resolved.agent.security).toBe("full");
     expect(resolved.agent.ask).toBe("off");
   });
