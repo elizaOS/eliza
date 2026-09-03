@@ -2223,74 +2223,66 @@ export function useShellController(): ShellController {
   // tap is the gesture) and opens the mic in "converse" mode; disabling stops
   // both the mic and any in-flight reply.
   const toggleHandsFree = React.useCallback(() => {
+    // Stopping is always allowed. In particular, an auth transition must not
+    // turn the visible stop control into a sign-in/retry action while a mic,
+    // recorder, or realtime session is still owned by this shell.
+    if (
+      handsFreeRef.current ||
+      realtimeVoiceWantedRef.current ||
+      realtimeVoiceRef.current.active ||
+      realtimeVoiceRef.current.connecting
+    ) {
+      stopRealtimeVoice();
+      return;
+    }
     if (authGate.gated) {
       recoverGatedCapture();
       return;
     }
     if (realtimeVoiceCanStart) {
-      if (
-        handsFreeRef.current ||
-        realtimeVoiceWantedRef.current ||
-        realtimeVoiceRef.current.active ||
-        realtimeVoiceRef.current.connecting
-      ) {
-        stopRealtimeVoice();
-      } else {
-        void startRealtimeVoice();
-      }
+      void startRealtimeVoice();
       return;
     }
-    if (handsFreeRef.current) {
-      // Tap off → persist the prior non-always-on mode (so a deliberate
-      // "vad-gated" choice survives) and stop the mic + any in-flight reply.
+    // Tap on → persist "always-on" so the loop is restored across reloads,
+    // remembering what to fall back to when it is turned off.
+    const prior = loadContinuousChatMode();
+    if (prior !== "always-on") priorContinuousModeRef.current = prior;
+    saveContinuousChatMode("always-on");
+    // Proactive mic-permission gate on hands-free engage. The tap is the
+    // audio-unlock gesture, so unlock regardless of the mic decision. The
+    // gate opens the mic via the onProceed callback only when the grant is
+    // not freshly denied; a known-denied grant surfaces the
+    // "re-enable mic" notice and rolls the persisted mode back so a reload
+    // doesn't re-engage a mic the user can't grant. (A denied→retry tap
+    // re-probes authoritatively, so re-enabling permission engages on the
+    // very next tap.)
+    voiceOutput.unlockAudio();
+    // We optimistically persisted "always-on" above. On the denied recovery
+    // path the gate is async and may block, so roll the persisted mode back
+    // to the prior value up front; onProceed re-persists "always-on" if the
+    // fresh probe clears the denial and we actually engage. On the fast
+    // (non-denied) path onProceed runs synchronously and re-persists
+    // immediately, so the rollback+re-save is a no-op net change.
+    const wasDeniedBeforeGate = micPermissionRef.current === "denied";
+    if (wasDeniedBeforeGate) {
       saveContinuousChatMode(priorContinuousModeRef.current);
-      setHandsFree(false);
-      handsFreeRef.current = false;
-      if (captureRef.current) stopCapture();
-      voiceOutput.stopSpeaking();
-    } else {
-      // Tap on → persist "always-on" so the loop is restored across reloads,
-      // remembering what to fall back to when it is turned off.
-      const prior = loadContinuousChatMode();
-      if (prior !== "always-on") priorContinuousModeRef.current = prior;
-      saveContinuousChatMode("always-on");
-      // Proactive mic-permission gate on hands-free engage. The tap is the
-      // audio-unlock gesture, so unlock regardless of the mic decision. The
-      // gate opens the mic via the onProceed callback only when the grant is
-      // not freshly denied; a known-denied grant surfaces the
-      // "re-enable mic" notice and rolls the persisted mode back so a reload
-      // doesn't re-engage a mic the user can't grant. (A denied→retry tap
-      // re-probes authoritatively, so re-enabling permission engages on the
-      // very next tap.)
-      voiceOutput.unlockAudio();
-      // We optimistically persisted "always-on" above. On the denied recovery
-      // path the gate is async and may block, so roll the persisted mode back
-      // to the prior value up front; onProceed re-persists "always-on" if the
-      // fresh probe clears the denial and we actually engage. On the fast
-      // (non-denied) path onProceed runs synchronously and re-persists
-      // immediately, so the rollback+re-save is a no-op net change.
-      const wasDeniedBeforeGate = micPermissionRef.current === "denied";
-      if (wasDeniedBeforeGate) {
-        saveContinuousChatMode(priorContinuousModeRef.current);
-      }
-      gateEngageOnMicPermission(() => {
-        // Committing to engage: (re-)persist always-on so a reload restores it.
-        saveContinuousChatMode("always-on");
-        setHandsFree(true);
-        handsFreeRef.current = true;
-        setIsOpen(true);
-        // Voice is gated while a reply is in flight: open the mic now only if
-        // nothing is responding; otherwise the hands-free loop opens it the
-        // instant the reply finishes.
-        if (!responding) startCapture("converse");
-      });
     }
+    gateEngageOnMicPermission(() => {
+      // Committing to engage: (re-)persist always-on so a reload restores it.
+      saveContinuousChatMode("always-on");
+      setHandsFree(true);
+      handsFreeRef.current = true;
+      setIsOpen(true);
+      // Voice is gated while a reply is in flight: open the mic now only if
+      // nothing is responding; otherwise the hands-free loop opens it the
+      // instant the reply finishes.
+      if (!responding) startCapture("converse");
+    });
   }, [
     authGate.gated,
     recoverGatedCapture,
     responding,
     startCapture,
-    stopCapture,
     voiceOutput,
     gateEngageOnMicPermission,
     realtimeVoiceCanStart,

@@ -2936,6 +2936,30 @@ describe("useShellController cloud-only auth gate", () => {
     }
   });
 
+  it("always lets an active hands-free user stop during an auth transition", () => {
+    const login = appMock.value.handleInteractiveCloudLogin;
+    login.mockClear();
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.toggleHandsFree());
+    expect(result.current.handsFree).toBe(true);
+    expect(result.current.recording).toBe(true);
+
+    // Model the narrow interval after the auth store closes its gate but before
+    // React commits the gate effect. The button must remain a stop action in
+    // that interval, never a sign-in/retry action that leaves the mic latched.
+    authGateMock.value.gated = true;
+    authGateMock.value.phase = "needs-auth";
+    act(() => result.current.toggleHandsFree());
+
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.recording).toBe(false);
+    expect(login).not.toHaveBeenCalled();
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).not.toBe("always-on");
+  });
+
   it("always-on boot restore aborts when the gate closes during the permission probe", async () => {
     vi.useFakeTimers();
     try {
