@@ -32,6 +32,15 @@ type MeshLocator = {
 
 type CommandObservation = { ok: boolean; output: string };
 
+type RuntimeProcessState = {
+  pid1: "agent" | "entrypoint" | "other" | "tailscale-up" | "unknown";
+  agentProcessPresent: boolean;
+  entrypointProcessPresent: boolean;
+  tailscaleUpProcessPresent: boolean;
+  forceNoise443Enabled: boolean;
+  stuckCliEscapePresent: boolean;
+};
+
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -93,6 +102,32 @@ export function classifyContainerLogs(output: string): {
       /starting (?:eliza|agent)|server (?:started|listening)|agent runtime started/i.test(
         output,
       ),
+  };
+}
+
+export function classifyRuntimeProcessState(
+  output: string,
+): RuntimeProcessState {
+  const facts = new Map(
+    output
+      .split("\n")
+      .map((line) => line.trim().split("=", 2))
+      .filter((pair): pair is [string, string] => pair.length === 2),
+  );
+  const pid1 = facts.get("pid1");
+  return {
+    pid1:
+      pid1 === "agent" ||
+      pid1 === "entrypoint" ||
+      pid1 === "other" ||
+      pid1 === "tailscale-up"
+        ? pid1
+        : "unknown",
+    agentProcessPresent: facts.get("agent") === "present",
+    entrypointProcessPresent: facts.get("entrypoint") === "present",
+    tailscaleUpProcessPresent: facts.get("tailscale_up") === "present",
+    forceNoise443Enabled: facts.get("force_noise_443") === "enabled",
+    stuckCliEscapePresent: facts.get("stuck_cli_escape") === "present",
   };
 }
 
@@ -206,6 +241,43 @@ async function run(suffix: string): Promise<void> {
       ssh,
       `docker exec ${id} tailscale --socket=/tmp/tailscaled.sock ip -4`,
     );
+    const runtime = await observe(
+      ssh,
+      `docker exec ${id} sh -c '
+        pid1=other
+        agent=absent
+        entrypoint=absent
+        tailscale_up=absent
+        for f in /proc/[0-9]*/cmdline; do
+          pid=$(printf "%s" "$f" | cut -d/ -f3)
+          [ "$pid" = "$$" ] && continue
+          cmd=$(tr "\\000" " " < "$f" 2>/dev/null || true)
+          exe=$(readlink "/proc/$pid/exe" 2>/dev/null || true)
+          case "$cmd" in *docker-entrypoint.sh*) entrypoint=present ;; esac
+          case "$cmd" in *packages/agent/dist/bin.js*start*) agent=present ;; esac
+          case "$exe:$cmd" in */tailscale:*" up "*) tailscale_up=present ;; esac
+          if [ "$pid" = "1" ]; then
+            case "$exe:$cmd" in
+              */tailscale:*" up "*) pid1=tailscale-up ;;
+              *packages/agent/dist/bin.js*start*) pid1=agent ;;
+              *docker-entrypoint.sh*) pid1=entrypoint ;;
+            esac
+          fi
+        done
+        [ "\${TS_FORCE_NOISE_443:-}" = "1" ] && force_noise_443=enabled || force_noise_443=disabled
+        if grep -q ts_daemon_running_with_ip ./packages/app-core/scripts/docker-entrypoint.sh 2>/dev/null; then
+          stuck_cli_escape=present
+        else
+          stuck_cli_escape=absent
+        fi
+        printf "pid1=%s\\nagent=%s\\nentrypoint=%s\\ntailscale_up=%s\\nforce_noise_443=%s\\nstuck_cli_escape=%s\\n" \
+          "$pid1" "$agent" "$entrypoint" "$tailscale_up" "$force_noise_443" "$stuck_cli_escape"
+      '`,
+    );
+    const image = await observe(
+      ssh,
+      `docker inspect --format '{{.Config.Image}}' ${id}`,
+    );
     const logs = await observe(ssh, `docker logs --tail 400 ${id}`);
 
     let state: Record<string, unknown> | null = null;
@@ -235,14 +307,21 @@ async function run(suffix: string): Promise<void> {
       typeof state?.ExitCode === "number" ? state.ExitCode : null;
     const tailscale = classifyTailscaleStatus(status.output);
     const logSignals = classifyContainerLogs(logs.output);
+    const runtimeState = classifyRuntimeProcessState(runtime.output);
+    // biome-ignore lint/suspicious/noUndeclaredEnvVars: the protected worker EnvironmentFile owns this deployment value.
+    const configuredImage = process.env.ELIZA_AGENT_IMAGE?.trim();
     console.log(
       `MESH_DIAGNOSTIC=${JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         targetCount: 1,
         container: {
           inspect: inspect.ok ? "success" : "error",
           status: containerStatus,
           exitCode,
+          imageMatchesConfigured:
+            image.ok && configuredImage
+              ? image.output.trim() === configuredImage
+              : null,
         },
         tailscale: {
           socketPresent:
@@ -255,6 +334,7 @@ async function run(suffix: string): Promise<void> {
           ipPresent: ip.ok && ip.output.trim().length > 0,
         },
         logs: logSignals,
+        runtime: runtimeState,
       })}`,
     );
   } finally {

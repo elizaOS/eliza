@@ -1323,24 +1323,29 @@ jobs:
             fi
             unset probe_status
             jq -e '
-              keys == ["container", "logs", "schemaVersion", "tailscale", "targetCount"] and
-              .schemaVersion == 1 and
+              keys == ["container", "logs", "runtime", "schemaVersion", "tailscale", "targetCount"] and
+              .schemaVersion == 2 and
               .targetCount == 1 and
-              (.container | keys == ["exitCode", "inspect", "status"]) and
+              (.container | keys == ["exitCode", "imageMatchesConfigured", "inspect", "status"]) and
               (.container.inspect == "success" or .container.inspect == "error") and
               (.container.status | IN("created", "running", "paused", "restarting", "removing", "exited", "dead", "unknown")) and
               (.container.exitCode == null or (.container.exitCode | type == "number")) and
+              (.container.imageMatchesConfigured == null or (.container.imageMatchesConfigured | type == "boolean")) and
               (.tailscale | keys == ["authUrlPresent", "backendState", "daemonPresent", "ipPresent", "machineAuthorized", "query", "socketPresent"]) and
               (.tailscale.query == "success" or .tailscale.query == "error") and
               (.tailscale.backendState == null or (.tailscale.backendState | IN("NeedsLogin", "NeedsMachineAuth", "NoState", "Running", "Starting", "Stopped"))) and
               (.tailscale.machineAuthorized == null or (.tailscale.machineAuthorized | type == "boolean")) and
               ([.tailscale.authUrlPresent, .tailscale.daemonPresent, .tailscale.ipPresent, .tailscale.socketPresent] | all(type == "boolean")) and
               (.logs | keys == ["agentStarted", "authKeyRejected", "interactiveAuthRequired", "tailscaleUpFailed"]) and
-              ([.logs.agentStarted, .logs.authKeyRejected, .logs.interactiveAuthRequired, .logs.tailscaleUpFailed] | all(type == "boolean"))
+              ([.logs.agentStarted, .logs.authKeyRejected, .logs.interactiveAuthRequired, .logs.tailscaleUpFailed] | all(type == "boolean")) and
+              (.runtime | keys == ["agentProcessPresent", "entrypointProcessPresent", "forceNoise443Enabled", "pid1", "stuckCliEscapePresent", "tailscaleUpProcessPresent"]) and
+              (.runtime.pid1 | IN("agent", "entrypoint", "other", "tailscale-up", "unknown")) and
+              ([.runtime.agentProcessPresent, .runtime.entrypointProcessPresent, .runtime.forceNoise443Enabled, .runtime.stuckCliEscapePresent, .runtime.tailscaleUpProcessPresent] | all(type == "boolean"))
             ' <<<"$diagnostic" >/dev/null
             jq -r '
               "private_mesh_container_status=" + .container.status,
               "private_mesh_container_exit_code=" + ((.container.exitCode // "none") | tostring),
+              "private_mesh_container_image_matches_configured=" + ((.container.imageMatchesConfigured // "unknown") | tostring),
               "private_mesh_tailscale_query=" + .tailscale.query,
               "private_mesh_tailscale_backend=" + (.tailscale.backendState // "unknown"),
               "private_mesh_tailscale_machine_authorized=" + ((.tailscale.machineAuthorized // "unknown") | tostring),
@@ -1351,7 +1356,13 @@ jobs:
               "private_mesh_log_auth_key_rejected=" + (.logs.authKeyRejected | tostring),
               "private_mesh_log_interactive_auth=" + (.logs.interactiveAuthRequired | tostring),
               "private_mesh_log_tailscale_up_failed=" + (.logs.tailscaleUpFailed | tostring),
-              "private_mesh_log_agent_started=" + (.logs.agentStarted | tostring)
+              "private_mesh_log_agent_started=" + (.logs.agentStarted | tostring),
+              "private_mesh_runtime_pid1=" + .runtime.pid1,
+              "private_mesh_runtime_agent_process=" + (.runtime.agentProcessPresent | tostring),
+              "private_mesh_runtime_entrypoint_process=" + (.runtime.entrypointProcessPresent | tostring),
+              "private_mesh_runtime_tailscale_up_process=" + (.runtime.tailscaleUpProcessPresent | tostring),
+              "private_mesh_runtime_force_noise_443=" + (.runtime.forceNoise443Enabled | tostring),
+              "private_mesh_runtime_stuck_cli_escape=" + (.runtime.stuckCliEscapePresent | tostring)
             ' <<<"$diagnostic"
             unset diagnostic
 
