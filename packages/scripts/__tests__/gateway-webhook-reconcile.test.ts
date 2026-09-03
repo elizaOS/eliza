@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
 
 import {
@@ -666,6 +669,35 @@ describe("Gateway webhook Railway reconciler", () => {
     expect(() => validatePlanBundle(config, malformedBundle)).toThrow(
       "immutable prior-active proof is malformed",
     );
+  });
+
+  test("rejects duplicate keys in the raw immutable prior-active artifact", async () => {
+    const temp = await mkdtemp(join(tmpdir(), "gateway-reconcile-plan-"));
+    try {
+      const directory = join(temp, "gateway-webhook-rollback-plan");
+      await mkdir(directory);
+      const planBundle = await bundle();
+      await Promise.all([
+        writeFile(
+          join(directory, "deployment-baseline.json"),
+          JSON.stringify(planBundle.baseline),
+        ),
+        writeFile(
+          join(directory, "rollback-plan.json"),
+          JSON.stringify(planBundle.plan),
+        ),
+        writeFile(
+          join(directory, "prior-active-deployments.json"),
+          `{"errors":[{"message":"provider denied readback"}],"\\u0065rrors":[],"data":${JSON.stringify(planBundle.priorActive.data)}}`,
+        ),
+      ]);
+
+      await expect(
+        reconcileMain({ RUNNER_TEMP: temp }, ["verify-source-baseline"], {}),
+      ).rejects.toThrow("immutable prior-active proof is not strict JSON");
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
   });
 
   test("classifies Railway sleeping and removing states without poisoning history", async () => {
@@ -1825,6 +1857,23 @@ describe("Railway GraphQL adapter", () => {
     }
   });
 
+  test("rejects duplicate keys in raw Railway GraphQL output", async () => {
+    for (const stdout of [
+      `{"errors":[{"message":"provider denied rollback"}],"errors":[],"data":{"deploymentRollback":true}}`,
+      `{"errors":[],"data":null,"data":{"deploymentRollback":true}}`,
+      `{"\\u0065rrors":[{"message":"provider denied rollback"}],"errors":[],"data":{"deploymentRollback":true}}`,
+    ]) {
+      const client = new RailwayCliClient({
+        scope,
+        environment: { RAILWAY_TOKEN: "environment-project-token" },
+        execute: (async () => ({ stdout })) as any,
+      });
+      await expect(client.rollback(priorId)).rejects.toThrow(
+        "Railway returned non-strict GraphQL JSON output",
+      );
+    }
+  });
+
   test("requires an environment-scoped project token and exact staging resource names", async () => {
     let document = "";
     const execute = async (_command: string, args: string[]) => {
@@ -1938,6 +1987,36 @@ describe("GitHub deployment receipt artifact adapter", () => {
     expect(validated.receiptSemanticDigest).toBe(
       deploymentReceiptSemanticDigest(config.receipt),
     );
+  });
+
+  test("rejects duplicate keys in the authoritative receipt bytes", async () => {
+    const harness = createHarness({ receipt: true });
+    const fixture = await harness.dependencies.artifacts.attestReceipt();
+    const serialized = JSON.stringify(config.receipt);
+    const receiptBytes = Buffer.from(
+      `{"sourceSha":"${sourceSha}",${serialized.slice(1)}`,
+      "utf8",
+    );
+    const archiveBytes = singleFileZip(
+      "gateway-webhook-deployment.json",
+      receiptBytes,
+    );
+    const receiptArtifactDigest = digest(archiveBytes);
+
+    expect(() =>
+      validateReceiptArtifactAttestation(
+        { ...config, receiptArtifactDigest },
+        {
+          ...fixture,
+          artifact: {
+            ...fixture.artifact,
+            digest: `sha256:${receiptArtifactDigest}`,
+          },
+          archiveBytes,
+        },
+        Date.parse("2026-09-03T00:30:00Z"),
+      ),
+    ).toThrow("authoritative deployment receipt is not strict JSON");
   });
 });
 

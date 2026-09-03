@@ -34,6 +34,7 @@ import {
   MARKER_PREFIX,
   markerBody,
   markerDigest,
+  parseJsonWithUniqueObjectKeys,
   parseMarkerComment,
   postAndReadBack,
   preparedOpenDescriptor,
@@ -468,6 +469,26 @@ function resignWithCurrentKey(
 }
 
 describe("durable Gateway transaction journal", () => {
+  test("parses JSON only when every object key is unique after decoding", () => {
+    for (const duplicate of [
+      `{"errors":[{"message":"denied"}],"errors":[]}`,
+      `{"errors":[{"message":"denied"}],"\\u0065rrors":[]}`,
+      `{"data":{"status":"failed","status":"ready"}}`,
+    ]) {
+      expect(() => parseJsonWithUniqueObjectKeys(duplicate)).toThrow(
+        "JSON must contain unique object keys",
+      );
+    }
+    const unique = [
+      { status: "ready" },
+      { status: "failed" },
+      { text: `{"status":1,"status":2}` },
+    ];
+    expect(parseJsonWithUniqueObjectKeys(JSON.stringify(unique))).toEqual(
+      unique,
+    );
+  });
+
   test("ignores a human lookalike but rejects an edited bot marker", () => {
     const open = openMarker();
     const human = comment(1, open, {
@@ -3687,6 +3708,21 @@ describe("Gateway webhook journal Actions annotations", () => {
     );
     for (const canary of canaries) expect(output).not.toContain(canary);
     expect(output.slice(0, -1)).not.toMatch(/[\r\n]/);
+  });
+
+  test("rejects duplicate keys in raw GitHub API responses", async () => {
+    const api = new GitHubApi({
+      token: "test-token",
+      repository,
+      fetchImpl: async () =>
+        new Response(`{"commit":{"sha":"first"},"commit":{"sha":"last"}}`, {
+          status: 200,
+        }),
+    });
+
+    await expect(api.request("GET", "/branches/develop")).rejects.toThrow(
+      "GitHub API response was not valid JSON",
+    );
   });
 
   test("does not carry a GitHub endpoint or HTTP body in the propagated error", async () => {

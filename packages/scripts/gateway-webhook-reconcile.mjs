@@ -20,6 +20,7 @@ import {
   GitHubApi,
   httpStatusForDiagnostic,
   main as journalMain,
+  parseJsonWithUniqueObjectKeys,
   providerDeploymentIdDigest,
   RedactedActionError,
   readJournalState,
@@ -125,6 +126,14 @@ function exactKeys(value, keys) {
     !Array.isArray(value) &&
     Object.keys(value).sort().join("\0") === [...keys].sort().join("\0")
   );
+}
+
+function parseUniqueJson(text, failureMessage) {
+  try {
+    return parseJsonWithUniqueObjectKeys(text);
+  } catch {
+    fail(failureMessage);
+  }
 }
 
 function isSuccessfulGraphqlEnvelope(payload) {
@@ -630,12 +639,10 @@ export function validateReceiptArtifactAttestation(
     );
   }
   const receiptBytes = receiptBytesFromArchive(archiveBytes);
-  let receipt;
-  try {
-    receipt = JSON.parse(receiptBytes.toString("utf8"));
-  } catch {
-    fail("authoritative deployment receipt is not JSON");
-  }
+  const receipt = parseUniqueJson(
+    receiptBytes.toString("utf8"),
+    "authoritative deployment receipt is not strict JSON",
+  );
   const semanticDigest = deploymentReceiptSemanticDigest(receipt);
   return {
     receipt,
@@ -1734,12 +1741,10 @@ export class RailwayCliClient {
     if (typeof stdout !== "string") {
       fail("Railway returned non-text GraphQL output");
     }
-    let payload;
-    try {
-      payload = JSON.parse(stdout);
-    } catch {
-      fail("Railway returned non-JSON GraphQL output");
-    }
+    const payload = parseUniqueJson(
+      stdout,
+      "Railway returned non-strict GraphQL JSON output",
+    );
     if (!isSuccessfulGraphqlEnvelope(payload)) {
       fail("Railway GraphQL request did not return a valid success envelope");
     }
@@ -2021,9 +2026,18 @@ async function readPlanBundle(temp) {
   const priorActiveBytes = files.get("prior-active-deployments.json");
   const planBytes = files.get("rollback-plan.json");
   return {
-    plan: JSON.parse(planBytes.toString("utf8")),
-    baseline: JSON.parse(baselineBytes.toString("utf8")),
-    priorActive: JSON.parse(priorActiveBytes.toString("utf8")),
+    plan: parseUniqueJson(
+      planBytes.toString("utf8"),
+      "immutable rollback plan is not strict JSON",
+    ),
+    baseline: parseUniqueJson(
+      baselineBytes.toString("utf8"),
+      "immutable Railway baseline is not strict JSON",
+    ),
+    priorActive: parseUniqueJson(
+      priorActiveBytes.toString("utf8"),
+      "immutable prior-active proof is not strict JSON",
+    ),
     digests: {
       baseline: sha256(baselineBytes),
       priorActive: sha256(priorActiveBytes),

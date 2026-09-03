@@ -188,6 +188,56 @@ function exactKeys(value, expected) {
   );
 }
 
+export function parseJsonWithUniqueObjectKeys(text) {
+  const invalid = () => {
+    throw new SyntaxError("JSON must contain unique object keys");
+  };
+  if (typeof text !== "string") invalid();
+  const stack = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === "{") {
+      stack.push({ kind: "object", keys: new Set() });
+      continue;
+    }
+    if (character === "[") {
+      stack.push({ kind: "array" });
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      stack.pop();
+      continue;
+    }
+    if (character !== '"') continue;
+
+    const start = index;
+    index += 1;
+    while (index < text.length) {
+      if (text[index] === "\\") {
+        index += 2;
+        continue;
+      }
+      if (text[index] === '"') break;
+      index += 1;
+    }
+    if (index >= text.length) invalid();
+    let cursor = index + 1;
+    while (/\s/.test(text[cursor] ?? "")) cursor += 1;
+    const frame = stack.at(-1);
+    if (text[cursor] !== ":" || frame?.kind !== "object") continue;
+
+    let key;
+    try {
+      key = JSON.parse(text.slice(start, index + 1));
+    } catch {
+      invalid();
+    }
+    if (typeof key !== "string" || frame.keys.has(key)) invalid();
+    frame.keys.add(key);
+  }
+  return JSON.parse(text);
+}
+
 function isPositiveIntegerString(value) {
   return typeof value === "string" && /^[1-9][0-9]*$/.test(value);
 }
@@ -707,7 +757,9 @@ function parsePlanChunkComment(comment) {
   );
   let chunk;
   try {
-    chunk = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+    chunk = parseJsonWithUniqueObjectKeys(
+      Buffer.from(encoded, "base64").toString("utf8"),
+    );
   } catch {
     fail("encrypted rollback-plan chunk payload is not JSON");
   }
@@ -746,7 +798,9 @@ export function parseMarkerComment(comment) {
   }
   let marker;
   try {
-    marker = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+    marker = parseJsonWithUniqueObjectKeys(
+      Buffer.from(encoded, "base64").toString("utf8"),
+    );
   } catch {
     fail("gateway transaction marker payload is not JSON");
   }
@@ -933,7 +987,9 @@ function decodeRecordComment(comment) {
   }
   let record;
   try {
-    record = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+    record = parseJsonWithUniqueObjectKeys(
+      Buffer.from(encoded, "base64").toString("utf8"),
+    );
   } catch {
     return null;
   }
@@ -1326,7 +1382,7 @@ export class GitHubApi {
     }
     if (!text) return null;
     try {
-      return JSON.parse(text);
+      return parseJsonWithUniqueObjectKeys(text);
     } catch {
       fail(
         "GitHub API response was not valid JSON",
@@ -2843,7 +2899,7 @@ async function readSecureJson(path, purpose) {
   }
   let value;
   try {
-    value = JSON.parse(await readFile(path, "utf8"));
+    value = parseJsonWithUniqueObjectKeys(await readFile(path, "utf8"));
   } catch {
     fail(`${purpose} is not JSON`);
   }
@@ -2919,7 +2975,9 @@ export async function validatePreparedOpenArtifact(
   const descriptorBytes = files.get(PREPARED_OPEN_FILE);
   let artifactDescriptor;
   try {
-    artifactDescriptor = JSON.parse(descriptorBytes.toString("utf8"));
+    artifactDescriptor = parseJsonWithUniqueObjectKeys(
+      descriptorBytes.toString("utf8"),
+    );
   } catch {
     fail("prepared OPEN artifact descriptor is not JSON");
   }
@@ -3367,7 +3425,7 @@ async function readExactPlan(directory) {
     }
     const bytes = await readFile(path);
     try {
-      const parsed = JSON.parse(bytes.toString("utf8"));
+      const parsed = parseJsonWithUniqueObjectKeys(bytes.toString("utf8"));
       if (name === "rollback-plan.json") rollbackPlan = parsed;
     } catch {
       fail(`rollback-plan file ${name} is not JSON`);
@@ -3421,7 +3479,7 @@ function planBundleFromArtifactFiles(filesByName, source) {
     }
     let parsed;
     try {
-      parsed = JSON.parse(bytes.toString("utf8"));
+      parsed = parseJsonWithUniqueObjectKeys(bytes.toString("utf8"));
     } catch {
       fail(`authoritative rollback-plan file ${name} is not JSON`);
     }
@@ -3725,7 +3783,7 @@ export async function restoreEncryptedPlan(
   }
   let payload;
   try {
-    payload = JSON.parse(plaintext.toString("utf8"));
+    payload = parseJsonWithUniqueObjectKeys(plaintext.toString("utf8"));
   } catch {
     fail("decrypted rollback plan is not JSON");
   }
@@ -3747,7 +3805,7 @@ export async function restoreEncryptedPlan(
       fail(`decrypted rollback-plan file ${file.name} failed its digest`);
     }
     try {
-      JSON.parse(bytes.toString("utf8"));
+      parseJsonWithUniqueObjectKeys(bytes.toString("utf8"));
     } catch {
       fail(`decrypted rollback-plan file ${file.name} is not JSON`);
     }
@@ -4091,7 +4149,7 @@ export async function main(
       );
       let providerDeploymentIdWatermarkSha256;
       try {
-        providerDeploymentIdWatermarkSha256 = JSON.parse(
+        providerDeploymentIdWatermarkSha256 = parseJsonWithUniqueObjectKeys(
           required(options, "provider-deployment-id-watermark-sha256"),
         );
       } catch {
@@ -4230,7 +4288,7 @@ export async function main(
         .digest("hex");
       let receipt;
       try {
-        receipt = JSON.parse(receiptBytes.toString("utf8"));
+        receipt = parseJsonWithUniqueObjectKeys(receiptBytes.toString("utf8"));
       } catch {
         fail("resolution receipt is not JSON");
       }
