@@ -2101,9 +2101,9 @@ describe("compute billing recovery", () => {
   });
 
   test("funding restored under the stop-decision locks reactivates without a provider job", async () => {
+    const periodStart = new Date(Math.floor((Date.now() - 60 * 60 * 1_000) / 1_000) * 1_000);
     const { org, user } = await seed("10.000000");
     const containerId = "00000000-0000-4000-8000-000000000002";
-    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
     await dbWrite.execute(sql`INSERT INTO containers
       (id, name, project_name, organization_id, user_id, status, billing_status, scheduled_shutdown_at,
        last_billed_at, lifecycle_revision, created_at, updated_at)
@@ -2132,11 +2132,12 @@ describe("compute billing recovery", () => {
     expect(row).toMatchObject({
       billing_status: "active",
       scheduled_shutdown_at: null,
-      last_billed_at: periodStart,
     });
+    expect(new Date(row.last_billed_at)).toEqual(periodStart);
   });
 
   test("policy-permitted earnings fund stop revalidation without forgiving elapsed debt", async () => {
+    const periodStart = new Date(Math.floor((Date.now() - 60 * 60 * 1_000) / 1_000) * 1_000);
     const { org, user } = await seed("0.000000");
     await dbWrite
       .update(organizations)
@@ -2148,7 +2149,6 @@ describe("compute billing recovery", () => {
       available_balance: "10.0000",
     });
     const containerId = "00000000-0000-4000-8000-000000000006";
-    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
     await dbWrite.execute(sql`INSERT INTO containers
       (id, name, project_name, organization_id, user_id, status, billing_status, scheduled_shutdown_at,
        last_billed_at, lifecycle_revision, created_at, updated_at)
@@ -2177,8 +2177,8 @@ describe("compute billing recovery", () => {
       .where(eq(containers.id, containerId));
     expect(row).toMatchObject({
       billing_status: "active",
-      last_billed_at: periodStart,
     });
+    expect(new Date(row.last_billed_at)).toEqual(periodStart);
   });
 
   test("shutdown warning CAS refuses any durable provider proof", async () => {
