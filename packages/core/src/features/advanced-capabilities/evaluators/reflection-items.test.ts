@@ -15,6 +15,7 @@ import type {
 } from "../../../types/index.ts";
 import { parseExtractorOutputTolerant } from "./factExtractor.schema.ts";
 import {
+	canEvaluateMessage,
 	factMemoryEvaluator,
 	identityEvaluator,
 	relationshipEvaluator,
@@ -526,5 +527,113 @@ describe("reflection context preserves the complete room entity set", () => {
 		expect(runtime.getEntitiesForRoom).toHaveBeenCalledTimes(1);
 		// One shared conversation read plus factMemory's room/entity fact reads.
 		expect(runtime.getMemories).toHaveBeenCalledTimes(3);
+	});
+});
+
+describe("canEvaluateMessage clause isolation", () => {
+	// Every reflection evaluator gates its `shouldRun` on this predicate, and
+	// preference-items gates on it too. A clause that stops being checked lets
+	// a turn reach the extraction model and write results back into durable
+	// fact / relationship / identity memory. Asserted one clause at a time,
+	// because a fixture that violates several at once cannot tell you which
+	// checks still exist.
+
+	it("admits an ordinary user turn", () => {
+		expect(canEvaluateMessage(message())).toBe(true);
+	});
+
+	it("still admits a turn when a semantic signal is explicitly present", () => {
+		expect(canEvaluateMessage(message(), { semanticSignal: true })).toBe(true);
+		expect(canEvaluateMessage(message(), {})).toBe(true);
+	});
+
+	it("refuses when the caller reports no semantic signal", () => {
+		expect(canEvaluateMessage(message(), { semanticSignal: false })).toBe(
+			false,
+		);
+	});
+
+	it("refuses a turn with no usable text", () => {
+		expect(canEvaluateMessage(message(""))).toBe(false);
+		expect(canEvaluateMessage(message("   "))).toBe(false);
+		expect(
+			canEvaluateMessage({
+				...message(),
+				content: {},
+			} as Memory),
+		).toBe(false);
+	});
+
+	it("refuses a turn with no author", () => {
+		expect(
+			canEvaluateMessage({
+				...message(),
+				entityId: undefined,
+			} as unknown as Memory),
+		).toBe(false);
+	});
+
+	it("refuses a turn with no room", () => {
+		expect(
+			canEvaluateMessage({
+				...message(),
+				roomId: undefined,
+			} as unknown as Memory),
+		).toBe(false);
+	});
+
+	// The runtime's own compaction and summary records are the reason this
+	// clause exists: mining them would write the agent's synthesized state back
+	// into durable memory as though a participant had said it. Detection has
+	// three independent inputs — metadata.source, metadata.tags, and the text
+	// marker — so each is asserted separately.
+	const syntheticArtifacts: Array<[string, Memory]> = [
+		[
+			"metadata.source names the compactor",
+			{ ...message(), metadata: { source: "compaction" } } as unknown as Memory,
+		],
+		[
+			"a metadata tag names a summary",
+			{ ...message(), metadata: { tags: ["summary"] } } as unknown as Memory,
+		],
+		[
+			"the text carries a conversation-summary marker",
+			message("[conversation summary] Berlin came up"),
+		],
+		[
+			"the text is a compacted planner trajectory",
+			message("Compacted prior planner trajectory steps 1-4"),
+		],
+	];
+
+	it.each(syntheticArtifacts)(
+		"refuses a synthetic artifact when %s",
+		(_name, artifact) => {
+			expect(canEvaluateMessage(artifact)).toBe(false);
+		},
+	);
+
+	it("gates every reflection evaluator on the same predicate", async () => {
+		// The clause table above is only meaningful if the evaluators actually
+		// consult it, so pin the wiring rather than assuming it.
+		const artifact = message("[conversation summary] Berlin came up");
+		for (const evaluator of [
+			factMemoryEvaluator,
+			relationshipEvaluator,
+			identityEvaluator,
+		]) {
+			expect(
+				await evaluator.shouldRun({
+					message: artifact,
+					options: undefined,
+				} as never),
+			).toBe(false);
+			expect(
+				await evaluator.shouldRun({
+					message: message(),
+					options: undefined,
+				} as never),
+			).toBe(true);
+		}
 	});
 });
