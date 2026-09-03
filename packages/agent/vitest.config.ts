@@ -65,6 +65,15 @@ export default defineConfig({
         ),
       },
       {
+        // Inbox route tests load Discord from source, whose deferred voice
+        // wiring must also resolve before workspace dist packages are built.
+        find: /^@elizaos\/plugin-meetings$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-meetings/src/index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/ui$/,
         replacement: path.join(monorepoRoot, "packages/ui/src/index.ts"),
       },
