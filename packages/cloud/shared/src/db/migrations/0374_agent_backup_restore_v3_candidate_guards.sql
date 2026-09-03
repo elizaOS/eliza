@@ -407,7 +407,7 @@ BEGIN
     IF pg_trigger_depth() > 1
       AND current_setting('eliza.restore_v3_gc_candidate', true) = OLD."restore_attempt_id"::text
       AND current_setting('eliza.restore_v3_gc_cleanup', true) = OLD."id"::text
-      AND OLD."state" IN ('completed', 'quarantined') THEN
+      AND OLD."state" = 'completed' THEN
       RETURN OLD;
     END IF;
     RAISE EXCEPTION 'restore-v3 candidate cleanup cannot be deleted: %', OLD."id"
@@ -451,13 +451,21 @@ BEGIN
   END IF;
   IF NOT (
     (OLD."state" = 'armed' AND NEW."state" IN ('armed', 'held', 'pending', 'quarantined'))
-    OR (OLD."state" = 'held' AND NEW."state" IN ('held', 'pending', 'quarantined'))
+    OR (OLD."state" = 'held' AND NEW."state" IN ('held', 'pending'))
     OR (OLD."state" = 'pending' AND NEW."state" IN ('pending', 'leased', 'quarantined'))
     OR (OLD."state" = 'leased'
       AND NEW."state" IN ('leased', 'pending', 'completed', 'quarantined'))
   ) THEN
     RAISE EXCEPTION 'invalid restore-v3 cleanup transition: % -> %', OLD."state", NEW."state"
       USING ERRCODE = '55000';
+  END IF;
+  IF OLD."state" = 'held' AND NEW."state" <> 'held' THEN
+    IF pg_trigger_depth() < 2 OR NEW."state" <> 'pending'
+      OR current_setting('eliza.restore_v3_abort_cleanup', true)
+        IS DISTINCT FROM OLD."id"::text THEN
+      RAISE EXCEPTION 'restore-v3 held cleanup release requires its exact abort command: %', OLD."id"
+        USING ERRCODE = '55000';
+    END IF;
   END IF;
   IF NEW."next_attempt_at" < OLD."next_attempt_at" THEN
     RAISE EXCEPTION 'restore-v3 cleanup readiness cannot move backward: %', OLD."id"
@@ -495,6 +503,7 @@ CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_v3_candidate"()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
   cleanup_state text;
+  terminal_at timestamptz;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     IF pg_trigger_depth() > 1
@@ -582,23 +591,23 @@ BEGIN
     RETURN OLD;
   END IF;
   IF pg_trigger_depth() < 2
-    OR current_setting('eliza.restore_v3_terminal_candidate', true) <> OLD."id"::text
+    OR current_setting('eliza.restore_v3_terminal_candidate', true)
+      IS DISTINCT FROM OLD."id"::text
     OR NEW."state" NOT IN ('sealed', 'aborted') THEN
     RAISE EXCEPTION 'restore-v3 candidate terminal state requires its append-only command: %',
       OLD."id" USING ERRCODE = '55000';
   END IF;
+  -- Capture one wall-clock instant only after the terminal command has
+  -- acquired every authority, cleanup, candidate, and proof lock.
+  terminal_at := clock_timestamp();
   IF NEW."state" = 'sealed' THEN
-    NEW."sealed_at" := statement_timestamp();
-    NEW."retention_until" := statement_timestamp() + INTERVAL '30 days';
+    NEW."sealed_at" := terminal_at;
+    NEW."retention_until" := terminal_at + INTERVAL '30 days';
   ELSE
-    NEW."aborted_at" := statement_timestamp();
-    NEW."retention_until" := statement_timestamp() + INTERVAL '30 days';
-    UPDATE "agent_backup_restore_v3_candidate_cleanup_outbox"
-    SET "state" = 'pending',
-      "next_attempt_at" = GREATEST("next_attempt_at", statement_timestamp())
-    WHERE "id" = OLD."cleanup_outbox_id" AND "state" = 'held';
+    NEW."aborted_at" := terminal_at;
+    NEW."retention_until" := terminal_at + INTERVAL '30 days';
   END IF;
-  NEW."updated_at" := statement_timestamp();
+  NEW."updated_at" := terminal_at;
   RETURN NEW;
 END;
 $$;
@@ -832,7 +841,8 @@ BEGIN
     RETURN OLD;
   END IF;
   IF pg_trigger_depth() < 2
-    OR current_setting('eliza.restore_v3_terminal_candidate', true) <> OLD."candidate_id"::text
+    OR current_setting('eliza.restore_v3_terminal_candidate', true)
+      IS DISTINCT FROM OLD."candidate_id"::text
     OR NEW."state" NOT IN ('consumed', 'revoked') THEN
     RAISE EXCEPTION 'restore-v3 seal authorization terminal state requires its command: %',
       OLD."id" USING ERRCODE = '55000';
@@ -1096,6 +1106,7 @@ CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_v3_terminal_command"()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
   candidate agent_backup_restore_v3_candidates%ROWTYPE;
+  cleanup_state text;
   seal_authorization agent_backup_restore_v3_candidate_seal_authorizations%ROWTYPE;
   receipt_aggregate record;
   current_lease_expires_at timestamptz;
@@ -1129,6 +1140,22 @@ BEGIN
   FOR UPDATE;
   IF NOT FOUND OR candidate."state" <> 'active' THEN
     RAISE EXCEPTION 'restore-v3 terminal command requires its exact active candidate'
+      USING ERRCODE = '55000';
+  END IF;
+  -- Candidate-first is the canonical relation order used by terminal commands,
+  -- GC, and reconciliation. Direct held cleanup release never locks a candidate:
+  -- it is rejected unless this append-only abort command emits the exact fence.
+  SELECT cleanup."state" INTO cleanup_state
+  FROM "agent_backup_restore_v3_candidate_cleanup_outbox" AS cleanup
+  WHERE cleanup."id" = candidate."cleanup_outbox_id"
+    AND cleanup."organization_id" = candidate."organization_id"
+    AND cleanup."agent_id" = candidate."agent_id"
+    AND cleanup."backup_id" = candidate."backup_id"
+    AND cleanup."restore_attempt_id" = candidate."restore_attempt_id"
+    AND cleanup."operation_id" = candidate."operation_id"
+  FOR UPDATE OF cleanup;
+  IF NOT FOUND OR cleanup_state <> 'held' THEN
+    RAISE EXCEPTION 'restore-v3 terminal command requires its exact held cleanup parent'
       USING ERRCODE = '55000';
   END IF;
   PERFORM set_config('eliza.restore_v3_terminal_candidate', candidate."id"::text, true);
@@ -1165,6 +1192,16 @@ BEGIN
     UPDATE "agent_backup_restore_v3_candidates"
     SET "state" = 'aborted', "abort_reason_sha256" = NEW."abort_reason_sha256"
     WHERE "id" = candidate."id";
+    PERFORM set_config('eliza.restore_v3_abort_cleanup', candidate."cleanup_outbox_id"::text, true);
+    UPDATE "agent_backup_restore_v3_candidate_cleanup_outbox"
+    SET "state" = 'pending',
+      "next_attempt_at" = GREATEST("next_attempt_at", clock_timestamp())
+    WHERE "id" = candidate."cleanup_outbox_id" AND "state" = 'held';
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'restore-v3 abort command lost its held cleanup parent'
+        USING ERRCODE = '55000';
+    END IF;
+    PERFORM set_config('eliza.restore_v3_abort_cleanup', '', true);
   END IF;
   RETURN NEW;
 END;
@@ -1224,8 +1261,8 @@ BEGIN
   SELECT "state" INTO cleanup_state
   FROM "agent_backup_restore_v3_candidate_cleanup_outbox"
   WHERE "id" = candidate."cleanup_outbox_id" FOR UPDATE;
-  IF cleanup_state NOT IN ('completed', 'quarantined') THEN
-    RAISE EXCEPTION 'restore-v3 GC requires terminal cleanup proof'
+  IF cleanup_state <> 'completed' THEN
+    RAISE EXCEPTION 'restore-v3 GC requires completed cleanup proof'
       USING ERRCODE = '55000';
   END IF;
   PERFORM set_config('eliza.restore_v3_gc_candidate', candidate."restore_attempt_id"::text, true);

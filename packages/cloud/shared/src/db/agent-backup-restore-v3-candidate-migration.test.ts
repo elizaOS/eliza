@@ -501,7 +501,75 @@ async function expectBeginRejected(
   }
 }
 
-describe("0373/0374 restore-v3 candidate authority", () => {
+async function seedRetainedAbortedCandidateForGc(
+  database: PGlite,
+  authority: SeededAuthority,
+  cleanupState: "completed" | "quarantined",
+): Promise<void> {
+  if (cleanupState === "completed") {
+    await database.exec(`UPDATE agent_backup_restore_v3_candidate_cleanup_outbox
+      SET state = 'completed', receipt_sha256 = '${sha256("cleanup-receipt")}',
+        completed_at = statement_timestamp()`);
+  } else {
+    await database.exec(`UPDATE agent_backup_restore_v3_candidate_cleanup_outbox
+      SET state = 'quarantined', quarantine_reason_sha256 = '${sha256("cleanup-quarantine")}',
+        quarantined_at = statement_timestamp()`);
+  }
+  await database.query(
+    `INSERT INTO agent_backup_restore_v3_candidates (
+      id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+      restore_operation_id, lease_id, lease_owner_id, lease_generation,
+      lease_expires_at, catalog_epoch, source_copy_role, source_activation_generation,
+      source_lifecycle_revision, expected_manifest_sha256, key_bundle_generation_id,
+      source_authority_canonical, source_authority_sha256, object_count,
+      cleanup_outbox_id, execution_token_sha256, state, abort_reason_sha256,
+      aborted_at, retention_until
+    ) SELECT $1, $2, $3, $4, $5, $6, $7, $8, 'restore-worker', $9, lease.expires_at,
+      9, 'primary', $10, 7, $11, $12, $13, $14, 5, $15, $16, 'aborted', $17,
+      statement_timestamp() - INTERVAL '40 days', statement_timestamp() - INTERVAL '10 days'
+    FROM agent_backup_restore_leases AS lease WHERE lease.id = $8`,
+    [
+      IDS.candidate,
+      IDS.organization,
+      IDS.agent,
+      IDS.backup,
+      IDS.restoreAttempt,
+      IDS.operation,
+      IDS.restoreOperation,
+      IDS.lease,
+      IDS.leaseGeneration,
+      IDS.sourceGeneration,
+      MANIFEST_SHA256,
+      IDS.keyBundleGeneration,
+      authority.sourceCanonical,
+      authority.sourceSha256,
+      IDS.cleanup,
+      EXECUTION_TOKEN_SHA256,
+      ABORT_REASON_SHA256,
+    ],
+  );
+  await database.exec(`INSERT INTO agent_backup_restore_v3_candidate_terminal_commands (
+    id, candidate_id, organization_id, agent_id, backup_id, restore_attempt_id,
+    operation_id, execution_token_sha256, command_kind, abort_reason_sha256, command_sha256)
+    VALUES ('${IDS.terminal}', '${IDS.candidate}', '${IDS.organization}', '${IDS.agent}',
+      '${IDS.backup}', '${IDS.restoreAttempt}', '${IDS.operation}',
+      '${EXECUTION_TOKEN_SHA256}', 'abort', '${ABORT_REASON_SHA256}', '${COMMAND_SHA256}')`);
+}
+
+async function insertGcTombstone(database: PGlite): Promise<void> {
+  await database.exec(`INSERT INTO agent_backup_restore_v3_candidate_gc_tombstones (
+    id, candidate_id, cleanup_outbox_id, organization_id, agent_id, backup_id,
+    restore_attempt_id, operation_id, terminal_state, terminal_evidence_sha256,
+    retention_until, gc_command_sha256)
+    SELECT '${IDS.gc}', candidate.id, candidate.cleanup_outbox_id,
+      candidate.organization_id, candidate.agent_id, candidate.backup_id,
+      candidate.restore_attempt_id, candidate.operation_id, candidate.state,
+      candidate.abort_reason_sha256, candidate.retention_until, '${sha256("gc-command")}'
+    FROM agent_backup_restore_v3_candidates AS candidate
+    WHERE candidate.id = '${IDS.candidate}'`);
+}
+
+describe("0375/0376 restore-v3 candidate authority", () => {
   test("registers consecutive journal entries and exports the schema", () => {
     const journal = JSON.parse(
       readFileSync(join(MIGRATIONS_DIR, "meta", "_journal.json"), "utf8"),
@@ -643,6 +711,41 @@ describe("0373/0374 restore-v3 candidate authority", () => {
     expect(gcGuard.indexOf(attemptLock)).toBeLessThan(
       gcGuard.indexOf('SELECT * INTO candidate FROM "agent_backup_restore_v3_candidates"'),
     );
+  });
+
+  test("locks terminal candidates before cleanup and retains only completed cleanup proof", () => {
+    const cleanupGuard = GUARDS.slice(
+      GUARDS.indexOf('CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_v3_cleanup_outbox"'),
+      GUARDS.indexOf('CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_v3_candidate"'),
+    );
+    const terminalGuard = GUARDS.slice(
+      GUARDS.indexOf('CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_v3_terminal_command"'),
+      GUARDS.indexOf(
+        'CREATE OR REPLACE FUNCTION "reject_agent_backup_restore_v3_terminal_command_mutation"',
+      ),
+    );
+    const gcGuard = GUARDS.slice(
+      GUARDS.indexOf('CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_v3_gc_tombstone"'),
+      GUARDS.indexOf(
+        'CREATE OR REPLACE FUNCTION "reject_agent_backup_restore_v3_gc_tombstone_mutation"',
+      ),
+    );
+    expect(cleanupGuard).toContain("current_setting('eliza.restore_v3_abort_cleanup', true)");
+    expect(cleanupGuard).toContain('IS DISTINCT FROM OLD."id"::text');
+    expect(cleanupGuard).not.toContain("NEW.\"state\" IN ('held', 'pending', 'quarantined')");
+    expect(cleanupGuard).toContain("AND OLD.\"state\" = 'completed'");
+    expect(terminalGuard.lastIndexOf('FROM "agent_backup_restore_v3_candidates"')).toBeLessThan(
+      terminalGuard.indexOf('FROM "agent_backup_restore_v3_candidate_cleanup_outbox"'),
+    );
+    expect(terminalGuard).toContain("cleanup_state <> 'held'");
+    expect(gcGuard).toContain("cleanup_state <> 'completed'");
+    expect(gcGuard).not.toContain("cleanup_state NOT IN ('completed', 'quarantined')");
+    expect(GUARDS).not.toContain("current_setting('eliza.restore_v3_terminal_candidate', true) <>");
+    expect(
+      GUARDS.match(
+        /current_setting\('eliza\.restore_v3_terminal_candidate', true\)\s+IS DISTINCT FROM/g,
+      ),
+    ).toHaveLength(2);
   });
 
   test("recomputes receipt hashes, validates strict ledgers, and fences terminal GC", () => {
@@ -931,6 +1034,16 @@ describe("0373/0374 restore-v3 candidate authority", () => {
       );
       expect(held.rows).toEqual([{ state: "held" }]);
       await expect(
+        database.exec(`UPDATE agent_backup_restore_v3_candidate_cleanup_outbox
+          SET state = 'pending' WHERE id = '${IDS.cleanup}'`),
+      ).rejects.toThrow(/held cleanup release requires its exact abort command/);
+      await expect(
+        database.exec(`UPDATE agent_backup_restore_v3_candidate_cleanup_outbox
+          SET state = 'quarantined',
+            quarantine_reason_sha256 = '${sha256("premature-quarantine")}'
+          WHERE id = '${IDS.cleanup}'`),
+      ).rejects.toThrow(/invalid restore-v3 cleanup transition/);
+      await expect(
         database.query(
           `INSERT INTO agent_backup_restore_v3_candidate_stage_ledger (
           candidate_id, organization_id, agent_id, backup_id, restore_attempt_id,
@@ -1083,14 +1196,17 @@ describe("0373/0374 restore-v3 candidate authority", () => {
         payload: string;
         records: number;
         authorization_state: string;
+        cleanup_state: string;
       }>(`
         SELECT candidate.state, candidate.sealed_receipt_sha256 AS receipt,
           candidate.sealed_staged_payload_bytes::text AS payload,
           candidate.sealed_staged_data_record_count AS records,
-          seal_authorization.state AS authorization_state
+          seal_authorization.state AS authorization_state, cleanup.state AS cleanup_state
         FROM agent_backup_restore_v3_candidates AS candidate
         JOIN agent_backup_restore_v3_candidate_seal_authorizations AS seal_authorization
-          ON seal_authorization.candidate_id = candidate.id`);
+          ON seal_authorization.candidate_id = candidate.id
+        JOIN agent_backup_restore_v3_candidate_cleanup_outbox AS cleanup
+          ON cleanup.id = candidate.cleanup_outbox_id`);
       expect(terminal.rows).toEqual([
         {
           state: "sealed",
@@ -1098,8 +1214,13 @@ describe("0373/0374 restore-v3 candidate authority", () => {
           payload: "0",
           records: 0,
           authorization_state: "consumed",
+          cleanup_state: "held",
         },
       ]);
+      await expect(
+        database.exec(`UPDATE agent_backup_restore_v3_candidate_cleanup_outbox
+          SET state = 'pending' WHERE id = '${IDS.cleanup}'`),
+      ).rejects.toThrow(/held cleanup release requires its exact abort command/);
       await expect(
         database.exec(`UPDATE agent_backup_restore_v3_candidates SET state = 'aborted'`),
       ).rejects.toThrow(/candidate is terminal/);
@@ -1143,64 +1264,79 @@ describe("0373/0374 restore-v3 candidate authority", () => {
     }
   }, 60_000);
 
-  test("permits only a cleanup-proven terminal GC and preserves its tombstone", async () => {
+  test("releases held cleanup only through a terminal abort command", async () => {
     const database = await prerequisiteDatabase();
     try {
       await applyFoundation(database);
+      await applyGuards(database);
       const authority = await seedCurrentAuthority(database);
-      await database.exec(`UPDATE agent_backup_restore_v3_candidate_cleanup_outbox
-        SET state = 'completed', receipt_sha256 = '${sha256("cleanup-receipt")}',
-          completed_at = statement_timestamp()`);
-      await database.query(
-        `INSERT INTO agent_backup_restore_v3_candidates (
-          id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
-          restore_operation_id, lease_id, lease_owner_id, lease_generation,
-          lease_expires_at, catalog_epoch, source_copy_role, source_activation_generation,
-          source_lifecycle_revision, expected_manifest_sha256, key_bundle_generation_id,
-          source_authority_canonical, source_authority_sha256, object_count,
-          cleanup_outbox_id, execution_token_sha256, state, abort_reason_sha256,
-          aborted_at, retention_until
-        ) SELECT $1, $2, $3, $4, $5, $6, $7, $8, 'restore-worker', $9, lease.expires_at,
-          9, 'primary', $10, 7, $11, $12, $13, $14, 5, $15, $16, 'aborted', $17,
-          statement_timestamp() - INTERVAL '40 days', statement_timestamp() - INTERVAL '10 days'
-        FROM agent_backup_restore_leases AS lease WHERE lease.id = $8`,
-        [
-          IDS.candidate,
-          IDS.organization,
-          IDS.agent,
-          IDS.backup,
-          IDS.restoreAttempt,
-          IDS.operation,
-          IDS.restoreOperation,
-          IDS.lease,
-          IDS.leaseGeneration,
-          IDS.sourceGeneration,
-          MANIFEST_SHA256,
-          IDS.keyBundleGeneration,
-          authority.sourceCanonical,
-          authority.sourceSha256,
-          IDS.cleanup,
-          EXECUTION_TOKEN_SHA256,
-          ABORT_REASON_SHA256,
-        ],
-      );
+      await insertCandidate(database, authority);
       await database.exec(`INSERT INTO agent_backup_restore_v3_candidate_terminal_commands (
         id, candidate_id, organization_id, agent_id, backup_id, restore_attempt_id,
         operation_id, execution_token_sha256, command_kind, abort_reason_sha256, command_sha256)
         VALUES ('${IDS.terminal}', '${IDS.candidate}', '${IDS.organization}', '${IDS.agent}',
           '${IDS.backup}', '${IDS.restoreAttempt}', '${IDS.operation}',
           '${EXECUTION_TOKEN_SHA256}', 'abort', '${ABORT_REASON_SHA256}', '${COMMAND_SHA256}')`);
-      await applyGuards(database);
-      await database.exec(`INSERT INTO agent_backup_restore_v3_candidate_gc_tombstones (
-        id, candidate_id, cleanup_outbox_id, organization_id, agent_id, backup_id,
-        restore_attempt_id, operation_id, terminal_state, terminal_evidence_sha256,
-        retention_until, gc_command_sha256)
-        SELECT '${IDS.gc}', candidate.id, candidate.cleanup_outbox_id,
-          candidate.organization_id, candidate.agent_id, candidate.backup_id,
-          candidate.restore_attempt_id, candidate.operation_id, candidate.state,
-          candidate.abort_reason_sha256, candidate.retention_until, '${sha256("gc-command")}'
+      const terminal = await database.query<{
+        candidate_state: string;
+        cleanup_state: string;
+        exact_retention: boolean;
+        command_count: number;
+      }>(`SELECT candidate.state AS candidate_state, cleanup.state AS cleanup_state,
+        candidate.retention_until = candidate.aborted_at + INTERVAL '30 days'
+          AS exact_retention,
+        (SELECT count(*)::integer FROM agent_backup_restore_v3_candidate_terminal_commands)
+          AS command_count
         FROM agent_backup_restore_v3_candidates AS candidate
-        WHERE candidate.id = '${IDS.candidate}'`);
+        JOIN agent_backup_restore_v3_candidate_cleanup_outbox AS cleanup
+          ON cleanup.id = candidate.cleanup_outbox_id`);
+      expect(terminal.rows).toEqual([
+        {
+          candidate_state: "aborted",
+          cleanup_state: "pending",
+          exact_retention: true,
+          command_count: 1,
+        },
+      ]);
+    } finally {
+      await database.close();
+    }
+  }, 60_000);
+
+  test("refuses to GC quarantined cleanup without a deletion receipt", async () => {
+    const database = await prerequisiteDatabase();
+    try {
+      await applyFoundation(database);
+      const authority = await seedCurrentAuthority(database);
+      await seedRetainedAbortedCandidateForGc(database, authority, "quarantined");
+      await applyGuards(database);
+      await expect(insertGcTombstone(database)).rejects.toThrow(
+        /GC requires completed cleanup proof/,
+      );
+      const remaining = await database.query<{
+        candidates: number;
+        cleanups: number;
+        tombstones: number;
+      }>(`SELECT
+        (SELECT count(*)::integer FROM agent_backup_restore_v3_candidates) AS candidates,
+        (SELECT count(*)::integer FROM agent_backup_restore_v3_candidate_cleanup_outbox)
+          AS cleanups,
+        (SELECT count(*)::integer FROM agent_backup_restore_v3_candidate_gc_tombstones)
+          AS tombstones`);
+      expect(remaining.rows).toEqual([{ candidates: 1, cleanups: 1, tombstones: 0 }]);
+    } finally {
+      await database.close();
+    }
+  }, 60_000);
+
+  test("permits only a cleanup-proven terminal GC and preserves its tombstone", async () => {
+    const database = await prerequisiteDatabase();
+    try {
+      await applyFoundation(database);
+      const authority = await seedCurrentAuthority(database);
+      await seedRetainedAbortedCandidateForGc(database, authority, "completed");
+      await applyGuards(database);
+      await insertGcTombstone(database);
       const remaining = await database.query<{
         candidates: number;
         cleanups: number;
