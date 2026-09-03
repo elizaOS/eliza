@@ -243,6 +243,18 @@ export function isPublicPath(pathname: string, method = "GET"): boolean {
   if (/^\/api\/v1\/apps\/[^/]+\/public\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/charges\/[^/]+\/?$/.test(pathname)) return true;
   if (/^\/api\/characters\/[^/]+\/public\/?$/.test(pathname)) return true;
+  // Eliza-app serverless provisioning agent status, provision trigger, and
+  // chat endpoints authenticate via elizaAppSessionService.validateAuthHeader
+  // with an eliza-app session Bearer token, not Steward cookies. Keep this
+  // scoped to the exact endpoints implemented by provisioning-agent routes.
+  if (
+    pathname === "/api/eliza-app/provisioning-agent" ||
+    pathname === "/api/eliza-app/provisioning-agent/" ||
+    pathname === "/api/eliza-app/provisioning-agent/chat" ||
+    pathname === "/api/eliza-app/provisioning-agent/chat/"
+  ) {
+    return true;
+  }
   if (isPublicOutOfBandTokenPath(pathname, method)) return true;
   return publicPathPrefixes.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
