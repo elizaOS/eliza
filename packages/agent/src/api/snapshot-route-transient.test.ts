@@ -103,7 +103,8 @@ class PgliteFacadeAdapter extends InMemoryDatabaseAdapter {
 
 async function withSnapshotServer(
   dumpDataDir: () => Promise<unknown>,
-  run: (baseUrl: string) => Promise<void>,
+  run: (baseUrl: string, api: ApiServer) => Promise<void>,
+  options: { skipDeferredStartupWork?: boolean } = {},
 ): Promise<void> {
   snapshotEnvironment();
   const root = await mkdtemp(path.join(tmpdir(), "eliza-snapshot-route-"));
@@ -122,12 +123,12 @@ async function withSnapshotServer(
     api = await startApiServer({
       port: 0,
       runtime,
-      skipDeferredStartupWork: true,
+      skipDeferredStartupWork: options.skipDeferredStartupWork ?? true,
     });
     process.env.ELIZA_PORT = String(api.port);
     process.env.ELIZA_API_PORT = String(api.port);
 
-    await run(`http://127.0.0.1:${api.port}`);
+    await run(`http://127.0.0.1:${api.port}`, api);
   } finally {
     if (api) await api.close();
     if (runtime) {
@@ -151,10 +152,82 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   restoreEnvironment();
 });
 
 describe("POST /api/snapshot transient/terminal mapping", () => {
+  it("does not start deferred provider catalog fetches when disabled", async () => {
+    const realFetch = globalThis.fetch;
+    let providerCatalogRequests = 0;
+    vi.stubGlobal("fetch", (...args: Parameters<typeof fetch>) => {
+      if (String(args[0]).startsWith("https://openrouter.ai/")) {
+        providerCatalogRequests += 1;
+        return Promise.resolve(
+          new Response(JSON.stringify({ data: [] }), {
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return realFetch(...args);
+    });
+
+    await withSnapshotServer(
+      async () => ({}),
+      async () => {
+        expect(providerCatalogRequests).toBe(0);
+      },
+    );
+    expect(providerCatalogRequests).toBe(0);
+  }, 120_000);
+
+  it("awaits an active provider catalog warm-up during server close", async () => {
+    const realFetch = globalThis.fetch;
+    let providerCatalogRequests = 0;
+    let releaseCatalog!: () => void;
+    const catalogGate = new Promise<void>((resolve) => {
+      releaseCatalog = resolve;
+    });
+    let reportCatalogStarted!: () => void;
+    const catalogStarted = new Promise<void>((resolve) => {
+      reportCatalogStarted = resolve;
+    });
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      const target = String(args[0]);
+      if (target.startsWith("https://openrouter.ai/")) {
+        providerCatalogRequests += 1;
+        if (providerCatalogRequests === 2) reportCatalogStarted();
+        await catalogGate;
+        return new Response(JSON.stringify({ data: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (target.startsWith("http://127.0.0.1:")) {
+        return realFetch(...args);
+      }
+      return new Response(JSON.stringify({ data: [] }), {
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    await withSnapshotServer(
+      async () => ({}),
+      async (_baseUrl, api) => {
+        await catalogStarted;
+        let closeSettled = false;
+        const closePromise = api.close().then(() => {
+          closeSettled = true;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        expect(closeSettled).toBe(false);
+        releaseCatalog();
+        await closePromise;
+        expect(closeSettled).toBe(true);
+      },
+      { skipDeferredStartupWork: false },
+    );
+  }, 120_000);
+
   it("maps a PGlite closing race to 503 with the structured transient code", async () => {
     await withSnapshotServer(
       async () => {
