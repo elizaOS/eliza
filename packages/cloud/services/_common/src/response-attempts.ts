@@ -36,6 +36,8 @@ export interface ResponseAttemptsOptions {
   refreshAuth?(): Promise<void>;
   retryStatuses: boolean;
   retryTransport: boolean;
+  /** Statuses that must return immediately even when the default policy retries them. */
+  nonRetriableStatuses?: readonly number[];
   /** Honor a sanitized upstream `X-Eliza-Retryable` disposition. */
   honorExplicitRetryable?: boolean;
   retryDelayCapMs?: number;
@@ -169,9 +171,11 @@ export async function executeResponseAttempts(
 
     budgetAttempts += 1;
     const failure = readPersonalSharedFailureMetadata(response);
-    const retryable = options.honorExplicitRetryable
-      ? failure.retryable
-      : isRetryableStatus(response.status);
+    const retryable =
+      !options.nonRetriableStatuses?.includes(response.status) &&
+      (options.honorExplicitRetryable
+        ? failure.retryable
+        : isRetryableStatus(response.status));
     const shouldRetry =
       !response.ok &&
       retryable &&

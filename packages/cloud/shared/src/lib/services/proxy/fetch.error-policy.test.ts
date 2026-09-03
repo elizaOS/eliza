@@ -61,6 +61,16 @@ describe("retryFetch error policy", () => {
     expect(f.mock.calls.length).toBe(1);
   });
 
+  it("still performs the initial request when the retry budget is zero", async () => {
+    const ok = new Response("{}", { status: 200 });
+    const f = mock(async () => ok);
+    globalThis.fetch = f as unknown as typeof fetch;
+
+    const res = await retryFetch({ ...baseOpts, maxRetries: 0 });
+    expect(res).toBe(ok);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
   it("returns a non-retriable upstream error Response verbatim, without retry or throw", async () => {
     const badRequest = new Response("bad", { status: 400 });
     const f = mock(async () => badRequest);
@@ -84,6 +94,20 @@ describe("retryFetch error policy", () => {
     // Never fabricated into a 200 default; the caller decides how to translate it.
     expect(res.status).toBe(503);
     expect(f.mock.calls.length).toBe(2);
+  });
+
+  it("does not replay a custom non-retriable status", async () => {
+    const serverErr = new Response("terminal upstream failure", { status: 503 });
+    const f = mock(async () => serverErr);
+    globalThis.fetch = f as unknown as typeof fetch;
+
+    const res = await retryFetch({
+      ...baseOpts,
+      maxRetries: 3,
+      nonRetriableStatuses: [503],
+    });
+    expect(res).toBe(serverErr);
+    expect(f).toHaveBeenCalledTimes(1);
   });
 
   it("does not replay an unsafe POST after an ambiguous 5xx", async () => {

@@ -71,10 +71,13 @@ export async function retryFetch(opts: RetryFetchOptions): Promise<Response> {
   let result: Awaited<ReturnType<typeof executeResponseAttempts>>;
   try {
     result = await executeResponseAttempts({
-      maxAttempts: maxRetries,
+      // `maxRetries` historically names the total attempt budget, but values
+      // below one still perform the mandatory initial request.
+      maxAttempts: Math.max(1, maxRetries),
       replayPolicy,
       retryStatuses: true,
       retryTransport: true,
+      nonRetriableStatuses,
       baseDelayMs: initialDelayMs,
       request: () =>
         fetch(url, {
@@ -111,6 +114,5 @@ export async function retryFetch(opts: RetryFetchOptions): Promise<Response> {
     if (error instanceof Error && error.cause !== undefined) throw error.cause;
     throw error;
   }
-  if (nonRetriableStatuses.includes(result.response.status)) return result.response;
   return result.response;
 }
