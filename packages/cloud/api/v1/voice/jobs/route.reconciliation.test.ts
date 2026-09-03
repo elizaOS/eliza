@@ -10,7 +10,7 @@ const getUserJobs = mock(async () => [
     jobType: "professional",
     status: "reconciliation_required",
     progress: 0,
-    errorMessage: "Provider submission outcome is unknown",
+    errorMessage: "account acct_private_123 provider submission failed",
     elevenlabsVoiceId: "pvc-accepted-1",
     metadata: {
       providerSubmissionState: "submission_unknown",
@@ -40,13 +40,15 @@ test("returns explicit reconciliation state and the provider locator", async () 
   const response = await app.request("/");
 
   expect(response.status).toBe(200);
-  await expect(response.json()).resolves.toMatchObject({
+  const body = await response.json();
+  expect(body).toMatchObject({
     success: true,
     total: 1,
     jobs: [
       {
         id: "job-reconcile-1",
         status: "reconciliation_required",
+        errorMessage: "provider_work_reconciliation_required",
         reconciliationRequired: true,
         providerState: "submission_unknown",
         providerStep: "samples",
@@ -54,4 +56,5 @@ test("returns explicit reconciliation state and the provider locator", async () 
       },
     ],
   });
+  expect(JSON.stringify(body)).not.toContain("acct_private_123");
 });

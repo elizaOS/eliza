@@ -48,6 +48,7 @@ import { calculateVoiceCloneCostFromCatalog } from "@/lib/services/ai-pricing";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { usageService } from "@/lib/services/usage";
+import type { VoiceCloneFailureReason } from "@/lib/services/voice-clone-failure";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -58,11 +59,6 @@ const ELEVENLABS_API = "https://api.elevenlabs.io";
 const DEFAULT_R2_PUBLIC_HOST = "blob.eliza.app";
 
 type CloneType = "instant" | "professional";
-type VoiceCloneFailureReason =
-  | "provider_submission_unknown"
-  | "provider_work_reconciliation_required"
-  | "provider_request_rejected"
-  | "voice_clone_request_failed";
 type DurableCloneResponse = {
   status: 201 | 402;
   body: Record<string, unknown>;
