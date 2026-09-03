@@ -134,6 +134,159 @@ async function readAllocatedCount(client: Client | Pool): Promise<number> {
   return row.allocated_count;
 }
 
+interface PostgresTestClient {
+  query(query: string): Promise<unknown>;
+  end(): Promise<void>;
+}
+
+/**
+ * Runs a cross-connection proof and settles its clients without hiding either
+ * the proof failure or a teardown failure.
+ */
+async function runWithOrderedPostgresTeardown<T>(
+  writer: PostgresTestClient,
+  observer: PostgresTestClient,
+  proof: () => Promise<T>,
+): Promise<T> {
+  let value: T | undefined;
+  let primaryError: unknown;
+  let primaryFailed = false;
+  try {
+    value = await proof();
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — defer the exact primary failure
+    // only long enough to settle both PostgreSQL clients, then rethrow it.
+    primaryFailed = true;
+    primaryError = error;
+  }
+
+  const teardownErrors: Error[] = [];
+  try {
+    await writer.query("ROLLBACK");
+  } catch (error) {
+    // error-policy:J6 best-effort teardown — retain rollback failure alongside
+    // the primary proof failure, then continue closing both clients.
+    teardownErrors.push(new Error("PostgreSQL test rollback failed", { cause: error }));
+  }
+
+  const closeResults = await Promise.allSettled([writer.end(), observer.end()]);
+  for (const [index, result] of closeResults.entries()) {
+    if (result.status === "rejected") {
+      // error-policy:J6 best-effort teardown — both clients are independently
+      // closed and every rejection is retained in deterministic client order.
+      teardownErrors.push(
+        new Error(`PostgreSQL test ${index === 0 ? "writer" : "observer"} close failed`, {
+          cause: result.reason,
+        }),
+      );
+    }
+  }
+
+  if (primaryFailed) {
+    if (teardownErrors.length > 0) {
+      throw new AggregateError(
+        [primaryError, ...teardownErrors],
+        "PostgreSQL capacity proof and teardown both failed",
+        { cause: primaryError },
+      );
+    }
+    throw primaryError;
+  }
+  if (teardownErrors.length > 0) {
+    throw new AggregateError(teardownErrors, "PostgreSQL capacity proof teardown failed");
+  }
+  return value as T;
+}
+
+function teardownClient(
+  name: string,
+  events: string[],
+  failures: { rollback?: Error; close?: Error } = {},
+): PostgresTestClient {
+  return {
+    async query(query: string): Promise<void> {
+      events.push(`${name}:${query}`);
+      if (query === "ROLLBACK" && failures.rollback) throw failures.rollback;
+    },
+    async end(): Promise<void> {
+      events.push(`${name}:close`);
+      if (failures.close) throw failures.close;
+    },
+  };
+}
+
+async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise;
+  } catch (error) {
+    // error-policy:J1 boundary translation — tests inspect the rejection as a
+    // value so they can verify exact identity and aggregate ordering.
+    return error;
+  }
+  throw new Error("Expected promise to reject");
+}
+
+describe("PostgreSQL capacity proof teardown", () => {
+  test("preserves a primary proof failure after ordered successful teardown", async () => {
+    const events: string[] = [];
+    const primary = new Error("primary proof failed");
+    const rejection = await rejectionOf(
+      runWithOrderedPostgresTeardown(
+        teardownClient("writer", events),
+        teardownClient("observer", events),
+        async () => {
+          throw primary;
+        },
+      ),
+    );
+
+    expect(rejection).toBe(primary);
+    expect(events).toEqual(["writer:ROLLBACK", "writer:close", "observer:close"]);
+  });
+
+  test("retains rollback and both close failures in deterministic order", async () => {
+    const events: string[] = [];
+    const rejection = await rejectionOf(
+      runWithOrderedPostgresTeardown(
+        teardownClient("writer", events, {
+          rollback: new Error("rollback failed"),
+          close: new Error("writer close failed"),
+        }),
+        teardownClient("observer", events, { close: new Error("observer close failed") }),
+        async () => "proved",
+      ),
+    );
+
+    expect(rejection).toBeInstanceOf(AggregateError);
+    expect((rejection as AggregateError).errors.map((error) => (error as Error).message)).toEqual([
+      "PostgreSQL test rollback failed",
+      "PostgreSQL test writer close failed",
+      "PostgreSQL test observer close failed",
+    ]);
+    expect(events).toEqual(["writer:ROLLBACK", "writer:close", "observer:close"]);
+  });
+
+  test("aggregates teardown failures after the preserved primary failure", async () => {
+    const events: string[] = [];
+    const primary = new Error("primary proof failed");
+    const rejection = await rejectionOf(
+      runWithOrderedPostgresTeardown(
+        teardownClient("writer", events, { rollback: new Error("rollback failed") }),
+        teardownClient("observer", events),
+        async () => {
+          throw primary;
+        },
+      ),
+    );
+
+    expect(rejection).toBeInstanceOf(AggregateError);
+    expect((rejection as AggregateError).errors[0]).toBe(primary);
+    expect((rejection as AggregateError).errors[1]).toBeInstanceOf(Error);
+    expect((rejection as AggregateError).cause).toBe(primary);
+    expect(events).toEqual(["writer:ROLLBACK", "writer:close", "observer:close"]);
+  });
+});
+
 beforeAll(async () => {
   if (!postgres) {
     console.warn(SKIP_REASON);
@@ -172,7 +325,7 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
     const writer = new Client({ connectionString: isolatedDsn });
     const observer = new Client({ connectionString: isolatedDsn });
     await Promise.all([writer.connect(), observer.connect()]);
-    try {
+    await runWithOrderedPostgresTeardown(writer, observer, async () => {
       await writer.query("BEGIN");
       await writer.query("SELECT id FROM docker_nodes WHERE node_id = $1 FOR UPDATE", [NODE_ID]);
       await writer.query("LOCK TABLE agent_sandbox_replacement_attempts IN ACCESS EXCLUSIVE MODE");
@@ -197,10 +350,7 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
 
       expect(await count).toBe(1);
       expect(await countAllocatedWorkloadsOnNodeWithDatabase(database, NODE_ID)).toBe(1);
-    } finally {
-      await writer.query("ROLLBACK").catch(() => {});
-      await Promise.all([writer.end(), observer.end()]);
-    }
+    });
   }, 10_000);
 
   test("reserve followed by recount preserves the newly owned slot", async () => {
@@ -208,7 +358,7 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
     const writer = new Client({ connectionString: isolatedDsn });
     const observer = new Client({ connectionString: isolatedDsn });
     await Promise.all([writer.connect(), observer.connect()]);
-    try {
+    await runWithOrderedPostgresTeardown(writer, observer, async () => {
       await writer.query("BEGIN");
       await writer.query(
         "UPDATE docker_nodes SET allocated_count = allocated_count + 1 WHERE node_id = $1",
@@ -229,10 +379,7 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
       expect(await recount).toEqual({ before: 1, after: 1 });
       expect(await readAllocatedCount(pool)).toBe(1);
       expect(await countAllocatedWorkloadsOnNodeWithDatabase(database, NODE_ID)).toBe(1);
-    } finally {
-      await writer.query("ROLLBACK").catch(() => {});
-      await Promise.all([writer.end(), observer.end()]);
-    }
+    });
   }, 10_000);
 
   test("cleanup followed by recount cannot resurrect or double-release the slot", async () => {
@@ -247,7 +394,7 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
     const writer = new Client({ connectionString: isolatedDsn });
     const observer = new Client({ connectionString: isolatedDsn });
     await Promise.all([writer.connect(), observer.connect()]);
-    try {
+    await runWithOrderedPostgresTeardown(writer, observer, async () => {
       await writer.query("BEGIN");
       await writer.query(
         "UPDATE docker_nodes SET allocated_count = allocated_count - 1 WHERE node_id = $1",
@@ -266,10 +413,7 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
       expect(await recount).toEqual({ before: 0, after: 0 });
       expect(await readAllocatedCount(pool)).toBe(0);
       expect(await countAllocatedWorkloadsOnNodeWithDatabase(database, NODE_ID)).toBe(0);
-    } finally {
-      await writer.query("ROLLBACK").catch(() => {});
-      await Promise.all([writer.end(), observer.end()]);
-    }
+    });
   }, 10_000);
 
   test("lifecycle transfer followed by recount counts exactly the canonical sandbox slot", async () => {
@@ -284,7 +428,7 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
     const writer = new Client({ connectionString: isolatedDsn });
     const observer = new Client({ connectionString: isolatedDsn });
     await Promise.all([writer.connect(), observer.connect()]);
-    try {
+    await runWithOrderedPostgresTeardown(writer, observer, async () => {
       await writer.query("BEGIN");
       await writer.query("SELECT id FROM docker_nodes WHERE node_id = $1 FOR UPDATE", [NODE_ID]);
       const pid = (await writer.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]!
@@ -304,10 +448,7 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
       expect(await recount).toEqual({ before: 1, after: 1 });
       expect(await readAllocatedCount(pool)).toBe(1);
       expect(await countAllocatedWorkloadsOnNodeWithDatabase(database, NODE_ID)).toBe(1);
-    } finally {
-      await writer.query("ROLLBACK").catch(() => {});
-      await Promise.all([writer.end(), observer.end()]);
-    }
+    });
   }, 10_000);
 
   test("an absent replacement table does not abort repair of a divergent counter", async () => {
