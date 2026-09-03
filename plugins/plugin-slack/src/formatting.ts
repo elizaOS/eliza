@@ -163,7 +163,21 @@ function convertCodeBlocks(text: string, codeSink: string[]): string {
     }
     if (text[bodyStart] === "\n") bodyStart += 1;
     const closer = text.indexOf("```", bodyStart);
-    if (closer < 0) break;
+    if (closer < 0) {
+      // An unmatched opener is what a truncated or streamed message produces,
+      // and the rest of it is still code the user reads and copies. Pushing it
+      // raw left every style pass on it, so a `#` comment came out bold and a
+      // markdown link became a Slack link -- the corruption this whole change
+      // exists to stop. Hold it aside like a closed body. No closer is
+      // invented: the output keeps the input's fence parity.
+      const tailToken = `${CODE_SENTINEL_PREFIX}${codeSink.length}${CODE_SENTINEL_SUFFIX}`;
+      codeSink.push(
+        `\`\`\`\n${escapeSlackMrkdwnSegment(text.slice(bodyStart))}`,
+      );
+      out.push(text.slice(cursor, opener), tailToken);
+      cursor = text.length;
+      break;
+    }
     // Escape the body here: `escapeSlackMrkdwn` runs after restoration and can
     // no longer reach it, but Slack still renders raw &, < and > inside a fence.
     const token = `${CODE_SENTINEL_PREFIX}${codeSink.length}${CODE_SENTINEL_SUFFIX}`;

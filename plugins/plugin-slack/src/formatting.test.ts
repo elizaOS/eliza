@@ -87,8 +87,29 @@ describe("markdownToSlackMrkdwn", () => {
   });
 
   it("handles a 100k unterminated code fence without backtracking", () => {
-    const adversarial = `\`\`\`json\n${"x".repeat(100_000)}`;
-    expect(markdownToSlackMrkdwn(adversarial)).toContain("x".repeat(100_000));
+    // Exact equality, not `toContain`: a substring check still passed while the
+    // body around it was being rewritten, which is how the unterminated-fence
+    // corruption below survived this test.
+    const body = "x".repeat(100_000);
+    expect(markdownToSlackMrkdwn(`\`\`\`json\n${body}`)).toBe(
+      `\`\`\`\n${body}`,
+    );
+  });
+
+  it("does not rewrite the body after an unmatched opening fence", () => {
+    // A truncated or streamed message ends mid-fence, and SlackService formats
+    // every outbound message, so this is a reachable output state -- not a
+    // parser curiosity. Before this, the tail kept every style pass: `#` went
+    // bold, `*literal*` went italic, and a markdown link became a Slack link.
+    expect(
+      markdownToSlackMrkdwn("```sh\n# keep *literal* [docs](https://ex.com)"),
+    ).toBe("```\n# keep *literal* [docs](https://ex.com)");
+    // and the closed case is unchanged
+    expect(
+      markdownToSlackMrkdwn(
+        "```\n# keep *literal* [docs](https://ex.com)\n```",
+      ),
+    ).toContain("# keep *literal* [docs](https://ex.com)");
   });
 
   it("does not let sentinel-looking input forge a code block into prose", () => {
