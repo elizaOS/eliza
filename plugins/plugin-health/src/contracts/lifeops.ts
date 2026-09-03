@@ -6,17 +6,19 @@
  * the connector-degradation types. Consumed across the screen-time, scheduling,
  * and connector layers.
  */
-// The passive-signal source and audit-event vocabularies are owned by
-// `@elizaos/shared`; health imports and re-exports the canonical const/type/guard
-// so its reliability tables and the PA telemetry mapper agree on one definition
-// instead of drifting copies.
+// The passive-signal source, audit-event and owner-type vocabularies are owned
+// by `@elizaos/shared`; health imports and re-exports the canonical
+// const/type/guard so its reliability tables and the PA telemetry mapper agree
+// on one definition instead of drifting copies.
 import {
   isBuiltinActivitySignalSource,
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
   LIFEOPS_AUDIT_EVENT_TYPES,
+  LIFEOPS_OWNER_TYPES,
   type LifeOpsActivitySignalSource,
   type LifeOpsActivitySignalSourceName,
   type LifeOpsAuditEventType,
+  type LifeOpsOwnerType,
 } from "@elizaos/shared";
 import type { LifeOpsConnectorDegradation } from "./lifeops-connector-degradation.js";
 
@@ -29,9 +31,11 @@ export {
   isBuiltinActivitySignalSource,
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
   LIFEOPS_AUDIT_EVENT_TYPES,
+  LIFEOPS_OWNER_TYPES,
   type LifeOpsActivitySignalSource,
   type LifeOpsActivitySignalSourceName,
   type LifeOpsAuditEventType,
+  type LifeOpsOwnerType,
 };
 
 export const LIFEOPS_TIME_WINDOW_NAMES = [
@@ -511,20 +515,6 @@ export const LIFEOPS_REMINDER_PREFERENCE_SOURCES = [
 ] as const;
 export type LifeOpsReminderPreferenceSource =
   (typeof LIFEOPS_REMINDER_PREFERENCE_SOURCES)[number];
-
-export const LIFEOPS_OWNER_TYPES = [
-  "definition",
-  "occurrence",
-  "goal",
-  "workflow",
-  "calendar_event",
-  "gmail_message",
-  "connector",
-  "channel_policy",
-  "browser_session",
-  "circadian_state",
-] as const;
-export type LifeOpsOwnerType = (typeof LIFEOPS_OWNER_TYPES)[number];
 
 export const LIFEOPS_ACTORS = [
   "agent",

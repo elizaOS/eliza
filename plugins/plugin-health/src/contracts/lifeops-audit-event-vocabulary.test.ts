@@ -11,9 +11,12 @@
  * pointed at anything but the canonical list.
  */
 
-import { LIFEOPS_AUDIT_EVENT_TYPES as CANONICAL_AUDIT_EVENT_TYPES } from "@elizaos/shared";
+import {
+  LIFEOPS_AUDIT_EVENT_TYPES as CANONICAL_AUDIT_EVENT_TYPES,
+  LIFEOPS_OWNER_TYPES as CANONICAL_OWNER_TYPES,
+} from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { LIFEOPS_AUDIT_EVENT_TYPES } from "./lifeops.js";
+import { LIFEOPS_AUDIT_EVENT_TYPES, LIFEOPS_OWNER_TYPES } from "./lifeops.js";
 
 describe("LIFEOPS_AUDIT_EVENT_TYPES re-export", () => {
   it("is the canonical array, not a copy of it", () => {
@@ -62,5 +65,68 @@ describe("LIFEOPS_AUDIT_EVENT_TYPES re-export", () => {
     expect([...new Set(LIFEOPS_AUDIT_EVENT_TYPES)]).toEqual([
       ...LIFEOPS_AUDIT_EVENT_TYPES,
     ]);
+  });
+});
+
+/**
+ * `LIFEOPS_OWNER_TYPES` had the same drift, from the same cause: a local
+ * 10-entry copy of a 15-entry canonical list, missing exactly the five
+ * household-governance owners. Unlike the audit-event list this one was
+ * *internally* live — health's own `LifeOpsReminderPlan`, `LifeOpsGoalLink`,
+ * `LifeOpsReminderAttempt` and `LifeOpsAuditEvent` all declare
+ * `ownerType: LifeOpsOwnerType` — so the narrow union was the one those
+ * interfaces advertised, while every external consumer imported the wide one
+ * from `@elizaos/shared`.
+ */
+describe("LIFEOPS_OWNER_TYPES re-export", () => {
+  it("is the canonical array, not a copy of it", () => {
+    expect(LIFEOPS_OWNER_TYPES).toBe(CANONICAL_OWNER_TYPES);
+  });
+
+  it("carries every canonical owner type in canonical order", () => {
+    expect([...LIFEOPS_OWNER_TYPES]).toEqual([...CANONICAL_OWNER_TYPES]);
+  });
+
+  it.each([
+    "household_role",
+    "household_grant",
+    "household_proposal",
+    "household_agreement",
+    "household_export",
+  ])("includes the previously-missing %s owner", (ownerType: string) => {
+    expect(LIFEOPS_OWNER_TYPES as readonly string[]).toContain(ownerType);
+  });
+
+  it("still carries the health-owned owner types the local copy did have", () => {
+    for (const ownerType of ["browser_session", "circadian_state"]) {
+      expect(LIFEOPS_OWNER_TYPES as readonly string[]).toContain(ownerType);
+    }
+  });
+
+  it("lists no owner type twice", () => {
+    expect([...new Set(LIFEOPS_OWNER_TYPES)]).toEqual([...LIFEOPS_OWNER_TYPES]);
+  });
+});
+
+/**
+ * Both vocabularies land on the same interface, `LifeOpsAuditEvent`, whose
+ * `eventType` and `ownerType` fields must be drawn from the canonical lists
+ * together. Fixing only one leaves that interface internally inconsistent —
+ * canonical event types beside a narrowed owner union — which is exactly the
+ * state this file's first commit left it in.
+ */
+describe("the audit-event interface's two vocabularies", () => {
+  it("draws both from the canonical source", () => {
+    expect(LIFEOPS_AUDIT_EVENT_TYPES).toBe(CANONICAL_AUDIT_EVENT_TYPES);
+    expect(LIFEOPS_OWNER_TYPES).toBe(CANONICAL_OWNER_TYPES);
+  });
+
+  it("carries a household owner type and a household event type", () => {
+    expect(LIFEOPS_OWNER_TYPES as readonly string[]).toContain(
+      "household_grant",
+    );
+    expect(LIFEOPS_AUDIT_EVENT_TYPES as readonly string[]).toContain(
+      "household_grant_issued",
+    );
   });
 });
