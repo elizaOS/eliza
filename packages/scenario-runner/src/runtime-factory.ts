@@ -572,15 +572,11 @@ export function deterministicScheduledDispatchRenderText(
     .replace(/\s+/g, " ")
     .trim();
   if (ownerMessage === instruction && ownerMessage.length >= 64) {
-    const punctuationIndex = ownerMessage.search(/[,;:]/);
-    const splitIndex =
-      punctuationIndex >= 0 ? punctuationIndex : ownerMessage.indexOf(" ");
-    if (splitIndex >= 0) {
-      const suffixOffset = punctuationIndex >= 0 ? 1 : 0;
-      ownerMessage = `${ownerMessage.slice(0, splitIndex).trim()} — ${ownerMessage
-        .slice(splitIndex + suffixOffset)
-        .trim()}`;
-    }
+    const clauseBreak = ownerMessage.match(/^([^,;:]+)[,;:]\s*(.+)$/s);
+    const wordBreak = ownerMessage.match(/^(\S+)\s+(.+)$/s);
+    const messageParts = clauseBreak ?? wordBreak;
+    if (messageParts)
+      ownerMessage = `${messageParts[1].trim()} — ${messageParts[2].trim()}`;
   }
   // A deterministic stand-in for the dispatch-render model must be predictable
   // so scenarios can assert the delivered copy exactly. Prefixing the de-framed

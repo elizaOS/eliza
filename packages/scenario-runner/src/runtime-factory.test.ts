@@ -398,6 +398,22 @@ describe("scenario runtime deterministic model mode", () => {
     expect(rendered).not.toContain(ownerInstruction);
   });
 
+  it("preserves complete long unframed instructions without punctuation", () => {
+    const ownerInstruction =
+      "Protect every uninterrupted focus window while still sending the standup nudge the owner explicitly marked urgent";
+    const prompt = [
+      "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.",
+      "Instruction:",
+      ownerInstruction,
+      "",
+      "Message:",
+    ].join("\n");
+
+    expect(deterministicScheduledDispatchRenderText(prompt)).toBe(
+      "Heads up: Protect — every uninterrupted focus window while still sending the standup nudge the owner explicitly marked urgent",
+    );
+  });
+
   it("resolves the scheduled-dispatch render model call outside the fixture registry", () => {
     const prompt = [
       "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.",
