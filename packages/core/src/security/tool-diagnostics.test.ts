@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
 	composeToolDiagnosticRedactor,
 	projectCompleteModelCallValue,
+	projectCompleteToolValueForModel,
 	projectModelCallDiagnosticValue,
 	projectProtectedModelCallValue,
 	projectToolDiagnosticArgs,
@@ -295,5 +296,63 @@ describe("projectToolDiagnosticArgs", () => {
 		);
 		expect(projected?.token).toBe(TOOL_DIAGNOSTIC_MASK);
 		expect(projected?.count).toBe(2);
+	});
+});
+
+describe("tool diagnostic depth bound", () => {
+	const identity = (text: string) => text;
+
+	/** `wrappers` nested objects around a leaf, so nesting depth is exact. */
+	function nested(wrappers: number): unknown {
+		let value: unknown = { leaf: "DEPTH-CANARY" };
+		for (let i = 0; i < wrappers; i += 1) value = { next: value };
+		return value;
+	}
+
+	function maskDepth(projected: unknown): number | null {
+		let cursor: unknown = projected;
+		for (let depth = 0; depth < 64; depth += 1) {
+			if (cursor === TOOL_DIAGNOSTIC_MASK) return depth;
+			if (typeof cursor !== "object" || cursor === null) return null;
+			cursor = (cursor as { next?: unknown }).next;
+		}
+		return null;
+	}
+
+	// The depth cap is what stops a hostile or runaway tool payload from
+	// walking the projector, and it is also what decides how much nested
+	// diagnostic data reaches a log. Pinned from BOTH sides at the exact
+	// boundary: raising or lowering the bound by one has to fail here, not
+	// only the extreme values a smoke test would catch.
+	it("renders the deepest level inside the bound", () => {
+		const projected = projectToolDiagnosticValue(nested(7), identity);
+		expect(JSON.stringify(projected)).toContain("DEPTH-CANARY");
+		expect(maskDepth(projected)).toBeNull();
+	});
+
+	it("masks one level past the bound, and masks exactly there", () => {
+		const projected = projectToolDiagnosticValue(nested(8), identity);
+		expect(JSON.stringify(projected)).not.toContain("DEPTH-CANARY");
+		// The mask replaces the eighth nested value; everything shallower is
+		// still rendered, so truncation is bounded rather than total.
+		expect(maskDepth(projected)).toBe(8);
+	});
+
+	it("keeps masking at the same depth for deeper payloads", () => {
+		expect(maskDepth(projectToolDiagnosticValue(nested(20), identity))).toBe(8);
+	});
+
+	// The complete model-bound projection documents itself as being "without
+	// diagnostic depth masking". Pinned against the same fixtures, so unifying
+	// the two projectors cannot silently start truncating model input.
+	it("does not apply the depth bound to the complete model-bound projection", () => {
+		for (const wrappers of [8, 20]) {
+			const projected = projectCompleteToolValueForModel(
+				nested(wrappers),
+				identity,
+			);
+			expect(JSON.stringify(projected)).toContain("DEPTH-CANARY");
+			expect(maskDepth(projected)).toBeNull();
+		}
 	});
 });
