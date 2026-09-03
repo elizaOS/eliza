@@ -69,13 +69,19 @@ function deployStep(name: string): WorkflowStep {
 }
 
 describe("provisioning worker deployment contract", () => {
-  it("routes both jobs to the online generic self-hosted fleet", () => {
+  it("uses hosted deployment capacity unless the Hetzner fleet is explicitly healthy", () => {
+    const selector =
+      "runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && " +
+      "'[\"ubuntu-24.04\"]' || '[\"self-hosted\",\"hetzner-robot\"]') }}";
     expect(
-      workflow.match(/^\s+runs-on: \[self-hosted, Linux, X64\]$/gm),
+      workflow.split(selector),
+    ).toHaveLength(3);
+    expect(
+      workflow.match(/^\s+runs-on: \[self-hosted, Linux, X64\]$/gm) ?? [],
+    ).toHaveLength(0);
+    expect(
+      workflow.match(/HETZNER_FLEET_ONLINE/g),
     ).toHaveLength(2);
-    expect(workflow).not.toContain("HETZNER_FLEET_ONLINE");
-    expect(workflow).not.toContain("ubuntu-24.04");
-    expect(workflow).not.toContain("hetzner-robot");
   });
 
   it("resolves one immutable SHA and deploys exactly that snapshot", () => {
@@ -87,7 +93,7 @@ describe("provisioning worker deployment contract", () => {
       'git ls-remote "https://github.com/$' + '{GITHUB_REPOSITORY}.git"',
     );
     expect(workflow).toContain(
-      'fetch --no-recurse-submodules origin "$DEPLOY_SHA"',
+      'git fetch --no-tags --depth=2048 origin \\\n            "$DEPLOY_SHA" "$deployed_sha"',
     );
     expect(workflow).toContain('-B "$DEPLOY_BRANCH" "$DEPLOY_SHA"');
     expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"');
@@ -186,7 +192,7 @@ describe("provisioning worker deployment contract", () => {
     expect(migrationGate).toContain(
       "bun install --frozen-lockfile --no-save --ignore-scripts",
     );
-    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(125);
+    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(140);
   });
 
   it("scopes protected values away from checkout, setup, and install actions", () => {
@@ -308,6 +314,8 @@ describe("provisioning worker deployment contract", () => {
       ["Fence current develop SHA before database mutation", 1],
       ["Run exact-SHA canonical database migrations", 10],
       ["Recheck current develop SHA before host deployment", 1],
+      ["Prepare exact incremental source bundle", 5],
+      ["Transfer exact incremental source bundle", 5],
     ]);
     let totalPreSshMinutes = 0;
     for (const [name, expectedMinutes] of expectedBounds) {
@@ -316,7 +324,7 @@ describe("provisioning worker deployment contract", () => {
       totalPreSshMinutes += bound ?? 0;
     }
 
-    expect(totalPreSshMinutes).toBe(40);
+    expect(totalPreSshMinutes).toBe(50);
     const remoteSteps = parsedWorkflow.jobs?.deploy?.steps?.filter((step) =>
       step.uses?.startsWith("appleboy/ssh-action@"),
     );
@@ -325,10 +333,10 @@ describe("provisioning worker deployment contract", () => {
       expect(timeout).toMatch(/^\d+m$/);
       return Number.parseInt(timeout ?? "", 10);
     });
-    expect(remoteBounds).toEqual([5, 40, 25]);
+    expect(remoteBounds).toEqual([5, 1, 40, 25]);
 
     const jobBound = parsedWorkflow.jobs?.deploy?.["timeout-minutes"];
-    expect(jobBound).toBe(125);
+    expect(jobBound).toBe(140);
     expect(
       totalPreSshMinutes + remoteBounds.reduce((sum, n) => sum + n, 0),
     ).toBeLessThan(jobBound ?? 0);
@@ -366,13 +374,44 @@ describe("provisioning worker deployment contract", () => {
         "{{ format('run-{0}', github.run_id) }}",
     );
     const lock = "exec 9>/tmp/eliza-provisioning-worker-deploy.lock";
-    expect(workflow).toContain(lock);
-    expect(workflow).toContain("flock -w 1200 9");
-    expect(workflow.indexOf(lock)).toBeLessThan(
-      workflow.indexOf("cd /opt/eliza"),
+    const deployScript =
+      deployStep("Deploy and restart worker").with?.script ?? "";
+    expect(deployScript).toContain(lock);
+    expect(deployScript).toContain("flock -w 1200 9");
+    expect(deployScript.indexOf(lock)).toBeLessThan(
+      deployScript.indexOf("cd /opt/eliza"),
     );
     expect(workflow).toContain("command_timeout: 40m");
-    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(125);
+    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(140);
+  });
+
+  it("imports an exact runner-verified source bundle without host GitHub credentials", () => {
+    const script = deployStep("Deploy and restart worker").with?.script ?? "";
+    const setCanonicalRemote = script.indexOf(
+      "git remote set-url origin https://github.com/elizaOS/eliza.git",
+    );
+    const verifyBundle = script.indexOf('git bundle verify "$SOURCE_BUNDLE"');
+    const fetchExactSha = script.indexOf(
+      '--no-recurse-submodules "$SOURCE_BUNDLE" HEAD',
+    );
+
+    expect(setCanonicalRemote).toBeGreaterThan(-1);
+    expect(verifyBundle).toBeGreaterThan(setCanonicalRemote);
+    expect(fetchExactSha).toBeGreaterThan(verifyBundle);
+    expect(script).toContain("SOURCE_BUNDLE_SHA256");
+    expect(script).toContain("actual_source_bundle_sha256");
+    expect(script).not.toContain(
+      'fetch --no-recurse-submodules origin "$DEPLOY_SHA"',
+    );
+    expect(workflow).toContain("persist-credentials: true");
+    expect(workflow).toContain(
+      'git fetch --no-tags --depth=2048 origin \\\n            "$DEPLOY_SHA" "$deployed_sha"',
+    );
+    expect(script).not.toContain("x-access-token");
+    expect(script).not.toContain("github.token");
+    expect(workflow).toContain(
+      'if [ "$deployed_sha" = "$DEPLOY_SHA" ]; then',
+    );
   });
 
   it("regenerates before deploy and self-heals every service", () => {

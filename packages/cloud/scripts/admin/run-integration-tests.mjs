@@ -112,6 +112,12 @@ function buildIntegrationEnv({ context, baseUrl, databaseUrl }) {
       process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE || "1",
     CRON_SECRET: process.env.CRON_SECRET || "test-cron-secret",
     INTERNAL_SECRET: process.env.INTERNAL_SECRET || "test-internal-secret",
+    // Wallet-signature authentication uses an atomic consume-once nonce. The
+    // isolated local Worker lane uses the repository's explicit test backend.
+    MOCK_REDIS: process.env.MOCK_REDIS || "1",
+    // This suite deliberately exercises cache-backed authentication even when
+    // a workflow-level default disables optional caches.
+    CACHE_ENABLED: "true",
     ELIZA_CLOUD_LOCAL_API_URL: baseUrl,
     ELIZA_API_DEV_VARS_PATH: context.devVarsPath,
     DEV_CLOUD_WRANGLER_PERSIST_TO: context.wranglerPersistPath,

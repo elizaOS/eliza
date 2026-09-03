@@ -139,15 +139,17 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   const clickMobileMenuItem = async (name: string) => {
     const item = page.getByRole("menuitem", { name, exact: true });
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      if (!(await item.isVisible().catch(() => false))) {
-        await mobileMoreButton.click();
-        await expect(item).toBeVisible();
-      }
       try {
+        if (!(await item.isVisible())) {
+          await mobileMoreButton.click();
+          await expect(item).toBeVisible({ timeout: 5_000 });
+        }
         await item.click({ timeout: 10_000 });
         return;
       } catch (error) {
         if (attempt === 2) throw error;
+        await page.keyboard.press("Escape");
+        await expect(item).toBeHidden({ timeout: 5_000 });
       }
     }
   };

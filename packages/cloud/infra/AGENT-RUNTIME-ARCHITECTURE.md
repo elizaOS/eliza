@@ -747,3 +747,161 @@ compute the API cannot claim; enabling only the API would find no replenished
 capacity. Do not use the pool to mask the cold-path failure. Activation requires
 recorded billing, capacity, starvation, digest, health, claim, and rollback
 evidence for both halves in one controlled change.
+
+## 2026-09-02 closure: signed-in Dedicated path restored
+
+This section supersedes the intermediate acceptance language above. The full
+investigation crossed several independent faults that presented as one long
+"Dedicated agents do not start" symptom. The failures were repaired in causal
+order and re-tested at their real boundaries instead of treating a public
+health beacon, a Docker `running` state, or a database row as readiness.
+
+The product routing invariant is now explicit:
+
+- authenticated Eliza application and Cloud sessions select
+  `dedicated-always`; they do not fall back to Shared on provisioning failure;
+- anonymous/public `eliza.app` chat and explicitly Shared channel ingress may
+  select Shared;
+- Telegram, Discord, iMessage, and similar external ingress is Shared only
+  when it is the public Eliza service, while a connector installed for a
+  user's personal agent delivers to that user's Dedicated runtime;
+- handoff transfers an explicitly delimited conversation state into the
+  Dedicated owner and records provenance; it is not an implicit Shared
+  continuation or a reason to route a signed-in turn through Shared.
+
+The resulting end-to-end flow is:
+
+```text
+signed-in client
+  -> authenticated Cloud route
+  -> dedicated-always resolver
+  -> agent_sandboxes durable lifecycle row
+  -> provision_jobs leased by the Hetzner provisioning worker
+  -> capacity selection / Docker node allocation
+  -> tenant database creation and migration
+  -> immutable agent image start
+  -> Tailscale join through Headscale over TLS
+  -> headscale_ip persisted only after observed mesh identity
+  -> agent health + fresh heartbeat
+  -> Cloud agent-router forwards the original per-agent host over the mesh
+  -> Dedicated agent chat/SSE
+```
+
+Shared remains a separate edge-owned execution path:
+
+```text
+public or explicitly Shared ingress
+  -> Shared admission and conversation Durable Object
+  -> Shared runtime execution
+  -> Shared response/channel delivery
+```
+
+The two paths may exchange a deliberate handoff envelope, but they do not
+share runtime identity, storage ownership, health, or fallback semantics.
+
+### Root causes and repairs
+
+1. **Signed-in routing admitted Shared fallback.** The authenticated routes,
+   SDK contracts, and regression suites now require `dedicated-always` and
+   preserve a visible failure when Dedicated is unavailable. Merge
+   `696922e0c0861348f3330b41378ef1b15630f12f` and exact hosted run
+   `33596412886` established this boundary.
+2. **The active agent image was initially misidentified.** The protected
+   `ELIZA_AGENT_IMAGE` is built by `build-agent-image.yml` from
+   `packages/app-core/deploy/Dockerfile.ci`, not the similarly named dormant
+   Dockerfile. Build `33630300533` produced and pull-tested
+   `ghcr.io/elizaos/eliza-demo@sha256:b4077a84eaa372f0b8b2d640f966869ae8d614009a6191bb8ed3df238cfa7897`.
+3. **Headscale error reporting collapsed distinct causes.** Merge
+   `4526287d7c9a90e7a0775a8dcd072d8938cff410` introduced closed safe
+   categories; later diagnostics distinguish ingress, registration, peer,
+   routing, application-start, and deletion failures without exposing keys or
+   mesh addresses.
+4. **The Headscale control-plane re-arm trusted a stale durable row.** Merge
+   `408b4647d4880a751cffdce7912fbd7385da2932` requires the durable node, local
+   Running state and IP, and canonical ControlURL together. Arm run
+   `33630162925` converged successfully. Earlier arm failures `33621556735`,
+   `33624576929`, and `33627254594` were retained as negative evidence rather
+   than called success.
+5. **Provisioning containers attempted the TS2021 exchange through plaintext
+   port 80.** Headscale was healthy on the proxied TLS path, but Tailscale
+   remained `NeedsLogin`. The image now sets `TS_FORCE_NOISE_443=1`, matching
+   the upstream client and Headscale reverse-proxy contracts. Exact worker
+   deployment `33650901840` installed the repair; cleanup `33651439541`
+   removed the prior failed target.
+6. **The canary could not safely observe mesh readiness through the owner
+   API.** The raw Headscale address remains admin-only, while the owner DTO now
+   exposes required boolean `meshAddressPresent`. This prevents a healthy mesh
+   from being misreported as absent without widening private network data.
+7. **Deletion retries could become permanently stranded after bridge loss.**
+   The first delete attempt could remove or clear the bridge, and the next
+   attempt returned before honoring its explicit `stateLossAcknowledged`
+   authority. The repaired service binds the waiver to the exact lifecycle
+   generation under lock, proceeds without fabricating or persisting a bridge
+   URL, and still fails closed for ordinary unacknowledged deletion. Diagnostic
+   `33658113000` isolated `pre_delete_capture_refused`; exact worker deployment
+   `33661686020` installed the repair, and cleanup-only run `33662307557`
+   confirmed deletion of `r33654221184a1` with no orphan.
+8. **The Hetzner worker host depended on ambient Git credentials.** The public
+   remote still returned an authentication challenge because host-level Git
+   state contaminated the fetch. The deployment now resolves the installed
+   host generation, constructs a bounded incremental Git bundle from the
+   trusted exact-SHA runner checkout, hashes and transfers it over the existing
+   protected SSH boundary, verifies it on-host, and imports it locally. No
+   GitHub token crosses into Hetzner. Run `33661686020` proved bundle transfer,
+   exact checkout, migration, build, systemd restart, router health, and worker
+   health. Same-SHA retries include the target commit relative to its parent,
+   avoiding an empty-bundle failure.
+
+### Database findings
+
+The tenant and control databases were not the startup root cause in the final
+failed provisions. Canaries `33651867586` and `33654221184` reached a ready
+tenant database and fresh worker heartbeat. Diagnostic `33656460024` showed a
+terminal `deletion_failed` row with durable Docker and Headscale locators,
+completed provisioning, and lifecycle events through `delete_failed`. The
+initial generic "database" label was a diagnostic classifier bug: it matched
+database-looking stack paths instead of the exact delete job's closed failure
+category. Job-correlated diagnostics corrected that false attribution. The
+deployment workflow nevertheless continues to run canonical migrations against
+the protected environment DSN and to fence activation on the job-interruption
+schema preflight.
+
+### Hetzner, queue, and warm-pool weaknesses
+
+- Cold provisioning remains sensitive to queue delay. Canary `33654221184`
+  spent 619,598 ms queued and 37,890 ms executing before the later readiness
+  and cleanup work. Queue age, execution time, and terminal category must stay
+  separate in alerts.
+- The self-hosted GitHub runner fleet repeatedly reported runners online while
+  jobs terminated within four to five seconds at checkout. These attempts made
+  no host or database mutation, but "online" is insufficient fleet health.
+  Deployment receipts must therefore distinguish runner startup failure from
+  host deployment failure, and operators should alert on repeated no-log job
+  terminations. After merge, the same `_diag/pages` collision recurred on
+  runners 11, 13, and 15 while the repository-wide emergency gate already said
+  `HETZNER_FLEET_ONLINE=false`. The provisioning deployment was the exception:
+  it ignored that gate and hard-routed both admission and mutation to the
+  unhealthy generic runner labels. The workflow now uses the canonical
+  fail-closed selector for both jobs: hosted `ubuntu-24.04` unless the fleet is
+  explicitly set to lowercase `true`, otherwise the quarantinable
+  `[self-hosted, hetzner-robot]` pool. The per-slot repair remains the
+  repository-owned `cloud/runners/repair-runner-slot.sh` runbook; deployment no
+  longer depends on those repairs completing before a release can proceed.
+- The provisioning host no longer needs outbound Git authentication, removing
+  a mutable credential/configuration dependency from disaster recovery and
+  ordinary rollout.
+- The warm pool remains protected-off. It was not used to conceal cold-path
+  faults, and it should not be enabled until both the API claim half and daemon
+  replenish half pass the billing, starvation, generation, and rollback
+  evidence enumerated above.
+
+### Acceptance state
+
+At the feature-source boundary, the repaired worker has terminal proof for
+canonical migrations, exact incremental-source admission, systemd identity,
+worker/router health, and recovery of the known deletion orphan. A final fresh
+signed-in create/chat/SSE/delete canary must run from the merged `develop`
+revision after the owner-safe mesh DTO is deployed to Cloudflare; running it
+against the older API would produce a known false negative. That post-merge run
+is the final release receipt for the complete path, not a substitute for the
+causal evidence above.

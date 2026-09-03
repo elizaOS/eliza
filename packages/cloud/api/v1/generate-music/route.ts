@@ -148,6 +148,17 @@ app.post("/", async (c) => {
   // NOT hit the catch's reconcile(0) — which is non-idempotent and would refund
   // the already-correct charge, giving free music. Mirrors generate-image.
   let chargeSettled = false;
+  let providerDispatchStarted = false;
+  let settlementContext:
+    | {
+        requestId: string;
+        organizationId: string;
+        userId: string;
+        model: string;
+        provider: string;
+        billingSource: string;
+      }
+    | undefined;
 
   try {
     const decodedRawBody = await decodeRequestJson(c.req);
@@ -301,6 +312,7 @@ app.post("/", async (c) => {
         cache: getGenerativePricingCacheOptions(c),
       }),
     ]);
+    const billingRequestId = `generate-music:${crypto.randomUUID()}`;
     const billingContext: BillingContext = {
       organizationId: user.organization_id,
       userId: user.id,
@@ -308,9 +320,17 @@ app.post("/", async (c) => {
       model: request.model,
       provider: definition.provider,
       billingSource: definition.billingSource,
-      requestId: `generate-music:${crypto.randomUUID()}`,
+      requestId: billingRequestId,
       affiliateCode: c.req.header("X-Affiliate-Code"),
       description: `Music generation: ${request.model}`,
+    };
+    settlementContext = {
+      requestId: billingRequestId,
+      organizationId: user.organization_id,
+      userId: user.id,
+      model: request.model,
+      provider: definition.provider,
+      billingSource: definition.billingSource,
     };
 
     try {
@@ -336,10 +356,12 @@ app.post("/", async (c) => {
       throw error;
     }
 
+    const audioProvider = getAudioProvider(definition.billingSource);
     await admission.markProviderDispatched?.();
     let generated: GeneratedAudio;
     try {
-      generated = await getAudioProvider(definition.billingSource).generate({
+      providerDispatchStarted = true;
+      generated = await audioProvider.generate({
         kind: "music",
         model: request.model,
         prompt: request.prompt,
@@ -369,7 +391,7 @@ app.post("/", async (c) => {
       });
     } catch (error) {
       // error-policy:J2 breaker accounting for the health gate above, then the
-      // unchanged error proceeds to the route boundary (refund + failureResponse).
+      // unchanged error proceeds to the route boundary for conservative settlement.
       recordGenerativeFailure(
         providerHealthKey,
         classifyGenerativeFailure(error),
@@ -393,61 +415,82 @@ app.post("/", async (c) => {
     const requestId = generated.requestId;
     const status = generated.source === "hosted" ? generated.status : undefined;
     const generationId = crypto.randomUUID();
-    let billingApplied = false;
-    const persistenceTask = (async () => {
-      await billFlatUsage(billingContext, cost, admission?.reservation);
-      billingApplied = true;
-      chargeSettled = true;
-      await generationsService.create({
-        id: generationId,
-        organization_id: user.organization_id,
-        user_id: user.id,
-        type: "music",
-        model: request.model,
-        provider: definition.provider,
-        prompt: request.prompt,
-        result: {
-          requestId,
-          status,
-          billingSource: definition.billingSource,
-          raw: generated.raw,
-        },
-        status: "completed",
-        storage_url: music.url,
-        thumbnail_url: null,
-        file_size: music.file_size ? BigInt(music.file_size) : undefined,
-        mime_type: music.content_type ?? "audio/mpeg",
-        parameters: {
-          ...(request.durationSeconds !== undefined
-            ? { requestedDurationSeconds: request.durationSeconds }
-            : {}),
-          ...(durationSeconds ? { durationSeconds } : {}),
-          durationControl: definition.durationControl,
-          hasLyrics: Boolean(request.lyrics),
-          lyricsOptimizer: request.lyricsOptimizer,
-          instrumental: request.instrumental,
-          referenceUrl: request.referenceUrl,
-          outputFormat: request.outputFormat,
-        },
-        dimensions: {
-          ...(durationSeconds ? { duration: durationSeconds } : {}),
-        },
-        cost: String(cost.totalCost),
-        credits: String(cost.totalCost),
-        job_id: requestId,
-        completed_at: new Date(),
-      });
-    })().catch(async (error) => {
-      if (!billingApplied) await admission?.settleUnknown();
-      // error-policy:J7 billing and generation records persist after the audio
-      // response; conservative settlement remains observable on failure.
-      logger.error("[GenerateMusic] Background persistence failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+    await generationsService.create({
+      id: generationId,
+      organization_id: user.organization_id,
+      user_id: user.id,
+      type: "music",
+      model: request.model,
+      provider: definition.provider,
+      prompt: request.prompt,
+      result: {
+        requestId,
+        status,
+        billingSource: definition.billingSource,
+        raw: generated.raw,
+      },
+      status: "completed",
+      storage_url: music.url,
+      thumbnail_url: null,
+      file_size: music.file_size ? BigInt(music.file_size) : undefined,
+      mime_type: music.content_type ?? "audio/mpeg",
+      parameters: {
+        ...(request.durationSeconds !== undefined
+          ? { requestedDurationSeconds: request.durationSeconds }
+          : {}),
+        ...(durationSeconds ? { durationSeconds } : {}),
+        durationControl: definition.durationControl,
+        hasLyrics: Boolean(request.lyrics),
+        lyricsOptimizer: request.lyricsOptimizer,
+        instrumental: request.instrumental,
+        referenceUrl: request.referenceUrl,
+        outputFormat: request.outputFormat,
+      },
+      dimensions: {
+        ...(durationSeconds ? { duration: durationSeconds } : {}),
+      },
+      cost: String(cost.totalCost),
+      credits: String(cost.totalCost),
+      job_id: requestId,
+      completed_at: new Date(),
     });
+
+    const settlementTask = billFlatUsage(
+      billingContext,
+      cost,
+      admission?.reservation,
+    )
+      .then(() => {
+        chargeSettled = true;
+      })
+      .catch(async (error) => {
+        // error-policy:J7 the durable completed receipt survives accounting
+        // outages; the admission lease remains the conservative backstop.
+        logger.error("[GenerateMusic] Background exact settlement failed", {
+          ...settlementContext,
+          providerDispatchStarted,
+          settlementMode: "unknown",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        try {
+          await admission?.settleUnknown();
+        } catch (settlementError) {
+          // error-policy:J7 reconciliation diagnostics must not reject the
+          // retained background task or hide the primary accounting failure.
+          logger.error("[GenerateMusic] Conservative settlement also failed", {
+            ...settlementContext,
+            providerDispatchStarted,
+            settlementMode: "unknown",
+            error:
+              settlementError instanceof Error
+                ? settlementError.message
+                : String(settlementError),
+          });
+        }
+      });
     const executionCtx = getGenerativeExecutionContext(c);
-    if (executionCtx) executionCtx.waitUntil(persistenceTask);
-    else void persistenceTask;
+    if (executionCtx) executionCtx.waitUntil(settlementTask);
+    else void settlementTask;
 
     return c.json({
       success: true,
@@ -458,11 +501,25 @@ app.post("/", async (c) => {
       cost,
     });
   } catch (error) {
+    // error-policy:J1 translate the route failure after reconciling the durable
+    // reservation according to whether provider dispatch actually began.
     if (admission && !chargeSettled) {
-      const release = admission.settle(0);
+      const settlementMode = providerDispatchStarted ? "unknown" : "release";
+      logger.error("[GenerateMusic] Generation failed after admission", {
+        ...settlementContext,
+        providerDispatchStarted,
+        settlementMode,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const release = providerDispatchStarted
+        ? admission.settleUnknown()
+        : admission.settle(0);
       const executionCtx = getGenerativeExecutionContext(c);
       const observed = release.catch((reconcileError) => {
-        logger.error("[GenerateMusic] Failed to refund reservation", {
+        logger.error("[GenerateMusic] Failed to reconcile reservation", {
+          ...settlementContext,
+          providerDispatchStarted,
+          settlementMode,
           error:
             reconcileError instanceof Error
               ? reconcileError.message

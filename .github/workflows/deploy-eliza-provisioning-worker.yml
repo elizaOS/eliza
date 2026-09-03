@@ -43,7 +43,7 @@ permissions:
 jobs:
   determine-env:
     name: Determine environment
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
@@ -121,7 +121,7 @@ jobs:
 
   deploy:
     name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: determine-env
     concurrency:
       group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}-${{ format('run-{0}', github.run_id) }}
@@ -133,7 +133,7 @@ jobs:
     # wait for an orphaned prior SSH process, 25m identity-locked health) can
     # then each use their ceiling without the enclosing job becoming the first
     # timeout; the remaining fifteen minutes cover action startup and teardown.
-    timeout-minutes: 125
+    timeout-minutes: 140
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
       BACKUP_SYSTEMD_UNIT: eliza-backup-catalog-worker.service
@@ -339,7 +339,11 @@ jobs:
         with:
           ref: ${{ needs.determine-env.outputs.deployment_sha }}
           fetch-depth: 1
-          persist-credentials: false
+          # The runner may need to import the immutable generation currently
+          # installed on the host after that feature ref has been rebased.
+          # The checkout credential remains runner-local; only the verified Git
+          # bundle is transferred to Hetzner and checkout removes it post-job.
+          persist-credentials: true
 
       - name: Verify exact migration source
         if: steps.deploy_config.outputs.configured == 'true'
@@ -501,6 +505,73 @@ jobs:
               ln -sf bun /home/deploy/.bun/bin/bunx
             fi
 
+      - name: Resolve deployed host source
+        id: deployed_source
+        if: steps.deploy_config.outputs.configured == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 1m
+          capture_stdout: true
+          script: |
+            set -euo pipefail
+            cd /opt/eliza
+            deployed_sha="$(git rev-parse HEAD)"
+            [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            echo "ELIZA_DEPLOYED_SHA=$deployed_sha"
+
+      - name: Prepare exact incremental source bundle
+        if: steps.deploy_config.outputs.configured == 'true'
+        timeout-minutes: 5
+        env:
+          DEPLOYED_SOURCE_OUTPUT: ${{ steps.deployed_source.outputs.stdout }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$DEPLOYED_SOURCE_OUTPUT" =~ ELIZA_DEPLOYED_SHA=([0-9a-f]{40}) ]]; then
+            echo "::error::Could not resolve the immutable source currently installed on the provisioning host"
+            exit 1
+          fi
+          deployed_sha="${BASH_REMATCH[1]}"
+          git fetch --no-tags --depth=2048 origin \
+            "$DEPLOY_SHA" "$deployed_sha"
+          if [ "$deployed_sha" = "$DEPLOY_SHA" ]; then
+            # Keep same-SHA retries idempotent: a bundle excluding HEAD itself
+            # is empty and Git refuses to create it, while the installed
+            # generation necessarily already contains its parent.
+            merge_base="$(git rev-parse "$DEPLOY_SHA^")"
+          else
+            merge_base="$(git merge-base "$DEPLOY_SHA" "$deployed_sha")"
+          fi
+          [[ "$merge_base" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::The deployed source has no bounded common history with the requested source"
+            exit 1
+          }
+          git merge-base --is-ancestor "$merge_base" "$deployed_sha"
+          git bundle create .eliza-provisioning-source.bundle \
+            HEAD "^$merge_base"
+          git bundle verify .eliza-provisioning-source.bundle
+          source_bundle_sha256="$(sha256sum \
+            .eliza-provisioning-source.bundle | awk '{print $1}')"
+          [[ "$source_bundle_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "::error::Could not hash the exact incremental source bundle"
+            exit 1
+          }
+          echo "SOURCE_BUNDLE_SHA256=$source_bundle_sha256" >> "$GITHUB_ENV"
+
+      - name: Transfer exact incremental source bundle
+        if: steps.deploy_config.outputs.configured == 'true'
+        timeout-minutes: 5
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          source: .eliza-provisioning-source.bundle
+          target: /tmp/eliza-provisioning-transfer-${{ needs.determine-env.outputs.deployment_sha }}
+          overwrite: true
+
       - name: Deploy and restart worker
         if: steps.deploy_config.outputs.configured == 'true'
         env:
@@ -525,7 +596,7 @@ jobs:
           # wait without weakening the preflight's own eight-minute fail-closed
           # fence near the end of this remote script.
           command_timeout: 40m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,BACKUP_SYSTEMD_UNIT_SHA256,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,VPN_REGISTRATION_TIMEOUT_MS,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,STEWARD_API_URL,STEWARD_PLATFORM_KEYS,AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64,DATABASE_SSL_NO_VERIFY,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_R2_ACCESS_KEY_ID,AGENT_BACKUP_R2_SECRET_ACCESS_KEY,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_HETZNER_ACCESS_KEY_ID,AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_SCHEDULE_BATCH_SIZE,AGENT_BACKUP_SCHEDULE_LEASE_MS,AGENT_BACKUP_SCHEDULE_RETRY_MS,AGENT_BACKUP_OPERATION_BATCH_SIZE,AGENT_BACKUP_OPERATION_LEASE_MS,AGENT_BACKUP_OPERATION_RETRY_BASE_MS,AGENT_BACKUP_OPERATION_RETRY_MAX_MS,AGENT_BACKUP_GC_BATCH_SIZE,AGENT_BACKUP_GC_LEASE_MS,AGENT_BACKUP_GC_RETRY_BASE_MS,AGENT_BACKUP_GC_RETRY_MAX_MS,AGENT_BACKUP_DELETION_BATCH_SIZE,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SOURCE_BUNDLE_SHA256,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,BACKUP_SYSTEMD_UNIT_SHA256,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,VPN_REGISTRATION_TIMEOUT_MS,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,STEWARD_API_URL,STEWARD_PLATFORM_KEYS,AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64,DATABASE_SSL_NO_VERIFY,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_R2_ACCESS_KEY_ID,AGENT_BACKUP_R2_SECRET_ACCESS_KEY,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_HETZNER_ACCESS_KEY_ID,AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_SCHEDULE_BATCH_SIZE,AGENT_BACKUP_SCHEDULE_LEASE_MS,AGENT_BACKUP_SCHEDULE_RETRY_MS,AGENT_BACKUP_OPERATION_BATCH_SIZE,AGENT_BACKUP_OPERATION_LEASE_MS,AGENT_BACKUP_OPERATION_RETRY_BASE_MS,AGENT_BACKUP_OPERATION_RETRY_MAX_MS,AGENT_BACKUP_GC_BATCH_SIZE,AGENT_BACKUP_GC_LEASE_MS,AGENT_BACKUP_GC_RETRY_BASE_MS,AGENT_BACKUP_GC_RETRY_MAX_MS,AGENT_BACKUP_DELETION_BATCH_SIZE,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
           script: |
             set -euo pipefail
 
@@ -594,10 +665,31 @@ jobs:
             # commit whose submodule SHA was never pushed to the fork kills the
             # whole deploy with `upload-pack: not our ref`. Skip submodule
             # traversal entirely on this path.
-            git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules origin "$DEPLOY_SHA"
+            # The trusted runner transfers only the objects between the
+            # deployed generation's common ancestor and the exact admitted
+            # target. The host verifies the bundle before importing it, so
+            # stale Git credentials or GitHub egress policy are not deployment
+            # dependencies and no repository token crosses the SSH boundary.
+            git remote set-url origin https://github.com/elizaOS/eliza.git
+            SOURCE_BUNDLE_DIRECTORY="/tmp/eliza-provisioning-transfer-$DEPLOY_SHA"
+            SOURCE_BUNDLE="$SOURCE_BUNDLE_DIRECTORY/.eliza-provisioning-source.bundle"
+            [[ "$SOURCE_BUNDLE_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+              echo "::error::Refusing an incremental source bundle without its runner-side digest"
+              exit 1
+            }
+            actual_source_bundle_sha256="$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')"
+            [ "$actual_source_bundle_sha256" = "$SOURCE_BUNDLE_SHA256" ] || {
+              echo "::error::Incremental source bundle differs from the exact runner artifact"
+              exit 1
+            }
+            git bundle verify "$SOURCE_BUNDLE"
+            git -c fetch.recurseSubmodules=no fetch \
+              --no-recurse-submodules "$SOURCE_BUNDLE" HEAD
             git -c submodule.recurse=false checkout --no-recurse-submodules \
               -B "$DEPLOY_BRANCH" "$DEPLOY_SHA"
             test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
+            rm -f "$SOURCE_BUNDLE"
+            rmdir "$SOURCE_BUNDLE_DIRECTORY"
 
             # The `rm -f bun.lock` above deletes a TRACKED file; when bun.lock
             # is identical between the previous HEAD and the new tip, checkout

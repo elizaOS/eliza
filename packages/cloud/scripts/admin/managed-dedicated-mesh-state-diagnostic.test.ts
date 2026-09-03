@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   classifyContainerLogs,
+  classifyRuntimeProcessState,
   classifyTailscaleStatus,
 } from "./managed-dedicated-mesh-state-diagnostic";
 
@@ -51,6 +52,41 @@ describe("managed Dedicated mesh-state diagnostic", () => {
       interactiveAuthRequired: true,
       tailscaleUpFailed: true,
       agentStarted: false,
+    });
+  });
+
+  test("retains only closed container startup process facts", () => {
+    expect(
+      classifyRuntimeProcessState(
+        [
+          "pid1=entrypoint",
+          "agent=absent",
+          "entrypoint=present",
+          "tailscale_up=present",
+          "force_noise_443=enabled",
+          "stuck_cli_escape=present",
+        ].join("\n"),
+      ),
+    ).toEqual({
+      pid1: "entrypoint",
+      agentProcessPresent: false,
+      entrypointProcessPresent: true,
+      tailscaleUpProcessPresent: true,
+      forceNoise443Enabled: true,
+      stuckCliEscapePresent: true,
+    });
+  });
+
+  test("fails closed for missing or unrecognized process facts", () => {
+    expect(
+      classifyRuntimeProcessState("pid1=private-command\nagent=present"),
+    ).toEqual({
+      pid1: "unknown",
+      agentProcessPresent: true,
+      entrypointProcessPresent: false,
+      tailscaleUpProcessPresent: false,
+      forceNoise443Enabled: false,
+      stuckCliEscapePresent: false,
     });
   });
 });

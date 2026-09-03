@@ -265,6 +265,13 @@ export class HeadscaleIntegration {
       const envVars: Record<string, string> = {
         HEADSCALE_URL: headscalePublicUrl(),
         TS_AUTHKEY: preAuthKeyObj.key,
+        // Tailscale otherwise races a plaintext port-80 Noise attempt against
+        // the configured HTTPS control origin. The Headscale edge redirects
+        // port 80, and container networking can leave that first upgraded
+        // connection hanging without reaching the 443 fallback. Keep every
+        // managed agent on the authenticated endpoint whose TS2021 upgrade is
+        // part of the control-plane convergence contract.
+        TS_FORCE_NOISE_443: "1",
         TS_HOSTNAME: tsHostname,
         TS_STATE_DIR: "/var/lib/tailscale",
         TS_EXTRA_ARGS: "--accept-routes",

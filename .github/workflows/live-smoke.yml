@@ -537,6 +537,116 @@ jobs:
       - name: Validate provision diagnostic contract
         run: bun test packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.test.ts
 
+      - name: Classify exact canary journal by suffix
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          CANARY_DIAGNOSTIC_SUFFIX: ${{ inputs.diagnose_canary_suffix }}
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          envs: CANARY_DIAGNOSTIC_SUFFIX
+          script: |
+            set -euo pipefail
+            [[ "$CANARY_DIAGNOSTIC_SUFFIX" =~ ^r[1-9][0-9]{7,19}a[1-9][0-9]{0,3}$ ]] || exit 1
+            expected_name="managed-dedicated-canary-$CANARY_DIAGNOSTIC_SUFFIX"
+            journal="$(
+              sudo journalctl \
+                -u eliza-provisioning-worker.service \
+                --since '4 hours ago' \
+                -o cat \
+                --no-pager 2>/dev/null \
+                | tail -n 20000 \
+                || true
+            )"
+            ids="$(
+              printf '%s\n' "$journal" \
+                | grep -F "$expected_name" \
+                | grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}' \
+                | sort -u \
+                || true
+            )"
+            id_count="$(printf '%s\n' "$ids" | sed '/^$/d' | wc -l | tr -d ' ')"
+            if [ "$id_count" = 1 ]; then
+              agent_id="$(printf '%s\n' "$ids" | sed '/^$/d')"
+              echo "::add-mask::$agent_id"
+              block="$(printf '%s\n' "$journal" | grep -F -B 16 -A 24 "$agent_id" | tail -n 1600 || true)"
+              target='resolved'
+            elif [ "$id_count" = 0 ]; then
+              block="$(printf '%s\n' "$journal" | grep -F -B 16 -A 160 "$expected_name" | tail -n 800 || true)"
+              target='missing_id'
+            else
+              block=''
+              target='ambiguous_id'
+            fi
+            lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
+            observation="$(
+              printf '%s\n' "$lower" \
+                | sed -n 's/^.*docker candidate mesh observation before cleanup: //p' \
+                | tail -n 1
+            )"
+            case "$observation" in
+              *'authkey_rejected=true'*|*'interactive=true'*) category='mesh_auth_required' ;;
+              *'container=exited'*|*'container=dead'*) category='candidate_container_exited' ;;
+              *'socket=false'*'daemon=false'*) category='tailscale_daemon_unavailable' ;;
+              *'control=false'*) category='headscale_control_unreachable' ;;
+              *'dns_failed=true'*) category='headscale_dns_failure' ;;
+              *'tls_failed=true'*) category='headscale_tls_failure' ;;
+              *'control_transport_failed=true'*) category='headscale_control_transport_failure' ;;
+              *'control_key=false'*) category='headscale_control_key_not_fetched' ;;
+              *'login_started=false'*) category='tailscale_login_not_started' ;;
+              *'register_request=false'*) category='tailscale_register_request_not_sent' ;;
+              *'status=error'*) category='tailscale_status_unavailable' ;;
+              *'backend=needslogin'*) category='tailscale_needs_login' ;;
+              *'backend=needsmachineauth'*) category='tailscale_needs_machine_auth' ;;
+              *'backend=starting'*) category='tailscale_starting_without_ip' ;;
+              *'backend=stopped'*) category='tailscale_stopped' ;;
+              *'backend=running'*'ip=false'*) category='tailscale_running_without_ip' ;;
+              *'ip=true'*) category='candidate_ip_observed' ;;
+              '')
+                case "$lower" in
+                  *'required headscale registration: auth_required'*) category='mesh_auth_required' ;;
+                  *'required headscale registration: container_exited'*) category='candidate_container_exited' ;;
+                  *'headscale registration did not reach an exact observable completion'*) category='registration_unresolved' ;;
+                  *'vpn registration timeout'*) category='registration_timeout' ;;
+                  *' registered on vpn:'*) category='registration_observed' ;;
+                  '') category='missing' ;;
+                  *) category='unclassified' ;;
+                esac
+                ;;
+              *) category='observation_unclassified' ;;
+            esac
+            observation_present=false
+            [ -n "$observation" ] && observation_present=true
+            provision_failed=false
+            provision_completed=false
+            case "$lower" in *'agent_provision failed'*) provision_failed=true ;; esac
+            case "$lower" in *'agent_provision completed'*) provision_completed=true ;; esac
+            echo "suffix_journal_target=$target"
+            echo "suffix_journal_mesh_category=$category"
+            echo "suffix_journal_observation_present=$observation_present"
+            echo "suffix_journal_provision_failed=$provision_failed"
+            echo "suffix_journal_provision_completed=$provision_completed"
+            if [ "$observation_present" = true ]; then
+              for field in container socket daemon status backend authorized authurl ip route tun control \
+                control_key login_started register_request control_transport_failed tls_failed dns_failed \
+                authkey_rejected interactive up_failed agent_started; do
+                value="$(printf '%s' "$observation" | tr ',' '\n' | sed -n "s/^${field}=//p" | tail -n 1)"
+                case "$field:$value" in
+                  container:running|container:paused|container:restarting|container:removing|container:exited|container:dead|container:created|container:unknown) ;;
+                  status:success|status:error) ;;
+                  backend:running|backend:starting|backend:stopped|backend:needslogin|backend:needsmachineauth|backend:nostate|backend:unknown) ;;
+                  authorized:true|authorized:false|authorized:unknown) ;;
+                  socket:true|socket:false|daemon:true|daemon:false|authurl:true|authurl:false|ip:true|ip:false|route:true|route:false|tun:true|tun:false|control:true|control:false|control_key:true|control_key:false|login_started:true|login_started:false|register_request:true|register_request:false|control_transport_failed:true|control_transport_failed:false|tls_failed:true|tls_failed:false|dns_failed:true|dns_failed:false|authkey_rejected:true|authkey_rejected:false|interactive:true|interactive:false|up_failed:true|up_failed:false|agent_started:true|agent_started:false) ;;
+                  *) value='unknown' ;;
+                esac
+                echo "suffix_journal_observation_${field}=$value"
+              done
+            fi
+            unset expected_name journal ids id_count agent_id block lower observation target category \
+              observation_present provision_failed provision_completed CANARY_DIAGNOSTIC_SUFFIX
+
       - name: Query exact failed canary read-only
         shell: bash
         env:
@@ -747,6 +857,14 @@ jobs:
             ORDER BY jobs.created_at DESC, jobs.id DESC
             LIMIT 1
           ),
+          latest_delete AS (
+            SELECT jobs.id
+            FROM jobs
+            INNER JOIN target ON target.id::text = jobs.agent_id
+            WHERE jobs.type = 'agent_delete'
+            ORDER BY jobs.created_at DESC, jobs.id DESC
+            LIMIT 1
+          ),
           eligible AS (
             SELECT candidate.replacement_cleanup_created_at
             FROM agent_sandboxes AS candidate
@@ -818,6 +936,7 @@ jobs:
           SELECT json_build_object(
             'targetCount', (SELECT count(*) FROM target),
             'agentId', (SELECT id FROM target),
+            'deleteJobId', (SELECT id FROM latest_delete),
             'headscaleIp', (SELECT headscale_ip FROM facts),
             'cleanupFencePresent', COALESCE((SELECT cleanup_fence_present FROM facts), false),
             'deletionAttemptPresent', COALESCE((SELECT deletion_attempt_present FROM facts), false),
@@ -837,9 +956,10 @@ jobs:
           SQL
           } | sed '/^[[:space:]]*$/d' | head -n 1)"
           jq -e '
-            keys == ["activeExclusiveJobs", "agentId", "cleanupCreatedAt", "cleanupFencePresent", "deletionAttemptPresent", "graceElapsed", "headscaleIp", "inspectableCandidatePresent", "lifecycleGenerationPresent", "lifecycleJobPresent", "olderEligibleFences", "provisionExecutionGenerationPresent", "provisionExecutionQuiescedPresent", "provisionLiveExecutionLeasePresent", "targetCount", "totalEligibleFences"] and
+            keys == ["activeExclusiveJobs", "agentId", "cleanupCreatedAt", "cleanupFencePresent", "deleteJobId", "deletionAttemptPresent", "graceElapsed", "headscaleIp", "inspectableCandidatePresent", "lifecycleGenerationPresent", "lifecycleJobPresent", "olderEligibleFences", "provisionExecutionGenerationPresent", "provisionExecutionQuiescedPresent", "provisionLiveExecutionLeasePresent", "targetCount", "totalEligibleFences"] and
             .targetCount == 1 and
             (.agentId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")) and
+            (.deleteJobId == null or (.deleteJobId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"))) and
             (.cleanupFencePresent | type == "boolean") and
             (
               (
@@ -866,6 +986,12 @@ jobs:
           echo "::add-mask::$agent_id"
           echo "agent_id=$agent_id" >> "$GITHUB_OUTPUT"
           unset agent_id
+          delete_job_id="$(jq -r '.deleteJobId // ""' <<<"$summary")"
+          if [ -n "$delete_job_id" ]; then
+            echo "::add-mask::$delete_job_id"
+          fi
+          echo "delete_job_id=$delete_job_id" >> "$GITHUB_OUTPUT"
+          unset delete_job_id
           headscale_ip="$(jq -r '.headscaleIp // ""' <<<"$summary")"
           if [ -n "$headscale_ip" ]; then
             echo "::add-mask::$headscale_ip"
@@ -1197,24 +1323,29 @@ jobs:
             fi
             unset probe_status
             jq -e '
-              keys == ["container", "logs", "schemaVersion", "tailscale", "targetCount"] and
-              .schemaVersion == 1 and
+              keys == ["container", "logs", "runtime", "schemaVersion", "tailscale", "targetCount"] and
+              .schemaVersion == 2 and
               .targetCount == 1 and
-              (.container | keys == ["exitCode", "inspect", "status"]) and
+              (.container | keys == ["exitCode", "imageMatchesConfigured", "inspect", "status"]) and
               (.container.inspect == "success" or .container.inspect == "error") and
               (.container.status | IN("created", "running", "paused", "restarting", "removing", "exited", "dead", "unknown")) and
               (.container.exitCode == null or (.container.exitCode | type == "number")) and
+              (.container.imageMatchesConfigured == null or (.container.imageMatchesConfigured | type == "boolean")) and
               (.tailscale | keys == ["authUrlPresent", "backendState", "daemonPresent", "ipPresent", "machineAuthorized", "query", "socketPresent"]) and
               (.tailscale.query == "success" or .tailscale.query == "error") and
               (.tailscale.backendState == null or (.tailscale.backendState | IN("NeedsLogin", "NeedsMachineAuth", "NoState", "Running", "Starting", "Stopped"))) and
               (.tailscale.machineAuthorized == null or (.tailscale.machineAuthorized | type == "boolean")) and
               ([.tailscale.authUrlPresent, .tailscale.daemonPresent, .tailscale.ipPresent, .tailscale.socketPresent] | all(type == "boolean")) and
               (.logs | keys == ["agentStarted", "authKeyRejected", "interactiveAuthRequired", "tailscaleUpFailed"]) and
-              ([.logs.agentStarted, .logs.authKeyRejected, .logs.interactiveAuthRequired, .logs.tailscaleUpFailed] | all(type == "boolean"))
+              ([.logs.agentStarted, .logs.authKeyRejected, .logs.interactiveAuthRequired, .logs.tailscaleUpFailed] | all(type == "boolean")) and
+              (.runtime | keys == ["agentProcessPresent", "entrypointProcessPresent", "forceNoise443Enabled", "pid1", "stuckCliEscapePresent", "tailscaleUpProcessPresent"]) and
+              (.runtime.pid1 | IN("agent", "entrypoint", "other", "tailscale-up", "unknown")) and
+              ([.runtime.agentProcessPresent, .runtime.entrypointProcessPresent, .runtime.forceNoise443Enabled, .runtime.stuckCliEscapePresent, .runtime.tailscaleUpProcessPresent] | all(type == "boolean"))
             ' <<<"$diagnostic" >/dev/null
             jq -r '
               "private_mesh_container_status=" + .container.status,
               "private_mesh_container_exit_code=" + ((.container.exitCode // "none") | tostring),
+              "private_mesh_container_image_matches_configured=" + ((.container.imageMatchesConfigured // "unknown") | tostring),
               "private_mesh_tailscale_query=" + .tailscale.query,
               "private_mesh_tailscale_backend=" + (.tailscale.backendState // "unknown"),
               "private_mesh_tailscale_machine_authorized=" + ((.tailscale.machineAuthorized // "unknown") | tostring),
@@ -1225,7 +1356,13 @@ jobs:
               "private_mesh_log_auth_key_rejected=" + (.logs.authKeyRejected | tostring),
               "private_mesh_log_interactive_auth=" + (.logs.interactiveAuthRequired | tostring),
               "private_mesh_log_tailscale_up_failed=" + (.logs.tailscaleUpFailed | tostring),
-              "private_mesh_log_agent_started=" + (.logs.agentStarted | tostring)
+              "private_mesh_log_agent_started=" + (.logs.agentStarted | tostring),
+              "private_mesh_runtime_pid1=" + .runtime.pid1,
+              "private_mesh_runtime_agent_process=" + (.runtime.agentProcessPresent | tostring),
+              "private_mesh_runtime_entrypoint_process=" + (.runtime.entrypointProcessPresent | tostring),
+              "private_mesh_runtime_tailscale_up_process=" + (.runtime.tailscaleUpProcessPresent | tostring),
+              "private_mesh_runtime_force_noise_443=" + (.runtime.forceNoise443Enabled | tostring),
+              "private_mesh_runtime_stuck_cli_escape=" + (.runtime.stuckCliEscapePresent | tostring)
             ' <<<"$diagnostic"
             unset diagnostic
 
@@ -1300,6 +1437,65 @@ jobs:
             echo "headscale_registration_timeout_seen=$timed_out"
             echo "headscale_tag_rejection_seen=$tag_rejected"
 
+      - name: Summarize Headscale ingress protocol
+        if: steps.cleanup_reconciliation.outputs.agent_id != ''
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            version_raw="$(sudo headscale version 2>/dev/null || true)"
+            version="$(printf '%s' "$version_raw" | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
+            if [[ ! "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              version='unknown'
+            fi
+            unset version_raw
+
+            # Default nginx access logs contain remote addresses and user
+            # agents. Reduce the bounded tail on-host to exact method/path/status
+            # counters and emit only those closed aggregate fields.
+            summary="$({
+              sudo tail -n 20000 /var/log/nginx/access.log 2>/dev/null || true
+              sudo zcat -f /var/log/nginx/access.log.1 2>/dev/null || true
+            } | awk '
+              function count_path(method, path, status) {
+                if (method == "GET" && path ~ /^\/key([?]|$)/) key[status] += 1
+                if (path == "/ts2021") {
+                  ts2021[status] += 1
+                  if (method == "POST") ts2021_post += 1
+                  if (method == "GET") ts2021_get += 1
+                }
+                if (method == "POST" && path == "/machine/register") machine_register[status] += 1
+              }
+              {
+                split($0, quoted, "\"")
+                split(quoted[2], request, " ")
+                split(quoted[3], response, " ")
+                if (length(request) >= 2 && response[1] ~ /^[0-9][0-9][0-9]$/) {
+                  count_path(request[1], request[2], response[1])
+                }
+              }
+              END {
+                key_total = ts_total = machine_total = 0
+                for (status in key) key_total += key[status]
+                for (status in ts2021) ts_total += ts2021[status]
+                for (status in machine_register) machine_total += machine_register[status]
+                printf "key_total=%d\n", key_total
+                printf "ts2021_total=%d\n", ts_total
+                printf "ts2021_post=%d\n", ts2021_post + 0
+                printf "ts2021_get=%d\n", ts2021_get + 0
+                printf "machine_register_total=%d\n", machine_total
+                for (status in ts2021) printf "ts2021_status_%s=%d\n", status, ts2021[status]
+                for (status in machine_register) printf "machine_register_status_%s=%d\n", status, machine_register[status]
+              }
+            ')"
+            echo "headscale_version=$version"
+            printf '%s\n' "$summary"
+            unset version summary
+
       - name: Summarize recent agent pre-auth key state
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -1362,24 +1558,27 @@ jobs:
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         env:
           CANARY_AGENT_ID: ${{ steps.cleanup_reconciliation.outputs.agent_id }}
+          CANARY_DELETE_JOB_ID: ${{ steps.cleanup_reconciliation.outputs.delete_job_id }}
         with:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 2m
-          envs: CANARY_AGENT_ID
+          envs: CANARY_AGENT_ID,CANARY_DELETE_JOB_ID
           script: |
             set -euo pipefail
             [[ "$CANARY_AGENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
+            if [ -n "$CANARY_DELETE_JOB_ID" ]; then
+              [[ "$CANARY_DELETE_JOB_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
+            fi
             block="$(
               sudo journalctl \
                 -u eliza-provisioning-worker.service \
                 --since '4 hours ago' \
                 -o cat \
                 --no-pager 2>/dev/null \
-                | grep -F -B 12 -A 12 "$CANARY_AGENT_ID" \
+                | { grep -F -B 12 -A 12 -e "$CANARY_AGENT_ID" ${CANARY_DELETE_JOB_ID:+-e "$CANARY_DELETE_JOB_ID"} || true; } \
                 | tail -n 1200 \
-                || true
             )"
             lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
             signals=''
@@ -1436,11 +1635,19 @@ jobs:
               *'inference revocation durable object binding is missing'*) delete_category='inference_revocation_binding_missing' ;;
               *'refusing to delete without a current backup'*) delete_category='pre_delete_capture_refused' ;;
               *'failed to delete sandbox'*) delete_category='sandbox_stop_failed' ;;
+              *'value.toisostring is not a function'*) delete_category='timestamp_shape_invalid' ;;
+              *'still owns backup catalog v2 authority'*) delete_category='backup_catalog_authority_retained' ;;
+              *'reviewed restore authority is fenced for agent'*) delete_category='reviewed_restore_authority_fenced' ;;
+              *'failed query: delete from "agent_sandboxes"'*) delete_category='sandbox_row_delete_query_failed' ;;
+              *'failed query: update "api_keys"'*) delete_category='credential_revocation_query_failed' ;;
+              *'deadlock detected'*) delete_category='database_deadlock' ;;
+              *'could not serialize access'*) delete_category='database_serialization' ;;
+              *'connection terminated'*|*'connection closed'*) delete_category='database_connection_lost' ;;
               *'agent deletion ownership changed'*|*'agent row delete lost its lifecycle ownership'*) delete_category='database_ownership_lost' ;;
               *'marked sandbox as deletion_failed'*) delete_category='permanent_failure_unclassified' ;;
               *) delete_category='none' ;;
             esac
-            unset block lower CANARY_AGENT_ID
+            unset block lower CANARY_AGENT_ID CANARY_DELETE_JOB_ID
             echo "dedicated_lifecycle_signals=${signals:-none}"
             echo "dedicated_heartbeat_failure_category=$heartbeat_category"
             echo "dedicated_delete_failure_category=$delete_category"

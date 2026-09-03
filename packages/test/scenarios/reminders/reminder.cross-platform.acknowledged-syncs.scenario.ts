@@ -1,5 +1,6 @@
 /** Scenario fixture for reminder cross platform acknowledged syncs; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { reminderDispatchModelFixtures } from "./reminder-dispatch-model-fixtures";
 
 /**
  * Deterministic acknowledgement control for the cross-device ladder case,
@@ -146,10 +147,7 @@ async function resetSharedRateLimits(): Promise<string | undefined> {
 
 export default scenario({
   lane: "pr-deterministic",
-  modelFixtures: {
-    mode: "model-free",
-    reason: "Direct API turns exercise runtime contracts without model calls.",
-  },
+  modelFixtures: reminderDispatchModelFixtures(3),
   id: "reminder.cross-platform.acknowledged-syncs",
   title: "Acknowledging one rung suppresses the remaining ladder",
   domain: "reminders",

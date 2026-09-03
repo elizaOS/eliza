@@ -133,6 +133,18 @@ function remoteSmoke() {
     rendererBuildId: buildId,
     cloudApiOrigin: apiOrigin,
     cloudEnvironment: "staging",
+    referenceBinding: {
+      runtime: "dedicated",
+      apiBase:
+        "https://123e4567-e89b-42d3-a456-426614174000.cloud-staging.eliza.app",
+    },
+    chatCorrelation: {
+      traceId: "0123456789abcdef0123456789abcdef",
+      serverTiming:
+        "dedicated_auth;dur=1.25, dedicated_ownership;dur=1, dedicated_routing;dur=1, dedicated_proxy_dispatch;dur=1, dedicated_total;dur=4.25",
+      preforward: "total=3;auth=1;mid=1;reserve=1;setup=0",
+      providerRequestIdSha256: "d".repeat(64),
+    },
     outcome: "success",
   };
 }
@@ -349,7 +361,67 @@ describe("deployed renderer proof", () => {
     expect(parseDeployedRendererProof(proof)).toEqual(proof);
     expect(proof.sourceSha).toBe(sourceSha);
     expect(proof.remoteSmoke.outcome).toBe("success");
+    expect(proof.remoteSmoke.chatCorrelation).toEqual(
+      remoteSmoke().chatCorrelation,
+    );
     expect(proof.continuity.forbiddenAgentMutationCount).toBe(0);
+  });
+
+  test("rejects unsafe or unvalidated browser correlation fields", async () => {
+    const inputs = {
+      authority: authority(),
+      preflight: await publicCheck("preflight"),
+      latency: latency(),
+      continuity: continuity(),
+      postflight: await publicCheck("postflight"),
+    };
+    for (const chatCorrelation of [
+      { ...remoteSmoke().chatCorrelation, traceId: "Bearer private-secret" },
+      {
+        ...remoteSmoke().chatCorrelation,
+        serverTiming:
+          "dedicated_auth;dur=1, dedicated_ownership;dur=1, dedicated_routing;dur=1, dedicated_proxy_dispatch;dur=1, dedicated_total;dur=4, private_api_key;dur=1",
+      },
+      {
+        ...remoteSmoke().chatCorrelation,
+        providerRequestIdSha256: "private request id with spaces",
+      },
+      { ...remoteSmoke().chatCorrelation, credential: "private-secret" },
+    ]) {
+      expect(() =>
+        createDeployedRendererProof({
+          ...inputs,
+          remoteSmoke: { ...remoteSmoke(), chatCorrelation },
+        }),
+      ).toThrow();
+    }
+    for (const remote of [
+      {
+        ...remoteSmoke(),
+        referenceBinding: {
+          ...remoteSmoke().referenceBinding,
+          runtime: "shared",
+        },
+      },
+      {
+        ...remoteSmoke(),
+        referenceBinding: {
+          runtime: "dedicated",
+          apiBase: "https://api-staging.eliza.app",
+        },
+      },
+      {
+        ...remoteSmoke(),
+        chatCorrelation: {
+          ...remoteSmoke().chatCorrelation,
+          serverTiming: "dedicated_total;dur=4",
+        },
+      },
+    ]) {
+      expect(() =>
+        createDeployedRendererProof({ ...inputs, remoteSmoke: remote }),
+      ).toThrow();
+    }
   });
 
   test("rejects a stale renderer manifest before browser auth", async () => {

@@ -107,12 +107,10 @@ describe("Cloud CF atomic Worker secrets deploy", () => {
     const verify = step("Verify required Worker secret binding names");
 
     expect(prepare.env?.ELIZA_APP_TELEGRAM_BOT_TOKEN).toBe(
-      "$" +
-        "{{ secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'BOT_TOKEN')] }}",
+      "$" + "{{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}",
     );
     expect(prepare.env?.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET).toBe(
-      "$" +
-        "{{ secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'WEBHOOK_SECRET')] }}",
+      "$" + "{{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}",
     );
     expect(prepare.run).toContain("telegram_runtime_secret_names=(");
     expect(prepare.run).toContain('[ "$DEPLOY_ENVIRONMENT" = "production" ]');
