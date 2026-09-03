@@ -1043,7 +1043,7 @@ describe("repository ruleset contract", () => {
       "repository_ruleset_drift",
     ]);
     expect(drift.permissions).toEqual({ contents: "read" });
-    expect(drift.jobs.readback.if).toBe("github.ref == 'refs/heads/develop'");
+    expect(drift.jobs.readback.if).toBeUndefined();
     expect(drift.jobs.readback.environment).toBeUndefined();
     expect(drift.jobs.readback.strategy.matrix.manifest).toEqual([
       ".github/rulesets/required-main.json",
@@ -1052,6 +1052,13 @@ describe("repository ruleset contract", () => {
     expect(driftSource).not.toContain("--apply");
     expect(driftSource).not.toContain("workflow_dispatch");
     expect(driftSource).not.toContain("schedule:");
+    const refGuard = drift.jobs.readback.steps.at(0);
+    expect(refGuard.name).toBe("Require the exact develop event ref");
+    expect(refGuard.if).toBeUndefined();
+    expect(refGuard.run).toContain(
+      'if [ "$GITHUB_REF" != "refs/heads/develop" ]',
+    );
+    expect(refGuard.run).toContain("exit 1");
     const checkout = drift.jobs.readback.steps.find(
       (step: Record<string, any>) =>
         step.uses ===
