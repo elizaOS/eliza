@@ -23,6 +23,8 @@ import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
 import { useBranding } from "../../config/branding";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import {
+  loadContinuousChatMode,
+  loadOsIntentAutoStartConsent,
   loadWakeWordEnabled,
   saveContinuousChatMode,
   saveOsIntentAutoStartConsent,
@@ -81,13 +83,24 @@ function readStoredVoicePrefs(
   // Note: legacy `cloudFirstLineCache` / `autoLearnVoices` keys may still sit
   // in older persisted `messages.voice` blobs; they are dead (no readers) and
   // intentionally dropped here — see the removal note in VoiceSection.tsx.
+  // Server silence is not revocation: when the fetch failed or the server blob
+  // has no explicit value (fresh/offline server), fall back to the device-local
+  // mirrors so a mount never clobbers explicit user prefs with defaults.
+  // Continuous mode resolves through its loader (not the raw key) so the
+  // appliance query-param override keeps working.
+  const localConsent = loadOsIntentAutoStartConsent();
   return {
     continuous: isContinuousMode(stored.continuous)
       ? stored.continuous
-      : DEFAULT_VOICE_SECTION_PREFS.continuous,
-    osIntentAutoStartVoice: stored.osIntentAutoStartVoice === true,
+      : loadContinuousChatMode(),
+    osIntentAutoStartVoice:
+      typeof stored.osIntentAutoStartVoice === "boolean"
+        ? stored.osIntentAutoStartVoice
+        : localConsent.voice,
     osIntentAutoStartTranscription:
-      stored.osIntentAutoStartTranscription === true,
+      typeof stored.osIntentAutoStartTranscription === "boolean"
+        ? stored.osIntentAutoStartTranscription
+        : localConsent.transcription,
     vadAutoStop: readVadAutoStop(stored.vadAutoStop),
   };
 }
