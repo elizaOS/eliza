@@ -35,6 +35,19 @@ describe("jobErrorText — completeness", () => {
     const text = jobErrorText(new Error("value.toISOString is not a function"));
     expect(text).toContain("value.toISOString is not a function");
   });
+
+  test("retains the message when a native subclass stack omits it", () => {
+    const error = new Error("readiness probe transport_unresolved");
+    error.name = "RetryableProvisionTransportError";
+    error.stack = "Error\n    at executeAgentProvision (provisioning-jobs.ts:6553:19)";
+
+    const text = jobErrorText(error);
+
+    expect(text).toContain(
+      "RetryableProvisionTransportError: readiness probe transport_unresolved",
+    );
+    expect(text).toContain("at executeAgentProvision");
+  });
 });
 
 describe("jobErrorText — never throws before the job is written back", () => {

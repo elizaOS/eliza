@@ -247,21 +247,35 @@ function safeString(value: unknown): string {
 
 /** `error.stack` is an accessor and can throw or be a non-string. */
 function safeStack(error: Error): string {
+  let message: string | undefined;
+  try {
+    message =
+      typeof error.message === "string" && error.message.length > 0 ? error.message : undefined;
+  } catch {
+    // error-policy:J3 hostile message accessor; the stack may still be readable.
+  }
   try {
     const stack = error.stack;
     if (typeof stack === "string" && stack.trim().length > 0) {
-      return stack.trim();
+      const trimmedStack = stack.trim();
+      if (!message || trimmedStack.includes(message)) return trimmedStack;
+
+      // Bun can expose a lazily materialized stack whose first line is only
+      // "Error" after an Error subclass changes its name. The durable job
+      // diagnostic must retain the explicit message even when the native stack
+      // omits it; keep both rather than replacing either source of evidence.
+      let name = "Error";
+      try {
+        if (typeof error.name === "string" && error.name.length > 0) name = error.name;
+      } catch {
+        // error-policy:J3 hostile name accessor; the generic label is sufficient.
+      }
+      return `${name}: ${message}\n${trimmedStack}`;
     }
   } catch {
     // error-policy:J3 hostile stack accessor; fall through to the message.
   }
-  try {
-    return typeof error.message === "string" && error.message.length > 0
-      ? error.message
-      : safeString(error);
-  } catch {
-    return "[unreadable error]";
-  }
+  return message ?? safeString(error);
 }
 
 /**
