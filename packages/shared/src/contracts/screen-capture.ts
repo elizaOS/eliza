@@ -130,3 +130,28 @@ export function normalizeScreenCaptureFrameContract(
   };
   return isScreenCaptureFrameContract(candidate) ? candidate : null;
 }
+
+export function isScreenCaptureFailureContract(
+  value: unknown,
+): value is ScreenCaptureFailureContract {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.requestId === "string" &&
+    typeof value.error === "string" &&
+    typeof value.capturedAt === "number" &&
+    Number.isFinite(value.capturedAt)
+  );
+}
+
+/** Upgrade failure results emitted before capturedAt became required. */
+export function normalizeScreenCaptureFailureContract(
+  value: unknown,
+  now: () => number = Date.now,
+): ScreenCaptureFailureContract | null {
+  if (!isRecord(value)) return null;
+  const candidate = {
+    ...value,
+    capturedAt: value.capturedAt === undefined ? now() : value.capturedAt,
+  };
+  return isScreenCaptureFailureContract(candidate) ? candidate : null;
+}

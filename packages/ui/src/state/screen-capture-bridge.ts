@@ -151,6 +151,7 @@ async function serveRequest(
       {
         requestId: request.requestId,
         error: reason,
+        capturedAt: Date.now(),
       },
       signal,
     ).catch(() => undefined);

@@ -7,7 +7,10 @@
  */
 
 import type { Route } from "@elizaos/core";
-import { normalizeScreenCaptureFrameContract } from "@elizaos/shared";
+import {
+  normalizeScreenCaptureFailureContract,
+  normalizeScreenCaptureFrameContract,
+} from "@elizaos/shared";
 import {
   OCR_BRIDGE_SERVICE_TYPE,
   type OcrBridgeService,
@@ -58,15 +61,9 @@ export const screenFrameRoute: Route = {
     const body = ctx.body;
     // Renderer signalled a capture failure/skip so the pending request settles
     // immediately rather than waiting out the bridge timeout.
-    if (
-      typeof body === "object" &&
-      body !== null &&
-      typeof (body as Record<string, unknown>).requestId === "string" &&
-      (body as Record<string, unknown>).error !== undefined
-    ) {
-      const requestId = (body as Record<string, unknown>).requestId as string;
-      const reason = String((body as Record<string, unknown>).error);
-      const failed = bridge.failFrame(requestId, reason);
+    const failure = normalizeScreenCaptureFailureContract(body);
+    if (failure) {
+      const failed = bridge.failFrame(failure.requestId, failure.error);
       return failed
         ? jsonResult(200, { ok: true })
         : jsonResult(404, { ok: false, error: "unknown_request" });

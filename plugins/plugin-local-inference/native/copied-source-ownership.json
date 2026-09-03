@@ -10,10 +10,24 @@
       "adapted": []
     },
     {
+      "name": "wakeword-public-abi",
+      "ownerRoot": "packages/native/plugins/wakeword-cpp/include/wakeword",
+      "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/wakeword/include/wakeword",
+      "exact": ["wakeword.h"],
+      "adapted": []
+    },
+    {
       "name": "silero-vad",
       "ownerRoot": "packages/native/plugins/silero-vad-cpp/src",
       "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/vad",
       "exact": ["silero_vad_runtime.c", "silero_vad_state.c", "silero_vad_resample.c", "silero_vad_state.h"],
+      "adapted": []
+    },
+    {
+      "name": "silero-vad-public-abi",
+      "ownerRoot": "packages/native/plugins/silero-vad-cpp/include/silero_vad",
+      "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/vad/include/silero_vad",
+      "exact": ["silero_vad.h"],
       "adapted": []
     },
     {
@@ -24,6 +38,13 @@
       "adapted": [
         { "file": "voice_gguf_loader.h", "reason": "Integrated omnivoice loader exposes llama.cpp-owned include wiring." }
       ]
+    },
+    {
+      "name": "voice-classifier-public-abi",
+      "ownerRoot": "packages/native/plugins/voice-classifier-cpp/include/voice_classifier",
+      "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/voice_classifier/include/voice_classifier",
+      "exact": ["voice_classifier.h"],
+      "adapted": []
     },
     {
       "name": "qjl-cpu",

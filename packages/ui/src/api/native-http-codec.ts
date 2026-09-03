@@ -26,7 +26,7 @@ export function decodeNativeBase64(value: string): ArrayBuffer {
 export function nativeHttpResultBody(
   result: Pick<NativeHttpResult, "body" | "bodyBase64">,
 ): ArrayBuffer | string {
-  return typeof result.bodyBase64 === "string" && result.bodyBase64.length > 0
+  return typeof result.bodyBase64 === "string"
     ? decodeNativeBase64(result.bodyBase64)
     : (result.body ?? "");
 }

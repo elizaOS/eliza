@@ -168,6 +168,25 @@ describe("ScreenCaptureBridgeService", () => {
     expect(bridge.failFrame(request.requestId, "again")).toBe(false);
   });
 
+  it("accepts a legacy failure and rejects malformed failure payloads", async () => {
+    const bridge = makeBridge();
+    const framePromise = bridge.requestFrame();
+    const [request] = bridge.takeRequests();
+
+    const accepted = await submitFrameRoute(bridge, {
+      requestId: request.requestId,
+      error: "capture_error",
+    });
+    expect(accepted.status).toBe(200);
+    expect(await framePromise).toBeNull();
+
+    const malformed = await submitFrameRoute(bridge, {
+      requestId: "another-request",
+      error: { message: "not a wire string" },
+    });
+    expect(malformed.status).toBe(400);
+  });
+
   it("stop() clears the queue and resolves all pending promises as null", async () => {
     const bridge = makeBridge();
     const first = bridge.requestFrame();

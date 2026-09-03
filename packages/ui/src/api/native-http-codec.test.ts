@@ -18,6 +18,15 @@ describe("native HTTP codec", () => {
     ]);
   });
 
+  it("treats an explicitly empty byte payload as authoritative", async () => {
+    const response = nativeHttpResultToResponse({
+      status: 200,
+      body: "stale text",
+      bodyBase64: "",
+    });
+    expect((await response.arrayBuffer()).byteLength).toBe(0);
+  });
+
   it("preserves text and suppresses forbidden bodies", async () => {
     expect(
       await nativeHttpResultToResponse({ status: 401, body: "denied" }).text(),
@@ -31,6 +40,26 @@ describe("native HTTP codec", () => {
         bodyBase64: "YQ==",
       }).text(),
     ).toBe("");
+    expect(
+      await nativeHttpResultToResponse({ status: 205, body: "ignored" }).text(),
+    ).toBe("");
+  });
+
+  it("preserves status text and repeated response headers", () => {
+    const response = nativeHttpResultToResponse({
+      status: 206,
+      statusText: "Partial Content",
+      headers: [
+        ["set-cookie", "first=1"],
+        ["set-cookie", "second=2"],
+        ["x-native-transport", "test"],
+      ],
+      bodyBase64: "AQI=",
+    });
+    expect(response.status).toBe(206);
+    expect(response.statusText).toBe("Partial Content");
+    expect(response.headers.get("x-native-transport")).toBe("test");
+    expect(response.headers.getSetCookie()).toEqual(["first=1", "second=2"]);
   });
 
   it("classifies relative API, absolute, and invalid fetch targets", () => {
