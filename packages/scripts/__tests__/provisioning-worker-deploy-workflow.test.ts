@@ -69,13 +69,19 @@ function deployStep(name: string): WorkflowStep {
 }
 
 describe("provisioning worker deployment contract", () => {
-  it("routes both jobs to the online generic self-hosted fleet", () => {
+  it("uses hosted deployment capacity unless the Hetzner fleet is explicitly healthy", () => {
+    const selector =
+      "runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && " +
+      "'[\"ubuntu-24.04\"]' || '[\"self-hosted\",\"hetzner-robot\"]') }}";
     expect(
-      workflow.match(/^\s+runs-on: \[self-hosted, Linux, X64\]$/gm),
+      workflow.split(selector),
+    ).toHaveLength(3);
+    expect(
+      workflow.match(/^\s+runs-on: \[self-hosted, Linux, X64\]$/gm) ?? [],
+    ).toHaveLength(0);
+    expect(
+      workflow.match(/HETZNER_FLEET_ONLINE/g),
     ).toHaveLength(2);
-    expect(workflow).not.toContain("HETZNER_FLEET_ONLINE");
-    expect(workflow).not.toContain("ubuntu-24.04");
-    expect(workflow).not.toContain("hetzner-robot");
   });
 
   it("resolves one immutable SHA and deploys exactly that snapshot", () => {
