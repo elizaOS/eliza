@@ -109,6 +109,15 @@ export class ConnectionMonitor {
       // retry attempts fail. This avoids a misleading disconnected→
       // reconnecting flicker for callers.
       this.callbacks.onDisconnect();
+
+      // onDisconnect() is a public synchronous callback and may tear the
+      // monitor down (e.g. call stop()). stop() bumps runToken synchronously,
+      // so re-check before entering attemptReconnect(): a monitor stopped from
+      // inside onDisconnect() must emit no "reconnecting" status and call no
+      // provision(). Without this checkpoint the reconnect loop runs up to its
+      // first post-await check, which is after those side effects.
+      if (this.runToken !== token) return;
+
       await this.attemptReconnect(token);
     }
   }
@@ -118,6 +127,12 @@ export class ConnectionMonitor {
     // threaded in here, so a stop() during that await is already reflected. stop()
     // bumps runToken, which lets every post-await checkpoint below detect that
     // this loop was cancelled and abandon it silently.
+    //
+    // Defensive entry checkpoint: tick() already re-checks the token after
+    // onDisconnect(), but guarding here too means no caller can enter this loop
+    // with a stale token and fire "reconnecting"/provision() on a stopped
+    // monitor before the first post-await check.
+    if (this.runToken !== token) return;
     this.reconnecting = true;
     this.callbacks.onStatusChange?.("reconnecting");
 

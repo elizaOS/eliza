@@ -219,6 +219,51 @@ describe("ConnectionMonitor.stop() cancels in-flight reconnect (#29941)", () => 
     monitor.stop();
   });
 
+  it("suppresses reconnect work when stop() runs synchronously inside onDisconnect()", async () => {
+    // onDisconnect() is a public synchronous callback that may tear the monitor
+    // down. If it calls stop(), runToken advances synchronously; the reconnect
+    // loop must not start — no "reconnecting" status, no provision(). Before the
+    // token re-check between onDisconnect() and attemptReconnect(), the loop ran
+    // up to its first post-await check, firing both side effects on a stopped
+    // monitor.
+    const client = {
+      heartbeat: vi.fn().mockResolvedValue(false),
+      provision: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ConstructorParameters<typeof ConnectionMonitor>[0];
+
+    const statusChanges: string[] = [];
+    const onReconnect = vi.fn();
+    let monitor!: ConnectionMonitor;
+    const onDisconnect = vi.fn(() => {
+      // Tear the monitor down from within the disconnect callback.
+      monitor.stop();
+    });
+    monitor = new ConnectionMonitor(
+      client,
+      "agent-sync-stop",
+      {
+        onDisconnect,
+        onReconnect,
+        onStatusChange: (s) => statusChanges.push(s),
+      },
+      HEARTBEAT_INTERVAL_MS,
+      1
+    );
+
+    monitor.start();
+    // One failed heartbeat → tick() calls onDisconnect(), which stops the
+    // monitor synchronously before attemptReconnect() would run.
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onDisconnect).toHaveBeenCalledTimes(1);
+    expect(monitor.isMonitoring()).toBe(false);
+    // The reconnect loop must never have started.
+    expect((client.provision as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    expect(onReconnect).not.toHaveBeenCalled();
+    expect(statusChanges).toEqual([]);
+  });
+
   it("a monitor restarted after a cancelled reconnect is not wedged by the reconnecting flag", async () => {
     // stop() cancelling a loop mid-provision leaves attemptReconnect() to bail
     // via the post-await token checkpoint, which returns *without* clearing
