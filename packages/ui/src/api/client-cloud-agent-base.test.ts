@@ -314,6 +314,7 @@ describe("cloud-agent-base helpers", () => {
     for (const [base, cloudOnlyBranding] of [
       ["https://develop.eliza-app.pages.dev", false],
       ["http://develop.eliza-app.pages.dev", true],
+      ["https://develop.eliza-app.pages.dev:8443", true],
       ["https://eliza-app.pages.dev", true],
       ["https://preview.eliza-app.pages.dev", true],
       ["https://pr-30375.preview.eliza-app.pages.dev", true],
