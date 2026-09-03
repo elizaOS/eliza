@@ -200,6 +200,95 @@ describe("buildSkillExecutionEnv", () => {
   });
 });
 
+/**
+ * When a dev-cloud authority is in force, the inherit loop skips every
+ * dev-cloud-owned key so the authority resolver — not the ambient process — is
+ * what supplies it. Nothing exercised that `continue`: deleting it left all 13
+ * tests green.
+ *
+ * For the canonical spellings the guard is redundant, because the resolver loop
+ * below rewrites each key anyway. It stops being redundant the moment the
+ * ambient variable is spelled in another case, which is the same POSIX hazard
+ * this file already defends against on the overlay path.
+ */
+describe("buildSkillExecutionEnv under a dev-cloud authority", () => {
+  const AMBIENT = "ambient-fleet-key";
+
+  function withAuthority(
+    authority: string,
+    extra: Record<string, string>,
+  ): Record<string, string> {
+    return buildSkillExecutionEnv(
+      {
+        PATH: "/usr/bin",
+        ELIZA_DEV_SOURCE: "1",
+        ELIZA_DEV_CLOUD_ENV_AUTHORITY: authority,
+        ...extra,
+      } as NodeJS.ProcessEnv,
+      {},
+    );
+  }
+
+  it.each(["staging-default", "offline"])(
+    "%s deactivates Cloud rather than inheriting the ambient key",
+    (authority) => {
+      const env = withAuthority(authority, {
+        ELIZAOS_CLOUD_API_KEY: AMBIENT,
+        ELIZA_CLOUD_URL: "https://ambient.example",
+      });
+
+      expect(env.ELIZAOS_CLOUD_API_KEY).toBe("");
+      expect(env.ELIZA_CLOUD_URL).toBe("");
+      expect(Object.values(env)).not.toContain(AMBIENT);
+    },
+  );
+
+  it.each(["staging-explicit", "production", "self-hosted"])(
+    "%s passes the authority's own value through",
+    (authority) => {
+      const env = withAuthority(authority, { ELIZAOS_CLOUD_API_KEY: AMBIENT });
+      expect(env.ELIZAOS_CLOUD_API_KEY).toBe(AMBIENT);
+    },
+  );
+
+  it.each(["elizaos_cloud_api_key", "Elizaos_Cloud_Api_Key"])(
+    "refuses an ambient dev-cloud key spelled as %s",
+    (spelling) => {
+      // The resolver writes the canonical name, so an off-case ambient variable
+      // is not overwritten by it. Without the inherit-loop skip, the child gets
+      // TWO variables: the deactivated canonical one AND the real credential
+      // under the spelling the ambient process used.
+      const env = withAuthority("staging-default", { [spelling]: AMBIENT });
+
+      expect(env.ELIZAOS_CLOUD_API_KEY).toBe("");
+      expect(env).not.toHaveProperty(spelling);
+      const leaked = Object.entries(env).filter(
+        ([, value]) => value === AMBIENT,
+      );
+      expect(leaked).toEqual([]);
+    },
+  );
+
+  it("leaves the filter alone when no authority is declared", () => {
+    // `ELIZA_DEV_SOURCE` is the switch; without it there is no authority and the
+    // agent-scoped key must inherit normally, or every non-dev deployment loses
+    // its cloud identity.
+    const env = buildSkillExecutionEnv(
+      {
+        PATH: "/usr/bin",
+        ELIZA_DEV_CLOUD_ENV_AUTHORITY: "staging-default",
+        ELIZAOS_CLOUD_API_KEY: AMBIENT,
+      } as NodeJS.ProcessEnv,
+      {},
+    );
+
+    expect(resolveDevCloudEnvAuthority({
+      ELIZA_DEV_CLOUD_ENV_AUTHORITY: "staging-default",
+    } as NodeJS.ProcessEnv)).toBeNull();
+    expect(env.ELIZAOS_CLOUD_API_KEY).toBe(AMBIENT);
+  });
+});
+
 describe("isInheritableSkillEnvKey", () => {
   it("agrees with what the filter emits, so eligibility cannot report green then fail", () => {
     // The eligibility check calls this; if the two disagreed, a skill would be
