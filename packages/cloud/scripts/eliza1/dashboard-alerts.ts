@@ -99,7 +99,7 @@ function databaseUrl(): string {
   return url;
 }
 
-async function loadDashboardInputs(
+export async function loadDashboardInputs(
   organizationId: string,
   startDate: Date,
   endDate: Date,
@@ -124,8 +124,8 @@ async function loadDashboardInputs(
             date_trunc('day', created_at) AS timestamp,
             count(*)::int AS total_requests,
             coalesce(sum(input_cost + output_cost), 0)::numeric AS total_cost,
-            coalesce(sum(input_tokens), 0)::int AS input_tokens,
-            coalesce(sum(output_tokens), 0)::int AS output_tokens,
+            coalesce(sum(input_tokens), 0) AS input_tokens,
+            coalesce(sum(output_tokens), 0) AS output_tokens,
             coalesce(
               count(*) FILTER (WHERE is_successful = true)::float /
               nullif(count(*)::float, 0),
@@ -471,7 +471,9 @@ async function main() {
   if (!status) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(`[eliza1:dashboard-alerts] ${error.message}`);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error(`[eliza1:dashboard-alerts] ${error.message}`);
+    process.exit(1);
+  });
+}
