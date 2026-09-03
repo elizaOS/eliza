@@ -2261,6 +2261,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     const keyBundleGenerationId = "00000000-0000-4000-8000-00000000b50a";
     const cleanupId = "00000000-0000-4000-8000-00000000b50b";
     const candidateId = "00000000-0000-4000-8000-00000000b50c";
+    const phantomObjectId = "00000000-0000-4000-8000-00000000b606";
     const manifestSha256 = "3".repeat(64);
     const executionTokenSha256 = "4".repeat(64);
     const cleanupCommandSha256 = "5".repeat(64);
@@ -2441,6 +2442,82 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         ],
       );
 
+      let authorityIsolationError: unknown;
+      await candidate.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      try {
+        const staleSnapshot = await candidate.query<{ object_count: number }>(
+          `SELECT count(*)::integer AS object_count
+           FROM agent_backup_objects WHERE backup_id = $1 AND copy_role = 'primary'`,
+          [backupId],
+        );
+        expect(staleSnapshot.rows).toEqual([{ object_count: 5 }]);
+        await setup.query(
+          `INSERT INTO agent_backup_objects (
+            id, organization_id, backup_id, copy_role, component, chunk_index, state,
+            provider_write_started, verified_at, content_hmac_sha256, transport, provider,
+            endpoint_identity_fingerprint, endpoint_alias, bucket, region, key_fingerprint,
+            provider_version_id, provider_etag, provider_checksum, upload_receipt_digest,
+            ciphertext_sha256, size_bytes
+          ) VALUES ($1, $2, $3, 'primary', 'vault', 1, 'verified', true,
+            clock_timestamp(), $4, 'worker-r2', 'cloudflare-r2', $5, $6, $7, $8, $9,
+            $10, NULL, NULL, $11, $12, 6)`,
+          [
+            phantomObjectId,
+            organizationId,
+            backupId,
+            digest("phantom-content"),
+            `sha256:${digest("phantom-identity")}`,
+            "phantom-alias",
+            "phantom-bucket",
+            "phantom-region",
+            digest("phantom-key"),
+            "phantom-version",
+            digest("phantom-upload"),
+            digest("phantom-ciphertext"),
+          ],
+        );
+        try {
+          await candidate.query(
+            `SELECT "lock_agent_backup_restore_v3_current_authority"(
+              $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
+              $7::uuid, $8::text, $9::uuid, $10::bigint, $11::text, $12::uuid,
+              $13::numeric, $14::text, $15::uuid, $16::text, $17::text,
+              $18::integer, NULL::timestamptz
+            )`,
+            [
+              organizationId,
+              agentId,
+              backupId,
+              restoreAttemptId,
+              operationId,
+              restoreOperationId,
+              leaseId,
+              "candidate-clock-owner",
+              leaseGeneration,
+              9,
+              "primary",
+              sourceGeneration,
+              7,
+              manifestSha256,
+              keyBundleGenerationId,
+              sourceCanonical,
+              sourceSha256,
+              5,
+            ],
+          );
+        } catch (error) {
+          authorityIsolationError = error;
+        }
+      } finally {
+        await candidate.query("ROLLBACK");
+        await setup.query("DELETE FROM agent_backup_objects WHERE id = $1", [phantomObjectId]);
+      }
+      expect(authorityIsolationError).toBeInstanceOf(Error);
+      expect((authorityIsolationError as Error).message).toBe(
+        "restore-v3 current authority fencing requires read committed isolation",
+      );
+      expect(postgresErrorCode(authorityIsolationError)).toBe("55000");
+
       await blocker.query("BEGIN");
       const blockerPid = await blocker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
       await blocker.query("SELECT id FROM agent_sandbox_backups WHERE id = $1 FOR UPDATE", [
@@ -2557,6 +2634,8 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     const candidateId = "00000000-0000-4000-8000-00000000c60c";
     const authorizationId = "00000000-0000-4000-8000-00000000c60d";
     const terminalCommandId = "00000000-0000-4000-8000-00000000c60e";
+    const stageRecordId = "00000000-0000-4000-8000-00000000c610";
+    const staleFinishId = "00000000-0000-4000-8000-00000000c611";
     const manifestSha256 = "1".repeat(64);
     const sourceAuthorityCanonical = "{}";
     const sourceAuthoritySha256 = createHash("sha256")
@@ -2696,6 +2775,89 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         ],
       );
       await setup.query(RESTORE_V3_CANDIDATE_MIGRATIONS[1]!);
+
+      let stageIsolationError: unknown;
+      await sealer.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      try {
+        const staleSnapshot = await sealer.query<{ ledger_count: number }>(
+          `SELECT count(*)::integer AS ledger_count
+           FROM agent_backup_restore_v3_candidate_stage_ledger
+           WHERE candidate_id = $1`,
+          [candidateId],
+        );
+        expect(staleSnapshot.rows).toEqual([{ ledger_count: 0 }]);
+        await cleanup.query(
+          `INSERT INTO agent_backup_restore_v3_candidate_stage_ledger (
+            id, candidate_id, organization_id, agent_id, backup_id, restore_attempt_id,
+            operation_id, execution_token_sha256, command_kind, component_index,
+            component_name, data_index, offset_bytes, entry_metadata_sha256, payload_bytes,
+            payload_sha256, command_sha256, receipt_sha256
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'record', 0, 'character',
+            0, 0, $9, 1, $10, $11, $12)`,
+          [
+            stageRecordId,
+            candidateId,
+            organizationId,
+            agentId,
+            backupId,
+            restoreAttemptId,
+            operationId,
+            executionTokenSha256,
+            "7".repeat(64),
+            "8".repeat(64),
+            "9".repeat(64),
+            "a".repeat(64),
+          ],
+        );
+        try {
+          await sealer.query(
+            `INSERT INTO agent_backup_restore_v3_candidate_stage_ledger (
+              id, candidate_id, organization_id, agent_id, backup_id, restore_attempt_id,
+              operation_id, execution_token_sha256, command_kind, component_index,
+              component_name, payload_bytes, payload_sha256, data_frame_count,
+              descriptor_format, descriptor_compression, descriptor_content_kind,
+              descriptor_consistency, descriptor_sha256,
+              record_stream_content_hmac_sha256, command_sha256, receipt_sha256
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'finish', 0, 'character',
+              0, $9, 0, 'runtime-character-json-v1', 'none', 'opaque', 'best-effort',
+              $10, $11, $12, $13)`,
+            [
+              staleFinishId,
+              candidateId,
+              organizationId,
+              agentId,
+              backupId,
+              restoreAttemptId,
+              operationId,
+              executionTokenSha256,
+              "b".repeat(64),
+              "c".repeat(64),
+              "d".repeat(64),
+              "e".repeat(64),
+              "f".repeat(64),
+            ],
+          );
+        } catch (error) {
+          stageIsolationError = error;
+        }
+      } finally {
+        await sealer.query("ROLLBACK");
+      }
+      expect(stageIsolationError).toBeInstanceOf(Error);
+      expect((stageIsolationError as Error).message).toBe(
+        "restore-v3 stage ledger fencing requires read committed isolation",
+      );
+      expect(postgresErrorCode(stageIsolationError)).toBe("55000");
+      const durableLedger = await observer.query<{ finishes: string; records: string }>(
+        `SELECT
+          count(*) FILTER (WHERE command_kind = 'record')::text AS records,
+          count(*) FILTER (WHERE command_kind = 'finish')::text AS finishes
+         FROM agent_backup_restore_v3_candidate_stage_ledger
+         WHERE candidate_id = $1`,
+        [candidateId],
+      );
+      expect(durableLedger.rows).toEqual([{ records: "1", finishes: "0" }]);
+
       await setup.query(`
         CREATE OR REPLACE FUNCTION lock_agent_backup_restore_v3_current_authority(
           p_organization_id uuid, p_agent_id uuid, p_backup_id uuid,

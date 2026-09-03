@@ -654,6 +654,7 @@ describe("0375/0376 restore-v3 candidate authority", () => {
       GUARDS.indexOf('CREATE OR REPLACE FUNCTION "lock_agent_backup_restore_v3_current_authority"'),
       GUARDS.indexOf('CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_v3_cleanup_outbox"'),
     );
+    const isolationGuard = "current_setting('transaction_isolation') <> 'read committed'";
     const orderedRelations = [
       'FROM "agent_sandbox_backups" AS backup',
       'FROM "agent_backup_restore_operations" AS operation',
@@ -667,6 +668,11 @@ describe("0375/0376 restore-v3 candidate authority", () => {
       expect(position).toBeGreaterThan(previous);
       previous = position;
     }
+    expect(helper).toContain(
+      "restore-v3 current authority fencing requires read committed isolation",
+    );
+    expect(helper.indexOf(isolationGuard)).toBeGreaterThan(-1);
+    expect(helper.indexOf(isolationGuard)).toBeLessThan(helper.indexOf(orderedRelations[0]!));
     expect(helper).not.toMatch(/\bJOIN\b/i);
     expect(helper).toContain("FOR UPDATE OF backup");
     expect(GUARDS).toContain("phase\" NOT IN ('finalized', 'failed_terminal')");
@@ -677,6 +683,25 @@ describe("0375/0376 restore-v3 candidate authority", () => {
     expect(wallClockRead).toBeGreaterThan(finalAuthorityLock);
     expect(leaseExpiryCheck).toBeGreaterThan(wallClockRead);
     expect(helper).not.toContain('expires_at" > statement_timestamp()');
+  });
+
+  test("rejects snapshot isolation before locking the stage ledger", () => {
+    const stageGuard = GUARDS.slice(
+      GUARDS.indexOf(
+        'CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_v3_stage_ledger_insert"',
+      ),
+      GUARDS.indexOf(
+        'CREATE OR REPLACE FUNCTION "reject_agent_backup_restore_v3_stage_ledger_mutation"',
+      ),
+    );
+    const isolationGuard = "current_setting('transaction_isolation') <> 'read committed'";
+    expect(stageGuard).toContain(
+      "restore-v3 stage ledger fencing requires read committed isolation",
+    );
+    expect(stageGuard.indexOf(isolationGuard)).toBeGreaterThan(-1);
+    expect(stageGuard.indexOf(isolationGuard)).toBeLessThan(
+      stageGuard.indexOf('SELECT candidate."state" INTO candidate_state'),
+    );
   });
 
   test("serializes permanent attempt closure before begin and GC relation locks", () => {

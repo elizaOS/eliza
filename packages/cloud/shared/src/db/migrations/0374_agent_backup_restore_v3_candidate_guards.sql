@@ -72,6 +72,10 @@ DECLARE
   source_object_count integer := 0;
   current_object_count integer;
 BEGIN
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'restore-v3 current authority fencing requires read committed isolation'
+      USING ERRCODE = '55000';
+  END IF;
   IF octet_length(p_source_authority_canonical) NOT BETWEEN 2 AND 16777216
     OR p_source_authority_sha256 !~ '^[0-9a-f]{64}$'
     OR p_object_count NOT BETWEEN 1 AND 8192 THEN
@@ -625,6 +629,10 @@ DECLARE
   previous_entry_mtime_ms numeric;
   previous_entry_end_bytes numeric;
 BEGIN
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'restore-v3 stage ledger fencing requires read committed isolation'
+      USING ERRCODE = '55000';
+  END IF;
   SELECT candidate."state" INTO candidate_state
   FROM "agent_backup_restore_v3_candidates" AS candidate
   WHERE candidate."id" = NEW."candidate_id"
