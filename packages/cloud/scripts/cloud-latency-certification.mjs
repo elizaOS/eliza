@@ -22,6 +22,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import {
+  isCloudflarePlacement,
   sanitizeInferenceAuthTail,
   summarizeDeferredCacheWrites,
   waitForInferenceAuthTail,
@@ -164,6 +165,25 @@ export function validatePairedEvidence(text, deploySha) {
     if (record.ci?.sha !== deploySha) {
       throw new Error(
         "Paired latency evidence is not bound to the dispatch SHA",
+      );
+    }
+    const placement = record.headers?.["cf-placement"];
+    if (
+      record.target === "gateway" &&
+      placement !== undefined &&
+      !isCloudflarePlacement(placement)
+    ) {
+      throw new Error(
+        "Gateway latency evidence contains an invalid Worker placement",
+      );
+    }
+    if (
+      record.target === "gateway" &&
+      typeof placement === "string" &&
+      placement.startsWith("remote-")
+    ) {
+      throw new Error(
+        "Gateway latency evidence observed remote Worker placement",
       );
     }
   }

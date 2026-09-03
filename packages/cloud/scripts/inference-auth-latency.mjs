@@ -470,8 +470,15 @@ export function parseAuthServerTiming(value) {
   return timings;
 }
 
+const CLOUDFLARE_PLACEMENT_PATTERN = /^(?:local|remote)-[A-Z]{3}$/;
+
+/** Accepts the documented cf-placement mode and airport-code wire shape. */
+export function isCloudflarePlacement(value) {
+  return typeof value === "string" && CLOUDFLARE_PLACEMENT_PATTERN.test(value);
+}
+
 function boundedPlacement(value) {
-  return /^(?:local|remote-[A-Z]{3})$/.test(value ?? "") ? value : "unknown";
+  return isCloudflarePlacement(value) ? value : "unknown";
 }
 
 function boundedColo(value) {
