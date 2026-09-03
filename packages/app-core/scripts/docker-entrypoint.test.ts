@@ -117,7 +117,7 @@ sleep 5
 // even after Headscale returns an interactive URL. This fixture therefore stays
 // silent and blocked exactly like the CLI did in staging.
 const TAILSCALE_AUTH_URL_HANG_FIXTURE = `#!/bin/sh
-printf '%s\\n' "$@" > "$TAILSCALE_ARGS_LOG"
+printf '%s\\n' "$@" >> "$TAILSCALE_ARGS_LOG"
 exec sleep 30
 `;
 

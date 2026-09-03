@@ -70,6 +70,15 @@ const integrationEnv = {
     process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE || "1",
   CRON_SECRET: process.env.CRON_SECRET || "test-cron-secret",
   INTERNAL_SECRET: process.env.INTERNAL_SECRET || "test-internal-secret",
+  // Wallet-signature authentication uses an atomic consume-once nonce. The
+  // local Worker lane has no external Redis binding, so exercise that real
+  // authentication boundary with the repository's explicit in-memory test
+  // backend instead of failing closed before signature verification.
+  MOCK_REDIS: process.env.MOCK_REDIS || "1",
+  // The workflow-level cloud default disables optional caches. This suite
+  // deliberately tests cache-backed authentication, so the explicit test
+  // backend above must remain enabled inside both the Worker and test process.
+  CACHE_ENABLED: "true",
 };
 
 const isolatedServerFiles = new Set([
