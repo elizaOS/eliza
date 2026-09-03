@@ -115,6 +115,10 @@ const providerOverrideKeys = new Set([
   "OPENROUTER_BASE_URL",
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
+  // Shared-runtime E2E can select the loopback provider explicitly. The
+  // launcher environment is not visible inside workerd unless this selector
+  // is written alongside the provider credentials.
+  "ELIZAOS_CLOUD_SMALL_MODEL",
   "ANTHROPIC_API_KEY",
   // Cerebras is the cloud's DEFAULT text provider — a shell-exported key must
   // reach the booted worker (e.g. the creator-monetization e2e real-LLM lane),
