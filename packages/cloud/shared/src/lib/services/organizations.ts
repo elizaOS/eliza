@@ -16,6 +16,7 @@ import {
   invalidateInferenceSessionAuthContexts,
 } from "./inference-auth-cache";
 import { setInferenceOrganizationActive } from "./inference-credential-revocation";
+import { invalidateOutboundMessageStanding } from "./outbound-message-standing";
 
 /**
  * Service for organization operations with caching support.
@@ -113,6 +114,7 @@ export class OrganizationsService {
     // entries so credentials under the now-inactive org can no longer fast-path.
     if (data.is_active === false) {
       await this.invalidateInferenceAuthForOrganization(id);
+      await invalidateOutboundMessageStanding(id);
     }
     if (data.is_active === true) {
       await setInferenceOrganizationActive(id, true);
@@ -135,6 +137,7 @@ export class OrganizationsService {
     // Resolve + evict the org's cached IAC identities BEFORE the delete cascade
     // removes the api_keys rows, so the key_hash set is read while it still exists.
     await this.invalidateInferenceAuthForOrganization(id);
+    await invalidateOutboundMessageStanding(id);
     await organizationsRepository.delete(id);
     // Invalidate cache after delete
     await this.invalidateCache(id);

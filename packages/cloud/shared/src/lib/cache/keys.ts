@@ -9,6 +9,10 @@ export const CacheKeys = {
     rateLimitTier: (orgId: string) => `orgtier:${orgId}:v1`,
     pattern: (orgId: string) => `org:${orgId}:*`,
   },
+  outboundMessageStanding: {
+    actor: (orgId: string, userId: string) => `outbound-message-standing:${orgId}:${userId}:v1`,
+    organizationPattern: (orgId: string) => `outbound-message-standing:${orgId}:*:v1`,
+  },
   analytics: {
     overview: (orgId: string, timeRange: "daily" | "weekly" | "monthly") =>
       `analytics:overview:${orgId}:${timeRange}:v1`,
@@ -262,6 +266,7 @@ export const CacheTTL = {
     dashboard: 300, // 5 minutes - stale after 180s
     rateLimitTier: 3600, // 1 hour - mutation paths invalidate overrides immediately
   },
+  outboundMessageStanding: 30,
   analytics: {
     overview: {
       daily: 300, // 5 minutes

@@ -30,6 +30,7 @@ import {
   setInferenceSessionBindingActive,
   setInferenceSubjectActive,
 } from "./inference-credential-revocation";
+import { invalidateOutboundMessageStanding } from "./outbound-message-standing";
 
 type PersonalDeliveryIdentitySource = Partial<
   Pick<User | UserIdentity, "telegram_id" | "discord_id" | "phone_number">
@@ -133,6 +134,11 @@ export class UsersService {
     if (typeof walletAddress === "string") {
       promises.push(cache.del(CacheKeys.user.byWalletAddress(walletAddress)));
       promises.push(cache.del(CacheKeys.user.byWalletAddressWithOrg(walletAddress)));
+    }
+    if (user.organization_id) {
+      promises.push(
+        invalidateOutboundMessageStanding(user.organization_id, user.id).then(() => undefined),
+      );
     }
     await Promise.all(promises);
     logger.debug("[UsersService] Invalidated cache for user:", user.id);

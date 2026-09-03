@@ -538,6 +538,281 @@ describe("InferenceAdmissionGate", () => {
     ).rejects.toBeInstanceOf(InferenceAdmissionGateUnavailableError);
   });
 
+  test("replays one rate-limit operation after a lost transport acknowledgement", async () => {
+    const storage = new TestStorage();
+    let gate = createGate(storage);
+    let attempts = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            attempts += 1;
+            const response = await gate.fetch(new Request(request, init));
+            if (attempts === 1) {
+              gate = createGate(storage);
+              throw new DOMException(
+                "injected lost rate-limit acknowledgement",
+                "TimeoutError",
+              );
+            }
+            return response;
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      await expect(
+        consumeInferenceRateLimit({
+          organizationId: "org-a",
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 2,
+        }),
+      ).resolves.toMatchObject({ allowed: true, remaining: 1 });
+    });
+    expect(attempts).toBe(2);
+    expect(
+      storage.read<{ completions: { count: number } }>("rate-limits"),
+    ).toMatchObject({ completions: { count: 1 } });
+  });
+
+  test("fails a late replay after more than 64 interleaved operations and eviction without recounting", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(61_000);
+    const storage = new TestStorage();
+    let gate = createGate(storage);
+    const requests: Array<{ path: string; body: string }> = [];
+    let attempts = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            requests.push({
+              path: new URL(incoming.url).pathname,
+              body: await incoming.clone().text(),
+            });
+            attempts += 1;
+            const response = await gate.fetch(incoming);
+            if (attempts === 1) {
+              const body = JSON.parse(requests[0]!.body) as Record<
+                string,
+                unknown
+              >;
+              for (let index = 0; index < 63; index += 1) {
+                expect(
+                  (
+                    await post(gate, "/rate-limit", {
+                      ...body,
+                      operationId: `interleaved-rate-operation-${index}`,
+                    })
+                  ).status,
+                ).toBe(200);
+              }
+              clock.mockReturnValue(71_001);
+              expect(
+                (
+                  await post(gate, "/rate-limit", {
+                    ...body,
+                    operationId: "interleaved-rate-operation-63",
+                    operationDeadlineAt: 74_001,
+                  })
+                ).status,
+              ).toBe(200);
+              gate = createGate(storage);
+              throw new DOMException(
+                "injected lost rate-limit acknowledgement",
+                "TimeoutError",
+              );
+            }
+            return response;
+          },
+        }),
+      },
+    };
+
+    try {
+      await runWithCloudBindingsAsync(bindings, async () => {
+        await expect(
+          consumeInferenceRateLimit({
+            organizationId: "org-a",
+            endpointType: "completions",
+            windowMs: 60_000,
+            maxRequests: 1_000,
+          }),
+        ).rejects.toBeInstanceOf(InferenceAdmissionGateUnavailableError);
+      });
+
+      expect(requests).toHaveLength(2);
+      expect(requests[1]).toEqual(requests[0]);
+      const persisted = storage.read<{
+        completions: {
+          count: number;
+          receipts: Array<{ operationId: string }>;
+        };
+      }>("rate-limits");
+      expect(persisted).toMatchObject({ completions: { count: 65 } });
+      expect(persisted?.completions.receipts).toEqual([
+        expect.objectContaining({
+          operationId: "interleaved-rate-operation-63",
+        }),
+      ]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("retries a cold rate-limit 503 but not a definitive denial", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    let attempts = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            attempts += 1;
+            if (attempts === 1) {
+              return Response.json(
+                { code: "inference_admission_gate_starting" },
+                { status: 503 },
+              );
+            }
+            return gate.fetch(new Request(request, init));
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      await expect(
+        consumeInferenceRateLimit({
+          organizationId: "org-a",
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 1,
+        }),
+      ).resolves.toMatchObject({ allowed: true, remaining: 0 });
+    });
+    expect(attempts).toBe(2);
+
+    attempts = 0;
+    await runWithCloudBindingsAsync(
+      {
+        INFERENCE_ADMISSION_GATES: {
+          getByName: (_name: string) => ({
+            fetch: async () => {
+              attempts += 1;
+              return Response.json(
+                {
+                  allowed: false,
+                  remaining: 0,
+                  resetAt: Date.now() + 60_000,
+                  retryAfter: 60,
+                },
+                { status: 429 },
+              );
+            },
+          }),
+        },
+      },
+      async () => {
+        await expect(
+          consumeInferenceRateLimit({
+            organizationId: "org-a",
+            endpointType: "completions",
+            windowMs: 60_000,
+            maxRequests: 1,
+          }),
+        ).resolves.toMatchObject({ allowed: false, remaining: 0 });
+      },
+    );
+    expect(attempts).toBe(1);
+  });
+
+  test("binds a rate-limit operation receipt to its policy and validity deadline", async () => {
+    const gate = createGate();
+    const windowStartedAt = Math.floor(Date.now() / 60_000) * 60_000;
+    const operationDeadlineAt = Date.now() + 3_000;
+    expect(
+      (
+        await post(gate, "/rate-limit", {
+          operationId: "rate-operation-a",
+          operationDeadlineAt,
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 2,
+          windowStartedAt,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(gate, "/rate-limit", {
+          operationId: "rate-operation-a",
+          operationDeadlineAt,
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 3,
+          windowStartedAt,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await post(gate, "/rate-limit", {
+          operationId: "rate-operation-a",
+          operationDeadlineAt: operationDeadlineAt + 1,
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 2,
+          windowStartedAt,
+        })
+      ).status,
+    ).toBe(409);
+  });
+
+  test("prunes replay receipts after the bounded internal retry window", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(61_000);
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    const body = {
+      endpointType: "completions",
+      windowMs: 60_000,
+      maxRequests: 10,
+      windowStartedAt: 60_000,
+    };
+    try {
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            ...body,
+            operationId: "expired-rate-operation",
+            operationDeadlineAt: 64_000,
+          })
+        ).status,
+      ).toBe(200);
+      clock.mockReturnValue(71_001);
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            ...body,
+            operationId: "current-rate-operation",
+            operationDeadlineAt: 74_001,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        storage.read<{
+          completions: { receipts: Array<{ operationId: string }> };
+        }>("rate-limits")?.completions.receipts,
+      ).toEqual([
+        expect.objectContaining({ operationId: "current-rate-operation" }),
+      ]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("rate-only requests use synchronous SQLite KV and preserve the legacy key", async () => {
     const storage = new TestStorage();
     storage.rejectAsyncRateLimitStorage = true;
