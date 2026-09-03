@@ -80,6 +80,82 @@ describe("applyRemoteDockerRuntimeMode", () => {
   });
 });
 
+/**
+ * The cases above name eleven of the fourteen forbidden suffixes between them,
+ * and `CAPABILITY_ROUTER_URL` is not one: only its plural sibling
+ * `CAPABILITY_ROUTER_URLS` appears, and deleting the singular entry leaves the
+ * whole suite green. Nothing pins the matcher's shape either — it is
+ * `upper === suffix || upper.endsWith(`_${suffix}`)` after a trim and an
+ * uppercase, and every one of those four decisions can be removed without a
+ * failure.
+ */
+describe("isCallerForbiddenEnvKey boundaries", () => {
+  const FORBIDDEN_SUFFIXES = [
+    "TERMINAL_RUN_TOKEN",
+    "ALLOW_UNAUTHENTICATED_STDIO_MCP",
+    "DEV_AUTH_BYPASS",
+    "ALLOW_NULL_ORIGIN",
+    "ENABLE_SELF_EDIT",
+    "DEV_MODE",
+    "CAPABILITY_ROUTER_URL",
+    "CAPABILITY_ROUTER_URLS",
+    "CAPABILITY_ROUTER_TOKEN",
+    "SKILLS_REGISTRY",
+    "CLAWHUB_REGISTRY",
+    "SKILLS_MARKETPLACE_URL",
+    "WORKSPACE_SKILLS_DIR",
+    "EXTRA_SKILLS_DIRS",
+  ] as const;
+
+  test.each(FORBIDDEN_SUFFIXES)("drops %s bare and under a vendor prefix", (suffix) => {
+    // Both arms of the matcher, per entry: the bare name is the `===` arm and
+    // the prefixed one is the `endsWith("_" + suffix)` arm. A case that only
+    // ever uses a prefix cannot notice the exact arm going away.
+    const applied = applyRemoteDockerRuntimeMode({
+      [suffix]: "caller-set",
+      [`ELIZA_${suffix}`]: "caller-set",
+      [`VITE_ACME_${suffix}`]: "caller-set",
+      KEEP_ME: "preserved",
+    });
+
+    expect(Object.keys(applied).sort()).toEqual(["ELIZA_CLOUD_PAIR_DIRECT_RELAY", "KEEP_ME"]);
+  });
+
+  test("the separator is load-bearing: a suffix must end a segment, not a string", () => {
+    // Without the underscore in `endsWith`, these are deleted too. They are
+    // ordinary caller variables that merely end in the same letters, and this
+    // filter runs on stored rows that are replayed on every restart — so
+    // over-matching silently removes configuration a customer already set.
+    const applied = applyRemoteDockerRuntimeMode({
+      LEGACYDEV_MODE: "keep",
+      MYSKILLS_REGISTRY: "keep",
+      XENABLE_SELF_EDIT: "keep",
+    });
+
+    expect(Object.keys(applied).sort()).toEqual([
+      "ELIZA_CLOUD_PAIR_DIRECT_RELAY",
+      "LEGACYDEV_MODE",
+      "MYSKILLS_REGISTRY",
+      "XENABLE_SELF_EDIT",
+    ]);
+  });
+
+  test.each([
+    ["lowercase", "eliza_dev_auth_bypass"],
+    ["mixed case", "Eliza_Dev_Auth_Bypass"],
+    ["leading and trailing spaces", "  ELIZA_DEV_AUTH_BYPASS  "],
+    ["a bare name in lowercase", "dev_auth_bypass"],
+  ])("normalises %s before matching", (_label, key) => {
+    // The stored `environment_vars` row is caller-authored JSON, so the key is
+    // whatever spelling the caller chose. The guard trims and uppercases for
+    // exactly that reason; without either step the same switch arrives spelled
+    // differently and survives.
+    const applied = applyRemoteDockerRuntimeMode({ [key]: "1", KEEP_ME: "preserved" });
+
+    expect(Object.keys(applied).sort()).toEqual(["ELIZA_CLOUD_PAIR_DIRECT_RELAY", "KEEP_ME"]);
+  });
+});
+
 describe("DockerSandboxProvider remote runtime mode", () => {
   test("forces the flag before every remote create attempt", async () => {
     const provider = new DockerSandboxProvider();
