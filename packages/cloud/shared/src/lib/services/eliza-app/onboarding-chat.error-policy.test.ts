@@ -211,7 +211,10 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
   });
 
   test("enforces the wall-clock deadline across immediately-ready empty chunks", async () => {
-    let cancelled = false;
+    let confirmCancellation!: () => void;
+    const cancellation = new Promise<void>((resolve) => {
+      confirmCancellation = resolve;
+    });
     let emitted = 0;
     const stub = {
       fetch: async () =>
@@ -226,7 +229,7 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
               controller.close();
             },
             cancel() {
-              cancelled = true;
+              confirmCancellation();
             },
           }),
         ),
@@ -237,7 +240,11 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
     ).rejects.toMatchObject({ name: "TimeoutError" });
     expect(performance.now() - startedAt).toBeLessThan(1_000);
     expect(emitted).toBeLessThan(100_000);
-    expect(cancelled).toBe(true);
+    // Promise.race rejects on the abort signal before the losing body-read
+    // branch necessarily finishes its cancellation microtask. Await the
+    // transport observation so this still proves cancellation without a
+    // scheduler-order assumption.
+    await cancellation;
   });
 
   test("preserves the caller reason when stream cancellation rejects differently", async () => {
