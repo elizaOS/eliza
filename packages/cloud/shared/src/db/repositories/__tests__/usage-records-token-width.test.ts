@@ -206,17 +206,59 @@ test(
   PGLITE_TIMEOUT,
 );
 
-test("the driver returns bigint cells as strings, which is why these aggregates are converted", () => {
-  // The PGlite harness above returns bigint as a JS number, so it cannot
-  // prove the `Number(...)` conversions are needed. node-postgres — what
-  // production actually runs — returns int8 as a string by default, and a
-  // string would flow into arithmetic (`sum + row.tokens`) as concatenation.
-  // Pinning the driver fact here keeps the reason for those conversions
-  // executable rather than a comment.
+test(
+  "cost aggregates arrive as NUMERIC strings, so their conversions are load-bearing",
+  async () => {
+    if (!pgliteReady) return;
+
+    // Measured, not assumed. Under this driver a `numeric` column comes back as
+    // a STRING while a `bigint` comes back as a number, so the `Number(...)` on
+    // the cost columns is the conversion that actually does work. Summing is
+    // the assertion that catches it: `"3.000000" + "3.000000"` concatenates.
+    const stats = await usageRecordsRepository.getStatsByOrganization(ORGANIZATION_ID);
+    expect(typeof stats.totalCost).toBe("number");
+    expect(stats.totalCost).toBeCloseTo(ROWS * 2, 6);
+
+    const models = await usageRecordsRepository.getModelBreakdown(ORGANIZATION_ID);
+    const summedCost = models.reduce((total, row) => total + row.totalCost, 0);
+    expect(typeof summedCost).toBe("number");
+    expect(summedCost).toBeCloseTo(ROWS * 2, 6);
+  },
+  PGLITE_TIMEOUT,
+);
+
+test("driver type mapping, measured across all three paths this repo can take", async () => {
+  // Recorded because the reason for each `Number(...)` differs by column type,
+  // and the obvious assumption is wrong. `pg`'s DEFAULT int8 parser returns a
+  // string — but drizzle's node-postgres driver installs its own, so a widened
+  // `::bigint` sum reaches this repository as a number either way:
+  //
+  //   direct PGlite      bigint -> number   numeric -> string   int4 -> number
+  //   drizzle over pg    bigint -> number   numeric -> string   int4 -> number
+  //   raw pg.Pool        bigint -> string
+  //
+  // So `Number(...)` on the token sums is defensive (it protects the raw-Pool
+  // shape, which `packages/cloud/scripts/eliza1/dashboard-alerts.ts` does use),
+  // while `Number(...)` on the cost columns is load-bearing here and now. The
+  // node-postgres default is pinned so a future driver change is visible.
   const parseInt8 = pgTypes.getTypeParser(20);
   const parseInt4 = pgTypes.getTypeParser(23);
   expect(typeof parseInt8("2400000000")).toBe("string");
   expect(typeof parseInt4("42")).toBe("number");
+
+  if (!pgliteReady) return;
+  const row: Record<string, unknown> = await dbWrite
+    .execute(`SELECT sum(input_tokens)::bigint AS b,
+                     sum(input_cost)::numeric AS c,
+                     count(*)::int AS i
+              FROM usage_records`)
+    .then((result: unknown) => {
+      const rows = (result as { rows?: Record<string, unknown>[] }).rows;
+      return (rows ?? (result as Record<string, unknown>[]))[0];
+    });
+  expect(typeof row.b).toBe("number");
+  expect(typeof row.c).toBe("string");
+  expect(typeof row.i).toBe("number");
 });
 
 // Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
