@@ -210,13 +210,26 @@ function convertHeadings(text: string): string {
  * Puts the held-aside fenced bodies back, after every style pass has run.
  */
 function restoreCodeBlocks(text: string, codeSink: string[]): string {
-  let restored = text;
-  for (let index = 0; index < codeSink.length; index++) {
-    restored = restored
-      .split(`${CODE_SENTINEL_PREFIX}${index}${CODE_SENTINEL_SUFFIX}`)
-      .join(codeSink[index] ?? "");
+  if (codeSink.length === 0) return text;
+  // Single left-to-right pass: a restored body is never rescanned, so a body
+  // that happens to contain a later sentinel cannot splice that block into it.
+  // (An indexOf scan rather than a regex: biome rejects a control character
+  // inside a regex literal via lint/suspicious/noControlCharactersInRegex.)
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const start = text.indexOf(CODE_SENTINEL_PREFIX, cursor);
+    if (start < 0) break;
+    const digitsStart = start + CODE_SENTINEL_PREFIX.length;
+    const end = text.indexOf(CODE_SENTINEL_SUFFIX, digitsStart);
+    if (end < 0) break;
+    const digits = text.slice(digitsStart, end);
+    const body = /^[0-9]+$/.test(digits) ? codeSink[Number(digits)] : undefined;
+    out.push(text.slice(cursor, start), body ?? text.slice(start, end + 1));
+    cursor = end + 1;
   }
-  return restored;
+  out.push(text.slice(cursor));
+  return out.join("");
 }
 
 /**
@@ -230,7 +243,12 @@ export function markdownToSlackMrkdwn(markdown: string): string {
   // Process in order: code blocks -> links -> headings -> text styles -> escape.
   // Fenced bodies are held aside for the whole pipeline and restored last.
   const codeSink: string[] = [];
-  let result = convertCodeBlocks(markdown, codeSink);
+  // NUL never survives into Slack anyway; dropping it up front means neither
+  // sentinel can be forged by the incoming text.
+  let result = convertCodeBlocks(
+    markdown.split(CODE_SENTINEL_SUFFIX).join(""),
+    codeSink,
+  );
   result = convertLinks(result);
   result = convertHeadings(result);
   result = convertBold(result);

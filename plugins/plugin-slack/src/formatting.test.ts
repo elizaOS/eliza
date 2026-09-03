@@ -90,6 +90,46 @@ describe("markdownToSlackMrkdwn", () => {
     const adversarial = `\`\`\`json\n${"x".repeat(100_000)}`;
     expect(markdownToSlackMrkdwn(adversarial)).toContain("x".repeat(100_000));
   });
+
+  it("does not let sentinel-looking input forge a code block into prose", () => {
+    // The restore used to split/join each sentinel across the whole document,
+    // so a NUL sentinel arriving IN THE INPUT was replaced with a real fenced
+    // body -- duplicating the block into a prose position. NUL is now stripped
+    // at entry, so neither this nor the BOLD sentinel can be forged.
+    const out = markdownToSlackMrkdwn(
+      "\u0000CODE0\u0000 then\n```\n*real*\n```",
+    );
+    expect(out).not.toContain("\u0000");
+    // the fence body appears exactly once, in its own position
+    expect(out.split("*real*").length - 1).toBe(1);
+    expect(out).toContain("CODE0 then");
+  });
+
+  it("does not splice a later fence into a body that mentions its sentinel", () => {
+    // Restoring in ascending index order re-scanned bodies it had already
+    // restored, so a body containing a LATER sentinel had that block spliced
+    // into it. The restore is now a single left-to-right pass.
+    const out = markdownToSlackMrkdwn(
+      "```\n\u0000CODE1\u0000\n```\ntext\n```\n# second\n```",
+    );
+    expect(out).not.toContain("\u0000");
+    expect(out.split("# second").length - 1).toBe(1);
+    expect(out).toContain("CODE1");
+  });
+
+  it("escapes mention tokens and a leading quote inside a fence", () => {
+    // Holding the body aside swaps escapeSlackMrkdwn (via
+    // escapeSlackMrkdwnContent, which preserves Slack angle tokens and skips a
+    // leading "> ") for escapeSlackMrkdwnSegment, which does neither. Inside a
+    // fence that is the wanted behaviour -- the text is meant to be literal --
+    // so it is pinned here rather than left to be rediscovered.
+    expect(markdownToSlackMrkdwn("```\nping <@U123> now\n```")).toContain(
+      "&lt;@U123&gt;",
+    );
+    expect(markdownToSlackMrkdwn("```\n> quoted line\n```")).toContain(
+      "&gt; quoted line",
+    );
+  });
 });
 
 describe("mention builders + extractors round-trip", () => {
