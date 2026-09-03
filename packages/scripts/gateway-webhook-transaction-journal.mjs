@@ -16,6 +16,7 @@ import {
 import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inflateRawSync } from "node:zlib";
 
 export const JOURNAL_ISSUE = 29763;
 export const MARKER_PREFIX = "<!-- gateway-webhook-transaction:v1\n";
@@ -54,6 +55,11 @@ const PLAN_FILES = [
   "prior-active-deployments.json",
   "rollback-plan.json",
 ];
+const RESOLUTION_RECEIPT_FILE = "gateway-webhook-reconciliation.json";
+const MAX_ARTIFACT_FILE_BYTES = 2_000_000;
+const MAX_PLAN_ARCHIVE_BYTES =
+  PLAN_FILES.length * MAX_ARTIFACT_FILE_BYTES + 1_000_000;
+const MAX_RESOLUTION_ARCHIVE_BYTES = MAX_ARTIFACT_FILE_BYTES + 1_000_000;
 const ENVIRONMENTS = new Set(["staging", "production"]);
 const CLOSE_RESULTS = new Set([
   "baseline-preserved-no-candidate",
@@ -1182,16 +1188,22 @@ export function reduceJournal(
 }
 
 export class GitHubApi {
-  constructor({ token, repository, apiUrl = "https://api.github.com" }) {
-    if (!token || !isRepository(repository))
+  constructor({
+    token,
+    repository,
+    apiUrl = "https://api.github.com",
+    fetchImpl = fetch,
+  }) {
+    if (!token || !isRepository(repository) || typeof fetchImpl !== "function")
       fail("GitHub journal credentials are missing");
     this.token = token;
     this.repository = repository;
     this.apiUrl = apiUrl.replace(/\/$/, "");
+    this.fetchImpl = fetchImpl;
   }
 
   async request(method, endpoint, body) {
-    const response = await fetch(
+    const response = await this.fetchImpl(
       `${this.apiUrl}/repos/${this.repository}${endpoint}`,
       {
         method,
@@ -1212,6 +1224,289 @@ export class GitHubApi {
     }
     return text ? JSON.parse(text) : null;
   }
+
+  async downloadArtifact(artifactId, maximumBytes) {
+    const response = await this.fetchImpl(
+      `${this.apiUrl}/repos/${this.repository}/actions/artifacts/${artifactId}/zip`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${this.token}`,
+          "X-GitHub-Api-Version": API_VERSION,
+        },
+        redirect: "follow",
+      },
+    );
+    if (!response.ok) {
+      fail(`GitHub artifact download failed (${response.status})`);
+    }
+    return boundedResponseBytes(response, maximumBytes);
+  }
+}
+
+async function boundedResponseBytes(response, maximumBytes) {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
+    fail("GitHub artifact archive exceeds the fail-closed size bound");
+  }
+  if (!response.body) fail("GitHub artifact archive body is absent");
+  const chunks = [];
+  let total = 0;
+  const reader = response.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maximumBytes) {
+      await reader.cancel();
+      fail("GitHub artifact archive exceeds the fail-closed size bound");
+    }
+    chunks.push(Buffer.from(value));
+  }
+  if (total === 0) fail("GitHub artifact archive is empty");
+  return Buffer.concat(chunks, total);
+}
+
+function crc32(bytes) {
+  let value = 0xffffffff;
+  for (const byte of bytes) {
+    value ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value >>> 1) ^ (value & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+export function exactArtifactFilesFromZip(
+  archiveBytes,
+  expectedNames,
+  purpose,
+  maximumArchiveBytes,
+) {
+  if (
+    !Buffer.isBuffer(archiveBytes) ||
+    archiveBytes.length < 22 ||
+    archiveBytes.length > maximumArchiveBytes ||
+    !Array.isArray(expectedNames) ||
+    expectedNames.length < 1 ||
+    new Set(expectedNames).size !== expectedNames.length
+  ) {
+    fail(`GitHub ${purpose} artifact archive is missing or too large`);
+  }
+  const minimumEocdOffset = Math.max(0, archiveBytes.length - 65_557);
+  let eocdOffset = -1;
+  for (
+    let offset = archiveBytes.length - 22;
+    offset >= minimumEocdOffset;
+    offset -= 1
+  ) {
+    if (archiveBytes.readUInt32LE(offset) === 0x06054b50) {
+      eocdOffset = offset;
+      break;
+    }
+  }
+  if (eocdOffset < 0) {
+    fail(`GitHub ${purpose} artifact archive has no canonical directory`);
+  }
+  const diskEntries = archiveBytes.readUInt16LE(eocdOffset + 8);
+  const totalEntries = archiveBytes.readUInt16LE(eocdOffset + 10);
+  const centralSize = archiveBytes.readUInt32LE(eocdOffset + 12);
+  const centralOffset = archiveBytes.readUInt32LE(eocdOffset + 16);
+  const eocdCommentLength = archiveBytes.readUInt16LE(eocdOffset + 20);
+  if (
+    archiveBytes.readUInt16LE(eocdOffset + 4) !== 0 ||
+    archiveBytes.readUInt16LE(eocdOffset + 6) !== 0 ||
+    diskEntries !== expectedNames.length ||
+    totalEntries !== expectedNames.length ||
+    totalEntries === 0xffff ||
+    centralOffset === 0xffffffff ||
+    centralSize === 0xffffffff ||
+    centralOffset + centralSize !== eocdOffset ||
+    eocdOffset + 22 + eocdCommentLength !== archiveBytes.length
+  ) {
+    fail(`GitHub ${purpose} artifact archive has an unsafe file manifest`);
+  }
+
+  const expected = new Set(expectedNames);
+  const entries = [];
+  const seenNames = new Set();
+  const seenOffsets = new Set();
+  let cursor = centralOffset;
+  for (let index = 0; index < totalEntries; index += 1) {
+    if (
+      cursor + 46 > eocdOffset ||
+      archiveBytes.readUInt32LE(cursor) !== 0x02014b50
+    ) {
+      fail(`GitHub ${purpose} artifact central directory is malformed`);
+    }
+    const versionMadeBy = archiveBytes.readUInt16LE(cursor + 4);
+    const flags = archiveBytes.readUInt16LE(cursor + 8);
+    const method = archiveBytes.readUInt16LE(cursor + 10);
+    const checksum = archiveBytes.readUInt32LE(cursor + 16);
+    const compressedSize = archiveBytes.readUInt32LE(cursor + 20);
+    const uncompressedSize = archiveBytes.readUInt32LE(cursor + 24);
+    const nameLength = archiveBytes.readUInt16LE(cursor + 28);
+    const extraLength = archiveBytes.readUInt16LE(cursor + 30);
+    const commentLength = archiveBytes.readUInt16LE(cursor + 32);
+    const diskStart = archiveBytes.readUInt16LE(cursor + 34);
+    const externalAttributes = archiveBytes.readUInt32LE(cursor + 38);
+    const localOffset = archiveBytes.readUInt32LE(cursor + 42);
+    const entryEnd = cursor + 46 + nameLength + extraLength + commentLength;
+    if (entryEnd > eocdOffset) {
+      fail(`GitHub ${purpose} artifact central directory is truncated`);
+    }
+    const name = archiveBytes
+      .subarray(cursor + 46, cursor + 46 + nameLength)
+      .toString("utf8");
+    const unixMode = externalAttributes >>> 16;
+    const unixFileType = unixMode & 0o170000;
+    const madeByUnix = versionMadeBy >>> 8 === 3;
+    if (
+      !expected.has(name) ||
+      seenNames.has(name) ||
+      seenOffsets.has(localOffset) ||
+      nameLength === 0 ||
+      (flags & ~0x0808) !== 0 ||
+      ![0, 8].includes(method) ||
+      compressedSize === 0 ||
+      compressedSize === 0xffffffff ||
+      uncompressedSize === 0 ||
+      uncompressedSize === 0xffffffff ||
+      uncompressedSize > MAX_ARTIFACT_FILE_BYTES ||
+      diskStart !== 0 ||
+      localOffset === 0xffffffff ||
+      localOffset >= centralOffset ||
+      (externalAttributes & 0x10) !== 0 ||
+      (madeByUnix && unixFileType !== 0 && unixFileType !== 0o100000)
+    ) {
+      fail(`GitHub ${purpose} artifact archive has an unsafe file manifest`);
+    }
+    seenNames.add(name);
+    seenOffsets.add(localOffset);
+    entries.push({
+      name,
+      flags,
+      method,
+      checksum,
+      compressedSize,
+      uncompressedSize,
+      localOffset,
+    });
+    cursor = entryEnd;
+  }
+  if (
+    cursor !== eocdOffset ||
+    seenNames.size !== expected.size ||
+    expectedNames.some((name) => !seenNames.has(name))
+  ) {
+    fail(`GitHub ${purpose} artifact archive has a non-exact file manifest`);
+  }
+
+  entries.sort((left, right) => left.localOffset - right.localOffset);
+  const extracted = new Map();
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    const localOffset = entry.localOffset;
+    if (
+      (index === 0 && localOffset !== 0) ||
+      localOffset + 30 > centralOffset ||
+      archiveBytes.readUInt32LE(localOffset) !== 0x04034b50
+    ) {
+      fail(`GitHub ${purpose} artifact local file header is malformed`);
+    }
+    const localFlags = archiveBytes.readUInt16LE(localOffset + 6);
+    const localMethod = archiveBytes.readUInt16LE(localOffset + 8);
+    const localChecksum = archiveBytes.readUInt32LE(localOffset + 14);
+    const localCompressedSize = archiveBytes.readUInt32LE(localOffset + 18);
+    const localUncompressedSize = archiveBytes.readUInt32LE(localOffset + 22);
+    const localNameLength = archiveBytes.readUInt16LE(localOffset + 26);
+    const localExtraLength = archiveBytes.readUInt16LE(localOffset + 28);
+    const localHeaderEnd =
+      localOffset + 30 + localNameLength + localExtraLength;
+    if (localHeaderEnd > centralOffset) {
+      fail(`GitHub ${purpose} artifact local file header is truncated`);
+    }
+    const localName = archiveBytes
+      .subarray(localOffset + 30, localOffset + 30 + localNameLength)
+      .toString("utf8");
+    const dataEnd = localHeaderEnd + entry.compressedSize;
+    const nextOffset = entries[index + 1]?.localOffset ?? centralOffset;
+    if (
+      localName !== entry.name ||
+      localFlags !== entry.flags ||
+      localMethod !== entry.method ||
+      dataEnd > nextOffset
+    ) {
+      fail(`GitHub ${purpose} artifact local file header is inconsistent`);
+    }
+    if ((entry.flags & 0x0008) === 0) {
+      if (
+        localChecksum !== entry.checksum ||
+        localCompressedSize !== entry.compressedSize ||
+        localUncompressedSize !== entry.uncompressedSize ||
+        dataEnd !== nextOffset
+      ) {
+        fail(`GitHub ${purpose} artifact local file header is inconsistent`);
+      }
+    } else {
+      let descriptorOffset = dataEnd;
+      if (
+        descriptorOffset + 4 <= nextOffset &&
+        archiveBytes.readUInt32LE(descriptorOffset) === 0x08074b50
+      ) {
+        descriptorOffset += 4;
+      }
+      if (
+        localChecksum !== 0 ||
+        localCompressedSize !== 0 ||
+        localUncompressedSize !== 0 ||
+        descriptorOffset + 12 !== nextOffset ||
+        archiveBytes.readUInt32LE(descriptorOffset) !== entry.checksum ||
+        archiveBytes.readUInt32LE(descriptorOffset + 4) !==
+          entry.compressedSize ||
+        archiveBytes.readUInt32LE(descriptorOffset + 8) !==
+          entry.uncompressedSize
+      ) {
+        fail(`GitHub ${purpose} artifact data descriptor is inconsistent`);
+      }
+    }
+    let bytes;
+    try {
+      const compressed = archiveBytes.subarray(localHeaderEnd, dataEnd);
+      bytes =
+        entry.method === 0
+          ? Buffer.from(compressed)
+          : inflateRawSync(compressed, {
+              maxOutputLength: MAX_ARTIFACT_FILE_BYTES,
+            });
+    } catch {
+      fail(`GitHub ${purpose} artifact file failed bounded extraction`);
+    }
+    if (
+      bytes.length !== entry.uncompressedSize ||
+      crc32(bytes) !== entry.checksum
+    ) {
+      fail(`GitHub ${purpose} artifact file failed its size or CRC proof`);
+    }
+    extracted.set(entry.name, bytes);
+  }
+  return new Map(expectedNames.map((name) => [name, extracted.get(name)]));
+}
+
+async function downloadArtifactArchive(api, artifactId, maximumBytes, purpose) {
+  if (typeof api?.downloadArtifact !== "function") {
+    fail(`GitHub ${purpose} artifact downloader is unavailable`);
+  }
+  const bytes = await api.downloadArtifact(artifactId, maximumBytes);
+  if (
+    !Buffer.isBuffer(bytes) ||
+    bytes.length === 0 ||
+    bytes.length > maximumBytes
+  ) {
+    fail(`GitHub ${purpose} artifact archive is missing or too large`);
+  }
+  return bytes;
 }
 
 async function paginatedJobs(api, endpoint) {
@@ -2221,7 +2516,14 @@ export async function appendJournalRecord(
   );
 }
 
-async function appendJournalMarker(api, state, marker, writer, authKey) {
+async function appendJournalMarker(
+  api,
+  state,
+  marker,
+  writer,
+  authKey,
+  beforePost = null,
+) {
   validateMarker(marker);
   if (!validWriter(writer, marker)) {
     fail("gateway journal writer is not canonical for the marker");
@@ -2239,7 +2541,10 @@ async function appendJournalMarker(api, state, marker, writer, authKey) {
     record,
     authKey,
     {
-      beforePost: () => validateCurrentRecoveryAttempt(api, marker),
+      beforePost: async () => {
+        await validateCurrentRecoveryAttempt(api, marker);
+        if (beforePost !== null) await beforePost();
+      },
     },
   );
   return {
@@ -2404,6 +2709,19 @@ async function readSecureJson(path, purpose) {
   return value;
 }
 
+async function readSecureBytes(path, purpose, maximumBytes) {
+  const stats = await lstat(path);
+  if (
+    !stats.isFile() ||
+    stats.isSymbolicLink() ||
+    stats.size <= 0 ||
+    stats.size > maximumBytes
+  ) {
+    fail(`${purpose} is missing, unsafe, or too large`);
+  }
+  return readFile(path);
+}
+
 async function validatePreparedOpenArtifact(api, descriptor, authority) {
   const artifactId = authority.artifactId;
   const artifactName = authority.artifactName;
@@ -2527,6 +2845,19 @@ export async function commitPreparedOpen(
       runtime,
     );
   }
+  const planAuthority = await attestRollbackPlanArtifact(
+    api,
+    descriptor,
+    descriptor.record.marker,
+  );
+  if (
+    planAuthority.plaintextSha256 !==
+    descriptor.record.marker.journalPlanPlaintextSha256
+  ) {
+    fail(
+      "prepared OPEN encrypted plan differs from the authoritative rollback-plan artifact",
+    );
+  }
   const state = await readJournalState(
     api,
     repository,
@@ -2567,14 +2898,41 @@ export async function commitPreparedOpen(
         ? async () => {
             await validateSourceAttempt(api, descriptor, runtime);
             await validateCurrentDevelopHead(api, descriptor.sourceSha);
+            const currentPlanAuthority = await attestRollbackPlanArtifact(
+              api,
+              descriptor,
+              descriptor.record.marker,
+            );
+            if (
+              currentPlanAuthority.plaintextSha256 !==
+              descriptor.record.marker.journalPlanPlaintextSha256
+            ) {
+              fail(
+                "prepared OPEN encrypted plan differs from the current rollback-plan authority",
+              );
+            }
           }
-        : () =>
-            validateRekeyAttempt(
+        : async () => {
+            await validateRekeyAttempt(
               api,
               repository,
               descriptor.environment,
               runtime,
-            ),
+            );
+            const currentPlanAuthority = await attestRollbackPlanArtifact(
+              api,
+              descriptor,
+              descriptor.record.marker,
+            );
+            if (
+              currentPlanAuthority.plaintextSha256 !==
+              descriptor.record.marker.journalPlanPlaintextSha256
+            ) {
+              fail(
+                "prepared OPEN encrypted plan differs from the current rollback-plan authority",
+              );
+            }
+          },
     },
   );
   const committed = await readJournalState(
@@ -2785,11 +3143,16 @@ export function decryptCandidateEnvelope(
 
 async function readExactPlan(directory) {
   const files = [];
+  const bytesByName = new Map();
   let rollbackPlan = null;
   for (const name of PLAN_FILES) {
     const path = join(directory, name);
     const stats = await lstat(path);
-    if (!stats.isFile() || stats.isSymbolicLink() || stats.size > 2_000_000) {
+    if (
+      !stats.isFile() ||
+      stats.isSymbolicLink() ||
+      stats.size > MAX_ARTIFACT_FILE_BYTES
+    ) {
       fail(`rollback-plan file ${name} is missing, unsafe, or too large`);
     }
     const bytes = await readFile(path);
@@ -2799,6 +3162,7 @@ async function readExactPlan(directory) {
     } catch {
       fail(`rollback-plan file ${name} is not JSON`);
     }
+    bytesByName.set(name, bytes);
     files.push({
       name,
       sha256: createHash("sha256").update(bytes).digest("hex"),
@@ -2807,12 +3171,12 @@ async function readExactPlan(directory) {
   }
   return {
     files,
+    bytesByName,
     rollbackPlan,
   };
 }
 
-export async function publishEncryptedPlan(api, source, directory, authKey) {
-  const { files, rollbackPlan } = await readExactPlan(directory);
+function validateRollbackPlanSource(rollbackPlan, source) {
   if (
     !isUuid(rollbackPlan?.priorActiveDeploymentId) ||
     typeof rollbackPlan?.priorSnapshotId !== "string" ||
@@ -2825,13 +3189,207 @@ export async function publishEncryptedPlan(api, source, directory, authKey) {
   ) {
     fail("rollback plan does not bind its source or provider key material");
   }
-  const plaintext = Buffer.from(
+}
+
+function planPlaintext(files) {
+  return Buffer.from(
     JSON.stringify({
       version: 1,
       files,
     }),
     "utf8",
   );
+}
+
+function planBundleFromArtifactFiles(filesByName, source) {
+  const files = [];
+  let rollbackPlan = null;
+  for (const name of PLAN_FILES) {
+    const bytes = filesByName.get(name);
+    if (!Buffer.isBuffer(bytes)) {
+      fail(`authoritative rollback-plan file ${name} is absent`);
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(bytes.toString("utf8"));
+    } catch {
+      fail(`authoritative rollback-plan file ${name} is not JSON`);
+    }
+    if (name === "rollback-plan.json") rollbackPlan = parsed;
+    files.push({
+      name,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      content: bytes.toString("base64"),
+    });
+  }
+  validateRollbackPlanSource(rollbackPlan, source);
+  const plaintext = planPlaintext(files);
+  return {
+    files,
+    filesByName,
+    rollbackPlan,
+    plaintext,
+    plaintextSha256: createHash("sha256").update(plaintext).digest("hex"),
+  };
+}
+
+function exactArtifactDigest(artifact) {
+  const value = artifact?.digest;
+  return typeof value === "string" && value.startsWith("sha256:")
+    ? value.slice("sha256:".length)
+    : null;
+}
+
+function artifactExpiryIsFuture(artifact, nowMilliseconds) {
+  const expiresAt = Date.parse(artifact?.expires_at ?? "");
+  return Number.isFinite(expiresAt) && expiresAt > nowMilliseconds;
+}
+
+export async function attestRollbackPlanArtifact(
+  api,
+  source,
+  authority,
+  nowMilliseconds = Date.now(),
+) {
+  const artifactId = authority?.planArtifactId;
+  const artifactName = authority?.planArtifactName;
+  const artifactDigest = authority?.planArtifactDigest?.toLowerCase();
+  if (
+    !validSource(source) ||
+    !isPositiveIntegerString(artifactId) ||
+    artifactName !==
+      `gateway-webhook-rollback-plan-${source.environment}-${source.sourceRunId}-${source.sourceRunAttempt}` ||
+    !isDigest(artifactDigest) ||
+    !Number.isFinite(nowMilliseconds)
+  ) {
+    fail("rollback-plan artifact authority is malformed");
+  }
+  const artifact = await api.request("GET", `/actions/artifacts/${artifactId}`);
+  if (
+    String(artifact?.id) !== artifactId ||
+    artifact?.name !== artifactName ||
+    artifact?.expired !== false ||
+    !artifactExpiryIsFuture(artifact, nowMilliseconds) ||
+    String(artifact?.workflow_run?.id) !== source.sourceRunId ||
+    artifact?.workflow_run?.head_sha !== source.sourceSha ||
+    exactArtifactDigest(artifact) !== artifactDigest ||
+    !Number.isSafeInteger(artifact?.size_in_bytes) ||
+    artifact.size_in_bytes <= 0 ||
+    artifact.size_in_bytes > MAX_PLAN_ARCHIVE_BYTES
+  ) {
+    fail(
+      "rollback-plan artifact readback does not bind the exact unexpired source and digest",
+    );
+  }
+  const archiveBytes = await downloadArtifactArchive(
+    api,
+    artifactId,
+    MAX_PLAN_ARCHIVE_BYTES,
+    "rollback-plan",
+  );
+  if (
+    archiveBytes.length !== artifact.size_in_bytes ||
+    createHash("sha256").update(archiveBytes).digest("hex") !== artifactDigest
+  ) {
+    fail("rollback-plan artifact archive does not match its size and digest");
+  }
+  const filesByName = exactArtifactFilesFromZip(
+    archiveBytes,
+    PLAN_FILES,
+    "rollback-plan",
+    MAX_PLAN_ARCHIVE_BYTES,
+  );
+  return planBundleFromArtifactFiles(filesByName, source);
+}
+
+export async function attestResolutionArtifact(
+  api,
+  marker,
+  nowMilliseconds = Date.now(),
+) {
+  const artifactId = marker?.resolutionArtifactId;
+  const artifactDigest = marker?.resolutionArtifactDigest?.toLowerCase();
+  if (
+    !validSource(marker) ||
+    !isPositiveIntegerString(marker?.recoveryRunId) ||
+    !isPositiveIntegerString(marker?.recoveryRunAttempt) ||
+    !isSha(marker?.recoveryWorkflowSha) ||
+    !isPositiveIntegerString(artifactId) ||
+    marker?.resolutionArtifactName !==
+      `gateway-webhook-reconciliation-${marker.environment}-${marker.sourceRunId}-${marker.sourceRunAttempt}-${marker.recoveryRunId}-${marker.recoveryRunAttempt}` ||
+    !isDigest(artifactDigest) ||
+    !Number.isFinite(nowMilliseconds)
+  ) {
+    fail("resolution artifact authority is malformed");
+  }
+  const artifact = await api.request("GET", `/actions/artifacts/${artifactId}`);
+  if (
+    String(artifact?.id) !== artifactId ||
+    artifact?.name !== marker.resolutionArtifactName ||
+    artifact?.expired !== false ||
+    !artifactExpiryIsFuture(artifact, nowMilliseconds) ||
+    String(artifact?.workflow_run?.id) !== marker.recoveryRunId ||
+    artifact?.workflow_run?.head_sha !== marker.recoveryWorkflowSha ||
+    exactArtifactDigest(artifact) !== artifactDigest ||
+    !Number.isSafeInteger(artifact?.size_in_bytes) ||
+    artifact.size_in_bytes <= 0 ||
+    artifact.size_in_bytes > MAX_RESOLUTION_ARCHIVE_BYTES
+  ) {
+    fail(
+      "resolution artifact readback does not bind the exact unexpired recovery run and digest",
+    );
+  }
+  const archiveBytes = await downloadArtifactArchive(
+    api,
+    artifactId,
+    MAX_RESOLUTION_ARCHIVE_BYTES,
+    "resolution",
+  );
+  if (
+    archiveBytes.length !== artifact.size_in_bytes ||
+    createHash("sha256").update(archiveBytes).digest("hex") !== artifactDigest
+  ) {
+    fail("resolution artifact archive does not match its size and digest");
+  }
+  const files = exactArtifactFilesFromZip(
+    archiveBytes,
+    [RESOLUTION_RECEIPT_FILE],
+    "resolution",
+    MAX_RESOLUTION_ARCHIVE_BYTES,
+  );
+  return files.get(RESOLUTION_RECEIPT_FILE);
+}
+
+export async function publishEncryptedPlan(
+  api,
+  source,
+  directory,
+  authKey,
+  authoritativeBundle,
+) {
+  const { files, bytesByName, rollbackPlan } = await readExactPlan(directory);
+  validateRollbackPlanSource(rollbackPlan, source);
+  if (
+    !(authoritativeBundle?.filesByName instanceof Map) ||
+    PLAN_FILES.some(
+      (name) =>
+        !Buffer.isBuffer(authoritativeBundle.filesByName.get(name)) ||
+        !bytesByName
+          .get(name)
+          .equals(authoritativeBundle.filesByName.get(name)),
+    )
+  ) {
+    fail("local rollback-plan bytes differ from the authoritative artifact");
+  }
+  const localPlaintextSha256 = createHash("sha256")
+    .update(planPlaintext(files))
+    .digest("hex");
+  if (localPlaintextSha256 !== authoritativeBundle.plaintextSha256) {
+    fail(
+      "local rollback-plan manifest differs from the authoritative artifact",
+    );
+  }
+  const plaintext = planPlaintext(files);
   const keyMaterial = `${rollbackPlan.priorActiveDeploymentId}\0${rollbackPlan.priorSnapshotId}`;
   const plaintextSha256 = createHash("sha256").update(plaintext).digest("hex");
   const journalPlanId = randomBytes(16).toString("hex");
@@ -3165,22 +3723,11 @@ export async function main(
         : null,
     };
     const writer = await validateSourceAttempt(api, marker, environment);
-    const artifact = await api.request(
-      "GET",
-      `/actions/artifacts/${marker.planArtifactId}`,
+    const authoritativeBundle = await attestRollbackPlanArtifact(
+      api,
+      source,
+      marker,
     );
-    const serverDigest = String(artifact?.digest ?? "").replace(/^sha256:/, "");
-    if (
-      String(artifact?.id) !== marker.planArtifactId ||
-      artifact?.name !== marker.planArtifactName ||
-      artifact?.expired !== false ||
-      String(artifact?.workflow_run?.id) !== marker.sourceRunId ||
-      serverDigest !== marker.planArtifactDigest
-    ) {
-      fail(
-        "rollback-plan artifact readback does not bind the exact source run and digest",
-      );
-    }
     Object.assign(
       marker,
       await publishEncryptedPlan(
@@ -3188,6 +3735,7 @@ export async function main(
         source,
         required(options, "plan-directory"),
         authKey,
+        authoritativeBundle,
       ),
     );
     validateMarker(marker);
@@ -3450,12 +3998,23 @@ export async function main(
           : null,
       };
     }
+    let closeAuthorityBeforePost = null;
     if (command === "close") {
       if (state.rollbackIntents.length !== state.rollbackObservations.length) {
         fail("cannot CLOSE before the latest rollback result is observed");
       }
       const receiptPath = required(options, "resolution-receipt-path");
-      const receiptBytes = await readFile(receiptPath);
+      const localReceiptBytes = await readSecureBytes(
+        receiptPath,
+        "local resolution receipt",
+        MAX_ARTIFACT_FILE_BYTES,
+      );
+      const receiptBytes = await attestResolutionArtifact(api, marker);
+      if (!localReceiptBytes.equals(receiptBytes)) {
+        fail(
+          "local resolution receipt differs from the authoritative artifact",
+        );
+      }
       const receiptDigest = createHash("sha256")
         .update(receiptBytes)
         .digest("hex");
@@ -3464,25 +4023,6 @@ export async function main(
         receipt = JSON.parse(receiptBytes.toString("utf8"));
       } catch {
         fail("resolution receipt is not JSON");
-      }
-      const artifact = await api.request(
-        "GET",
-        `/actions/artifacts/${marker.resolutionArtifactId}`,
-      );
-      const serverDigest = String(artifact?.digest ?? "").replace(
-        /^sha256:/,
-        "",
-      );
-      if (
-        String(artifact?.id) !== marker.resolutionArtifactId ||
-        artifact?.name !== marker.resolutionArtifactName ||
-        artifact?.expired !== false ||
-        String(artifact?.workflow_run?.id) !== runId ||
-        serverDigest !== marker.resolutionArtifactDigest
-      ) {
-        fail(
-          "resolution artifact readback does not bind the exact recovery run and digest",
-        );
       }
       const receiptAttemptsValid =
         Array.isArray(receipt?.rollbackAttempts) &&
@@ -3571,6 +4111,12 @@ export async function main(
         );
       }
       marker = { ...marker, resolutionReceiptSha256: receiptDigest };
+      closeAuthorityBeforePost = async () => {
+        const currentReceiptBytes = await attestResolutionArtifact(api, marker);
+        if (!currentReceiptBytes.equals(receiptBytes)) {
+          fail("resolution receipt artifact changed before durable CLOSE");
+        }
+      };
     }
     const created = await appendJournalMarker(
       api,
@@ -3578,6 +4124,7 @@ export async function main(
       marker,
       writer,
       authKey,
+      closeAuthorityBeforePost,
     );
     await writeOutput(options.get("--output"), created);
     return created;
