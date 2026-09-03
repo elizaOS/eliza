@@ -371,15 +371,15 @@ mock.module("ai", () => ({
 }));
 
 // Sibling suites in the same bun process mock ../../cache/client globally with
-// partial doubles (server-wallets-provision-proof exposes only setIfNotExists;
-// resolve-shared-agent substitutes its own get/set), and bun's mock.module
-// patches the process-wide registry — so batch composition decided whether the
-// character-hydration get/set flow here saw a working cache. Pin this suite's
-// own Map-backed double instead. It cannot be built from the real module: a
-// sibling that loaded first has already replaced the registry entry, so an
-// import here returns that sibling's partial mock, not the real exports.
+// Bun's mock.module patches the process-wide registry, so sibling partial
+// doubles can otherwise make behavior depend on batch composition. Preserve
+// the available module surface while pinning this suite's exercised cache
+// operations to its own Map-backed double.
 const localCacheStore = new Map<string, unknown>();
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   NEGATIVE_CACHE_SENTINEL: { __none: true },
   cache: {
     isAvailable: () => true,
@@ -399,6 +399,8 @@ mock.module("../../cache/client", () => ({
       localCacheStore.set(key, "1");
       return true;
     },
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

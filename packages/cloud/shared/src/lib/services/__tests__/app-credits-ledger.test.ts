@@ -148,12 +148,17 @@ const cacheGet = mock(async () => null);
 const cacheSet = mock(async () => undefined);
 const cacheDel = mock(async () => undefined);
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: cacheGet,
     set: cacheSet,
     del: cacheDel,
     delete: cacheDel,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

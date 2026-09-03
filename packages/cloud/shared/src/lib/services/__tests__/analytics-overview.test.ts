@@ -39,11 +39,16 @@ async function cacheMiss<T>(): Promise<T | null> {
 
 const getWithSWR = mock(loadThroughCache);
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   ...REAL_CACHE_CLIENT,
   cache: {
     ...REAL_CACHE_CLIENT.cache,
     getWithSWR,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

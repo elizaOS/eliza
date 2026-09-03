@@ -25,11 +25,16 @@ mock.module("../../db/helpers", () => ({
   },
 }));
 
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: async () => distributedCacheValue,
     set: async () => undefined,
     del: async () => undefined,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

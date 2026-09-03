@@ -102,13 +102,18 @@ mock.module("../../db/repositories", () => ({
   mcpUsageRepository: {},
 }));
 
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     async get() {
       return null;
     },
     async set() {},
     async del() {},
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

@@ -49,9 +49,17 @@ mock.module("../usage", () => ({
   usageService: { ...realUsage.usageService, create: usageCreate },
 }));
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   ...realCache,
-  cache: { get: async () => null, set: async () => {} },
+  cache: {
+    get: async () => null,
+    set: async () => {},
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 
 // InsufficientCreditsError is a real export used by the engine's instanceof check.

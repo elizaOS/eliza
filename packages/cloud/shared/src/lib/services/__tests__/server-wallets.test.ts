@@ -47,9 +47,14 @@ mock.module("../../../db/client", () => ({
   db: dbMock,
 }));
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     setIfNotExists,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

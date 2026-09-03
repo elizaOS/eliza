@@ -33,11 +33,16 @@ mock.module("../secrets", () => ({
 }));
 
 // The status path touches the cache client on import; keep it inert and offline.
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: async () => null,
     set: async () => {},
     del: async () => {},
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

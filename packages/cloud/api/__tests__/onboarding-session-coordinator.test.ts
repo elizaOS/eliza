@@ -16,12 +16,19 @@ const noProvisioning = {
 };
 let mirrorFailure: Error | undefined;
 
+const cacheClientActualModule = await import(
+  "../../shared/src/lib/cache/client"
+);
+
 mock.module("../../shared/src/lib/cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: mock(async () => null),
     set: mock(async () => {
       if (mirrorFailure) throw mirrorFailure;
     }),
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

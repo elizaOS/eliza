@@ -13,12 +13,17 @@ const launchManagedElizaAgent = mock();
 let cloudEnv: Record<string, string | undefined> = {};
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: mock(async (key: string) => sessionCache.get(key) ?? null),
     set: mock(async (key: string, value: unknown) => {
       sessionCache.set(key, value);
     }),
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

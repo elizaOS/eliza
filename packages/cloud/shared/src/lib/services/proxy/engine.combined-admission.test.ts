@@ -42,8 +42,16 @@ mock.module("../organization-inference-admission", () => ({
   ...organizationInferenceAdmissionActual,
   admitOrganizationInference: admit,
 }));
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
-  cache: { get: proxyCacheGet, set: proxyCacheSet },
+  ...cacheClientActualModule,
+  cache: {
+    get: proxyCacheGet,
+    set: proxyCacheSet,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 mock.module("../usage", () => ({
   usageService: { create: mock(async () => undefined) },

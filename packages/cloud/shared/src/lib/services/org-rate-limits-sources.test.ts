@@ -32,7 +32,10 @@ mock.module("../../db/repositories/org-rate-limit-overrides", () => ({
   },
 }));
 
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     set: async () => {
       cacheWrites += 1;
@@ -40,6 +43,8 @@ mock.module("../cache/client", () => ({
     get: async () => null,
     getWithOutcome: async () => ({ kind: "miss" as const }),
     del: async () => undefined,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

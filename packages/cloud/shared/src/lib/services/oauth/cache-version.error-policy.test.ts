@@ -21,7 +21,10 @@ const getCalls: string[] = [];
 const incrCalls: string[] = [];
 const expireCalls: Array<{ key: string; ttl: number }> = [];
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: async (key: string) => {
       getCalls.push(key);
@@ -37,6 +40,8 @@ mock.module("../../cache/client", () => ({
       expireCalls.push({ key, ttl });
     },
     isAvailable: () => available,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

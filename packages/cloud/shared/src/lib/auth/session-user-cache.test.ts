@@ -10,8 +10,15 @@ import { CacheTTL } from "../cache/keys";
 
 const cacheSet = mock(async () => undefined);
 
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
-  cache: { set: cacheSet },
+  ...cacheClientActualModule,
+  cache: {
+    set: cacheSet,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 
 const { hashSessionToken, primeVerifiedUserSessionCache } = await import("./session-user-cache");
