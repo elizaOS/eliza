@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { inflateRawSync } from "node:zlib";
 import {
   decryptCandidateEnvelope,
   GitHubApi,
@@ -50,6 +51,16 @@ const NONTERMINAL = new Set([
 const READY = new Set(["SUCCESS", "SLEEPING"]);
 const RESTORATION_DIGEST_DOMAIN = "gateway-webhook-restoration-id-v1\0";
 const ACTIVE_TOPOLOGY_DIGEST_DOMAIN = "gateway-webhook-active-topology-v1\0";
+const RECEIPT_SEMANTIC_DIGEST_DOMAIN =
+  "gateway-webhook-deployment-receipt-v1\0";
+const PLAN_FILES = [
+  "deployment-baseline.json",
+  "prior-active-deployments.json",
+  "rollback-plan.json",
+];
+const RECEIPT_FILE = "gateway-webhook-deployment.json";
+const MAX_RECEIPT_ARCHIVE_BYTES = 2_000_000;
+const MAX_RECEIPT_BYTES = 2_000_000;
 const SOURCE_SETTLEMENT_SECONDS = 600;
 // An intent may be created before the final provider/scope reads complete. Keep
 // the irreversible call close to that durable timestamp, then wait an extra
@@ -90,8 +101,42 @@ function canonicalJson(value) {
   return JSON.stringify(canonical(value));
 }
 
+function exactKeys(value, keys) {
+  return (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).sort().join("\0") === [...keys].sort().join("\0")
+  );
+}
+
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+export function deploymentReceiptSemanticDigest(receipt) {
+  return createHash("sha256")
+    .update(RECEIPT_SEMANTIC_DIGEST_DOMAIN)
+    .update(canonicalJson(receipt))
+    .digest("hex");
+}
+
+function journalPlanPlaintextDigest(files) {
+  const payload = {
+    version: 1,
+    files: PLAN_FILES.map((name) => {
+      const bytes = files.get(name);
+      if (!Buffer.isBuffer(bytes)) {
+        fail(`rollback-plan file ${name} is absent from the exact manifest`);
+      }
+      return {
+        name,
+        sha256: sha256(bytes),
+        content: bytes.toString("base64"),
+      };
+    }),
+  };
+  return sha256(Buffer.from(JSON.stringify(payload), "utf8"));
 }
 
 export function restorationIdDigest(id) {
@@ -190,7 +235,8 @@ export function validatePlanBundle(config, bundle) {
     plan.expectedDeploymentMessage !==
       `gateway-webhook ${config.sourceSha} (staging) run:${config.sourceRunId}:${config.sourceRunAttempt} nonce:${plan.deploymentNonce}` ||
     plan.deploymentBaselineSha256 !== digests.baseline ||
-    plan.priorActiveDeploymentsSha256 !== digests.priorActive
+    plan.priorActiveDeploymentsSha256 !== digests.priorActive ||
+    !DIGEST.test(digests.journalPlanPlaintext ?? "")
   ) {
     fail("immutable rollback plan identity or digest validation failed");
   }
@@ -301,7 +347,8 @@ export async function verifySourcePreMutationSnapshot(
   };
 }
 
-export function validateJournalState(config, state) {
+export function validateJournalState(config, state, bundle) {
+  const expectedPlanArtifactName = `gateway-webhook-rollback-plan-staging-${config.sourceRunId}-${config.sourceRunAttempt}`;
   if (
     state?.status !== "open" ||
     state.open?.repository !== config.repository ||
@@ -311,6 +358,12 @@ export function validateJournalState(config, state) {
     state.open?.sourceRunAttempt !== config.sourceRunAttempt ||
     state.open?.commentId !== config.openRecordId ||
     !DIGEST.test(state.open.commentId ?? "") ||
+    state.open?.planArtifactName !== expectedPlanArtifactName ||
+    state.open?.planArtifactId !== config.planArtifactId ||
+    state.open?.planArtifactDigest !== config.planArtifactDigest ||
+    state.open?.journalPlanPlaintextSha256 !==
+      bundle?.digests?.journalPlanPlaintext ||
+    !DIGEST.test(state.open?.journalPlanPlaintextSha256 ?? "") ||
     !Array.isArray(state.rollbackIntents) ||
     !Array.isArray(state.rollbackObservations) ||
     !Array.isArray(state.rollbackIntentCreatedAts) ||
@@ -354,8 +407,26 @@ export function validateJournalState(config, state) {
 }
 
 export function validateDeploymentReceipt(config, plan, receipt, candidateId) {
+  const keys = [
+    "credentialProof",
+    "deploymentId",
+    "environment",
+    "expectedDeploymentMessage",
+    "openCommentId",
+    "redisBackend",
+    "reminderAuthorityReadiness",
+    "rollbackPlanArtifactDigest",
+    "rollbackPlanArtifactId",
+    "service",
+    "sourceSha",
+    "telegramIdentity",
+    "telegramProviderSmoke",
+    "telegramProviderWebhookSecret",
+    "workflowRunAttempt",
+    "workflowRunId",
+  ];
   return Boolean(
-    receipt &&
+    exactKeys(receipt, keys) &&
       receipt.sourceSha === config.sourceSha &&
       receipt.environment === "staging" &&
       receipt.deploymentId === candidateId &&
@@ -371,8 +442,176 @@ export function validateDeploymentReceipt(config, plan, receipt, candidateId) {
       receipt.telegramProviderSmoke === "unproven" &&
       receipt.reminderAuthorityReadiness === "attested" &&
       receipt.redisBackend === "distributed" &&
-      DIGEST.test(receipt.credentialProof ?? ""),
+      DIGEST.test(receipt.credentialProof ?? "") &&
+      config.receiptSemanticDigest === deploymentReceiptSemanticDigest(receipt),
   );
+}
+
+function expectedReceiptArtifactName(config) {
+  return `gateway-webhook-deployment-staging-${config.sourceSha}-${config.sourceRunId}-${config.sourceRunAttempt}`;
+}
+
+function crc32(bytes) {
+  let value = 0xffffffff;
+  for (const byte of bytes) {
+    value ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value >>> 1) ^ (value & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+function receiptBytesFromArchive(archiveBytes) {
+  const minimumEocdOffset = Math.max(0, archiveBytes.length - 65_557);
+  let eocdOffset = -1;
+  for (
+    let offset = archiveBytes.length - 22;
+    offset >= minimumEocdOffset;
+    offset -= 1
+  ) {
+    if (archiveBytes.readUInt32LE(offset) === 0x06054b50) {
+      eocdOffset = offset;
+      break;
+    }
+  }
+  if (
+    eocdOffset < 0 ||
+    archiveBytes.readUInt16LE(eocdOffset + 4) !== 0 ||
+    archiveBytes.readUInt16LE(eocdOffset + 6) !== 0 ||
+    archiveBytes.readUInt16LE(eocdOffset + 8) !== 1 ||
+    archiveBytes.readUInt16LE(eocdOffset + 10) !== 1 ||
+    eocdOffset + 22 + archiveBytes.readUInt16LE(eocdOffset + 20) !==
+      archiveBytes.length
+  ) {
+    fail("GitHub receipt artifact archive has an unsafe file manifest");
+  }
+  const centralSize = archiveBytes.readUInt32LE(eocdOffset + 12);
+  const centralOffset = archiveBytes.readUInt32LE(eocdOffset + 16);
+  if (
+    centralOffset + centralSize !== eocdOffset ||
+    centralSize < 46 ||
+    archiveBytes.readUInt32LE(centralOffset) !== 0x02014b50
+  ) {
+    fail("GitHub receipt artifact archive is malformed");
+  }
+  const flags = archiveBytes.readUInt16LE(centralOffset + 8);
+  const method = archiveBytes.readUInt16LE(centralOffset + 10);
+  const expectedCrc = archiveBytes.readUInt32LE(centralOffset + 16);
+  const compressedSize = archiveBytes.readUInt32LE(centralOffset + 20);
+  const uncompressedSize = archiveBytes.readUInt32LE(centralOffset + 24);
+  const nameLength = archiveBytes.readUInt16LE(centralOffset + 28);
+  const extraLength = archiveBytes.readUInt16LE(centralOffset + 30);
+  const commentLength = archiveBytes.readUInt16LE(centralOffset + 32);
+  const localOffset = archiveBytes.readUInt32LE(centralOffset + 42);
+  const centralEnd =
+    centralOffset + 46 + nameLength + extraLength + commentLength;
+  const name = archiveBytes
+    .subarray(centralOffset + 46, centralOffset + 46 + nameLength)
+    .toString("utf8");
+  if (
+    centralEnd !== centralOffset + centralSize ||
+    name !== RECEIPT_FILE ||
+    (flags & 1) !== 0 ||
+    ![0, 8].includes(method) ||
+    compressedSize <= 0 ||
+    uncompressedSize <= 0 ||
+    uncompressedSize > MAX_RECEIPT_BYTES ||
+    localOffset + 30 > centralOffset ||
+    archiveBytes.readUInt32LE(localOffset) !== 0x04034b50
+  ) {
+    fail("GitHub receipt artifact archive has an unsafe file manifest");
+  }
+  const localFlags = archiveBytes.readUInt16LE(localOffset + 6);
+  const localMethod = archiveBytes.readUInt16LE(localOffset + 8);
+  const localNameLength = archiveBytes.readUInt16LE(localOffset + 26);
+  const localExtraLength = archiveBytes.readUInt16LE(localOffset + 28);
+  const localName = archiveBytes
+    .subarray(localOffset + 30, localOffset + 30 + localNameLength)
+    .toString("utf8");
+  const dataOffset = localOffset + 30 + localNameLength + localExtraLength;
+  const dataEnd = dataOffset + compressedSize;
+  if (
+    localName !== RECEIPT_FILE ||
+    localFlags !== flags ||
+    localMethod !== method ||
+    dataEnd > centralOffset
+  ) {
+    fail("GitHub receipt artifact local file header is inconsistent");
+  }
+  let receiptBytes;
+  try {
+    const compressed = archiveBytes.subarray(dataOffset, dataEnd);
+    receiptBytes =
+      method === 0
+        ? Buffer.from(compressed)
+        : inflateRawSync(compressed, { maxOutputLength: MAX_RECEIPT_BYTES });
+  } catch {
+    fail("GitHub receipt artifact file failed authenticated extraction");
+  }
+  if (
+    receiptBytes.length !== uncompressedSize ||
+    receiptBytes.length > MAX_RECEIPT_BYTES ||
+    crc32(receiptBytes) !== expectedCrc
+  ) {
+    fail("GitHub receipt artifact file size changed during extraction");
+  }
+  return receiptBytes;
+}
+
+export function validateReceiptArtifactAttestation(
+  config,
+  attestation,
+  nowMilliseconds,
+) {
+  if (
+    !POSITIVE_INTEGER.test(config.receiptArtifactId ?? "") ||
+    !DIGEST.test(config.receiptArtifactDigest ?? "")
+  ) {
+    fail("deployment receipt artifact identity is malformed");
+  }
+  const { artifact, sourceRun, archiveBytes } = attestation ?? {};
+  if (
+    !Number.isFinite(nowMilliseconds) ||
+    !Buffer.isBuffer(archiveBytes) ||
+    archiveBytes.length === 0 ||
+    archiveBytes.length > MAX_RECEIPT_ARCHIVE_BYTES ||
+    String(artifact?.id) !== config.receiptArtifactId ||
+    artifact?.name !== expectedReceiptArtifactName(config) ||
+    artifact?.expired !== false ||
+    String(artifact?.workflow_run?.id) !== config.sourceRunId ||
+    artifact?.workflow_run?.head_sha !== config.sourceSha ||
+    String(artifact?.digest ?? "").replace(/^sha256:/, "") !==
+      config.receiptArtifactDigest ||
+    typeof artifact?.expires_at !== "string" ||
+    !Number.isFinite(Date.parse(artifact.expires_at)) ||
+    Date.parse(artifact.expires_at) <= nowMilliseconds ||
+    String(sourceRun?.id) !== config.sourceRunId ||
+    String(sourceRun?.run_attempt) !== config.sourceRunAttempt ||
+    sourceRun?.head_sha !== config.sourceSha ||
+    sourceRun?.head_branch !== "develop" ||
+    sourceRun?.head_repository?.full_name !== config.repository ||
+    sourceRun?.path !== ".github/workflows/deploy-gateway-webhook.yml" ||
+    sourceRun?.event !== "workflow_dispatch" ||
+    sha256(archiveBytes) !== config.receiptArtifactDigest
+  ) {
+    fail(
+      "deployment receipt artifact is not an unexpired exact-source GitHub artifact",
+    );
+  }
+  const receiptBytes = receiptBytesFromArchive(archiveBytes);
+  let receipt;
+  try {
+    receipt = JSON.parse(receiptBytes.toString("utf8"));
+  } catch {
+    fail("authoritative deployment receipt is not JSON");
+  }
+  const semanticDigest = deploymentReceiptSemanticDigest(receipt);
+  return {
+    receipt,
+    receiptBytesSha256: sha256(receiptBytes),
+    receiptSemanticDigest: semanticDigest,
+  };
 }
 
 async function readSnapshot(config, bundle, state, candidateId, railway) {
@@ -640,6 +879,7 @@ function resolution(
     openCommentId: config.openRecordId,
     receiptArtifactId: config.receiptArtifactId ?? null,
     receiptArtifactDigest: config.receiptArtifactDigest ?? null,
+    receiptSemanticDigest: config.receiptSemanticDigest ?? null,
     priorSnapshotId: bundle.plan.priorSnapshotId,
     candidateDeploymentId: candidateId,
     observedActiveDeploymentId: active?.id ?? null,
@@ -692,6 +932,7 @@ async function assertPreMutation(
   const current = validateJournalState(
     config,
     await dependencies.journal.read(),
+    bundle,
   );
   if (
     current.rollbackIntents.length < 1 ||
@@ -761,7 +1002,11 @@ async function appendObservationAndRead(
   refineOrdinal = null,
 ) {
   await dependencies.journal.observe(status, restorationId, refineOrdinal);
-  const state = validateJournalState(config, await dependencies.journal.read());
+  const state = validateJournalState(
+    config,
+    await dependencies.journal.read(),
+    bundle,
+  );
   const ordinal = refineOrdinal ?? state.rollbackIntents.length;
   const observation = state.rollbackObservations[ordinal - 1] ?? null;
   if (
@@ -1080,6 +1325,17 @@ async function createAndIssueRollback(
   if (created.providerActiveTopologySha256 !== activeDigest) {
     fail("rollback intent did not seal the exact Railway active topology");
   }
+  await assertPreMutation(
+    config,
+    createdIntentRecordId,
+    candidateId,
+    bundle,
+    dependencies,
+  );
+  await dependencies.railway.assertExactStagingScope();
+  // The independent scope read creates a race window for a late provider
+  // effect. Re-run every intent, journal, candidate, provider-watermark, active
+  // topology, and immutable-prior check after that network boundary.
   const current = await assertPreMutation(
     config,
     createdIntentRecordId,
@@ -1087,13 +1343,14 @@ async function createAndIssueRollback(
     bundle,
     dependencies,
   );
-  // All provider/state reads above may take long enough for develop to move.
-  // Recheck the exact authority immediately adjacent to the irreversible call.
+  // The final provider reads may themselves take long enough for develop to
+  // move. Leave no asynchronous boundary after this last GitHub authority
+  // fence and before the irreversible provider call.
   await dependencies.authority.assertCurrentDevelop();
   assertRollbackCallRunway(intentPublicationStartedAt, dependencies);
-  let restorationId;
+  let acknowledged;
   try {
-    restorationId = await dependencies.railway.rollback(
+    acknowledged = await dependencies.railway.rollback(
       bundle.plan.priorActiveDeploymentId,
     );
   } catch (error) {
@@ -1104,41 +1361,77 @@ async function createAndIssueRollback(
       "Railway rollback acknowledgement is unresolved; the durable intent will be observed by a later run",
     );
   }
-  if (
-    !UUID.test(restorationId ?? "") ||
-    restorationId === candidateId ||
-    restorationId === bundle.plan.priorActiveDeploymentId
-  ) {
-    fail("Railway rollback returned an invalid restoration identity");
-  }
-  const exact = validateDeployment(
-    await dependencies.railway.getDeployment(restorationId),
-    config.scope,
-  );
-  if (exact.snapshotId !== bundle.plan.priorSnapshotId) {
+  if (acknowledged !== true) {
     fail(
-      "Railway rollback readback does not restore the immutable prior snapshot",
+      "Railway rollback did not return an authoritative true acknowledgement; the durable intent will be observed by a later run",
     );
   }
-  if (statusClass(exact.status) !== "terminal") {
+  // Railway's live GraphQL contract returns only Boolean, not a restoration
+  // deployment identity. Wait the complete settlement horizon before binding
+  // at most one exact prior-snapshot restoration outside the intent's sealed
+  // provider watermark.
+  await waitForMonotonicHorizon(
+    dependencies,
+    intentPublicationStartedAt,
+    ROLLBACK_SETTLEMENT_SECONDS * 1_000,
+  );
+  const settled = await stableSnapshot(
+    config,
+    bundle,
+    current,
+    candidateId,
+    dependencies,
+  );
+  const matches = unobservedRestorations(current, settled);
+  if (matches.length > 1) {
+    fail("one acknowledged Railway rollback maps to multiple restorations");
+  }
+  if (matches.length === 0) {
+    await appendObservationAndRead(
+      config,
+      bundle,
+      dependencies,
+      "AMBIGUOUS",
+      null,
+    );
     fail(
-      "new Railway restoration remains nonterminal; a later run will observe it without replay",
+      "Railway acknowledged rollback produced no restoration after the full settlement horizon; a fresh authorized run must evaluate any next attempt",
+    );
+  }
+  const restoration = matches[0];
+  if (statusClass(restoration.status) !== "terminal") {
+    fail(
+      "acknowledged Railway restoration remains nonterminal after the full settlement horizon; a later run will observe it without replay",
     );
   }
   await appendObservationAndRead(
     config,
     bundle,
     dependencies,
-    exact.status,
-    restorationId,
+    restoration.status,
+    restoration.id,
   );
   fail(
     "one rollback effect was durably observed; a fresh authorized run must evaluate any next attempt",
   );
 }
 
-export async function reconcileGatewayWebhook(config, rawBundle, dependencies) {
+export async function reconcileGatewayWebhook(
+  rawConfig,
+  rawBundle,
+  dependencies,
+) {
+  let config = {
+    ...rawConfig,
+    receipt: null,
+    receiptSemanticDigest: null,
+  };
   const invocationStartedAt = dependencies.monotonicNow();
+  const receiptArtifactAbsent =
+    config.receiptArtifactId === null && config.receiptArtifactDigest === null;
+  const receiptArtifactPresent =
+    POSITIVE_INTEGER.test(config.receiptArtifactId ?? "") &&
+    DIGEST.test(config.receiptArtifactDigest ?? "");
   if (
     config.environment !== "staging" ||
     !SHA.test(config.sourceSha ?? "") ||
@@ -1148,13 +1441,30 @@ export async function reconcileGatewayWebhook(config, rawBundle, dependencies) {
     !POSITIVE_INTEGER.test(config.recoveryRunAttempt ?? "") ||
     !DIGEST.test(config.openRecordId ?? "") ||
     !POSITIVE_INTEGER.test(config.planArtifactId ?? "") ||
-    !DIGEST.test(config.planArtifactDigest ?? "")
+    !DIGEST.test(config.planArtifactDigest ?? "") ||
+    !(receiptArtifactAbsent || receiptArtifactPresent)
   ) {
     fail("staging reconciliation inputs are malformed");
   }
   const bundle = validatePlanBundle(config, rawBundle);
   await waitForSourceSettlement(config, dependencies, invocationStartedAt);
-  let state = validateJournalState(config, await dependencies.journal.read());
+  let state = validateJournalState(
+    config,
+    await dependencies.journal.read(),
+    bundle,
+  );
+  if (receiptArtifactPresent) {
+    const authoritativeReceipt = validateReceiptArtifactAttestation(
+      config,
+      await dependencies.artifacts.attestReceipt(config),
+      dependencies.wallNow(),
+    );
+    config = {
+      ...config,
+      receipt: authoritativeReceipt.receipt,
+      receiptSemanticDigest: authoritativeReceipt.receiptSemanticDigest,
+    };
+  }
 
   let candidateId = null;
   let initial = await readSnapshot(
@@ -1476,15 +1786,139 @@ export class RailwayCliClient {
     return instance.activeDeployments;
   }
 
+  async assertExactStagingScope() {
+    if (!this.environment.RAILWAY_TOKEN) {
+      fail("environment-scoped Railway project token is missing");
+    }
+    const data = await this.query(
+      `query ExactRollbackScope($projectId: String!) {
+        projectToken { projectId environmentId }
+        project(id: $projectId) {
+          id
+          environments { edges { node { id name } } }
+          services { edges { node { id name } } }
+        }
+      }`,
+      { projectId: this.scope.projectId },
+    );
+    const environments = data?.project?.environments?.edges;
+    const services = data?.project?.services?.edges;
+    const exactEnvironments = Array.isArray(environments)
+      ? environments.filter(
+          (edge) => edge?.node?.id === this.scope.environmentId,
+        )
+      : [];
+    const exactServices = Array.isArray(services)
+      ? services.filter((edge) => edge?.node?.id === this.scope.serviceId)
+      : [];
+    if (
+      data?.project?.id !== this.scope.projectId ||
+      data?.projectToken?.projectId !== this.scope.projectId ||
+      data?.projectToken?.environmentId !== this.scope.environmentId ||
+      exactEnvironments.length !== 1 ||
+      exactEnvironments[0]?.node?.name !== "staging" ||
+      exactServices.length !== 1 ||
+      exactServices[0]?.node?.name !== this.scope.serviceName
+    ) {
+      fail(
+        "Railway project token or project/environment/service identity is outside exact staging scope",
+      );
+    }
+    return {
+      environmentId: exactEnvironments[0].node.id,
+      environmentName: exactEnvironments[0].node.name,
+      projectId: data.project.id,
+      serviceId: exactServices[0].node.id,
+      serviceName: exactServices[0].node.name,
+    };
+  }
+
   async rollback(priorDeploymentId) {
     const data = await this.query(
       `mutation DeploymentRollback($id: String!) {
-        deploymentRollback(id: $id) { id }
+        deploymentRollback(id: $id)
       }`,
       { id: priorDeploymentId },
       ROLLBACK_MUTATION_TIMEOUT_SECONDS * 1_000,
     );
-    return data?.deploymentRollback?.id;
+    if (data?.deploymentRollback !== true) {
+      fail(
+        "Railway rollback mutation did not return an authoritative true acknowledgement",
+      );
+    }
+    return true;
+  }
+}
+
+async function boundedResponseBytes(response, maximumBytes) {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
+    fail("GitHub artifact archive exceeds the fail-closed size bound");
+  }
+  if (!response.body) fail("GitHub artifact archive body is absent");
+  const chunks = [];
+  let total = 0;
+  const reader = response.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maximumBytes) {
+      await reader.cancel();
+      fail("GitHub artifact archive exceeds the fail-closed size bound");
+    }
+    chunks.push(Buffer.from(value));
+  }
+  if (total === 0) fail("GitHub artifact archive is empty");
+  return Buffer.concat(chunks, total);
+}
+
+export class GitHubReceiptArtifactClient {
+  constructor({
+    api,
+    token,
+    repository,
+    apiUrl = "https://api.github.com",
+    fetchImpl = fetch,
+  }) {
+    if (!api || !token || !/^[^/\s]+\/[^/\s]+$/.test(repository ?? "")) {
+      fail("GitHub receipt artifact credentials are missing");
+    }
+    this.api = api;
+    this.token = token;
+    this.repository = repository;
+    this.apiUrl = apiUrl.replace(/\/$/, "");
+    this.fetchImpl = fetchImpl;
+  }
+
+  async attestReceipt(config) {
+    const artifact = await this.api.request(
+      "GET",
+      `/actions/artifacts/${config.receiptArtifactId}`,
+    );
+    const sourceRun = await this.api.request(
+      "GET",
+      `/actions/runs/${config.sourceRunId}/attempts/${config.sourceRunAttempt}`,
+    );
+    const response = await this.fetchImpl(
+      `${this.apiUrl}/repos/${this.repository}/actions/artifacts/${config.receiptArtifactId}/zip`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${this.token}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        redirect: "follow",
+      },
+    );
+    if (!response.ok) {
+      fail(`GitHub receipt artifact download failed (${response.status})`);
+    }
+    const archiveBytes = await boundedResponseBytes(
+      response,
+      MAX_RECEIPT_ARCHIVE_BYTES,
+    );
+    return { artifact, sourceRun, archiveBytes };
   }
 }
 
@@ -1494,36 +1928,36 @@ function required(environment, name) {
   return value;
 }
 
-async function readJson(path) {
-  const stats = await lstat(path);
-  if (!stats.isFile() || stats.isSymbolicLink() || stats.size > 2_000_000) {
-    fail("reconciliation input file is missing, unsafe, or too large");
-  }
-  return JSON.parse(await readFile(path, "utf8"));
-}
-
 async function readPlanBundle(temp) {
   const planDirectory = join(temp, "gateway-webhook-rollback-plan");
-  const baselineBytes = await readFile(
-    join(planDirectory, "deployment-baseline.json"),
-  );
-  const priorActiveBytes = await readFile(
-    join(planDirectory, "prior-active-deployments.json"),
-  );
+  const files = new Map();
+  for (const name of PLAN_FILES) {
+    const path = join(planDirectory, name);
+    const stats = await lstat(path);
+    if (!stats.isFile() || stats.isSymbolicLink() || stats.size > 2_000_000) {
+      fail(`rollback-plan file ${name} is missing, unsafe, or too large`);
+    }
+    files.set(name, await readFile(path));
+  }
+  const baselineBytes = files.get("deployment-baseline.json");
+  const priorActiveBytes = files.get("prior-active-deployments.json");
+  const planBytes = files.get("rollback-plan.json");
   return {
-    plan: await readJson(join(planDirectory, "rollback-plan.json")),
+    plan: JSON.parse(planBytes.toString("utf8")),
     baseline: JSON.parse(baselineBytes.toString("utf8")),
     priorActive: JSON.parse(priorActiveBytes.toString("utf8")),
     digests: {
       baseline: sha256(baselineBytes),
       priorActive: sha256(priorActiveBytes),
+      journalPlanPlaintext: journalPlanPlaintextDigest(files),
     },
   };
 }
 
 async function defaultDependencies(config, environment) {
+  const githubToken = required(environment, "GITHUB_TOKEN");
   const api = new GitHubApi({
-    token: required(environment, "GITHUB_TOKEN"),
+    token: githubToken,
     repository: config.repository,
     apiUrl: environment.GITHUB_API_URL,
   });
@@ -1538,6 +1972,12 @@ async function defaultDependencies(config, environment) {
   const journalEnvironment = { ...environment };
   return {
     railway: new RailwayCliClient({ scope: config.scope, environment }),
+    artifacts: new GitHubReceiptArtifactClient({
+      api,
+      token: githubToken,
+      repository: config.repository,
+      apiUrl: environment.GITHUB_API_URL,
+    }),
     authority: {
       assertCurrentDevelop: async () => {
         if (
@@ -1624,6 +2064,7 @@ async function defaultDependencies(config, environment) {
       },
     },
     monotonicNow: () => performance.now(),
+    wallNow: () => Date.now(),
     sleep: (milliseconds) =>
       new Promise((resolve) => setTimeout(resolve, milliseconds)),
     warn: (message) => process.stderr.write(`::warning::${message}\n`),
@@ -1669,6 +2110,10 @@ export async function main(
     return result;
   }
   if (argv.length !== 0) fail("unsupported gateway reconciliation command");
+  const receiptPresent = required(environment, "RECEIPT_PRESENT");
+  if (!["true", "false"].includes(receiptPresent)) {
+    fail("RECEIPT_PRESENT must be exactly true or false");
+  }
   const config = {
     repository: required(environment, "GITHUB_REPOSITORY"),
     environment: required(environment, "TARGET_ENVIRONMENT"),
@@ -1681,8 +2126,14 @@ export async function main(
     openRecordId: required(environment, "OPEN_COMMENT_ID"),
     planArtifactId: required(environment, "PLAN_ARTIFACT_ID"),
     planArtifactDigest: required(environment, "PLAN_ARTIFACT_DIGEST"),
-    receiptArtifactId: environment.RECEIPT_ARTIFACT_ID || null,
-    receiptArtifactDigest: environment.RECEIPT_ARTIFACT_DIGEST || null,
+    receiptArtifactId:
+      receiptPresent === "true"
+        ? required(environment, "RECEIPT_ARTIFACT_ID")
+        : null,
+    receiptArtifactDigest:
+      receiptPresent === "true"
+        ? required(environment, "RECEIPT_ARTIFACT_DIGEST")
+        : null,
     sourceDeployCompletedEpoch: Number(
       required(environment, "SOURCE_DEPLOY_COMPLETED_EPOCH"),
     ),
@@ -1694,14 +2145,6 @@ export async function main(
     },
     receipt: null,
   };
-  const receiptPath = join(
-    temp,
-    "gateway-webhook-deployment-receipt",
-    "gateway-webhook-deployment.json",
-  );
-  if (environment.RECEIPT_PRESENT === "true") {
-    config.receipt = await readJson(receiptPath);
-  }
   const dependencies = await defaultDependencies(config, environment);
   const result = await reconcileGatewayWebhook(config, bundle, dependencies);
   const outputDirectory = join(temp, "gateway-webhook-reconciliation");
