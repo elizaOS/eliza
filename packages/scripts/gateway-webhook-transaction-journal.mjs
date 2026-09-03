@@ -59,6 +59,7 @@ const RESOLUTION_RECEIPT_FILE = "gateway-webhook-reconciliation.json";
 const MAX_ARTIFACT_FILE_BYTES = 2_000_000;
 const MAX_PLAN_ARCHIVE_BYTES =
   PLAN_FILES.length * MAX_ARTIFACT_FILE_BYTES + 1_000_000;
+const MAX_PREPARED_OPEN_ARCHIVE_BYTES = MAX_ARTIFACT_FILE_BYTES + 1_000_000;
 const MAX_RESOLUTION_ARCHIVE_BYTES = MAX_ARTIFACT_FILE_BYTES + 1_000_000;
 const ENVIRONMENTS = new Set(["staging", "production"]);
 const CLOSE_RESULTS = new Set([
@@ -2542,8 +2543,11 @@ async function appendJournalMarker(
     authKey,
     {
       beforePost: async () => {
-        await validateCurrentRecoveryAttempt(api, marker);
         if (beforePost !== null) await beforePost();
+        // Artifact bytes are authenticated first. The exact recovery attempt
+        // and current develop head are deliberately the final asynchronous
+        // authority boundary immediately before the marker POST.
+        await validateCurrentRecoveryAttempt(api, marker);
       },
     },
   );
@@ -2619,6 +2623,11 @@ function required(options, name) {
 async function writeOutput(path, value) {
   if (!path) return;
   await writeFile(path, `${JSON.stringify(value)}\n`, { mode: 0o600 });
+}
+
+async function writeCanonicalOutput(path, value) {
+  if (!path) return;
+  await writeFile(path, `${canonicalJson(value)}\n`, { mode: 0o600 });
 }
 
 function sourceFromOptions(options, repository) {
@@ -2722,11 +2731,18 @@ async function readSecureBytes(path, purpose, maximumBytes) {
   return readFile(path);
 }
 
-async function validatePreparedOpenArtifact(api, descriptor, authority) {
-  const artifactId = authority.artifactId;
-  const artifactName = authority.artifactName;
-  const artifactDigest = authority.artifactDigest?.toLowerCase();
+export async function validatePreparedOpenArtifact(
+  api,
+  descriptorValue,
+  authority,
+  nowMilliseconds = Date.now(),
+) {
+  const descriptor = validatePreparedOpenDescriptor(descriptorValue);
+  const artifactId = authority?.artifactId;
+  const artifactName = authority?.artifactName;
+  const artifactDigest = authority?.artifactDigest?.toLowerCase();
   if (
+    !Number.isFinite(nowMilliseconds) ||
     !isPositiveIntegerString(artifactId) ||
     artifactName !== descriptor.artifactName ||
     !isDigest(artifactDigest)
@@ -2734,18 +2750,69 @@ async function validatePreparedOpenArtifact(api, descriptor, authority) {
     fail("prepared OPEN artifact arguments are malformed");
   }
   const artifact = await api.request("GET", `/actions/artifacts/${artifactId}`);
-  const serverDigest = String(artifact?.digest ?? "").replace(/^sha256:/, "");
   if (
     String(artifact?.id) !== artifactId ||
     artifact?.name !== artifactName ||
     artifact?.expired !== false ||
+    !artifactExpiryIsFuture(artifact, nowMilliseconds) ||
     String(artifact?.workflow_run?.id) !== descriptor.sourceRunId ||
-    serverDigest !== artifactDigest
+    artifact?.workflow_run?.head_sha !== descriptor.sourceSha ||
+    exactArtifactDigest(artifact) !== artifactDigest ||
+    !Number.isSafeInteger(artifact?.size_in_bytes) ||
+    artifact.size_in_bytes <= 0 ||
+    artifact.size_in_bytes > MAX_PREPARED_OPEN_ARCHIVE_BYTES
   ) {
     fail(
-      "prepared OPEN artifact readback does not bind its exact source and digest",
+      "prepared OPEN artifact readback does not bind its exact unexpired source and digest",
     );
   }
+  const archiveBytes = await downloadArtifactArchive(
+    api,
+    artifactId,
+    MAX_PREPARED_OPEN_ARCHIVE_BYTES,
+    "prepared OPEN",
+  );
+  if (
+    archiveBytes.length !== artifact.size_in_bytes ||
+    createHash("sha256").update(archiveBytes).digest("hex") !== artifactDigest
+  ) {
+    fail("prepared OPEN artifact archive does not match its size and digest");
+  }
+  const files = exactArtifactFilesFromZip(
+    archiveBytes,
+    [PREPARED_OPEN_FILE],
+    "prepared OPEN",
+    MAX_PREPARED_OPEN_ARCHIVE_BYTES,
+  );
+  const descriptorBytes = files.get(PREPARED_OPEN_FILE);
+  let artifactDescriptor;
+  try {
+    artifactDescriptor = JSON.parse(descriptorBytes.toString("utf8"));
+  } catch {
+    fail("prepared OPEN artifact descriptor is not JSON");
+  }
+  validatePreparedOpenDescriptor(artifactDescriptor);
+  const authoritativeCanonicalBytes = Buffer.from(
+    `${canonicalJson(artifactDescriptor)}\n`,
+    "utf8",
+  );
+  const expectedCanonicalBytes = Buffer.from(
+    `${canonicalJson(descriptor)}\n`,
+    "utf8",
+  );
+  if (
+    !descriptorBytes.equals(authoritativeCanonicalBytes) ||
+    !authoritativeCanonicalBytes.equals(expectedCanonicalBytes)
+  ) {
+    fail(
+      "prepared OPEN artifact descriptor differs from the exact canonical prepared value",
+    );
+  }
+  // The artifact schema exposes its run and head SHA but not the creating
+  // attempt. The immutable name binds the expected attempt, and this exact
+  // attempt endpoint authenticates that run/attempt/SHA tuple.
+  await validateReferencedSourceAttempt(api, descriptor);
+  return descriptorBytes;
 }
 
 export async function findPreparedOpenArtifact(api, state) {
@@ -2896,8 +2963,11 @@ export async function commitPreparedOpen(
     {
       beforePost: sourceOwned
         ? async () => {
-            await validateSourceAttempt(api, descriptor, runtime);
-            await validateCurrentDevelopHead(api, descriptor.sourceSha);
+            await validatePreparedOpenArtifact(
+              api,
+              descriptor,
+              artifactAuthority,
+            );
             const currentPlanAuthority = await attestRollbackPlanArtifact(
               api,
               descriptor,
@@ -2911,27 +2981,35 @@ export async function commitPreparedOpen(
                 "prepared OPEN encrypted plan differs from the current rollback-plan authority",
               );
             }
+            await validateSourceAttempt(api, descriptor, runtime);
+            await validateCurrentDevelopHead(api, descriptor.sourceSha);
           }
         : async () => {
+            await validatePreparedOpenArtifact(
+              api,
+              descriptor,
+              artifactAuthority,
+            );
+            const currentPlanAuthority = await attestRollbackPlanArtifact(
+              api,
+              descriptor,
+              descriptor.record.marker,
+            );
+            if (
+              currentPlanAuthority.plaintextSha256 !==
+              descriptor.record.marker.journalPlanPlaintextSha256
+            ) {
+              fail(
+                "prepared OPEN encrypted plan differs from the current rollback-plan authority",
+              );
+            }
+            await validateReferencedSourceAttempt(api, descriptor);
             await validateRekeyAttempt(
               api,
               repository,
               descriptor.environment,
               runtime,
             );
-            const currentPlanAuthority = await attestRollbackPlanArtifact(
-              api,
-              descriptor,
-              descriptor.record.marker,
-            );
-            if (
-              currentPlanAuthority.plaintextSha256 !==
-              descriptor.record.marker.journalPlanPlaintextSha256
-            ) {
-              fail(
-                "prepared OPEN encrypted plan differs from the current rollback-plan authority",
-              );
-            }
           },
     },
   );
@@ -3746,7 +3824,7 @@ export async function main(
       authKey,
     );
     const descriptor = preparedOpenDescriptor(record);
-    await writeOutput(required(options, "output"), descriptor);
+    await writeCanonicalOutput(required(options, "output"), descriptor);
     return descriptor;
   }
   if (command === "commit-open") {

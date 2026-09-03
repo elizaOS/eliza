@@ -42,6 +42,7 @@ import {
   reduceJournal,
   restoreEncryptedPlan,
   validateCurrentRecoveryAttempt,
+  validatePreparedOpenArtifact,
   validateSourceAttempt,
 } from "../gateway-webhook-transaction-journal.mjs";
 
@@ -2171,9 +2172,17 @@ describe("durable Gateway transaction journal", () => {
       authKey,
     );
     const descriptor = preparedOpenDescriptor(record);
+    const descriptorBytes = Buffer.from(
+      `${JSON.stringify(canonicalForAuthentication(descriptor))}\n`,
+      "utf8",
+    );
+    const descriptorArchive = artifactZip([
+      ["gateway-webhook-prepared-open.json", descriptorBytes],
+    ]);
     const comments: Record<string, any>[] = [];
-    const artifactDigest = "f".repeat(64);
+    const artifactDigest = sha256(descriptorArchive);
     let planDownloads = 0;
+    let preparedOpenDownloads = 0;
     const api = {
       request: async (method: string, endpoint: string, value?: any) => {
         if (endpoint === "/actions/artifacts/811") {
@@ -2182,7 +2191,9 @@ describe("durable Gateway transaction journal", () => {
             name: descriptor.artifactName,
             digest: `sha256:${artifactDigest}`,
             expired: false,
-            workflow_run: { id: 42 },
+            expires_at: "2999-01-01T00:00:00Z",
+            size_in_bytes: descriptorArchive.length,
+            workflow_run: { id: 42, head_sha: sourceSha },
           };
         }
         if (endpoint === "/actions/artifacts/700") {
@@ -2226,6 +2237,10 @@ describe("durable Gateway transaction journal", () => {
         throw new Error(`unexpected ${method} ${endpoint}`);
       },
       downloadArtifact: async (artifactId: string) => {
+        if (artifactId === "811") {
+          preparedOpenDownloads += 1;
+          return descriptorArchive;
+        }
         if (artifactId === "700") {
           planDownloads += 1;
           return planFixture.archiveBytes;
@@ -2255,6 +2270,425 @@ describe("durable Gateway transaction journal", () => {
     expect(committed.commentId).toBe(record.logicalRecordId);
     expect(comments).toHaveLength(1);
     expect(planDownloads).toBe(2);
+    expect(preparedOpenDownloads).toBe(2);
+  });
+
+  test("authenticates the exact prepared OPEN archive, descriptor, and source attempt", async () => {
+    const marker = openMarker();
+    const descriptor = preparedOpenDescriptor(
+      journalRecordPayload(marker, null, writerFor(marker), authKey),
+    );
+    const canonicalDescriptorBytes = Buffer.from(
+      `${JSON.stringify(canonicalForAuthentication(descriptor))}\n`,
+      "utf8",
+    );
+    const canonicalArchive = artifactZip([
+      ["gateway-webhook-prepared-open.json", canonicalDescriptorBytes],
+    ]);
+    const validRun = {
+      id: 42,
+      run_attempt: 1,
+      head_sha: sourceSha,
+      head_branch: "develop",
+      head_repository: { full_name: repository },
+      path: ".github/workflows/deploy-gateway-webhook.yml",
+      event: "workflow_dispatch",
+    };
+    const apiFor = ({
+      archive = canonicalArchive,
+      artifactArchive = archive,
+      artifactOverrides = {},
+      runOverrides = {},
+    }: {
+      archive?: Buffer;
+      artifactArchive?: Buffer;
+      artifactOverrides?: Record<string, unknown>;
+      runOverrides?: Record<string, unknown>;
+    } = {}) => {
+      const digest = sha256(archive);
+      return {
+        authority: {
+          artifactId: "811",
+          artifactName: descriptor.artifactName,
+          artifactDigest: digest,
+        },
+        api: {
+          request: async (_method: string, endpoint: string) => {
+            if (endpoint === "/actions/artifacts/811") {
+              return {
+                id: 811,
+                name: descriptor.artifactName,
+                digest: `sha256:${digest}`,
+                expired: false,
+                expires_at: "2999-01-01T00:00:00Z",
+                size_in_bytes: archive.length,
+                workflow_run: { id: 42, head_sha: sourceSha },
+                ...artifactOverrides,
+              };
+            }
+            if (endpoint === "/actions/runs/42/attempts/1") {
+              return { ...validRun, ...runOverrides };
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+          },
+          downloadArtifact: async () => artifactArchive,
+        },
+      };
+    };
+
+    const valid = apiFor();
+    await expect(
+      validatePreparedOpenArtifact(valid.api, descriptor, valid.authority),
+    ).resolves.toEqual(canonicalDescriptorBytes);
+
+    for (const artifactOverrides of [
+      { id: 812 },
+      { name: `${descriptor.artifactName}-counterfeit` },
+      { expired: true },
+      { expires_at: "2000-01-01T00:00:00Z" },
+      { workflow_run: { id: 43, head_sha: sourceSha } },
+      { workflow_run: { id: 42, head_sha: "b".repeat(40) } },
+      { size_in_bytes: 0 },
+      { size_in_bytes: Number.MAX_SAFE_INTEGER },
+      { digest: `sha256:${"0".repeat(64)}` },
+    ]) {
+      const fixture = apiFor({ artifactOverrides });
+      await expect(
+        validatePreparedOpenArtifact(
+          fixture.api,
+          descriptor,
+          fixture.authority,
+        ),
+      ).rejects.toThrow("prepared OPEN artifact");
+    }
+
+    for (const runOverrides of [
+      { id: 43 },
+      { run_attempt: 2 },
+      { head_sha: "b".repeat(40) },
+    ]) {
+      const fixture = apiFor({ runOverrides });
+      await expect(
+        validatePreparedOpenArtifact(
+          fixture.api,
+          descriptor,
+          fixture.authority,
+        ),
+      ).rejects.toThrow("exact source attempt");
+    }
+
+    const alternateMarker = openMarker({ planArtifactId: "799" });
+    const alternateDescriptor = preparedOpenDescriptor(
+      journalRecordPayload(
+        alternateMarker,
+        null,
+        writerFor(alternateMarker),
+        authKey,
+      ),
+    );
+    const counterfeitDescriptor = Buffer.from(
+      `${JSON.stringify(canonicalForAuthentication(alternateDescriptor))}\n`,
+      "utf8",
+    );
+    for (const archive of [
+      artifactZip([
+        ["gateway-webhook-prepared-open.json", counterfeitDescriptor],
+      ]),
+      artifactZip([
+        ["gateway-webhook-prepared-open.json", canonicalDescriptorBytes],
+        ["extra.json", Buffer.from("{}", "utf8")],
+      ]),
+      artifactZip([
+        ["../gateway-webhook-prepared-open.json", canonicalDescriptorBytes],
+      ]),
+      artifactZip([
+        [
+          "gateway-webhook-prepared-open.json",
+          Buffer.from(`${JSON.stringify(descriptor)}\n`, "utf8"),
+        ],
+      ]),
+    ]) {
+      const fixture = apiFor({ archive });
+      await expect(
+        validatePreparedOpenArtifact(
+          fixture.api,
+          descriptor,
+          fixture.authority,
+        ),
+      ).rejects.toThrow(/prepared OPEN artifact/);
+    }
+
+    const mismatchedArchive = Buffer.from(canonicalArchive);
+    mismatchedArchive[mismatchedArchive.length - 1] ^= 1;
+    const digestMismatch = apiFor({ artifactArchive: mismatchedArchive });
+    await expect(
+      validatePreparedOpenArtifact(
+        digestMismatch.api,
+        descriptor,
+        digestMismatch.authority,
+      ),
+    ).rejects.toThrow("archive does not match its size and digest");
+  });
+
+  test("does not POST OPEN when run or develop advances during artifact re-attestation", async () => {
+    for (const advance of ["run", "develop"] as const) {
+      const planFixture = planArtifactFixture();
+      const marker = openMarker({
+        planArtifactDigest: planFixture.archiveDigest,
+        journalPlanPlaintextSha256: planFixture.plaintextDigest,
+      });
+      const record = journalRecordPayload(
+        marker,
+        null,
+        writerFor(marker),
+        authKey,
+      );
+      const descriptor = preparedOpenDescriptor(record);
+      const descriptorBytes = Buffer.from(
+        `${JSON.stringify(canonicalForAuthentication(descriptor))}\n`,
+        "utf8",
+      );
+      const descriptorArchive = artifactZip([
+        ["gateway-webhook-prepared-open.json", descriptorBytes],
+      ]);
+      const descriptorDigest = sha256(descriptorArchive);
+      let planDownloads = 0;
+      let authorityAdvanced = false;
+      let postCalls = 0;
+      const api = {
+        request: async (method: string, endpoint: string) => {
+          if (method === "POST") postCalls += 1;
+          if (endpoint.startsWith("/issues/29763/comments?")) return [];
+          if (endpoint === "/actions/artifacts/811") {
+            return {
+              id: 811,
+              name: descriptor.artifactName,
+              digest: `sha256:${descriptorDigest}`,
+              expired: false,
+              expires_at: "2999-01-01T00:00:00Z",
+              size_in_bytes: descriptorArchive.length,
+              workflow_run: { id: 42, head_sha: sourceSha },
+            };
+          }
+          if (endpoint === "/actions/artifacts/700") {
+            return {
+              id: 700,
+              name: marker.planArtifactName,
+              digest: `sha256:${planFixture.archiveDigest}`,
+              expired: false,
+              expires_at: "2999-01-01T00:00:00Z",
+              size_in_bytes: planFixture.archiveBytes.length,
+              workflow_run: { id: 42, head_sha: sourceSha },
+            };
+          }
+          if (endpoint === "/actions/runs/42/attempts/1") {
+            return {
+              id: 42,
+              run_attempt: 1,
+              head_sha:
+                authorityAdvanced && advance === "run"
+                  ? "b".repeat(40)
+                  : sourceSha,
+              head_branch: "develop",
+              head_repository: { full_name: repository },
+              path: ".github/workflows/deploy-gateway-webhook.yml",
+              event: "workflow_dispatch",
+            };
+          }
+          if (endpoint === "/branches/develop") {
+            return {
+              name: "develop",
+              commit: {
+                sha:
+                  authorityAdvanced && advance === "develop"
+                    ? "b".repeat(40)
+                    : sourceSha,
+              },
+            };
+          }
+          throw new Error(`unexpected ${method} ${endpoint}`);
+        },
+        downloadArtifact: async (artifactId: string) => {
+          if (artifactId === "811") return descriptorArchive;
+          if (artifactId === "700") {
+            planDownloads += 1;
+            if (planDownloads === 2) authorityAdvanced = true;
+            return planFixture.archiveBytes;
+          }
+          throw new Error(`unexpected artifact ${artifactId}`);
+        },
+      };
+
+      await expect(
+        commitPreparedOpen(
+          api,
+          descriptor,
+          {
+            artifactId: "811",
+            artifactName: descriptor.artifactName,
+            artifactDigest: descriptorDigest,
+          },
+          authKey,
+          {
+            GITHUB_REPOSITORY: repository,
+            GITHUB_RUN_ID: "42",
+            GITHUB_RUN_ATTEMPT: "1",
+            GITHUB_SHA: sourceSha,
+            GITHUB_REF: "refs/heads/develop",
+            GITHUB_EVENT_NAME: "workflow_dispatch",
+            GITHUB_WORKFLOW_REF: `${repository}/.github/workflows/deploy-gateway-webhook.yml@refs/heads/develop`,
+          },
+        ),
+      ).rejects.toThrow(
+        advance === "run" ? "exact source attempt" : "current develop head",
+      );
+      expect(planDownloads).toBe(2);
+      expect(postCalls).toBe(0);
+    }
+  });
+
+  test("does not POST recovered OPEN when source, rekey, or develop advances during artifact re-attestation", async () => {
+    for (const advance of ["source-run", "rekey-run", "develop"] as const) {
+      const rekeySha = "9".repeat(40);
+      const planFixture = planArtifactFixture();
+      const marker = openMarker({
+        planArtifactDigest: planFixture.archiveDigest,
+        journalPlanPlaintextSha256: planFixture.plaintextDigest,
+      });
+      const record = journalRecordPayload(
+        marker,
+        null,
+        writerFor(marker),
+        authKey,
+      );
+      const descriptor = preparedOpenDescriptor(record);
+      const descriptorBytes = Buffer.from(
+        `${JSON.stringify(canonicalForAuthentication(descriptor))}\n`,
+        "utf8",
+      );
+      const descriptorArchive = artifactZip([
+        ["gateway-webhook-prepared-open.json", descriptorBytes],
+      ]);
+      const descriptorDigest = sha256(descriptorArchive);
+      let preparedOpenDownloads = 0;
+      let planDownloads = 0;
+      let authorityAdvanced = false;
+      let postCalls = 0;
+      const api = {
+        request: async (method: string, endpoint: string) => {
+          if (method === "POST") postCalls += 1;
+          if (endpoint.startsWith("/issues/29763/comments?")) return [];
+          if (endpoint === "/actions/artifacts/811") {
+            return {
+              id: 811,
+              name: descriptor.artifactName,
+              digest: `sha256:${descriptorDigest}`,
+              expired: false,
+              expires_at: "2999-01-01T00:00:00Z",
+              size_in_bytes: descriptorArchive.length,
+              workflow_run: { id: 42, head_sha: sourceSha },
+            };
+          }
+          if (endpoint === "/actions/artifacts/700") {
+            return {
+              id: 700,
+              name: marker.planArtifactName,
+              digest: `sha256:${planFixture.archiveDigest}`,
+              expired: false,
+              expires_at: "2999-01-01T00:00:00Z",
+              size_in_bytes: planFixture.archiveBytes.length,
+              workflow_run: { id: 42, head_sha: sourceSha },
+            };
+          }
+          if (endpoint === "/actions/runs/42/attempts/1") {
+            return {
+              id: 42,
+              run_attempt: 1,
+              head_sha:
+                authorityAdvanced && advance === "source-run"
+                  ? "b".repeat(40)
+                  : sourceSha,
+              head_branch: "develop",
+              head_repository: { full_name: repository },
+              path: ".github/workflows/deploy-gateway-webhook.yml",
+              event: "workflow_dispatch",
+            };
+          }
+          if (endpoint === "/actions/runs/123/attempts/1") {
+            return {
+              id: 123,
+              run_attempt: 1,
+              head_sha:
+                authorityAdvanced && advance === "rekey-run"
+                  ? "b".repeat(40)
+                  : rekeySha,
+              head_branch: "develop",
+              head_repository: { full_name: repository },
+              path: ".github/workflows/recover-gateway-webhook-transactions.yml",
+              event: "schedule",
+              status: "in_progress",
+            };
+          }
+          if (endpoint === "/branches/develop") {
+            return {
+              name: "develop",
+              commit: {
+                sha:
+                  authorityAdvanced && advance === "develop"
+                    ? "b".repeat(40)
+                    : rekeySha,
+              },
+            };
+          }
+          throw new Error(`unexpected ${method} ${endpoint}`);
+        },
+        downloadArtifact: async (artifactId: string) => {
+          if (artifactId === "811") {
+            preparedOpenDownloads += 1;
+            if (preparedOpenDownloads === 2 && advance === "source-run") {
+              authorityAdvanced = true;
+            }
+            return descriptorArchive;
+          }
+          if (artifactId === "700") {
+            planDownloads += 1;
+            if (planDownloads === 2 && advance !== "source-run") {
+              authorityAdvanced = true;
+            }
+            return planFixture.archiveBytes;
+          }
+          throw new Error(`unexpected artifact ${artifactId}`);
+        },
+      };
+
+      await expect(
+        commitPreparedOpen(
+          api,
+          descriptor,
+          {
+            artifactId: "811",
+            artifactName: descriptor.artifactName,
+            artifactDigest: descriptorDigest,
+          },
+          authKey,
+          {
+            GITHUB_REPOSITORY: repository,
+            GITHUB_RUN_ID: "123",
+            GITHUB_RUN_ATTEMPT: "1",
+            GITHUB_SHA: rekeySha,
+          },
+        ),
+      ).rejects.toThrow(
+        advance === "source-run"
+          ? "exact source attempt"
+          : advance === "rekey-run"
+            ? "protected recovery authority"
+            : "current develop head",
+      );
+      expect(preparedOpenDownloads).toBe(2);
+      expect(planDownloads).toBe(advance === "source-run" ? 1 : 2);
+      expect(postCalls).toBe(0);
+    }
   });
 
   test("discovers an invisible earlier prepared OPEN and refuses a distinct sibling", async () => {
@@ -2926,6 +3360,160 @@ describe("durable Gateway transaction journal", () => {
 
     await expect(runClose(false)).resolves.toMatchObject({ kind: "close" });
     await expect(runClose(true)).resolves.toBeNull();
+  });
+
+  test("does not POST CLOSE when run or develop advances during receipt re-attestation", async () => {
+    for (const advance of ["run", "develop"] as const) {
+      const root = mkdtempSync(join(tmpdir(), "gateway-journal-close-race-"));
+      const receiptPath = join(root, "gateway-webhook-reconciliation.json");
+      const api = trustedApi([openMarker()]);
+      const openRecord = recordFromComment(api.comments[0]);
+      const candidateDeploymentId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+      const receipt = {
+        version: 1,
+        result: "candidate-proven",
+        repository,
+        environment: "staging",
+        sourceSha,
+        workflowRunId: "42",
+        workflowRunAttempt: "1",
+        openCommentId: openRecord.logicalRecordId,
+        recoveryWorkflowRunId: "99",
+        recoveryWorkflowRunAttempt: "2",
+        rollbackPlanArtifactId: "700",
+        rollbackPlanArtifactDigest: "c".repeat(64),
+        rollbackAttempts: [],
+        priorSnapshotId: "snapshot_prior_123",
+        candidateDeploymentId,
+        observedActiveDeploymentId: candidateDeploymentId,
+        observedActiveSnapshotId: "snapshot_candidate_123",
+      };
+      const receiptBytes = Buffer.from(JSON.stringify(receipt), "utf8");
+      const archiveBytes = artifactZip([
+        ["gateway-webhook-reconciliation.json", receiptBytes],
+      ]);
+      const archiveDigest = sha256(archiveBytes);
+      writeFileSync(receiptPath, receiptBytes);
+      const originalRequest = api.request;
+      let downloads = 0;
+      let authorityAdvanced = false;
+      let postCalls = 0;
+      api.request = async (
+        method: string,
+        endpoint: string,
+        value?: { body?: string },
+      ) => {
+        if (method === "POST") postCalls += 1;
+        if (endpoint.startsWith("/actions/runs/99/attempts/2/jobs?")) {
+          return {
+            total_count: 1,
+            jobs: [
+              {
+                id: 900,
+                name: "recover-staging / Reconcile Railway candidate (staging)",
+                status: "in_progress",
+                steps: [
+                  {
+                    name: "Close durable gateway transaction",
+                    status: "in_progress",
+                    conclusion: null,
+                  },
+                ],
+              },
+            ],
+          };
+        }
+        if (endpoint === "/actions/runs/99/attempts/2") {
+          return {
+            id: 99,
+            run_attempt: 2,
+            head_sha:
+              authorityAdvanced && advance === "run"
+                ? "c".repeat(40)
+                : recoverySha,
+            head_branch: "develop",
+            head_repository: { full_name: repository },
+            path: ".github/workflows/recover-gateway-webhook-transactions.yml",
+            event: "schedule",
+            status: "in_progress",
+          };
+        }
+        if (endpoint === "/branches/develop") {
+          return {
+            name: "develop",
+            commit: {
+              sha:
+                authorityAdvanced && advance === "develop"
+                  ? "c".repeat(40)
+                  : recoverySha,
+            },
+          };
+        }
+        if (endpoint === "/actions/artifacts/701") {
+          return {
+            id: 701,
+            name: "gateway-webhook-reconciliation-staging-42-1-99-2",
+            digest: `sha256:${archiveDigest}`,
+            expired: false,
+            expires_at: "2999-01-01T00:00:00Z",
+            size_in_bytes: archiveBytes.length,
+            workflow_run: { id: 99, head_sha: recoverySha },
+          };
+        }
+        return originalRequest(method, endpoint, value);
+      };
+      Object.assign(api, {
+        downloadArtifact: async () => {
+          downloads += 1;
+          if (downloads === 2) authorityAdvanced = true;
+          return archiveBytes;
+        },
+      });
+      try {
+        await expect(
+          journalMain(
+            [
+              "close",
+              "--environment",
+              "staging",
+              "--source-sha",
+              sourceSha,
+              "--source-run-id",
+              "42",
+              "--source-run-attempt",
+              "1",
+              "--resolution-artifact-name",
+              "gateway-webhook-reconciliation-staging-42-1-99-2",
+              "--resolution-artifact-id",
+              "701",
+              "--resolution-artifact-digest",
+              archiveDigest,
+              "--resolution-receipt-path",
+              receiptPath,
+              "--result",
+              "candidate-proven",
+            ],
+            {
+              GITHUB_REPOSITORY: repository,
+              GITHUB_TOKEN: "token",
+              GATEWAY_JOURNAL_AUTH_KEY: authKey,
+              GITHUB_RUN_ID: "99",
+              GITHUB_RUN_ATTEMPT: "2",
+              GITHUB_SHA: recoverySha,
+            },
+            { api },
+          ),
+        ).rejects.toThrow(
+          advance === "run"
+            ? "protected recovery attempt"
+            : "current develop head",
+        );
+        expect(downloads).toBe(2);
+        expect(postCalls).toBe(0);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
   });
 
   test("rejects counterfeit resolution artifact authority", async () => {
