@@ -15,6 +15,8 @@
  */
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const LOCAL_WRANGLER_RECYCLE_MAX_RETRIES = 5;
+const LOCAL_WRANGLER_RECYCLE_RETRY_DELAY_MS = 500;
 
 function resolveRequestTimeoutMs(): number {
   const parsed = Number(process.env.TEST_REQUEST_TIMEOUT_MS);
@@ -212,10 +214,13 @@ async function request(
   // JSON failures, and other plain-text application failures remain fail-closed.
   for (
     let attempt = 0;
-    attempt < 2 && (await isLocalWranglerRecycleResponse(method, res));
+    attempt < LOCAL_WRANGLER_RECYCLE_MAX_RETRIES &&
+    (await isLocalWranglerRecycleResponse(method, res));
     attempt++
   ) {
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) =>
+      setTimeout(resolve, LOCAL_WRANGLER_RECYCLE_RETRY_DELAY_MS),
+    );
     res = await fetch(url(path), makeInit());
   }
   recordStatus(method, path, res.status);

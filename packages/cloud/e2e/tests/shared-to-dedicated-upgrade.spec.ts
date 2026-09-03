@@ -49,6 +49,7 @@ import type {} from "@playwright/test";
 import { runSharedToDedicatedUpgradeHandoff } from "../../../ui/src/cloud/handoff/start-tier-upgrade";
 import { authedClient } from "../src/helpers/monetization";
 import { pollSandboxStatus } from "../src/helpers/provisioning";
+import { seedModelPricing } from "../src/helpers/seed-pricing";
 import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
 import { expect, test } from "../src/helpers/test-fixtures";
 
@@ -92,6 +93,12 @@ test.describe("shared→dedicated tier upgrade", () => {
     await writeStoredStewardToken(authToken);
 
     try {
+      await seedModelPricing({
+        model: "openai/gpt-4o-mini",
+        billingSource: "bitrouter",
+        provider: "openai",
+      });
+
       // ── 1. The account-native Shared identity has no sandbox row. ──────
       const sharedAgentId = personalSharedAgentId({
         userId: seededUser.userId,
