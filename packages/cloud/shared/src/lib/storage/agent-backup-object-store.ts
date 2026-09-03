@@ -26,6 +26,7 @@ import {
 } from "./object-store";
 import {
   createMultipartObjectUpload,
+  type MultipartObjectMutationControl,
   type MultipartObjectPartReceipt,
   type MultipartObjectRequestControl,
   type MultipartObjectUploadHandle,
@@ -90,7 +91,7 @@ export interface AgentBackupObjectStore {
    * must retain its durable single-writer fence until exact completion.
    */
   createMultipart(
-    input: MultipartObjectUploadPlan & { readonly control: MultipartObjectRequestControl },
+    input: MultipartObjectUploadPlan & { readonly control: MultipartObjectMutationControl },
   ): Promise<MultipartObjectUploadSession>;
   /** Rehydrate private durable columns against this exact configured backend. */
   rehydrateMultipartHandle(

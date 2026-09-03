@@ -10,6 +10,7 @@ import {
 import type { ExactObjectStorageBackend } from "./object-store";
 import {
   lateAbortCreatedUpload,
+  type ProviderMutationRequestContext,
   type ProviderRequestContext,
   registerMultipartCleanupWithoutMasking,
 } from "./object-store-multipart-control";
@@ -162,13 +163,13 @@ export function requireRuntimeMultipart(backend: ExactObjectStorageBackend): {
   };
 }
 
-/** Reject S3 transports whose SDK may invisibly duplicate multipart CREATE. */
-export function requireSingleAttemptS3Create(backend: ExactObjectStorageBackend): void {
+/** Reject S3 transports whose SDK may invisibly repeat fenced provider mutations. */
+export function requireSingleAttemptS3Mutations(backend: ExactObjectStorageBackend): void {
   if (backend.runtimeBucket) return;
   if (!isSingleAttemptObjectStorageClient(backend.s3Client)) {
     throw lifecycle(
       "OBJECT_STORAGE_MULTIPART_INVALID",
-      "Multipart S3 creation requires a module-owned single-attempt client",
+      "Multipart S3 mutations require a module-owned single-attempt client",
     );
   }
 }
@@ -176,7 +177,7 @@ export function requireSingleAttemptS3Create(backend: ExactObjectStorageBackend)
 export async function createProviderHandle(input: {
   backend: ExactObjectStorageBackend;
   plan: ValidatedMultipartObjectUploadPlan;
-  context: ProviderRequestContext;
+  context: ProviderMutationRequestContext;
 }): Promise<ProviderMultipartHandle> {
   const expectedBase64 = sha256HexToBase64(input.plan.expectedSha256);
   if (input.backend.runtimeBucket) {
@@ -189,7 +190,6 @@ export async function createProviderHandle(input: {
     );
     const upload = await input.context.race(request, async (lateUpload) => {
       const lateHandle = providerHandleForRuntime(lateUpload);
-      requireUploadId(lateHandle.uploadId);
       await lateAbortCreatedUpload(lateHandle);
     });
     return providerHandleForRuntime(upload);
@@ -210,10 +210,9 @@ export async function createProviderHandle(input: {
         { abortSignal: input.context.signal },
       ),
       async (lateOutput) => {
-        if (!lateOutput.UploadId) return;
-        await lateAbortCreatedUpload(
-          providerHandleForS3(s3Backend, input.plan.key, requireUploadId(lateOutput.UploadId)),
-        );
+        const lateUploadId = lateOutput.UploadId;
+        if (typeof lateUploadId !== "string" || lateUploadId.length === 0) return;
+        await lateAbortCreatedUpload(providerHandleForS3(s3Backend, input.plan.key, lateUploadId));
       },
     );
   } catch (error) {
@@ -228,8 +227,35 @@ export async function createProviderHandle(input: {
     }
     throw error;
   }
-  const uploadId = requireUploadId(output.UploadId);
-  const provider = providerHandleForS3(s3Backend, input.plan.key, uploadId);
+  const rawUploadId = output.UploadId;
+  const cleanupProvider =
+    typeof rawUploadId === "string" && rawUploadId.length > 0
+      ? providerHandleForS3(s3Backend, input.plan.key, rawUploadId)
+      : null;
+  let uploadId: string;
+  try {
+    uploadId = requireUploadId(rawUploadId);
+  } catch (error) {
+    if (cleanupProvider) {
+      const registrationError = registerMultipartCleanupWithoutMasking(
+        input.context,
+        lateAbortCreatedUpload(cleanupProvider),
+        "created-upload-invalid-id",
+      );
+      if (registrationError !== null) {
+        throw lifecycle(
+          "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE",
+          "Multipart storage returned an invalid upload handle",
+          new AggregateError(
+            [error, registrationError],
+            "Multipart handle validation and cleanup registration failed",
+          ),
+        );
+      }
+    }
+    throw error;
+  }
+  const provider = cleanupProvider ?? providerHandleForS3(s3Backend, input.plan.key, uploadId);
   if (
     (output.Key !== undefined && output.Key !== input.plan.key) ||
     (output.Bucket !== undefined && output.Bucket !== s3Backend.locator.bucket)

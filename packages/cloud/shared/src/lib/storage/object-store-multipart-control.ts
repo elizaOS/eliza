@@ -7,6 +7,7 @@ import {
   LATE_MULTIPART_CREATE_ABORT_MS,
   lifecycle,
   MAX_MULTIPART_REQUEST_DURATION_MS,
+  type MultipartObjectMutationControl,
   type MultipartObjectRequestControl,
   type ProviderMultipartHandle,
   type QueuedOperation,
@@ -21,6 +22,10 @@ export interface ProviderRequestContext {
   registerCleanup(cleanup: Promise<void>): void;
   waitForSettlements(): Promise<void>;
   dispose(): void;
+}
+
+export interface ProviderMutationRequestContext extends ProviderRequestContext {
+  authorizeMutation(): Promise<void>;
 }
 
 /** Report a teardown failure without exposing provider locators or replacing its primary error. */
@@ -224,6 +229,26 @@ export function createRequestContext(
   };
 }
 
+export function createMutationRequestContext(
+  control: MultipartObjectMutationControl,
+): ProviderMutationRequestContext {
+  const beforeProviderMutation = control?.beforeProviderMutation;
+  if (typeof beforeProviderMutation !== "function") {
+    throw lifecycle(
+      "OBJECT_STORAGE_MULTIPART_INVALID",
+      "Multipart provider mutations require a fenced authority hook",
+    );
+  }
+  const context = createRequestContext(control);
+  return Object.assign(context, {
+    async authorizeMutation() {
+      context.ensureActive();
+      await context.race(Promise.resolve().then(() => beforeProviderMutation.call(control)));
+      context.ensureActive();
+    },
+  });
+}
+
 export function observedOperation<T>(
   context: ProviderRequestContext,
   operation: () => Promise<T>,
@@ -239,7 +264,11 @@ export function observedOperation<T>(
   return { result, settlement };
 }
 
-/** Abort a late-created upload without allowing cleanup to run forever. */
+/**
+ * Abort a created upload that was never handed to the durable caller.
+ * This exact compensation intentionally bypasses the caller fence: no other
+ * owner can have adopted the private upload handle that is being removed.
+ */
 export async function lateAbortCreatedUpload(handle: ProviderMultipartHandle): Promise<void> {
   const controller = new AbortController();
   const request = Promise.resolve().then(() => handle.abort(controller.signal));

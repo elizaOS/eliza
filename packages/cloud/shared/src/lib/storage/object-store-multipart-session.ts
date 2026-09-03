@@ -6,8 +6,9 @@ import {
   ObjectStorageLifecycleError,
 } from "./object-store";
 import {
-  createRequestContext,
+  createMutationRequestContext,
   observedOperation,
+  type ProviderMutationRequestContext,
   type ProviderRequestContext,
   reportMultipartCleanupFailure,
 } from "./object-store-multipart-control";
@@ -16,8 +17,8 @@ import {
   hasEveryExactPart,
   isNoSuchUpload,
   lifecycle,
+  type MultipartObjectMutationControl,
   type MultipartObjectPartReceipt,
-  type MultipartObjectRequestControl,
   type MultipartObjectUploadHandle,
   type MultipartObjectUploadSession,
   MultipartObjectPartReceipt as PartReceipt,
@@ -159,6 +160,8 @@ class MultipartObjectUploadSessionImpl implements MultipartObjectUploadSession {
 
   uploadPart(input: UploadMultipartObjectPartInput): Promise<MultipartObjectPartReceipt> {
     const partNumber = input.partNumber;
+    const sourceBody = input.body;
+    const control = input.control;
     let expectedSize: number;
     try {
       expectedSize = exactPartSize(this.handle, partNumber);
@@ -166,14 +169,6 @@ class MultipartObjectUploadSessionImpl implements MultipartObjectUploadSession {
       // error-policy:J1 preserve the Promise-returning session boundary for
       // synchronous exact-slot validation failures.
       return Promise.reject(error);
-    }
-    if (input.body.byteLength !== expectedSize) {
-      return Promise.reject(
-        lifecycle(
-          "OBJECT_STORAGE_MULTIPART_INVALID",
-          "Multipart part body does not match its fixed exact slot size",
-        ),
-      );
     }
     if (this.#partAdmissionHeld) {
       return Promise.reject(
@@ -186,7 +181,7 @@ class MultipartObjectUploadSessionImpl implements MultipartObjectUploadSession {
     this.#partAdmissionHeld = true;
     let body: Uint8Array;
     try {
-      body = snapshotBody(input.body);
+      body = snapshotBody(sourceBody, expectedSize);
     } catch (error) {
       // error-policy:J2 normalize foreign copy failures while preserving their
       // cause; lifecycle validation errors already carry the public code.
@@ -202,9 +197,9 @@ class MultipartObjectUploadSessionImpl implements MultipartObjectUploadSession {
       );
     }
 
-    let context: ProviderRequestContext;
+    let context: ProviderMutationRequestContext;
     try {
-      context = createRequestContext(input.control);
+      context = createMutationRequestContext(control);
     } catch (error) {
       // error-policy:J1 return request-control validation through the public
       // Promise after wiping the private part copy.
@@ -248,6 +243,7 @@ class MultipartObjectUploadSessionImpl implements MultipartObjectUploadSession {
             if (acknowledged) return acknowledged;
 
             const expectedBase64 = sha256HexToBase64(bodySha256);
+            await context.authorizeMutation();
             providerDispatched = true;
             const providerRequest = Promise.resolve().then(() =>
               this.#provider.uploadPart(partNumber, body, expectedBase64, context.signal),
@@ -313,10 +309,10 @@ class MultipartObjectUploadSessionImpl implements MultipartObjectUploadSession {
     );
   }
 
-  complete(control: MultipartObjectRequestControl): Promise<ImmutableObjectUploadReceipt> {
-    let context: ProviderRequestContext;
+  complete(control: MultipartObjectMutationControl): Promise<ImmutableObjectUploadReceipt> {
+    let context: ProviderMutationRequestContext;
     try {
-      context = createRequestContext(control);
+      context = createMutationRequestContext(control);
     } catch (error) {
       // error-policy:J1 preserve the Promise-returning completion boundary for
       // synchronous request-control validation failures.
@@ -342,6 +338,7 @@ class MultipartObjectUploadSessionImpl implements MultipartObjectUploadSession {
 
         let initialFailed = false;
         let initialError: unknown;
+        await context.authorizeMutation();
         try {
           await context.race(
             Promise.resolve().then(() => this.#provider.complete(parts, context.signal)),
@@ -366,6 +363,7 @@ class MultipartObjectUploadSessionImpl implements MultipartObjectUploadSession {
           context,
         });
         if (!receipt && initialFailed) {
+          await context.authorizeMutation();
           try {
             await context.race(
               Promise.resolve().then(() => this.#provider.complete(parts, context.signal)),
@@ -408,10 +406,10 @@ class MultipartObjectUploadSessionImpl implements MultipartObjectUploadSession {
     });
   }
 
-  abort(control: MultipartObjectRequestControl): Promise<void> {
-    let context: ProviderRequestContext;
+  abort(control: MultipartObjectMutationControl): Promise<void> {
+    let context: ProviderMutationRequestContext;
     try {
-      context = createRequestContext(control);
+      context = createMutationRequestContext(control);
     } catch (error) {
       // error-policy:J1 preserve the Promise-returning abort boundary for
       // synchronous request-control validation failures.
@@ -428,6 +426,7 @@ class MultipartObjectUploadSessionImpl implements MultipartObjectUploadSession {
         }
         if (this.#state === "aborted") return;
         let firstError: unknown;
+        await context.authorizeMutation();
         try {
           await context.race(Promise.resolve().then(() => this.#provider.abort(context.signal)));
           this.#state = "aborted";
@@ -448,6 +447,7 @@ class MultipartObjectUploadSessionImpl implements MultipartObjectUploadSession {
           }
           firstError = error;
         }
+        await context.authorizeMutation();
         try {
           await context.race(Promise.resolve().then(() => this.#provider.abort(context.signal)));
           this.#state = "aborted";

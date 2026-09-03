@@ -9,6 +9,7 @@
 
 import { ObjectStorageLifecycleError } from "./object-store";
 import {
+  createMutationRequestContext,
   createRequestContext,
   lateAbortCreatedUpload,
   registerMultipartCleanupWithoutMasking,
@@ -18,7 +19,7 @@ import {
   providerHandleForRuntime,
   providerHandleForS3,
   requireRuntimeMultipart,
-  requireSingleAttemptS3Create,
+  requireSingleAttemptS3Mutations,
   type S3MultipartBackend,
   verifyS3Resume,
 } from "./object-store-multipart-providers";
@@ -42,6 +43,7 @@ import { reconcileCompletedObject } from "./object-store-multipart-verification"
 
 export type {
   CreateMultipartObjectUploadInput,
+  MultipartObjectMutationControl,
   MultipartObjectRequestControl,
   MultipartObjectUploadPlan,
   MultipartObjectUploadSession,
@@ -65,14 +67,17 @@ export {
 export async function createMultipartObjectUpload(
   input: CreateMultipartObjectUploadInput,
 ): Promise<MultipartObjectUploadSession> {
-  const backend = requireBackend(input.backend);
+  const suppliedBackend = input.backend;
+  const suppliedControl = input.control;
+  const backend = requireBackend(suppliedBackend);
   const plan = requirePlan(input);
-  const context = createRequestContext(input.control);
+  const context = createMutationRequestContext(suppliedControl);
   try {
     context.ensureActive();
-    requireSingleAttemptS3Create(backend);
+    requireSingleAttemptS3Mutations(backend);
     context.ensureActive();
     let provider: ProviderMultipartHandle;
+    await context.authorizeMutation();
     try {
       provider = await createProviderHandle({ backend, plan, context });
     } catch (error) {
@@ -156,6 +161,7 @@ export async function resumeMultipartObjectUpload(
   const context = createRequestContext(input.control);
   try {
     context.ensureActive();
+    requireSingleAttemptS3Mutations(backend);
     const handle = await assertHandleMatchesBackend(backend, input.handle);
     context.ensureActive();
     const partNumbers = new Set<number>();

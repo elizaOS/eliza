@@ -42,6 +42,7 @@ const singleAttemptClients = new WeakSet<S3Client>();
  * backend for the entire operation.
  */
 export function createS3CompatibleClient(config: S3CompatibleClientConfig): S3Client {
+  const maxAttempts = config.maxAttempts;
   const client = new S3Client({
     region: config.region,
     endpoint: config.endpoint,
@@ -50,10 +51,10 @@ export function createS3CompatibleClient(config: S3CompatibleClientConfig): S3Cl
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
     },
-    maxAttempts: config.maxAttempts,
+    maxAttempts,
     responseChecksumValidation: config.responseChecksumValidation,
   });
-  if (config.maxAttempts === 1) singleAttemptClients.add(client);
+  if (maxAttempts === 1) singleAttemptClients.add(client);
   return client;
 }
 

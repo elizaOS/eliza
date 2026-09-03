@@ -14,6 +14,7 @@ import {
   MAX_MULTIPART_OBJECT_BYTES,
   MAX_MULTIPART_REQUEST_DURATION_MS,
   MULTIPART_OBJECT_PART_BYTES,
+  type MultipartObjectMutationControl,
   type MultipartObjectRequestControl,
   type MultipartObjectUploadHandle,
   rehydrateMultipartObjectUploadHandle,
@@ -26,7 +27,10 @@ import type {
   RuntimeR2MultipartUpload,
   RuntimeR2ObjectMetadata,
 } from "./r2-runtime-binding";
-import { createS3CompatibleClient } from "./s3-compatible-client";
+import {
+  createS3CompatibleClient,
+  isSingleAttemptObjectStorageClient,
+} from "./s3-compatible-client";
 
 const BACKEND_FINGERPRINT = `sha256:${"a".repeat(64)}`;
 const KEY = "agent-sandbox-backups/org-a/generation-a/object-a";
@@ -76,11 +80,13 @@ function requestControl(
     deadline?: Date;
     late?: Promise<void>[];
     registrationError?: unknown;
+    beforeProviderMutation?: () => Promise<void>;
   } = {},
-): MultipartObjectRequestControl {
+): MultipartObjectMutationControl {
   return {
     signal: input.signal,
     deadline: input.deadline ?? new Date(Date.now() + 60_000),
+    beforeProviderMutation: input.beforeProviderMutation ?? (async () => undefined),
     registerLateSettlement(settlement) {
       if (input.registrationError !== undefined) throw input.registrationError;
       input.late?.push(settlement);
@@ -127,6 +133,7 @@ class FakeRuntimeMultipartBucket implements RuntimeR2Bucket {
   readonly abortFailures: unknown[] = [];
   readonly headFailures: unknown[] = [];
   workersNoSuchUploadErrors = false;
+  nextUploadId: string | undefined;
 
   async head(key: string): Promise<RuntimeR2ObjectMetadata | null> {
     this.callOrder.push("head");
@@ -185,7 +192,8 @@ class FakeRuntimeMultipartBucket implements RuntimeR2Bucket {
   ): Promise<RuntimeR2MultipartUpload> {
     this.createCalls += 1;
     this.callOrder.push("create");
-    const uploadId = `upload-${this.createCalls}`;
+    const uploadId = this.nextUploadId ?? `upload-${this.createCalls}`;
+    this.nextUploadId = undefined;
     const state: FakeUploadState = {
       key,
       uploadId,
@@ -323,6 +331,7 @@ class FakeS3MultipartClient {
   readonly signals: AbortSignal[] = [];
   readonly commands: string[] = [];
   readonly abortInputs: Array<{ bucket: string; key: string; uploadId: string }> = [];
+  readonly createGates: Deferred<void>[] = [];
   readonly listPartsGates: Deferred<void>[] = [];
   createEchoBucket: string | undefined;
   createEchoKey: string | undefined;
@@ -331,6 +340,7 @@ class FakeS3MultipartClient {
   abortKeepsUploadAttempts = 0;
   omitObjectVersion = false;
   nextUploadId = 1;
+  nextUploadIdOverride: string | undefined;
 
   async send(
     command: { constructor: { name: string }; input: unknown },
@@ -345,12 +355,15 @@ class FakeS3MultipartClient {
 
     if (name === "CreateMultipartUploadCommand") {
       if (this.createFailures.length > 0) throw this.createFailures.shift();
-      const nextUploadId = `s3-upload-${this.nextUploadId++}`;
+      const nextUploadId = this.nextUploadIdOverride ?? `s3-upload-${this.nextUploadId++}`;
+      this.nextUploadIdOverride = undefined;
       this.uploads.set(nextUploadId, {
         key,
         metadata: { ...((input.Metadata as Record<string, string> | undefined) ?? {}) },
         parts: new Map(),
       });
+      const gate = this.createGates.shift();
+      if (gate) await gate.promise;
       return {
         Key: this.createEchoKey ?? key,
         Bucket: this.createEchoBucket ?? input.Bucket,
@@ -610,6 +623,44 @@ describe("exact multipart object upload", () => {
     expect(s3Foreign.commands).toEqual([]);
   });
 
+  test("reads provider bindings and locator fields only once at the backend boundary", async () => {
+    const owner = new FakeRuntimeMultipartBucket();
+    const foreign = new FakeRuntimeMultipartBucket();
+    const exactLocator = runtimeBackend(owner).locator;
+    const locatorReads = new Map<string, number>();
+    const locator: Record<string, unknown> = {};
+    for (const [field, value] of Object.entries(exactLocator)) {
+      Object.defineProperty(locator, field, {
+        enumerable: true,
+        get() {
+          locatorReads.set(field, (locatorReads.get(field) ?? 0) + 1);
+          return value;
+        },
+      });
+    }
+    let bindingReads = 0;
+    const backend = {
+      locator,
+      get runtimeBucket() {
+        bindingReads += 1;
+        return bindingReads === 1 ? owner : foreign;
+      },
+    } as unknown as ExactObjectStorageBackend;
+    const part = bytePart(21, 0x14);
+    const session = await createMultipartObjectUpload({
+      backend,
+      key: `${KEY}-getter-backend`,
+      expectedSize: part.byteLength,
+      expectedSha256: sha256(part),
+      control: requestControl(),
+    });
+    expect(bindingReads).toBe(1);
+    expect([...locatorReads.values()].every((reads) => reads === 1)).toBe(true);
+    expect(owner.createCalls).toBe(1);
+    expect(foreign.createCalls).toBe(0);
+    await session.abort(requestControl());
+  });
+
   test("snapshots the resume handle before asynchronous authority validation", async () => {
     const ownerBucket = new FakeRuntimeMultipartBucket();
     const foreignBucket = new FakeRuntimeMultipartBucket();
@@ -772,7 +823,7 @@ describe("exact multipart object upload", () => {
         key: KEY,
         expectedSize: 1,
         expectedSha256: "0".repeat(64),
-        control: {} as MultipartObjectRequestControl,
+        control: {} as MultipartObjectMutationControl,
       }),
       "OBJECT_STORAGE_MULTIPART_INVALID",
     );
@@ -806,6 +857,145 @@ describe("exact multipart object upload", () => {
       }),
       "OBJECT_STORAGE_MULTIPART_HANDLE_MISMATCH",
     );
+  });
+
+  test("requires and snapshots fenced authority before multipart creation", async () => {
+    const missingHookBucket = new FakeRuntimeMultipartBucket();
+    const readOnlyControl: MultipartObjectRequestControl = {
+      deadline: new Date(Date.now() + 60_000),
+      registerLateSettlement() {},
+    };
+    await expectCode(
+      createMultipartObjectUpload({
+        backend: runtimeBackend(missingHookBucket),
+        key: KEY,
+        expectedSize: 1,
+        expectedSha256: sha256(new Uint8Array([1])),
+        control: readOnlyControl as MultipartObjectMutationControl,
+      }),
+      "OBJECT_STORAGE_MULTIPART_INVALID",
+    );
+    expect(missingHookBucket.createCalls).toBe(0);
+
+    const rejectedBucket = new FakeRuntimeMultipartBucket();
+    const leaseLost = new Error("catalogue lease generation expired");
+    await expect(
+      createMultipartObjectUpload({
+        backend: runtimeBackend(rejectedBucket),
+        key: KEY,
+        expectedSize: 1,
+        expectedSha256: sha256(new Uint8Array([2])),
+        control: requestControl({
+          beforeProviderMutation: async () => {
+            throw leaseLost;
+          },
+        }),
+      }),
+    ).rejects.toBe(leaseLost);
+    expect(rejectedBucket.createCalls).toBe(0);
+
+    const snapshottedBucket = new FakeRuntimeMultipartBucket();
+    let originalChecks = 0;
+    let replacementChecks = 0;
+    const control = requestControl({
+      beforeProviderMutation: async () => {
+        originalChecks += 1;
+      },
+    });
+    const creation = createRuntimeSession({
+      bucket: snapshottedBucket,
+      parts: [new Uint8Array([3])],
+      control,
+    });
+    Object.assign(control, {
+      beforeProviderMutation: async () => {
+        replacementChecks += 1;
+      },
+    });
+    const session = await creation;
+    expect(originalChecks).toBe(1);
+    expect(replacementChecks).toBe(0);
+    expect(snapshottedBucket.callOrder[0]).toBe("create");
+    await session.abort(requestControl());
+  });
+
+  test("snapshots mutable plan scalars before validating the provider plan", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const exactSha256 = sha256(new Uint8Array([4]));
+    let sizeReads = 0;
+    let shaReads = 0;
+    const session = await createMultipartObjectUpload({
+      backend: runtimeBackend(bucket),
+      key: KEY,
+      get expectedSize() {
+        sizeReads += 1;
+        return sizeReads < 5 ? 1 : 2 ** 40;
+      },
+      get expectedSha256() {
+        shaReads += 1;
+        return shaReads === 1 ? exactSha256 : "not-a-canonical-digest";
+      },
+      control: requestControl(),
+    });
+    expect(sizeReads).toBe(1);
+    expect(shaReads).toBe(1);
+    expect(session.handle).toMatchObject({
+      expectedSize: 1,
+      expectedSha256: exactSha256,
+      partCount: 1,
+    });
+    await session.abort(requestControl());
+  });
+
+  test("runs fenced authority immediately before each successful provider mutation", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const part = bytePart(27, 0x54);
+    const session = await createRuntimeSession({
+      bucket,
+      parts: [part],
+      control: requestControl({
+        beforeProviderMutation: async () => {
+          bucket.callOrder.push("authorize-create");
+        },
+      }),
+    });
+    await session.uploadPart({
+      partNumber: 1,
+      body: part,
+      control: requestControl({
+        beforeProviderMutation: async () => {
+          bucket.callOrder.push("authorize-part");
+        },
+      }),
+    });
+    await session.complete(
+      requestControl({
+        beforeProviderMutation: async () => {
+          bucket.callOrder.push("authorize-complete");
+        },
+      }),
+    );
+    expect(bucket.callOrder).toEqual([
+      "authorize-create",
+      "create",
+      "authorize-part",
+      "part-1",
+      "authorize-complete",
+      "complete",
+      "head",
+      "get",
+    ]);
+
+    const abortBucket = new FakeRuntimeMultipartBucket();
+    const abortSession = await createRuntimeSession({ bucket: abortBucket, parts: [part] });
+    await abortSession.abort(
+      requestControl({
+        beforeProviderMutation: async () => {
+          abortBucket.callOrder.push("authorize-abort");
+        },
+      }),
+    );
+    expect(abortBucket.callOrder.slice(-2)).toEqual(["authorize-abort", "abort"]);
   });
 
   test("returns the public unsupported code before provider effects", async () => {
@@ -863,6 +1053,41 @@ describe("exact multipart object upload", () => {
     );
     expect(unsupported.commands).toEqual(["CreateMultipartUploadCommand"]);
     expect(unsupported.uploads.size).toBe(0);
+
+    const timedOut = new FakeS3MultipartClient();
+    timedOut.createFailures.push(providerError("RequestTimeout", 400));
+    await expectCode(
+      createMultipartObjectUpload({
+        backend: s3Backend(timedOut),
+        key: KEY,
+        expectedSize: 1,
+        expectedSha256: sha256(new Uint8Array([4])),
+        control: requestControl(),
+      }),
+      "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE",
+    );
+    expect(timedOut.commands).toEqual(["CreateMultipartUploadCommand"]);
+
+    for (const field of ["code", "Code"] as const) {
+      const compatibleTimeout = new FakeS3MultipartClient();
+      compatibleTimeout.createFailures.push(
+        Object.assign(new Error("request timed out"), {
+          [field]: "RequestTimeout",
+          $metadata: { httpStatusCode: 400 },
+        }),
+      );
+      await expectCode(
+        createMultipartObjectUpload({
+          backend: s3Backend(compatibleTimeout),
+          key: `${KEY}-${field}`,
+          expectedSize: 1,
+          expectedSha256: sha256(new Uint8Array([5])),
+          control: requestControl(),
+        }),
+        "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE",
+      );
+      expect(compatibleTimeout.commands).toEqual(["CreateMultipartUploadCommand"]);
+    }
   });
 
   test("rejects hidden S3 create retries before any provider effect", async () => {
@@ -880,6 +1105,50 @@ describe("exact multipart object upload", () => {
     );
     expect(client.commands).toEqual([]);
     expect(client.uploads.size).toBe(0);
+  });
+
+  test("rejects hidden S3 mutation retries when resuming a durable handle", async () => {
+    const client = new FakeS3MultipartClient();
+    const part = bytePart(9, 0x4e);
+    const session = await createMultipartObjectUpload({
+      backend: s3Backend(client),
+      key: KEY,
+      expectedSize: part.byteLength,
+      expectedSha256: sha256(part),
+      control: requestControl(),
+    });
+    const commandsBeforeResume = client.commands.length;
+    await expectCode(
+      resumeMultipartObjectUpload({
+        backend: s3Backend(client, { singleAttempt: false }),
+        handle: session.handle,
+        control: requestControl(),
+      }),
+      "OBJECT_STORAGE_MULTIPART_INVALID",
+    );
+    expect(client.commands).toHaveLength(commandsBeforeResume);
+    await session.abort(requestControl());
+  });
+
+  test("snapshots the S3 retry budget before marking a client single-attempt", async () => {
+    let maxAttemptReads = 0;
+    const client = createS3CompatibleClient({
+      endpoint: "http://127.0.0.1:9",
+      region: "fsn1",
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+      get maxAttempts() {
+        maxAttemptReads += 1;
+        return maxAttemptReads === 1 ? 3 : 1;
+      },
+    });
+    try {
+      expect(maxAttemptReads).toBe(1);
+      expect(isSingleAttemptObjectStorageClient(client)).toBe(false);
+      expect(await client.config.maxAttempts()).toBe(3);
+    } finally {
+      client.destroy();
+    }
   });
 
   test("accepts exactly 1024 UTF-8 key bytes and rejects the next code point", async () => {
@@ -905,7 +1174,8 @@ describe("exact multipart object upload", () => {
     expect(DEFAULT_MULTIPART_REQUEST_DURATION_MS).toBe(DEFAULT_IMMUTABLE_UPLOAD_DURATION_MS);
     expect(MAX_MULTIPART_REQUEST_DURATION_MS).toBe(MAX_IMMUTABLE_UPLOAD_DURATION_MS);
 
-    const withoutDeadline: MultipartObjectRequestControl = {
+    const withoutDeadline: MultipartObjectMutationControl = {
+      beforeProviderMutation: async () => undefined,
       registerLateSettlement() {},
     };
     const part = bytePart(11, 0x5b);
@@ -1010,6 +1280,66 @@ describe("exact multipart object upload", () => {
     expect(lost.createCalls).toBe(1);
   });
 
+  test("aborts late-created runtime and S3 uploads even when their ids are not persistable", async () => {
+    const invalidUploadId = "x".repeat(4_097);
+
+    const runtimeBucket = new FakeRuntimeMultipartBucket();
+    runtimeBucket.nextUploadId = invalidUploadId;
+    const runtimeGate = deferred<void>();
+    runtimeBucket.createGates.push(runtimeGate);
+    const runtimeLate: Promise<void>[] = [];
+    const runtimeCreation = createRuntimeSession({
+      bucket: runtimeBucket,
+      parts: [bytePart(17, 0x63)],
+      control: requestControl({ deadline: new Date(Date.now() + 10), late: runtimeLate }),
+    });
+    await expectCode(runtimeCreation, "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE");
+    runtimeGate.resolve();
+    await Promise.all(runtimeLate);
+    expect(runtimeBucket.abortCalls).toBe(1);
+    expect(runtimeBucket.uploads.size).toBe(0);
+
+    const s3Client = new FakeS3MultipartClient();
+    s3Client.nextUploadIdOverride = invalidUploadId;
+    const s3Gate = deferred<void>();
+    s3Client.createGates.push(s3Gate);
+    const s3Late: Promise<void>[] = [];
+    const s3Creation = createMultipartObjectUpload({
+      backend: s3Backend(s3Client),
+      key: KEY,
+      expectedSize: 1,
+      expectedSha256: sha256(new Uint8Array([1])),
+      control: requestControl({ deadline: new Date(Date.now() + 10), late: s3Late }),
+    });
+    await expectCode(s3Creation, "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE");
+    s3Gate.resolve();
+    await Promise.all(s3Late);
+    expect(s3Client.abortInputs).toHaveLength(1);
+    expect(s3Client.abortInputs[0]?.uploadId).toBe(invalidUploadId);
+    expect(s3Client.uploads.size).toBe(0);
+  });
+
+  test("registers cleanup when S3 immediately returns an invalid upload id", async () => {
+    const client = new FakeS3MultipartClient();
+    const invalidUploadId = "y".repeat(4_097);
+    client.nextUploadIdOverride = invalidUploadId;
+    const late: Promise<void>[] = [];
+    await expectCode(
+      createMultipartObjectUpload({
+        backend: s3Backend(client),
+        key: KEY,
+        expectedSize: 1,
+        expectedSha256: sha256(new Uint8Array([2])),
+        control: requestControl({ late }),
+      }),
+      "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE",
+    );
+    await Promise.all(late);
+    expect(client.abortInputs).toHaveLength(1);
+    expect(client.abortInputs[0]?.uploadId).toBe(invalidUploadId);
+    expect(client.uploads.size).toBe(0);
+  });
+
   test("owns a provider result that settles between cancellation and the race observer", async () => {
     const bucket = new FakeRuntimeMultipartBucket();
     const gate = deferred<void>();
@@ -1080,6 +1410,100 @@ describe("exact multipart object upload", () => {
       session.uploadPart({ partNumber: 1, body: different, control: requestControl() }),
       "OBJECT_STORAGE_MULTIPART_PART_CONFLICT",
     );
+  });
+
+  test("revalidates authority before a part mutation and releases a rejected admission", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const part = bytePart(31, 0x76);
+    const session = await createRuntimeSession({ bucket, parts: [part] });
+    const leaseLost = new Error("part lease generation expired");
+    await expect(
+      session.uploadPart({
+        partNumber: 1,
+        body: part,
+        control: requestControl({
+          beforeProviderMutation: async () => {
+            throw leaseLost;
+          },
+        }),
+      }),
+    ).rejects.toBe(leaseLost);
+    expect(bucket.providerBodies.size).toBe(0);
+
+    await expect(
+      session.uploadPart({ partNumber: 1, body: part, control: requestControl() }),
+    ).resolves.toMatchObject({ partNumber: 1, sizeBytes: part.byteLength });
+    await session.abort(requestControl());
+  });
+
+  test("snapshots the exact part body before validating and copying it", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const exact = bytePart(29, 0x77);
+    const oversized = bytePart(1_024, 0x78);
+    const session = await createRuntimeSession({ bucket, parts: [exact] });
+    let bodyReads = 0;
+    const receipt = await session.uploadPart({
+      partNumber: 1,
+      get body() {
+        bodyReads += 1;
+        return bodyReads === 1 ? exact : oversized;
+      },
+      control: requestControl(),
+    });
+    expect(bodyReads).toBe(1);
+    expect(receipt.sizeBytes).toBe(exact.byteLength);
+    expect(bucket.providerBodies.get(1)?.byteLength).toBe(exact.byteLength);
+    await session.abort(requestControl());
+  });
+
+  test("copies an ArrayBuffer with native bounds without calling an overridden slice", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const exact = bytePart(23, 0x7a);
+    const body = new ArrayBuffer(exact.byteLength);
+    new Uint8Array(body).set(exact);
+    let sliceCalls = 0;
+    Object.defineProperty(body, "slice", {
+      value: () => {
+        sliceCalls += 1;
+        return new ArrayBuffer(exact.byteLength + 1);
+      },
+    });
+    const session = await createRuntimeSession({ bucket, parts: [exact] });
+
+    const receipt = await session.uploadPart({
+      partNumber: 1,
+      body,
+      control: requestControl(),
+    });
+
+    expect(sliceCalls).toBe(0);
+    expect(receipt.sizeBytes).toBe(exact.byteLength);
+    expect(bucket.providerBodies.get(1)?.byteLength).toBe(exact.byteLength);
+    await session.abort(requestControl());
+  });
+
+  test("copies a Uint8Array with native bounds without invoking its iterator", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    const exact = bytePart(25, 0x7b);
+    let iteratorCalls = 0;
+    Object.defineProperty(exact, Symbol.iterator, {
+      value: function* () {
+        iteratorCalls += 1;
+        yield* bytePart(1_024, 0x7c);
+      },
+    });
+    const session = await createRuntimeSession({ bucket, parts: [bytePart(25, 0x7b)] });
+
+    const receipt = await session.uploadPart({
+      partNumber: 1,
+      body: exact,
+      control: requestControl(),
+    });
+
+    expect(iteratorCalls).toBe(0);
+    expect(receipt.sizeBytes).toBe(exact.byteLength);
+    expect(bucket.providerBodies.get(1)?.byteLength).toBe(exact.byteLength);
+    await session.abort(requestControl());
   });
 
   test("snapshots a mutable part number before asynchronous dispatch", async () => {
@@ -1268,6 +1692,30 @@ describe("exact multipart object upload", () => {
     });
     expect(bucket.completeCalls).toBe(2);
     expect(bucket.callOrder.slice(-5)).toEqual(["complete", "head", "complete", "head", "get"]);
+  });
+
+  test("revalidates authority before a hidden completion replay", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    bucket.completeFailuresBeforePersist = 1;
+    const part = bytePart(33, 0xcf);
+    const session = await createRuntimeSession({ bucket, parts: [part] });
+    await uploadAll(session, [part]);
+    const leaseLost = new Error("completion lease generation expired");
+    let leaseChecks = 0;
+    await expect(
+      session.complete(
+        requestControl({
+          beforeProviderMutation: async () => {
+            leaseChecks += 1;
+            if (leaseChecks === 2) throw leaseLost;
+          },
+        }),
+      ),
+    ).rejects.toBe(leaseLost);
+    expect(leaseChecks).toBe(2);
+    expect(bucket.completeCalls).toBe(1);
+    expect(bucket.objects.has(KEY)).toBe(false);
+    expect(bucket.callOrder.slice(-2)).toEqual(["complete", "head"]);
   });
 
   test("returns completion-unconfirmed after both exact attempts remain absent", async () => {
@@ -1491,6 +1939,28 @@ describe("exact multipart object upload", () => {
     );
     expect(bucket.abortCalls).toBe(2);
     expect(bucket.uploads.size).toBe(1);
+  });
+
+  test("revalidates authority before a hidden abort replay", async () => {
+    const bucket = new FakeRuntimeMultipartBucket();
+    bucket.abortFailures.push(providerError("InternalError", 500));
+    const part = bytePart(35, 0xf1);
+    const session = await createRuntimeSession({ bucket, parts: [part] });
+    const leaseLost = new Error("abort lease generation expired");
+    let leaseChecks = 0;
+    await expect(
+      session.abort(
+        requestControl({
+          beforeProviderMutation: async () => {
+            leaseChecks += 1;
+            if (leaseChecks === 2) throw leaseLost;
+          },
+        }),
+      ),
+    ).rejects.toBe(leaseLost);
+    expect(leaseChecks).toBe(2);
+    expect(bucket.abortCalls).toBe(1);
+    expect(bucket.uploads.has(session.handle.uploadId)).toBe(true);
   });
 
   test("does not report abort success when a lost completion already committed the object", async () => {
