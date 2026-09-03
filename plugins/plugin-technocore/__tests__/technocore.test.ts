@@ -299,7 +299,23 @@ describe("Technocore Plugin Tests", () => {
 		} as any);
 		expect(capturedRoom).toBe("technocore");
 
-		// 8. Structured room property overrides text
+		// 8. Deictic prefix stopword rejection (e.g. "the current room" = here, not a room named "current")
+		await postMessageAction.handler(mockRuntime, {
+			content: { text: "post in the current room" },
+		} as any);
+		expect(capturedRoom).toBe("technocore");
+
+		await postMessageAction.handler(mockRuntime, {
+			content: { text: "post in the main room" },
+		} as any);
+		expect(capturedRoom).toBe("technocore");
+
+		await postMessageAction.handler(mockRuntime, {
+			content: { text: "post in the default room" },
+		} as any);
+		expect(capturedRoom).toBe("technocore");
+
+		// 9. Structured room property overrides text
 		await postMessageAction.handler(mockRuntime, {
 			content: { text: "Post in /r/ignored", room: "structured-room" },
 		} as any);

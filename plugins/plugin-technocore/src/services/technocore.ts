@@ -43,6 +43,9 @@ export function cleanText(input: string): string {
 const ROOM_STOPWORDS =
 	/^(the|a|an|this|that|these|those|my|our|your|any|all|chat|with|for|about|where|when|which|who|whom|whose|why|how|is|are|was|were|be|been|being|to|in|at|from|into|on|of|and|or|but|if)$/i;
 
+/** Deictic in prefix position ("the current room" = here) but valid room names after "room". */
+const PREFIX_ONLY_STOPWORDS = /^(current|main|default)$/i;
+
 export function extractTargetRoom(
 	text: string,
 	defaultRoom: string,
@@ -65,7 +68,11 @@ export function extractTargetRoom(
 
 	// Prefix pattern allows natural trailing room notation (e.g. "read the general room" -> "general")
 	const prefixMatch = text.match(/\b([a-zA-Z0-9_-]+)\s+room\b/i);
-	if (prefixMatch?.[1] && !ROOM_STOPWORDS.test(prefixMatch[1])) {
+	if (
+		prefixMatch?.[1] &&
+		!ROOM_STOPWORDS.test(prefixMatch[1]) &&
+		!PREFIX_ONLY_STOPWORDS.test(prefixMatch[1])
+	) {
 		return prefixMatch[1];
 	}
 
