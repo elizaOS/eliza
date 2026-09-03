@@ -267,6 +267,27 @@ describe("executeResponseAttempts", () => {
     expect(reportedError).toBe(observerError);
   });
 
+  test("does not let a failed diagnostic reporter reject a successful request", async () => {
+    const request = mock(async () => new Response("ok"));
+
+    const result = await executeResponseAttempts({
+      maxAttempts: 3,
+      replayPolicy: "safe",
+      retryStatuses: true,
+      retryTransport: true,
+      request,
+      observe: () => {
+        throw new Error("diagnostic sink unavailable");
+      },
+      reportObservationError: async () => {
+        throw new Error("diagnostic reporter unavailable");
+      },
+    });
+
+    expect(result.response.status).toBe(200);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   test("keeps status replay independent from observer failures", async () => {
     let requestNumber = 0;
     const request = mock(async () => {

@@ -70,7 +70,12 @@ async function observeAttempt(
     await options.observe(observation);
   } catch (error) {
     // error-policy:J7 attempt diagnostics must not replay or kill delivery.
-    await options.reportObservationError(error, observation);
+    try {
+      await options.reportObservationError(error, observation);
+    } catch {
+      // error-policy:J7 the reporter is the terminal diagnostics boundary; its own failure cannot kill delivery.
+      return;
+    }
   }
 }
 
