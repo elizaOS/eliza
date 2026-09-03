@@ -591,14 +591,21 @@ export function useShellController(): ShellController {
       // for its canonical bubble before model generation, then at terminal
       // usage so the persisted assistant reply replaces the in-flight state.
       // Never synthesize local bubbles: the normal conversation loader remains
-      // the sole reader and deduper for saved history.
-      if (event.t !== "stt_final" && event.t !== "usage") return;
+      // the sole reader and deduper for saved history. Reconcile again when
+      // playback actually starts so the saved assistant bubble appears with
+      // its first audible frame instead of waiting for the terminal usage event.
+      if (
+        event.t !== "stt_final" &&
+        event.t !== "speaking_start" &&
+        event.t !== "usage"
+      )
+        return;
       const conversationId = activeConversationIdRef.current?.trim() || null;
       if (!conversationId) return;
       dispatchConversationResync({
         conversationId,
         reason:
-          event.t === "stt_final"
+          event.t === "stt_final" || event.t === "speaking_start"
             ? "voice-turn-progress"
             : "voice-turn-complete",
       });

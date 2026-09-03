@@ -94,12 +94,11 @@ const REVOCATION_POLL_MS = 400;
  */
 const MAX_OUTSTANDING_METER_WINDOWS = 2;
 /**
- * Hold a short reply until the LLM finishes so Cartesia receives one terminal
- * request and can render it with coherent prosody. Longer replies still begin
- * streaming at a bounded prefix; after that point PhraseAggregator emits only
- * at natural clause/sentence boundaries or this higher word-safe ceiling.
+ * Start inspecting a conversational reply for complete speakable sentences
+ * before the runtime's terminal metadata arrives. PhraseAggregator still owns
+ * the higher word-safe ceiling, so this never cuts inside a word or clause.
  */
-const VOICE_TTS_STREAMING_THRESHOLD_CHARS = 96;
+const VOICE_TTS_STREAMING_START_CHARS = 96;
 /** Keep every per-turn timing collection bounded even for pathological output. */
 const MAX_VOICE_METRIC_OFFSETS = 16;
 /** Human-readable interim captions do not benefit from provider-rate redraws. */
@@ -1736,19 +1735,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let modelSpeakableContentSeen = false;
     const abort = new AbortController();
     this.llmAbort = abort;
-    const phrase = new PhraseAggregator({
-      maxBufferChars: VOICE_TTS_STREAMING_THRESHOLD_CHARS,
-      preferWordBoundaryAtMax: true,
-    });
+    const phrase = new PhraseAggregator({ preferWordBoundaryAtMax: true });
     this.phrase = phrase;
     let initialReplyBuffer = "";
     let streamingReplyStarted = false;
 
     let tts: RealtimeTtsStream | null = null;
-    // Held terminal suffix (see the streaming loop below): Cartesia requires a
-    // non-empty final request carrying continue:false. We retain only the last
-    // word of each complete phrase, not the whole phrase, so synthesis can begin
-    // immediately while preserving a real terminal request for stream close.
+    // Cartesia requires a non-empty terminal request carrying continue:false.
+    // Keep one complete phrase pending so the final word is never synthesized
+    // as a detached request with different cadence or prosody.
     let pendingPhrase: string | null = null;
     const ensureTts = (): RealtimeTtsStream => {
       if (tts) return tts;
@@ -1847,17 +1842,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             flush: true,
           });
         }
-        const split = splitTerminalSuffix(p);
-        if (split) {
-          sendTtsPhrase(stream, {
-            text: split.prefix,
-            continueContext: true,
-            flush: true,
-          });
-          pendingPhrase = split.suffix;
-        } else {
-          pendingPhrase = p;
-        }
+        pendingPhrase = p;
       }
     };
 
@@ -1957,14 +1942,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           firstModelTextAt = this.now();
           this.send({ t: "llm_first_text", traceId });
         }
-        // Short answers sound best as one coherent terminal request. Hold the
-        // initial reply until either the LLM completes or it crosses the
-        // bounded streaming threshold. Longer replies then use the shared
-        // phrase policy, which emits at natural boundaries or a high word-safe
-        // ceiling rather than arbitrary 24-character splits.
+        // Typical short answers sound best as one coherent terminal request.
+        // Once a reply is long enough to contain a useful complete sentence,
+        // hand it to the canonical phrase policy without waiting for the
+        // runtime's later terminal metadata.
         if (!streamingReplyStarted) {
           initialReplyBuffer += delta;
-          if (initialReplyBuffer.length < VOICE_TTS_STREAMING_THRESHOLD_CHARS) {
+          if (initialReplyBuffer.length < VOICE_TTS_STREAMING_START_CHARS) {
             return;
           }
           streamingReplyStarted = true;
@@ -2565,27 +2549,4 @@ function isFishPreAudioFallbackError(code: string | undefined): boolean {
     code === "websocket_closed_before_open" ||
     code === "first_audio_timeout"
   );
-}
-
-/**
- * Keep a small real-text suffix available for Cartesia's required terminal
- * continue:false request while allowing the rest of a completed phrase to
- * start synthesis immediately. Very short/one-token phrases remain intact.
- */
-function splitTerminalSuffix(
-  phrase: string,
-): { prefix: string; suffix: string } | null {
-  const hasTrailingBoundary = /\s$/.test(phrase);
-  const trimmed = phrase.trim();
-  const match = /^(.*\S)\s+(\S+)$/.exec(trimmed);
-  if (!match) return null;
-  const prefixText = match[1].trim();
-  const suffixText = match[2].trim();
-  if (prefixText.length < 8 || suffixText.length > 40) return null;
-  // Preserve both word boundaries when provider transcript chunks are
-  // concatenated. Cartesia accepts trailing whitespace on continuation chunks.
-  return {
-    prefix: `${prefixText} `,
-    suffix: hasTrailingBoundary ? `${suffixText} ` : suffixText,
-  };
 }

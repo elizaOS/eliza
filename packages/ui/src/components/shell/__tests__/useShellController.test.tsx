@@ -2764,6 +2764,14 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
       expect(resyncEvents).toHaveLength(1);
 
       act(() => {
+        onServerEvent?.({ t: "speaking_start", traceId: "trace-voice-turn" });
+      });
+      expect(resyncEvents[1]?.detail).toEqual({
+        conversationId,
+        reason: "voice-turn-progress",
+      });
+
+      act(() => {
         onServerEvent?.({
           t: "usage",
           sttMs: 300,
@@ -2771,7 +2779,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
           traceId: "trace-voice-turn",
         });
       });
-      expect(resyncEvents[1]?.detail).toEqual({
+      expect(resyncEvents[2]?.detail).toEqual({
         conversationId,
         reason: "voice-turn-complete",
       });
