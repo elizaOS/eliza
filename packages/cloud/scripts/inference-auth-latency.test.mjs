@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isCloudflarePlacement,
   parseArgs,
   parseAuthServerTiming,
   parseAuthTrace,
@@ -18,6 +19,15 @@ import {
 } from "./inference-auth-latency.mjs";
 
 const SHA = "a".repeat(40);
+
+test("Cloudflare placement values retain only documented local and remote colos", () => {
+  assert.equal(isCloudflarePlacement("local-ORD"), true);
+  assert.equal(isCloudflarePlacement("remote-FRA"), true);
+  assert.equal(isCloudflarePlacement("local"), false);
+  assert.equal(isCloudflarePlacement("remote"), false);
+  assert.equal(isCloudflarePlacement("LOCAL-ORD"), false);
+  assert.equal(isCloudflarePlacement(null), false);
+});
 
 function authHeader(phase) {
   return phase === "hit"

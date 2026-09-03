@@ -504,12 +504,12 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 name = "eliza-cloud-api-staging"
 workers_dev = false
 
-# Smart Placement soak (#15513): run this Worker near the origins it fetches
-# (api.cerebras.ai / api.openai.com) instead of near the caller — the measured
-# Worker->origin hop is ~500ms of every inference call's TTFT. Staging-only
-# until the before/after ttfb comparison on api-staging holds; production
-# follows in its own change.
-placement = { mode = "smart" }
+# Keep this edge/API Worker in Cloudflare's default caller-local placement.
+# Inference performs authentication and serial Durable Object admission before
+# provider dispatch; moving the whole fetch handler near an inferred HTTP
+# origin adds a cross-region round trip to every stateful phase. If a backend
+# needs placement, split it behind an unplaced edge Worker and certify that
+# boundary independently before changing this contract.
 routes = [
   # Canonical browser hosts belong to the eliza-app Pages project. Pages
   # Functions proxy /api and auth protocol paths to this Worker.
@@ -821,14 +821,12 @@ simple = { limit = 120, period = 60 }
 [env.production]
 name = "eliza-cloud-api-prod"
 
-# Smart Placement (#15513, prod leg): staging soak showed mode=smart applied
-# cleanly but staging traffic is too thin for Cloudflare's placement analyzer
-# to ever qualify it — prod volume is what it learns from. Fail-safe by
-# design: CF only moves execution when its analysis concludes it improves
-# performance (back-end-heavy requests to api.cerebras.ai / api.openai.com /
-# Hyperdrive); otherwise requests keep default placement. Rollback = delete
-# this line + redeploy.
-placement = { mode = "smart" }
+# Keep this edge/API Worker in Cloudflare's default caller-local placement.
+# Inference performs authentication and serial Durable Object admission before
+# provider dispatch; moving the whole fetch handler near an inferred HTTP
+# origin adds a cross-region round trip to every stateful phase. If a backend
+# needs placement, split it behind an unplaced edge Worker and certify that
+# boundary independently before changing this contract.
 workers_dev = false
 # Canonical routes serve the API and UUID agents. The cloud.eliza.app browser
 # host belongs to Pages; legacy routes remain redirect ingress during the
