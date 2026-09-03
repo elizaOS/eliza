@@ -54,6 +54,9 @@ describe("legacy relationships inventory — real PGlite", () => {
       entities: 0,
       relationships: 0,
     });
+    await expect(
+      LegacyRelationshipsSchemaAuditService.start(testRuntime.runtime),
+    ).resolves.toBeInstanceOf(LegacyRelationshipsSchemaAuditService);
 
     await execute("CREATE SCHEMA app_relationships");
     await execute(`
@@ -78,6 +81,9 @@ describe("legacy relationships inventory — real PGlite", () => {
       entities: 0,
       relationships: 0,
     });
+    await expect(
+      LegacyRelationshipsSchemaAuditService.start(testRuntime.runtime),
+    ).resolves.toBeInstanceOf(LegacyRelationshipsSchemaAuditService);
 
     await execute(`
       INSERT INTO app_relationships.entities (id, kind, display_name, attrs)
