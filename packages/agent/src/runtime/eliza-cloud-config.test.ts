@@ -15,8 +15,10 @@ import {
   createDevCloudConfigAuthorityView,
   createDevCloudRuntimeSettingsAuthorityOverlay,
   DEV_CLOUD_ENV_AUTHORITY_KEY,
-  type DEV_CLOUD_ENV_OWNED_KEYS,
+  DEV_CLOUD_ENV_OWNED_KEYS,
   DEV_CLOUD_ENV_RESTORE_KEYS,
+  isDevCloudEnvOwnedKey,
+  isDevCloudInternalEnvKey,
   mergeDevCloudConfigAuthorityMutation,
   resetDevCloudEnvAuthorityForTests,
   resolveDevCloudEnvAuthority,
@@ -1550,4 +1552,84 @@ describe("stale vault/config key clobber guard (#11038)", () => {
       "eliza_…(len 18)",
     );
   });
+});
+
+/**
+ * `isDevCloudEnvOwnedKey` answers from an explicit list OR five `ELIZA*CLOUD_`
+ * prefixes, and 63 of the list's 72 entries are already matched by a prefix —
+ * deleting any of those changes nothing, which is why sampling them all
+ * "survives". The nine that are NOT prefix-matched are the Steward tuple, and
+ * they carry the fleet-scoped credentials (`STEWARD_API_KEY`,
+ * `STEWARD_AGENT_TOKEN`). For those the list is the only thing answering.
+ */
+describe("dev cloud owned-key authority", () => {
+  const PREFIXES = [
+    "ELIZAOS_CLOUD_",
+    "ELIZA_CLOUD_",
+    "ELIZA_DEV_CLOUD_",
+    "ELIZACLOUD_",
+    "WAIFU_ELIZA_CLOUD_",
+  ];
+
+  const listOnlyKeys = [...DEV_CLOUD_ENV_OWNED_KEYS].filter(
+    (key) => !PREFIXES.some((prefix) => key.toUpperCase().startsWith(prefix)),
+  );
+
+  it("the list carries exactly the Steward tuple beyond the prefix arms", () => {
+    expect(listOnlyKeys).toEqual([
+      "STEWARD_API_URL",
+      "STEWARD_TENANT_ID",
+      "STEWARD_AGENT_ID",
+      "ELIZA_STEWARD_AGENT_ID",
+      "STEWARD_API_KEY",
+      "STEWARD_AGENT_TOKEN",
+      "STEWARD_TRADE_SESSION_ID",
+      "STEWARD_HYPERLIQUID_TRADE_SESSION_ID",
+      "STEWARD_POLYMARKET_TRADE_SESSION_ID",
+    ]);
+  });
+
+  it.each(
+    [...DEV_CLOUD_ENV_OWNED_KEYS].filter(
+      (key) => !PREFIXES.some((prefix) => key.toUpperCase().startsWith(prefix)),
+    ),
+  )("%s is owned by the launcher, list-answered", (key) => {
+    expect(isDevCloudEnvOwnedKey(key)).toBe(true);
+    // The predicate uppercases, and a persisted config key is whatever spelling
+    // was written; both must reach the same answer.
+    expect(isDevCloudEnvOwnedKey(key.toLowerCase())).toBe(true);
+  });
+
+  it.each(PREFIXES)(
+    "%s is matched as a family, not only by listed names",
+    (prefix) => {
+      const unlisted = `${prefix}NOT_A_LISTED_NAME`;
+      expect(DEV_CLOUD_ENV_OWNED_KEYS).not.toContain(unlisted);
+      expect(isDevCloudEnvOwnedKey(unlisted)).toBe(true);
+    },
+  );
+
+  it.each(["SMALL_MODEL", "LARGE_MODEL", "OPENAI_API_KEY", "STEWARD"])(
+    "%s is not claimed by the dev-cloud authority",
+    (key) => {
+      // The list's own comment: generic model aliases still belong to
+      // direct/local providers when the dev target is offline. A widened prefix
+      // would take them, and take the provider's key with them.
+      expect(isDevCloudEnvOwnedKey(key)).toBe(false);
+    },
+  );
+
+  it.each([
+    "ELIZA_DEV_SOURCE",
+    "ELIZA_DEV_CLOUD_TARGET",
+    DEV_CLOUD_ENV_AUTHORITY_KEY,
+  ])(
+    "the internal launcher marker %s is never owned, despite matching a prefix",
+    (key) => {
+      // These match `ELIZA_DEV_CLOUD_`/`ELIZA_DEV_` shapes but are excluded
+      // first. Persisted config must not be able to fabricate them.
+      expect(isDevCloudInternalEnvKey(key)).toBe(true);
+      expect(isDevCloudEnvOwnedKey(key)).toBe(false);
+    },
+  );
 });
