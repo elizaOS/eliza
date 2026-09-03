@@ -61,6 +61,7 @@ test.use({
     frontend: false,
     mockLlmEchoContext: true,
     env: { ELIZAOS_CLOUD_SMALL_MODEL: "openai/gpt-4o-mini" },
+    mockLlmOpenRouter: true,
   },
 });
 
