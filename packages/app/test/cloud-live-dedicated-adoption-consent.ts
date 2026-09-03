@@ -26,6 +26,7 @@ interface VisibleDedicatedAdoptionQuote {
   balanceUsd: number;
   deficitUsd: number;
   stateDisposition: DedicatedAdoptionStateDisposition;
+  requiresCatalogRestore: boolean;
 }
 
 export interface DedicatedAdoptionConsentProof {
@@ -87,6 +88,7 @@ function projectVisibleQuote(
     !dedicatedAgentId ||
     !status ||
     typeof quote?.startsCompute !== "boolean" ||
+    typeof quote?.requiresCatalogRestore !== "boolean" ||
     hourlyRateUsd === null ||
     dailyRateUsd === null ||
     minimumBalanceUsd === null ||
@@ -114,6 +116,7 @@ function projectVisibleQuote(
     balanceUsd,
     deficitUsd,
     stateDisposition,
+    requiresCatalogRestore: quote.requiresCatalogRestore,
   };
 }
 
@@ -132,6 +135,31 @@ function exactVisibleConsentLines(
     `Hosting: $${quote.hourlyRateUsd.toFixed(2)}/hour ($${quote.dailyRateUsd.toFixed(2)}/day).`,
     `Balance: $${quote.balanceUsd.toFixed(2)}; minimum required: $${quote.minimumBalanceUsd.toFixed(2)} (${quote.minimumRunwayDays} days of runway); deficit: $${quote.deficitUsd.toFixed(2)}.`,
     `This action ${quote.startsCompute ? "starts Dedicated compute" : "does not start new compute"} and will ${disposition}.`,
+  ];
+}
+
+function exactJoinVisibleConsentLines(
+  quote: VisibleDedicatedAdoptionQuote,
+): string[] {
+  const disposition =
+    quote.stateDisposition === "verified_backup_present"
+      ? "Cloud will restore its reviewed backup before switching."
+      : quote.stateDisposition === "fresh_boot_no_verified_backup"
+        ? "No verified backup will be restored. This Dedicated Eliza starts fresh."
+        : "Cloud has not verified a restorable backup for this existing Dedicated Eliza.";
+  return [
+    "Bring this Dedicated Eliza online?",
+    "We found an existing Dedicated Eliza for this account. Confirming reuses it — it does not create another one.",
+    quote.startsCompute
+      ? `This starts Dedicated hosting at $${quote.dailyRateUsd.toFixed(2)}/day ($${quote.hourlyRateUsd.toFixed(2)}/hr).`
+      : "Dedicated hosting is already active; confirming does not start another server.",
+    `Balance: $${quote.balanceUsd.toFixed(2)} · Required: $${quote.minimumBalanceUsd.toFixed(2)} (${quote.minimumRunwayDays} days of runway)`,
+    `Current Dedicated status: ${quote.status.replaceAll(/[_-]+/g, " ")}.`,
+    disposition,
+    ...(quote.requiresCatalogRestore
+      ? ["Cloud must repair its saved setup before it can start."]
+      : []),
+    "Your Shared Eliza keeps working until Dedicated is healthy. If setup fails or you cancel, nothing switches.",
   ];
 }
 
@@ -185,13 +213,18 @@ export function installDedicatedAdoptionConsentProof(
           throw new CloudLiveDedicatedAdoptionConsentProofError("quote");
         }
 
-        const consentTurn = confirm.locator(
-          "xpath=ancestor::*[@data-testid='thread-line'][1]",
+        const isJoinConfirmation =
+          (await confirm.getAttribute("data-testid")) ===
+          "dedicated-adoption-confirm";
+        const consentSurface = confirm.locator(
+          isJoinConfirmation
+            ? "xpath=ancestor::*[@data-testid='dedicated-adoption-review'][1]"
+            : "xpath=ancestor::*[@data-testid='thread-line'][1]",
         );
-        if (!(await consentTurn.isVisible())) {
+        if (!(await consentSurface.isVisible())) {
           throw new CloudLiveDedicatedAdoptionConsentProofError("copy");
         }
-        const copyMatches = await consentTurn.evaluate(
+        const copyMatches = await consentSurface.evaluate(
           (element, expectedLines) => {
             const normalize = (text: string) =>
               text.replace(/\s+/g, " ").trim();
@@ -205,15 +238,22 @@ export function installDedicatedAdoptionConsentProof(
             }
             return true;
           },
-          exactVisibleConsentLines(quote),
+          isJoinConfirmation
+            ? exactJoinVisibleConsentLines(quote)
+            : exactVisibleConsentLines(quote),
         );
         if (!copyMatches) {
           throw new CloudLiveDedicatedAdoptionConsentProofError("copy");
         }
         const confirmationControlMatches = await confirm.evaluate(
-          (element) =>
+          (element, expected) =>
             (element as HTMLElement).innerText.replace(/\s+/g, " ").trim() ===
-            "Confirm and continue",
+            expected,
+          isJoinConfirmation
+            ? quote.startsCompute
+              ? "Start Dedicated"
+              : "Continue Dedicated setup"
+            : "Confirm and continue",
         );
         if (!confirmationControlMatches || !(await confirm.isEnabled())) {
           throw new CloudLiveDedicatedAdoptionConsentProofError("control");
