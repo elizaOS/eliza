@@ -18,7 +18,7 @@ export const PAGES_AUTHORITY_SCHEMA =
 export const PAGES_PUBLIC_CHECK_SCHEMA =
   "elizaos.cloudflare.pages-public-check/v1";
 export const DEPLOYED_BROWSER_SMOKE_SCHEMA =
-  "elizaos.cloud.deployed-browser-smoke/v1";
+  "elizaos.cloud.deployed-browser-smoke/v2";
 export const DEPLOYED_RENDERER_PROOF_SCHEMA =
   "elizaos.cloud.deployed-renderer-proof/v1";
 
@@ -68,6 +68,7 @@ const PUBLIC_RENDERER_KEYS = [
 ];
 const PUBLIC_API_KEYS = ["commit", "environment", "origin"];
 const REMOTE_SMOKE_KEYS = [
+  "chatCorrelation",
   "cloudApiOrigin",
   "cloudEnvironment",
   "outcome",
@@ -77,6 +78,18 @@ const REMOTE_SMOKE_KEYS = [
   "schema",
   "sourceSha",
 ];
+const CHAT_CORRELATION_KEYS = [
+  "preforward",
+  "providerRequestId",
+  "serverTiming",
+  "traceId",
+];
+const TRACE_ID = /^[0-9a-f]{32}$/;
+const SAFE_TIMING =
+  /^(?:[A-Za-z][A-Za-z0-9_.-]{0,63};dur=\d+(?:\.\d+)?)(?:, [A-Za-z][A-Za-z0-9_.-]{0,63};dur=\d+(?:\.\d+)?)*$/;
+const SAFE_PREFORWARD =
+  /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/;
+const PROVIDER_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const LATENCY_KEYS = [
   "definition",
   "firstTurnLatencyMs",
@@ -671,6 +684,11 @@ export function parseDeployedBrowserSmoke(value) {
   ) {
     fail("remote browser smoke did not close successfully");
   }
+  const correlation = requireExactKeys(
+    smoke.chatCorrelation,
+    CHAT_CORRELATION_KEYS,
+    "remoteSmoke.chatCorrelation",
+  );
   return {
     schema: DEPLOYED_BROWSER_SMOKE_SCHEMA,
     sourceSha: requireString(smoke.sourceSha, "remoteSmoke.sourceSha", SHA40),
@@ -696,6 +714,34 @@ export function parseDeployedBrowserSmoke(value) {
       smoke.cloudEnvironment,
       "remoteSmoke.cloudEnvironment",
     ),
+    chatCorrelation: {
+      traceId: requireString(
+        correlation.traceId,
+        "remoteSmoke.chatCorrelation.traceId",
+        TRACE_ID,
+      ),
+      serverTiming: requireString(
+        correlation.serverTiming,
+        "remoteSmoke.chatCorrelation.serverTiming",
+        SAFE_TIMING,
+      ),
+      preforward:
+        correlation.preforward === null
+          ? null
+          : requireString(
+              correlation.preforward,
+              "remoteSmoke.chatCorrelation.preforward",
+              SAFE_PREFORWARD,
+            ),
+      providerRequestId:
+        correlation.providerRequestId === null
+          ? null
+          : requireString(
+              correlation.providerRequestId,
+              "remoteSmoke.chatCorrelation.providerRequestId",
+              PROVIDER_REQUEST_ID,
+            ),
+    },
     outcome: "success",
   };
 }

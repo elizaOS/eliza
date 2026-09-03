@@ -21,6 +21,10 @@ import {
   seedCloudLiveBrowserAuth,
 } from "../cloud-live-browser-auth";
 import {
+  type CloudLiveChatCorrelationEvidence,
+  createCloudLiveChatCorrelationCapture,
+} from "../cloud-live-chat-correlation";
+import {
   assertCloudLiveNamedWarmingMode,
   assertCloudLiveNamedWarmingProof,
   type CloudLiveBindingReuse,
@@ -79,7 +83,7 @@ const DEPLOYED_RENDERER_ENABLED =
   process.env.ELIZA_UI_SMOKE_DEPLOYED_RENDERER === "1";
 const DEPLOYED_RENDERER_ALIAS = "https://develop.eliza-app.pages.dev";
 const DEPLOYED_RENDERER_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
-const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v1";
+const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v2";
 const REQUIRE_NAMED_WARMING =
   process.env.ELIZA_UI_SMOKE_REQUIRE_NAMED_WARMING === "1";
 
@@ -348,6 +352,7 @@ async function writeDeployedBrowserSmokeEvidence(
   path: string,
   renderer: DeployedRendererIdentity,
   cloudApiOrigin: string,
+  chatCorrelation: CloudLiveChatCorrelationEvidence,
 ): Promise<void> {
   const outputPath = resolve(path);
   await mkdir(dirname(outputPath), { recursive: true });
@@ -362,6 +367,7 @@ async function writeDeployedBrowserSmokeEvidence(
         rendererBuildId: renderer.buildId,
         cloudApiOrigin,
         cloudEnvironment: "staging",
+        chatCorrelation,
         outcome: "success",
       },
       null,
@@ -423,11 +429,18 @@ async function requireActiveBinding(
 
 function installNetworkAudit(context: BrowserContext) {
   const audit = createCloudLiveNetworkAudit();
+  const chatCorrelation = createCloudLiveChatCorrelationCapture();
   context.on("request", (request) => {
     audit.observeRequest(request.method(), request.url(), request.postData());
   });
   context.on("response", (response) => {
     const responseHeaders = response.headers();
+    chatCorrelation.observe(
+      response.request().method(),
+      response.url(),
+      response.status(),
+      responseHeaders,
+    );
     const contentType = responseHeaders["content-type"];
     audit.observeResponse(
       response.request().method(),
@@ -457,7 +470,9 @@ function installNetworkAudit(context: BrowserContext) {
       request.failure()?.errorText,
     );
   });
-  return audit;
+  return Object.assign(audit, {
+    requireSuccessfulChatCorrelation: () => chatCorrelation.requireSuccessful(),
+  });
 }
 
 async function armAnchoredRetryChipObserver(
@@ -1237,6 +1252,11 @@ test.describe("real cloud login + personal identity + chat", () => {
     const challengeLogicalChatSendCount = challengeAudit.logicalChatSendCount;
     expect(challengeLogicalChatSendCount).toBe(1);
     expect(challengeAudit.unidentifiedChatSendAttemptCount).toBe(0);
+    const chatCorrelation = primaryAudit.requireSuccessfulChatCorrelation();
+    test.info().annotations.push({
+      type: "chat-trace-id",
+      description: chatCorrelation.traceId,
+    });
 
     // Reload the same document partition. A successful server history GET plus
     // both turn-anchored rows proves the turn did not survive merely in React
@@ -1411,6 +1431,7 @@ test.describe("real cloud login + personal identity + chat", () => {
           deployedBrowserEvidencePath,
           deployedRenderer as DeployedRendererIdentity,
           originContract.origin,
+          chatCorrelation,
         );
       }
     }

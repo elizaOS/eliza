@@ -86,6 +86,12 @@ function deployedProofFile(
       rendererBuildId: buildId,
       cloudApiOrigin: apiOrigin,
       cloudEnvironment: "staging",
+      chatCorrelation: {
+        traceId: "0123456789abcdef0123456789abcdef",
+        serverTiming: "dedicated_auth;dur=1.25, dedicated_total;dur=4",
+        preforward: "total=3;auth=1;mid=1;reserve=1;setup=0",
+        providerRequestId: "req_cerebras-123",
+      },
       outcome: "success",
     },
     latency: {
