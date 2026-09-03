@@ -75,6 +75,33 @@ describe("runCarveOutMigration", () => {
     expect(runs).toBe(1);
   });
 
+  it("never steals an old running claim because callback duration is unbounded", async () => {
+    const exec = async (sql: string): Promise<Array<Record<string, unknown>>> => {
+      const quoted = [...sql.matchAll(/'([^']+)'/g)].map((match) => match[1]);
+      if (sql.includes("carve-out:claim")) {
+        // Model a receipt old enough to satisfy the former timeout takeover.
+        // Returning the contender only when the statement attempts an update
+        // makes this regression fail if automatic takeover is restored.
+        return sql.includes("DO UPDATE") ? [{ holder_token: quoted[1] }] : [];
+      }
+      if (sql.includes("carve-out:status")) return [{ status: "running" }];
+      return [];
+    };
+    let runs = 0;
+
+    await expect(
+      runCarveOutMigration(exec, {
+        key: "calendar/events/v1",
+        run: async () => {
+          runs += 1;
+          return "copied";
+        },
+        outcome: (value) => value,
+      })
+    ).rejects.toMatchObject({ code: "CARVE_OUT_MIGRATION_IN_PROGRESS" });
+    expect(runs).toBe(0);
+  });
+
   it("fails closed when a rejected claim has no readable receipt", async () => {
     const exec = async (sql: string): Promise<Array<Record<string, unknown>>> => {
       if (sql.includes("carve-out:claim") || sql.includes("carve-out:status")) {

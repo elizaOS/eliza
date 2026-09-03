@@ -2,7 +2,7 @@
  * Durable orchestration for one-time plugin table carve-outs.
  *
  * Domain plugins retain their explicit copy/repair SQL. This module owns the
- * shared receipt lease so repeated or concurrent startup cannot replay a
+ * shared receipt claim so repeated or concurrent startup cannot replay a
  * completed legacy import after an owner deletes data from the new table.
  */
 
@@ -40,11 +40,13 @@ async function ensureReceiptTable(exec: CarveOutSqlExecutor): Promise<void> {
 /**
  * Run a domain migration under a durable lease and completion receipt.
  *
- * A failed callback removes only its own lease, allowing the next boot to
- * retry an idempotent domain copy. A five-minute abandoned lease can be taken
- * over; the holder token prevents the stale process from completing it later.
- * A live competing lease fails startup so no runtime can write the target
- * tables before the owning copy completes.
+ * A failed callback removes only its own claim, allowing the next boot to
+ * retry an idempotent domain copy. A running receipt is never taken over
+ * automatically: callback duration is unbounded, so elapsed time cannot prove
+ * that its owner is dead. Operators may remove an abandoned running receipt
+ * only after establishing that its holder can no longer write. A competing
+ * claim fails startup so no runtime can write the target tables before the
+ * owning copy completes.
  */
 export async function runCarveOutMigration<T>(
   exec: CarveOutSqlExecutor,
@@ -61,14 +63,7 @@ export async function runCarveOutMigration<T>(
     INSERT INTO ${RECEIPT_SCHEMA}.${RECEIPT_TABLE}
       (migration_key, holder_token, status, started_at, completed_at, outcome)
     VALUES (${literal(options.key)}, ${literal(holderToken)}, 'running', now(), NULL, NULL)
-    ON CONFLICT (migration_key) DO UPDATE
-      SET holder_token = EXCLUDED.holder_token,
-          status = 'running',
-          started_at = now(),
-          completed_at = NULL,
-          outcome = NULL
-      WHERE ${RECEIPT_SCHEMA}.${RECEIPT_TABLE}.status = 'running'
-        AND ${RECEIPT_SCHEMA}.${RECEIPT_TABLE}.started_at < now() - INTERVAL '5 minutes'
+    ON CONFLICT (migration_key) DO NOTHING
     RETURNING holder_token`);
   if (String(firstValue(claimed[0]) ?? "") !== holderToken) {
     const rows = await exec(`/* carve-out:status */
