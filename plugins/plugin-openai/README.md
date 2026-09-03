@@ -211,7 +211,25 @@ Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` 
 
 ## OpenZoo compatibility
 
-Run `npx openzoo` and point `OPENAI_BASE_URL` at `http://localhost:8402/v1` — the local proxy pays each request over x402 from a local burner wallet (`npx openzoo address` / `npx openzoo balance`; fund with USDC on Solana or Base). OpenZoo has no signup, and the proxy ignores the key: set `OPENAI_API_KEY` to any non-empty value (e.g. `sk-openzoo`). The model list at `GET /v1/models` is free to fetch. The hosted endpoint `https://api.openzoo.fun/v1` answers `402` unless the caller pays x402; this plugin sends only a bearer token, so use the local proxy. Note: on builds without the `openzoo` usage-provider branch (elizaOS/eliza#30245), usage telemetry attributes these requests to `openai`; per-request billing attribution always remains available from the gateway's own receipts.
+Run `npx openzoo@0.50.96` and point `OPENAI_BASE_URL` at `http://localhost:8402/v1` — the local proxy pays each request over x402 from a local burner wallet (`npx openzoo@0.50.96 address` / `npx openzoo@0.50.96 balance`; fund with USDC on Solana or Base). Source: [staccDOTsol/openzoo](https://github.com/staccDOTsol/openzoo) ([`openzoo` on npm](https://www.npmjs.com/package/openzoo)); the version is pinned here so this snippet stays reproducible.
+
+OpenZoo has no signup, and the proxy ignores the key: set `OPENAI_API_KEY` to any non-empty value (e.g. `sk-openzoo`). Two properties of the hosted gateway are checkable without installing anything or spending anything:
+
+```console
+$ curl -s -o /dev/null -w '%{http_code} %{size_download}\n' https://api.openzoo.fun/v1/models
+200 334537
+
+$ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://api.openzoo.fun/v1/chat/completions \
+    -H 'Authorization: Bearer sk-openzoo' -H 'Content-Type: application/json' \
+    -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
+402
+```
+
+That is, `GET /v1/models` is free, and a completion sent with only a bearer token is refused with `402` and an x402 `accepts` array rather than served. This plugin sends only a bearer token, so point it at the local proxy, which performs the x402 payment on each request.
+
+Usage telemetry attributes these requests to `openai`, since the plugin sees an OpenAI-compatible endpoint. Per-request billing attribution is available from the gateway's own receipts.
+
+> **Disclosure:** this section was contributed by the author of OpenZoo.
 
 ## EvoLink compatibility
 
