@@ -168,8 +168,8 @@ describe("malformed JSON body handling", () => {
     };
     expect(body.error?.type).toBe("invalid_request_error");
     expect(body.error?.code).toBe("missing_required_parameter");
-    expect(res.headers.get("X-Eliza-Auth-Trace")).toBeNull();
-    expect(res.headers.get("Server-Timing")).toBeNull();
+    expect(res.headers.get("X-Eliza-Auth-Trace")).toContain("result=slow_path");
+    expect(res.headers.get("Server-Timing")).toContain("auth_resolve;dur=0.1");
     expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
     expect(authExecutionCtx).toBe(executionCtx);
   });
