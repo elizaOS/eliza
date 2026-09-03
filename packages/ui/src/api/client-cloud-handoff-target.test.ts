@@ -242,6 +242,46 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
     );
   });
 
+  it("does not switch onto a PUBLIC dedicated-looking row whose tier is shared", async () => {
+    // The sibling shared-row tests are decided by URL classification: a
+    // loopback proxy or a control-plane UUID path is rejected before the tier
+    // is read. This row advertises a public dedicated web UI and reports
+    // `running`, so every URL-shaped guard passes and only `execution_tier`
+    // can stop the switch. Without that check the client migrates the
+    // conversation onto a shared adapter, which has no migration target.
+    const { client } = fakeClient({});
+    const onSwitch = vi.fn();
+    const fetchMock = vi.fn(async () => ({
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: {
+          id: "dedicated-1",
+          status: "running",
+          executionTier: "shared",
+          webUiUrl: "https://dedicated-1.elizacloud.ai",
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await client.startCloudAgentHandoff({
+      agentId: "shared-1",
+      sharedApiBase: SHARED_BASE,
+      conversationId: "shared-1",
+      dedicatedAgentId: "dedicated-1",
+      cloudApiBase: "https://www.elizacloud.ai",
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 20,
+      log: () => {},
+    });
+
+    expect(onSwitch).not.toHaveBeenCalled();
+    expect(result.status).toBe("timed-out");
+  });
+
   it("does not treat a production control-plane UUID path as a dedicated handoff target", async () => {
     const dedicatedId = "00000000-0000-4000-8000-000000000001";
     const cloudApiBase = DEFAULT_DIRECT_CLOUD_API_BASE_URL;
