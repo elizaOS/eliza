@@ -45,6 +45,7 @@ import {
 import { isTransientOptionalFetchFailure } from "../utils";
 import { recoverMissedCurrentView } from "../view-action-handoff";
 import { emitViewEvent } from "../views/view-event-bus";
+import { dispatchConversationResync } from "./AppContext.hooks";
 import type { ActionTone } from "./action-notice";
 import {
   loadAgentProfileRegistry,
@@ -439,6 +440,15 @@ export function bindReadyPhase(
   // enters "running". Driven by the live status event below, with the poll
   // interval as a catch-all — no fixed delay guessing how long boot takes.
   let ptyRunning = false;
+  let conversationResyncPending = false;
+  const reconcileConversationAfterReconnect = (running: boolean): void => {
+    if (!running || !conversationResyncPending) return;
+    conversationResyncPending = false;
+    dispatchConversationResync({
+      conversationId: depsRef.current?.activeConversationIdRef.current ?? null,
+      reason: "connection-recovered",
+    });
+  };
   const hydrateOnRunning = (running: boolean) => {
     if (running && !ptyRunning) {
       ptyRunning = true;
@@ -461,6 +471,7 @@ export function bindReadyPhase(
     }
     const running = depsRef.current?.agentRunningRef.current ?? false;
     hydrateOnRunning(running);
+    reconcileConversationAfterReconnect(running);
     if (running && depsRef.current?.hasPtySessionsRef.current) doHydratePty();
   }, 5_000);
 
@@ -473,7 +484,20 @@ export function bindReadyPhase(
       if (e) dispatchAppEmoteEvent(e);
     },
   );
-  const unbindWsReconnect = client.onWsEvent("ws-reconnected", () =>
+  const unbindWsReconnect = client.onWsEvent("ws-reconnected", () => {
+    const conversationId =
+      depsRef.current?.activeConversationIdRef.current ?? null;
+    client.sendWsMessage({
+      type: "active-conversation",
+      conversationId,
+    });
+    // The API socket can reopen before the restarted agent has restored its
+    // persisted conversations. Reloading on the socket edge can therefore
+    // replace a healthy visible transcript with a premature empty response.
+    // Hold the canonical tail refresh until the status stream says the agent is
+    // running; the existing five-second readiness catch-all covers a missed
+    // status frame without polling conversation history.
+    conversationResyncPending = true;
     Promise.resolve().then(() => {
       hydratePty();
       void depsRef.current?.loadWalletConfig();
@@ -483,8 +507,8 @@ export function bindReadyPhase(
         // recovery rejection; the next lifecycle event retries it.
         logger.warn({ error }, "[startup] current view recovery failed");
       });
-    }),
-  );
+    });
+  });
   const unbindSysWarn = client.onWsEvent(
     "system-warning",
     (data: Record<string, unknown>) => {
@@ -520,7 +544,9 @@ export function bindReadyPhase(
           void d.pollCloudCredits();
           ptyRunning = false; // force re-hydrate now that the agent restarted
         }
-        hydrateOnRunning(ns.state === "running");
+        const running = ns.state === "running";
+        hydrateOnRunning(running);
+        reconcileConversationAfterReconnect(running);
       }
       if (typeof data.pendingRestart === "boolean")
         d.setPendingRestart((p: boolean) =>
