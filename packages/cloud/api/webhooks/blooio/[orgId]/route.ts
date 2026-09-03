@@ -128,7 +128,9 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
     // Handle different event types
     switch (payload.event) {
       case "message.received":
-        await handleIncomingMessage(orgId, payload);
+        await handleIncomingMessage(orgId, payload, (promise) =>
+          c.executionCtx.waitUntil(promise),
+        );
         break;
 
       case "message.sent":
@@ -188,6 +190,7 @@ app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) =>
 async function handleIncomingMessage(
   orgId: string,
   event: BlooioWebhookEvent,
+  defer: (promise: Promise<unknown>) => void,
 ): Promise<void> {
   const [{ messageRouterService }, { agentGatewayRouterService }] =
     await Promise.all([
@@ -288,7 +291,7 @@ async function handleIncomingMessage(
     metadata: messageContext.metadata,
   });
 
-  if (!routed.handled) {
+  if (!routed.handled || !routed.userId) {
     logger.info("[BlooioWebhook] Message did not resolve to an owned Agent", {
       orgId,
       reason: routed.reason,
@@ -308,6 +311,7 @@ async function handleIncomingMessage(
       agentId: routed.agentId,
       agentOrganizationId: routed.organizationId,
       agentUserId: routed.userId,
+      defer,
     });
 
     if (sent.status === "delivered") {
