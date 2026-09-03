@@ -5,6 +5,7 @@
 
 import { beforeEach, expect, mock, test } from "bun:test";
 import { InferenceCredentialRevokedError } from "../inference-credential-revocation";
+import { InferenceAdmissionUnavailableError } from "../organization-inference-admission";
 import type { ServiceConfig } from "./types";
 
 const legacyAuth = mock(async () => {
@@ -39,7 +40,7 @@ mock.module("../credits", () => ({
 }));
 mock.module("../organization-inference-admission", () => ({
   admitOrganizationInference: admit,
-  InferenceAdmissionUnavailableError: class InferenceAdmissionUnavailableError extends Error {},
+  InferenceAdmissionUnavailableError,
 }));
 mock.module("../../cache/client", () => ({
   cache: { get: proxyCacheGet, set: proxyCacheSet },
