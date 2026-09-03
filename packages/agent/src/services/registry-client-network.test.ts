@@ -196,6 +196,34 @@ describe("isExpectedRegistryNetworkFallback", () => {
       isExpectedRegistryNetworkFallback({ expectedLocalFallback: "true" }),
     ).toBe(false);
   });
+
+  it("keeps the timeout phrase match narrow", () => {
+    // The two message arms are substring matches, and the accept-side fixtures
+    // above stay green under a broadened match. These are the negatives that
+    // hold `"timeout"` and `"timed out"` to their own words: an unexpected
+    // registry failure that merely mentions a time or an output must still be
+    // classified as unexpected, or the consumer logs it at debug instead of
+    // warn and the operator never sees the registry break.
+    for (const message of [
+      "cannot read timestamp of undefined",
+      "registry response has no output field",
+      "plugin manifest missing runtime field",
+      "sometimes the overlay is stale",
+    ]) {
+      expect(isExpectedRegistryNetworkFallback(new Error(message))).toBe(false);
+    }
+  });
+
+  it("does not treat a stringified timeout as an error value", () => {
+    // Only `Error` instances reach the message arms; a plain object carrying a
+    // timeout-shaped message is not an expected fallback.
+    expect(
+      isExpectedRegistryNetworkFallback({ message: "request timed out" }),
+    ).toBe(false);
+    expect(isExpectedRegistryNetworkFallback({ name: "TimeoutError" })).toBe(
+      false,
+    );
+  });
 });
 
 describe("fetchFromNetwork", () => {
