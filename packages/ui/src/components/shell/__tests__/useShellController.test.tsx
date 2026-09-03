@@ -2698,6 +2698,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     realtimeVoiceMock.state.active = true;
     realtimeVoiceMock.state.status = "speaking";
     realtimeVoiceMock.state.transcriptPartial = "stale partial";
+    realtimeVoiceMock.state.transcriptFinal = "show me the weather";
     realtimeVoiceMock.state.agentSpeaking = true;
     realtimeVoiceMock.state.needsUnlock = true;
     realtimeVoiceMock.state.microphoneMuted = true;
@@ -2712,7 +2713,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     });
     result.current.realtimeVoice?.toggleMicrophoneMute();
     expect(realtimeVoiceMock.toggleMicrophoneMute).toHaveBeenCalledTimes(1);
-    expect(result.current.transcript).toBe("");
+    expect(result.current.transcript).toBe("show me the weather");
     expect(result.current.speaking).toBe(true);
     expect(result.current.needsAudioUnlock).toBe(true);
     expect(result.current.turnStatus).toEqual({ kind: "speaking" });

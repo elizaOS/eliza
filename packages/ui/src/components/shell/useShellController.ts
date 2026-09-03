@@ -2827,7 +2827,9 @@ export function useShellController(): ShellController {
         ? realtimeVoice.status === "listening" ||
           realtimeVoice.status === "transcribing"
           ? realtimeVoice.transcriptPartial
-          : realtimeVoice.status === "thinking"
+          : realtimeVoice.status === "thinking" ||
+              realtimeVoice.status === "speaking" ||
+              realtimeVoice.status === "interrupting"
             ? realtimeVoice.transcriptFinal
             : ""
         : transcript,

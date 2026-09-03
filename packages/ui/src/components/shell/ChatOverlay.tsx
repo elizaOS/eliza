@@ -864,12 +864,7 @@ function ComposerRealtimeVoiceActivity({
         ? "Connecting…"
         : REALTIME_COMPOSER_LABEL[status];
   const liveTranscript =
-    !error &&
-    !paused &&
-    !connecting &&
-    (status === "listening" || status === "transcribing")
-      ? transcript.trim()
-      : "";
+    !error && !paused && !connecting ? transcript.trim() : "";
   const visualPhase: RealtimeVoiceVisualPhase = error
     ? "error"
     : paused

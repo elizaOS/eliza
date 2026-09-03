@@ -2368,19 +2368,20 @@ describe("ChatOverlay", () => {
       expect(orb.getAttribute("style")).toContain("width: 20px");
       expect(orb.getAttribute("style")).toContain("height: 20px");
       expect(activity.querySelector(".rounded-full.size-2")).toBeNull();
-      const expectedCopy =
-        status === "listening" || status === "transcribing"
-          ? "live words from Ink"
-          : `${status[0]?.toUpperCase()}${status.slice(1)}…`;
       expect(
         screen.getByTestId("chat-composer-realtime-copy").textContent,
-      ).toBe(expectedCopy);
+      ).toBe("live words from Ink");
       const copy = screen.getByTestId("chat-composer-realtime-copy");
-      if (status === "thinking" || status === "speaking") {
-        expect(copy.className).toContain("shimmer");
-      } else {
-        expect(copy.className).not.toContain("shimmer");
-      }
+      expect(copy.className).not.toContain("shimmer");
+      const expectedPhaseLabel = {
+        listening: "Listening…",
+        transcribing: "Hearing you…",
+        thinking: "Thinking…",
+        speaking: "Speaking…",
+      }[status];
+      expect(activity.getAttribute("aria-label")).toBe(
+        `${expectedPhaseLabel}: live words from Ink`,
+      );
       expect(screen.queryByTestId("chat-overlay-voice-status")).toBeNull();
       expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
       expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
@@ -2465,8 +2466,8 @@ describe("ChatOverlay", () => {
         })}
       />,
     );
-    expect(copy.textContent).toBe("Thinking…");
-    expect(observedScrollTop).toBe(0);
+    expect(copy.textContent).toBe(nextTranscript);
+    expect(observedScrollTop).toBe(96);
   });
 
   it("keeps a retryable Cartesia error out of the text input surface", () => {

@@ -919,7 +919,7 @@ describe("voice-session WS lifecycle", () => {
       transcriptChars: "hello agent".length,
       callerResponseTurnIndex: 1,
       isFirstCallerResponse: true,
-      configuredEndTimeoutMs: 640,
+      configuredEndTimeoutMs: 8_000,
       turnActiveMs: expect.any(Number),
       firstTranscriptOffsetMs: expect.any(Number),
       lastTranscriptToFinalMs: expect.any(Number),
