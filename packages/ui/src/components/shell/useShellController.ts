@@ -1856,7 +1856,7 @@ export function useShellController(): ShellController {
     toggleAgentVoiceMute,
     uiLanguage,
     cloudConnected: isCloudVoiceRunnable({
-      connected: elizaCloudConnected,
+      connected: elizaCloudConnected && !authGate.gated,
       proxyAvailable: elizaCloudVoiceProxyAvailable,
     }),
     realtimeVoiceEnabled: realtimeVoiceOwnsMedia,

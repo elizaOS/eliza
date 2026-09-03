@@ -428,6 +428,10 @@ describe("useShellController", () => {
     appMock.value.elizaCloudVoiceProxyAvailable = true;
     rerender();
     expect(voiceOutputMock.cloudConnectedSeen).toBe(true);
+
+    authGateMock.value = { gated: true, phase: "needs-auth" };
+    rerender();
+    expect(voiceOutputMock.cloudConnectedSeen).toBe(false);
   });
 
   it("opens the shared chat state even while startup is still booting", () => {
