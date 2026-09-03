@@ -271,6 +271,7 @@ async function seedSettingsBackgroundStorage(
 
 async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    const secureStore = new Map<string, string>();
     type Bridge = {
       request?: Record<string, (params?: unknown) => Promise<unknown>>;
       onMessage?: (
@@ -339,6 +340,24 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
         desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
         desktopRegisterShortcut: async () => ({ success: true }),
         desktopSetTrayMenu: async () => undefined,
+        secureStoreGet: async ({ kind }: { kind: string }) =>
+          secureStore.has(kind)
+            ? { ok: true, value: secureStore.get(kind) }
+            : { ok: false, reason: "not_found" },
+        secureStoreSet: async ({
+          kind,
+          value,
+        }: {
+          kind: string;
+          value: string;
+        }) => {
+          secureStore.set(kind, value);
+          return { ok: true };
+        },
+        secureStoreDelete: async ({ kind }: { kind: string }) => ({
+          ok: true,
+          deleted: secureStore.delete(kind),
+        }),
         getAgentStatus: async () => readyStatus,
         launchProgress: async () => readyLaunch,
         bootProgress: async () => readyBoot,
