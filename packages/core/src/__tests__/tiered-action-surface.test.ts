@@ -383,7 +383,7 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledOnce();
 	});
 
-	it("uses every authorized umbrella parent when promoted child schemas exceed the planner budget", async () => {
+	it("uses the model-authored Stage 1 candidate when promoted child schemas exceed the planner budget", async () => {
 		const childHandler = vi.fn(async () => ({
 			success: true,
 			text: "Calendar event created",
@@ -433,9 +433,9 @@ describe("v5 tiered action surface", () => {
 		expect(runtime.logger.warn).toHaveBeenCalledWith(
 			expect.objectContaining({
 				authorizedActionCount: 29,
-				parentToolCount: 4,
+				candidateToolCount: 4,
 			}),
-			"[SERVICE:MESSAGE] Planner retained complete umbrella capability under the dispatch budget",
+			"[SERVICE:MESSAGE] Planner used the model-authored Stage 1 candidate surface to fit the dispatch budget",
 		);
 	});
 
@@ -487,7 +487,7 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).not.toContain("SEND_EMAIL");
 	});
 
-	it("starts app turns from the focused view and expands an explicitly requested action", async () => {
+	it("starts app turns from the model-selected action instead of unrelated focused-view tools", async () => {
 		const notes = makeAction({
 			name: "NOTES",
 			description: "Read or update the notes shown in the open Notes view.",
@@ -531,13 +531,13 @@ describe("v5 tiered action surface", () => {
 		});
 
 		const tools = plannerToolNames(runtime);
-		expect(tools).toContain("NOTES");
+		expect(tools).not.toContain("NOTES");
 		expect(tools).not.toContain("VIEWS");
-		// Stage 1 may expand beyond the open view when the user explicitly asks.
+		// Stage 1 expands beyond the open view when the user explicitly asks.
 		expect(tools).toContain("MESSAGE");
 	});
 
-	it("retains unrelated context-authorized actions while promoting the focused view", async () => {
+	it("keeps an app planner turn on the model-selected focused-view action", async () => {
 		const notes = makeAction({
 			name: "NOTES",
 			description: "Read the notes shown in the open Notes view.",
@@ -583,10 +583,8 @@ describe("v5 tiered action surface", () => {
 
 		const tools = plannerToolNames(runtime);
 		expect(tools).toContain("NOTES");
-		expect(tools).toContain("VIEWS");
-		expect(tools).toContain("MESSAGE");
-		expect(tools.indexOf("NOTES")).toBeLessThan(tools.indexOf("MESSAGE"));
-		expect(tools.indexOf("NOTES")).toBeLessThan(tools.indexOf("VIEWS"));
+		expect(tools).not.toContain("VIEWS");
+		expect(tools).not.toContain("MESSAGE");
 	});
 
 	it("does not let focused-view metadata widen action context admission", async () => {

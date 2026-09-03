@@ -8250,6 +8250,40 @@ function collectBudgetedUmbrellaActions(args: {
 }
 
 /**
+ * Recover an oversized planner request from Stage 1's model-authored action
+ * candidates. This is a dispatch-budget fallback, not a command router: Stage 1
+ * has already interpreted the user's request with the response-handler model,
+ * and the action planner still has to select and call one of the resulting
+ * tools. Unknown or ambiguous candidates fail open to the complete authorized
+ * surface so this helper cannot invent authority or silently pick an action.
+ */
+function collectBudgetedStageOneCandidateActions(args: {
+	actions: readonly Action[];
+	candidateActions: readonly string[];
+}): Action[] {
+	if (args.candidateActions.length === 0) return [];
+
+	const actionLookup = buildRuntimeActionLookup({ actions: args.actions });
+	const selectedNames = new Set<string>();
+	for (const candidateName of args.candidateActions) {
+		const direct = resolveRuntimeAction(actionLookup, candidateName);
+		const resolved = direct
+			? [direct]
+			: parentAliasesForCandidateAction(candidateName)
+					.map((alias) => resolveRuntimeAction(actionLookup, alias))
+					.filter((action): action is Action => action !== undefined);
+		if (resolved.length === 0) return [];
+		for (const action of resolved) {
+			selectedNames.add(normalizeActionIdentifier(action.name));
+		}
+	}
+
+	return args.actions.filter((action) =>
+		selectedNames.has(normalizeActionIdentifier(action.name)),
+	);
+}
+
+/**
  * Read the historical tier-A metadata for telemetry compatibility. Tool
  * construction ignores it and expands every authorized parent and child.
  */
@@ -9851,21 +9885,6 @@ export async function runV5MessageRuntimeStage1(args: {
 							...getMessageHandlerCandidateActions(messageHandler),
 							...directPlannerCandidateActions,
 						]);
-			// An inference whose resolved single action emits its own verified
-			// user-facing text (deterministicDispatch — calendar reads and
-			// calendar mutations) skips the planner entirely — the
-			// deterministic executor runs that action directly. Evaluator-
-			// installed deterministic calls (e.g. view navigation) stay
-			// authoritative over this text-inference route.
-			if (
-				directPlannerInference.deterministicDispatch === true &&
-				directPlannerCandidateActions.length === 1 &&
-				!messageHandler.plan.deterministicToolCall
-			) {
-				messageHandler.plan.deterministicToolCall = {
-					name: directPlannerCandidateActions[0],
-				};
-			}
 		}
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 		let earlyReplyText = actionOwnsResponseHandlerEarlyReply(
@@ -10167,10 +10186,26 @@ export async function runV5MessageRuntimeStage1(args: {
 					deterministicPlanSelection.name,
 				)
 			: undefined;
+		// App turns already carry a model-authored Stage 1 routing decision. Start
+		// those turns with the selected action surface instead of first rendering
+		// every unrelated runtime tool and only narrowing after an overflow. The
+		// outer action planner still chooses and invokes the native tool; this only
+		// removes irrelevant schemas from its input. Unknown candidates fail open to
+		// the complete authorized surface.
+		const appCandidateSurfaceActions =
+			!deterministicSurfaceAction && hasUiViewPlannerScope(args.message)
+				? collectBudgetedStageOneCandidateActions({
+						actions: plannerCandidateActions,
+						candidateActions:
+							messageHandler.plan.candidateActions?.map(String) ?? [],
+					})
+				: [];
 		const actionSurface = buildV5PlannerActionSurface({
 			actions: deterministicSurfaceAction
 				? [deterministicSurfaceAction]
-				: plannerCandidateActions,
+				: appCandidateSurfaceActions.length > 0
+					? appCandidateSurfaceActions
+					: plannerCandidateActions,
 			forceFullSurface: args.codingMode === true,
 			codingActionProfile,
 			message: args.message,
@@ -10369,6 +10404,87 @@ export async function runV5MessageRuntimeStage1(args: {
 						},
 						"[SERVICE:MESSAGE] Lossless provider projection cannot fit the complete planner tool surface",
 					);
+				}
+			}
+			if (
+				args.codingMode !== true &&
+				effectivePlannerBudget.estimatedInputTokens >
+					effectivePlannerBudget.dispatchThresholdTokens
+			) {
+				const candidateActions = collectBudgetedStageOneCandidateActions({
+					actions: exposedPlannerActions,
+					candidateActions:
+						messageHandler.plan.candidateActions?.map(String) ?? [],
+				});
+				if (
+					candidateActions.length > 0 &&
+					candidateActions.length < exposedPlannerActions.length
+				) {
+					const candidateActionNames = new Set(
+						candidateActions.map((action) =>
+							normalizeActionIdentifier(action.name),
+						),
+					);
+					const candidateActionSurface: V5PlannerActionSurface = {
+						exposedActionNames: candidateActionNames,
+						summary: {
+							...actionSurface.summary,
+							exposedActionCount: candidateActions.length,
+							tierAParents: candidateActions.map((action) => action.name),
+							tierAChildrenByParent: {},
+							fallback: "stage-one-candidate-budget",
+						},
+					};
+					const candidateContext = await createV5MessageContextObject({
+						...args,
+						state: plannerProviderAttributionState,
+						selectedContexts,
+						includeTools: true,
+						userRoles: [senderRole],
+						availableContexts,
+						preselectedActions: candidateActions,
+						actionSurface: candidateActionSurface,
+						ambientTurn,
+						extraProviderExclusions: ambientTurnProviderExclusions(
+							args.runtime,
+							args.message,
+						),
+					});
+					const candidateContextWithDecision = appendContextEvent(
+						candidateContext,
+						plannerDecisionEvent,
+					);
+					const candidateTools = collectPlannerTools(
+						candidateContextWithDecision,
+						candidateActions,
+						{ expandSubActions: false },
+					);
+					const candidateBudget = buildInitialPlannerModelInputBudget({
+						runtime: plannerRuntime,
+						context: candidateContextWithDecision,
+						config: preflightConfig,
+						tools: candidateTools.length > 0 ? candidateTools : undefined,
+						codingMode: false,
+					});
+					if (
+						candidateBudget.estimatedInputTokens <=
+						candidateBudget.dispatchThresholdTokens
+					) {
+						budgetedPlannerContextWithDecision = candidateContextWithDecision;
+						plannerTools = candidateTools;
+						effectivePlannerBudget = candidateBudget;
+						args.runtime.logger.warn(
+							{
+								estimatedInputTokens:
+									candidateBudget.estimatedInputTokens,
+								dispatchThresholdTokens:
+									candidateBudget.dispatchThresholdTokens,
+								candidateToolCount: candidateTools.length,
+								authorizedActionCount: exposedPlannerActions.length,
+							},
+							"[SERVICE:MESSAGE] Planner used the model-authored Stage 1 candidate surface to fit the dispatch budget",
+						);
+					}
 				}
 			}
 			if (

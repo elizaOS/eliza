@@ -2461,7 +2461,11 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 	return {
 		name: "VIEWS",
 		contexts: [...VIEW_ACTION_CONTEXTS],
-		contextGate: { anyOf: [...VIEW_ACTION_CONTEXTS] },
+		// `browser` stays out of `contexts` so browser/web retrieval cannot make
+		// VIEWS hijack live-information turns. It is allowed at execution time,
+		// however, because the response handler can correctly select VIEWS for an
+		// explicit request to open the in-app Browser surface.
+		contextGate: { anyOf: [...VIEW_ACTION_CONTEXTS, "browser"] },
 		roleGate: { minRole: "USER" },
 		similes: [
 			"VIEW",

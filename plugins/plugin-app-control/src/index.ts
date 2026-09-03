@@ -25,7 +25,6 @@ import {
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
 import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
-import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
@@ -169,8 +168,8 @@ export const appControlPlugin: Plugin = {
 		settingsAction,
 	],
 	// View-switch cascade:
-	//  1. ROUTE  — exact standalone multilingual commands take the deterministic
-	//     VIEWS fast path; contextual and compound requests stay with the planner.
+	//  1. ROUTE  — the response handler and planner select VIEWS from the user's
+	//     request; there is no zero-model command override.
 	//  2. ACTION — viewsAction resolves the selected target and navigates.
 	//  3. POST   — viewContextEvaluator (small model) catches contextual intent
 	//     the user never spelled out ("fix the login bug" -> task-coordinator).
@@ -178,15 +177,10 @@ export const appControlPlugin: Plugin = {
 	//     surface (the rigid matchViewCommand matcher, or the legacy intent
 	//     rules it falls back to), so it never contends with the action.
 	evaluators: [viewContextEvaluator],
-	// Persisted choice widgets are an explicit continuation protocol. Exact,
-	// standalone view commands use the rigid zero-model evaluator so shell
-	// navigation cannot fail merely because the general planner is unavailable
-	// or over its provider context limit. Contextual and compound language still
-	// stays with Stage 1 and the planner.
-	responseHandlerEvaluators: [
-		viewCommandShortcutEvaluator,
-		createChoiceShortcutEvaluator,
-	],
+	// Persisted choice widgets are an explicit continuation protocol. View
+	// navigation remains on the ordinary Eliza response-handler/planner path so
+	// the visible reply is model-authored and grounded in the action result.
+	responseHandlerEvaluators: [createChoiceShortcutEvaluator],
 	providers: [availableAppsProvider, currentViewProvider],
 	services: [
 		AppRegistryService,

@@ -4116,14 +4116,43 @@ const calendarAction: CalendarHandlerAction = {
       params.query,
     ]);
     const planningTimeZone = resolveCalendarTimeZone(details);
-    const llmPlan = await extractCalendarPlanWithLlm(
-      runtime,
-      message,
-      state,
-      intent,
-      planningTimeZone,
-    );
     const explicitSubaction = normalizeCalendarSubaction(params.subaction);
+    // A promoted CALENDAR_* tool call is already the action planner's typed
+    // decision. Re-planning the same operation from raw prose inside the tool
+    // adds latency and can contradict the selected native action. Preserve the
+    // domain planner only for the umbrella CALENDAR action, where no typed
+    // subaction was supplied.
+    const llmPlan: CalendarLlmPlan = explicitSubaction
+      ? {
+          subaction: explicitSubaction,
+          shouldAct: true,
+          queries: dedupeCalendarQueries([
+            params.query,
+            ...(params.queries ?? []),
+            detailString(details, "query"),
+            ...(detailArray(details, "queries")?.map((value) =>
+              typeof value === "string" ? value : undefined,
+            ) ?? []),
+          ]),
+          title:
+            (typeof params.title === "string" && params.title.trim().length > 0
+              ? params.title.trim()
+              : undefined) ?? detailString(details, "title"),
+          tripLocation:
+            explicitSubaction === "trip_window"
+              ? (params.query ?? detailString(details, "query"))
+              : undefined,
+          timeMin: detailString(details, "timeMin"),
+          timeMax: detailString(details, "timeMax"),
+          windowLabel: detailString(details, "label"),
+        }
+      : await extractCalendarPlanWithLlm(
+          runtime,
+          message,
+          state,
+          intent,
+          planningTimeZone,
+        );
     const explicitTitle =
       (typeof params.title === "string" && params.title.trim().length > 0
         ? params.title.trim()
@@ -4338,14 +4367,31 @@ const calendarAction: CalendarHandlerAction = {
           );
         }
         requireCompleteFreshCalendarFeed(calendarContext.feed, "create");
-        const extractedDetails = await inferCreateEventDetails(
-          runtime,
-          message,
-          state,
-          intent,
-          calendarContext,
-          planningTimeZone,
+        // When the native planner supplied the minimum executable create
+        // shape, those typed fields are authoritative. The extraction model is
+        // a fallback for umbrella or incomplete calls, not a mandatory second
+        // interpretation of an already-structured planner decision.
+        const plannerStartAt = detailString(details, "startAt");
+        const plannerTimeZone = detailString(details, "timeZone");
+        const hasExecutablePlannerCreate = Boolean(
+          explicitTitle &&
+            (plannerStartAt || detailString(details, "windowPreset")) &&
+            !(
+              plannerStartAt?.toUpperCase().endsWith("Z") &&
+              plannerTimeZone &&
+              plannerTimeZone !== "UTC"
+            ),
         );
+        const extractedDetails = hasExecutablePlannerCreate
+          ? {}
+          : await inferCreateEventDetails(
+              runtime,
+              message,
+              state,
+              intent,
+              calendarContext,
+              planningTimeZone,
+            );
         const createEventBuild = buildCreateEventRequest({
           details,
           extractedDetails,
@@ -4355,7 +4401,7 @@ const calendarAction: CalendarHandlerAction = {
           // The outer planner identifies CALENDAR and supplies hints; this
           // domain-specific extraction has the authoritative calendar context,
           // timezone, and local-date anchors needed to normalize wall time.
-          preferExtractedDetails: true,
+          preferExtractedDetails: !hasExecutablePlannerCreate,
         });
         const { title, resolvedStartAt, resolvedWindowPreset, request } =
           createEventBuild;
