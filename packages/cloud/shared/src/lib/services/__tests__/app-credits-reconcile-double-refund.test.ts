@@ -483,6 +483,39 @@ describe("reconcile refund-then-throw + settler re-invoke (#11512)", () => {
     expect(await orgTransactions(payerOrgId, "refund")).toHaveLength(1);
   });
 
+  test("a difference below the reconciliation threshold is not a material refund", async () => {
+    if (!pgliteReady) return;
+    // The threshold's other side. The suite already pins a difference exactly
+    // AT it (above), which catches a widened tolerance — but nothing catches a
+    // narrowed one, and the constant exists to absorb float noise: shrinking it
+    // turns IEEE-754 residue into refund transactions and spurious drift
+    // errors. A half-threshold difference must settle as no-op, not refund.
+    const { appId, payerUserId, payerOrgId, creatorUserId } = await seed();
+    const deduction = await appCreditsService.deductCredits({
+      appId,
+      userId: payerUserId,
+      baseCost: 0.000001,
+      description: "sub-threshold app debit",
+    });
+    expect(deduction.transactionId).toBeTruthy();
+    const balanceAfterDebit = await orgBalance(payerOrgId);
+
+    const result = await appCreditsService.reconcileCredits({
+      appId,
+      userId: payerUserId,
+      organizationId: payerOrgId,
+      estimatedBaseCost: 0.000001,
+      actualBaseCost: 0.0000005,
+      description: "sub-threshold reconcile",
+      reservationTransactionId: deduction.transactionId,
+    });
+
+    expect(result.action).not.toBe("refund");
+    expect(await orgBalance(payerOrgId)).toBeCloseTo(balanceAfterDebit, 6);
+    expect(await orgTransactions(payerOrgId, "refund")).toHaveLength(0);
+    expect(await creatorBalance(creatorUserId)).toBe(0);
+  });
+
   test("refund uses the debit's immutable creator and markup despite supplied app drift", async () => {
     if (!pgliteReady) return;
     const owner = await seed();
