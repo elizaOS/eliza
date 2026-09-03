@@ -2,23 +2,25 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
-const { PGlite } = await import("@electric-sql/pglite");
 const { PGLiteSocketServer } = await import("@electric-sql/pglite-socket");
-const { drizzle } = await import("drizzle-orm/pglite");
-const { pushSchema } = await import("drizzle-kit/api");
-const { organizations } = await import(
-  "../../shared/src/db/schemas/organizations"
+const { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } = await import(
+  "../../client"
 );
-const { users } = await import("../../shared/src/db/schemas/users");
-const { apiKeys } = await import("../../shared/src/db/schemas/api-keys");
-const { usageRecords } = await import(
-  "../../shared/src/db/schemas/usage-records"
-);
-const { loadDashboardInputs } = await import("./dashboard-alerts");
+const { pushSchemaToTestDb } = await import("../../push-schema-for-tests");
+const { organizations } = await import("../../schemas/organizations");
+const { users } = await import("../../schemas/users");
+const { apiKeys } = await import("../../schemas/api-keys");
+const { usageRecords } = await import("../../schemas/usage-records");
+// The loader under test lives in packages/cloud/scripts (no package.json
+// there), so it is imported by relative path; every other specifier
+// resolves from cloud-shared, which owns these devDependencies.
+const { loadDashboardInputs } = await import("../../../../../scripts/eliza1/dashboard-alerts");
 
 const TIMEOUT = 120_000;
 const ORG_ID = "00000000-0000-4000-8000-000000004001";
@@ -28,26 +30,19 @@ const ROW_WIDTH = 1_000_000_000;
 const EXPECTED_TOTAL = 3 * ROW_WIDTH;
 const DAY = "2026-08-01T12:00:00.000Z";
 
-let db: ReturnType<typeof drizzle>;
-let client: InstanceType<typeof PGlite>;
 let server: InstanceType<typeof PGLiteSocketServer> | undefined;
+const priorTestDatabaseUrl = process.env.TEST_DATABASE_URL;
 
 beforeAll(async () => {
-  client = new PGlite();
-  db = drizzle(client);
-  const { apply } = await pushSchema(
-    { organizations, users, apiKeys, usageRecords } as never,
-    db as never,
-  );
-  await apply();
+  await pushSchemaToTestDb({ organizations, users, apiKeys, usageRecords });
 
-  await db.insert(organizations).values({
+  await dbWrite.insert(organizations).values({
     id: ORG_ID,
     name: "dashboard-width-org",
     slug: "dashboard-width-org",
   });
   for (const suffix of [1, 2, 3]) {
-    await db.insert(usageRecords).values({
+    await dbWrite.insert(usageRecords).values({
       organization_id: ORG_ID,
       type: "inference",
       provider: "test-provider",
@@ -60,16 +55,27 @@ beforeAll(async () => {
     });
   }
 
-  server = new PGLiteSocketServer({ db: client, port: 0, maxConnections: 4 });
+  // loadDashboardInputs builds its own pg Pool from TEST_DATABASE_URL, so
+  // the shared in-memory PGlite is exposed over the pg wire here; the
+  // drizzle seed path above keeps pointing at it directly.
+  server = new PGLiteSocketServer({
+    db: getPgliteClientForTests(),
+    port: 0,
+    maxConnections: 4,
+  });
   await server.start();
   const conn = server.getServerConn();
   process.env.TEST_DATABASE_URL = `postgres://postgres:postgres@${conn}/postgres`;
 }, TIMEOUT);
 
 afterAll(async () => {
-  delete process.env.TEST_DATABASE_URL;
+  if (priorTestDatabaseUrl === undefined) {
+    delete process.env.TEST_DATABASE_URL;
+  } else {
+    process.env.TEST_DATABASE_URL = priorTestDatabaseUrl;
+  }
   await server?.stop();
-  await client?.close();
+  await closeDatabaseConnectionsForTests();
 });
 
 describe("dashboard-alerts token width (real PGlite over pg wire)", () => {
