@@ -267,7 +267,7 @@ test("combined credential denial is sanitized before ElevenLabs dispatch", async
     expect(createOrReadCloningJob).toHaveBeenCalledTimes(1);
     expect(markCloningJobFailed).toHaveBeenCalledWith(
       "job-credential-denial",
-      "Authentication required",
+      "voice_clone_request_failed",
     );
     expect(providerFetch).not.toHaveBeenCalled();
   } finally {
@@ -572,7 +572,10 @@ test("timeout after provider submission retains evidence and settles unknown", a
     await expect(response.json()).resolves.toMatchObject({
       error:
         "Voice clone provider work could not be completed. It is retained for reconciliation.",
-      details: { outcome: "submission_unknown", jobId: "job-timeout" },
+      details: {
+        outcome: "provider_submission_unknown",
+        jobId: "job-timeout",
+      },
     });
     expect(recordCloningJobProviderReceipt.mock.calls).toEqual([
       [
@@ -587,7 +590,7 @@ test("timeout after provider submission retains evidence and settles unknown", a
           jobId: "job-timeout",
           step: "create",
           state: "submission_unknown",
-          errorMessage: "The operation timed out",
+          errorMessage: "provider_transport_uncertain",
         },
       ],
     ]);
@@ -596,7 +599,7 @@ test("timeout after provider submission retains evidence and settles unknown", a
     expect(markCloningJobFailed).not.toHaveBeenCalled();
     expect(markCloningJobReconciliationRequired).toHaveBeenCalledWith(
       "job-timeout",
-      "ElevenLabs create submission outcome is unknown",
+      "provider_submission_unknown",
     );
     expect(settleUnknown).toHaveBeenCalledTimes(1);
     expect(settle).not.toHaveBeenCalled();
@@ -708,7 +711,7 @@ test("professional later-step failure retains the voice id and evidence", async 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({
       details: {
-        outcome: "provider_work_retained",
+        outcome: "provider_work_reconciliation_required",
         jobId: "job-professional",
       },
     });
@@ -730,7 +733,7 @@ test("professional later-step failure retains the voice id and evidence", async 
     expect(markCloningJobFailed).not.toHaveBeenCalled();
     expect(markCloningJobReconciliationRequired).toHaveBeenCalledWith(
       "job-professional",
-      "ElevenLabs PVC sample upload failed: sample rejected",
+      "provider_work_reconciliation_required",
     );
     expect(settleUnknown).toHaveBeenCalledTimes(1);
     expect(settle).not.toHaveBeenCalled();
@@ -741,6 +744,97 @@ test("professional later-step failure retains the voice id and evidence", async 
         providerState: "rejected",
         providerStep: "samples",
         providerVoiceId: "pvc-accepted-1",
+      }),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("definitive provider rejection exposes and persists only a typed safe reason", async () => {
+  settle.mockClear();
+  settleUnknown.mockClear();
+  loggerError.mockClear();
+  recordCloningJobProviderReceipt.mockClear();
+  markCloningJobFailed.mockClear();
+  createUsage.mockClear();
+  requireGenerativeRouteCaller.mockImplementationOnce(async () => ({
+    user: { id: "user-1", organization_id: "org-1" },
+    apiKeyId: "key-1",
+    admissionSnapshot: { balanceUsd: 10, revision: "5" },
+  }));
+  calculateVoiceCloneCostFromCatalog.mockImplementationOnce(async () => ({
+    totalCost: 1,
+    baseTotalCost: 0.8,
+    platformMarkup: 0.2,
+    pricingSource: "catalog",
+  }));
+  admitFlatGenerativeOperation.mockImplementationOnce(async () => ({
+    mode: "synchronous_db_ledger",
+    markProviderDispatched,
+    settle,
+    settleUnknown,
+  }));
+  createOrReadCloningJob.mockImplementationOnce(async () => ({
+    created: true,
+    job: { id: "job-provider-rejected", startedAt: new Date() },
+  }));
+  const privateProviderError =
+    "subscription account acct_private_123 rejected the request";
+  const providerFetch = mock(
+    async () => new Response(privateProviderError, { status: 422 }),
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = providerFetch as unknown as typeof fetch;
+  const form = new FormData();
+  form.set("name", "Rejected Voice");
+  form.set("cloneType", "instant");
+  form.set(
+    "file0",
+    new File([new Uint8Array([1])], "sample.wav", { type: "audio/wav" }),
+  );
+
+  try {
+    const response = await app.request(
+      "/v1/voice/clone",
+      {
+        method: "POST",
+        body: form,
+        headers: { "Idempotency-Key": "voice-provider-rejected-1" },
+      },
+      {
+        ELEVENLABS_API_KEY: "configured",
+        BLOB: {
+          put: mock(async () => undefined),
+          delete: mock(async () => undefined),
+        },
+      },
+    );
+
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      error: "Failed to create voice clone. Credits have been refunded.",
+      details: {
+        outcome: "provider_request_rejected",
+        jobId: "job-provider-rejected",
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain(privateProviderError);
+    expect(markCloningJobFailed).toHaveBeenCalledWith(
+      "job-provider-rejected",
+      "provider_request_rejected",
+    );
+    expect(createUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ error_message: "provider_request_rejected" }),
+    );
+    expect(settle).toHaveBeenCalledWith(0);
+    expect(settleUnknown).not.toHaveBeenCalled();
+    expect(loggerError).toHaveBeenCalledWith(
+      "[Voice Clone API] Unhandled error",
+      expect.objectContaining({
+        error: expect.stringContaining(privateProviderError),
+        safeFailureReason: "provider_request_rejected",
       }),
     );
   } finally {

@@ -58,6 +58,11 @@ const ELEVENLABS_API = "https://api.elevenlabs.io";
 const DEFAULT_R2_PUBLIC_HOST = "blob.eliza.app";
 
 type CloneType = "instant" | "professional";
+type VoiceCloneFailureReason =
+  | "provider_submission_unknown"
+  | "provider_work_reconciliation_required"
+  | "provider_request_rejected"
+  | "voice_clone_request_failed";
 type DurableCloneResponse = {
   status: 201 | 402;
   body: Record<string, unknown>;
@@ -153,6 +158,22 @@ function providerSubmissionIsAmbiguous(
   state: VoiceCloneProviderState | "not_dispatched",
 ): boolean {
   return state === "submitted" || state === "submission_unknown";
+}
+
+function safeVoiceCloneFailureReason(
+  state: VoiceCloneProviderState | "not_dispatched",
+  providerMayHaveAccepted: boolean,
+): VoiceCloneFailureReason {
+  if (providerSubmissionIsAmbiguous(state)) {
+    return "provider_submission_unknown";
+  }
+  if (providerMayHaveAccepted) {
+    return "provider_work_reconciliation_required";
+  }
+  if (state === "rejected") {
+    return "provider_request_rejected";
+  }
+  return "voice_clone_request_failed";
 }
 
 function isUploadedFile(value: FormDataEntryValue): value is File {
@@ -645,6 +666,10 @@ app.post("/", async (c) => {
       providerState,
       providerVoiceId,
     );
+    const safeFailureReason = safeVoiceCloneFailureReason(
+      providerState,
+      providerMayHaveAccepted,
+    );
 
     // Once provider submission may have been accepted, samples and R2 objects
     // are reconciliation evidence. They survive even when the local voice
@@ -690,7 +715,10 @@ app.post("/", async (c) => {
 
       if (!providerMayHaveAccepted) {
         try {
-          await userVoicesRepository.markCloningJobFailed(jobId, errorMessage);
+          await userVoicesRepository.markCloningJobFailed(
+            jobId,
+            safeFailureReason,
+          );
         } catch (dbError) {
           logger.error("[Voice Clone API] Failed to mark job failed", {
             jobId,
@@ -701,7 +729,7 @@ app.post("/", async (c) => {
         try {
           await userVoicesRepository.markCloningJobReconciliationRequired(
             jobId,
-            errorMessage,
+            safeFailureReason,
           );
         } catch (dbError) {
           // error-policy:J7 failure to enrich reconciliation diagnostics must
@@ -753,7 +781,7 @@ app.post("/", async (c) => {
             input_cost: String(0),
             output_cost: String(0),
             is_successful: false,
-            error_message: errorMessage,
+            error_message: safeFailureReason,
           })
           .catch((usageError) => {
             logger.error("[Voice Clone API] Failed to record failed usage", {
@@ -832,6 +860,7 @@ app.post("/", async (c) => {
       providerStep,
       providerVoiceId,
       providerMayHaveAccepted,
+      safeFailureReason,
     });
     return c.json(
       {
@@ -840,14 +869,10 @@ app.post("/", async (c) => {
           ? "Voice clone provider work could not be completed. It is retained for reconciliation."
           : "Failed to create voice clone. Credits have been refunded.",
         code: "internal_error" as const,
-        details: providerMayHaveAccepted
-          ? {
-              outcome: providerSubmissionIsAmbiguous(providerState)
-                ? "submission_unknown"
-                : "provider_work_retained",
-              jobId,
-            }
-          : errorMessage,
+        details: {
+          outcome: safeFailureReason,
+          ...(jobId ? { jobId } : {}),
+        },
       },
       500,
     );
@@ -946,7 +971,7 @@ async function createElevenLabsVoice(params: {
       await recordProviderReceipt({
         step: "create",
         state: "submission_unknown",
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: "provider_transport_uncertain",
       });
       throw new VoiceCloneSubmissionUnknownError("create", error);
     }
@@ -982,7 +1007,7 @@ async function createElevenLabsVoice(params: {
     await recordProviderReceipt({
       step: "create",
       state: "submission_unknown",
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: "provider_transport_uncertain",
     });
     throw new VoiceCloneSubmissionUnknownError("create", error);
   }
@@ -1023,7 +1048,7 @@ async function createElevenLabsVoice(params: {
       step: "samples",
       state: "submission_unknown",
       elevenlabsVoiceId: voiceId,
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: "provider_transport_uncertain",
     });
     throw new VoiceCloneSubmissionUnknownError("samples", error);
   }
@@ -1068,7 +1093,7 @@ async function createElevenLabsVoice(params: {
       step: "train",
       state: "submission_unknown",
       elevenlabsVoiceId: voiceId,
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: "provider_transport_uncertain",
     });
     throw new VoiceCloneSubmissionUnknownError("train", error);
   }
