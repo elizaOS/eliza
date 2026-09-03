@@ -37,6 +37,14 @@ export interface UserVoiceListResult {
   hasMore: boolean;
 }
 
+export type VoiceCloneProviderStep = "create" | "samples" | "train";
+export type VoiceCloneProviderState = "submitted" | "accepted" | "rejected" | "submission_unknown";
+
+export interface PreparedVoiceCloningJob {
+  job: VoiceCloningJob;
+  created: boolean;
+}
+
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
 
@@ -95,6 +103,39 @@ export class UserVoicesRepository {
     return job;
   }
 
+  async createOrReadCloningJob(
+    data: NewVoiceCloningJob & { idempotencyKey: string; requestDigest: string },
+  ): Promise<PreparedVoiceCloningJob> {
+    const [created] = await dbWrite
+      .insert(voiceCloningJobs)
+      .values(data)
+      .onConflictDoNothing({
+        target: [
+          voiceCloningJobs.organizationId,
+          voiceCloningJobs.userId,
+          voiceCloningJobs.idempotencyKey,
+        ],
+      })
+      .returning();
+    if (created) return { job: created, created: true };
+
+    // Read the conflict winner from the primary. A replica may lag the unique
+    // insert and falsely make an accepted idempotency key look absent.
+    const [existing] = await dbWrite
+      .select()
+      .from(voiceCloningJobs)
+      .where(
+        and(
+          eq(voiceCloningJobs.organizationId, data.organizationId),
+          eq(voiceCloningJobs.userId, data.userId),
+          eq(voiceCloningJobs.idempotencyKey, data.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (!existing) throw new Error("Voice-clone idempotency winner was not readable");
+    return { job: existing, created: false };
+  }
+
   async createSamples(data: NewVoiceSample[]): Promise<void> {
     if (data.length === 0) return;
     await dbWrite.insert(voiceSamples).values(data);
@@ -106,6 +147,72 @@ export class UserVoicesRepository {
     return voice;
   }
 
+  async recordCloningJobProviderReceipt(input: {
+    jobId: string;
+    step: VoiceCloneProviderStep;
+    state: VoiceCloneProviderState;
+    elevenlabsVoiceId?: string;
+    errorMessage?: string;
+    now?: Date;
+  }): Promise<void> {
+    const now = input.now ?? new Date();
+    const receipt = {
+      provider: "elevenlabs",
+      step: input.step,
+      state: input.state,
+      recordedAt: now.toISOString(),
+      ...(input.elevenlabsVoiceId ? { elevenlabsVoiceId: input.elevenlabsVoiceId } : {}),
+      ...(input.errorMessage ? { errorMessage: input.errorMessage } : {}),
+    };
+    const metadataPatch = JSON.stringify({
+      providerSubmissionState: input.state,
+      providerLastStep: input.step,
+    });
+    const receiptArray = JSON.stringify([receipt]);
+    const [job] = await dbWrite
+      .update(voiceCloningJobs)
+      .set({
+        ...(input.elevenlabsVoiceId ? { elevenlabsVoiceId: input.elevenlabsVoiceId } : {}),
+        metadata: sql`jsonb_set(
+          ${voiceCloningJobs.metadata} || ${metadataPatch}::jsonb,
+          '{providerReceipts}',
+          COALESCE(${voiceCloningJobs.metadata}->'providerReceipts', '[]'::jsonb) || ${receiptArray}::jsonb,
+          true
+        )`,
+        errorMessage:
+          input.state === "submission_unknown"
+            ? (input.errorMessage ?? "Provider submission outcome is unknown")
+            : undefined,
+        updatedAt: now,
+      })
+      .where(eq(voiceCloningJobs.id, input.jobId))
+      .returning({ id: voiceCloningJobs.id });
+    if (!job) throw new Error("Failed to persist voice-clone provider receipt");
+  }
+
+  async markCloningJobReconciliationRequired(
+    jobId: string,
+    errorMessage: string,
+    now = new Date(),
+  ): Promise<void> {
+    const [job] = await dbWrite
+      .update(voiceCloningJobs)
+      .set({
+        status: "reconciliation_required",
+        metadata: sql`${voiceCloningJobs.metadata} || ${JSON.stringify({
+          reconciliationRequired: true,
+          reconciliationRequestedAt: now.toISOString(),
+        })}::jsonb`,
+        errorMessage,
+        updatedAt: now,
+      })
+      .where(eq(voiceCloningJobs.id, jobId))
+      .returning({ id: voiceCloningJobs.id });
+    if (!job) {
+      throw new Error("Failed to mark voice-clone reconciliation required");
+    }
+  }
+
   async attachSamplesToVoice(jobId: string, userVoiceId: string): Promise<void> {
     await dbWrite.update(voiceSamples).set({ userVoiceId }).where(eq(voiceSamples.jobId, jobId));
   }
@@ -114,6 +221,7 @@ export class UserVoicesRepository {
     jobId: string;
     userVoiceId: string;
     elevenlabsVoiceId: string;
+    responsePayload?: Record<string, unknown>;
     now?: Date;
   }): Promise<VoiceCloningJob> {
     const now = input.now ?? new Date();
@@ -123,6 +231,7 @@ export class UserVoicesRepository {
         status: "completed",
         userVoiceId: input.userVoiceId,
         elevenlabsVoiceId: input.elevenlabsVoiceId,
+        responsePayload: input.responsePayload,
         progress: 100,
         completedAt: now,
         updatedAt: now,
@@ -137,10 +246,15 @@ export class UserVoicesRepository {
     await dbWrite.delete(voiceSamples).where(eq(voiceSamples.jobId, jobId));
   }
 
-  async markCloningJobFailed(jobId: string, errorMessage: string, now = new Date()): Promise<void> {
+  async markCloningJobFailed(
+    jobId: string,
+    errorMessage: string,
+    now = new Date(),
+    responsePayload?: Record<string, unknown>,
+  ): Promise<void> {
     await dbWrite
       .update(voiceCloningJobs)
-      .set({ status: "failed", errorMessage, updatedAt: now })
+      .set({ status: "failed", errorMessage, responsePayload, updatedAt: now })
       .where(eq(voiceCloningJobs.id, jobId));
   }
 
