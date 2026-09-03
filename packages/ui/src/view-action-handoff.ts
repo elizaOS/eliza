@@ -89,7 +89,16 @@ export function findViewActionHandoff(
       (isViewsHandoff || isAppBrowserHandoff || isBrowserWorkspaceHandoff) &&
       viewId
     ) {
-      const viewPath = readString(readOwnValue(values, "viewPath"));
+      const actionUrl = readString(readOwnValue(values, "url"));
+      const declaredViewPath = readString(readOwnValue(values, "viewPath"));
+      // Native mobile browser tabs are intentionally client-owned, while the
+      // browser action executes in the remote workspace. Carry the verified
+      // destination through the existing browser deep link so the mounted
+      // native view can mirror the completed action as well.
+      const viewPath =
+        isBrowserWorkspaceHandoff && actionUrl
+          ? `/browser?browse=${encodeURIComponent(actionUrl)}`
+          : declaredViewPath;
       const subview = readString(readOwnValue(values, "subview"));
       const completedActionHandoffId = normalizeCompletedActionHandoffId(
         readOwnValue(values, "completedActionHandoffId"),

@@ -118,10 +118,14 @@ describe("view action handoff", () => {
             targetId: "workspace",
             viewId: "browser",
             viewPath: "/browser",
+            url: "https://example.com/path",
           },
         },
       ]),
-    ).toEqual({ viewId: "browser", viewPath: "/browser" });
+    ).toEqual({
+      viewId: "browser",
+      viewPath: "/browser?browse=https%3A%2F%2Fexample.com%2Fpath",
+    });
 
     expect(
       findViewActionHandoff([
