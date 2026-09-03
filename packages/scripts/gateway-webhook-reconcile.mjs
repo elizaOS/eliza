@@ -509,7 +509,10 @@ function validateExactSourceRun(
   nowMilliseconds,
   failureMessage = "exact source workflow attempt is not durably terminal",
 ) {
-  const completedAt = Date.parse(sourceRun?.completed_at ?? "");
+  // GitHub's exact-attempt endpoint leaves `completed_at` null for completed
+  // workflow runs. Its attempt-specific terminal clock is `updated_at`, so bind
+  // the durable source epoch to that live field instead of an unavailable one.
+  const updatedAt = Date.parse(sourceRun?.updated_at ?? "");
   if (
     !Number.isFinite(nowMilliseconds) ||
     !Number.isSafeInteger(config.sourceDeployCompletedEpoch) ||
@@ -523,9 +526,9 @@ function validateExactSourceRun(
     sourceRun?.event !== "workflow_dispatch" ||
     sourceRun?.status !== "completed" ||
     !SOURCE_TERMINAL_CONCLUSIONS.has(sourceRun?.conclusion) ||
-    !Number.isFinite(completedAt) ||
-    completedAt > nowMilliseconds ||
-    Math.floor(completedAt / 1_000) !== config.sourceDeployCompletedEpoch
+    !Number.isFinite(updatedAt) ||
+    updatedAt > nowMilliseconds ||
+    Math.floor(updatedAt / 1_000) !== config.sourceDeployCompletedEpoch
   ) {
     fail(failureMessage);
   }

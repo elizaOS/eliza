@@ -55,6 +55,7 @@ type SourceRunFixture = {
   status: string;
   conclusion: string | null;
   completed_at: string | null;
+  updated_at: string;
 };
 
 type ReceiptArtifactFixture = {
@@ -176,7 +177,10 @@ function sourceRunFixture(): SourceRunFixture {
     event: "workflow_dispatch",
     status: "completed",
     conclusion: "success",
-    completed_at: new Date(
+    // GitHub's exact-attempt endpoint returns this field as null even when the
+    // run is completed; updated_at is the live terminal attempt timestamp.
+    completed_at: null,
+    updated_at: new Date(
       config.sourceDeployCompletedEpoch * 1_000,
     ).toISOString(),
   };
@@ -949,7 +953,7 @@ describe("Gateway webhook Railway reconciler", () => {
         sourceRun.conclusion = "stale";
       },
       (sourceRun) => {
-        sourceRun.completed_at = new Date(
+        sourceRun.updated_at = new Date(
           (config.sourceDeployCompletedEpoch + 1) * 1_000,
         ).toISOString();
       },
