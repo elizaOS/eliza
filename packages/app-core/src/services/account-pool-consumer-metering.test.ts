@@ -126,6 +126,7 @@ describe("consumer key lifecycle and management", () => {
     expect(createAccountPoolConsumerKey({ label: "" })).toBeNull();
     expect(createAccountPoolConsumerKey({ label: "a".repeat(130) })).toBeNull();
     expect(createAccountPoolConsumerKey({ dailyTokenQuota: -100 })).toBeNull();
+    expect(createAccountPoolConsumerKey({ dailyTokenQuota: 0 })).toBeNull();
     expect(
       createAccountPoolConsumerKey({ dailyTokenQuota: "invalid" }),
     ).toBeNull();
@@ -592,8 +593,7 @@ describe("quota and totals", () => {
       consumerB.consumer,
       60,
     );
-    if ("ok" in admissionB)
-      throw new Error("unexpected quota rejection for B");
+    if ("ok" in admissionB) throw new Error("unexpected quota rejection for B");
 
     await recordAccountPoolConsumerUsage({
       consumerId: consumerB.consumer.id,
