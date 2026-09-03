@@ -527,3 +527,128 @@ describe("the documented worked entries load", () => {
     expect(client.claims_mapping.mode).toBe("replace");
   });
 });
+
+/**
+ * The numeric bounds and the two validating regexes in this file had no test at
+ * all: every one of `MAX_TTL_SECONDS`, `MAX_REDIRECT_ALIAS_SOURCE_BYTES`,
+ * `MAX_REDIRECT_ALIAS_CLIENTS`, `MAX_REDIRECT_ALIASES_PER_CLIENT`,
+ * `MAX_REDIRECT_URI_BYTES`, `CLAIM_NAME_RE` and the length half of
+ * `SHA256_HEX_RE` can be widened without a failure.
+ */
+describe("registry bounds", () => {
+  test("a client secret hash must be exactly 64 hex characters", () => {
+    expect(() => parseOidcClientEntry(entry({ client_secret_sha256: "a".repeat(63) }))).toThrow(
+      /sha256 hex/,
+    );
+    expect(() => parseOidcClientEntry(entry({ client_secret_sha256: "a".repeat(65) }))).toThrow(
+      /sha256 hex/,
+    );
+    expect(() => parseOidcClientEntry(entry({ client_secret_sha256: "z".repeat(64) }))).toThrow(
+      /sha256 hex/,
+    );
+    expect(parseOidcClientEntry(entry()).secret_hashes).toEqual([SECRET_HASH]);
+  });
+
+  test("a constant claim name must start with a letter and fit 64 characters", () => {
+    // Both halves of CLAIM_NAME_RE. The length bound is asserted at its
+    // boundary rather than with an extreme, so widening the quantifier fails.
+    const ok = `a${"b".repeat(63)}`;
+    expect(
+      parseOidcClientEntry(entry({ constant_claims: { [ok]: "v" } })).constant_claims[ok],
+    ).toBe("v");
+
+    for (const name of [`a${"b".repeat(64)}`, "1leading_digit", "_leading_underscore", ""]) {
+      expect(() => parseOidcClientEntry(entry({ constant_claims: { [name]: "v" } }))).toThrow(
+        /unusable claim name/,
+      );
+    }
+  });
+
+  test("auth_time stays reserved even though the provider stopped emitting it", () => {
+    // It is the one entry that is neither in OIDC_SUPPORTED_CLAIMS nor emitted,
+    // so it reads as dead weight — and removing it passes the whole suite. The
+    // comment above the set explains why it must stay: a fixed constant would
+    // assert one authentication instant for every user forever.
+    expect(() =>
+      parseOidcClientEntry(entry({ constant_claims: { auth_time: "1700000000" } })),
+    ).toThrow(/may not override the provider claim "auth_time"/);
+  });
+
+  test.each(["nbf", "jti", "typ", "scope", "client_id"])(
+    "the JWT envelope member %s stays reserved",
+    (name) => {
+      expect(() => parseOidcClientEntry(entry({ constant_claims: { [name]: "v" } }))).toThrow(
+        /may not override the provider claim/,
+      );
+    },
+  );
+
+  test("token TTLs are clamped to the 60..3600 window rather than trusted", () => {
+    const high = parseOidcClientEntry(
+      entry({ id_token_ttl_seconds: 86_400, access_token_ttl_seconds: 3_601 }),
+    );
+    expect(high.id_token_ttl_seconds).toBe(3600);
+    expect(high.access_token_ttl_seconds).toBe(3600);
+
+    const low = parseOidcClientEntry(
+      entry({ id_token_ttl_seconds: 1, access_token_ttl_seconds: 59 }),
+    );
+    expect(low.id_token_ttl_seconds).toBe(60);
+    expect(low.access_token_ttl_seconds).toBe(60);
+
+    const exact = parseOidcClientEntry(
+      entry({ id_token_ttl_seconds: 3600, access_token_ttl_seconds: 60 }),
+    );
+    expect(exact.id_token_ttl_seconds).toBe(3600);
+    expect(exact.access_token_ttl_seconds).toBe(60);
+
+    const absent = parseOidcClientEntry(entry({ id_token_ttl_seconds: "600" }));
+    expect(absent.id_token_ttl_seconds).toBe(300);
+  });
+
+  test("each alias overlay limit is asserted by its own message", () => {
+    // The existing oversize case asserts only /OIDC_REDIRECT_URI_ALIASES/, so a
+    // 1000x byte limit still "fails closed" — on the next check down, with a
+    // different message. Matching the specific message is what pins the bound.
+    process.env.OIDC_CLIENTS = JSON.stringify([entry({ client_id: "elizahub" })]);
+
+    const cases: [string, RegExp][] = [
+      [`{"x":"${"x".repeat(16_384)}"}`, /exceeds its byte limit/],
+      [
+        JSON.stringify(
+          Object.fromEntries(
+            Array.from({ length: 33 }, (_, i) => [`c${i}`, ["https://a.example/cb"]]),
+          ),
+        ),
+        /between 1 and 32 clients/,
+      ],
+      [
+        JSON.stringify({
+          elizahub: Array.from({ length: 9 }, (_, i) => `https://a${i}.example/cb`),
+        }),
+        /between 1 and 8 callbacks/,
+      ],
+      [
+        JSON.stringify({ elizahub: [`https://a.example/${"p".repeat(2_048)}`] }),
+        /OIDC_REDIRECT_URI_ALIASES/,
+      ],
+    ];
+
+    for (const [source, message] of cases) {
+      process.env.OIDC_REDIRECT_URI_ALIASES = source;
+      _resetOidcClientCacheForTests();
+      expect(() => getOidcClient("elizahub")).toThrow(message);
+    }
+  });
+
+  test("the alias counts are accepted at their limits", () => {
+    // The rejections above are only meaningful against an accepted neighbour.
+    process.env.OIDC_CLIENTS = JSON.stringify([entry({ client_id: "elizahub" })]);
+    process.env.OIDC_REDIRECT_URI_ALIASES = JSON.stringify({
+      elizahub: Array.from({ length: 8 }, (_, i) => `https://a${i}.example/cb`),
+    });
+    _resetOidcClientCacheForTests();
+
+    expect(getOidcClient("elizahub")?.redirect_uris).toHaveLength(9);
+  });
+});
