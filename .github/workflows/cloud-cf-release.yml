@@ -52,11 +52,11 @@ on:
         required: false
         type: string
         default: ""
-    # Keep caller-scope secrets explicit. Telegram's authority receipt and
-    # live credentials are intentionally absent from both this callable schema
-    # and the caller map. The entry workflow proves the environment-specific
-    # runtime authority; deploy-api resolves fixed credential names only from
-    # its own protected Environment context for atomic Worker publication.
+    # Keep caller-scope secrets explicit. Telegram's live credentials are
+    # declared so the workflow can reference their fixed names, but the caller
+    # deliberately does not forward them. The entry workflow proves the
+    # environment-specific runtime authority; deploy-api resolves the values
+    # from its own protected Environment for atomic Worker publication.
     secrets:
       ANTHROPIC_API_KEY:
         required: false
@@ -91,6 +91,10 @@ on:
       ELIZA_APP_BLOOIO_PHONE_NUMBER:
         required: false
       ELIZA_APP_BLOOIO_WEBHOOK_SECRET:
+        required: false
+      ELIZA_APP_TELEGRAM_BOT_TOKEN:
+        required: false
+      ELIZA_APP_TELEGRAM_WEBHOOK_SECRET:
         required: false
       ELIZA_APP_WEBHOOK_GATEWAY_SECRET:
         required: false
@@ -1400,11 +1404,12 @@ jobs:
           # The edge Telegram route needs both values in the Worker. They are
           # required and replaced atomically with the exact attested source;
           # activation is still a separate protected, live-proven rollout.
-          # These fixed names are resolved in this job's protected Environment,
-          # never forwarded through workflow_call. The format expression keeps
-          # actionlint from treating them as caller-provided reusable secrets.
-          ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'BOT_TOKEN')] }}
-          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'WEBHOOK_SECRET')] }}
+          # These fixed names are resolved directly in this job's protected
+          # Environment and are never forwarded through workflow_call. A
+          # computed secrets[] key is evaluated without these Environment
+          # values in a reusable workflow and silently becomes blank.
+          ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
+          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
           # Personal Shared Blooio is the public-number messaging surface in
           # both protected environments. Commit the environment-specific
           # values atomically with the exact Worker source below.
