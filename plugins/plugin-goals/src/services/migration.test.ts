@@ -1,8 +1,10 @@
 /**
  * Unit tests for the non-destructive `app_lifeops` → `app_goals` table copy,
  * driven by a scripted in-memory `SqlExecutor` (no real database): asserts the
- * skip-when-source-missing / skip-when-target-non-empty / copy paths.
+ * source-missing, populated-target reconciliation, copy, and collision paths.
  */
+
+import type { CarveOutDatabase } from "@elizaos/plugin-sql";
 import { describe, expect, it } from "vitest";
 import {
   MIGRATED_GOAL_TABLES,
@@ -25,8 +27,24 @@ function fakeExec(
     for (const [re, rows] of responses) {
       if (re.test(sql)) return rows;
     }
+    if (sql.includes("carve-out:verify-projection")) {
+      return [
+        {
+          missing_count: "0",
+          conflict_count: "0",
+          source_null_key_count: "0",
+          target_null_key_count: "0",
+          source_duplicate_key_count: "0",
+          target_duplicate_key_count: "0",
+        },
+      ];
+    }
     return [];
   };
+}
+
+function transactionDatabase(exec: SqlExecutor): CarveOutDatabase {
+  return { execute: exec, transaction: (operation) => operation(exec) };
 }
 
 describe("GoalsMigration", () => {
@@ -36,13 +54,13 @@ describe("GoalsMigration", () => {
     expect(r.outcome).toBe("source-missing");
   });
 
-  it("skips when the target table is non-empty", async () => {
+  it("reconciles when the target table is non-empty", async () => {
     const exec = fakeExec([
       [/to_regclass/, [{ present: true }]],
       [/NOT EXISTS/, [{ empty: false }]],
     ]);
     const r = await migrateGoalTable(exec, "life_goal_links");
-    expect(r.outcome).toBe("target-non-empty");
+    expect(r.outcome).toBe("copied");
   });
 
   it("copies when source exists and target is empty", async () => {
@@ -65,6 +83,28 @@ describe("GoalsMigration", () => {
     expect(log.some((s) => /DROP|ALTER .*app_lifeops/.test(s))).toBe(false);
   });
 
+  it("fails closed when an existing goal id has different values", async () => {
+    const exec = fakeExec([
+      [/to_regclass/, [{ present: true }]],
+      [
+        /carve-out:verify-projection/,
+        [
+          {
+            missing_count: "0",
+            conflict_count: "1",
+            source_null_key_count: "0",
+            target_null_key_count: "0",
+            source_duplicate_key_count: "0",
+            target_duplicate_key_count: "0",
+          },
+        ],
+      ],
+    ]);
+    await expect(
+      migrateGoalTable(exec, "life_goal_definitions"),
+    ).rejects.toMatchObject({ code: "CARVE_OUT_MIGRATION_COLLISION" });
+  });
+
   it("creates the target schema and processes definitions before links", async () => {
     const log: string[] = [];
     const exec = fakeExec(
@@ -74,7 +114,7 @@ describe("GoalsMigration", () => {
       ],
       log,
     );
-    const results = await migrateGoalTables(exec);
+    const results = await migrateGoalTables(transactionDatabase(exec));
     expect(results.map((r) => r.table)).toEqual([...MIGRATED_GOAL_TABLES]);
     expect(
       log.some((s) => /CREATE SCHEMA IF NOT EXISTS app_goals/.test(s)),

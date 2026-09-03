@@ -10,12 +10,13 @@
  * rows in `app_lifeops`, so on first boot we copy them across — once,
  * idempotently, and WITHOUT ever touching the source.
  *
- * Guards (per table, independently):
- *   1. Skip if the source table does not exist (fresh install / already dropped).
- *   2. Skip if the target table is non-empty (migration already ran, or the
- *      plugin owns live data).
- *   3. Otherwise copy every source row that is not already present in the target
- *      (a doubly-safe NOT EXISTS guard on the primary key).
+ * Each table is reconciled by primary key and verified before its durable
+ * carve-out receipt is committed. Historical source schemas may predate
+ * additive connector and purge metadata; those columns are projected with
+ * their target defaults, while an absent required column fails closed.
+ * Verification uses `/v2` receipts so completed pre-verification `/v1`
+ * receipts cannot bypass repair; after `/v2` completes, owner deletions remain
+ * authoritative and are not repopulated on later startups.
  *
  * The source table is NEVER dropped or altered. Copies name the shared columns
  * explicitly so the calendar-owned target can add sync metadata without
@@ -23,8 +24,12 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { runCarveOutMigration } from "@elizaos/plugin-sql";
-import { extractRows } from "@elizaos/shared/db/raw-sql";
+import {
+  assertCarveOutProjectionComplete,
+  type CarveOutDatabase,
+  createDrizzleCarveOutDatabase,
+  runCarveOutMigration,
+} from "@elizaos/plugin-sql";
 
 export const CALENDAR_MIGRATION_LOG_PREFIX = "[Calendar]";
 export const CALENDAR_MIGRATION_SERVICE_TYPE = "calendar_migration";
@@ -39,7 +44,7 @@ export const MIGRATED_CALENDAR_TABLES = [
 
 export type MigratedCalendarTable = (typeof MIGRATED_CALENDAR_TABLES)[number];
 
-const MIGRATED_CALENDAR_COLUMNS: Record<
+export const MIGRATED_CALENDAR_COLUMNS: Record<
   MigratedCalendarTable,
   readonly string[]
 > = {
@@ -87,17 +92,20 @@ const MIGRATED_CALENDAR_COLUMNS: Record<
   ],
 };
 
+const SOURCE_COLUMN_FALLBACKS: Readonly<Record<string, string>> = {
+  connector_account_id: "NULL",
+  grant_id: "NULL",
+  purge_resync_required: "FALSE",
+  purge_resync_reason: "NULL",
+};
+
 export type SqlExecutor = (
   sql: string,
 ) => Promise<Array<Record<string, unknown>>>;
 
 export interface TableMigrationResult {
   table: MigratedCalendarTable;
-  outcome:
-    | "copied"
-    | "source-missing"
-    | "target-non-empty"
-    | "already-migrated";
+  outcome: "copied" | "source-missing" | "already-migrated";
 }
 
 /**
@@ -446,14 +454,37 @@ async function sourceTableExists(
   return rows[0]?.present === true || rows[0]?.present === "true";
 }
 
-async function targetTableIsEmpty(
+async function sourceColumnProjection(
   exec: SqlExecutor,
   table: MigratedCalendarTable,
-): Promise<boolean> {
+): Promise<string> {
   const rows = await exec(
-    `SELECT NOT EXISTS (SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(table)}) AS empty`,
+    `SELECT column_name
+       FROM information_schema.columns
+      WHERE table_schema = '${SOURCE_SCHEMA}'
+        AND table_name = '${table}'`,
   );
-  return rows[0]?.empty === true || rows[0]?.empty === "true";
+  const available = new Set(
+    rows
+      .map((row) => row.column_name)
+      .filter((column): column is string => typeof column === "string"),
+  );
+  const missingRequired = MIGRATED_CALENDAR_COLUMNS[table].filter(
+    (column) =>
+      !available.has(column) && SOURCE_COLUMN_FALLBACKS[column] === undefined,
+  );
+  if (missingRequired.length > 0) {
+    throw new Error(
+      `${CALENDAR_MIGRATION_LOG_PREFIX} legacy ${SOURCE_SCHEMA}.${table} is missing required column(s): ${missingRequired.join(", ")}`,
+    );
+  }
+  return MIGRATED_CALENDAR_COLUMNS[table]
+    .map((column) =>
+      available.has(column)
+        ? `s.${quoteIdent(column)}`
+        : `${SOURCE_COLUMN_FALLBACKS[column]} AS ${quoteIdent(column)}`,
+    )
+    .join(", ");
 }
 
 export async function migrateCalendarTable(
@@ -463,30 +494,32 @@ export async function migrateCalendarTable(
   if (!(await sourceTableExists(exec, table))) {
     return { table, outcome: "source-missing" };
   }
-  if (!(await targetTableIsEmpty(exec, table))) {
-    return { table, outcome: "target-non-empty" };
-  }
-
   const target = `${TARGET_SCHEMA}.${quoteIdent(table)}`;
   const source = `${SOURCE_SCHEMA}.${quoteIdent(table)}`;
   const columns = MIGRATED_CALENDAR_COLUMNS[table];
   const targetColumns = columns.map(quoteIdent).join(", ");
-  const sourceColumns = columns
-    .map((column) => `s.${quoteIdent(column)}`)
-    .join(", ");
+  const sourceColumns = await sourceColumnProjection(exec, table);
   await exec(
     `INSERT INTO ${target} (${targetColumns})
        SELECT ${sourceColumns} FROM ${source} AS s
        WHERE NOT EXISTS (
          SELECT 1 FROM ${target} AS t WHERE t.id = s.id
-       )`,
+       )
+       ON CONFLICT (${quoteIdent("id")}) DO NOTHING`,
   );
+  await assertCarveOutProjectionComplete(exec, {
+    migrationKey: `calendar/${table}/v2`,
+    source: { schema: SOURCE_SCHEMA, table },
+    target: { schema: TARGET_SCHEMA, table },
+    keyColumns: ["id"],
+  });
   return { table, outcome: "copied" };
 }
 
 export async function migrateCalendarTables(
-  exec: SqlExecutor,
+  database: CarveOutDatabase,
 ): Promise<TableMigrationResult[]> {
+  const exec = database.execute;
   await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
   await ensureIcsCalendarSourceTable(exec);
   await ensureIcsSecretCleanupTable(exec);
@@ -495,9 +528,10 @@ export async function migrateCalendarTables(
   await ensureLinkedCalendarEventTable(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_CALENDAR_TABLES) {
-    const receipt = await runCarveOutMigration(exec, {
-      key: `calendar/${table}/v1`,
-      run: () => migrateCalendarTable(exec, table),
+    const receipt = await runCarveOutMigration(database, {
+      key: `calendar/${table}/v2`,
+      sourceTables: [{ schema: SOURCE_SCHEMA, table }],
+      run: (execute) => migrateCalendarTable(execute, table),
       outcome: (result) => result.outcome,
       shouldComplete: (result) => result.outcome !== "source-missing",
     });
@@ -513,6 +547,7 @@ export async function migrateCalendarTables(
 
 type RuntimeDb = {
   execute: (query: unknown) => Promise<unknown>;
+  transaction<T>(operation: (transaction: RuntimeDb) => Promise<T>): Promise<T>;
 };
 
 function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
@@ -545,11 +580,8 @@ export class CalendarMigrationService extends Service {
 
   private async run(): Promise<void> {
     const db = getRuntimeDb(this.runtime);
-    const { sql } = await import("drizzle-orm");
-    const exec: SqlExecutor = async (statement) =>
-      extractRows(await db.execute(sql.raw(statement)));
-
-    const results = await migrateCalendarTables(exec);
+    const database = await createDrizzleCarveOutDatabase(db);
+    const results = await migrateCalendarTables(database);
     const copied = results.filter((r) => r.outcome === "copied");
     if (copied.length > 0) {
       logger.info(

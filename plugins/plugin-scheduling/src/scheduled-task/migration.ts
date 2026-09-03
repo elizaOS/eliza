@@ -6,10 +6,17 @@
  * live in scheduling-owned `app_scheduling`; this service creates/repairs the
  * target schema and copies existing source rows once without deleting or
  * mutating the old tables.
+ * Verification uses `/v2` receipts so unsafe completed `/v1` receipts trigger
+ * one repair pass without making later owner deletions replay from the source.
  */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { runCarveOutMigration } from "@elizaos/plugin-sql";
-import { executeRawSql, getRuntimeDb } from "./sql.js";
+import {
+  assertCarveOutProjectionComplete,
+  type CarveOutDatabase,
+  createDrizzleCarveOutDatabase,
+  runCarveOutMigration,
+} from "@elizaos/plugin-sql";
+import { getRuntimeDb } from "./sql.js";
 
 export const SCHEDULING_MIGRATION_SERVICE_TYPE = "scheduling_migration";
 export const SCHEDULING_MIGRATION_LOG_PREFIX = "[Scheduling]";
@@ -261,18 +268,26 @@ export async function migrateSchedulingTable(
        ON CONFLICT DO NOTHING`,
     );
   }
+  await assertCarveOutProjectionComplete(exec, {
+    migrationKey: `scheduling/${table}/v2`,
+    source: { schema: SOURCE_SCHEMA, table },
+    target: { schema: TARGET_SCHEMA, table },
+    keyColumns: table === "life_scheduled_tasks" ? ["agent_id", "id"] : ["id"],
+  });
   return { table, outcome: "copied" };
 }
 
 export async function migrateSchedulingTables(
-  exec: SqlExecutor,
+  database: CarveOutDatabase,
 ): Promise<TableMigrationResult[]> {
+  const exec = database.execute;
   await ensureSchedulingTables(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_SCHEDULING_TABLES) {
-    const receipt = await runCarveOutMigration(exec, {
-      key: `scheduling/${table}/v1`,
-      run: () => migrateSchedulingTable(exec, table),
+    const receipt = await runCarveOutMigration(database, {
+      key: `scheduling/${table}/v2`,
+      sourceTables: [{ schema: SOURCE_SCHEMA, table }],
+      run: (execute) => migrateSchedulingTable(execute, table),
       outcome: (result) => result.outcome,
       shouldComplete: (result) => result.outcome !== "source-missing",
     });
@@ -302,9 +317,11 @@ export class SchedulingMigrationService extends Service {
   }
 
   private async run(): Promise<void> {
-    const results = await migrateSchedulingTables((sql) =>
-      executeRawSql(this.runtime, sql),
-    );
+    const db = getRuntimeDb(this.runtime);
+    if (!db)
+      throw new Error("Scheduling database disappeared during migration");
+    const database = await createDrizzleCarveOutDatabase(db);
+    const results = await migrateSchedulingTables(database);
     logger.info(
       { src: "scheduling:migration", results },
       `${SCHEDULING_MIGRATION_LOG_PREFIX} Scheduling table migration checked.`,

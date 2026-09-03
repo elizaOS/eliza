@@ -2133,7 +2133,7 @@ describe("compute billing recovery", () => {
       billing_status: "active",
       scheduled_shutdown_at: null,
     });
-    expect(new Date(row.last_billed_at)).toEqual(periodStart);
+    expect(row.last_billed_at).toEqual(periodStart);
   });
 
   test("policy-permitted earnings fund stop revalidation without forgiving elapsed debt", async () => {
@@ -2178,7 +2178,7 @@ describe("compute billing recovery", () => {
     expect(row).toMatchObject({
       billing_status: "active",
     });
-    expect(new Date(row.last_billed_at)).toEqual(periodStart);
+    expect(row.last_billed_at).toEqual(periodStart);
   });
 
   test("shutdown warning CAS refuses any durable provider proof", async () => {

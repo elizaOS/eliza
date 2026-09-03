@@ -3,10 +3,13 @@
  * helpers: verifies copy-if-target-empty and skip-if-source-missing semantics
  * against a stubbed SQL executor.
  */
+
+import type { CarveOutDatabase } from "@elizaos/plugin-sql";
 import { describe, expect, it } from "vitest";
 import {
   ensureCalendarSourceIdentity,
   ensureLinkedCalendarEventTable,
+  MIGRATED_CALENDAR_COLUMNS,
   MIGRATED_CALENDAR_TABLES,
   migrateCalendarTable,
   migrateCalendarTables,
@@ -24,11 +27,35 @@ function fakeExec(
       return [{ holder_token: [...sql.matchAll(/'([^']+)'/g)][1]?.[1] }];
     }
     if (sql.includes("carve-out:complete")) return [{ migration_key: "done" }];
+    if (sql.includes("SELECT column_name")) {
+      const table = sql.includes("life_calendar_sync_states")
+        ? "life_calendar_sync_states"
+        : "life_calendar_events";
+      return MIGRATED_CALENDAR_COLUMNS[table].map((column_name) => ({
+        column_name,
+      }));
+    }
     for (const [re, rows] of responses) {
       if (re.test(sql)) return rows;
     }
+    if (sql.includes("carve-out:verify-projection")) {
+      return [
+        {
+          missing_count: "0",
+          conflict_count: "0",
+          source_null_key_count: "0",
+          target_null_key_count: "0",
+          source_duplicate_key_count: "0",
+          target_duplicate_key_count: "0",
+        },
+      ];
+    }
     return [];
   };
+}
+
+function transactionDatabase(exec: SqlExecutor): CarveOutDatabase {
+  return { execute: exec, transaction: (operation) => operation(exec) };
 }
 
 describe("CalendarMigration", () => {
@@ -38,13 +65,13 @@ describe("CalendarMigration", () => {
     expect(r.outcome).toBe("source-missing");
   });
 
-  it("skips when the target table is non-empty", async () => {
+  it("reconciles when the target table is non-empty", async () => {
     const exec = fakeExec([
       [/to_regclass/, [{ present: true }]],
       [/NOT EXISTS/, [{ empty: false }]],
     ]);
     const r = await migrateCalendarTable(exec, "life_calendar_sync_states");
-    expect(r.outcome).toBe("target-non-empty");
+    expect(r.outcome).toBe("copied");
   });
 
   it("copies when source exists and target is empty", async () => {
@@ -75,6 +102,28 @@ describe("CalendarMigration", () => {
     expect(log.some((s) => /DROP|ALTER .*app_lifeops/.test(s))).toBe(false);
   });
 
+  it("fails closed when an existing calendar id has different values", async () => {
+    const exec = fakeExec([
+      [/to_regclass/, [{ present: true }]],
+      [
+        /carve-out:verify-projection/,
+        [
+          {
+            missing_count: "0",
+            conflict_count: "1",
+            source_null_key_count: "0",
+            target_null_key_count: "0",
+            source_duplicate_key_count: "0",
+            target_duplicate_key_count: "0",
+          },
+        ],
+      ],
+    ]);
+    await expect(
+      migrateCalendarTable(exec, "life_calendar_sync_states"),
+    ).rejects.toMatchObject({ code: "CARVE_OUT_MIGRATION_COLLISION" });
+  });
+
   it("creates the target schema and processes every calendar table", async () => {
     const log: string[] = [];
     const exec = fakeExec(
@@ -84,7 +133,7 @@ describe("CalendarMigration", () => {
       ],
       log,
     );
-    const results = await migrateCalendarTables(exec);
+    const results = await migrateCalendarTables(transactionDatabase(exec));
     expect(results.map((r) => r.table)).toEqual([...MIGRATED_CALENDAR_TABLES]);
     expect(
       log.some((s) => /CREATE SCHEMA IF NOT EXISTS app_calendar/.test(s)),

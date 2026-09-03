@@ -4,7 +4,16 @@
  * deletion-after-completion startup without replacing the orchestrator itself.
  */
 import { describe, expect, it } from "vitest";
-import { runCarveOutMigration } from "./carve-out-migration.js";
+import {
+  type CarveOutDatabase,
+  type CarveOutSqlExecutor,
+  createDrizzleCarveOutDatabase,
+  runCarveOutMigration,
+} from "./carve-out-migration.js";
+
+function transactionDatabase(exec: CarveOutSqlExecutor): CarveOutDatabase {
+  return { execute: exec, transaction: (operation) => operation(exec) };
+}
 
 interface Receipt {
   holder: string;
@@ -43,6 +52,76 @@ function ledgerExecutor() {
 }
 
 describe("runCarveOutMigration", () => {
+  it("preserves the Drizzle transaction method receiver", async () => {
+    const drizzleDatabase = {
+      async execute(): Promise<Array<Record<string, unknown>>> {
+        return [];
+      },
+      async transaction<T>(
+        this: unknown,
+        operation: (transaction: { execute(query: unknown): Promise<unknown> }) => Promise<T>
+      ): Promise<T> {
+        expect(this).toBe(drizzleDatabase);
+        return operation({ execute: async () => [] });
+      },
+    };
+    const database = await createDrizzleCarveOutDatabase(drizzleDatabase);
+
+    await expect(
+      database.transaction(async (execute) => {
+        await execute("SELECT 1");
+        return "bound";
+      })
+    ).resolves.toBe("bound");
+  });
+
+  it("keeps source locking, copy, and receipt completion on the owned transaction executor", async () => {
+    const outside: string[] = [];
+    const transactionStatements: string[] = [];
+    const database: CarveOutDatabase = {
+      execute: async (statement) => {
+        outside.push(statement);
+        return [];
+      },
+      transaction: async (operation) =>
+        operation(async (statement) => {
+          transactionStatements.push(statement);
+          if (statement.includes("carve-out:claim")) {
+            return [{ holder_token: [...statement.matchAll(/'([^']+)'/g)][1]?.[1] }];
+          }
+          if (statement.includes("carve-out:complete")) {
+            return [{ migration_key: "owned-session/v1" }];
+          }
+          return [];
+        }),
+    };
+
+    await runCarveOutMigration(database, {
+      key: "owned-session/v1",
+      sourceTables: [{ schema: "app_lifeops", table: "source_rows" }],
+      run: async (execute) => {
+        await execute("/* domain:copy */ INSERT INTO target_rows SELECT * FROM source_rows");
+        await execute("/* domain:verify */ SELECT 1");
+        return "copied";
+      },
+      outcome: String,
+    });
+
+    expect(outside).toHaveLength(2);
+    expect(
+      transactionStatements.map((statement) => statement.match(/\/\* ([^*]+) \*\//)?.[1])
+    ).toEqual([
+      "carve-out:claim",
+      "carve-out:lock-sources",
+      "domain:copy",
+      "domain:verify",
+      "carve-out:complete",
+    ]);
+    expect(
+      transactionStatements.some((statement) => /^(BEGIN|COMMIT)\s*;?$/i.test(statement.trim()))
+    ).toBe(false);
+  });
+
   it("fails concurrent startup closed until the durable completion is recorded", async () => {
     const exec = ledgerExecutor();
     let release!: () => void;
@@ -50,8 +129,9 @@ describe("runCarveOutMigration", () => {
       release = resolve;
     });
     let runs = 0;
-    const first = runCarveOutMigration(exec, {
+    const first = runCarveOutMigration(transactionDatabase(exec), {
       key: "calendar/events/v1",
+      sourceTables: [{ schema: "app_lifeops", table: "events" }],
       run: async () => {
         runs += 1;
         await gate;
@@ -61,8 +141,9 @@ describe("runCarveOutMigration", () => {
     });
     await Promise.resolve();
     await expect(
-      runCarveOutMigration(exec, {
+      runCarveOutMigration(transactionDatabase(exec), {
         key: "calendar/events/v1",
+        sourceTables: [{ schema: "app_lifeops", table: "events" }],
         run: async () => {
           runs += 1;
           return "copied";
@@ -90,8 +171,9 @@ describe("runCarveOutMigration", () => {
     let runs = 0;
 
     await expect(
-      runCarveOutMigration(exec, {
+      runCarveOutMigration(transactionDatabase(exec), {
         key: "calendar/events/v1",
+        sourceTables: [{ schema: "app_lifeops", table: "events" }],
         run: async () => {
           runs += 1;
           return "copied";
@@ -110,8 +192,9 @@ describe("runCarveOutMigration", () => {
       return [];
     };
     await expect(
-      runCarveOutMigration(exec, {
+      runCarveOutMigration(transactionDatabase(exec), {
         key: "calendar/events/v1",
+        sourceTables: [{ schema: "app_lifeops", table: "events" }],
         run: async () => "copied",
         outcome: String,
       })
@@ -122,8 +205,9 @@ describe("runCarveOutMigration", () => {
     const exec = ledgerExecutor();
     let targetRows = 1;
     const migrate = () =>
-      runCarveOutMigration(exec, {
+      runCarveOutMigration(transactionDatabase(exec), {
         key: "reminders/plans/v1", // gitleaks:allow synthetic migration receipt identifier
+        sourceTables: [{ schema: "app_lifeops", table: "plans" }],
         run: async () => {
           targetRows += 1;
           return "copied";
@@ -139,8 +223,9 @@ describe("runCarveOutMigration", () => {
   it("releases a failed attempt so an idempotent retry can complete", async () => {
     const exec = ledgerExecutor();
     await expect(
-      runCarveOutMigration(exec, {
+      runCarveOutMigration(transactionDatabase(exec), {
         key: "inbox/triage/v1", // gitleaks:allow synthetic migration receipt identifier
+        sourceTables: [{ schema: "app_lifeops", table: "triage" }],
         run: async () => {
           throw new Error("partial copy rolled back");
         },
@@ -148,8 +233,9 @@ describe("runCarveOutMigration", () => {
       })
     ).rejects.toThrow("partial copy rolled back");
     await expect(
-      runCarveOutMigration(exec, {
+      runCarveOutMigration(transactionDatabase(exec), {
         key: "inbox/triage/v1", // gitleaks:allow synthetic migration receipt identifier
+        sourceTables: [{ schema: "app_lifeops", table: "triage" }],
         run: async () => "copied",
         outcome: String,
       })
@@ -165,8 +251,9 @@ describe("runCarveOutMigration", () => {
       return baseExec(sql);
     };
     await expect(
-      runCarveOutMigration(exec, {
+      runCarveOutMigration(transactionDatabase(exec), {
         key: "goals/items/v1",
+        sourceTables: [{ schema: "app_lifeops", table: "items" }],
         run: async () => {
           throw new Error("migration transaction rolled back");
         },

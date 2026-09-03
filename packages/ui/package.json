@@ -183,6 +183,11 @@
     },
     "./native-select": {
       "types": "./dist/components/ui/native-select.d.ts",
+      "eliza-source": {
+        "types": "./src/components/ui/native-select.tsx",
+        "import": "./src/components/ui/native-select.tsx",
+        "default": "./src/components/ui/native-select.tsx"
+      },
       "import": "./dist/components/ui/native-select.js",
       "default": "./dist/components/ui/native-select.js"
     },
