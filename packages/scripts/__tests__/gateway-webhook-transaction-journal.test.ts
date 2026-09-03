@@ -2898,7 +2898,7 @@ describe("durable Gateway transaction journal", () => {
     );
   });
 
-  test("bounds prepared-OPEN artifact reads while retaining recent successful and queued runs", async () => {
+  test("bounds prepared-OPEN artifact reads while accepting GitHub's null completed_at", async () => {
     const resumedMarker = openMarker({
       sourceRunId: "9001",
       sourceRunAttempt: "1",
@@ -2923,7 +2923,7 @@ describe("durable Gateway transaction journal", () => {
       status: "completed",
       conclusion: "success",
       updated_at: old,
-      completed_at: old,
+      completed_at: null,
     }));
     const runs = [
       ...oldSuccesses,
@@ -2935,7 +2935,7 @@ describe("durable Gateway transaction journal", () => {
         conclusion: "success",
         created_at: old,
         updated_at: recent,
-        completed_at: recent,
+        completed_at: null,
       },
       {
         id: 9002,
@@ -2952,7 +2952,7 @@ describe("durable Gateway transaction journal", () => {
         status: "completed",
         conclusion: "failure",
         updated_at: old,
-        completed_at: old,
+        completed_at: null,
       },
     ];
     const artifactCalls: number[] = [];

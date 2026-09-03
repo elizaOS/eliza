@@ -1798,14 +1798,16 @@ function runCanRetainUnresolvedPreparedOpen(run, retentionCutoff) {
     fail("gateway prepared-OPEN workflow run has no valid status");
   }
   if (run.status !== "completed") return true;
+  // GitHub returns `completed_at: null` for completed workflow runs. The
+  // populated terminal clock on both run-list and exact-attempt readbacks is
+  // `updated_at`, so retention must bind to that live field alone.
   const updatedAt = Date.parse(run.updated_at ?? "");
-  const completedAt = Date.parse(run.completed_at ?? "");
-  if (!Number.isFinite(updatedAt) || !Number.isFinite(completedAt)) {
+  if (!Number.isFinite(updatedAt)) {
     fail(
-      "gateway prepared-OPEN completed workflow run has malformed timestamps",
+      "gateway prepared-OPEN completed workflow run has a malformed terminal timestamp",
     );
   }
-  return Math.max(updatedAt, completedAt) >= retentionCutoff;
+  return updatedAt >= retentionCutoff;
 }
 
 async function completeGatewayDeployArtifactScan(
