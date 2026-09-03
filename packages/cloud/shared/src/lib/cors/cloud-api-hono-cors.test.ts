@@ -70,6 +70,94 @@ async function req(
   return app.request(path, { method, headers });
 }
 
+/**
+ * The public-token path set is what lets a registered third-party app call the
+ * API from a browser at all. Five of its twelve entries are named somewhere in
+ * this file; deleting any of the other nine leaves the suite green, and the
+ * consequence of a deletion is silent — the browser simply stops receiving
+ * `Access-Control-Allow-Origin` for that endpoint, which is precisely the bug
+ * this file's header says it exists to guard.
+ */
+const PUBLIC_TOKEN_API_PATHS = [
+  "/api/auth/pair",
+  "/api/v1/app-credits",
+  "/api/v1/chat",
+  "/api/v1/chat/completions",
+  "/api/v1/embeddings",
+  "/api/v1/generate-image",
+  "/api/v1/generate-video",
+  "/api/v1/models",
+  "/api/v1/responses",
+  "/api/v1/subscriptions/plans",
+  "/api/v1/subscriptions/plans/",
+  "/api/v1/voice",
+  "/api/v1/voice-models",
+  "/api/v1/voice-models/catalog",
+] as const;
+
+const PUBLIC_TOKEN_PREFIX_PATHS = [
+  "/api/v1/app-credits/balance",
+  "/api/v1/voice/sessions",
+  "/api/v1/models/openai/gpt-oss-120b",
+] as const;
+
+describe("public token API paths", () => {
+  test.each(PUBLIC_TOKEN_API_PATHS)("%s is a public token path", (path) => {
+    expect(isPublicTokenApiPath(path)).toBe(true);
+  });
+
+  test.each(PUBLIC_TOKEN_PREFIX_PATHS)(
+    "%s is reached by a prefix rather than an exact entry",
+    (path) => {
+      expect(isPublicTokenApiPath(path)).toBe(true);
+    },
+  );
+
+  test.each([
+    // The prefixes carry a trailing slash, so the bare names above are exact
+    // entries and not covered by them. A sibling one segment further out must
+    // stay private.
+    "/api/v1/voice-models/catalog/private",
+    "/api/v1/chat/completions/admin",
+    "/api/v1/user/wallets",
+    "/api/v1/subscriptions",
+    "/api/auth/pair/native",
+  ])("%s is not a public token path", (path) => {
+    expect(isPublicTokenApiPath(path)).toBe(false);
+  });
+});
+
+describe("read-only catalog preflight normalisation", () => {
+  test.each([
+    ["lowercase", "get"],
+    ["mixed case", "Get"],
+    ["padded with spaces", "  head  "],
+  ])("a %s requested-method still gets the narrow policy", async (_label, requestedMethod) => {
+    // `Access-Control-Request-Method` is caller-supplied, and the gate
+    // uppercases it for that reason. Drop that step and the request falls
+    // through to the general public policy, so the catalog preflight
+    // advertises exactly the mutating methods the comment above
+    // `readOnlyPublicCors` says it must never advertise or prime in the
+    // browser cache. The suite's existing preflight cases only send "GET"
+    // and "HEAD" verbatim, so nothing notices.
+    //
+    // The padded row asserts the observable behaviour, not the source's
+    // `.trim()`: the Headers API strips surrounding whitespace from a value
+    // before the middleware ever reads it, so that call cannot be reached
+    // through a request and removing it alone changes nothing.
+    const res = await req(
+      "OPTIONS",
+      "https://thirdparty.example.com",
+      true,
+      "/api/v1/subscriptions/plans",
+      requestedMethod,
+    );
+
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-methods")).toBe("GET,HEAD,OPTIONS");
+  });
+});
+
 describe("isFirstPartyOrigin", () => {
   test("recognizes canonical and transition SPAs + localhost, rejects third-party", () => {
     expect(isFirstPartyOrigin("https://www.eliza.app")).toBe(true);
