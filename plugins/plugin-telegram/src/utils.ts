@@ -74,6 +74,8 @@ function escapeUrl(url: string): string {
  * Note: This solution uses a sequence of regex replacements and sentinels.
  * It makes assumptions about non–nested formatting and does not cover every edge case.
  */
+const NUL_CHAR = String.fromCharCode(0);
+
 export function convertMarkdownToTelegram(markdown: string): string {
   // Temporarily replace recognized markdown tokens with sentinel strings.
   // Each sentinel is a string like "\u0000{index}\u0000".
@@ -84,7 +86,12 @@ export function convertMarkdownToTelegram(markdown: string): string {
     return sentinel;
   }
 
-  let converted = markdown;
+  // Sentinels are delimited by NUL, so a NUL arriving in the caller's text can
+  // forge one: an in-range index splices that replacement into a position the
+  // author never wrote, and an out-of-range index resolves to `undefined` and
+  // ships the literal word. `cleanText` already strips NUL on the plain-text
+  // send path; the markdown path needs it more, because here NUL is structural.
+  let converted = cleanText(markdown);
 
   // 1. Fenced code blocks (```...```)
   //    Matches an optional language tag (allowing #, +, - for c#, c++, etc.)
@@ -187,11 +194,9 @@ export function convertMarkdownToTelegram(markdown: string): string {
     },
   );
 
-  // Define the sentinel marker as a string constant.
-  const NULL_CHAR = String.fromCharCode(0);
-  const SENTINEL_PATTERN = new RegExp(`(${NULL_CHAR}\\d+${NULL_CHAR})`, "g");
-  const SENTINEL_TEST = new RegExp(`^${NULL_CHAR}\\d+${NULL_CHAR}$`);
-  const SENTINEL_REPLACE = new RegExp(`${NULL_CHAR}(\\d+)${NULL_CHAR}`, "g");
+  const SENTINEL_PATTERN = new RegExp(`(${NUL_CHAR}\\d+${NUL_CHAR})`, "g");
+  const SENTINEL_TEST = new RegExp(`^${NUL_CHAR}\\d+${NUL_CHAR}$`);
+  const SENTINEL_REPLACE = new RegExp(`${NUL_CHAR}(\\d+)${NUL_CHAR}`, "g");
 
   const finalEscaped = converted
     .split(SENTINEL_PATTERN)
@@ -219,8 +224,9 @@ export function convertMarkdownToTelegram(markdown: string): string {
       break;
     }
     SENTINEL_REPLACE.lastIndex = 0;
-    finalResult = finalResult.replace(SENTINEL_REPLACE, (_, index) => {
-      return replacements[Number.parseInt(index, 10)];
+    finalResult = finalResult.replace(SENTINEL_REPLACE, (match, index) => {
+      const stored = replacements[Number.parseInt(index, 10)];
+      return stored === undefined ? match : stored;
     });
   }
 
