@@ -16,6 +16,7 @@ import {
 } from "../../../db/repositories/phone-metadata-readers";
 import { agentPhoneContacts } from "../../../db/schemas/agent-phone-contacts";
 import { agentPhoneNumbers, type PhoneMessageLog } from "../../../db/schemas/agent-phone-numbers";
+import { userCharacters } from "../../../db/schemas/user-characters";
 import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
 import { logger } from "../../utils/logger";
 
@@ -68,6 +69,7 @@ export interface MessageRouteResult {
   agentId?: string;
   phoneNumberId?: string;
   organizationId?: string;
+  userId?: string;
   error?: string;
 }
 
@@ -86,7 +88,8 @@ export interface SendMessageParams {
   organizationId: string;
   agentId?: string;
   agentOrganizationId?: string;
-  agentUserId?: string;
+  agentUserId: string;
+  defer?: (promise: Promise<unknown>) => void;
   contactDisplayName?: string;
 }
 
@@ -102,6 +105,7 @@ export type MessageDeliveryOutcome =
       code: string;
       retryable: boolean;
       providerStatus?: number;
+      standingReason?: string;
     };
 
 function deliveryFailed(
@@ -109,6 +113,7 @@ function deliveryFailed(
   code: string,
   retryable: boolean,
   providerStatus?: number,
+  standingReason?: string,
 ): MessageDeliveryOutcome {
   return {
     status: "failed",
@@ -116,6 +121,7 @@ function deliveryFailed(
     code,
     retryable,
     ...(providerStatus === undefined ? {} : { providerStatus }),
+    ...(standingReason === undefined ? {} : { standingReason }),
   };
 }
 
@@ -184,6 +190,7 @@ class MessageRouterService {
         agent_id: string;
         id: string;
         organization_id: string;
+        user_id: string | null;
       }>;
       try {
         phoneMapping = await dbWrite
@@ -191,8 +198,10 @@ class MessageRouterService {
             agent_id: agentPhoneNumbers.agent_id,
             id: agentPhoneNumbers.id,
             organization_id: agentPhoneNumbers.organization_id,
+            user_id: userCharacters.user_id,
           })
           .from(agentPhoneNumbers)
+          .leftJoin(userCharacters, eq(userCharacters.id, agentPhoneNumbers.agent_id))
           .where(
             and(
               eq(agentPhoneNumbers.phone_number, normalizedTo),
@@ -218,6 +227,14 @@ class MessageRouterService {
       }
 
       const mapping = phoneMapping[0];
+      if (!mapping.user_id) {
+        logger.error("[MessageRouter] Phone route has no standing actor", {
+          agentId: mapping.agent_id,
+          organizationId: mapping.organization_id,
+          provider: providerDiagnostic(message.provider),
+        });
+        return { success: false, error: "Phone route has no active account owner" };
+      }
 
       // Log the incoming message
       await this.logMessage({
@@ -259,6 +276,7 @@ class MessageRouterService {
         agentId: mapping.agent_id,
         phoneNumberId: mapping.id,
         organizationId: mapping.organization_id,
+        userId: mapping.user_id,
       };
     } catch (error) {
       logger.error("[MessageRouter] Error routing message", {
@@ -467,6 +485,44 @@ class MessageRouterService {
       provider: providerDiagnostic(params.provider),
       organizationId: params.organizationId,
     });
+
+    let standing;
+    try {
+      const { resolveOutboundMessageStanding } = await import("../outbound-message-standing");
+      standing = await resolveOutboundMessageStanding(params.organizationId, params.agentUserId, {
+        defer: params.defer,
+      });
+    } catch (error) {
+      // error-policy:J4 standing infrastructure failure becomes a retryable,
+      // typed no-dispatch outcome at the outbound transport boundary.
+      logger.error("[MessageRouter] Account-standing resolution failed", {
+        provider: providerDiagnostic(params.provider),
+        organizationId: params.organizationId,
+        userId: params.agentUserId,
+        decision: "unavailable",
+        providerDispatched: false,
+        ...phoneErrorDiagnostic(error),
+      });
+      return deliveryFailed(params.provider, "DELIVERY_ACCOUNT_STANDING_UNAVAILABLE", true);
+    }
+    if (!standing.allowed) {
+      logger.error("[MessageRouter] Account standing denied outbound message", {
+        provider: providerDiagnostic(params.provider),
+        organizationId: params.organizationId,
+        userId: params.agentUserId,
+        decision: "denied",
+        reason: standing.reason,
+        source: standing.source,
+        providerDispatched: false,
+      });
+      return deliveryFailed(
+        params.provider,
+        "DELIVERY_ACCOUNT_STANDING_DENIED",
+        false,
+        undefined,
+        standing.reason,
+      );
+    }
 
     const contactRequired = this.contactWriteRequired(params);
 

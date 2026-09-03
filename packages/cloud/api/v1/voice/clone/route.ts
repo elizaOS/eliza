@@ -18,6 +18,7 @@
  *   - file0,file1... File (1..10, total <= 100MB)
  */
 
+import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 import {
   admitFlatGenerativeOperation,
@@ -30,6 +31,8 @@ import {
   type NewVoiceCloningJob,
   type NewVoiceSample,
   userVoicesRepository,
+  type VoiceCloneProviderState,
+  type VoiceCloneProviderStep,
 } from "@/db/repositories/user-voices";
 import {
   failureResponse,
@@ -45,6 +48,7 @@ import { calculateVoiceCloneCostFromCatalog } from "@/lib/services/ai-pricing";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { usageService } from "@/lib/services/usage";
+import type { VoiceCloneFailureReason } from "@/lib/services/voice-clone-failure";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -55,6 +59,118 @@ const ELEVENLABS_API = "https://api.elevenlabs.io";
 const DEFAULT_R2_PUBLIC_HOST = "blob.eliza.app";
 
 type CloneType = "instant" | "professional";
+type DurableCloneResponse = {
+  status: 201 | 402;
+  body: Record<string, unknown>;
+};
+
+function durableCloneResponse(value: unknown): DurableCloneResponse | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as { status?: unknown; body?: unknown };
+  if (candidate.status !== 201 && candidate.status !== 402) return null;
+  if (!candidate.body || typeof candidate.body !== "object") return null;
+  return {
+    status: candidate.status,
+    body: candidate.body as Record<string, unknown>,
+  };
+}
+
+class VoiceCloneSubmissionUnknownError extends ElizaError {
+  override readonly name = "VoiceCloneSubmissionUnknownError";
+  readonly step: VoiceCloneProviderStep;
+
+  constructor(step: VoiceCloneProviderStep, cause: unknown) {
+    super(`ElevenLabs ${step} submission outcome is unknown`, {
+      code: "VOICE_CLONE_SUBMISSION_UNKNOWN",
+      context: { provider: "elevenlabs", step },
+      cause,
+      severity: "ephemeral",
+    });
+    this.step = step;
+  }
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(
+      ([a], [b]) => a.localeCompare(b),
+    );
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+async function sha256Hex(bytes: ArrayBuffer | Uint8Array): Promise<string> {
+  const stableBytes =
+    bytes instanceof ArrayBuffer ? bytes : Uint8Array.from(bytes).buffer;
+  const digest = await crypto.subtle.digest("SHA-256", stableBytes);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+async function voiceCloneRequestDigest(input: {
+  cloneType: CloneType;
+  name: string;
+  description: string | undefined;
+  settings: Record<string, unknown>;
+  files: File[];
+}): Promise<string> {
+  const files = await Promise.all(
+    input.files.map(async (file) => ({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      sha256: await sha256Hex(await file.arrayBuffer()),
+    })),
+  );
+  return sha256Hex(
+    new TextEncoder().encode(
+      canonicalJson({
+        cloneType: input.cloneType,
+        name: input.name,
+        description: input.description ?? null,
+        settings: input.settings,
+        files,
+      }),
+    ),
+  );
+}
+
+function providerAcceptanceIsPossible(
+  state: VoiceCloneProviderState | "not_dispatched",
+  voiceId: string | undefined,
+): boolean {
+  return (
+    state === "submitted" ||
+    state === "submission_unknown" ||
+    state === "accepted" ||
+    voiceId !== undefined
+  );
+}
+
+function providerSubmissionIsAmbiguous(
+  state: VoiceCloneProviderState | "not_dispatched",
+): boolean {
+  return state === "submitted" || state === "submission_unknown";
+}
+
+function safeVoiceCloneFailureReason(
+  state: VoiceCloneProviderState | "not_dispatched",
+  providerMayHaveAccepted: boolean,
+): VoiceCloneFailureReason {
+  if (providerSubmissionIsAmbiguous(state)) {
+    return "provider_submission_unknown";
+  }
+  if (providerMayHaveAccepted) {
+    return "provider_work_reconciliation_required";
+  }
+  if (state === "rejected") {
+    return "provider_request_rejected";
+  }
+  return "voice_clone_request_failed";
+}
 
 function isUploadedFile(value: FormDataEntryValue): value is File {
   return (
@@ -104,13 +220,16 @@ app.post("/", async (c) => {
   let description: string | undefined;
   let settings: Record<string, unknown> = {};
   let files: File[] = [];
+  let idempotencyKey = "";
 
-  // Track partial state so the catch branch can delete R2 and DB orphans
-  // when the clone fails before we've successfully persisted a `user_voices`
-  // row. Once `userVoicePersisted` flips, the voice clone is committed and
-  // the deletion branch must NOT delete those samples or R2 objects.
+  // Provider submission is the irreversible boundary. A local `user_voices`
+  // insert is only a projection of that external outcome and must never be
+  // used to decide whether evidence can be deleted or credits released.
   const uploadedR2Keys: string[] = [];
-  let userVoicePersisted = false;
+  let providerState: VoiceCloneProviderState | "not_dispatched" =
+    "not_dispatched";
+  let providerStep: VoiceCloneProviderStep | undefined;
+  let providerVoiceId: string | undefined;
 
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
@@ -227,6 +346,10 @@ app.post("/", async (c) => {
     if (!cloneType || !voiceName || files.length === 0) {
       throw new Error("Validated voice-clone request was not retained");
     }
+    idempotencyKey = c.req.header("Idempotency-Key")?.trim() ?? "";
+    if (idempotencyKey.length === 0 || idempotencyKey.length > 128) {
+      throw ValidationError("A valid Idempotency-Key header is required");
+    }
 
     logger.info(
       `[Voice Clone API] Creating ${cloneType} voice clone: ${voiceName}`,
@@ -237,6 +360,72 @@ app.post("/", async (c) => {
         totalSize,
       },
     );
+
+    const requestDigest = await voiceCloneRequestDigest({
+      cloneType,
+      name: voiceName,
+      description,
+      settings,
+      files,
+    });
+    const newJob = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      jobType: cloneType,
+      voiceName,
+      voiceDescription: description,
+      status: "processing",
+      metadata: { fileCount, totalSize },
+      startedAt: new Date(),
+      idempotencyKey,
+      requestDigest,
+    } satisfies NewVoiceCloningJob & {
+      idempotencyKey: string;
+      requestDigest: string;
+    };
+    const preparedJob =
+      await userVoicesRepository.createOrReadCloningJob(newJob);
+    const createdJob = preparedJob.job;
+    jobId = createdJob.id;
+    if (!preparedJob.created) {
+      if (createdJob.requestDigest !== requestDigest) {
+        return c.json(
+          {
+            success: false,
+            error:
+              "Idempotency-Key was already used with a different voice-clone payload",
+            code: "idempotency_conflict" as const,
+          },
+          409,
+        );
+      }
+      if (createdJob.responsePayload) {
+        const replay = durableCloneResponse(createdJob.responsePayload);
+        if (!replay) {
+          throw new ElizaError("Stored voice-clone response is malformed", {
+            code: "VOICE_CLONE_IDEMPOTENCY_RESPONSE_INVALID",
+            context: { jobId: createdJob.id },
+            severity: "fatal",
+          });
+        }
+        return c.json(replay.body, replay.status);
+      }
+      return c.json(
+        {
+          success: false,
+          error: "Voice clone request is already recorded",
+          code: "idempotency_replay" as const,
+          job: {
+            id: createdJob.id,
+            status: createdJob.status,
+            progress: createdJob.progress,
+          },
+          reconciliationRequired:
+            createdJob.status === "reconciliation_required",
+        },
+        202,
+      );
+    }
 
     cloneCost = await calculateVoiceCloneCostFromCatalog({ cloneType });
     billingContext = {
@@ -262,31 +451,23 @@ app.post("/", async (c) => {
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
-        return c.json(
-          {
-            success: false,
-            error: "Insufficient balance",
-            code: "insufficient_credits" as const,
-            details: { required: error.required, cloneType },
-          },
-          402,
+        const responseBody = {
+          success: false,
+          error: "Insufficient balance",
+          code: "insufficient_credits" as const,
+          details: { required: error.required, cloneType },
+        };
+        await userVoicesRepository.markCloningJobFailed(
+          createdJob.id,
+          "Insufficient balance",
+          new Date(),
+          { status: 402, body: responseBody },
         );
+        return c.json(responseBody, 402);
       }
       throw error;
     }
 
-    const newJob: NewVoiceCloningJob = {
-      organizationId: user.organization_id,
-      userId: user.id,
-      jobType: cloneType,
-      voiceName,
-      voiceDescription: description,
-      status: "processing",
-      metadata: { fileCount, totalSize },
-      startedAt: new Date(),
-    };
-    const createdJob = await userVoicesRepository.createCloningJob(newJob);
-    jobId = createdJob.id;
     const userId = user.id;
     const organizationId = user.organization_id;
 
@@ -345,6 +526,24 @@ app.post("/", async (c) => {
       language,
       files,
       markProviderDispatched: admission.markProviderDispatched,
+      recordProviderReceipt: async (receipt) => {
+        const persistReceipt =
+          userVoicesRepository.recordCloningJobProviderReceipt({
+            jobId: createdJob.id,
+            ...receipt,
+          });
+        if (receipt.state === "submitted") {
+          await persistReceipt;
+        }
+        providerState = receipt.state;
+        providerStep = receipt.step;
+        if (receipt.elevenlabsVoiceId) {
+          providerVoiceId = receipt.elevenlabsVoiceId;
+        }
+        if (receipt.state !== "submitted") {
+          await persistReceipt;
+        }
+      },
     });
 
     // 3) Persist user_voices row.
@@ -360,7 +559,6 @@ app.post("/", async (c) => {
       creationCost: String(cloneCost.totalCost),
     };
     const insertedVoice = await userVoicesRepository.createVoice(newUserVoice);
-    userVoicePersisted = true;
 
     // Backfill the sample rows with the new userVoiceId.
     await userVoicesRepository.attachSamplesToVoice(
@@ -371,10 +569,28 @@ app.post("/", async (c) => {
     const startTime = createdJob.startedAt?.getTime() ?? Date.now();
     const duration = Date.now() - startTime;
 
+    const successPayload = {
+      success: true as const,
+      voice: {
+        id: insertedVoice.id,
+        elevenlabsVoiceId: insertedVoice.elevenlabsVoiceId,
+        name: insertedVoice.name,
+        description: insertedVoice.description,
+        cloneType: insertedVoice.cloneType,
+        status: "completed",
+        sampleCount: insertedVoice.sampleCount,
+        createdAt: insertedVoice.createdAt.toISOString(),
+      },
+      job: { id: createdJob.id, status: "completed", progress: 100 },
+      creditsDeducted: cloneCost.totalCost,
+      estimatedCompletionTime:
+        cloneType === "professional" ? "30-60 minutes" : "30 seconds",
+    };
     const updatedJob = await userVoicesRepository.completeCloningJob({
       jobId: createdJob.id,
       userVoiceId: insertedVoice.id,
       elevenlabsVoiceId,
+      responsePayload: { status: 201, body: successPayload },
     });
 
     const completedAdmission = admission;
@@ -437,42 +653,27 @@ app.post("/", async (c) => {
       duration,
     });
 
-    return c.json(
-      {
-        success: true as const,
-        voice: {
-          id: insertedVoice.id,
-          elevenlabsVoiceId: insertedVoice.elevenlabsVoiceId,
-          name: insertedVoice.name,
-          description: insertedVoice.description,
-          cloneType: insertedVoice.cloneType,
-          status: updatedJob.status,
-          sampleCount: insertedVoice.sampleCount,
-          createdAt: insertedVoice.createdAt.toISOString(),
-        },
-        job: {
-          id: updatedJob.id,
-          status: updatedJob.status,
-          progress: updatedJob.progress,
-        },
-        creditsDeducted: cloneCost.totalCost,
-        estimatedCompletionTime:
-          cloneType === "professional" ? "30-60 minutes" : "30 seconds",
-      },
-      201,
-    );
+    return c.json(successPayload, 201);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const admissionError = asGenerativeCacheApiError(error);
 
-    // Deletion pass runs only when we have partial state to undo (i.e.
-    // the user_voices row was never written). Once that row is committed,
-    // the voice clone is real and we must not delete its samples or R2
-    // objects, even if a later step (billing, usage tracking) throws.
+    const providerMayHaveAccepted = providerAcceptanceIsPossible(
+      providerState,
+      providerVoiceId,
+    );
+    const safeFailureReason = safeVoiceCloneFailureReason(
+      providerState,
+      providerMayHaveAccepted,
+    );
+
+    // Once provider submission may have been accepted, samples and R2 objects
+    // are reconciliation evidence. They survive even when the local voice
+    // projection or a later professional-clone step fails.
     // Each deletion operation is wrapped in its own try/catch so a deletion
     // failure does not mask the original error from the client.
     if (jobId) {
-      if (!userVoicePersisted) {
+      if (!providerMayHaveAccepted) {
         // 1) Drop the voice_samples rows we wrote for this job (orphaned
         //    rows referencing R2 keys we're about to delete).
         try {
@@ -508,53 +709,50 @@ app.post("/", async (c) => {
         }
       }
 
-      // 3) Mark the job failed last so it carries the canonical error
-      //    message even if step 1 or 2 emitted their own log lines.
-      try {
-        await userVoicesRepository.markCloningJobFailed(jobId, errorMessage);
-      } catch (dbError) {
-        logger.error("[Voice Clone API] Failed to mark job failed", {
-          jobId,
-          error: dbError instanceof Error ? dbError.message : String(dbError),
-        });
+      if (!providerMayHaveAccepted) {
+        try {
+          await userVoicesRepository.markCloningJobFailed(
+            jobId,
+            safeFailureReason,
+          );
+        } catch (dbError) {
+          logger.error("[Voice Clone API] Failed to mark job failed", {
+            jobId,
+            error: dbError instanceof Error ? dbError.message : String(dbError),
+          });
+        }
+      } else {
+        try {
+          await userVoicesRepository.markCloningJobReconciliationRequired(
+            jobId,
+            safeFailureReason,
+          );
+        } catch (dbError) {
+          // error-policy:J7 failure to enrich reconciliation diagnostics must
+          // not release the conservative settlement or erase prior receipts.
+          logger.error(
+            "[Voice Clone API] Failed to mark reconciliation required",
+            {
+              jobId,
+              providerState,
+              providerStep,
+              providerVoiceId,
+              error:
+                dbError instanceof Error ? dbError.message : String(dbError),
+            },
+          );
+        }
       }
     }
 
-    // A delivered ElevenLabs voice remains billable even if a later local DB
-    // update fails. Before that commit point, release the full admission.
-    if (admission && userVoicePersisted && cloneCost && billingContext) {
-      const failedAdmission = admission;
-      const failedCost = cloneCost;
-      const failedBillingContext = billingContext;
-      await retainVoiceCloneTask(
-        c,
-        billFlatUsage(
-          failedBillingContext,
-          failedCost,
-          failedAdmission.reservation,
-        )
-          .then(async (billing) => {
-            if (!failedAdmission.reservation) {
-              await failedAdmission.settle(billing.totalCost);
-            }
-          })
-          .catch(async (settlementError) => {
-            await failedAdmission.settleUnknown();
-            logger.error(
-              "[Voice Clone API] Failed to settle committed voice clone",
-              {
-                error:
-                  settlementError instanceof Error
-                    ? settlementError.message
-                    : String(settlementError),
-              },
-            );
-          }),
-      );
+    // Ambiguous or accepted submissions remain conservatively billable. Only
+    // a definitive pre-dispatch/provider rejection releases the reservation.
+    if (admission && providerMayHaveAccepted) {
+      await retainVoiceCloneSettlement(c, admission.settleUnknown(), "settle");
     } else if (admission) {
       await retainVoiceCloneSettlement(c, admission.settle(0), "release");
     }
-    if (admission && !userVoicePersisted) {
+    if (admission && !providerMayHaveAccepted) {
       logger.info("[Voice Clone API] Credits refunded", {
         organizationId: user?.organization_id,
         amount: cloneCost?.totalCost,
@@ -579,7 +777,7 @@ app.post("/", async (c) => {
             input_cost: String(0),
             output_cost: String(0),
             is_successful: false,
-            error_message: errorMessage,
+            error_message: safeFailureReason,
           })
           .catch((usageError) => {
             logger.error("[Voice Clone API] Failed to record failed usage", {
@@ -594,7 +792,25 @@ app.post("/", async (c) => {
 
     if (admissionError) return failureResponse(c, admissionError);
 
-    if (error instanceof Error) {
+    if (providerMayHaveAccepted) {
+      logger.error("[Voice Clone API] Provider work requires reconciliation", {
+        error: errorMessage,
+        cause:
+          error instanceof Error && error.cause instanceof Error
+            ? error.cause.message
+            : undefined,
+        jobId,
+        organizationId: user?.organization_id,
+        userId: user?.id,
+        cloneType,
+        provider: "elevenlabs",
+        providerState,
+        providerStep,
+        providerVoiceId,
+      });
+    }
+
+    if (error instanceof Error && !providerMayHaveAccepted) {
       const lower = errorMessage.toLowerCase();
       if (lower.includes("rate limit")) {
         return jsonError(
@@ -632,13 +848,27 @@ app.post("/", async (c) => {
     logger.error("[Voice Clone API] Unhandled error", {
       error: errorMessage,
       jobId,
+      organizationId: user?.organization_id,
+      userId: user?.id,
+      cloneType,
+      provider: "elevenlabs",
+      providerState,
+      providerStep,
+      providerVoiceId,
+      providerMayHaveAccepted,
+      safeFailureReason,
     });
     return c.json(
       {
         success: false,
-        error: "Failed to create voice clone. Credits have been refunded.",
+        error: providerMayHaveAccepted
+          ? "Voice clone provider work could not be completed. It is retained for reconciliation."
+          : "Failed to create voice clone. Credits have been refunded.",
         code: "internal_error" as const,
-        details: errorMessage,
+        details: {
+          outcome: safeFailureReason,
+          ...(jobId ? { jobId } : {}),
+        },
       },
       500,
     );
@@ -696,6 +926,12 @@ async function createElevenLabsVoice(params: {
   language: string;
   files: File[];
   markProviderDispatched: (() => Promise<void>) | undefined;
+  recordProviderReceipt: (receipt: {
+    step: VoiceCloneProviderStep;
+    state: VoiceCloneProviderState;
+    elevenlabsVoiceId?: string;
+    errorMessage?: string;
+  }) => Promise<void>;
 }): Promise<string> {
   const {
     apiKey,
@@ -705,6 +941,7 @@ async function createElevenLabsVoice(params: {
     language,
     files,
     markProviderDispatched,
+    recordProviderReceipt,
   } = params;
 
   if (cloneType === "instant") {
@@ -715,62 +952,161 @@ async function createElevenLabsVoice(params: {
       fd.append("files", file, file.name);
     }
     await markProviderDispatched?.();
-    const res = await fetch(`${ELEVENLABS_API}/v1/voices/add`, {
-      method: "POST",
-      headers: { "xi-api-key": apiKey },
-      body: fd,
-      signal: AbortSignal.timeout(30_000),
+    await recordProviderReceipt({ step: "create", state: "submitted" });
+    let res: Response;
+    try {
+      res = await fetch(`${ELEVENLABS_API}/v1/voices/add`, {
+        method: "POST",
+        headers: { "xi-api-key": apiKey },
+        body: fd,
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (error) {
+      // error-policy:J2 preserve the transport failure as the cause after
+      // durably recording that provider acceptance is unknown.
+      await recordProviderReceipt({
+        step: "create",
+        state: "submission_unknown",
+        errorMessage: "provider_transport_uncertain",
+      });
+      throw new VoiceCloneSubmissionUnknownError("create", error);
+    }
+    if (!res.ok) {
+      await recordProviderReceipt({ step: "create", state: "rejected" });
+    }
+    const voiceId = await parseElevenLabsResponse(res, "instant");
+    await recordProviderReceipt({
+      step: "create",
+      state: "accepted",
+      elevenlabsVoiceId: voiceId,
     });
-    return parseElevenLabsResponse(res, "instant");
+    return voiceId;
   }
 
   // Professional voice cloning is a 3-step operation in ElevenLabs.
   await markProviderDispatched?.();
-  const createRes = await fetch(`${ELEVENLABS_API}/v1/voices/pvc`, {
-    method: "POST",
-    headers: {
-      "xi-api-key": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ name, description, language }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  const voiceId = await parseElevenLabsResponse(createRes, "professional");
-
-  const uploadFd = new FormData();
-  for (const file of files) {
-    uploadFd.append("files", file, file.name);
-  }
-  const uploadRes = await fetch(
-    `${ELEVENLABS_API}/v1/voices/pvc/${encodeURIComponent(voiceId)}/samples`,
-    {
-      method: "POST",
-      headers: { "xi-api-key": apiKey },
-      body: uploadFd,
-      signal: AbortSignal.timeout(30_000),
-    },
-  );
-  if (!uploadRes.ok) {
-    const message = await readElevenLabsError(uploadRes);
-    throw new Error(`ElevenLabs PVC sample upload failed: ${message}`);
-  }
-
-  const trainRes = await fetch(
-    `${ELEVENLABS_API}/v1/voices/pvc/${encodeURIComponent(voiceId)}/train`,
-    {
+  await recordProviderReceipt({ step: "create", state: "submitted" });
+  let createRes: Response;
+  try {
+    createRes = await fetch(`${ELEVENLABS_API}/v1/voices/pvc`, {
       method: "POST",
       headers: {
         "xi-api-key": apiKey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ language }),
+      body: JSON.stringify({ name, description, language }),
       signal: AbortSignal.timeout(30_000),
-    },
-  );
+    });
+  } catch (error) {
+    // error-policy:J2 preserve the transport failure as the cause after
+    // durably recording that provider acceptance is unknown.
+    await recordProviderReceipt({
+      step: "create",
+      state: "submission_unknown",
+      errorMessage: "provider_transport_uncertain",
+    });
+    throw new VoiceCloneSubmissionUnknownError("create", error);
+  }
+  if (!createRes.ok) {
+    await recordProviderReceipt({ step: "create", state: "rejected" });
+  }
+  const voiceId = await parseElevenLabsResponse(createRes, "professional");
+  await recordProviderReceipt({
+    step: "create",
+    state: "accepted",
+    elevenlabsVoiceId: voiceId,
+  });
+
+  const uploadFd = new FormData();
+  for (const file of files) {
+    uploadFd.append("files", file, file.name);
+  }
+  await recordProviderReceipt({
+    step: "samples",
+    state: "submitted",
+    elevenlabsVoiceId: voiceId,
+  });
+  let uploadRes: Response;
+  try {
+    uploadRes = await fetch(
+      `${ELEVENLABS_API}/v1/voices/pvc/${encodeURIComponent(voiceId)}/samples`,
+      {
+        method: "POST",
+        headers: { "xi-api-key": apiKey },
+        body: uploadFd,
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+  } catch (error) {
+    // error-policy:J2 preserve the transport failure as the cause after
+    // durably recording that provider acceptance is unknown.
+    await recordProviderReceipt({
+      step: "samples",
+      state: "submission_unknown",
+      elevenlabsVoiceId: voiceId,
+      errorMessage: "provider_transport_uncertain",
+    });
+    throw new VoiceCloneSubmissionUnknownError("samples", error);
+  }
+  if (!uploadRes.ok) {
+    await recordProviderReceipt({
+      step: "samples",
+      state: "rejected",
+      elevenlabsVoiceId: voiceId,
+    });
+    const message = await readElevenLabsError(uploadRes);
+    throw new Error(`ElevenLabs PVC sample upload failed: ${message}`);
+  }
+  await recordProviderReceipt({
+    step: "samples",
+    state: "accepted",
+    elevenlabsVoiceId: voiceId,
+  });
+
+  await recordProviderReceipt({
+    step: "train",
+    state: "submitted",
+    elevenlabsVoiceId: voiceId,
+  });
+  let trainRes: Response;
+  try {
+    trainRes = await fetch(
+      `${ELEVENLABS_API}/v1/voices/pvc/${encodeURIComponent(voiceId)}/train`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ language }),
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+  } catch (error) {
+    // error-policy:J2 preserve the transport failure as the cause after
+    // durably recording that provider acceptance is unknown.
+    await recordProviderReceipt({
+      step: "train",
+      state: "submission_unknown",
+      elevenlabsVoiceId: voiceId,
+      errorMessage: "provider_transport_uncertain",
+    });
+    throw new VoiceCloneSubmissionUnknownError("train", error);
+  }
   if (!trainRes.ok) {
+    await recordProviderReceipt({
+      step: "train",
+      state: "rejected",
+      elevenlabsVoiceId: voiceId,
+    });
     const message = await readElevenLabsError(trainRes);
     throw new Error(`ElevenLabs PVC train failed: ${message}`);
   }
+  await recordProviderReceipt({
+    step: "train",
+    state: "accepted",
+    elevenlabsVoiceId: voiceId,
+  });
 
   return voiceId;
 }

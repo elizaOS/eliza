@@ -24,6 +24,7 @@ import {
   invalidateInferenceSessionAuthContexts,
 } from "./inference-auth-cache";
 import { setInferenceSubjectActive } from "./inference-credential-revocation";
+import { invalidateOutboundMessageStanding } from "./outbound-message-standing";
 
 /**
  * Clear the inference auth-context cache (#9899) for every API key a user owns.
@@ -35,12 +36,15 @@ async function invalidateUserInferenceContext(userId: string): Promise<void> {
     apiKeysRepository.listByUser(userId),
     dbRead.query.users.findFirst({
       where: eq(users.id, userId),
-      columns: { steward_user_id: true },
+      columns: { steward_user_id: true, organization_id: true },
     }),
   ]);
   await Promise.all([
     invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash)),
     invalidateInferenceSessionAuthContexts(user?.steward_user_id ? [user.steward_user_id] : []),
+    user?.organization_id
+      ? invalidateOutboundMessageStanding(user.organization_id, userId)
+      : Promise.resolve(true),
   ]);
 }
 

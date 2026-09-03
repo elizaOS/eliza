@@ -2,14 +2,14 @@
 import { Hono } from "hono";
 import { getErrorStatusCode, nextJsonFromCaughtError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { exposedVoiceCloneFailureReason } from "@/lib/services/voice-clone-failure";
 import { voiceCloningService } from "@/lib/services/voice-cloning";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * GET /api/elevenlabs/voices/jobs
- * Gets all active (processing or pending) voice cloning jobs for the authenticated user.
- * Only returns jobs that are still in progress.
+ * Gets active and reconciliation-required voice cloning jobs for the authenticated user.
  *
  * @param request - The Next.js request object.
  * @returns Array of active voice cloning jobs with status and progress information.
@@ -26,23 +26,45 @@ async function __hono_GET(request: Request) {
       user.id,
     );
 
-    // Filter for only processing/pending jobs
+    // Reconciliation-required jobs stay visible as an explicit manual queue;
+    // they must never disappear as ordinary failures after ambiguous provider work.
     const activeJobs = allJobs.filter(
-      (job) => job.status === "processing" || job.status === "pending",
+      (job) =>
+        job.status === "processing" ||
+        job.status === "pending" ||
+        job.status === "reconciliation_required",
     );
 
     return Response.json({
       success: true,
-      jobs: activeJobs.map((job) => ({
-        id: job.id,
-        voiceName: job.voiceName,
-        jobType: job.jobType,
-        status: job.status,
-        progress: job.progress,
-        errorMessage: job.errorMessage,
-        createdAt: job.createdAt,
-        startedAt: job.startedAt,
-      })),
+      jobs: activeJobs.map((job) => {
+        const metadata = job.metadata as Record<string, unknown>;
+        const providerState =
+          typeof metadata.providerSubmissionState === "string"
+            ? metadata.providerSubmissionState
+            : null;
+        const providerStep =
+          typeof metadata.providerLastStep === "string"
+            ? metadata.providerLastStep
+            : null;
+        return {
+          id: job.id,
+          voiceName: job.voiceName,
+          jobType: job.jobType,
+          status: job.status,
+          progress: job.progress,
+          errorMessage: exposedVoiceCloneFailureReason(
+            job.errorMessage,
+            job.status === "reconciliation_required",
+          ),
+          reconciliationRequired: job.status === "reconciliation_required",
+          providerState,
+          providerStep,
+          providerVoiceId: job.elevenlabsVoiceId,
+          createdAt: job.createdAt,
+          startedAt: job.startedAt,
+        };
+      }),
       total: activeJobs.length,
     });
   } catch (error) {
