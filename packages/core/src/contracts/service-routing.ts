@@ -487,8 +487,8 @@ export function normalizeLinkedAccountsRecords(
 	return Object.keys(out).length > 0 ? out : null;
 }
 
-/** Backwards-compatible name for the canonical linked-account normalizer. */
-export const normalizeLinkedAccountsConfig = normalizeLinkedAccountsRecords;
+/** Compat alias for older packaged app-core and Electrobun flag-map consumers. */
+export const normalizeLinkedAccountsConfig = normalizeLinkedAccountFlagsConfig;
 
 export function normalizeServiceRouteConfig(
 	value: unknown,
