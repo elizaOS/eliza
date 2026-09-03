@@ -117,6 +117,30 @@ Git branch. Successful results include `provenance` identifying the actual
 metadata are returned when available; unavailable integrity stays `null`, and
 Git installs report the cloned commit.
 
+## Core relationships storage cutover
+
+`migrateCoreRelationshipsToKnowledgeGraph` is the explicit, non-destructive
+operator boundary for retiring the old Core `RelationshipsService` persistence
+for one agent. Run it with a dedicated PostgreSQL-compatible connection so its
+serializable transaction remains on one connection. The migration inventories
+and archives the complete source rows, preserves the agent entity as the
+canonical `self` node, projects contacts, identities, typed edges, cadence,
+interactions, retirement state, audit receipts, and merge lineage, then reads
+back every source-to-target receipt.
+
+The default run stops at `verified`; it does not alter source authority. A
+second run with `activateCutover: true` installs per-agent database write fences
+and marks the receipt `cutover` in the same transaction. Those fences reject
+new `contact_info`, relationship, identity, or merge-candidate writes through
+the retired store while leaving unrelated components writable. No source row
+is deleted. A target-ID collision, disappeared source record, unreadable row,
+or failed readback rolls the transaction back and refuses cutover.
+
+Production cutover still requires an inventory taken from the actual database
+and caller verification against that agent. A local or fixture database cannot
+establish that a deployed tenant is empty or prove that no out-of-process legacy
+writer remains.
+
 ## x402 at a glance
 
 Paid routes set `x402` on a `Route`. The middleware returns **402** with payment options and accepts on-chain proofs, facilitator payment IDs, or standard payment payloads (`PAYMENT-SIGNATURE` / `X-Payment`), then verifies and settles through a facilitator before running the handler.

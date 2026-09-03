@@ -368,10 +368,14 @@ export {
 // re-export to mirror the relationships-graph surface and avoid colliding
 // with the broad services barrel.
 export {
+  type CoreRelationshipsMigrationReport,
+  type CoreRelationshipsSourceKind,
+  type CoreRelationshipsSqlExecutor,
   EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   KnowledgeGraphService,
   knowledgeGraphSchema,
+  migrateCoreRelationshipsToKnowledgeGraph,
   RelationshipStore,
   resolveKnowledgeGraphService,
 } from "./services/knowledge-graph/index.ts";

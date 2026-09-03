@@ -170,6 +170,69 @@ export const lifeRelationshipAuditEvents = appLifeopsPgSchema.table(
 );
 
 /**
+ * Durable control plane for retiring Core RelationshipsService persistence.
+ * Cutover is per agent and is activated only after source rows have been
+ * archived, projected, and read back in one serializable transaction.
+ */
+export const coreRelationshipsMigrationState = appLifeopsPgSchema.table(
+  "core_relationships_migration_state",
+  {
+    agentId: text("agent_id").primaryKey(),
+    status: text("status").notNull(),
+    sourceDigest: text("source_digest").notNull(),
+    inventoryJson: text("inventory_json").notNull(),
+    startedAt: text("started_at").notNull(),
+    verifiedAt: text("verified_at"),
+    cutoverAt: text("cutover_at"),
+  },
+);
+
+/** Verbatim, hash-addressed source rows retained after non-destructive cutover. */
+export const coreRelationshipsSourceRecords = appLifeopsPgSchema.table(
+  "core_relationships_source_records",
+  {
+    agentId: text("agent_id").notNull(),
+    sourceKind: text("source_kind").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    archivedAt: text("archived_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.sourceKind, t.sourceId)],
+);
+
+/** Source-to-target receipts used for resumable projection and exact readback. */
+export const coreRelationshipsMigrationRecords = appLifeopsPgSchema.table(
+  "core_relationships_migration_records",
+  {
+    agentId: text("agent_id").notNull(),
+    sourceKind: text("source_kind").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    targetKind: text("target_kind").notNull(),
+    targetId: text("target_id").notNull(),
+    verifiedAt: text("verified_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.sourceKind, t.sourceId)],
+);
+
+/** Merge proposals and resolutions have no lossy typed-edge equivalent. */
+export const coreRelationshipsMergeLineage = appLifeopsPgSchema.table(
+  "core_relationships_merge_lineage",
+  {
+    agentId: text("agent_id").notNull(),
+    candidateId: text("candidate_id").notNull(),
+    entityA: text("entity_a").notNull(),
+    entityB: text("entity_b").notNull(),
+    status: text("status").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    migratedAt: text("migrated_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.candidateId)],
+);
+
+/**
  * Aggregate schema registered by the runtime "eliza" plugin so the SQL
  * plugin migrates these tables whenever the runtime runs.
  */
@@ -179,4 +242,8 @@ export const knowledgeGraphSchema = {
   lifeEntityAttributes,
   lifeRelationshipsV2,
   lifeRelationshipAuditEvents,
+  coreRelationshipsMigrationState,
+  coreRelationshipsSourceRecords,
+  coreRelationshipsMigrationRecords,
+  coreRelationshipsMergeLineage,
 } as const;
