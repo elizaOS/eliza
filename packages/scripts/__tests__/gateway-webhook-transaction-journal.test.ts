@@ -462,6 +462,11 @@ describe("durable Gateway transaction journal", () => {
     ]);
     for (const [name, bytes] of fileBytes)
       writeFileSync(join(input, name), bytes);
+    const privateKeyCanary = "test-only-private-key-material-never-restore";
+    writeFileSync(
+      join(input, "transaction-signing-private-key.pk8"),
+      privateKeyCanary,
+    );
     let nextId = 600;
     const comments = new Map<number, Record<string, unknown>>();
     const api = {
@@ -499,6 +504,7 @@ describe("durable Gateway transaction journal", () => {
       expect(bodies.join("\n")).not.toContain(priorId);
       expect(bodies.join("\n")).not.toContain(snapshotId);
       expect(bodies.join("\n")).not.toContain("never-print-this");
+      expect(bodies.join("\n")).not.toContain(privateKeyCanary);
       await restoreEncryptedPlan(
         api,
         source,
@@ -1624,6 +1630,86 @@ describe("durable Gateway transaction journal", () => {
     expect(postCalls).toBe(0);
   });
 
+  test("rejects distinct CLOSE resolution proofs as conflicting siblings", async () => {
+    const [openComment] = recordCommentChain([openMarker()]);
+    const openRecord = recordFromComment(openComment);
+    const openNode = {
+      ...openRecord,
+      recordSha256: journalRecordDigest(openRecord),
+    };
+    const firstMarker = closeMarker({
+      openCommentId: openRecord.logicalRecordId,
+    });
+    const firstRecord = journalRecordPayload(
+      firstMarker,
+      openNode,
+      writerFor(firstMarker),
+      authKey,
+    );
+    const proofVariants = [
+      {
+        recoveryRunId: "100",
+        recoveryRunAttempt: "3",
+        recoveryJobId: "901",
+        recoveryWorkflowSha: "f".repeat(40),
+        resolutionArtifactName:
+          "gateway-webhook-reconciliation-staging-42-1-100-3",
+      },
+      { resolutionArtifactId: "702" },
+      { resolutionArtifactDigest: "1".repeat(64) },
+      { resolutionReceiptSha256: "2".repeat(64) },
+    ];
+    for (const proofOverride of proofVariants) {
+      const differentProofMarker = closeMarker({
+        ...firstMarker,
+        ...proofOverride,
+      });
+      const differentProofRecord = journalRecordPayload(
+        differentProofMarker,
+        openNode,
+        writerFor(differentProofMarker),
+        authKey,
+      );
+      expect(differentProofRecord.logicalRecordId).not.toBe(
+        firstRecord.logicalRecordId,
+      );
+      expect(markerDigest(differentProofMarker)).not.toBe(
+        markerDigest(firstMarker),
+      );
+
+      const comments = [
+        openComment,
+        {
+          id: 2,
+          body: journalRecordCommentBody(firstRecord),
+          created_at: "2026-09-03T00:00:01Z",
+          updated_at: "2026-09-03T00:00:01Z",
+          user: { login: "github-actions[bot]", type: "Bot" },
+        },
+        {
+          id: 3,
+          body: journalRecordCommentBody(differentProofRecord),
+          created_at: "2026-09-03T00:00:02Z",
+          updated_at: "2026-09-03T00:00:02Z",
+          user: { login: "github-actions[bot]", type: "Bot" },
+        },
+      ];
+      const api = {
+        request: async (method: string, endpoint: string) => {
+          if (
+            method === "GET" &&
+            endpoint.startsWith("/issues/29763/comments?")
+          )
+            return comments;
+          throw new Error(`unexpected ${method} ${endpoint}`);
+        },
+      };
+      await expect(
+        readJournalState(api, repository, "staging", authKey),
+      ).rejects.toThrow("distinct logical siblings");
+    }
+  });
+
   test("does not authorize a replay when an older intent alias appears after retry POST", async () => {
     const [openComment] = recordCommentChain([openMarker()]);
     const rawOpen = recordFromComment(openComment);
@@ -1848,7 +1934,7 @@ describe("durable Gateway transaction journal", () => {
     );
   });
 
-  test("bounds prepared-OPEN artifact reads while retaining old queued and freshly resumed runs", async () => {
+  test("bounds prepared-OPEN artifact reads while retaining recent successful and queued runs", async () => {
     const resumedMarker = openMarker({
       sourceRunId: "9001",
       sourceRunAttempt: "1",
@@ -1872,6 +1958,8 @@ describe("durable Gateway transaction journal", () => {
       event: "workflow_dispatch",
       status: "completed",
       conclusion: "success",
+      updated_at: old,
+      completed_at: old,
     }));
     const runs = [
       ...oldSuccesses,
@@ -1880,7 +1968,7 @@ describe("durable Gateway transaction journal", () => {
         head_branch: "develop",
         event: "workflow_dispatch",
         status: "completed",
-        conclusion: "cancelled",
+        conclusion: "success",
         created_at: old,
         updated_at: recent,
         completed_at: recent,

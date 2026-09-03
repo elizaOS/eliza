@@ -400,4 +400,36 @@ function hasFinding(report, fragment) {
   );
 }
 
+// 21. An allowlisted orphan must not make its dependency look externally wired.
+{
+  const report = runAudit({
+    root: { build: "tsc -b" },
+    files: {
+      "packages/scripts/gateway-webhook-reconcile.mjs":
+        'import "./nested-orphan.mjs";\n',
+      "packages/scripts/nested-orphan.mjs": "export const value = true;\n",
+    },
+  });
+  assert(!report.ok, "an allowlisted orphan must not root a dependency");
+  assert(
+    hasFinding(report, "nested-orphan.mjs"),
+    "expected the dependency of an allowlisted orphan to remain orphaned",
+  );
+}
+
+// 22. A dependency transitively reached from a real root caller remains wired.
+{
+  const report = runAudit({
+    root: { build: "node packages/scripts/rooted.mjs" },
+    files: {
+      "packages/scripts/rooted.mjs": 'import "./reachable-leaf.mjs";\n',
+      "packages/scripts/reachable-leaf.mjs": "export const value = true;\n",
+    },
+  });
+  assert(
+    report.ok,
+    `transitively rooted script should pass, got ${JSON.stringify(report.failures)}`,
+  );
+}
+
 console.log("audit-scripts self-test passed");

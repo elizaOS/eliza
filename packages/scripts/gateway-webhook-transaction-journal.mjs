@@ -183,16 +183,6 @@ function semanticMarker(marker) {
       semantic;
     return intent;
   }
-  if (marker.kind === "close") {
-    const {
-      resolutionArtifactDigest: _artifactDigest,
-      resolutionArtifactId: _artifactId,
-      resolutionArtifactName: _artifactName,
-      resolutionReceiptSha256: _receiptDigest,
-      ...close
-    } = semantic;
-    return close;
-  }
   return semantic;
 }
 
@@ -1328,7 +1318,6 @@ function runCanRetainUnresolvedPreparedOpen(run, retentionCutoff) {
     fail("gateway prepared-OPEN workflow run has no valid status");
   }
   if (run.status !== "completed") return true;
-  if (run.conclusion === "success") return false;
   const updatedAt = Date.parse(run.updated_at ?? "");
   const completedAt = Date.parse(run.completed_at ?? "");
   if (!Number.isFinite(updatedAt) || !Number.isFinite(completedAt)) {

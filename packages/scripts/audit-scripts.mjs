@@ -145,6 +145,10 @@ const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
     "dormant staging-only transaction reconciler landed before the separately reviewed #29763 workflow wiring; direct entry is guarded and tests are its only caller in this precursor",
   ],
   [
+    "gateway-webhook-transaction-journal.mjs",
+    "dormant staging-only authenticated journal landed before the separately reviewed #29763 workflow wiring; it is imported only by the allowlisted reconciler in this precursor",
+  ],
+  [
     "run-scenario-benchmark.mjs",
     "scenario benchmark wrapper invoked by packages/training/scripts/collect_trajectories.py",
   ],
@@ -442,16 +446,35 @@ function auditScriptFiles(root) {
   );
   const nonScriptCorpus = buildNonScriptCorpus(root);
 
+  // Build reachability only from real callers outside packages/scripts. An
+  // allowlisted orphan is exempt itself, but it must not make an otherwise
+  // orphaned dependency look wired. This also rejects unrooted sibling cycles.
+  const reachable = new Set(
+    files.filter((name) => nonScriptCorpus.includes(name)),
+  );
+  let addedReachable = true;
+  while (addedReachable) {
+    addedReachable = false;
+    for (const caller of [...reachable]) {
+      const callerBody = bodies.get(caller) ?? "";
+      for (const candidate of files) {
+        if (
+          candidate !== caller &&
+          !reachable.has(candidate) &&
+          callerBody.includes(candidate)
+        ) {
+          reachable.add(candidate);
+          addedReachable = true;
+        }
+      }
+    }
+  }
+
   const failures = [];
   for (const name of files) {
     if (isScriptTestPath(`packages/scripts/${name}`)) continue;
     if (ORPHAN_SCRIPT_FILE_ALLOWLIST.has(name)) continue;
-    if (nonScriptCorpus.includes(name)) continue;
-    // Referenced by any OTHER script file (spawn/exec/import/string mention)?
-    const referencedBySibling = files.some(
-      (other) => other !== name && bodies.get(other).includes(name),
-    );
-    if (referencedBySibling) continue;
+    if (reachable.has(name)) continue;
     failures.push(
       `[orphan-file] packages/scripts/${name} is referenced by nothing (no ` +
         `root script, CI workflow, composite action, docs, or other reachable ` +
