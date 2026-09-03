@@ -1288,7 +1288,7 @@ describe("Gateway webhook Railway reconciler", () => {
     expect(harness.state.rollbackObservations[0].status).toBe("SUCCESS");
   });
 
-  test("refines a late R1 after terminal R2 and never emits another effect", async () => {
+  test("keeps delayed R1 and acknowledged R2 unresolved when their effects cannot be attributed", async () => {
     let harness: ReturnType<typeof createHarness>;
     harness = createHarness({
       candidateStatus: "FAILED",
@@ -1316,27 +1316,30 @@ describe("Gateway webhook Railway reconciler", () => {
         await bundle(),
         harness.dependencies,
       ),
-    ).rejects.toThrow("fresh authorized run");
+    ).rejects.toThrow("could refine an earlier ambiguous rollback ordinal");
     expect(harness.rollbackCalls()).toBe(2);
     expect(
       harness.state.rollbackObservations.map(
         (observation: { status: string }) => observation.status,
       ),
-    ).toEqual(["AMBIGUOUS", "FAILED"]);
+    ).toEqual(["AMBIGUOUS"]);
 
     harness.addRestoration(restorationOne, "SUCCESS", "2026-09-03T00:55:00Z");
-    const result = await reconcileGatewayWebhook(
-      { ...config },
-      await bundle(),
-      harness.dependencies,
+    await expect(
+      reconcileGatewayWebhook(
+        { ...config },
+        await bundle(),
+        harness.dependencies,
+      ),
+    ).rejects.toThrow(
+      "one durable rollback intent maps to multiple Railway restorations",
     );
-    expect(result.result).toBe("prior-snapshot-restored");
     expect(harness.rollbackCalls()).toBe(2);
     expect(
       harness.state.rollbackObservations.map(
         (observation: { status: string }) => observation.status,
       ),
-    ).toEqual(["SUCCESS", "FAILED"]);
+    ).toEqual(["AMBIGUOUS"]);
   });
 
   test("keeps multiple late restorations fail-closed without another effect", async () => {
@@ -1416,7 +1419,112 @@ describe("Gateway webhook Railway reconciler", () => {
     expect(harness.state.rollbackIntents).toHaveLength(2);
   });
 
-  test("a crash after R1 intent never reuses R1 and R2 converges once", async () => {
+  test("never attributes a sole post-acknowledgement restoration to R2 while R1 is ambiguous", async () => {
+    let harness: ReturnType<typeof createHarness>;
+    harness = createHarness({
+      candidateStatus: "FAILED",
+      active: candidateId,
+      rollback: async (ordinal) => {
+        if (ordinal === 1) throw new Error("R1 acknowledgement lost");
+        harness.addRestoration(
+          restorationOne,
+          "SUCCESS",
+          "2026-09-03T00:55:00Z",
+        );
+        return true;
+      },
+    });
+    await expect(
+      reconcileGatewayWebhook(
+        { ...config },
+        await bundle(),
+        harness.dependencies,
+      ),
+    ).rejects.toThrow("acknowledgement is unresolved");
+    await expect(
+      reconcileGatewayWebhook(
+        { ...config },
+        await bundle(),
+        harness.dependencies,
+      ),
+    ).rejects.toThrow("could refine an earlier ambiguous rollback ordinal");
+    expect(harness.rollbackCalls()).toBe(2);
+    expect(harness.state.rollbackIntents).toHaveLength(2);
+    expect(
+      harness.state.rollbackObservations.map(
+        (observation: { status: string }) => observation.status,
+      ),
+    ).toEqual(["AMBIGUOUS"]);
+
+    await expect(
+      reconcileGatewayWebhook(
+        { ...config },
+        await bundle(),
+        harness.dependencies,
+      ),
+    ).rejects.toThrow("could refine an earlier ambiguous rollback ordinal");
+    expect(harness.rollbackCalls()).toBe(2);
+    expect(harness.state.rollbackObservations).toHaveLength(1);
+  });
+
+  test("keeps a restoration first visible at the R2 settlement boundary unattributed", async () => {
+    let harness: ReturnType<typeof createHarness>;
+    let r2AcknowledgedAt: number | null = null;
+    let restorationInjected = false;
+    harness = createHarness({
+      candidateStatus: "FAILED",
+      active: candidateId,
+      rollback: async (ordinal) => {
+        if (ordinal === 1) throw new Error("R1 acknowledgement lost");
+        r2AcknowledgedAt = harness.monotonicNow();
+        return true;
+      },
+      onSleep: (monotonicNow) => {
+        if (
+          r2AcknowledgedAt !== null &&
+          !restorationInjected &&
+          monotonicNow - r2AcknowledgedAt >= 690_000
+        ) {
+          restorationInjected = true;
+          harness.addRestoration(
+            restorationOne,
+            "FAILED",
+            "2026-09-03T01:00:00Z",
+          );
+        }
+      },
+    });
+    await expect(
+      reconcileGatewayWebhook(
+        { ...config },
+        await bundle(),
+        harness.dependencies,
+      ),
+    ).rejects.toThrow("acknowledgement is unresolved");
+    await expect(
+      reconcileGatewayWebhook(
+        { ...config },
+        await bundle(),
+        harness.dependencies,
+      ),
+    ).rejects.toThrow("could refine an earlier ambiguous rollback ordinal");
+    expect(restorationInjected).toBe(true);
+    const observedR2AcknowledgedAt = r2AcknowledgedAt;
+    expect(observedR2AcknowledgedAt).not.toBeNull();
+    expect(
+      harness.monotonicNow() -
+        (observedR2AcknowledgedAt ?? Number.POSITIVE_INFINITY),
+    ).toBeGreaterThanOrEqual(690_000);
+    expect(harness.rollbackCalls()).toBe(2);
+    expect(harness.state.rollbackIntents).toHaveLength(2);
+    expect(
+      harness.state.rollbackObservations.map(
+        (observation: { status: string }) => observation.status,
+      ),
+    ).toEqual(["AMBIGUOUS"]);
+  });
+
+  test("a crash after R1 intent never reuses R1 or guesses which intent caused an effect", async () => {
     const harness = createHarness({
       candidateStatus: "FAILED",
       active: candidateId,
@@ -1447,15 +1555,27 @@ describe("Gateway webhook Railway reconciler", () => {
         await bundle(),
         harness.dependencies,
       ),
-    ).rejects.toThrow("fresh authorized run");
+    ).rejects.toThrow("could refine an earlier ambiguous rollback ordinal");
     expect(harness.rollbackCalls()).toBe(1);
     expect(harness.state.rollbackIntents).toHaveLength(2);
-    const result = await reconcileGatewayWebhook(
-      { ...config },
-      await bundle(),
-      harness.dependencies,
-    );
-    expect(result.result).toBe("prior-snapshot-restored");
+    expect(
+      harness.state.rollbackObservations.map(
+        (observation: { status: string }) => observation.status,
+      ),
+    ).toEqual(["AMBIGUOUS"]);
+    await expect(
+      reconcileGatewayWebhook(
+        { ...config },
+        await bundle(),
+        harness.dependencies,
+      ),
+    ).rejects.toThrow("could refine an earlier ambiguous rollback ordinal");
+    expect(harness.rollbackCalls()).toBe(1);
+    expect(
+      harness.state.rollbackObservations.map(
+        (observation: { status: string }) => observation.status,
+      ),
+    ).toEqual(["AMBIGUOUS"]);
   });
 
   test("records failed R1, issues unique R2, and never permits R3", async () => {

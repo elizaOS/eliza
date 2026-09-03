@@ -1112,6 +1112,24 @@ function unobservedRestorations(state, snapshot) {
   );
 }
 
+function assertRestorationCannotRefineEarlierAmbiguousIntent(
+  state,
+  restoration,
+) {
+  const digest = providerDeploymentIdDigest(restoration.id);
+  if (
+    state.rollbackObservations.some((observation) => {
+      if (observation.status !== "AMBIGUOUS") return false;
+      const intent = state.rollbackIntents[observation.ordinal - 1];
+      return !intent.providerDeploymentIdWatermarkSha256.includes(digest);
+    })
+  ) {
+    fail(
+      "Railway restoration could refine an earlier ambiguous rollback ordinal",
+    );
+  }
+}
+
 async function observeExistingIntent(
   config,
   bundle,
@@ -1145,18 +1163,7 @@ async function observeExistingIntent(
     );
   }
   const restoration = matches[0];
-  const digest = providerDeploymentIdDigest(restoration.id);
-  if (
-    state.rollbackObservations.some((observation) => {
-      if (observation.status !== "AMBIGUOUS") return false;
-      const intent = state.rollbackIntents[observation.ordinal - 1];
-      return !intent.providerDeploymentIdWatermarkSha256.includes(digest);
-    })
-  ) {
-    fail(
-      "Railway restoration could refine an earlier ambiguous rollback ordinal",
-    );
-  }
+  assertRestorationCannotRefineEarlierAmbiguousIntent(state, restoration);
   if (statusClass(restoration.status) !== "terminal") {
     fail("the exact restoration for the current intent remains nonterminal");
   }
@@ -1399,6 +1406,7 @@ async function createAndIssueRollback(
     );
   }
   const restoration = matches[0];
+  assertRestorationCannotRefineEarlierAmbiguousIntent(current, restoration);
   if (statusClass(restoration.status) !== "terminal") {
     fail(
       "acknowledged Railway restoration remains nonterminal after the full settlement horizon; a later run will observe it without replay",
