@@ -67,6 +67,12 @@ const RECEIPT_FILE = "gateway-webhook-deployment.json";
 const MAX_RECEIPT_ARCHIVE_BYTES = 2_000_000;
 const MAX_RECEIPT_BYTES = 2_000_000;
 const SOURCE_SETTLEMENT_SECONDS = 600;
+const SOURCE_TERMINAL_CONCLUSIONS = new Set([
+  "success",
+  "failure",
+  "cancelled",
+  "timed_out",
+]);
 // An intent may be created before the final provider/scope reads complete. Keep
 // the irreversible call close to that durable timestamp, then wait an extra
 // full provider-settlement horizon before a later run may classify a lost ACK.
@@ -208,8 +214,12 @@ function validateDeployment(
       (allowNullSnapshot && deployment.snapshotId === null) ||
       SNAPSHOT.test(deployment.snapshotId ?? "")
     ) ||
+    !Object.hasOwn(deployment, "deploymentStopped") ||
     ![true, false, null].includes(deployment.deploymentStopped ?? null) ||
-    !(deployment.meta === null || typeof deployment.meta === "object")
+    !(
+      deployment.meta === null ||
+      (typeof deployment.meta === "object" && !Array.isArray(deployment.meta))
+    )
   ) {
     fail("Railway deployment readback is malformed or outside the exact scope");
   }
@@ -224,7 +234,10 @@ function validateHistoryRow(row) {
     typeof row.createdAt !== "string" ||
     !Number.isFinite(Date.parse(row.createdAt)) ||
     typeof row.status !== "string" ||
-    !(row.meta === null || typeof row.meta === "object")
+    !(
+      row.meta === null ||
+      (typeof row.meta === "object" && !Array.isArray(row.meta))
+    )
   ) {
     fail("Railway deployment-history row is malformed");
   }
@@ -382,7 +395,7 @@ export async function verifySourcePreMutationSnapshot(
   }
   return {
     deploymentCount: second.length,
-    priorActiveDeploymentId: active[0].id,
+    priorActiveDeploymentIdSha256: providerDeploymentIdDigest(active[0].id),
   };
 }
 
@@ -488,6 +501,52 @@ export function validateDeploymentReceipt(config, plan, receipt, candidateId) {
 
 function expectedReceiptArtifactName(config) {
   return `gateway-webhook-deployment-staging-${config.sourceSha}-${config.sourceRunId}-${config.sourceRunAttempt}`;
+}
+
+function validateExactSourceRun(
+  config,
+  sourceRun,
+  nowMilliseconds,
+  failureMessage = "exact source workflow attempt is not durably terminal",
+) {
+  const completedAt = Date.parse(sourceRun?.completed_at ?? "");
+  if (
+    !Number.isFinite(nowMilliseconds) ||
+    !Number.isSafeInteger(config.sourceDeployCompletedEpoch) ||
+    config.sourceDeployCompletedEpoch <= 0 ||
+    String(sourceRun?.id) !== config.sourceRunId ||
+    String(sourceRun?.run_attempt) !== config.sourceRunAttempt ||
+    sourceRun?.head_sha !== config.sourceSha ||
+    sourceRun?.head_branch !== "develop" ||
+    sourceRun?.head_repository?.full_name !== config.repository ||
+    sourceRun?.path !== ".github/workflows/deploy-gateway-webhook.yml" ||
+    sourceRun?.event !== "workflow_dispatch" ||
+    sourceRun?.status !== "completed" ||
+    !SOURCE_TERMINAL_CONCLUSIONS.has(sourceRun?.conclusion) ||
+    !Number.isFinite(completedAt) ||
+    completedAt > nowMilliseconds ||
+    Math.floor(completedAt / 1_000) !== config.sourceDeployCompletedEpoch
+  ) {
+    fail(failureMessage);
+  }
+  return sourceRun;
+}
+
+async function attestExactSourceRun(config, dependencies) {
+  if (typeof dependencies.sourceRun?.read !== "function") {
+    fail("exact source workflow attempt readback is unavailable");
+  }
+  let sourceRun;
+  try {
+    sourceRun = await dependencies.sourceRun.read();
+  } catch (error) {
+    if (error instanceof RedactedActionError) throw error;
+    fail(
+      "GitHub source workflow metadata request failed",
+      "github-api-request-failure",
+    );
+  }
+  return validateExactSourceRun(config, sourceRun, dependencies.wallNow());
 }
 
 function crc32(bytes) {
@@ -625,19 +684,18 @@ export function validateReceiptArtifactAttestation(
     typeof artifact?.expires_at !== "string" ||
     !Number.isFinite(Date.parse(artifact.expires_at)) ||
     Date.parse(artifact.expires_at) <= nowMilliseconds ||
-    String(sourceRun?.id) !== config.sourceRunId ||
-    String(sourceRun?.run_attempt) !== config.sourceRunAttempt ||
-    sourceRun?.head_sha !== config.sourceSha ||
-    sourceRun?.head_branch !== "develop" ||
-    sourceRun?.head_repository?.full_name !== config.repository ||
-    sourceRun?.path !== ".github/workflows/deploy-gateway-webhook.yml" ||
-    sourceRun?.event !== "workflow_dispatch" ||
     sha256(archiveBytes) !== config.receiptArtifactDigest
   ) {
     fail(
       "deployment receipt artifact is not an unexpired exact-source GitHub artifact",
     );
   }
+  validateExactSourceRun(
+    config,
+    sourceRun,
+    nowMilliseconds,
+    "deployment receipt artifact is not an unexpired exact-source GitHub artifact",
+  );
   const receiptBytes = receiptBytesFromArchive(archiveBytes);
   const receipt = parseUniqueJson(
     receiptBytes.toString("utf8"),
@@ -667,6 +725,10 @@ async function readSnapshot(config, bundle, state, candidateId, railway) {
       );
     }
   }
+  const baselineRows = rows.filter((row) => bundle.baselineIds.has(row.id));
+  if (baselineRows.some((row) => statusClass(row.status) !== "terminal")) {
+    fail("complete Railway baseline contains a nonterminal deployment");
+  }
   const postRows = rows.filter((row) => !bundle.baselineIds.has(row.id));
   const deployments = new Map();
   for (const row of postRows) {
@@ -688,6 +750,18 @@ async function readSnapshot(config, bundle, state, candidateId, railway) {
   );
   if (prior.snapshotId !== bundle.plan.priorSnapshotId) {
     fail("Railway no longer proves the immutable prior deployment snapshot");
+  }
+  const priorRow = baselineRows.find(
+    (row) => row.id === bundle.plan.priorActiveDeploymentId,
+  );
+  if (
+    !priorRow ||
+    priorRow.status !== prior.status ||
+    statusClass(prior.status) !== "terminal"
+  ) {
+    fail(
+      "Railway prior deployment history/status is nonterminal or inconsistent",
+    );
   }
   if (candidateId && !deployments.has(candidateId)) {
     fail("durable candidate is absent from the complete Railway history");
@@ -940,17 +1014,7 @@ async function waitForMonotonicHorizon(
   }
 }
 
-async function waitForSourceSettlement(
-  config,
-  dependencies,
-  invocationStartedAt,
-) {
-  if (
-    !Number.isSafeInteger(config.sourceDeployCompletedEpoch) ||
-    config.sourceDeployCompletedEpoch <= 0
-  ) {
-    fail("exact source mutation terminal time is missing");
-  }
+async function waitForSourceSettlement(dependencies, invocationStartedAt) {
   await waitForMonotonicHorizon(
     dependencies,
     invocationStartedAt,
@@ -1390,6 +1454,7 @@ async function createAndIssueRollback(
   // The final provider reads may themselves take long enough for develop to
   // move. Leave no asynchronous boundary after this last GitHub authority
   // fence and before the irreversible provider call.
+  await attestExactSourceRun(config, dependencies);
   await dependencies.authority.assertCurrentDevelop();
   assertRollbackCallRunway(intentPublicationStartedAt, dependencies);
   let acknowledged;
@@ -1490,7 +1555,8 @@ export async function reconcileGatewayWebhook(
     fail("staging reconciliation inputs are malformed");
   }
   const bundle = validatePlanBundle(config, rawBundle);
-  await waitForSourceSettlement(config, dependencies, invocationStartedAt);
+  await attestExactSourceRun(config, dependencies);
+  await waitForSourceSettlement(dependencies, invocationStartedAt);
   let state = validateJournalState(
     config,
     await dependencies.journal.read(),
@@ -2070,6 +2136,13 @@ async function defaultDependencies(config, environment) {
       repository: config.repository,
       apiUrl: environment.GITHUB_API_URL,
     }),
+    sourceRun: {
+      read: () =>
+        api.request(
+          "GET",
+          `/actions/runs/${config.sourceRunId}/attempts/${config.sourceRunAttempt}`,
+        ),
+    },
     authority: {
       assertCurrentDevelop: async () => {
         if (

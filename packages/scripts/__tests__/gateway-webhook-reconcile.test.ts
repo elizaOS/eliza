@@ -1,3 +1,8 @@
+/**
+ * Exercises the dormant staging Gateway reconciler with injected Railway,
+ * GitHub, artifact, journal, and clock harnesses so every mutation boundary can
+ * be proven fail-closed without contacting a live provider.
+ */
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -39,6 +44,19 @@ const scope = {
 };
 const expectedMessage = `gateway-webhook ${sourceSha} (staging) run:101:1 nonce:${"d".repeat(32)}`;
 
+type SourceRunFixture = {
+  id: number;
+  run_attempt: number;
+  head_sha: string;
+  head_branch: string;
+  head_repository: { full_name: string };
+  path: string;
+  event: string;
+  status: string;
+  conclusion: string | null;
+  completed_at: string | null;
+};
+
 type ReceiptArtifactFixture = {
   artifact: {
     id: number;
@@ -48,15 +66,7 @@ type ReceiptArtifactFixture = {
     expires_at: string;
     workflow_run: { id: number; head_sha: string };
   };
-  sourceRun: {
-    id: number;
-    run_attempt: number;
-    head_sha: string;
-    head_branch: string;
-    head_repository: { full_name: string };
-    path: string;
-    event: string;
-  };
+  sourceRun: SourceRunFixture;
   archiveBytes: Buffer;
 };
 
@@ -155,6 +165,23 @@ const config = {
   receipt: null as null | Record<string, unknown>,
 };
 
+function sourceRunFixture(): SourceRunFixture {
+  return {
+    id: Number(config.sourceRunId),
+    run_attempt: Number(config.sourceRunAttempt),
+    head_sha: sourceSha,
+    head_branch: "develop",
+    head_repository: { full_name: config.repository },
+    path: ".github/workflows/deploy-gateway-webhook.yml",
+    event: "workflow_dispatch",
+    status: "completed",
+    conclusion: "success",
+    completed_at: new Date(
+      config.sourceDeployCompletedEpoch * 1_000,
+    ).toISOString(),
+  };
+}
+
 function bundle(extraBaseline: ReturnType<typeof historyRow>[] = []) {
   const baseline = [
     ...extraBaseline,
@@ -231,7 +258,12 @@ function createHarness(
     artifactAttestation?: (
       attestation: ReceiptArtifactFixture,
     ) => Promise<ReceiptArtifactFixture>;
+    omitDeploymentStopped?: boolean;
     scopeAttestation?: () => Promise<void>;
+    sourceRunRead?: (
+      call: number,
+      sourceRun: SourceRunFixture,
+    ) => Promise<SourceRunFixture> | SourceRunFixture;
   } = {},
 ) {
   let now = Date.parse("2026-09-03T00:30:00Z");
@@ -276,15 +308,7 @@ function createHarness(
         expires_at: "2026-10-03T00:00:00Z",
         workflow_run: { id: Number(config.sourceRunId), head_sha: sourceSha },
       },
-      sourceRun: {
-        id: Number(config.sourceRunId),
-        run_attempt: Number(config.sourceRunAttempt),
-        head_sha: sourceSha,
-        head_branch: "develop",
-        head_repository: { full_name: config.repository },
-        path: ".github/workflows/deploy-gateway-webhook.yml",
-        event: "workflow_dispatch",
-      },
+      sourceRun: sourceRunFixture(),
       archiveBytes,
     };
     config.receipt = structuredClone(authoritativeReceipt);
@@ -339,12 +363,27 @@ function createHarness(
   let railwayReadCalls = 0;
   let artifactAttestationCalls = 0;
   let scopeAttestationCalls = 0;
+  let sourceRunReadCalls = 0;
   let intentFailure: Error | null = null;
   let authorityFailure: Error | null = null;
   let intentAlreadyPublished = false;
   const logicalId = (ordinal: number, kind: string) =>
     (kind === "intent" ? String(ordinal) : String(ordinal + 4)).repeat(64);
+  const providerDeployment = (value: ReturnType<typeof deployment>) => {
+    if (!options.omitDeploymentStopped) return { ...value };
+    const { deploymentStopped: _deploymentStopped, ...incomplete } = value;
+    return incomplete;
+  };
   const dependencies = {
+    sourceRun: {
+      read: async () => {
+        sourceRunReadCalls += 1;
+        const sourceRun = sourceRunFixture();
+        return options.sourceRunRead
+          ? options.sourceRunRead(sourceRunReadCalls, sourceRun)
+          : sourceRun;
+      },
+    },
     railway: {
       listDeployments: async () => {
         railwayReadCalls += 1;
@@ -352,11 +391,11 @@ function createHarness(
       },
       getDeployment: async (id: string) => {
         railwayReadCalls += 1;
-        return { ...exact.get(id)! };
+        return providerDeployment(exact.get(id)!);
       },
       getActiveDeployments: async () => {
         railwayReadCalls += 1;
-        return [{ ...(activeOverride ?? exact.get(activeId)!) }];
+        return [providerDeployment(activeOverride ?? exact.get(activeId)!)];
       },
       assertExactStagingScope: async () => {
         scopeAttestationCalls += 1;
@@ -500,6 +539,7 @@ function createHarness(
     railwayReadCalls: () => railwayReadCalls,
     artifactAttestationCalls: () => artifactAttestationCalls,
     scopeAttestationCalls: () => scopeAttestationCalls,
+    sourceRunReadCalls: () => sourceRunReadCalls,
     now: () => now,
     monotonicNow: () => monotonicNow,
     advanceNow: (milliseconds: number) => {
@@ -641,9 +681,10 @@ describe("Gateway webhook Railway reconciler", () => {
     );
     expect(result).toEqual({
       deploymentCount: 1,
-      priorActiveDeploymentId: priorId,
+      priorActiveDeploymentIdSha256: providerDeploymentIdDigest(priorId),
     });
     expect(JSON.parse(output)).toEqual(result);
+    expect(output).not.toContain(priorId);
   });
 
   test("requires provider metadata in the immutable prior-active proof", async () => {
@@ -654,6 +695,24 @@ describe("Gateway webhook Railway reconciler", () => {
     expect(() => validatePlanBundle(config, planBundle)).toThrow(
       "Railway deployment readback is malformed or outside the exact scope",
     );
+  });
+
+  test("rejects array metadata at both immutable provider boundaries", async () => {
+    const priorMetaArray = await bundle();
+    priorMetaArray.priorActive.data.serviceInstance.activeDeployments[0].meta =
+      [];
+    expect(() => validatePlanBundle(config, priorMetaArray)).toThrow(
+      "Railway deployment readback is malformed or outside the exact scope",
+    );
+
+    const malformedHistory = historyRow(
+      deployment(restorationOne, "FAILED"),
+      "2026-09-02T00:00:00Z",
+    );
+    malformedHistory.meta = [];
+    expect(() =>
+      validatePlanBundle(config, bundle([malformedHistory])),
+    ).toThrow("Railway deployment-history row is malformed");
   });
 
   test("rejects malformed errors in the immutable prior-active proof", async () => {
@@ -859,6 +918,64 @@ describe("Gateway webhook Railway reconciler", () => {
     }
   });
 
+  test("requires every exact terminal source-attempt field before Railway reads", async () => {
+    const corruptions: Array<(sourceRun: SourceRunFixture) => void> = [
+      (sourceRun) => {
+        sourceRun.id += 1;
+      },
+      (sourceRun) => {
+        sourceRun.run_attempt += 1;
+      },
+      (sourceRun) => {
+        sourceRun.head_sha = "b".repeat(40);
+      },
+      (sourceRun) => {
+        sourceRun.head_branch = "main";
+      },
+      (sourceRun) => {
+        sourceRun.head_repository.full_name = "other/repository";
+      },
+      (sourceRun) => {
+        sourceRun.path = ".github/workflows/other.yml";
+      },
+      (sourceRun) => {
+        sourceRun.event = "push";
+      },
+      (sourceRun) => {
+        sourceRun.status = "in_progress";
+        sourceRun.conclusion = null;
+      },
+      (sourceRun) => {
+        sourceRun.conclusion = "stale";
+      },
+      (sourceRun) => {
+        sourceRun.completed_at = new Date(
+          (config.sourceDeployCompletedEpoch + 1) * 1_000,
+        ).toISOString();
+      },
+    ];
+    for (const corrupt of corruptions) {
+      const harness = createHarness({
+        sourceRunRead: (_call, sourceRun) => {
+          corrupt(sourceRun);
+          return sourceRun;
+        },
+      });
+      await expect(
+        reconcileGatewayWebhook(
+          { ...config },
+          await bundle(),
+          harness.dependencies,
+        ),
+      ).rejects.toThrow(
+        "exact source workflow attempt is not durably terminal",
+      );
+      expect(harness.sourceRunReadCalls()).toBe(1);
+      expect(harness.railwayReadCalls()).toBe(0);
+      expect(harness.rollbackCalls()).toBe(0);
+    }
+  });
+
   test("rejects counterfeit local candidate receipts unless every authoritative artifact boundary verifies", async () => {
     const corruptions: Array<(value: ReceiptArtifactFixture) => void> = [
       (attestation) => {
@@ -872,6 +989,10 @@ describe("Gateway webhook Railway reconciler", () => {
       },
       (attestation) => {
         attestation.sourceRun.run_attempt = 2;
+      },
+      (attestation) => {
+        attestation.sourceRun.status = "in_progress";
+        attestation.sourceRun.conclusion = null;
       },
       (attestation) => {
         attestation.archiveBytes[0] ^= 0xff;
@@ -984,6 +1105,46 @@ describe("Gateway webhook Railway reconciler", () => {
     expect(headFailure.rollbackCalls()).toBe(0);
   });
 
+  test("never mutates when a provider deployment omits deploymentStopped", async () => {
+    const harness = createHarness({
+      candidateStatus: "FAILED",
+      active: candidateId,
+      omitDeploymentStopped: true,
+    });
+    await expect(
+      reconcileGatewayWebhook(
+        { ...config },
+        await bundle(),
+        harness.dependencies,
+      ),
+    ).rejects.toThrow(
+      "Railway deployment readback is malformed or outside the exact scope",
+    );
+    expect(harness.rollbackCalls()).toBe(0);
+  });
+
+  test("never mutates when a baseline deployment becomes nonterminal", async () => {
+    const oldFailed = deployment(restorationOne, "FAILED");
+    const harness = createHarness({
+      candidateStatus: "FAILED",
+      active: candidateId,
+    });
+    harness.addHistory(oldFailed, "2026-09-02T00:00:00Z");
+    harness.setDeploymentStatus(restorationOne, "REMOVING");
+    const planBundle = await bundle([
+      historyRow(oldFailed, "2026-09-02T00:00:00Z"),
+    ]);
+    harness.state.open.journalPlanPlaintextSha256 =
+      planBundle.digests.journalPlanPlaintext;
+    await expect(
+      reconcileGatewayWebhook({ ...config }, planBundle, harness.dependencies),
+    ).rejects.toThrow(
+      "complete Railway baseline contains a nonterminal deployment",
+    );
+    expect(harness.rollbackCalls()).toBe(0);
+    expect(harness.state.rollbackIntents).toHaveLength(0);
+  });
+
   test("never replays an ordinal whose deterministic intent was already published", async () => {
     const harness = createHarness({
       candidateStatus: "FAILED",
@@ -1017,6 +1178,27 @@ describe("Gateway webhook Railway reconciler", () => {
       ),
     ).rejects.toThrow("develop advanced after preflight");
     expect(harness.authorityCalls()).toBe(3);
+    expect(harness.rollbackCalls()).toBe(0);
+  });
+
+  test("rechecks the exact terminal source attempt immediately before the Railway rollback", async () => {
+    const harness = createHarness({
+      candidateStatus: "FAILED",
+      active: candidateId,
+      sourceRunRead: (call, sourceRun) =>
+        call === 1
+          ? sourceRun
+          : { ...sourceRun, status: "in_progress", conclusion: null },
+    });
+    await expect(
+      reconcileGatewayWebhook(
+        { ...config },
+        await bundle(),
+        harness.dependencies,
+      ),
+    ).rejects.toThrow("exact source workflow attempt is not durably terminal");
+    expect(harness.sourceRunReadCalls()).toBe(2);
+    expect(harness.state.rollbackIntents).toHaveLength(1);
     expect(harness.rollbackCalls()).toBe(0);
   });
 
