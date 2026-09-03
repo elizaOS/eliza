@@ -996,6 +996,32 @@ test.describe("every-view interaction coverage", () => {
       // request may be rejected. Without this, an invalid or rejecting
       // fixture prunes the editor coverage while the case stays green.
       if (view.id === "automations") {
+        await page.getByRole("button", { name: "New automation" }).click();
+        await page.getByRole("menuitem", { name: "New workflow" }).click();
+        await expect(page.getByTestId("workflow-studio")).toBeVisible({
+          timeout: 30_000,
+        });
+        await page.getByLabel("Workflow name").fill("Interaction audit");
+        const createResponse = page.waitForResponse(
+          (response) =>
+            response.request().method() === "POST" &&
+            new URL(response.url()).pathname === "/api/workflow/workflows",
+        );
+        await page.getByLabel("Save workflow").click();
+        await createResponse;
+        await expect
+          .poll(
+            () =>
+              workflowSurfaceResponses.filter(
+                (response) =>
+                  response.method === "GET" &&
+                  (response.pathname === "/api/triggers" ||
+                    response.pathname.endsWith("/executions") ||
+                    response.pathname.endsWith("/revisions")),
+              ).length,
+            { timeout: 15_000 },
+          )
+          .toBeGreaterThanOrEqual(3);
         const observed = workflowSurfaceResponses
           .map((r) => `${r.method} ${r.pathname} -> ${r.status}`)
           .join("\n");

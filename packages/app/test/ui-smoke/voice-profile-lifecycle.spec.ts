@@ -307,7 +307,7 @@ for (const viewport of [
     );
     await bindInput.scrollIntoViewIfNeeded();
     await expect(bindInput).toBeInViewport();
-    const composer = page.getByPlaceholder("Ask Eliza");
+    const composer = page.getByTestId("chat-composer-textarea");
     const [bindBox, composerBox] = await Promise.all([
       bindInput.boundingBox(),
       composer.boundingBox(),

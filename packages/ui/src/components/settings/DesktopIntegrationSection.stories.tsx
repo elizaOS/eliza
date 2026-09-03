@@ -1,6 +1,7 @@
 /** Desktop launch-at-login Settings states backed by the native RPC contract. */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ComponentType } from "react";
+import { userEvent } from "storybook/test";
 import type { ElectrobunRendererRpc } from "../../bridge";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { DesktopIntegrationSection } from "./DesktopIntegrationSection";
@@ -62,9 +63,7 @@ export const MutationFailed: Story = {
       '[data-agent-id="general-launch-on-login"]',
     );
     if (!toggle) throw new Error("Launch at sign-in control did not render");
-    await import("storybook/test").then(({ userEvent }) =>
-      userEvent.click(toggle),
-    );
+    await userEvent.click(toggle);
   },
 };
 
