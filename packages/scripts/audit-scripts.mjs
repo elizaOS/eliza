@@ -141,6 +141,10 @@ const ALLOWED_EXACT = new Set([
  */
 const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
   [
+    "gateway-webhook-reconcile.mjs",
+    "dormant staging-only transaction reconciler landed before the separately reviewed #29763 workflow wiring; direct entry is guarded and tests are its only caller in this precursor",
+  ],
+  [
     "run-scenario-benchmark.mjs",
     "scenario benchmark wrapper invoked by packages/training/scripts/collect_trajectories.py",
   ],
