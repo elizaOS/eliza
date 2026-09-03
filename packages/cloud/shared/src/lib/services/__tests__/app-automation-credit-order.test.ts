@@ -17,6 +17,7 @@
  * armed hazard) is what fired, not some earlier failure.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as organizationInferenceAdmissionActual from "../organization-inference-admission";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -24,6 +25,7 @@ process.env.NODE_ENV ||= "test";
 const admissionCalls: unknown[] = [];
 
 mock.module("../organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference: async (params: unknown) => {
     admissionCalls.push(params);
     throw new Error("admission should not be reached");

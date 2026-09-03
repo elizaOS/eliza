@@ -13,6 +13,7 @@ import { ApiError } from "@/lib/api/cloud-worker-errors";
 // partial mock (only `requireUserOrApiKeyWithOrg`) does not drop the other auth
 // exports (e.g. `requireUserOrApiKey`) for later test files in the same run.
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
+import * as organizationInferenceAdmissionActual from "@/lib/services/organization-inference-admission";
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000aa";
 const USER_ID = "00000000-0000-4000-8000-0000000000bb";
@@ -113,6 +114,7 @@ mock.module("@/lib/services/credits", () => ({
   InsufficientCreditsError,
 }));
 mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference,
 }));
 

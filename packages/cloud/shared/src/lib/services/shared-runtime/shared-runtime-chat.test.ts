@@ -9,6 +9,7 @@ process.env.MOCK_REDIS = "1";
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import * as organizationInferenceAdmissionActual from "../organization-inference-admission";
 import type { SharedReminderActionProvenance } from "./run-shared-agent-turn";
 
 let turn: Record<string, unknown>;
@@ -182,6 +183,7 @@ const admitOrganizationInference = mock(
   },
 );
 mock.module("../organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference,
   InferenceAdmissionUnavailableError: class InferenceAdmissionUnavailableError extends Error {},
 }));
