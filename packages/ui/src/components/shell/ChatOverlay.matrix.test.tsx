@@ -517,6 +517,21 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
     expect(impacts.length).toBe(1);
   });
 
+  it("keeps an optional native haptics rejection out of the gesture path", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      Plugins: {
+        Haptics: { impact: () => Promise.reject(new Error("not implemented")) },
+      },
+    };
+    render(<ChatOverlay controller={makeController()} />);
+
+    openToHalf();
+    await frame();
+
+    expect(chatState()).toBe("OPEN_HALF_OR_OVER");
+  });
+
   it("a sub-threshold nudge fires none", async () => {
     const impacts = armHaptics();
     render(<ChatOverlay controller={makeController()} />);

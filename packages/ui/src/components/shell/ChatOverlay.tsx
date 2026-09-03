@@ -406,7 +406,12 @@ function detentHaptic(): void {
       }
     ).Capacitor;
     if (cap?.isNativePlatform?.()) {
-      void cap.Plugins?.Haptics?.impact?.({ style: "LIGHT" });
+      void Promise.resolve(
+        cap.Plugins?.Haptics?.impact?.({ style: "LIGHT" }),
+      ).catch(() => {
+        // Thin native clients intentionally omit optional haptics. Capacitor
+        // exposes the proxy anyway, then rejects when the plugin is absent.
+      });
     }
   } catch {
     // Haptics are a nicety — never let them throw into the gesture path.
