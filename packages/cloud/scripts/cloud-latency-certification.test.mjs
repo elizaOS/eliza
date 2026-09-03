@@ -36,7 +36,7 @@ function pairedRecord(index, overrides = {}) {
 
 function authTrace(index) {
   const suffix = index.toString(16).padStart(12, "0");
-  return `11111111-1111-4111-8111-${suffix}`;
+  return `11111111111141118111${suffix}`;
 }
 
 function authEvidence(runSuspended = false) {
