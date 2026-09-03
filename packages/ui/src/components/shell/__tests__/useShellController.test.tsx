@@ -2698,7 +2698,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     expect(createVoiceCaptureMock).not.toHaveBeenCalled();
   });
 
-  it("projects realtime phase, playback, and unlock state", () => {
+  it("clears the committed transcript while projecting realtime playback state", () => {
     realtimeVoiceMock.state.active = true;
     realtimeVoiceMock.state.status = "speaking";
     realtimeVoiceMock.state.transcriptPartial = "stale partial";
@@ -2717,7 +2717,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     });
     result.current.realtimeVoice?.toggleMicrophoneMute();
     expect(realtimeVoiceMock.toggleMicrophoneMute).toHaveBeenCalledTimes(1);
-    expect(result.current.transcript).toBe("show me the weather");
+    expect(result.current.transcript).toBe("");
     expect(result.current.speaking).toBe(true);
     expect(result.current.needsAudioUnlock).toBe(true);
     expect(result.current.turnStatus).toEqual({ kind: "speaking" });
@@ -2753,15 +2753,15 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
           traceId: "trace-voice-turn",
         });
       });
-      expect(resyncEvents).toHaveLength(0);
-
-      act(() => {
-        onServerEvent?.({ t: "llm_first_text", traceId: "trace-voice-turn" });
-      });
       expect(resyncEvents[0]?.detail).toEqual({
         conversationId,
         reason: "voice-turn-progress",
       });
+
+      act(() => {
+        onServerEvent?.({ t: "llm_first_text", traceId: "trace-voice-turn" });
+      });
+      expect(resyncEvents).toHaveLength(1);
 
       act(() => {
         onServerEvent?.({

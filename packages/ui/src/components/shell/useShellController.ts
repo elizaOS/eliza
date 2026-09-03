@@ -586,18 +586,19 @@ export function useShellController(): ShellController {
         return;
       }
       // The voice gateway submits through the canonical conversation stream,
-      // outside this renderer's useChatSend instance. Reconcile at first model
-      // text so the committed user turn appears promptly, then at terminal usage
-      // so the persisted assistant reply replaces the in-flight state. Never
-      // synthesize local bubbles: the normal conversation loader remains the
-      // sole reader and deduper for saved history.
-      if (event.t !== "llm_first_text" && event.t !== "usage") return;
+      // outside this renderer's useChatSend instance. Reconcile at the
+      // authoritative STT final so the committed user turn leaves the composer
+      // for its canonical bubble before model generation, then at terminal
+      // usage so the persisted assistant reply replaces the in-flight state.
+      // Never synthesize local bubbles: the normal conversation loader remains
+      // the sole reader and deduper for saved history.
+      if (event.t !== "stt_final" && event.t !== "usage") return;
       const conversationId = activeConversationIdRef.current?.trim() || null;
       if (!conversationId) return;
       dispatchConversationResync({
         conversationId,
         reason:
-          event.t === "llm_first_text"
+          event.t === "stt_final"
             ? "voice-turn-progress"
             : "voice-turn-complete",
       });
@@ -2824,11 +2825,7 @@ export function useShellController(): ShellController {
         ? realtimeVoice.status === "listening" ||
           realtimeVoice.status === "transcribing"
           ? realtimeVoice.transcriptPartial
-          : realtimeVoice.status === "thinking" ||
-              realtimeVoice.status === "speaking" ||
-              realtimeVoice.status === "interrupting"
-            ? realtimeVoice.transcriptFinal
-            : ""
+          : ""
         : transcript,
     speaking: voiceOutput.speaking || realtimeVoice.agentSpeaking,
     speak: voiceOutput.speak,
