@@ -11,8 +11,8 @@ import {
   agentBackupRestoreV3CandidateCleanupOutbox,
 } from "../schemas/agent-backup-restore-v3-candidates";
 import {
-  computeAgentBackupRestoreV3CleanupReasonSha256,
-  computeAgentBackupRestoreV3CleanupReceiptSha256,
+  computeAgentBackupRestoreV3CleanupQuarantineEvidenceSha256,
+  computeAgentBackupRestoreV3CleanupSettlementEvidenceSha256,
   exactDigestMatches,
 } from "./agent-backup-restore-v3-candidate-codec";
 import {
@@ -406,7 +406,10 @@ export async function settleAgentBackupRestoreV3CandidateCleanup(input: {
   });
   assertAgentBackupRestoreV3OperationControl(input.control, "Restore-v3 candidate cleanup settle");
   const fence = requireFence(input.fence);
-  const receiptSha256 = computeAgentBackupRestoreV3CleanupReceiptSha256(input.cleanupReceiptSha256);
+  const settlementEvidenceSha256 = computeAgentBackupRestoreV3CleanupSettlementEvidenceSha256(
+    fence,
+    input.cleanupReceiptSha256,
+  );
   try {
     return await dbWrite.transaction(async (tx) => {
       await applyAgentBackupRestoreV3TransactionDeadline(
@@ -430,9 +433,9 @@ export async function settleAgentBackupRestoreV3CandidateCleanup(input: {
       if (current.state === "completed") {
         if (
           current.attempts !== fence.attempt ||
-          !exactDigestMatches(current.receipt_sha256 ?? "", receiptSha256)
+          !exactDigestMatches(current.receipt_sha256 ?? "", settlementEvidenceSha256)
         ) {
-          throw conflict("Cleanup settlement replay receipt differs");
+          throw conflict("Cleanup settlement replay fence or receipt differs");
         }
         assertAgentBackupRestoreV3OperationControl(
           input.control,
@@ -453,7 +456,7 @@ export async function settleAgentBackupRestoreV3CandidateCleanup(input: {
           claim_owner: null,
           claim_generation: null,
           lease_expires_at: null,
-          receipt_sha256: receiptSha256,
+          receipt_sha256: settlementEvidenceSha256,
         })
         .where(exactLiveFenceSql(fence, databaseNow))
         .returning();
@@ -487,9 +490,9 @@ export async function settleAgentBackupRestoreV3CandidateCleanup(input: {
       if (current?.state === "completed") {
         if (
           current.attempts !== fence.attempt ||
-          !exactDigestMatches(current.receipt_sha256 ?? "", receiptSha256)
+          !exactDigestMatches(current.receipt_sha256 ?? "", settlementEvidenceSha256)
         ) {
-          throw conflict("Cleanup settlement replay receipt differs", cause);
+          throw conflict("Cleanup settlement replay fence or receipt differs", cause);
         }
         assertAgentBackupRestoreV3OperationControl(
           input.control,
@@ -515,7 +518,6 @@ export async function deferAgentBackupRestoreV3CandidateCleanup(input: {
   assertAgentBackupRestoreV3OperationControl(input.control, "Restore-v3 candidate cleanup defer");
   const fence = requireFence(input.fence);
   const delayMs = requireBoundedInteger(input.delayMs, "delayMs", 1, MAX_CLEANUP_DEFER_MS);
-  let databaseNow: Date | undefined;
   try {
     return await dbWrite.transaction(async (tx) => {
       await applyAgentBackupRestoreV3TransactionDeadline(
@@ -535,7 +537,7 @@ export async function deferAgentBackupRestoreV3CandidateCleanup(input: {
         input.control,
         "Restore-v3 candidate cleanup defer",
       );
-      databaseNow = await readPostLockDatabaseNow(tx);
+      const databaseNow = await readPostLockDatabaseNow(tx);
       requireLiveFence(current, fence, databaseNow);
       const nextAttemptAt = new Date(databaseNow.getTime() + delayMs);
       await applyAgentBackupRestoreV3TransactionDeadline(
@@ -566,44 +568,9 @@ export async function deferAgentBackupRestoreV3CandidateCleanup(input: {
     });
   } catch (cause) {
     throwIfAgentBackupRestoreV3DatabaseDeadline(cause, "Restore-v3 candidate cleanup defer");
-    return dbWrite.transaction(async (tx) => {
-      await applyAgentBackupRestoreV3TransactionDeadline(
-        tx,
-        input.control,
-        "Restore-v3 candidate cleanup defer recovery",
-      );
-      const [current] = await tx
-        .select()
-        .from(agentBackupRestoreV3CandidateCleanupOutbox)
-        .where(eq(agentBackupRestoreV3CandidateCleanupOutbox.id, fence.cleanupId))
-        .for("update")
-        .limit(1);
-      await applyAgentBackupRestoreV3TransactionDeadline(
-        tx,
-        input.control,
-        "Restore-v3 candidate cleanup defer recovery",
-      );
-      const recoveryNow = await readPostLockDatabaseNow(tx);
-      // attempts is the durable claim-cycle fence. No later claimant can
-      // preserve it, and the row lock prevents adoption during this proof.
-      if (
-        current?.state === "pending" &&
-        current.attempts === fence.attempt &&
-        current.claim_owner === null &&
-        current.claim_generation === null &&
-        current.lease_expires_at === null &&
-        databaseNow !== undefined &&
-        asDate(current.next_attempt_at, "cleanup next-attempt timestamp").getTime() >=
-          databaseNow.getTime() + delayMs
-      ) {
-        assertAgentBackupRestoreV3OperationControl(
-          input.control,
-          "Restore-v3 candidate cleanup defer recovery",
-        );
-        return outcomeFromRow(current, recoveryNow, true);
-      }
-      throw cause;
-    });
+    // Pending rows retain no durable proof of the former owner and generation.
+    // An ambiguous defer acknowledgment therefore stays fail-closed.
+    throw cause;
   }
 }
 
@@ -622,7 +589,10 @@ export async function quarantineAgentBackupRestoreV3CandidateCleanup(input: {
     "Restore-v3 candidate cleanup quarantine",
   );
   const fence = requireFence(input.fence);
-  const reasonSha256 = computeAgentBackupRestoreV3CleanupReasonSha256(input.reason);
+  const quarantineEvidenceSha256 = computeAgentBackupRestoreV3CleanupQuarantineEvidenceSha256(
+    fence,
+    input.reason,
+  );
   try {
     return await dbWrite.transaction(async (tx) => {
       await applyAgentBackupRestoreV3TransactionDeadline(
@@ -646,9 +616,9 @@ export async function quarantineAgentBackupRestoreV3CandidateCleanup(input: {
       if (current.state === "quarantined") {
         if (
           current.attempts !== fence.attempt ||
-          !exactDigestMatches(current.quarantine_reason_sha256 ?? "", reasonSha256)
+          !exactDigestMatches(current.quarantine_reason_sha256 ?? "", quarantineEvidenceSha256)
         ) {
-          throw conflict("Cleanup quarantine replay reason differs");
+          throw conflict("Cleanup quarantine replay fence or reason differs");
         }
         assertAgentBackupRestoreV3OperationControl(
           input.control,
@@ -669,7 +639,7 @@ export async function quarantineAgentBackupRestoreV3CandidateCleanup(input: {
           claim_owner: null,
           claim_generation: null,
           lease_expires_at: null,
-          quarantine_reason_sha256: reasonSha256,
+          quarantine_reason_sha256: quarantineEvidenceSha256,
         })
         .where(exactLiveFenceSql(fence, databaseNow))
         .returning();
@@ -703,9 +673,9 @@ export async function quarantineAgentBackupRestoreV3CandidateCleanup(input: {
       if (current?.state === "quarantined") {
         if (
           current.attempts !== fence.attempt ||
-          !exactDigestMatches(current.quarantine_reason_sha256 ?? "", reasonSha256)
+          !exactDigestMatches(current.quarantine_reason_sha256 ?? "", quarantineEvidenceSha256)
         ) {
-          throw conflict("Cleanup quarantine replay reason differs", cause);
+          throw conflict("Cleanup quarantine replay fence or reason differs", cause);
         }
         assertAgentBackupRestoreV3OperationControl(
           input.control,

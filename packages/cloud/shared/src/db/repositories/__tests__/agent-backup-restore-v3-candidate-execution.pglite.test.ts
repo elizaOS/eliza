@@ -355,11 +355,32 @@ describe("restore-v3 candidate execution repository", () => {
     const deferred = await deferAgentBackupRestoreV3CandidateCleanup({
       control: CONTROL,
       fence: cleanupFence(firstClaim),
-      delayMs: 1,
+      delayMs: 1_000,
     });
     expect(deferred.state).toBe("pending");
     expect(deferred.nextAttemptAt.getTime()).toBeGreaterThanOrEqual(deferred.databaseNow.getTime());
-    await Bun.sleep(5);
+    await expect(
+      deferAgentBackupRestoreV3CandidateCleanup({
+        control: CONTROL,
+        fence: cleanupFence(firstClaim),
+        delayMs: 1,
+      }),
+    ).rejects.toThrow(/exact live owner, generation, and attempt/);
+    await expect(
+      deferAgentBackupRestoreV3CandidateCleanup({
+        control: CONTROL,
+        fence: { ...cleanupFence(firstClaim), ownerId: "cleanup-worker-forged" },
+        delayMs: 1,
+      }),
+    ).rejects.toThrow(/exact live owner, generation, and attempt/);
+    await expect(
+      deferAgentBackupRestoreV3CandidateCleanup({
+        control: CONTROL,
+        fence: { ...cleanupFence(firstClaim), generation: CLAIM_GENERATION_B },
+        delayMs: 1,
+      }),
+    ).rejects.toThrow(/exact live owner, generation, and attempt/);
+    await Bun.sleep(1_050);
     const secondClaim = await claimAgentBackupRestoreV3CandidateCleanup({
       control: CONTROL,
       ownerId: "cleanup-worker-b",
@@ -383,6 +404,20 @@ describe("restore-v3 candidate execution repository", () => {
     });
     expect(settledReplay.state).toBe("completed");
     expect(settledReplay.replayed).toBe(true);
+    await expect(
+      settleAgentBackupRestoreV3CandidateCleanup({
+        control: CONTROL,
+        fence: { ...cleanupFence(secondClaim), ownerId: "cleanup-worker-forged" },
+        cleanupReceiptSha256,
+      }),
+    ).rejects.toThrow(/fence or receipt differs/);
+    await expect(
+      settleAgentBackupRestoreV3CandidateCleanup({
+        control: CONTROL,
+        fence: { ...cleanupFence(secondClaim), generation: CLAIM_GENERATION_C },
+        cleanupReceiptSha256,
+      }),
+    ).rejects.toThrow(/fence or receipt differs/);
     await expect(
       settleAgentBackupRestoreV3CandidateCleanup({
         control: CONTROL,
@@ -442,6 +477,20 @@ describe("restore-v3 candidate execution repository", () => {
         })
       ).replayed,
     ).toBe(true);
+    await expect(
+      quarantineAgentBackupRestoreV3CandidateCleanup({
+        control: CONTROL,
+        fence: { ...cleanupFence(recovered), ownerId: "cleanup-worker-forged" },
+        reason: "provider-object-generation-diverged",
+      }),
+    ).rejects.toThrow(/fence or reason differs/);
+    await expect(
+      quarantineAgentBackupRestoreV3CandidateCleanup({
+        control: CONTROL,
+        fence: { ...cleanupFence(recovered), generation: CLAIM_GENERATION_A },
+        reason: "provider-object-generation-diverged",
+      }),
+    ).rejects.toThrow(/fence or reason differs/);
     await expect(
       quarantineAgentBackupRestoreV3CandidateCleanup({
         control: CONTROL,

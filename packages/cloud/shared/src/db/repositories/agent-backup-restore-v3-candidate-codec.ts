@@ -136,6 +136,13 @@ interface CandidateCommandIdentity {
   readonly executionTokenSha256: string;
 }
 
+interface CleanupFenceIdentity {
+  readonly cleanupId: string;
+  readonly ownerId: string;
+  readonly generation: string;
+  readonly attempt: number;
+}
+
 function candidateCommand(
   kind: string,
   identity: Readonly<CandidateCommandIdentity>,
@@ -227,4 +234,38 @@ export function computeAgentBackupRestoreV3CleanupReasonSha256(reason: string): 
       reason,
     }),
   );
+}
+
+function cleanupFenceEvidence(
+  kind: "cleanup-settle" | "cleanup-quarantine",
+  fence: Readonly<CleanupFenceIdentity>,
+  payload: Readonly<Record<string, CanonicalJson>>,
+): string {
+  return canonicalJson({
+    context: AGENT_BACKUP_RESTORE_V3_CANDIDATE_COMMAND_CONTEXT,
+    fence: {
+      attempt: fence.attempt,
+      cleanupId: fence.cleanupId,
+      generation: fence.generation,
+      ownerId: fence.ownerId,
+    },
+    kind,
+    payload,
+  });
+}
+
+export function computeAgentBackupRestoreV3CleanupSettlementEvidenceSha256(
+  fence: Readonly<CleanupFenceIdentity>,
+  cleanupReceiptSha256: string,
+): string {
+  const receiptSha256 = computeAgentBackupRestoreV3CleanupReceiptSha256(cleanupReceiptSha256);
+  return sha256Utf8(cleanupFenceEvidence("cleanup-settle", fence, { receiptSha256 }));
+}
+
+export function computeAgentBackupRestoreV3CleanupQuarantineEvidenceSha256(
+  fence: Readonly<CleanupFenceIdentity>,
+  reason: string,
+): string {
+  const reasonSha256 = computeAgentBackupRestoreV3CleanupReasonSha256(reason);
+  return sha256Utf8(cleanupFenceEvidence("cleanup-quarantine", fence, { reasonSha256 }));
 }

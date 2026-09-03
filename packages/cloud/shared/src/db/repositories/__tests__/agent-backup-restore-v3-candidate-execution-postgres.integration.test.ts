@@ -8,6 +8,7 @@ import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
+import { computeAgentBackupRestoreV3CleanupSettlementEvidenceSha256 } from "../agent-backup-restore-v3-candidate-codec";
 import {
   applyCandidateMigrations,
   buildCandidateFixture,
@@ -534,14 +535,15 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
         }),
       ).rejects.toThrow(/exact live owner, generation, and attempt/);
       const receipt = fixtureSha256("postgres-cleanup-receipt");
+      const recoveredFence = {
+        cleanupId: recovered.cleanupId,
+        ownerId: recovered.ownerId,
+        generation: recovered.generation,
+        attempt: recovered.attempt,
+      };
       const settled = await cleanupRepository.settleAgentBackupRestoreV3CandidateCleanup({
         control: cleanupControl,
-        fence: {
-          cleanupId: recovered.cleanupId,
-          ownerId: recovered.ownerId,
-          generation: recovered.generation,
-          attempt: recovered.attempt,
-        },
+        fence: recoveredFence,
         cleanupReceiptSha256: receipt,
       });
       expect(settled.state).toBe("completed");
@@ -563,7 +565,10 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
         {
           state: "completed",
           attempts: 2,
-          receipt_sha256: receipt,
+          receipt_sha256: computeAgentBackupRestoreV3CleanupSettlementEvidenceSha256(
+            recoveredFence,
+            receipt,
+          ),
           claim_owner: null,
           claim_generation: null,
           lease_expires_at: null,
@@ -715,6 +720,50 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
         },
         cleanupReceiptSha256: fixtureSha256("reclaimed-exact-cleanup-receipt"),
       });
+
+      await insertPending();
+      const lostDeferOwner = "postgres-cleanup-lost-defer";
+      const lostDeferGeneration = "30000000-0000-4000-8000-000000000015";
+      const lostDeferClaim = await cleanupRepository.claimAgentBackupRestoreV3CandidateCleanup({
+        control: cleanupControl,
+        ownerId: lostDeferOwner,
+        generation: lostDeferGeneration,
+        leaseMs: 10_000,
+      });
+      if (!lostDeferClaim) {
+        throw new Error("lost-ACK defer source lease is missing");
+      }
+      const lostDeferSourceId = lostDeferClaim.cleanupId;
+      const lostDefer = await withLostNextCommitAcknowledgment({
+        sqlState: "08006",
+        run: () =>
+          cleanupRepository!.deferAgentBackupRestoreV3CandidateCleanup({
+            control: cleanupControl,
+            fence: {
+              cleanupId: lostDeferClaim.cleanupId,
+              ownerId: lostDeferClaim.ownerId,
+              generation: lostDeferClaim.generation,
+              attempt: lostDeferClaim.attempt,
+            },
+            delayMs: 60_000,
+          }),
+      }).then(
+        () => null,
+        (cause: unknown) => cause,
+      );
+      expect((lostDefer as { code?: string }).code).toBe("08006");
+      const deferredAfterLostAck = await control.query<{
+        claim_generation: string | null;
+        claim_owner: string | null;
+        state: string;
+      }>(
+        `SELECT state, claim_owner, claim_generation
+        FROM agent_backup_restore_v3_candidate_cleanup_outbox WHERE id = $1`,
+        [lostDeferSourceId],
+      );
+      expect(deferredAfterLostAck.rows).toEqual([
+        { state: "pending", claim_owner: null, claim_generation: null },
+      ]);
 
       const lostOwner = "postgres-cleanup-lost-terminal";
       const lostGeneration = "30000000-0000-4000-8000-000000000011";
