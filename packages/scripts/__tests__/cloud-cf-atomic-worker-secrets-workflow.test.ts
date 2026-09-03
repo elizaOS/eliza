@@ -106,14 +106,18 @@ describe("Cloud CF atomic Worker secrets deploy", () => {
     const prepare = step("Prepare Worker secrets for atomic deploy");
     const verify = step("Verify required Worker secret binding names");
 
-    expect(prepare.env?.ELIZA_APP_TELEGRAM_BOT_TOKEN).toBe(
-      "$" +
-        "{{ secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'BOT_TOKEN')] }}",
-    );
-    expect(prepare.env?.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET).toBe(
-      "$" +
-        "{{ secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'WEBHOOK_SECRET')] }}",
-    );
+    // #30397 replaced the computed `secrets[format(...)]` key with a direct
+    // reference: inside a reusable workflow a computed key evaluates without
+    // the job's Environment values and silently publishes a blank Worker
+    // secret. Both names are now declared in `on.workflow_call.secrets`; the
+    // caller still never forwards them, which homepage-deploy-workflow.test.ts
+    // continues to enforce.
+    for (const name of [
+      "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+      "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+    ] as const) {
+      expect(prepare.env?.[name], name).toBe("$" + `{{ secrets.${name} }}`);
+    }
     expect(prepare.run).toContain("telegram_runtime_secret_names=(");
     expect(prepare.run).toContain('[ "$DEPLOY_ENVIRONMENT" = "production" ]');
     expect(prepare.run).toContain(

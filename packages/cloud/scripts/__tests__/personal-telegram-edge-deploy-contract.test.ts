@@ -39,15 +39,20 @@ function namedStep(name: string): WorkflowStep {
 describe("Personal Shared Telegram edge deploy contract", () => {
   const prepare = namedStep("Prepare Worker secrets for atomic deploy");
 
+  // #30397 replaced the computed `secrets[format(...)]` key with a direct
+  // reference and declared both names in `on.workflow_call.secrets`, because a
+  // computed key evaluates without the job's Environment values inside a
+  // reusable workflow and silently publishes a blank Worker secret. The
+  // caller-side prohibition is unchanged and still enforced where it belongs,
+  // in homepage-deploy-workflow.test.ts: `cloud-cf-deploy.yml` must never
+  // forward either name. What this file owns is the consuming end.
   test("sources both Telegram credentials from the protected environment", () => {
-    const token = prepare.env?.ELIZA_APP_TELEGRAM_BOT_TOKEN ?? "";
-    const webhookSecret = prepare.env?.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET ?? "";
-    expect(token).toContain("secrets[format(");
-    expect(token).toContain("'ELIZA_APP_TELEGRAM_'");
-    expect(token).toContain("'BOT_TOKEN'");
-    expect(webhookSecret).toContain("secrets[format(");
-    expect(webhookSecret).toContain("'ELIZA_APP_TELEGRAM_'");
-    expect(webhookSecret).toContain("'WEBHOOK_SECRET'");
+    for (const name of [
+      "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+      "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+    ] as const) {
+      expect(prepare.env?.[name], name).toBe(`\${{ secrets.${name} }}`);
+    }
   });
 
   test("includes both credentials in the atomic Worker version", () => {
