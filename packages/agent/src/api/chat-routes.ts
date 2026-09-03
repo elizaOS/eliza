@@ -1976,7 +1976,10 @@ function summarizeActionResultForClient(
     (typeof data?.actionName === "string" && data.actionName.trim()) ||
     (typeof record.actionName === "string" && record.actionName.trim()) ||
     undefined;
-  const values = sanitizeActionResultValues(record.values);
+  // Planner tool results preserve ActionResult.values under data.values.
+  // Prefer a direct ActionResult field when present, then recover the canonical
+  // planner projection so renderer handoffs survive both execution paths.
+  const values = sanitizeActionResultValues(record.values ?? data?.values);
   const text =
     typeof record.text === "string" && record.text.trim()
       ? String(sanitizeActionResultValue(record.text))

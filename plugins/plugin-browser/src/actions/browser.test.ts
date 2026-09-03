@@ -17,7 +17,8 @@ function runtimeWithService(service: unknown) {
 
 function browserService(result: Record<string, unknown> = {}) {
   return {
-    execute: vi.fn(async (command) => ({
+    execute: vi.fn(async (command, targetId?: string) => ({
+      targetId: targetId ?? "workspace",
       mode: "workspace",
       subaction: command.subaction,
       ...result,
@@ -75,6 +76,7 @@ describe("BROWSER action", () => {
           success: true,
           mode: "workspace",
           subaction: "tab",
+          targetId: "bridge",
         },
       }),
     );
@@ -110,6 +112,11 @@ describe("BROWSER action", () => {
       userFacingText: "Opened example.com/path.",
       verifiedUserFacing: true,
       turnComplete: true,
+      values: {
+        targetId: "workspace",
+        viewId: "browser",
+        viewPath: "/browser",
+      },
     });
     expect(browserAction.suppressEarlyReply).toBe(true);
   });

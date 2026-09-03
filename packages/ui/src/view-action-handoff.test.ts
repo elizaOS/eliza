@@ -106,6 +106,40 @@ describe("view action handoff", () => {
     ).toBeNull();
   });
 
+  it("opens the Browser surface from a successful in-app browser command", () => {
+    expect(
+      findViewActionHandoff([
+        {
+          actionName: "BROWSER_NAVIGATE",
+          success: true,
+          values: {
+            mode: "web",
+            subaction: "navigate",
+            targetId: "workspace",
+            viewId: "browser",
+            viewPath: "/browser",
+          },
+        },
+      ]),
+    ).toEqual({ viewId: "browser", viewPath: "/browser" });
+
+    expect(
+      findViewActionHandoff([
+        {
+          actionName: "BROWSER",
+          success: true,
+          values: {
+            mode: "desktop",
+            subaction: "navigate",
+            targetId: "bridge",
+            viewId: "browser",
+            viewPath: "/browser",
+          },
+        },
+      ]),
+    ).toBeNull();
+  });
+
   it("ignores inherited handoff fields and delivery confirmations", () => {
     const inheritedMarker = Object.assign(
       Object.create({ completedActionDelivered: true }),

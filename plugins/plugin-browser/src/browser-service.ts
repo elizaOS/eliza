@@ -597,7 +597,10 @@ export class BrowserService extends Service {
     // The command is now committed to `selected`. NEVER replay it against
     // another target, even on error — a side effect may have already occurred.
     try {
-      return await selected.execute(command);
+      return {
+        ...(await selected.execute(command)),
+        targetId: selected.id,
+      };
     } catch (err) {
       // Preserve a typed dispatch failure's kind so callers can branch on
       // UNCERTAIN_OUTCOME / STALE_REF / SESSION_GONE / AUTH_REQUIRED /

@@ -903,6 +903,13 @@ export const browserAction: Action = {
           success: true,
           mode: result.mode,
           subaction: result.subaction,
+          ...(result.targetId ? { targetId: result.targetId } : {}),
+          ...(result.targetId === "workspace" &&
+          (subaction === "open" ||
+            subaction === "navigate" ||
+            subaction === "show")
+            ? { viewId: "browser", viewPath: "/browser" }
+            : {}),
           // Ground the receipt in the tab the backend actually affected.
           ...(result.tab
             ? {
@@ -979,9 +986,12 @@ export const browserAction: Action = {
     {
       name: "target",
       description:
-        "Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
+        "Optional registered browser backend. Omit to use the best available target. Use workspace for Eliza's built-in Browser view; never use the generic word browser as a target id.",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        type: "string" as const,
+        enum: ["workspace", "bridge", "computeruse", "stagehand"],
+      },
     },
     {
       name: "streamProgress",
