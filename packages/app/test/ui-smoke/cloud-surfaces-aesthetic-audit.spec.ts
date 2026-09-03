@@ -4,7 +4,7 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   type AestheticVerdictDebt,
   evaluateStrictGate,
@@ -17,6 +17,7 @@ import {
 } from "./helpers/brand-color-scans";
 import {
   BILLING_AUDIT_RESOURCE_EXPECTATIONS,
+  CLOUD_AUDIT_DEDICATED_AGENT_ID,
   installCloudApiStubs,
   seedStewardToken,
 } from "./helpers/cloud-audit-fixtures";
@@ -90,6 +91,11 @@ const VIEWPORTS = [
   { name: "mobile", width: 390, height: 844 },
 ] as const;
 
+const TRANSITION_VIEWPORTS = [
+  ...VIEWPORTS,
+  { name: "tablet", width: 820, height: 1180 },
+] as const;
+
 interface CloudAuditCase {
   slug: string;
   /** Concrete path (parametric segments filled with the stubbed sample ids). */
@@ -109,6 +115,8 @@ interface CloudAuditCase {
    * rendered its content.
    */
   expectedFinalPath?: RegExp;
+  /** Compatibility path owned by the shell rather than the route registry. */
+  compatibilityPath?: true;
 }
 
 const AUTH = true;
@@ -137,7 +145,7 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   },
   {
     slug: "cloud-agents-detail",
-    path: "/cloud/agents/agent-smoke-1",
+    path: `/cloud/agents/${CLOUD_AUDIT_DEDICATED_AGENT_ID}`,
     route: "cloud/agents/:id",
     auth: AUTH,
   },
@@ -192,6 +200,8 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     path: "/cloud/security",
     route: "cloud/security",
     auth: AUTH,
+    expectedFinalPath: /^\/cloud\/account$/,
+    compatibilityPath: true,
   },
   {
     slug: "cloud-security-permissions",
@@ -532,6 +542,89 @@ function renderManualReviewStub(findings: CloudPageFinding[]): string {
 const findings: CloudPageFinding[] = [];
 const findingsBySlug = new Map<string, CloudPageFinding[]>();
 
+async function captureTransitionState(options: {
+  page: Page;
+  outputDir: string;
+  viewport: (typeof TRANSITION_VIEWPORTS)[number];
+  state: string;
+  consoleErrors: string[];
+  pageErrors: string[];
+  hoverTarget?: Locator;
+}): Promise<void> {
+  const slug = `cloud-agents-transition-${options.state}`;
+  const shotDir = path.join(options.outputDir, options.viewport.name);
+  const reviewDir = path.join(options.outputDir, "manual-review");
+  await mkdir(shotDir, { recursive: true });
+  await mkdir(reviewDir, { recursive: true });
+  await options.page.waitForTimeout(250);
+
+  const readableChars = await options.page.evaluate(
+    () => document.body.innerText.trim().replace(/\s+/g, " ").length,
+  );
+  const restPath = path.join(shotDir, `${slug}.png`);
+  const hasHorizontalOverflow = await options.page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(hasHorizontalOverflow, `${slug} must not overflow horizontally`).toBe(
+    false,
+  );
+  const buffer = await options.page.screenshot({
+    path: restPath,
+    fullPage: true,
+  });
+  const quality = await analyzeScreenshot(buffer);
+  const qualityIssues = screenshotQualityIssues(
+    `${slug} ${options.viewport.name}`,
+    quality,
+  );
+  const blueColors = await collectBlueColors(options.page);
+  const { violations: hoverViolations, hoverFailures } =
+    await collectHoverViolations(options.page);
+  const hoverTarget =
+    options.hoverTarget ??
+    options.page.locator("button:visible, a[role='button']:visible").first();
+  await expect(hoverTarget).toBeVisible();
+  await hoverTarget.hover({ timeout: 2_000 });
+  await options.page.screenshot({
+    path: path.join(shotDir, `${slug}--hover.png`),
+    fullPage: true,
+  });
+
+  const base = {
+    slug,
+    viewport: options.viewport.name,
+    path: "/cloud/agents",
+    route: "cloud/agents",
+    consoleErrors: [
+      ...options.pageErrors.map((message) => `pageerror: ${message}`),
+      ...options.consoleErrors,
+    ],
+    blueColors,
+    hoverViolations,
+    hoverFailures,
+    readableChars,
+    quality,
+    qualityIssues,
+  };
+  const finding: CloudPageFinding = {
+    ...base,
+    verdict: computeCloudVerdict(base),
+  };
+  findings.push(finding);
+  const perSlug = findingsBySlug.get(slug) ?? [];
+  perSlug.push(finding);
+  findingsBySlug.set(slug, perSlug);
+  expect(
+    finding.verdict,
+    `${slug} ${options.viewport.name} must have no automated visual defects`,
+  ).toBe("needs-eyeball");
+  await writeFile(
+    path.join(reviewDir, `${slug}.md`),
+    renderManualReviewStub(perSlug),
+    "utf8",
+  );
+}
+
 test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
   // Hard gate (#13624): under strict/CI the running renderer bundle MUST contain
   // the test-auth shell. A stale turbo-cached `build:web` (built without
@@ -615,7 +708,11 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       )
       .toBe(true);
     const registered = new Set(registeredPaths);
-    const audited = new Set(CLOUD_AUDIT_CASES.map((c) => c.route));
+    const audited = new Set(
+      CLOUD_AUDIT_CASES.filter((auditCase) => !auditCase.compatibilityPath).map(
+        (auditCase) => auditCase.route,
+      ),
+    );
     const unaudited = [...registered].filter((p) => !audited.has(p));
     expect(
       unaudited,
@@ -732,9 +829,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           // The loading skeleton has readable column labels, so the generic
           // paint gate cannot prove the canonical list DTO was accepted.
           await expect(
-            page.getByRole("link", { name: "Smoke Agent" }).filter({
-              visible: true,
-            }),
+            page.getByText("Eliza", { exact: true }).filter({ visible: true }),
           ).toBeVisible({ timeout: 10_000 });
         }
 
@@ -961,6 +1056,240 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         ).toEqual([]);
       });
     }
+  }
+
+  for (const viewport of TRANSITION_VIEWPORTS) {
+    test(`Shared to Dedicated transition ${viewport.name}`, async ({
+      page,
+    }) => {
+      const consoleErrors: string[] = [];
+      const pageErrors: string[] = [];
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+      page.on("console", (message) => {
+        if (message.type() === "error") consoleErrors.push(message.text());
+      });
+      await page.setViewportSize(viewport);
+      await seedStewardToken(page);
+      const fixture = await installCloudApiStubs(page, {
+        initialAgentState: "shared",
+        creditBalance: 42,
+      });
+      await openAppPath(page, "/cloud/agents");
+
+      const upgradeButton = page.getByTestId("agent-upgrade-tier-button");
+      await expect(upgradeButton).toHaveText("Upgrade to Dedicated");
+      await expect(page.getByText("Free", { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Deactivate Agent" }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Delete Agent" }),
+      ).toHaveCount(0);
+      await captureTransitionState({
+        page,
+        outputDir,
+        viewport,
+        state: "shared",
+        consoleErrors,
+        pageErrors,
+        hoverTarget: upgradeButton,
+      });
+
+      await upgradeButton.click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Upgrade to a Dedicated Agent?",
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(
+          "Current balance: $42.00 · Required before activation: $9.00 (3 days)",
+        ),
+      ).toBeVisible();
+      const activateButton = page.getByTestId("agent-upgrade-tier-confirm");
+      await captureTransitionState({
+        page,
+        outputDir,
+        viewport,
+        state: "quote",
+        consoleErrors,
+        pageErrors,
+        hoverTarget: activateButton,
+      });
+
+      await activateButton.click();
+      const progress = page.getByTestId("agent-upgrade-progress");
+      await expect(progress).toBeVisible();
+      await expect.poll(() => fixture.agentState).toBe("provisioning");
+      const upgradePath =
+        "/api/v1/eliza/agents/personal%3A00000000-0000-5000-8000-000000000001/upgrade-tier";
+      await expect
+        .poll(() =>
+          fixture.requests.some(
+            (receipt) =>
+              receipt.pathname === `${upgradePath}/cutover` &&
+              receipt.status === 409,
+          ),
+        )
+        .toBe(true);
+      const expectedConflictMessage =
+        "Failed to load resource: the server responded with a status of 409 (Conflict)";
+      const expectedConflictIndex = consoleErrors.indexOf(
+        expectedConflictMessage,
+      );
+      if (expectedConflictIndex >= 0) {
+        consoleErrors.splice(expectedConflictIndex, 1);
+      }
+      await captureTransitionState({
+        page,
+        outputDir,
+        viewport,
+        state: "provisioning",
+        consoleErrors,
+        pageErrors,
+      });
+
+      fixture.completeProvisioning();
+      await expect(page).toHaveURL(
+        new RegExp(`/cloud/agents/${CLOUD_AUDIT_DEDICATED_AGENT_ID}$`),
+        { timeout: 15_000 },
+      );
+      await openAppPath(page, "/cloud/agents");
+      await expect(
+        page.getByText("Eliza", { exact: true }).filter({ visible: true }),
+      ).toBeVisible();
+      await expect(page.getByTestId("agent-upgrade-tier-button")).toHaveCount(
+        0,
+      );
+      await expect.poll(() => fixture.agentState).toBe("dedicated");
+      await captureTransitionState({
+        page,
+        outputDir,
+        viewport,
+        state: "dedicated",
+        consoleErrors,
+        pageErrors,
+        hoverTarget: page
+          .getByRole("button", { name: "Open Web UI" })
+          .filter({ visible: true })
+          .first(),
+      });
+
+      const activationRequests = fixture.requests.filter(
+        (receipt) =>
+          receipt.method === "POST" &&
+          receipt.pathname === upgradePath &&
+          receipt.status === 202,
+      );
+      expect(activationRequests).toHaveLength(1);
+      expect(activationRequests[0]?.body).toBe(
+        JSON.stringify({
+          action: "activate_dedicated",
+          quoteId:
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        }),
+      );
+      const cutoverRequests = fixture.requests.filter(
+        (receipt) => receipt.pathname === `${upgradePath}/cutover`,
+      );
+      expect(cutoverRequests.map((receipt) => receipt.status)).toEqual([
+        409, 200,
+      ]);
+      expect(cutoverRequests.at(-1)?.responseBody).toBe(
+        JSON.stringify({
+          success: true,
+          data: {
+            personalElizaId: "personal:00000000-0000-5000-8000-000000000001",
+            activeAgentId: CLOUD_AUDIT_DEDICATED_AGENT_ID,
+            runtime: "dedicated",
+            apiBase: `https://${CLOUD_AUDIT_DEDICATED_AGENT_ID}.cloud.eliza.app`,
+            importedMessages: 4,
+            importedScheduledTasks: 1,
+            importedTodos: 2,
+            importedTodoMutations: 0,
+          },
+        }),
+      );
+      expect(pageErrors).toEqual([]);
+      expect(consoleErrors).toEqual([]);
+      expect(fixture.unhandledRequests).toEqual([]);
+
+      const requestDir = path.join(outputDir, "requests");
+      await mkdir(requestDir, { recursive: true });
+      await writeFile(
+        path.join(requestDir, `shared-to-dedicated-${viewport.name}.json`),
+        JSON.stringify(fixture.requests, null, 2),
+        "utf8",
+      );
+    });
+
+    test(`zero-credit Shared agent routes to Billing ${viewport.name}`, async ({
+      page,
+    }) => {
+      const consoleErrors: string[] = [];
+      const pageErrors: string[] = [];
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+      page.on("console", (message) => {
+        if (message.type() === "error") consoleErrors.push(message.text());
+      });
+      await page.setViewportSize(viewport);
+      await seedStewardToken(page);
+      const fixture = await installCloudApiStubs(page, {
+        initialAgentState: "shared",
+        creditBalance: 0,
+        quoteCanActivate: false,
+      });
+      await openAppPath(page, "/cloud/agents");
+
+      const addFundsButton = page.getByRole("button", {
+        name: "Add funds to upgrade",
+      });
+      await expect(addFundsButton).toBeVisible();
+      await addFundsButton.click();
+      await expect(
+        page.getByRole("alert").getByText(/Insufficient credits to upgrade\./),
+      ).toBeVisible();
+      const billingButton = page
+        .getByRole("alertdialog")
+        .getByRole("button", { name: "Add funds to upgrade" });
+      await captureTransitionState({
+        page,
+        outputDir,
+        viewport,
+        state: "zero-credit",
+        consoleErrors,
+        pageErrors,
+        hoverTarget: billingButton,
+      });
+      await billingButton.click();
+      await expect(page).toHaveURL(/\/cloud\/billing$/);
+      await expect(
+        page.getByRole("heading", { name: "Credit Balance" }),
+      ).toBeVisible();
+      await expect(page.getByText("$0.00", { exact: true })).toBeVisible();
+
+      expect(fixture.agentState).toBe("shared");
+      expect(
+        fixture.requests.filter(
+          (receipt) =>
+            receipt.method !== "GET" &&
+            receipt.pathname.startsWith(
+              "/api/v1/eliza/agents/personal%3A00000000-0000-5000-8000-000000000001/upgrade-tier",
+            ),
+        ),
+      ).toEqual([]);
+      expect(pageErrors).toEqual([]);
+      expect(consoleErrors).toEqual([]);
+      expect(fixture.unhandledRequests).toEqual([]);
+
+      const requestDir = path.join(outputDir, "requests");
+      await mkdir(requestDir, { recursive: true });
+      await writeFile(
+        path.join(requestDir, `zero-credit-${viewport.name}.json`),
+        JSON.stringify(fixture.requests, null, 2),
+        "utf8",
+      );
+    });
   }
 
   test.afterAll(async () => {

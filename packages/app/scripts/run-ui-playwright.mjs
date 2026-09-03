@@ -8,7 +8,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getFreePort } from "../test/utils/get-free-port.mjs";
-import { resolveAuditAppOutput } from "./lib/audit-output.mjs";
+import {
+  resolveAuditAppOutput,
+  resolveAuditCloudOutput,
+} from "./lib/audit-output.mjs";
 import {
   auditProjectsRequestedByArgs,
   writeAuditProjectPropagation,
@@ -224,6 +227,17 @@ function cleanAuditAppOutput() {
   console.log(`[ui-smoke] Reset app aesthetic audit output: ${outputDir}`);
 }
 
+function cleanAuditCloudOutput() {
+  const outputDir = resolveAuditCloudOutput({
+    appDir,
+    repoRoot,
+    configured: env.ELIZA_AUDIT_CLOUD_DIR,
+  });
+  removePathRecursive(outputDir, "cloud aesthetic audit output");
+  fs.mkdirSync(outputDir, { recursive: true });
+  console.log(`[ui-smoke] Reset cloud aesthetic audit output: ${outputDir}`);
+}
+
 function acquireUiSmokeViewLock() {
   const staleAfterMs = 30 * 60 * 1000;
   let announcedWait = false;
@@ -343,13 +357,17 @@ env.NODE_OPTIONS = withElizaSourceNodeOptions(env.NODE_OPTIONS);
 const runsAppAudit =
   hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
   hasPlaywrightProject("audit-app");
+const runsCloudAudit =
+  hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
+  hasPlaywrightProject("audit-cloud");
 
-if (runsAppAudit) {
+if (runsAppAudit || runsCloudAudit) {
   // The lock covers cleanup and the complete capture, including lanes that
   // intentionally skip rebuilding views. No concurrent audit can erase this
   // run's evidence after it starts writing.
   releaseUiSmokeViewLock = acquireUiSmokeViewLock();
-  cleanAuditAppOutput();
+  if (runsAppAudit) cleanAuditAppOutput();
+  if (runsCloudAudit) cleanAuditCloudOutput();
 }
 
 if (hasPlaywrightConfig("playwright.ui-smoke.config.ts")) {

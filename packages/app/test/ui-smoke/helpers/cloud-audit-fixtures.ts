@@ -11,7 +11,7 @@ import {
   STEWARD_TOKEN_KEY,
   STEWARD_TOKEN_SCOPE_KEY,
 } from "@elizaos/shared/steward-session-client";
-import type { Page } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 
 function makeJwt(payload: Record<string, unknown>): string {
   const encode = (value: object) =>
@@ -207,6 +207,40 @@ interface StubRule {
   body: unknown;
 }
 
+export type CloudAuditAgentState = "shared" | "provisioning" | "dedicated";
+
+export interface CloudAuditFixtureOptions {
+  initialAgentState?: CloudAuditAgentState;
+  creditBalance?: number;
+  quoteCanActivate?: boolean;
+}
+
+export interface CloudAuditRequestReceipt {
+  method: string;
+  url: string;
+  pathname: string;
+  status: number;
+  body: string | null;
+  responseBody: string;
+}
+
+export interface CloudAuditFixtureController {
+  readonly agentState: CloudAuditAgentState;
+  readonly requests: readonly CloudAuditRequestReceipt[];
+  readonly unhandledRequests: readonly string[];
+  completeProvisioning(): void;
+}
+
+const PERSONAL_AGENT_ID = "personal:00000000-0000-5000-8000-000000000001";
+export const CLOUD_AUDIT_DEDICATED_AGENT_ID =
+  "00000000-0000-4000-8000-000000000002";
+const DEDICATED_API_BASE = `https://${CLOUD_AUDIT_DEDICATED_AGENT_ID}.cloud.eliza.app`;
+const DEDICATED_QUOTE_ID =
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const DEDICATED_JOB_ID = "00000000-0000-4000-8000-000000000003";
+const INSUFFICIENT_UPGRADE_CREDITS =
+  "Insufficient credits to upgrade. A dedicated agent costs $3.00/day of hosting, and upgrading requires a balance above $9.00 (3 days of hosting). Please add at least $9.00 to your account at /cloud/billing.";
+
 const path_ = (p: string) => (pathname: string) => pathname === p;
 const prefix = (p: string) => (pathname: string) => pathname.startsWith(p);
 
@@ -376,71 +410,18 @@ const STUB_RULES: StubRule[] = [
     match: path_("/api/browser-workspace"),
     body: { mode: "web", tabs: [] },
   },
-  // instances/ — canonical agent-list DTO plus detail.
   {
-    match: path_("/api/v1/eliza/personal"),
-    body: {
-      success: true,
-      data: {
-        identity: {
-          id: "personal:00000000-0000-5000-8000-000000000001",
-          displayName: "Eliza",
-          runtime: "dedicated",
-        },
-      },
-    },
+    match: path_("/api/status"),
+    body: { status: "running", canRespond: true },
   },
   {
-    match: path_("/api/v1/eliza/agents"),
-    body: {
-      success: true,
-      data: [
-        {
-          id: "agent-smoke-1",
-          agentName: "Smoke Agent",
-          status: "running",
-          databaseStatus: "ready",
-          lastBackupAt: null,
-          lastHeartbeatAt: NOW_ISO,
-          errorMessage: null,
-          createdAt: NOW_ISO,
-          updatedAt: NOW_ISO,
-          token_address: null,
-          token_chain: null,
-          token_name: null,
-          token_ticker: null,
-          dockerImage: null,
-          executionTier: "dedicated-lazy",
-          webUiUrl: "https://agent-smoke-1.cloud.eliza.app",
-          activeJob: null,
-        },
-      ],
-    },
-  },
-  {
-    match: path_("/api/v1/eliza/agents/agent-smoke-1"),
-    body: {
-      success: true,
-      data: {
-        id: "agent-smoke-1",
-        agentName: "Smoke Agent",
-        status: "running",
-        executionTier: "dedicated-lazy",
-        databaseStatus: "ready",
-        webUiUrl: "https://agent-smoke-1.cloud.eliza.app",
-        bridgeUrl: null,
-        errorMessage: null,
-        createdAt: NOW_ISO,
-        updatedAt: NOW_ISO,
-      },
-    },
-  },
-  {
-    match: path_("/api/v1/eliza/agents/agent-smoke-1/backups"),
+    match: path_(
+      `/api/v1/eliza/agents/${CLOUD_AUDIT_DEDICATED_AGENT_ID}/backups`,
+    ),
     body: { success: true, data: [] },
   },
   {
-    match: path_("/api/compat/agents/agent-smoke-1/logs"),
+    match: path_(`/api/compat/agents/${CLOUD_AUDIT_DEDICATED_AGENT_ID}/logs`),
     body: { success: true, data: "" },
   },
   {
@@ -496,8 +477,6 @@ const STUB_RULES: StubRule[] = [
     },
   },
   // billing/ — credits, settings, invoices, crypto (fail-soft), checkout.
-  { match: path_("/api/v1/credits/balance"), body: { balance: 42 } },
-  { match: path_("/api/credits/balance"), body: { balance: 42 } },
   {
     match: path_("/api/v1/billing/limits"),
     body: {
@@ -533,6 +512,16 @@ const STUB_RULES: StubRule[] = [
                   lastBilledAt: null,
                   nextBillingAt: BILLING_CONTAINER_NEXT_ISO,
                   estimatedNextBillingAt: null,
+                  cancellationControl: {
+                    displayAction: "stop",
+                    method: "POST",
+                    mode: "stop",
+                    endpoint:
+                      "/api/v1/billing/resources/container-smoke-api/cancel?resourceType=container",
+                    expectedLifecycleRevision: 1,
+                    eligible: true,
+                    blockers: [],
+                  },
                   ratePerHour: {
                     status: "available",
                     source: "compute-billing-rate-segments",
@@ -564,6 +553,16 @@ const STUB_RULES: StubRule[] = [
                   lastBilledAt: BILLING_SANDBOX_LAST_ISO,
                   nextBillingAt: null,
                   estimatedNextBillingAt: BILLING_SANDBOX_ESTIMATED_NEXT_ISO,
+                  cancellationControl: {
+                    displayAction: "stop_compute",
+                    method: "POST",
+                    mode: "stop",
+                    endpoint:
+                      "/api/v1/billing/resources/sandbox-smoke-research/cancel?resourceType=agent_sandbox",
+                    expectedLifecycleRevision: 2,
+                    eligible: true,
+                    blockers: [],
+                  },
                   ratePerHour: {
                     status: "available",
                     source: "compute-billing-rate-segments",
@@ -817,7 +816,7 @@ const STUB_RULES: StubRule[] = [
       approvalRequest: {
         id: "approval-smoke-1",
         organizationId: "org-smoke-1",
-        agentId: "agent-smoke-1",
+        agentId: CLOUD_AUDIT_DEDICATED_AGENT_ID,
         userId: null,
         challengeKind: "signature",
         challengePayload: {
@@ -974,8 +973,303 @@ const STUB_RULES: StubRule[] = [
   { match: path_("/api/v1/blooio/status"), body: { connected: false } },
 ];
 
-export async function installCloudApiStubs(page: Page): Promise<void> {
-  const handle = async (route: import("@playwright/test").Route) => {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function billingLimitsBody(creditBalance: number): unknown {
+  const rule = STUB_RULES.find((candidate) =>
+    candidate.match("/api/v1/billing/limits", new URLSearchParams()),
+  );
+  const body = structuredClone(rule?.body);
+  if (
+    !isRecord(body) ||
+    !isRecord(body.data) ||
+    !isRecord(body.data.v2) ||
+    !isRecord(body.data.v2.balance) ||
+    !isRecord(body.data.v2.balance.value)
+  ) {
+    throw new Error("Cloud audit billing fixture has an invalid balance shape");
+  }
+  body.data.v2.balance.value.balance = {
+    value: creditBalance.toFixed(6),
+    unit: "usd",
+    currency: "USD",
+  };
+  body.data.v2.balance.value.revision = String(creditBalance);
+  return body;
+}
+
+export async function installCloudApiStubs(
+  page: Page,
+  options: CloudAuditFixtureOptions = {},
+): Promise<CloudAuditFixtureController> {
+  let agentState = options.initialAgentState ?? "dedicated";
+  let provisioningComplete = false;
+  const creditBalance = options.creditBalance ?? 42;
+  const quoteCanActivate = options.quoteCanActivate ?? true;
+  const requests: CloudAuditRequestReceipt[] = [];
+  const unhandledRequests: string[] = [];
+  const upgradePath = `/api/v1/eliza/agents/${encodeURIComponent(PERSONAL_AGENT_ID)}/upgrade-tier`;
+  const cutoverPath = `${upgradePath}/cutover`;
+
+  const dedicatedAgent = () => ({
+    id: CLOUD_AUDIT_DEDICATED_AGENT_ID,
+    agentName: "Eliza",
+    status: agentState === "provisioning" ? "provisioning" : "running",
+    databaseStatus: agentState === "provisioning" ? "provisioning" : "ready",
+    lastBackupAt: null,
+    lastHeartbeatAt: NOW_ISO,
+    errorMessage: null,
+    createdAt: NOW_ISO,
+    updatedAt: NOW_ISO,
+    token_address: null,
+    token_chain: null,
+    token_name: null,
+    token_ticker: null,
+    dockerImage: null,
+    executionTier: "dedicated-always",
+    webUiUrl: agentState === "provisioning" ? null : DEDICATED_API_BASE,
+    activeJob:
+      agentState === "provisioning"
+        ? {
+            id: DEDICATED_JOB_ID,
+            type: "provision",
+            status: "in_progress",
+            attempts: 1,
+            maxAttempts: 3,
+            estimatedCompletionAt: FUTURE_ISO,
+            scheduledFor: NOW_ISO,
+            startedAt: NOW_ISO,
+            createdAt: NOW_ISO,
+            updatedAt: NOW_ISO,
+          }
+        : null,
+  });
+
+  const fulfill = async (
+    route: Route,
+    status: number,
+    body: unknown,
+    headers?: Record<string, string>,
+  ): Promise<void> => {
+    const request = route.request();
+    const responseBody = typeof body === "string" ? body : JSON.stringify(body);
+    await route.fulfill({
+      status,
+      contentType: "application/json",
+      headers,
+      body: responseBody,
+    });
+    requests.push({
+      method: request.method(),
+      url: request.url(),
+      pathname: new URL(request.url()).pathname,
+      status,
+      body: request.postData(),
+      responseBody,
+    });
+  };
+
+  const handleAgentFixture = async (route: Route): Promise<boolean> => {
+    const request = route.request();
+    const { pathname } = new URL(request.url());
+    const method = request.method();
+
+    if (method === "GET" && pathname === "/api/v1/eliza/personal") {
+      await fulfill(route, 200, {
+        success: true,
+        data: {
+          identity:
+            agentState === "dedicated"
+              ? {
+                  id: PERSONAL_AGENT_ID,
+                  displayName: "Eliza",
+                  runtime: "dedicated",
+                  activeAgentId: CLOUD_AUDIT_DEDICATED_AGENT_ID,
+                  apiBase: DEDICATED_API_BASE,
+                }
+              : {
+                  id: PERSONAL_AGENT_ID,
+                  displayName: "Eliza",
+                  runtime: "shared",
+                },
+        },
+      });
+      return true;
+    }
+
+    if (method === "GET" && pathname === "/api/v1/eliza/agents") {
+      await fulfill(route, 200, {
+        success: true,
+        data: agentState === "shared" ? [] : [dedicatedAgent()],
+      });
+      return true;
+    }
+
+    if (
+      method === "GET" &&
+      pathname === `/api/v1/eliza/agents/${CLOUD_AUDIT_DEDICATED_AGENT_ID}`
+    ) {
+      await fulfill(route, 200, {
+        success: true,
+        data: {
+          ...dedicatedAgent(),
+          errorCount: 0,
+          meshAddressPresent: true,
+          walletAddress: null,
+          walletProvider: null,
+          walletStatus: "none",
+          adminDetails: null,
+        },
+      });
+      return true;
+    }
+
+    if (
+      method === "GET" &&
+      (pathname === "/api/v1/credits/balance" ||
+        pathname === "/api/credits/balance")
+    ) {
+      await fulfill(route, 200, { balance: creditBalance });
+      return true;
+    }
+
+    if (method === "GET" && pathname === "/api/v1/user") {
+      await fulfill(route, 200, {
+        success: true,
+        data: {
+          ...SMOKE_USER,
+          organization: {
+            ...SMOKE_USER.organization,
+            credit_balance: creditBalance.toFixed(2),
+          },
+        },
+      });
+      return true;
+    }
+
+    if (method === "POST" && pathname === "/api/views/cloud/navigate") {
+      await fulfill(route, 200, { success: true });
+      return true;
+    }
+
+    if (method === "GET" && pathname === "/api/v1/billing/limits") {
+      await fulfill(route, 200, billingLimitsBody(creditBalance));
+      return true;
+    }
+
+    if (method === "GET" && pathname === upgradePath) {
+      await fulfill(route, 200, {
+        success: true,
+        data: {
+          quoteId: DEDICATED_QUOTE_ID,
+          sourceAgentId: PERSONAL_AGENT_ID,
+          hourlyRateUsd: 0.125,
+          dailyRateUsd: 3,
+          minimumBalanceUsd: 9,
+          minimumRunwayDays: 3,
+          balanceUsd: creditBalance,
+          deficitUsd: quoteCanActivate ? 0 : 9 - creditBalance,
+          canActivate: quoteCanActivate,
+          requiresConfirmation: true,
+          action: "activate_dedicated",
+          ...(quoteCanActivate
+            ? {}
+            : {
+                unavailableReason: INSUFFICIENT_UPGRADE_CREDITS,
+              }),
+          activation: { state: "available" },
+        },
+      });
+      return true;
+    }
+
+    if (method === "POST" && pathname === upgradePath) {
+      const expectedBody = JSON.stringify({
+        action: "activate_dedicated",
+        quoteId: DEDICATED_QUOTE_ID,
+      });
+      if (request.postData() !== expectedBody) {
+        await fulfill(route, 400, {
+          success: false,
+          error: "Activation request did not match the quoted action.",
+        });
+        return true;
+      }
+      if (!quoteCanActivate) {
+        await fulfill(route, 402, {
+          success: false,
+          error: "Add funds before activating Dedicated.",
+        });
+        return true;
+      }
+      agentState = "provisioning";
+      await fulfill(route, 202, {
+        success: true,
+        data: {
+          dedicatedAgentId: CLOUD_AUDIT_DEDICATED_AGENT_ID,
+          jobId: DEDICATED_JOB_ID,
+        },
+      });
+      return true;
+    }
+
+    if (method === "GET" && pathname === `/api/v1/jobs/${DEDICATED_JOB_ID}`) {
+      await fulfill(route, 200, {
+        success: true,
+        data: {
+          status: provisioningComplete ? "completed" : "in_progress",
+          error: null,
+          attempts: 1,
+          maxAttempts: 3,
+          estimatedCompletionAt: provisioningComplete ? null : FUTURE_ISO,
+        },
+      });
+      return true;
+    }
+
+    if (method === "POST" && pathname === cutoverPath) {
+      const expectedBody = JSON.stringify({
+        dedicatedAgentId: CLOUD_AUDIT_DEDICATED_AGENT_ID,
+      });
+      if (request.postData() !== expectedBody) {
+        await fulfill(route, 400, {
+          success: false,
+          error: "Cutover request did not name the Dedicated target.",
+        });
+        return true;
+      }
+      if (!provisioningComplete) {
+        await fulfill(route, 409, {
+          success: false,
+          code: "dedicated_not_healthy",
+          error: "Dedicated is not healthy yet.",
+        });
+        return true;
+      }
+      await fulfill(route, 200, {
+        success: true,
+        data: {
+          personalElizaId: PERSONAL_AGENT_ID,
+          activeAgentId: CLOUD_AUDIT_DEDICATED_AGENT_ID,
+          runtime: "dedicated",
+          apiBase: DEDICATED_API_BASE,
+          importedMessages: 4,
+          importedScheduledTasks: 1,
+          importedTodos: 2,
+          importedTodoMutations: 0,
+        },
+      });
+      agentState = "dedicated";
+      return true;
+    }
+
+    return false;
+  };
+
+  const handle = async (route: Route) => {
+    if (await handleAgentFixture(route)) return;
     const request = route.request();
     const url = new URL(request.url());
     const rule = STUB_RULES.find(
@@ -984,16 +1278,11 @@ export async function installCloudApiStubs(page: Page): Promise<void> {
         r.match(url.pathname, url.searchParams),
     );
     if (!rule) {
+      unhandledRequests.push(`${request.method()} ${request.url()}`);
       await route.fallback();
       return;
     }
-    await route.fulfill({
-      status: rule.status ?? 200,
-      contentType: "application/json",
-      headers: rule.headers,
-      body:
-        typeof rule.body === "string" ? rule.body : JSON.stringify(rule.body),
-    });
+    await fulfill(route, rule.status ?? 200, rule.body, rule.headers);
   };
   // Covers /api/v1/*, /api/analytics/*, /api/invoices/*, /api/credits/*,
   // /api/crypto/*, /api/mcp/*, /api/characters/*, /api/invites/*,
@@ -1004,4 +1293,25 @@ export async function installCloudApiStubs(page: Page): Promise<void> {
   await page.route("**/steward/**", handle);
   // The admin RPC-status probe has no /api prefix (worker route /admin/rpc-status).
   await page.route("**/admin/rpc-status*", handle);
+  await page.route("**/build-info.json", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ generatedAt: NOW_ISO, branch: "cloud-audit" }),
+    });
+  });
+  return {
+    get agentState() {
+      return agentState;
+    },
+    requests,
+    unhandledRequests,
+    completeProvisioning() {
+      provisioningComplete = true;
+    },
+  };
 }
