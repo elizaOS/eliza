@@ -92,19 +92,10 @@ error on startup.
 }
 ```
 
-### Required environment gate
-
-stdio MCP servers require either `ELIZA_TERMINAL_RUN_TOKEN` or `ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP=1`
-to be set in your environment — see `packages/agent/src/api/server-helpers-mcp.ts`. Without
-one of these, stdio connections return 403.
-
-```bash
-# Development only
-export ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP=1
-
-# Production
-export ELIZA_TERMINAL_RUN_TOKEN=your-token
-```
+> **Note:** If you configure MCP servers by PATCHing `/api/config` instead of editing a character
+> file on disk, stdio entries additionally require terminal authorization (`ELIZA_TERMINAL_RUN_TOKEN`);
+> see `packages/agent/src/api/server-helpers-mcp.ts`. When using character files (as shown above),
+> no additional environment variable is needed.
 
 ---
 
