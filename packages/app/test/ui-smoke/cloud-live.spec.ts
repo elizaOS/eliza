@@ -593,7 +593,7 @@ async function resolvePersonalIdentity(
       chooseRuntimeAction: () => chooseCloudRuntime(page),
     });
     const confirmationChoices = page.locator(
-      '[data-testid="choice-__first_run__:dedicated-adoption:confirm"], [data-testid^="choice-__first_run__:dedicated-adoption:confirm:"], [data-testid="choice-__first_run__:dedicated-activation:confirm"], [data-testid^="choice-__first_run__:dedicated-activation:confirm:"]',
+      '[data-testid="dedicated-adoption-confirm"], [data-testid="choice-__first_run__:dedicated-adoption:confirm"], [data-testid^="choice-__first_run__:dedicated-adoption:confirm:"], [data-testid="choice-__first_run__:dedicated-activation:confirm"], [data-testid^="choice-__first_run__:dedicated-activation:confirm:"]',
     );
     const binding = await waitForCloudLivePersonalIdentity({
       readBinding: () => readActiveBinding(page),
@@ -613,6 +613,7 @@ async function resolvePersonalIdentity(
         performConfirmation: async (confirmation) => {
           const testId = await confirmation.getAttribute("data-testid");
           if (
+            testId === "dedicated-adoption-confirm" ||
             testId?.startsWith(
               "choice-__first_run__:dedicated-adoption:confirm",
             )

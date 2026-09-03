@@ -508,7 +508,8 @@ export function useFirstRunConductor(): void {
     setUiAccent: s.setUiAccent,
     uiLanguage: s.uiLanguage,
   }));
-  const { setConversationMessages } = useConversationMessages();
+  const { conversationMessages, setConversationMessages } =
+    useConversationMessages();
 
   const active = firstRunComplete === false;
 
@@ -543,6 +544,7 @@ export function useFirstRunConductor(): void {
   const activeCloudLoginCancelRef = React.useRef<(() => void) | null>(null);
   const pendingDedicatedAdoptionRef = React.useRef<{
     quote: DedicatedAdoptionConfirmationQuote;
+    choiceText: string;
     resolve: (
       confirmation: {
         action: "adopt_existing_dedicated";
@@ -635,10 +637,11 @@ export function useFirstRunConductor(): void {
         pendingDedicatedAdoptionRef.current?.resolve(null);
         pendingDedicatedAdoptionRef.current?.dispose();
         silentCloudEntryRef.current = false;
-        seedFreshChoiceTurn(
-          "first-run:dedicated-adoption",
-          dedicatedAdoptionConfirmationText(quote, context.reason),
+        const choiceText = dedicatedAdoptionConfirmationText(
+          quote,
+          context.reason,
         );
+        seedFreshChoiceTurn("first-run:dedicated-adoption", choiceText);
         return new Promise((resolve, reject) => {
           const onAbort = () => {
             if (pendingDedicatedAdoptionRef.current?.quote !== quote) return;
@@ -648,11 +651,34 @@ export function useFirstRunConductor(): void {
           context.signal?.addEventListener("abort", onAbort, { once: true });
           const dispose = () =>
             context.signal?.removeEventListener("abort", onAbort);
-          pendingDedicatedAdoptionRef.current = { quote, resolve, dispose };
+          pendingDedicatedAdoptionRef.current = {
+            quote,
+            choiceText,
+            resolve,
+            dispose,
+          };
         });
       },
       [seedFreshChoiceTurn],
     );
+
+  React.useEffect(() => {
+    const pending = pendingDedicatedAdoptionRef.current;
+    if (
+      !pending ||
+      conversationMessages.some(
+        (message) =>
+          message.source === "first_run" && message.text === pending.choiceText,
+      )
+    ) {
+      return;
+    }
+    // A Personal binding can start server-history hydration while onboarding
+    // still waits for explicit Dedicated adoption consent. If that hydration
+    // replaces the local transcript, restore the exact pending choice instead
+    // of leaving the provisioning promise parked behind an invisible control.
+    seedFreshChoiceTurn("first-run:dedicated-adoption", pending.choiceText);
+  }, [conversationMessages, seedFreshChoiceTurn]);
 
   React.useEffect(
     () => () => {

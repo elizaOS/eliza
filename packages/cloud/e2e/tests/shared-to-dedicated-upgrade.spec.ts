@@ -49,12 +49,20 @@ import type {} from "@playwright/test";
 import { runSharedToDedicatedUpgradeHandoff } from "../../../ui/src/cloud/handoff/start-tier-upgrade";
 import { authedClient } from "../src/helpers/monetization";
 import { pollSandboxStatus } from "../src/helpers/provisioning";
+import { seedModelPricing } from "../src/helpers/seed-pricing";
 import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
 import { expect, test } from "../src/helpers/test-fixtures";
 
-// API-only (no browser). The transcript uses deterministic capability-wall
-// turns so this integration proof never needs a provider or a paid action.
-test.use({ stackOptions: { frontend: false } });
+// API-only (no browser). Route the configurable Shared default through the
+// context-echo mock so both successful turns create a real durable transcript
+// without relying on a paid provider.
+test.use({
+  stackOptions: {
+    frontend: false,
+    mockLlmEchoContext: true,
+    env: { ELIZAOS_CLOUD_SMALL_MODEL: "openai/gpt-4o-mini" },
+  },
+});
 
 interface DedicatedQuote {
   action: "activate_dedicated";
@@ -85,6 +93,12 @@ test.describe("shared→dedicated tier upgrade", () => {
     await writeStoredStewardToken(authToken);
 
     try {
+      await seedModelPricing({
+        model: "openai/gpt-4o-mini",
+        billingSource: "bitrouter",
+        provider: "openai",
+      });
+
       // ── 1. The account-native Shared identity has no sandbox row. ──────
       const sharedAgentId = personalSharedAgentId({
         userId: seededUser.userId,

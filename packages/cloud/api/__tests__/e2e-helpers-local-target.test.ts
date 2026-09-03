@@ -107,6 +107,8 @@ describe("e2e _helpers isLocalTarget", () => {
     process.env.TEST_API_BASE_URL = "http://127.0.0.1:8787";
     const fetchSpy = spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(workerdRecycleResponse())
+      .mockResolvedValueOnce(workerdRecycleResponse())
+      .mockResolvedValueOnce(workerdRecycleResponse())
       .mockResolvedValueOnce(
         Response.json({ error: "unsupported_transport" }, { status: 404 }),
       );
@@ -118,7 +120,7 @@ describe("e2e _helpers isLocalTarget", () => {
     const body = (await response.json()) as { error: string };
     expect(response.status).toBe(404);
     expect(body).toEqual({ error: "unsupported_transport" });
-    expect(fetchCount).toBe(2);
+    expect(fetchCount).toBe(4);
   });
 
   test.each(["application/json", "application/problem+json"])(
@@ -155,7 +157,7 @@ describe("e2e _helpers isLocalTarget", () => {
     expect(fetchCount).toBe(1);
   });
 
-  test("caps persistent local workerd failures at two retries", async () => {
+  test("caps persistent local workerd failures at five retries", async () => {
     process.env.TEST_API_BASE_URL = "http://127.0.0.1:8787";
     const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
       workerdRecycleResponse(),
@@ -166,7 +168,7 @@ describe("e2e _helpers isLocalTarget", () => {
     fetchSpy.mockRestore();
 
     expect(response.status).toBe(500);
-    expect(fetchCount).toBe(3);
+    expect(fetchCount).toBe(6);
   });
 
   test("does not retry a deployed target plain-text 500", async () => {

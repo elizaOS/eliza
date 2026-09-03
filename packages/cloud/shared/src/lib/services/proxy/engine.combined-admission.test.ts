@@ -39,6 +39,7 @@ mock.module("../credits", () => ({
 }));
 mock.module("../organization-inference-admission", () => ({
   admitOrganizationInference: admit,
+  InferenceAdmissionUnavailableError: class InferenceAdmissionUnavailableError extends Error {},
 }));
 mock.module("../../cache/client", () => ({
   cache: { get: proxyCacheGet, set: proxyCacheSet },
