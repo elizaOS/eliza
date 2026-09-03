@@ -370,6 +370,12 @@ function roundedDuration(startedAt: number): number {
 function createDedicatedProxyTiming(request: Request): DedicatedProxyTiming {
   const rawTraceId = request.headers.get("x-eliza-trace-id");
   const traceId = isInferenceTraceId(rawTraceId) ? rawTraceId : null;
+  const tracedChatRequest =
+    traceId !== null &&
+    request.method === "POST" &&
+    /\/api\/conversations\/[^/]+\/messages\/stream$/.test(
+      new URL(request.url).pathname.replace(/\/+$/, ""),
+    );
   const startedAt = performance.now();
   const phaseDurations = new Map<DedicatedProxyPhase, number>();
   return {
@@ -396,12 +402,19 @@ function createDedicatedProxyTiming(request: Request): DedicatedProxyTiming {
         existing ? `${existing}, ${metrics.join(", ")}` : metrics.join(", "),
       );
       if (traceId) headers.set("x-eliza-trace-id", traceId);
-      logger.info("[dedicated-proxy] correlated phase timings", {
-        traceId,
-        status,
-        totalMs,
-        phases: Object.fromEntries(phaseDurations),
-      });
+      const completedAuthenticatedRouting =
+        phaseDurations.has("ownership") && phaseDurations.has("routing");
+      if (tracedChatRequest && completedAuthenticatedRouting) {
+        // Warning is the always-on bounded sink in the Cloud logger. Emit only
+        // after authenticated ownership/routing, never for auth probes or
+        // caller-controlled paths that fail before tenant resolution.
+        logger.warn("[dedicated-proxy] correlated chat phase timings", {
+          traceId,
+          status,
+          totalMs,
+          phases: Object.fromEntries(phaseDurations),
+        });
+      }
     },
   };
 }

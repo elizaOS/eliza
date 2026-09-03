@@ -55,7 +55,7 @@ const browserClaimCalls: Array<{
 const authRequests: Request[] = [];
 const authDbCacheContexts: boolean[] = [];
 const sandboxDbCacheContexts: boolean[] = [];
-const infoCalls: Array<{ message: string; context: unknown }> = [];
+const warnCalls: Array<{ message: string; context: unknown }> = [];
 
 mock.module("@/lib/runtime/cloud-bindings", () => ({
   ...cloudBindingsActual,
@@ -120,11 +120,11 @@ mock.module("@/lib/utils/logger", () => ({
   ...loggerActual,
   logger: {
     ...loggerActual.logger,
-    warn() {},
-    error() {},
-    info(message: string, context?: unknown) {
-      infoCalls.push({ message, context });
+    warn(message: string, context?: unknown) {
+      warnCalls.push({ message, context });
     },
+    error() {},
+    info() {},
     debug() {},
   },
 }));
@@ -257,7 +257,7 @@ beforeEach(() => {
   authRequests.length = 0;
   authDbCacheContexts.length = 0;
   sandboxDbCacheContexts.length = 0;
-  infoCalls.length = 0;
+  warnCalls.length = 0;
   rateLimitResult = { success: true };
   rateLimitError = null;
   rateLimitKeys.length = 0;
@@ -399,9 +399,15 @@ describe("dedicated-agent-proxy — trace ingress", () => {
         },
       });
     const traceId = "0123456789abcdef0123456789abcdef";
-    const request = makeRequest("private-cloud-token", undefined, {
-      "X-Eliza-Trace-Id": traceId,
-    });
+    const request = new Request(
+      makeRequest(
+        "private-cloud-token",
+        undefined,
+        { "X-Eliza-Trace-Id": traceId },
+        "/api/conversations/private/messages/stream",
+      ),
+      { method: "POST" },
+    );
 
     const response = await handleDedicatedAgentProxy(
       request,
@@ -426,10 +432,11 @@ describe("dedicated-agent-proxy — trace ingress", () => {
     }
     expect(serverTiming).toMatch(/dedicated_total;dur=\d+(?:\.\d+)?/);
 
-    const timingLog = infoCalls.find(
-      ({ message }) => message === "[dedicated-proxy] correlated phase timings",
+    const timingLog = warnCalls.find(
+      ({ message }) =>
+        message === "[dedicated-proxy] correlated chat phase timings",
     );
-    expect(timingLog?.context).toMatchObject({
+    expect(timingLog?.context).toEqual({
       traceId,
       status: 200,
       phases: {
@@ -479,7 +486,97 @@ describe("dedicated-agent-proxy — trace ingress", () => {
     await handleDedicatedAgentProxy(request, ENV, urlOf(request), AGENT);
 
     expect(requireCapturedRequest().headers.get("x-eliza-trace-id")).toBeNull();
-    expect(JSON.stringify(infoCalls)).not.toContain(invalidTrace);
+    expect(JSON.stringify(warnCalls)).not.toContain(invalidTrace);
+  });
+
+  test("does not write the always-on timing log for a traced non-chat request", async () => {
+    const request = makeRequest("agent-local-token", undefined, {
+      "X-Eliza-Trace-Id": "0123456789abcdef0123456789abcdef",
+    });
+
+    await handleDedicatedAgentProxy(request, ENV, urlOf(request), AGENT);
+
+    expect(warnCalls).toEqual([]);
+  });
+
+  test("does not write the always-on timing log for unauthenticated traced chat requests", async () => {
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const tracedChat = (headers: HeadersInit) => {
+      const requestHeaders = new Headers(headers);
+      requestHeaders.set("X-Eliza-Trace-Id", traceId);
+      return new Request(
+        makeRequest(
+          undefined,
+          undefined,
+          requestHeaders,
+          "/api/conversations/private/messages/stream",
+        ),
+        { method: "POST" },
+      );
+    };
+
+    authResult = "throw";
+    let request = tracedChat({ authorization: "Bearer eliza_cloud_api_key" });
+    let response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(response.status).toBe(401);
+    expect(warnCalls).toEqual([]);
+
+    authResult = "forbidden";
+    request = tracedChat({ authorization: "Bearer rejected-cloud-token" });
+    response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(response.status).toBe(403);
+    expect(warnCalls).toEqual([]);
+  });
+
+  test("retains the always-on timing log for authenticated warming responses", async () => {
+    authResult = {
+      user: { id: "private-user", organization_id: "private-org" },
+    };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const request = new Request(
+      makeRequest(
+        "private-cloud-token",
+        undefined,
+        { "X-Eliza-Trace-Id": traceId },
+        "/api/conversations/private/messages/stream",
+      ),
+      { method: "POST" },
+    );
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(202);
+    expect(warnCalls).toEqual([
+      {
+        message: "[dedicated-proxy] correlated chat phase timings",
+        context: {
+          traceId,
+          status: 202,
+          phases: {
+            auth: expect.any(Number),
+            ownership: expect.any(Number),
+            routing: expect.any(Number),
+          },
+          totalMs: expect.any(Number),
+        },
+      },
+    ]);
   });
 });
 

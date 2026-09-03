@@ -133,11 +133,17 @@ function remoteSmoke() {
     rendererBuildId: buildId,
     cloudApiOrigin: apiOrigin,
     cloudEnvironment: "staging",
+    referenceBinding: {
+      runtime: "dedicated",
+      apiBase:
+        "https://123e4567-e89b-42d3-a456-426614174000.cloud-staging.eliza.app",
+    },
     chatCorrelation: {
       traceId: "0123456789abcdef0123456789abcdef",
-      serverTiming: "dedicated_auth;dur=1.25, dedicated_total;dur=4",
+      serverTiming:
+        "dedicated_auth;dur=1.25, dedicated_ownership;dur=1, dedicated_routing;dur=1, dedicated_proxy_dispatch;dur=1, dedicated_total;dur=4.25",
       preforward: "total=3;auth=1;mid=1;reserve=1;setup=0",
-      providerRequestId: "req_cerebras-123",
+      providerRequestIdSha256: "d".repeat(64),
     },
     outcome: "success",
   };
@@ -373,11 +379,12 @@ describe("deployed renderer proof", () => {
       { ...remoteSmoke().chatCorrelation, traceId: "Bearer private-secret" },
       {
         ...remoteSmoke().chatCorrelation,
-        serverTiming: 'gateway;dur=1;desc="private prompt"',
+        serverTiming:
+          "dedicated_auth;dur=1, dedicated_ownership;dur=1, dedicated_routing;dur=1, dedicated_proxy_dispatch;dur=1, dedicated_total;dur=4, private_api_key;dur=1",
       },
       {
         ...remoteSmoke().chatCorrelation,
-        providerRequestId: "private request id with spaces",
+        providerRequestIdSha256: "private request id with spaces",
       },
       { ...remoteSmoke().chatCorrelation, credential: "private-secret" },
     ]) {
@@ -386,6 +393,33 @@ describe("deployed renderer proof", () => {
           ...inputs,
           remoteSmoke: { ...remoteSmoke(), chatCorrelation },
         }),
+      ).toThrow();
+    }
+    for (const remote of [
+      {
+        ...remoteSmoke(),
+        referenceBinding: {
+          ...remoteSmoke().referenceBinding,
+          runtime: "shared",
+        },
+      },
+      {
+        ...remoteSmoke(),
+        referenceBinding: {
+          runtime: "dedicated",
+          apiBase: "https://api-staging.eliza.app",
+        },
+      },
+      {
+        ...remoteSmoke(),
+        chatCorrelation: {
+          ...remoteSmoke().chatCorrelation,
+          serverTiming: "dedicated_total;dur=4",
+        },
+      },
+    ]) {
+      expect(() =>
+        createDeployedRendererProof({ ...inputs, remoteSmoke: remote }),
       ).toThrow();
     }
   });

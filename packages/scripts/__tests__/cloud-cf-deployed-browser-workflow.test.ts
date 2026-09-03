@@ -275,7 +275,7 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(browserStep.run).not.toContain("webServer");
   });
 
-  test("combines every strict observation before deriving receipt v3", () => {
+  test("combines every strict observation before deriving receipt v4", () => {
     for (const input of [
       '--authority "$AUTHORITY_PATH"',
       '--preflight "$PREFLIGHT_PATH"',

@@ -22,7 +22,9 @@ import {
 } from "../cloud-live-browser-auth";
 import {
   type CloudLiveChatCorrelationEvidence,
+  type CloudLiveChatCorrelationObservation,
   createCloudLiveChatCorrelationCapture,
+  requireDedicatedChatCorrelation,
 } from "../cloud-live-chat-correlation";
 import {
   assertCloudLiveNamedWarmingMode,
@@ -83,7 +85,7 @@ const DEPLOYED_RENDERER_ENABLED =
   process.env.ELIZA_UI_SMOKE_DEPLOYED_RENDERER === "1";
 const DEPLOYED_RENDERER_ALIAS = "https://develop.eliza-app.pages.dev";
 const DEPLOYED_RENDERER_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
-const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v2";
+const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v3";
 const REQUIRE_NAMED_WARMING =
   process.env.ELIZA_UI_SMOKE_REQUIRE_NAMED_WARMING === "1";
 
@@ -352,8 +354,11 @@ async function writeDeployedBrowserSmokeEvidence(
   path: string,
   renderer: DeployedRendererIdentity,
   cloudApiOrigin: string,
-  chatCorrelation: CloudLiveChatCorrelationEvidence,
+  referenceBinding: CloudLiveRuntimeBinding,
+  chatObservation: CloudLiveChatCorrelationObservation,
 ): Promise<void> {
+  const chatCorrelation: CloudLiveChatCorrelationEvidence =
+    requireDedicatedChatCorrelation(referenceBinding, chatObservation);
   const outputPath = resolve(path);
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(
@@ -367,6 +372,10 @@ async function writeDeployedBrowserSmokeEvidence(
         rendererBuildId: renderer.buildId,
         cloudApiOrigin,
         cloudEnvironment: "staging",
+        referenceBinding: {
+          runtime: "dedicated",
+          apiBase: referenceBinding.apiBase,
+        },
         chatCorrelation,
         outcome: "success",
       },
@@ -1431,6 +1440,7 @@ test.describe("real cloud login + personal identity + chat", () => {
           deployedBrowserEvidencePath,
           deployedRenderer as DeployedRendererIdentity,
           originContract.origin,
+          referenceBinding,
           chatCorrelation,
         );
       }
