@@ -1,6 +1,6 @@
 /**
  * Public entry for `@elizaos/plugin-relationships`: the entity graph-CRUD action,
- * the relationships views, the drizzle schema, and the
+ * the relationships views, retired-schema compatibility descriptors, and the
  * entity-graph provider.
  */
 export type { EntityActionParameters } from "./actions/entity.js";

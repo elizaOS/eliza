@@ -1,6 +1,7 @@
 /**
- * Relationships drizzle schema defines the minimal entity and relationship graph
- * tables registered by the plugin runtime.
+ * Retired relationship-schema definitions retained for compatibility and
+ * read-only inspection. The plugin does not register these tables; active
+ * persistence belongs to the runtime `KnowledgeGraphService`.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -12,8 +13,10 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+/** @deprecated Do not register; inventory and migrate legacy rows first. */
 export const relationshipsSchema = pgSchema("app_relationships");
 
+/** @deprecated Legacy `app_relationships` table descriptor for inspection. */
 export const entitiesTable = relationshipsSchema.table(
   "entities",
   {
@@ -32,6 +35,7 @@ export const entitiesTable = relationshipsSchema.table(
   }),
 );
 
+/** @deprecated Legacy `app_relationships` table descriptor for inspection. */
 export const relationshipsTable = relationshipsSchema.table(
   "relationships",
   {

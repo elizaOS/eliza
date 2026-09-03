@@ -5,10 +5,10 @@
  * metadata (cadence, role, sentiment) and state (last-interaction, count,
  * sentiment trend). Each edge has its own provenance trail.
  *
- * Canonical home: `@elizaos/shared`. The DB-backed `RelationshipStore` lives in
- * `@elizaos/plugin-personal-assistant`; the `LifeOpsGraphRelationship` wire
- * contract in `@elizaos/shared/contracts/personal-assistant` re-exports these
- * shapes.
+ * Canonical home: `@elizaos/shared`. The DB-backed `RelationshipStore` lives
+ * in `@elizaos/agent`'s `KnowledgeGraphService`; personal-assistant
+ * compatibility shims and the `LifeOpsGraphRelationship` wire contract
+ * re-export these shapes.
  */
 
 /**
