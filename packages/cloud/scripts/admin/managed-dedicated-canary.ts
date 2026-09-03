@@ -398,6 +398,7 @@ function hasExactHeadscaleIpv4Url(value: string): boolean {
 }
 
 function hasMeshAddress(agent: JsonObject): boolean {
+  if (agent.meshAddressPresent === true) return true;
   const adminDetails = isRecord(agent.adminDetails) ? agent.adminDetails : null;
   const explicit = stringField(adminDetails, "headscaleIp");
   if (explicit && isHeadscaleIpv4(explicit)) return true;
@@ -1313,7 +1314,13 @@ export async function runManagedDedicatedCanary(
         throw new CanaryFailure("ready", "wrong_execution_tier");
       }
       if (status && TERMINAL_AGENT_FAILURE_STATUSES.has(status)) {
-        throw new CanaryFailure("ready", "terminal_agent_state");
+        const errorMessage = stringField(data, "errorMessage");
+        throw new CanaryFailure(
+          "ready",
+          errorMessage
+            ? classifyProvisioningJobFailure({ error: errorMessage })
+            : "terminal_agent_state",
+        );
       }
       if (
         evidence.path.running &&

@@ -272,6 +272,7 @@ app.get("/", async (c) => {
       walletAddress,
       walletProvider,
       walletStatus,
+      meshAddressPresent: agent.headscale_ip !== null,
       adminDetails,
     };
 

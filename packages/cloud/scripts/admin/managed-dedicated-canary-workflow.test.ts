@@ -207,6 +207,42 @@ describe("managed dedicated live-smoke workflow contract", () => {
     );
     expect(headscaleExchange?.with?.script).not.toContain('echo "$block"');
 
+    const headscaleIngress = diagnostic.steps.find(
+      (step) => step.name === "Summarize Headscale ingress protocol",
+    );
+    expect(headscaleIngress?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(headscaleIngress?.with?.script).toContain("headscale version");
+    expect(headscaleIngress?.with?.script).toContain(
+      "/var/log/nginx/access.log",
+    );
+    expect(headscaleIngress?.with?.script).toContain("ts2021_total=");
+    expect(headscaleIngress?.with?.script).toContain("machine_register_total=");
+    expect(headscaleIngress?.with?.script).toContain("response[1]");
+    expect(headscaleIngress?.with?.script).not.toContain("response[2]");
+    expect(headscaleIngress?.with?.script).not.toContain('echo "$version_raw"');
+
+    const suffixJournal = diagnostic.steps.find(
+      (step) => step.name === "Classify exact canary journal by suffix",
+    );
+    expect(suffixJournal).toBeDefined();
+    expect(suffixJournal?.env?.CANARY_DIAGNOSTIC_SUFFIX).toBe(
+      githubExpression("inputs.diagnose_canary_suffix"),
+    );
+    expect(suffixJournal?.with?.script).toContain(
+      "managed-dedicated-canary-$CANARY_DIAGNOSTIC_SUFFIX",
+    );
+    expect(suffixJournal?.with?.script).toContain("::add-mask::$agent_id");
+    expect(suffixJournal?.with?.script).toContain(
+      "suffix_journal_mesh_category=",
+    );
+    expect(suffixJournal?.with?.script).toContain(
+      "suffix_journal_observation_present=",
+    );
+    expect(suffixJournal?.with?.script).not.toContain('echo "$journal"');
+    expect(suffixJournal?.with?.script).not.toContain('echo "$block"');
+
     const headscaleKeys = diagnostic.steps.find(
       (step) => step.name === "Summarize recent agent pre-auth key state",
     );
@@ -259,6 +295,9 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(lifecycleJournal?.env?.CANARY_AGENT_ID).toBe(
       githubExpression("steps.cleanup_reconciliation.outputs.agent_id"),
     );
+    expect(lifecycleJournal?.env?.CANARY_DELETE_JOB_ID).toBe(
+      githubExpression("steps.cleanup_reconciliation.outputs.delete_job_id"),
+    );
     expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
       "dedicated_lifecycle_signals=",
     );
@@ -279,6 +318,12 @@ describe("managed dedicated live-smoke workflow contract", () => {
     );
     expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
       "dedicated_delete_failure_category=",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "timestamp_shape_invalid",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "sandbox_row_delete_query_failed",
     );
 
     const cleanupFailure = diagnostic.steps.find(

@@ -110,6 +110,7 @@ describe("Headscale container credentials", () => {
     expect(request).not.toHaveProperty("user");
     expect(request).not.toHaveProperty("ensureUser");
     expect(prepared.preAuthKey).toBe("test-preauth-key");
+    expect(prepared.envVars.TS_FORCE_NOISE_443).toBe("1");
   });
 
   test("removes a stale persistent registration before issuing a replacement key", async () => {

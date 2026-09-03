@@ -149,6 +149,7 @@ describe("owned agent detail private-address contract", () => {
       data: {
         id: AGENT_ID,
         webUiUrl: `https://${AGENT_ID}.staging.elizacloud.ai`,
+        meshAddressPresent: true,
         adminDetails: null,
       },
     });

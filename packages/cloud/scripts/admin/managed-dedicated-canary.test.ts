@@ -36,7 +36,10 @@ interface FixtureOptions {
   createStatus?: number;
   createdTier?: string;
   readyTier?: string;
+  terminalStatus?: string;
+  terminalErrorMessage?: string | null;
   mesh?: boolean;
+  meshAddressPresent?: boolean;
   bridgeUrl?: string;
   heartbeatAt?: string | null;
   bridgeReply?: "real" | "canned";
@@ -251,7 +254,10 @@ function createFixture(options: FixtureOptions = {}) {
         data: {
           id: AGENT_ID,
           agentName,
-          status: provisionCompleted ? "running" : "provisioning",
+          status: provisionCompleted
+            ? (options.terminalStatus ?? "running")
+            : "provisioning",
+          errorMessage: options.terminalErrorMessage ?? null,
           databaseStatus: "ready",
           executionTier:
             options.readyTier ?? options.createdTier ?? "dedicated-always",
@@ -265,6 +271,7 @@ function createFixture(options: FixtureOptions = {}) {
             (options.mesh === false
               ? "http://192.0.2.10:3000"
               : "http://100.64.0.21:3000"),
+          meshAddressPresent: options.meshAddressPresent,
           adminDetails: null,
         },
       });
@@ -1003,6 +1010,34 @@ describe("managed dedicated canary", () => {
     expect(evidence.path.heartbeatFresh).toBe(false);
     expect(evidence.path.meshAddressPresent).toBe(false);
     expect(evidence.timingsMs.ready).toBe(30);
+    expect(evidence.cleanup.status).toBe("passed");
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+  });
+
+  test("accepts the owner-safe mesh-presence bit without exposing a private address", async () => {
+    const { evidence } = await runFixture({
+      bridgeUrl: "https://agent.example.test",
+      meshAddressPresent: true,
+    });
+
+    expect(evidence.verdict).toBe("pass");
+    expect(evidence.path.meshAddressPresent).toBe(true);
+    expect(validateManagedDedicatedCanaryEvidence(evidence)).toEqual([]);
+  });
+
+  test("terminal readiness classifies the agent error without retaining private diagnostics", async () => {
+    const privateDiagnostic =
+      "Headscale route failed for private-agent-id on private-node-id";
+    const { evidence } = await runFixture({
+      terminalStatus: "error",
+      terminalErrorMessage: privateDiagnostic,
+    });
+
+    expect(evidence.failure).toEqual({
+      phase: "ready",
+      code: "provisioning_ingress_failed",
+    });
+    expect(JSON.stringify(evidence)).not.toContain(privateDiagnostic);
     expect(evidence.cleanup.status).toBe("passed");
     expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
   });
