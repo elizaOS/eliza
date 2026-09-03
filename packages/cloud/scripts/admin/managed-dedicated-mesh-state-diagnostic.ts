@@ -131,6 +131,32 @@ export function classifyRuntimeProcessState(
   };
 }
 
+/**
+ * Stamp an observation with whether it actually happened.
+ *
+ * `observe()` returns `{ ok: false, output: "" }` for every failure, and
+ * `docker exec` fails outright whenever the container is not running — a state
+ * this diagnostic explicitly expects (`created`, `exited`, `dead`). The status
+ * classifier gets this for free: an empty string cannot parse, so it already
+ * reports `query: "error"`. The process and log classifiers cannot, because an
+ * empty string is a perfectly valid input that yields all-`false`. Without a
+ * discriminator an unobserved container is published as five definite
+ * negatives, which reads as "the entrypoint and the agent both failed to
+ * start" — the exact conclusion the runtime facts exist to distinguish.
+ */
+export function withObservationQuery<T extends object>(
+  observation: CommandObservation,
+  classify: (output: string) => T,
+): Omit<T, "query"> & { query: "success" | "error" } {
+  return {
+    ...classify(observation.output),
+    // Last on purpose. The status classifier already reports its own `query`
+    // from a parse failure, so a classifier field could shadow this one; the
+    // observation-level answer is the one the artifact promises, and it wins.
+    query: observation.ok ? "success" : "error",
+  };
+}
+
 async function observe(
   client: DockerSSHClient,
   command: string,
@@ -306,13 +332,16 @@ async function run(suffix: string): Promise<void> {
     const exitCode =
       typeof state?.ExitCode === "number" ? state.ExitCode : null;
     const tailscale = classifyTailscaleStatus(status.output);
-    const logSignals = classifyContainerLogs(logs.output);
-    const runtimeState = classifyRuntimeProcessState(runtime.output);
+    const logSignals = withObservationQuery(logs, classifyContainerLogs);
+    const runtimeState = withObservationQuery(
+      runtime,
+      classifyRuntimeProcessState,
+    );
     // biome-ignore lint/suspicious/noUndeclaredEnvVars: the protected worker EnvironmentFile owns this deployment value.
     const configuredImage = process.env.ELIZA_AGENT_IMAGE?.trim();
     console.log(
       `MESH_DIAGNOSTIC=${JSON.stringify({
-        schemaVersion: 2,
+        schemaVersion: 3,
         targetCount: 1,
         container: {
           inspect: inspect.ok ? "success" : "error",
