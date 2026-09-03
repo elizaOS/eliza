@@ -2363,7 +2363,7 @@ export async function appendJournalRecord(
   environment,
   record,
   authKey,
-  { previousAuthKey = null, beforePost = null } = {},
+  { previousAuthKey = null, beforePost = null, finalAuthority = null } = {},
 ) {
   const body = journalRecordCommentBody(record);
   const now = new Date().toISOString();
@@ -2439,6 +2439,9 @@ export async function appendJournalRecord(
   ) {
     fail("gateway journal append does not extend the exact canonical head");
   }
+  // Complete mutable readbacks first, then fence an interleaved previous-key
+  // head before the caller's exact run/ref authority becomes the final remote
+  // boundary immediately preceding POST.
   if (beforePost !== null) await beforePost();
   if (previousAuthKey !== null) {
     const adjacentPrevious = await journalRecordGraph(
@@ -2458,6 +2461,7 @@ export async function appendJournalRecord(
       );
     }
   }
+  if (finalAuthority !== null) await finalAuthority();
   let postedCommentId = null;
   try {
     const posted = await api.request(
@@ -3734,7 +3738,7 @@ export async function main(
       nextAuthKey,
       {
         previousAuthKey: authKey,
-        beforePost: () =>
+        finalAuthority: () =>
           validateRekeyAttempt(api, repository, target, environment),
       },
     );

@@ -1160,6 +1160,101 @@ describe("durable Gateway transaction journal", () => {
     expect(postCalls).toBe(2);
   });
 
+  test("does not POST rekey after authority advances during the adjacent previous-head scan", async () => {
+    for (const advance of ["run", "develop"] as const) {
+      const api = trustedApi([openMarker(), closeMarker()]);
+      const nextAuthKey = "next-protected-journal-auth-key-".repeat(2);
+      const workflowSha = "9".repeat(40);
+      const advancedSha = "8".repeat(40);
+      const originalRequest = api.request;
+      let journalCommentReads = 0;
+      let authorityAdvanced = false;
+      let postCalls = 0;
+      api.request = async (
+        method: string,
+        endpoint: string,
+        value?: Record<string, unknown>,
+      ) => {
+        if (
+          endpoint.startsWith(
+            "/actions/workflows/deploy-gateway-webhook.yml/runs?",
+          )
+        ) {
+          return { total_count: 0, workflow_runs: [] };
+        }
+        if (endpoint === "/actions/runs/123/attempts/1") {
+          return {
+            id: 123,
+            run_attempt: 1,
+            head_sha:
+              authorityAdvanced && advance === "run"
+                ? advancedSha
+                : workflowSha,
+            head_branch: "develop",
+            head_repository: { full_name: repository },
+            path: ".github/workflows/recover-gateway-webhook-transactions.yml",
+            event: "schedule",
+            status: "in_progress",
+          };
+        }
+        if (endpoint === "/branches/develop") {
+          return {
+            name: "develop",
+            commit: {
+              sha:
+                authorityAdvanced && advance === "develop"
+                  ? advancedSha
+                  : workflowSha,
+            },
+          };
+        }
+        if (endpoint.startsWith("/issues/29763/comments?")) {
+          const response = await originalRequest(method, endpoint);
+          journalCommentReads += 1;
+          if (journalCommentReads === 10) authorityAdvanced = true;
+          return response;
+        }
+        if (method === "POST" && endpoint === "/issues/29763/comments") {
+          postCalls += 1;
+          const createdAt = `2026-09-03T00:00:0${api.comments.length}Z`;
+          const created = {
+            id: api.comments.length + 1,
+            body: value?.body,
+            created_at: createdAt,
+            updated_at: createdAt,
+            user: { login: "github-actions[bot]", type: "Bot" },
+          };
+          api.comments.push(created);
+          return created;
+        }
+        return originalRequest(method, endpoint);
+      };
+
+      await expect(
+        journalMain(
+          ["rekey", "--environment", "staging"],
+          {
+            GITHUB_REPOSITORY: repository,
+            GITHUB_TOKEN: "token",
+            GATEWAY_JOURNAL_AUTH_KEY: authKey,
+            GATEWAY_JOURNAL_NEXT_AUTH_KEY: nextAuthKey,
+            GITHUB_RUN_ID: "123",
+            GITHUB_RUN_ATTEMPT: "1",
+            GITHUB_SHA: workflowSha,
+          },
+          { api },
+        ),
+      ).rejects.toThrow(
+        advance === "run"
+          ? "protected recovery authority"
+          : "current develop head",
+      );
+      expect(journalCommentReads).toBe(10);
+      expect(authorityAdvanced).toBe(true);
+      expect(postCalls).toBe(0);
+    }
+  });
+
   test("rejects a rekey when the old head advances or previous authenticator is forged", async () => {
     const api = trustedApi([openMarker(), closeMarker()]);
     const previousPayload = recordFromComment(api.comments[1]);
