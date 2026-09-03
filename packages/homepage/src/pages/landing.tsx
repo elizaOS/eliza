@@ -941,10 +941,11 @@ export default function LandingPage() {
   );
   const phoneCopyOperation = useRef(0);
   const browserWindow = typeof window === "undefined" ? null : window;
-  // fix(homepage): remove unreachable signed-in Dashboard heuristic (#28743).
-  // The marketing origin cannot observe the canonical Steward session
-  // (different origin), so the legacy `eliza_app_session` localStorage check
-  // is a false signal. Product decision: neutral Sign in CTA always.
+  // fix(homepage): remove signed-in Dashboard heuristic (#28743).
+  // `eliza_app_session` is real same-origin homepage session state (written
+  // by homepage login), but it cannot attest the separate Cloud-app origin
+  // session. Gating a Dashboard CTA on it fabricates cross-origin session
+  // knowledge. Product decision: neutral Sign in CTA always.
   const signedIn = false;
   const productNavigation = resolveHomepageProductNavigation(
     browserWindow?.location.hostname ?? "",

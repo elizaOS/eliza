@@ -1,13 +1,13 @@
 /**
- * Landing auth CTA regression: neutral Sign in always, never stale Dashboard.
+ * Landing auth CTA regression: neutral Sign in always, never inferred Dashboard.
  *
  * Repro (#28743): `packages/homepage/src/pages/landing.tsx` used
  * `localStorage.eliza_app_session` to decide between "Dashboard" and "Sign in".
- * That key is never set by the canonical Steward session, so the Dashboard
- * branch was unreachable for real logins and was reachable for stale legacy
- * storage. The marketing origin cannot observe the Cloud session directly
- * (different origins), so the truthful repair is a neutral CTA that never
- * fabricates a signed-in state from stale storage.
+ * That key is real same-origin homepage session state (written by homepage
+ * login), but it cannot attest the separate Cloud-app origin session — so the
+ * Dashboard branch fabricated cross-origin session knowledge. The truthful
+ * repair is a neutral CTA that never infers Cloud signed-in state from the
+ * homepage token.
  *
  * Red: with `eliza_app_session` set, old code renders Dashboard.
  * Green: fixed code renders Sign in regardless of that key, and never exposes
@@ -191,9 +191,9 @@ describe("LandingPage auth CTA", () => {
     unmount();
   });
 
-  test("renders Sign in even when legacy eliza_app_session is present (stale storage)", async () => {
+  test("renders Sign in even when a homepage eliza_app_session token is present (not Cloud attestation)", async () => {
     const { container, unmount } = await renderLanding((s) =>
-      s.setItem("eliza_app_session", "stale-legacy-token"),
+      s.setItem("eliza_app_session", "homepage-session-token"),
     );
     const headerCta = container.querySelector(
       ".landing-header-cta",
@@ -215,7 +215,7 @@ describe("LandingPage auth CTA", () => {
         .textContent,
     ).toBe("Sign in");
     u1();
-    // After logout (storage cleared), still Sign in — no stale Dashboard.
+    // After logout (storage cleared), still Sign in — no inferred Dashboard.
     const { container: c2, unmount: u2 } = await renderLanding();
     expect(
       (c2.querySelector(".landing-header-cta") as HTMLAnchorElement)
