@@ -1012,6 +1012,121 @@ describe("telegram membership authority vertical (real PGlite)", () => {
     });
   }, 120_000);
 
+  it("fences a principal whose persisted pending-revocation entry uses UPPERCASE hex (case-consistent overlay)", async () => {
+    const dir = await import("node:fs/promises").then((fs) =>
+      fs.mkdtemp("/tmp/tg-membership-pending-case-"),
+    );
+    const first = await bootMembershipHarness({ pgliteDir: dir });
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        first.harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(first.harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+
+    // Principal admitted, then their leave-revocation write fails: the
+    // pending-revocation overlay installs and persists.
+    await first.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 1,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 10_000).toISOString(),
+    });
+    first.faults.failApplyMembership = true;
+    await first.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "revoked",
+      reason: "left",
+      messageId: 2,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 5_000).toISOString(),
+    });
+    first.faults.failApplyMembership = false;
+
+    // Corrupt the persisted overlay exactly the way the reviewer described:
+    // after the revocation-failure persist lands (lowercase), rewrite the
+    // durable value with the SAME UUID in uppercase hex. The interception
+    // happens at the getCache boundary in the restarted process so the REAL
+    // key format never needs reconstruction — hydration reads uppercase hex,
+    // which CANONICAL_UUID_PATTERN's `i` flag accepts while the admission
+    // path checks lowercase canonicalPrincipalId against a case-sensitive Set.
+    const cleanupIndex = cleanups.indexOf(first.harness.cleanup);
+    if (cleanupIndex >= 0) cleanups.splice(cleanupIndex, 1);
+    await first.harness.runtime.stop().catch(() => {});
+    const second = await bootMembershipHarness({ pgliteDir: dir });
+    const originalGet = second.harness.runtime.getCache.bind(
+      second.harness.runtime,
+    );
+    second.harness.runtime.getCache = (async (key: string) => {
+      const value = await originalGet(key);
+      if (
+        key.includes("pending-revocations") &&
+        Array.isArray(value) &&
+        value.every((v) => typeof v === "string")
+      ) {
+        return value.map((v) => v.toUpperCase());
+      }
+      return value;
+    }) as never;
+
+    // Unrelated evidence restores scope health to current.
+    const otherId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        second.harness.runtime,
+        "default",
+        String(MEMBER_TG_ID + 9),
+      ),
+    );
+    await ensurePrincipal(second.harness, otherId);
+    await second.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: otherId,
+      state: "active",
+      reason: "joined",
+      messageId: 3,
+      telegramUserId: String(MEMBER_TG_ID + 9),
+      runtime: { worldId: null, roomId: null, entityId: otherId },
+      observedAt: new Date().toISOString(),
+    });
+    const health = await second.authority.scopeHealth({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+    });
+    expect(health?.health).toBe("current");
+
+    // The uppercase entry must still fence the lowercase canonical principal.
+    // Before the normalization fix, hydration succeeded but Set.has never
+    // matched, silently re-authorizing the revoked principal.
+    const decision = await second.authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      decision.decision,
+      "an uppercase persisted pending-revocation entry must still deny the lowercase canonical principal",
+    ).toBe("denied");
+    expect(decision.reason).toBe("membership_revoked");
+
+    cleanups.push(async () => {
+      await import("node:fs/promises").then((fs) =>
+        fs.rm(dir, { recursive: true, force: true }),
+      );
+    });
+  }, 120_000);
+
   it("does not let a queued authorization overtake the revocation failure degrade (atomic fence)", async () => {
     const { authority, harness, faults } = await bootMembershipHarness();
     const entityId = await import("@elizaos/plugin-telegram").then((m) =>

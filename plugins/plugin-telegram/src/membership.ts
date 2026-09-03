@@ -195,12 +195,19 @@ function parsePersistedPendingRevocations(value: unknown): UUID[] | null {
   if (!Array.isArray(value)) {
     return null;
   }
+  const normalized: UUID[] = [];
   for (const entry of value) {
     if (!isCanonicalUuid(entry)) {
       return null;
     }
+    // The admission path checks `pendingOverlay.has(canonicalPrincipalId)`
+    // and Set.has is case-sensitive, while CANONICAL_UUID_PATTERN accepts
+    // uppercase hex via its `i` flag. Normalize to the documented lowercase
+    // canonical form so an uppercase representation of a revoked principal
+    // still fences that principal instead of silently re-authorizing it.
+    normalized.push(entry.toLowerCase() as UUID);
   }
-  return value;
+  return normalized;
 }
 
 /**
