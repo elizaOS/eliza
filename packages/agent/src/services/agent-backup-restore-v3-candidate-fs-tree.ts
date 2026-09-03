@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import fs, { type FileHandle } from "node:fs/promises";
 import path from "node:path";
+import { types as utilTypes } from "node:util";
 import type { AgentBackupRestoreV3OperationControl } from "@elizaos/shared";
 import {
   type AgentBackupRestoreV3CandidateFsControl,
@@ -29,12 +30,15 @@ import {
   requirePrivateDirectory,
   requirePrivateSingleLinkFile,
   requireRelativePath,
+  runAllBoundedInternalCleanup,
   sameIdentity,
   sameStableFile,
+  snapshotOwnDataRecord,
   syncDirectory,
 } from "./agent-backup-restore-v3-candidate-fs-control";
 
 const MAX_RELATIVE_PATH_BYTES = 1_024;
+const BUFFER_DIRECTORY_ENCODING = "buffer" as BufferEncoding;
 const TREE_PROOF_DERIVATION =
   "elizaos.agent-backup.restore-v3-candidate-tree.v1";
 
@@ -88,6 +92,44 @@ interface CleanupEntry {
   readonly stats: CandidateFsExactStats;
 }
 
+function snapshotCleanupNames(value: readonly string[]): readonly string[] {
+  if (utilTypes.isProxy(value) || !Array.isArray(value)) {
+    candidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_LIMIT",
+      "Candidate volatile cleanup requires at most 64 explicit paths",
+    );
+  }
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  const length = lengthDescriptor?.value;
+  if (!Number.isSafeInteger(length) || length < 0 || length > 64) {
+    candidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_LIMIT",
+      "Candidate volatile cleanup requires at most 64 explicit paths",
+    );
+  }
+  const unique = new Set<string>();
+  const names: string[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || !("value" in descriptor)) {
+      candidateFsError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_UNSAFE",
+        "Candidate volatile cleanup requires dense data-property paths",
+      );
+    }
+    const name = requireControlName(descriptor.value, "volatile path name");
+    if (unique.has(name)) {
+      candidateFsError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_UNSAFE",
+        "Candidate volatile cleanup contains a duplicate path",
+      );
+    }
+    unique.add(name);
+    names.push(name);
+  }
+  return Object.freeze(names);
+}
+
 function updateUint64(
   hash: ReturnType<typeof createHash>,
   value: number,
@@ -117,32 +159,110 @@ function compareNames(left: string, right: string): number {
   return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
 }
 
+async function readExactDirectoryNames(
+  anchor: string,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+  maximumNames: number,
+  limitCode: string,
+  limitMessage: string,
+  unsafeCode: string,
+  unsafeMessage: string,
+): Promise<string[]> {
+  const directory = await controlledAcquire(
+    () => fs.opendir(anchor, { encoding: BUFFER_DIRECTORY_ENCODING }),
+    (lateDirectory) => lateDirectory.close(),
+    control,
+  );
+  const names: string[] = [];
+  try {
+    while (true) {
+      const entry = await controlled(() => directory.read(), control);
+      if (entry === null) break;
+      if (names.length >= maximumNames) {
+        candidateFsError(limitCode, limitMessage);
+      }
+      const rawName = entry instanceof Uint8Array ? entry : entry.name;
+      if (!(rawName instanceof Uint8Array)) {
+        candidateFsError(unsafeCode, unsafeMessage);
+      }
+      const encodedName = Buffer.from(
+        rawName.buffer,
+        rawName.byteOffset,
+        rawName.byteLength,
+      );
+      const name = encodedName.toString("utf8");
+      if (!Buffer.from(name, "utf8").equals(encodedName)) {
+        candidateFsError(unsafeCode, unsafeMessage);
+      }
+      requirePathSegment(name, "candidate directory entry name");
+      names.push(name);
+    }
+  } finally {
+    await boundedInternalCleanup(() => directory.close());
+  }
+  return names.sort(compareNames);
+}
+
+function sameStableDirectory(
+  left: CandidateFsExactStats,
+  right: CandidateFsExactStats,
+): boolean {
+  return (
+    left.directory &&
+    right.directory &&
+    !left.symbolicLink &&
+    !right.symbolicLink &&
+    sameIdentity(left, right) &&
+    left.mode === right.mode &&
+    left.linkCount === right.linkCount &&
+    left.size === right.size &&
+    left.modifiedNanoseconds === right.modifiedNanoseconds &&
+    left.changedNanoseconds === right.changedNanoseconds
+  );
+}
+
 function resolveTreeLimits(
   value: Partial<AgentBackupRestoreV3CandidateTreeLimits> | undefined,
 ): Readonly<AgentBackupRestoreV3CandidateTreeLimits> {
+  const limits: Readonly<Record<string, unknown>> =
+    value === undefined
+      ? Object.freeze({})
+      : snapshotOwnDataRecord(
+          value,
+          [
+            "maximumBytes",
+            "maximumFiles",
+            "maximumDirectories",
+            "maximumDepth",
+            "maximumPathBytes",
+          ],
+          [],
+          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LIMIT_INVALID",
+          "Candidate tree limits must be exact data properties",
+        );
   return Object.freeze({
     maximumBytes: requirePositiveSafeInteger(
-      value?.maximumBytes ??
+      (limits.maximumBytes as number | undefined) ??
         AGENT_BACKUP_RESTORE_V3_CANDIDATE_TREE_LIMITS.maximumBytes,
       "maximumBytes",
     ),
     maximumFiles: requirePositiveSafeInteger(
-      value?.maximumFiles ??
+      (limits.maximumFiles as number | undefined) ??
         AGENT_BACKUP_RESTORE_V3_CANDIDATE_TREE_LIMITS.maximumFiles,
       "maximumFiles",
     ),
     maximumDirectories: requirePositiveSafeInteger(
-      value?.maximumDirectories ??
+      (limits.maximumDirectories as number | undefined) ??
         AGENT_BACKUP_RESTORE_V3_CANDIDATE_TREE_LIMITS.maximumDirectories,
       "maximumDirectories",
     ),
     maximumDepth: requirePositiveSafeInteger(
-      value?.maximumDepth ??
+      (limits.maximumDepth as number | undefined) ??
         AGENT_BACKUP_RESTORE_V3_CANDIDATE_TREE_LIMITS.maximumDepth,
       "maximumDepth",
     ),
     maximumPathBytes: requirePositiveSafeInteger(
-      value?.maximumPathBytes ??
+      (limits.maximumPathBytes as number | undefined) ??
         AGENT_BACKUP_RESTORE_V3_CANDIDATE_TREE_LIMITS.maximumPathBytes,
       "maximumPathBytes",
     ),
@@ -152,19 +272,29 @@ function resolveTreeLimits(
 function resolveCleanupLimits(
   value: Partial<AgentBackupRestoreV3CandidateCleanupLimits> | undefined,
 ): Readonly<AgentBackupRestoreV3CandidateCleanupLimits> {
+  const limits: Readonly<Record<string, unknown>> =
+    value === undefined
+      ? Object.freeze({})
+      : snapshotOwnDataRecord(
+          value,
+          ["maximumBytes", "maximumEntries", "maximumDepth"],
+          [],
+          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LIMIT_INVALID",
+          "Candidate cleanup limits must be exact data properties",
+        );
   return Object.freeze({
     maximumBytes: requirePositiveSafeInteger(
-      value?.maximumBytes ??
+      (limits.maximumBytes as number | undefined) ??
         AGENT_BACKUP_RESTORE_V3_CANDIDATE_CLEANUP_LIMITS.maximumBytes,
       "maximumBytes",
     ),
     maximumEntries: requirePositiveSafeInteger(
-      value?.maximumEntries ??
+      (limits.maximumEntries as number | undefined) ??
         AGENT_BACKUP_RESTORE_V3_CANDIDATE_CLEANUP_LIMITS.maximumEntries,
       "maximumEntries",
     ),
     maximumDepth: requirePositiveSafeInteger(
-      value?.maximumDepth ??
+      (limits.maximumDepth as number | undefined) ??
         AGENT_BACKUP_RESTORE_V3_CANDIDATE_CLEANUP_LIMITS.maximumDepth,
       "maximumDepth",
     ),
@@ -200,7 +330,9 @@ export async function proveCandidateFsTree(
     );
   }
   let rootHandle: FileHandle | null = null;
+  let releaseLockUse: (() => void) | null = null;
   try {
+    releaseLockUse = authority.beginLockUse(activeLock);
     const root = await authority.openDirectorySegments(segments, control);
     rootHandle = root.handle;
     const hash = createHash("sha256");
@@ -224,9 +356,20 @@ export async function proveCandidateFsTree(
           "Candidate tree exceeds its depth bound",
         );
       }
-      const firstNames = (
-        await controlled(() => fs.readdir(anchor), control)
-      ).sort(compareNames);
+      const firstNames = await readExactDirectoryNames(
+        anchor,
+        control,
+        Math.min(
+          Number.MAX_SAFE_INTEGER,
+          limits.maximumFiles -
+            files +
+            (limits.maximumDirectories - directories),
+        ),
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_TREE_LIMIT",
+        "Candidate tree exceeds its file or directory-count bound",
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_TREE_UNSAFE",
+        "Candidate tree contains a non-UTF-8 or unsafe entry name",
+      );
       for (const name of firstNames) {
         requirePathSegment(name, "tree entry name");
         const childRelative = relative ? `${relative}/${name}` : name;
@@ -375,9 +518,15 @@ export async function proveCandidateFsTree(
           await boundedInternalCleanup(() => fileHandle.close());
         }
       }
-      const secondNames = (
-        await controlled(() => fs.readdir(anchor), control)
-      ).sort(compareNames);
+      const secondNames = await readExactDirectoryNames(
+        anchor,
+        control,
+        firstNames.length,
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_TREE_CHANGED",
+        "Candidate tree gained an entry while it was proved",
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_TREE_UNSAFE",
+        "Candidate tree contains a non-UTF-8 or unsafe entry name",
+      );
       const afterDirectory = await controlled(
         () => fileStatExact(handle),
         control,
@@ -385,10 +534,7 @@ export async function proveCandidateFsTree(
       if (
         firstNames.length !== secondNames.length ||
         firstNames.some((name, index) => name !== secondNames[index]) ||
-        !sameIdentity(afterDirectory, expectedDirectory) ||
-        afterDirectory.mode !== expectedDirectory.mode ||
-        afterDirectory.modifiedNanoseconds !==
-          expectedDirectory.modifiedNanoseconds
+        !sameStableDirectory(afterDirectory, expectedDirectory)
       ) {
         candidateFsError(
           "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_TREE_CHANGED",
@@ -402,7 +548,7 @@ export async function proveCandidateFsTree(
       () => fileStatExact(root.handle),
       control,
     );
-    if (!sameIdentity(finalRoot, root.stats)) {
+    if (!sameStableDirectory(finalRoot, root.stats)) {
       candidateFsError(
         "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_TREE_CHANGED",
         "Candidate tree root identity changed",
@@ -418,13 +564,22 @@ export async function proveCandidateFsTree(
       directories,
     });
   } finally {
+    const cleanupOperations: Array<() => Promise<void>> = [];
     const handleToClose = rootHandle;
     if (handleToClose) {
-      await boundedInternalCleanup(() => handleToClose.close());
+      cleanupOperations.push(() => handleToClose.close());
+    }
+    if (releaseLockUse) {
+      const releaseUse = releaseLockUse;
+      releaseLockUse = null;
+      cleanupOperations.push(async () => releaseUse());
     }
     if (operationLock) {
-      await operationLock.release(internalCleanupControl());
+      cleanupOperations.push(() =>
+        operationLock.release(internalCleanupControl()),
+      );
     }
+    await runAllBoundedInternalCleanup(cleanupOperations);
   }
 }
 
@@ -436,13 +591,7 @@ export async function cleanupCandidateFsVolatile(
   heldLock?: AgentBackupRestoreV3CandidateFsLock,
 ): Promise<Readonly<AgentBackupRestoreV3CandidateCleanupReceipt>> {
   const limits = resolveCleanupLimits(limitsValue);
-  if (!Array.isArray(names) || names.length > 64) {
-    candidateFsError(
-      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_LIMIT",
-      "Candidate volatile cleanup requires at most 64 explicit paths",
-    );
-  }
-  const unique = new Set<string>();
+  const cleanupNames = snapshotCleanupNames(names);
   const entries: CleanupEntry[] = [];
   let removedBytes = 0;
   await authority.assertAuthority(control);
@@ -458,7 +607,9 @@ export async function cleanupCandidateFsVolatile(
       "Candidate cleanup did not obtain an exact inode-lock lease",
     );
   }
+  let releaseLockUse: (() => void) | null = null;
   try {
+    releaseLockUse = authority.beginLockUse(activeLock);
     const scan = async (
       parentAnchor: string,
       parentTestPath: string,
@@ -466,6 +617,7 @@ export async function cleanupCandidateFsVolatile(
       parentStats: CandidateFsExactStats,
       name: string,
       depth: number,
+      knownStats?: CandidateFsExactStats,
     ): Promise<void> => {
       if (depth > limits.maximumDepth) {
         candidateFsError(
@@ -475,7 +627,8 @@ export async function cleanupCandidateFsVolatile(
       }
       requirePathSegment(name, "volatile path segment");
       const target = path.join(parentAnchor, name);
-      const stats = await controlled(() => lstatExact(target), control);
+      const stats =
+        knownStats ?? (await controlled(() => lstatExact(target), control));
       if (stats.symbolicLink) {
         candidateFsError(
           "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_UNSAFE",
@@ -510,9 +663,15 @@ export async function cleanupCandidateFsVolatile(
           }
           const testPath = path.join(parentTestPath, name);
           const anchor = authority.directoryAnchor(directoryHandle, testPath);
-          const children = (
-            await controlled(() => fs.readdir(anchor), control)
-          ).sort(compareNames);
+          const children = await readExactDirectoryNames(
+            anchor,
+            control,
+            Math.max(0, limits.maximumEntries - entries.length - 1),
+            "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_LIMIT",
+            "Candidate volatile cleanup exceeds its entry bound",
+            "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_UNSAFE",
+            "Candidate volatile cleanup refuses a non-UTF-8 or unsafe entry name",
+          );
           for (const child of children) {
             await scan(anchor, testPath, segments, opened, child, depth + 1);
           }
@@ -520,7 +679,7 @@ export async function cleanupCandidateFsVolatile(
             () => fileStatExact(directoryHandle),
             control,
           );
-          if (!sameIdentity(after, opened)) {
+          if (!sameStableDirectory(after, opened)) {
             candidateFsError(
               "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_CHANGED",
               "Candidate volatile directory changed during preflight",
@@ -557,19 +716,34 @@ export async function cleanupCandidateFsVolatile(
 
     const root = await authority.openDirectorySegments([], control);
     try {
-      for (const rawName of names) {
-        const name = requireControlName(rawName, "volatile path name");
-        if (unique.has(name)) {
-          candidateFsError(
-            "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_UNSAFE",
-            "Candidate volatile cleanup contains a duplicate path",
-          );
-        }
-        unique.add(name);
+      for (const name of cleanupNames) {
+        const target = path.join(root.anchor, name);
+        let rootStats: CandidateFsExactStats;
         try {
-          await scan(root.anchor, root.testPath, [], root.stats, name, 0);
+          rootStats = await controlled(() => lstatExact(target), control);
         } catch (cause) {
-          if (!isErrno(cause, "ENOENT")) throw cause;
+          if (isErrno(cause, "ENOENT")) continue;
+          throw cause;
+        }
+        try {
+          await scan(
+            root.anchor,
+            root.testPath,
+            [],
+            root.stats,
+            name,
+            0,
+            rootStats,
+          );
+        } catch (cause) {
+          if (isErrno(cause, "ENOENT")) {
+            candidateFsError(
+              "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_CHANGED",
+              "Candidate volatile path disappeared during cleanup preflight",
+              { cause },
+            );
+          }
+          throw cause;
         }
       }
     } finally {
@@ -630,6 +804,7 @@ export async function cleanupCandidateFsVolatile(
       removedEntries: entries.length,
     });
   } finally {
+    releaseLockUse?.();
     if (operationLock) {
       await operationLock.release(internalCleanupControl());
     }

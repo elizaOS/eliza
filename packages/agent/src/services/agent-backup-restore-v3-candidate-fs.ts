@@ -10,6 +10,7 @@ import {
   type AgentBackupRestoreV3CandidateFsIdentity,
   type AgentBackupRestoreV3CandidateFsLock,
   type OpenAgentBackupRestoreV3CandidateFsInput,
+  snapshotOperationControl,
 } from "./agent-backup-restore-v3-candidate-fs-control";
 import {
   type AgentBackupRestoreV3CandidateDurableJsonReceipt,
@@ -85,41 +86,40 @@ export class AgentBackupRestoreV3CandidateFs {
     );
   }
 
-  assertAuthority(
+  async assertAuthority(
     control: Readonly<AgentBackupRestoreV3OperationControl>,
   ): Promise<void> {
-    return this.#control.assertAuthority(control);
+    return this.#control.assertAuthority(snapshotOperationControl(control));
   }
 
-  syncAttemptRoot(
+  async syncAttemptRoot(
     control: Readonly<AgentBackupRestoreV3OperationControl>,
   ): Promise<void> {
-    return this.#control.syncAttemptRoot(control);
+    return this.#control.syncAttemptRoot(snapshotOperationControl(control));
   }
 
   close(): Promise<void> {
     return this.#control.close();
   }
 
-  detachLock(lock: AgentBackupRestoreV3CandidateFsLock): void {
-    this.#control.detachLock(lock);
-  }
-
-  assertLockHeld(
+  async assertLockHeld(
     lock: AgentBackupRestoreV3CandidateFsLock,
     control: Readonly<AgentBackupRestoreV3OperationControl>,
   ): Promise<void> {
-    return this.#control.assertLockHeld(lock, control);
+    return this.#control.assertLockHeld(
+      lock,
+      snapshotOperationControl(control),
+    );
   }
 
-  acquireLock(
+  async acquireLock(
     name: string,
     control: Readonly<AgentBackupRestoreV3OperationControl>,
   ): Promise<AgentBackupRestoreV3CandidateFsLock> {
-    return this.#control.acquireLock(name, control);
+    return this.#control.acquireLock(name, snapshotOperationControl(control));
   }
 
-  createPayload(
+  async createPayload(
     name: string,
     options: Readonly<CreateAgentBackupRestoreV3CandidatePayloadOptions>,
     control: Readonly<AgentBackupRestoreV3OperationControl>,
@@ -129,12 +129,12 @@ export class AgentBackupRestoreV3CandidateFs {
       this.#control,
       name,
       options,
-      control,
+      snapshotOperationControl(control),
       heldLock,
     );
   }
 
-  provePayload(
+  async provePayload(
     name: string,
     expectedValue: Readonly<AgentBackupRestoreV3CandidatePayloadReceipt>,
     options: Readonly<ProveAgentBackupRestoreV3CandidatePayloadOptions>,
@@ -146,12 +146,12 @@ export class AgentBackupRestoreV3CandidateFs {
       name,
       expectedValue,
       options,
-      control,
+      snapshotOperationControl(control),
       heldLock,
     );
   }
 
-  publishDurableJson(
+  async publishDurableJson(
     name: string,
     value: unknown,
     options: Readonly<PublishAgentBackupRestoreV3CandidateDurableJsonOptions>,
@@ -163,12 +163,12 @@ export class AgentBackupRestoreV3CandidateFs {
       name,
       value,
       options,
-      control,
+      snapshotOperationControl(control),
       heldLock,
     );
   }
 
-  proveTree(
+  async proveTree(
     relativeDirectory: string,
     limitsValue: Partial<AgentBackupRestoreV3CandidateTreeLimits> | undefined,
     control: Readonly<AgentBackupRestoreV3OperationControl>,
@@ -178,12 +178,12 @@ export class AgentBackupRestoreV3CandidateFs {
       this.#control,
       relativeDirectory,
       limitsValue,
-      control,
+      snapshotOperationControl(control),
       heldLock,
     );
   }
 
-  cleanupVolatile(
+  async cleanupVolatile(
     names: readonly string[],
     limitsValue:
       | Partial<AgentBackupRestoreV3CandidateCleanupLimits>
@@ -195,7 +195,7 @@ export class AgentBackupRestoreV3CandidateFs {
       this.#control,
       names,
       limitsValue,
-      control,
+      snapshotOperationControl(control),
       heldLock,
     );
   }
