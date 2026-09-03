@@ -40,7 +40,7 @@ describe("account deletion full-schema foreign-key policy", () => {
     expect(classified).toHaveLength(250);
     expect(classified.every(({ action }) => Boolean(action))).toBe(true);
     expect(classified.filter(({ action }) => action === "reconcile_external_resource").length).toBe(
-      73,
+      75,
     );
     expect(classified.filter(({ action }) => action === "transfer_shared_resource").length).toBe(
       11,
@@ -79,6 +79,36 @@ describe("account deletion full-schema foreign-key policy", () => {
       onDelete: "cascade",
     });
     expect(classifyAccountDeletionForeignKey(admissionWork!)).toBe("reconcile_external_resource");
+  });
+
+  test("requires reconciliation before deleting restore-v3 candidates and cleanup work", () => {
+    const restoreV3Relationships = listAccountDeletionForeignKeys().filter(
+      ({ sourceTable, sourceColumns }) =>
+        [
+          "agent_backup_restore_v3_candidate_cleanup_outbox",
+          "agent_backup_restore_v3_candidates",
+        ].includes(sourceTable) && sourceColumns === "organization_id",
+    );
+
+    expect(restoreV3Relationships).toEqual([
+      {
+        sourceTable: "agent_backup_restore_v3_candidate_cleanup_outbox",
+        sourceColumns: "organization_id",
+        targetTable: "organizations",
+        targetColumns: "id",
+        onDelete: "restrict",
+      },
+      {
+        sourceTable: "agent_backup_restore_v3_candidates",
+        sourceColumns: "organization_id",
+        targetTable: "organizations",
+        targetColumns: "id",
+        onDelete: "restrict",
+      },
+    ]);
+    expect(
+      restoreV3Relationships.map((descriptor) => classifyAccountDeletionForeignKey(descriptor)),
+    ).toEqual(["reconcile_external_resource", "reconcile_external_resource"]);
   });
 
   test("anonymizes all four billing-cancel subject relationships", () => {
