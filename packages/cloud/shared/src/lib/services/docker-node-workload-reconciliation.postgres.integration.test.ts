@@ -135,13 +135,14 @@ async function readAllocatedCount(client: Client | Pool): Promise<number> {
 }
 
 interface PostgresTestClient {
+  connect(): Promise<void>;
   query(query: string): Promise<unknown>;
   end(): Promise<void>;
 }
 
 /**
- * Runs a cross-connection proof and settles its clients without hiding either
- * the proof failure or a teardown failure.
+ * Acquires both clients, runs a cross-connection proof, and settles every
+ * partial acquisition without hiding either the proof or teardown failure.
  */
 async function runWithOrderedPostgresTeardown<T>(
   writer: PostgresTestClient,
@@ -151,22 +152,46 @@ async function runWithOrderedPostgresTeardown<T>(
   let value: T | undefined;
   let primaryError: unknown;
   let primaryFailed = false;
-  try {
-    value = await proof();
-  } catch (error) {
-    // error-policy:J2 context-adding rethrow — defer the exact primary failure
-    // only long enough to settle both PostgreSQL clients, then rethrow it.
+  const connectedClients = new Set<PostgresTestClient>();
+  const connectionResults = await Promise.allSettled([
+    Promise.resolve()
+      .then(() => writer.connect())
+      .then(() => connectedClients.add(writer)),
+    Promise.resolve()
+      .then(() => observer.connect())
+      .then(() => connectedClients.add(observer)),
+  ]);
+  const connectionErrors = connectionResults.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  );
+  if (connectionErrors.length > 0) {
     primaryFailed = true;
-    primaryError = error;
+    primaryError =
+      connectionErrors.length === 1
+        ? connectionErrors[0]
+        : new AggregateError(connectionErrors, "PostgreSQL test client connections failed", {
+            cause: connectionErrors[0],
+          });
+  } else {
+    try {
+      value = await proof();
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow — defer the exact primary failure
+      // only long enough to settle both PostgreSQL clients, then rethrow it.
+      primaryFailed = true;
+      primaryError = error;
+    }
   }
 
   const teardownErrors: Error[] = [];
-  try {
-    await writer.query("ROLLBACK");
-  } catch (error) {
-    // error-policy:J6 best-effort teardown — retain rollback failure alongside
-    // the primary proof failure, then continue closing both clients.
-    teardownErrors.push(new Error("PostgreSQL test rollback failed", { cause: error }));
+  if (connectedClients.has(writer)) {
+    try {
+      await writer.query("ROLLBACK");
+    } catch (error) {
+      // error-policy:J6 best-effort teardown — retain rollback failure alongside
+      // the primary proof failure, then continue closing both clients.
+      teardownErrors.push(new Error("PostgreSQL test rollback failed", { cause: error }));
+    }
   }
 
   const closeResults = await Promise.allSettled([writer.end(), observer.end()]);
@@ -201,9 +226,19 @@ async function runWithOrderedPostgresTeardown<T>(
 function teardownClient(
   name: string,
   events: string[],
-  failures: { rollback?: Error; close?: Error } = {},
+  failures: {
+    connectGate?: Promise<void>;
+    connect?: Error;
+    rollback?: Error;
+    close?: Error;
+  } = {},
 ): PostgresTestClient {
   return {
+    async connect(): Promise<void> {
+      events.push(`${name}:connect`);
+      await failures.connectGate;
+      if (failures.connect) throw failures.connect;
+    },
     async query(query: string): Promise<void> {
       events.push(`${name}:${query}`);
       if (query === "ROLLBACK" && failures.rollback) throw failures.rollback;
@@ -241,7 +276,48 @@ describe("PostgreSQL capacity proof teardown", () => {
     );
 
     expect(rejection).toBe(primary);
-    expect(events).toEqual(["writer:ROLLBACK", "writer:close", "observer:close"]);
+    expect(events).toEqual([
+      "writer:connect",
+      "observer:connect",
+      "writer:ROLLBACK",
+      "writer:close",
+      "observer:close",
+    ]);
+  });
+
+  test("awaits a late writer connection and closes both clients when the observer fails", async () => {
+    const events: string[] = [];
+    const connectionFailure = new Error("observer connection failed");
+    let releaseWriter!: () => void;
+    const writerConnectGate = new Promise<void>((resolve) => {
+      releaseWriter = resolve;
+    });
+    let proofRan = false;
+    const outcome = rejectionOf(
+      runWithOrderedPostgresTeardown(
+        teardownClient("writer", events, { connectGate: writerConnectGate }),
+        teardownClient("observer", events, { connect: connectionFailure }),
+        async () => {
+          proofRan = true;
+        },
+      ),
+    );
+    await Promise.resolve();
+
+    expect(events).toEqual(["writer:connect", "observer:connect"]);
+    expect(proofRan).toBe(false);
+    releaseWriter();
+    const rejection = await outcome;
+
+    expect(rejection).toBe(connectionFailure);
+    expect(proofRan).toBe(false);
+    expect(events).toEqual([
+      "writer:connect",
+      "observer:connect",
+      "writer:ROLLBACK",
+      "writer:close",
+      "observer:close",
+    ]);
   });
 
   test("retains rollback and both close failures in deterministic order", async () => {
@@ -263,7 +339,13 @@ describe("PostgreSQL capacity proof teardown", () => {
       "PostgreSQL test writer close failed",
       "PostgreSQL test observer close failed",
     ]);
-    expect(events).toEqual(["writer:ROLLBACK", "writer:close", "observer:close"]);
+    expect(events).toEqual([
+      "writer:connect",
+      "observer:connect",
+      "writer:ROLLBACK",
+      "writer:close",
+      "observer:close",
+    ]);
   });
 
   test("aggregates teardown failures after the preserved primary failure", async () => {
@@ -283,7 +365,13 @@ describe("PostgreSQL capacity proof teardown", () => {
     expect((rejection as AggregateError).errors[0]).toBe(primary);
     expect((rejection as AggregateError).errors[1]).toBeInstanceOf(Error);
     expect((rejection as AggregateError).cause).toBe(primary);
-    expect(events).toEqual(["writer:ROLLBACK", "writer:close", "observer:close"]);
+    expect(events).toEqual([
+      "writer:connect",
+      "observer:connect",
+      "writer:ROLLBACK",
+      "writer:close",
+      "observer:close",
+    ]);
   });
 });
 
@@ -324,7 +412,6 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
     );
     const writer = new Client({ connectionString: isolatedDsn });
     const observer = new Client({ connectionString: isolatedDsn });
-    await Promise.all([writer.connect(), observer.connect()]);
     await runWithOrderedPostgresTeardown(writer, observer, async () => {
       await writer.query("BEGIN");
       await writer.query("SELECT id FROM docker_nodes WHERE node_id = $1 FOR UPDATE", [NODE_ID]);
@@ -357,7 +444,6 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
     if (!isolatedDsn || !pool || !database) throw new Error("PostgreSQL harness unavailable");
     const writer = new Client({ connectionString: isolatedDsn });
     const observer = new Client({ connectionString: isolatedDsn });
-    await Promise.all([writer.connect(), observer.connect()]);
     await runWithOrderedPostgresTeardown(writer, observer, async () => {
       await writer.query("BEGIN");
       await writer.query(
@@ -393,7 +479,6 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
     );
     const writer = new Client({ connectionString: isolatedDsn });
     const observer = new Client({ connectionString: isolatedDsn });
-    await Promise.all([writer.connect(), observer.connect()]);
     await runWithOrderedPostgresTeardown(writer, observer, async () => {
       await writer.query("BEGIN");
       await writer.query(
@@ -427,7 +512,6 @@ realPostgres("Docker capacity recount PostgreSQL serialization", () => {
     );
     const writer = new Client({ connectionString: isolatedDsn });
     const observer = new Client({ connectionString: isolatedDsn });
-    await Promise.all([writer.connect(), observer.connect()]);
     await runWithOrderedPostgresTeardown(writer, observer, async () => {
       await writer.query("BEGIN");
       await writer.query("SELECT id FROM docker_nodes WHERE node_id = $1 FOR UPDATE", [NODE_ID]);
