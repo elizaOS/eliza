@@ -32,8 +32,7 @@ const CEREBRAS_BASE_URL = "https://api.cerebras.ai";
 const STAGING_WORKER = "eliza-cloud-api-staging";
 const EXPECTED_PAIRED_RECORDS = 44;
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const TRACE_ID_PATTERN = /^[0-9a-f]{32}$/;
 
 function sleep(durationMs) {
   return new Promise((resolvePromise) =>
@@ -256,7 +255,7 @@ export function validateAuthEvidence(text, deploySha, runSuspended = false) {
   if (
     traceIds.length !== (runSuspended ? 43 : 42) ||
     new Set(traceIds).size !== traceIds.length ||
-    traceIds.some((traceId) => !UUID_PATTERN.test(traceId))
+    traceIds.some((traceId) => !TRACE_ID_PATTERN.test(traceId))
   ) {
     throw new Error("Inference auth evidence has invalid trace correlation");
   }
