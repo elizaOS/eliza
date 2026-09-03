@@ -413,12 +413,35 @@ describe("code lifecycle", () => {
   });
 
   test("malformed / missing codes are rejected before any store lookup", async () => {
-    for (const code of [undefined, "", "short", `eac_${"0".repeat(64)}`, 42]) {
+    // One case per clause of `looksLikeSsoBridgeCode`, so no fixture masks
+    // another: the prefix check and the 64-lowercase-hex check each get a case
+    // that ONLY that clause rejects. The distinction being pinned is the status
+    // pair — a shape rejection never reaches the store and answers
+    // 400/`missing_code`, while a well-formed code the store does not know
+    // answers 401/`invalid_code` (the test below). Widening the shape gate
+    // collapses one into the other, and only these fixtures notice.
+    for (const [label, code] of [
+      ["missing", undefined],
+      ["empty", ""],
+      ["too short for any shape", "short"],
+      ["non-string", 42],
+      ["right length, wrong prefix", `eac_${"0".repeat(64)}`],
+      // `esqa_` and `esso_` are both five characters, so the prefix clause is
+      // the only thing keeping a QA staging-session code out of this endpoint.
+      ["staging-session code, not a bridge code", `esqa_${"0".repeat(64)}`],
+      ["right prefix, non-hex body", `esso_${"g".repeat(64)}`],
+      ["right prefix, uppercase-hex body", `esso_${"A".repeat(64)}`],
+      ["right prefix, 63-hex body", `esso_${"0".repeat(63)}`],
+      ["right prefix, 65-hex body", `esso_${"0".repeat(65)}`],
+    ] as const) {
       const res = await call("/exchange", {
         origin: "https://cloud.eliza.app",
         body: { code },
       });
-      expect(res.status).toBe(400);
+      expect(res.status, label).toBe(400);
+      expect(((await res.json()) as { code: string }).code, label).toBe(
+        "missing_code",
+      );
     }
   });
 
