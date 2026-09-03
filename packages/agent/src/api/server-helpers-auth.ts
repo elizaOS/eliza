@@ -57,7 +57,6 @@ export const CORS_ALLOWED_HEADERS = [
   "X-ElizaOS-Turn-Correlation",
   "X-ElizaOS-Turn-Attempt",
   "X-Eliza-Trace-Id",
-  "X-Server-Token",
 ].join(", ");
 
 /**
