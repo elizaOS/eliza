@@ -17,7 +17,10 @@
  * lifetime of one scenario, every action contributed by a batch peer's declared
  * plugin that this scenario did not declare, and by restoring the runtime's
  * action list afterwards so a scenario's seed-registered actions do not leak
- * forward either.
+ * forward either. The plugin registry is restored with the action list so a
+ * later scenario can re-register a seed plugin whose scoped actions were
+ * removed; retaining only its registry entry creates a false "already loaded"
+ * state and leaves its actions permanently unavailable.
  */
 
 import type { Action, AgentRuntime } from "@elizaos/core";
@@ -98,6 +101,7 @@ export function enterScenarioActionScope(
   scenarioDeclaredActionNames?: readonly string[],
 ): { hiddenActionNames: string[]; restore: () => void } {
   const snapshot = [...runtime.actions];
+  const pluginSnapshot = [...runtime.plugins];
   const hidden = foreignScenarioActionNames(
     runtime,
     scenario,
@@ -112,6 +116,7 @@ export function enterScenarioActionScope(
     hiddenActionNames: [...hidden].sort(),
     restore: () => {
       runtime.actions.splice(0, runtime.actions.length, ...snapshot);
+      runtime.plugins.splice(0, runtime.plugins.length, ...pluginSnapshot);
     },
   };
 }
