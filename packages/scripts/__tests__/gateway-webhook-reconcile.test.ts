@@ -653,6 +653,21 @@ describe("Gateway webhook Railway reconciler", () => {
     );
   });
 
+  test("rejects malformed errors in the immutable prior-active proof", async () => {
+    const planBundle = await bundle();
+    const malformedBundle = {
+      ...planBundle,
+      priorActive: {
+        ...planBundle.priorActive,
+        errors: { message: "provider rejected readback" },
+      },
+    };
+
+    expect(() => validatePlanBundle(config, malformedBundle)).toThrow(
+      "immutable prior-active proof is malformed",
+    );
+  });
+
   test("classifies Railway sleeping and removing states without poisoning history", async () => {
     const sleepingId = "00000000-0000-4000-8000-000000000005";
     const oldSleeping = deployment(sleepingId, "SLEEPING");
@@ -1748,6 +1763,7 @@ describe("Railway GraphQL adapter", () => {
       childEnvironment = options.env;
       return {
         stdout: JSON.stringify({
+          errors: [],
           data: { deploymentRollback: true },
         }),
       };
@@ -1782,6 +1798,29 @@ describe("Railway GraphQL adapter", () => {
       });
       await expect(client.rollback(priorId)).rejects.toThrow(
         "did not return an authoritative true acknowledgement",
+      );
+    }
+  });
+
+  test("rejects malformed Railway GraphQL envelopes before consuming data", async () => {
+    for (const payload of [
+      {
+        errors: { message: "provider rejected rollback" },
+        data: { deploymentRollback: true },
+      },
+      { errors: null, data: { deploymentRollback: true } },
+      { errors: [null], data: { deploymentRollback: true } },
+      { data: null },
+      { data: [] },
+      { data: "deploymentRollback" },
+    ]) {
+      const client = new RailwayCliClient({
+        scope,
+        environment: { RAILWAY_TOKEN: "environment-project-token" },
+        execute: (async () => ({ stdout: JSON.stringify(payload) })) as any,
+      });
+      await expect(client.rollback(priorId)).rejects.toThrow(
+        "Railway GraphQL request did not return a valid success envelope",
       );
     }
   });

@@ -127,6 +127,19 @@ function exactKeys(value, keys) {
   );
 }
 
+function isSuccessfulGraphqlEnvelope(payload) {
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      (!Object.hasOwn(payload, "errors") ||
+        (Array.isArray(payload.errors) && payload.errors.length === 0)) &&
+      payload.data &&
+      typeof payload.data === "object" &&
+      !Array.isArray(payload.data),
+  );
+}
+
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -281,7 +294,7 @@ export function validatePlanBundle(config, bundle) {
   }
   const instance = priorActive?.data?.serviceInstance;
   if (
-    priorActive?.errors?.length > 0 ||
+    !isSuccessfulGraphqlEnvelope(priorActive) ||
     instance?.environmentId !== config.scope.environmentId ||
     instance?.serviceId !== config.scope.serviceId ||
     instance?.serviceName !== config.scope.serviceName ||
@@ -1727,11 +1740,8 @@ export class RailwayCliClient {
     } catch {
       fail("Railway returned non-JSON GraphQL output");
     }
-    if (
-      !payload ||
-      (Array.isArray(payload.errors) && payload.errors.length > 0)
-    ) {
-      fail("Railway GraphQL request returned errors");
+    if (!isSuccessfulGraphqlEnvelope(payload)) {
+      fail("Railway GraphQL request did not return a valid success envelope");
     }
     return payload.data;
   }
