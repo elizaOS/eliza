@@ -741,6 +741,24 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   const walletAddressesRef = useRef(walletAddresses);
   const walletConfigRef = useRef(walletConfig);
   const previousSelectedTabIdRef = useRef<string | null>(null);
+  /**
+   * Bumped on every user edit of the address bar.
+   *
+   * A tab operation ends by writing the settled URL into the address bar and
+   * clearing `locationDirty`. Both of those run *after* an `await`, so any text
+   * the user typed while the operation was in flight is discarded — and
+   * clearing the flag also re-arms the sync effect below, which then overwrites
+   * the field with `selectedTab.url` from workspace state. The visible result
+   * is that typing during a navigation reverts the bar to the tab's previous
+   * address. A real browser keeps what you typed while a page is still loading.
+   *
+   * Handlers snapshot this before their first `await` and skip that terminal
+   * write if the user has typed since.
+   */
+  const locationEditSeqRef = useRef(0);
+  const noteLocationEdit = useCallback(() => {
+    locationEditSeqRef.current += 1;
+  }, []);
 
   if (typeof initialBrowseUrlRef.current === "undefined") {
     const browseParam = readBrowserWorkspaceQueryParam("browse");
@@ -1372,6 +1390,9 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       }
       const partition = resolveBrowserWorkspaceTabPartition(sectionKey);
       // Native mobile shell: the server manages no tabs (its API 503s), so the
+      // Snapshot before the first await; a later user edit invalidates the
+      // terminal address-bar write below.
+      const editSeqAtStart = locationEditSeqRef.current;
       // tab lives in client state and the isolated native surface loads the page.
       if (browserTabRenderPath === "native-mobile-webview") {
         const tab = buildLocalBrowserWorkspaceTab(
@@ -1393,8 +1414,10 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       });
       await loadWorkspace({ preferTabId: tab.id, silent: true });
       setSelectedTabId(tab.id);
-      setLocationInput(tab.url);
-      setLocationDirty(false);
+      if (locationEditSeqRef.current === editSeqAtStart) {
+        setLocationInput(tab.url);
+        setLocationDirty(false);
+      }
     },
     [browserTabRenderPath, loadWorkspace, t],
   );
@@ -1413,6 +1436,9 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
 
   const navigateSelectedBrowserWorkspaceTab = useCallback(
     async (rawUrl: string) => {
+      // Snapshot before the first await; a later user edit invalidates the
+      // terminal address-bar write below.
+      const editSeqAtStart = locationEditSeqRef.current;
       if (selectedTab && isInternalBrowserWorkspaceTab(selectedTab)) {
         throw new Error(
           t("browserworkspace.InternalTabUrlManaged", {
@@ -1469,8 +1495,10 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
         tag?.loadURL(tab.url);
       }
       await loadWorkspace({ preferTabId: tab.id, silent: true });
-      setLocationInput(tab.url);
-      setLocationDirty(false);
+      if (locationEditSeqRef.current === editSeqAtStart) {
+        setLocationInput(tab.url);
+        setLocationDirty(false);
+      }
     },
     [
       armBrowserWorkspaceIframeFocusReturn,
@@ -2703,11 +2731,13 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
         agentDescription="The browser address bar for the active tab"
         getValue={() => locationInput}
         onFill={(value) => {
+          noteLocationEdit();
           setLocationInput(value);
           setLocationDirty(true);
         }}
         value={locationInput}
         onChange={(event) => {
+          noteLocationEdit();
           setLocationInput(event.target.value);
           setLocationDirty(true);
         }}
