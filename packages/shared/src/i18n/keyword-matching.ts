@@ -91,19 +91,18 @@ export function textIncludesKeywordTerm(text: string, term: string): boolean {
   }
 
   if (usesAsciiWordBoundaries(normalizedTerm)) {
-    const pattern = new RegExp(
-      `\\b${escapePattern(normalizedTerm).replace(/\\ /g, "\\s+")}\\b`,
+    // Test the NORMALIZED text, not the raw input. Matching the raw text meant
+    // NFKC-only spellings (full-width `ｓｃａｎ`) could never satisfy the
+    // boundary pattern, and the substring fallback that compensated dropped
+    // word boundaries for ANY text containing a non-ASCII character — a single
+    // emoji was enough, so `art` matched `restart the server \u{1F642}`.
+    // Normalizing first also makes the `\s+` relaxation real: `escapePattern`
+    // never escapes a space, so the old `/\\ /` replace matched nothing and a
+    // multi-word term could not span a line break or a double space.
+    return new RegExp(
+      `\\b${escapePattern(normalizedTerm).replace(/ /g, "\\s+")}\\b`,
       "i",
-    );
-    if (pattern.test(text)) {
-      return true;
-    }
-
-    const hasNonAsciiText = [...text].some((char) => char.charCodeAt(0) > 0x7f);
-    if (hasNonAsciiText) {
-      return normalizedText.includes(normalizedTerm);
-    }
-    return false;
+    ).test(normalizedText);
   }
 
   return normalizedText.includes(normalizedTerm);
