@@ -11,8 +11,8 @@
  *
  * Below 640px the header is hidden by design, so the mobile case additionally
  * opens the user-visible ContactSheet and asserts its account CTA. The
- * session-present desktop case also asserts bearer hygiene: landing must
- * neither send Authorization headers nor persist bearer/JWT-looking values.
+ * four cases also assert request/storage hygiene. When a synthetic JWT
+ * sentinel exists, landing must neither transmit, mutate, nor copy it.
  */
 
 import { expect, type Request, test } from "playwright/test";
@@ -21,6 +21,22 @@ import { waitForLandingIntro } from "./landing-readiness";
 const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 900 },
   { name: "mobile", width: 390, height: 844 },
+] as const;
+const SESSION_KEY = "eliza_app_session";
+const SESSION_SENTINEL_MARKER = "synthetic-homepage-session-sentinel";
+const SESSION_SENTINEL_PAYLOAD =
+  "eyJzdWIiOiJzeW50aGV0aWMtaG9tZXBhZ2Utc2Vzc2lvbi1zZW50aW5lbCIsImF1ZCI6ImhvbWVwYWdlLXRlc3QifQ";
+const SESSION_SENTINEL_SIGNATURE = "c3ludGhldGljLWludmFsaWQtc2lnbmF0dXJl";
+const SESSION_SENTINEL = [
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+  SESSION_SENTINEL_PAYLOAD,
+  SESSION_SENTINEL_SIGNATURE,
+].join(".");
+const SESSION_SENTINEL_FRAGMENTS = [
+  SESSION_SENTINEL,
+  SESSION_SENTINEL_MARKER,
+  SESSION_SENTINEL_PAYLOAD,
+  SESSION_SENTINEL_SIGNATURE,
 ] as const;
 
 for (const viewport of VIEWPORTS) {
@@ -34,71 +50,106 @@ for (const viewport of VIEWPORTS) {
       });
       if (session === "present") {
         // Homepage login writes this same-origin key; it must not flip the CTA.
-        await page.addInitScript(() => {
-          window.localStorage.setItem(
-            "eliza_app_session",
-            JSON.stringify({ user: "cta-regression-probe" }),
-          );
-        });
+        await page.addInitScript(
+          ({ key, value }) => window.localStorage.setItem(key, value),
+          { key: SESSION_KEY, value: SESSION_SENTINEL },
+        );
       }
-      const authHeaderChecks: Array<Promise<string | null>> = [];
-      const recordAuthorization = (request: Request) => {
-        authHeaderChecks.push(
-          request
-            .headerValue("authorization")
-            .then((value) => (value === null ? null : request.url())),
+      const requestLeakChecks: Array<
+        Promise<{ hasAuthorization: boolean; hasSentinel: boolean }>
+      > = [];
+      const recordRequestLeak = (request: Request) => {
+        requestLeakChecks.push(
+          request.allHeaders().then((headers) => {
+            const requestParts = [
+              request.url(),
+              request.postData() ?? "",
+              ...Object.values(headers),
+            ];
+            return {
+              hasAuthorization: Object.hasOwn(headers, "authorization"),
+              hasSentinel: requestParts.some((part) =>
+                SESSION_SENTINEL_FRAGMENTS.some((fragment) =>
+                  part.includes(fragment),
+                ),
+              ),
+            };
+          }),
         );
       };
-      const shouldCheckBearerHygiene =
-        viewport.name === "desktop" && session === "present";
-      if (shouldCheckBearerHygiene) {
-        page.on("request", recordAuthorization);
-      }
-      await page.goto("/", { waitUntil: "domcontentloaded" });
-      await waitForLandingIntro(page);
+      page.on("request", recordRequestLeak);
+      try {
+        await page.goto("/", { waitUntil: "domcontentloaded" });
+        await waitForLandingIntro(page);
 
-      const cta = page.locator(".landing-header-cta");
-      await expect(cta).toHaveText(/sign in/i);
-      await expect(cta).toHaveAttribute("href", /\/login\?intent=launch/);
-      // No inferred Dashboard anywhere on the landing route.
-      await expect(page.getByText("Dashboard", { exact: false })).toHaveCount(
-        0,
-      );
-
-      if (viewport.name === "mobile" && session === "present") {
-        // The header (and its CTA) is display:none at this width; the sheet
-        // carries the visible account CTA.
-        await page
-          .getByRole("button", { name: /all the ways to reach eliza/i })
-          .click();
-        const account = page.locator(".landing-sheet-row--account");
-        await expect(account).toBeVisible();
-        await expect(account).toContainText(/sign in to eliza cloud/i);
-        await expect(account).toHaveAttribute("href", /\/login\?intent=launch/);
-      }
-
-      if (shouldCheckBearerHygiene) {
-        // The session key must never become a credential: no Authorization
-        // header leaves the page, and no bearer/JWT-looking value is stored.
-        page.off("request", recordAuthorization);
-        const authedUrls = (await Promise.all(authHeaderChecks)).filter(
-          (url): url is string => url !== null,
+        const cta = page.locator(".landing-header-cta");
+        await expect(cta).toHaveText(/sign in/i);
+        await expect(cta).toHaveAttribute("href", /\/login\?intent=launch/);
+        // No inferred Dashboard anywhere on the landing route.
+        await expect(page.getByText("Dashboard", { exact: false })).toHaveCount(
+          0,
         );
-        expect(authedUrls).toEqual([]);
-        const storedValues = await page.evaluate(() => {
-          const values: string[] = [];
-          for (const store of [window.localStorage, window.sessionStorage]) {
+
+        if (viewport.name === "mobile") {
+          // The header (and its CTA) is display:none at this width; the sheet
+          // carries the visible account CTA.
+          await page
+            .getByRole("button", { name: /all the ways to reach eliza/i })
+            .click();
+          const account = page.locator(".landing-sheet-row--account");
+          await expect(account).toBeVisible();
+          await expect(account).toContainText(/sign in to eliza cloud/i);
+          await expect(account).toHaveAttribute(
+            "href",
+            /\/login\?intent=launch/,
+          );
+        }
+
+        // The synthetic token models the three-segment JWT shape used by the
+        // homepage, but carries no valid signature or real credential data.
+        page.off("request", recordRequestLeak);
+        const requestResults = await Promise.all(requestLeakChecks);
+        expect(requestResults.length).toBeGreaterThan(0);
+        expect(
+          requestResults.every(({ hasAuthorization }) => !hasAuthorization),
+        ).toBe(true);
+        expect(requestResults.every(({ hasSentinel }) => !hasSentinel)).toBe(
+          true,
+        );
+        const storageRows = await page.evaluate(() => {
+          const rows: Array<{ store: string; key: string; value: string }> = [];
+          for (const [storeName, store] of [
+            ["localStorage", window.localStorage],
+            ["sessionStorage", window.sessionStorage],
+          ] as const) {
             for (let i = 0; i < store.length; i += 1) {
               const key = store.key(i);
-              if (key !== null) values.push(store.getItem(key) ?? "");
+              if (key === null) continue;
+              const value = store.getItem(key);
+              if (value === null) continue;
+              rows.push({ store: storeName, key, value });
             }
           }
-          return values;
+          return rows.sort(
+            (left, right) =>
+              left.store.localeCompare(right.store) ||
+              left.key.localeCompare(right.key),
+          );
         });
-        for (const value of storedValues) {
-          expect(value).not.toMatch(/bearer\s+[A-Za-z0-9\-_.~+/=]+/i);
-          expect(value).not.toContain("eyJ");
-        }
+        expect(storageRows).toEqual(
+          session === "present"
+            ? [
+                {
+                  store: "localStorage",
+                  key: SESSION_KEY,
+                  value: SESSION_SENTINEL,
+                },
+              ]
+            : [],
+        );
+      } finally {
+        page.off("request", recordRequestLeak);
+        await Promise.allSettled(requestLeakChecks);
       }
     });
   }
