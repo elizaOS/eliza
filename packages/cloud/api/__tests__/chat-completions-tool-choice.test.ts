@@ -254,6 +254,10 @@ describe("computeEffectiveMaxTokens", () => {
 
 describe("Cerebras reasoning_effort validation", () => {
   test.each([
+    ["qwen-3.8-27b", "none"],
+    ["qwen-3.8-27b", "low"],
+    ["qwen-3.8-27b", "medium"],
+    ["qwen-3.8-27b", "high"],
     ["gemma-4-31b", "none"],
     ["gemma-4-31b", "low"],
     ["gemma-4-31b", "medium"],

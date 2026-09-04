@@ -23,6 +23,7 @@ describe("getProviderFromModel / normalizeModelName", () => {
     expect(getProviderFromModel("anthropic/claude-opus-4")).toBe("anthropic");
     expect(getProviderFromModel("gpt-5-mini")).toBe("openai");
     expect(getProviderFromModel("gemma-4-31b")).toBe("cerebras");
+    expect(getProviderFromModel("qwen-3.8-27b")).toBe("cerebras");
     expect(getProviderFromModel("claude-sonnet-4")).toBe("anthropic");
     expect(getProviderFromModel("gemini-2.0")).toBe("google");
   });
@@ -46,6 +47,7 @@ describe("reasoning detection", () => {
     expect(modelUsesReasoningTokens("mystery-model", ["reasoning"])).toBe(true);
     // name-pattern fallback for Cerebras reasoning defaults.
     expect(modelUsesReasoningTokens("gemma-4-31b")).toBe(true);
+    expect(modelUsesReasoningTokens("qwen-3.8-27b")).toBe(true);
     expect(modelUsesReasoningTokens("gpt-oss-120b")).toBe(true);
     expect(modelUsesReasoningTokens("deepseek-r1")).toBe(true);
     expect(modelUsesReasoningTokens("gpt-4o-mini")).toBe(false);

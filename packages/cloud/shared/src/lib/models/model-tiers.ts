@@ -249,8 +249,8 @@ export const DEFAULT_IMAGE_MODEL = IMAGE_MODELS[0];
 
 export const ADDITIONAL_MODELS: AdditionalModel[] = [
   {
-    id: "gemma-4-31b",
-    name: "Gemma 4 31B",
+    id: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    name: "Qwen 3.8 27B",
     description: "Default fast Cerebras model for Eliza Cloud text tiers",
     modelId: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
     provider: "cerebras",

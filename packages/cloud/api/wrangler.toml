@@ -728,7 +728,7 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 VOICE_REALTIME_WS_ENABLED = "true"
 VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.eliza.app"
-VOICE_REALTIME_ELIZA_MODEL = "gemma-4-31b"
+VOICE_REALTIME_ELIZA_MODEL = "qwen-3.8-27b"
 # Fish is promoted only by the environment-scoped deploy variable after its
 # credentials exist; the committed default remains safe for local deploys.
 ELIZA_TTS_FISH_ENABLED = "false"
