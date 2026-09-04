@@ -19,6 +19,9 @@
  *  - {@link CloudPluginGrantsSection}  → cloud/account-security (PermissionsSurface: plugin grants)
  */
 
+import { useCallback } from "react";
+import { useAppSelectorShallow } from "../../state";
+import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { AccountSurface } from "../account-security/AccountSurface";
 import { PermissionsSurface } from "../account-security/PermissionsSurface";
 import { SecuritySurface } from "../account-security/SecuritySurface";
@@ -30,9 +33,38 @@ import { ApplicationsEntry } from "./applications-entry";
 import { CloudSettingsSectionShell } from "./CloudSettingsSectionShell";
 
 export function CloudAccountSection(): React.JSX.Element {
+  const {
+    elizaCloudLoginBusy,
+    handleInteractiveCloudLogin,
+    setActionNotice,
+    t,
+  } = useAppSelectorShallow((state) => ({
+    elizaCloudLoginBusy: state.elizaCloudLoginBusy,
+    handleInteractiveCloudLogin: state.handleInteractiveCloudLogin,
+    setActionNotice: state.setActionNotice,
+    t: state.t,
+  }));
+  const handleSignIn = useCallback(() => {
+    claimCloudLoginWindow();
+    void handleInteractiveCloudLogin().catch((error) => {
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : t("cloud.account.signInError", {
+              defaultValue: "Could not start Eliza Cloud sign-in.",
+            }),
+        "error",
+        5000,
+      );
+    });
+  }, [handleInteractiveCloudLogin, setActionNotice, t]);
+
   return (
     <CloudSettingsSectionShell>
-      <AccountSurface />
+      <AccountSurface
+        onSignIn={handleSignIn}
+        signInBusy={elizaCloudLoginBusy}
+      />
     </CloudSettingsSectionShell>
   );
 }
