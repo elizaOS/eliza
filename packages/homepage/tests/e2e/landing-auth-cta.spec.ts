@@ -15,7 +15,7 @@
  * neither send Authorization headers nor persist bearer/JWT-looking values.
  */
 
-import { expect, test } from "playwright/test";
+import { expect, type Request, test } from "playwright/test";
 import { waitForLandingIntro } from "./landing-readiness";
 
 const VIEWPORTS = [
@@ -42,13 +42,18 @@ for (const viewport of VIEWPORTS) {
         });
       }
       const authHeaderChecks: Array<Promise<string | null>> = [];
-      page.on("request", (request) => {
+      const recordAuthorization = (request: Request) => {
         authHeaderChecks.push(
           request
             .headerValue("authorization")
             .then((value) => (value === null ? null : request.url())),
         );
-      });
+      };
+      const shouldCheckBearerHygiene =
+        viewport.name === "desktop" && session === "present";
+      if (shouldCheckBearerHygiene) {
+        page.on("request", recordAuthorization);
+      }
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await waitForLandingIntro(page);
 
@@ -72,9 +77,10 @@ for (const viewport of VIEWPORTS) {
         await expect(account).toHaveAttribute("href", /\/login\?intent=launch/);
       }
 
-      if (viewport.name === "desktop" && session === "present") {
+      if (shouldCheckBearerHygiene) {
         // The session key must never become a credential: no Authorization
         // header leaves the page, and no bearer/JWT-looking value is stored.
+        page.off("request", recordAuthorization);
         const authedUrls = (await Promise.all(authHeaderChecks)).filter(
           (url): url is string => url !== null,
         );

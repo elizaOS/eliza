@@ -70,11 +70,6 @@ mock.module("@/providers/I18nProvider", () => ({
     opts?.defaultValue ?? key,
 }));
 
-mock.module(
-  "@/lib/product-navigation",
-  () => import("../src/lib/product-navigation"),
-);
-
 const React = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { JSDOM } = await import("jsdom");
@@ -166,14 +161,10 @@ async function renderLanding(
 describe("LandingPage auth CTA", () => {
   beforeEach(() => {
     // Ensure clean storage between tests.
-    try {
-      globalThis.localStorage?.clear?.();
-    } catch {}
+    globalThis.localStorage?.clear?.();
   });
   afterEach(() => {
-    try {
-      globalThis.localStorage?.clear?.();
-    } catch {}
+    globalThis.localStorage?.clear?.();
   });
 
   test("renders Sign in when no session token exists", async () => {
@@ -225,16 +216,20 @@ describe("LandingPage auth CTA", () => {
     u2();
   });
 
-  test("never links to Dashboard from the marketing origin", async () => {
+  test("never links account CTAs to Dashboard from the marketing origin", async () => {
     const { container, unmount } = await renderLanding((s) =>
       s.setItem("eliza_app_session", "any-token"),
     );
-    const links = Array.from(container.querySelectorAll("a")).map((a) =>
-      a.getAttribute("href"),
+    const accountLinks = Array.from(
+      container.querySelectorAll<HTMLAnchorElement>(
+        ".landing-header-cta, .landing-sheet-row--account",
+      ),
     );
-    // No link should point at the Cloud dashboard — marketing origin must not
-    // claim a Cloud session it cannot verify.
-    expect(links.some((h) => h?.includes("/cloud-apps"))).toBe(false);
+    expect(accountLinks).toHaveLength(2);
+    for (const link of accountLinks) {
+      expect(link.getAttribute("href")).toContain("/login");
+      expect(link.getAttribute("href")).not.toContain("/cloud-apps");
+    }
     unmount();
   });
 });

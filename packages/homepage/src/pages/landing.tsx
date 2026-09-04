@@ -941,10 +941,8 @@ export default function LandingPage() {
   );
   const phoneCopyOperation = useRef(0);
   const browserWindow = typeof window === "undefined" ? null : window;
-  // fix(homepage): no signed-in Dashboard heuristic (#28743).
-  // `eliza_app_session` cannot attest the separate Cloud-app origin session,
-  // so the header CTA is neutral Sign in always — never an inferred Dashboard.
-  // (Unused `landing.dashboard` locale keys remain for translators.)
+  // The homepage session key cannot attest the separate Cloud-app origin,
+  // so account CTAs stay neutral instead of inferring a Dashboard session.
   const productNavigation = resolveHomepageProductNavigation(
     browserWindow?.location.hostname ?? "",
   );
