@@ -67,10 +67,7 @@ for (const viewport of VIEWPORTS) {
         const account = page.locator(".landing-sheet-row--account");
         await expect(account).toBeVisible();
         await expect(account).toContainText(/sign in to eliza cloud/i);
-        await expect(account).toHaveAttribute(
-          "href",
-          /\/login\?intent=launch/,
-        );
+        await expect(account).toHaveAttribute("href", /\/login\?intent=launch/);
       }
 
       if (viewport.name === "desktop" && session === "present") {
