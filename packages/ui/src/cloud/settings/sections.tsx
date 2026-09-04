@@ -5,8 +5,8 @@
  * {@link CloudSettingsSectionShell} so it self-provides the cloud router /
  * query / i18n / Steward-auth / page-header stack the bodies expect, then
  * renders the canonical body. The settings registry renders these with no
- * props — the bodies self-load (`useUserProfile`, `useApiKeys`, `useBillingUser`,
- * `useOrganizationUser`, …) so there is nothing to thread in.
+ * props. Domain bodies self-load their data, while adapters inject app-owned
+ * actions such as the platform-aware Cloud login flow.
  *
  * Section → source domain:
  *  - {@link CloudAccountSection}       → cloud/account-security (AccountSurface)
@@ -79,9 +79,38 @@ export function CloudAccountSection(): React.JSX.Element {
 }
 
 export function CloudBillingSection(): React.JSX.Element {
+  const {
+    elizaCloudLoginBusy,
+    handleInteractiveCloudLogin,
+    setActionNotice,
+    t,
+  } = useAppSelectorShallow((state) => ({
+    elizaCloudLoginBusy: state.elizaCloudLoginBusy,
+    handleInteractiveCloudLogin: state.handleInteractiveCloudLogin,
+    setActionNotice: state.setActionNotice,
+    t: state.t,
+  }));
+  const handleSignIn = useCallback(() => {
+    claimCloudLoginWindow();
+    void handleInteractiveCloudLogin().catch((error) => {
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : t("cloud.billing.signInError", {
+              defaultValue: "Could not start Eliza Cloud sign-in.",
+            }),
+        "error",
+        5000,
+      );
+    });
+  }, [handleInteractiveCloudLogin, setActionNotice, t]);
+
   return (
     <CloudSettingsSectionShell>
-      <BillingSectionBody />
+      <BillingSectionBody
+        onSignIn={handleSignIn}
+        signInBusy={elizaCloudLoginBusy}
+      />
     </CloudSettingsSectionShell>
   );
 }
