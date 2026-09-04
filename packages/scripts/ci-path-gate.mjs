@@ -274,7 +274,6 @@ export const CONFIGS = {
           "turbo.json",
           "packages/app-core/deploy/**",
           "packages/app-core/scripts/docker-ci-smoke.sh",
-          "packages/app-core/scripts/docker-healthcheck.mjs",
         ],
         reason: "Docker smoke workflow or image contract",
       },
