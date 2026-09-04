@@ -6,19 +6,11 @@
  * resolve under Cloud Workers via `getCloudAwareEnv()` (per-request `c.env`).
  */
 
+import { envInt } from "../../env-int";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 
-/**
- * Strict integer env parse: rejects trailing garbage (parseInt("25junk") is
- * 25) and sign-prefix confusion, so a corrupted or hostile env value can never
- * silently become a different budget than intended. Empty/unset uses the
- * fallback; anything else non-canonical fails closed to the fallback.
- */
-export function envInt(raw: string | undefined, fallback: number): number {
-  const trimmed = raw?.trim() ?? "";
-  if (trimmed === "") return fallback;
-  return /^\+?\d+$/.test(trimmed) ? Number(trimmed) : fallback;
-}
+// Re-exported so existing importers of the proxy config keep one import site.
+export { envInt };
 
 export function getProxyConfig() {
   const e = getCloudAwareEnv();
