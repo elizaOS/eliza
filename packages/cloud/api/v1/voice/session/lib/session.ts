@@ -1733,6 +1733,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let ttsTransportReadyAt: number | null = null;
     let modelOutputChars = 0;
     let modelSpeakableContentSeen = false;
+    let upstreamComplete = false;
+    let ttsPlaybackComplete = false;
     const abort = new AbortController();
     this.llmAbort = abort;
     const phrase = new PhraseAggregator({ preferWordBoundaryAtMax: true });
@@ -1794,9 +1796,14 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         },
         onComplete: () => {
           if (this.currentVoiceTurnId !== traceId) return;
+          ttsPlaybackComplete = true;
           this.send({ t: "assistant_playing", active: false, traceId });
           this.send({ t: "speaking_end", traceId });
-          this.finishTurn(traceId);
+          // Long replies and the early reply-ready path can finish playback
+          // while the canonical route is still persisting its durable receipt.
+          // Keep the turn alive until terminal metadata arrives so a successful
+          // VIEWS action still reaches the client after speech has ended.
+          if (upstreamComplete) this.finishTurn(traceId);
         },
         onFlushComplete: () => {
           if (this.currentVoiceTurnId !== traceId) return;
@@ -1843,6 +1850,51 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           });
         }
         pendingPhrase = p;
+      }
+    };
+    let ttsReplyFinalized = false;
+    const finalizeTtsReply = (): void => {
+      if (ttsReplyFinalized) return;
+      ttsReplyFinalized = true;
+
+      if (!streamingReplyStarted) {
+        const completeShortReply = initialReplyBuffer.trim();
+        initialReplyBuffer = "";
+        if (SPOKEN_TRANSCRIPT_RE.test(completeShortReply)) {
+          this.turnTtsChars += completeShortReply.length;
+          sendTtsPhrase(ensureTts(), {
+            text: completeShortReply,
+            continueContext: false,
+          });
+          return;
+        }
+      }
+
+      const tail = phrase.flush();
+      if (tail && SPOKEN_TRANSCRIPT_RE.test(tail)) {
+        // A trailing phrase remains. Flush any held phrase (continue:true), then
+        // send the tail as the terminal phrase with continue:false.
+        if (pendingPhrase !== null) {
+          sendTtsPhrase(ensureTts(), {
+            text: pendingPhrase,
+            continueContext: true,
+          });
+          pendingPhrase = null;
+        }
+        this.turnTtsChars += tail.length;
+        sendTtsPhrase(ensureTts(), {
+          text: tail,
+          continueContext: false,
+        });
+      } else if (pendingPhrase !== null) {
+        // The held phrase is the LAST speakable unit: send it with
+        // continue:false to close the context cleanly (yields `done` ->
+        // onComplete). Cartesia rejects an empty-transcript finish request.
+        sendTtsPhrase(ensureTts(), {
+          text: pendingPhrase,
+          continueContext: false,
+        });
+        pendingPhrase = null;
       }
     };
 
@@ -1927,6 +1979,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             elapsedMs: this.now() - responseStartedAt,
           });
         },
+        onReplyReady: finalizeTtsReply,
       };
       const onDelta = (delta: string) => {
         if (this.currentVoiceTurnId !== traceId) return;
@@ -2016,47 +2069,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           traceId,
         });
       }
-
-      if (!streamingReplyStarted) {
-        const completeShortReply = initialReplyBuffer.trim();
-        initialReplyBuffer = "";
-        if (SPOKEN_TRANSCRIPT_RE.test(completeShortReply)) {
-          this.turnTtsChars += completeShortReply.length;
-          sendTtsPhrase(ensureTts(), {
-            text: completeShortReply,
-            continueContext: false,
-          });
-          return;
-        }
+      upstreamComplete = true;
+      finalizeTtsReply();
+      if (ttsPlaybackComplete) {
+        this.finishTurn(traceId);
+        return;
       }
-
-      const tail = phrase.flush();
-      if (tail && SPOKEN_TRANSCRIPT_RE.test(tail)) {
-        // A trailing phrase remains. Flush any held phrase (continue:true), then
-        // send the tail as the terminal phrase with continue:false.
-        if (pendingPhrase !== null) {
-          sendTtsPhrase(ensureTts(), {
-            text: pendingPhrase,
-            continueContext: true,
-          });
-          pendingPhrase = null;
-        }
-        this.turnTtsChars += tail.length;
-        sendTtsPhrase(ensureTts(), {
-          text: tail,
-          continueContext: false,
-        });
-      } else if (pendingPhrase !== null) {
-        // The held phrase is the LAST speakable unit: send it with
-        // continue:false to close the context cleanly (yields `done` ->
-        // onComplete). This replaces the empty-transcript finish() that the
-        // LIVE Cartesia API rejects.
-        sendTtsPhrase(ensureTts(), {
-          text: pendingPhrase,
-          continueContext: false,
-        });
-        pendingPhrase = null;
-      } else {
+      if (!modelSpeakableContentSeen && this.turnTtsChars === 0) {
         // No speakable output at all (empty LLM reply). The socket was opened
         // speculatively to hide its handshake behind LLM generation, so cancel
         // the unused context before closing the turn. (Read via the class field:

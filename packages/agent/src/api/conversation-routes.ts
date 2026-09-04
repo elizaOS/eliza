@@ -4733,6 +4733,18 @@ export async function handleConversationRoutes(
             }
             const visibleResolvedText =
               result.transcriptVisibility === "internal" ? "" : resolvedText;
+            // The reply text is now authoritative: model generation, planner
+            // actions, callback replacement, and final normalization have all
+            // settled. Publish that boundary before durable persistence so
+            // realtime voice can synthesize while the receipt/ids are written;
+            // the later `done` frame remains the sole durable completion and
+            // carries view-handoff metadata.
+            if (!disconnectTracker.isAborted()) {
+              writeSse(res, {
+                type: "reply_ready",
+                fullText: visibleResolvedText,
+              });
+            }
             assertConversationConnectionRuntime(
               state.runtime,
               connectionDescriptor,

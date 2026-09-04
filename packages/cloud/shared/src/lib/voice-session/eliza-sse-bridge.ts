@@ -141,6 +141,11 @@ export interface ElizaSseBridgeRequest {
   onResponseHeaders?: (headers: ElizaSseBridgeResponseHeaders) => void | Promise<void>;
   /** Emits a non-authoritative progress cue while an action-backed turn is pending. */
   onProgress?: (text: string) => void | Promise<void>;
+  /**
+   * Fires once the canonical route has finalized the authoritative reply text,
+   * before its durable persistence receipt and view-handoff metadata are ready.
+   */
+  onReplyReady?: () => void;
   /** Test hook; production uses six seconds between progress cues. */
   progressIntervalMs?: number;
   /** Injectable fetch for tests; defaults to global fetch. */
@@ -450,6 +455,11 @@ export async function streamElizaConversation(
             `Eliza agent stream error: ${extractErrorMessage(payload)}`,
             "upstream_error",
           );
+        }
+        if (payloadType === "reply_ready") {
+          finishAuthoritativeText(payload);
+          request.onReplyReady?.();
+          continue;
         }
         const update = extractTextUpdate(payload);
         if (update) applyTextUpdate(update);

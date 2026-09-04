@@ -478,7 +478,8 @@ function makeLocalTokenFetch(
 function makeControlledCanonicalChunkFetch(): {
   fetchImpl: typeof fetch;
   enqueueChunk: (chunk: string) => void;
-  finish: () => void;
+  enqueueReplyReady: (fullText: string) => void;
+  finish: (donePayload?: Record<string, unknown>) => void;
   fail: () => void;
   ready: Promise<void>;
 } {
@@ -506,8 +507,17 @@ function makeControlledCanonicalChunkFetch(): {
         encoder.encode(`event: chunk\ndata: ${JSON.stringify({ chunk })}\n\n`),
       );
     },
-    finish() {
-      controller?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+    enqueueReplyReady(fullText: string) {
+      controller?.enqueue(
+        encoder.encode(
+          `event: reply_ready\ndata: ${JSON.stringify({ type: "reply_ready", fullText })}\n\n`,
+        ),
+      );
+    },
+    finish(donePayload = {}) {
+      controller?.enqueue(
+        encoder.encode(`event: done\ndata: ${JSON.stringify(donePayload)}\n\n`),
+      );
       controller?.close();
     },
     fail() {
@@ -1966,6 +1976,68 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     cartesia.emitDone();
     await flush();
+    expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("reply-ready closes short TTS early but preserves late view navigation", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "open notes");
+    await controlled.ready;
+
+    controlled.enqueueChunk("Opened Notes.");
+    controlled.enqueueReplyReady("Opened Notes.");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const synthesisRequests = cartesia.sent.map(
+      (frame) =>
+        JSON.parse(frame) as { transcript?: string; continue?: boolean },
+    );
+    expect(synthesisRequests).toContainEqual(
+      expect.objectContaining({
+        transcript: "Opened Notes.",
+        continue: false,
+      }),
+    );
+
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
+    expect(client.controlTypes()).not.toContain("usage");
+    expect(client.controlTypes()).not.toContain("navigate_view");
+
+    controlled.finish({
+      fullText: "Opened Notes.",
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "notes", viewPath: "/notes" },
+        },
+      ],
+    });
+    await flush();
+    await flush();
+
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "navigate_view"),
+    ).toEqual([
+      {
+        t: "navigate_view",
+        viewId: "notes",
+        viewPath: "/notes",
+        traceId: expect.any(String),
+      },
+    ]);
     expect(client.controlTypes()).toContain("usage");
   });
 
