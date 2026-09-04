@@ -695,11 +695,9 @@ if (import.meta.main) {
   try {
     config = readRereviewOperatorConfig();
     const evidence = await runRereviewOperator(config, defaultDependencies);
-    const { logger } = await import("@elizaos/cloud-shared/lib/utils/logger");
-    logger.info(
-      "[personal-dedicated-rereview-staging] Operator result",
-      evidence,
-    );
+    // This identifier-free receipt is CLI output, required even when verbose
+    // application logging is disabled so an operator can review the next step.
+    process.stdout.write(`${JSON.stringify(evidence)}\n`);
   } catch (error) {
     // error-policy:J1 the command boundary emits only a typed diagnostic code;
     // sensitive resolved identifiers and credentials never reach logs.
@@ -710,10 +708,7 @@ if (import.meta.main) {
     const { logger } = await import("@elizaos/cloud-shared/lib/utils/logger");
     const decision = previewDecisionEvidence(config?.mode, code);
     if (decision) {
-      logger.info(
-        "[personal-dedicated-rereview-staging] Operator decision required",
-        decision,
-      );
+      process.stdout.write(`${JSON.stringify(decision)}\n`);
       process.exitCode = 0;
     } else {
       logger.error("[personal-dedicated-rereview-staging] Operator failed", {
