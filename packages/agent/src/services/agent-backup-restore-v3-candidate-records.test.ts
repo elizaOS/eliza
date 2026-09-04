@@ -22,6 +22,7 @@ import {
 import {
   AGENT_BACKUP_RESTORE_V3_CANDIDATE_RECORD_MAXIMUM_BYTES,
   AGENT_BACKUP_RESTORE_V3_CANDIDATE_RECORD_OWNER_CONTEXT,
+  bindAgentBackupRestoreV3CandidateRecordSession,
   computeAgentBackupRestoreV3CandidateRecordCommandSha256,
   readAgentBackupRestoreV3CandidateRecord,
   stageAgentBackupRestoreV3CandidateRecord,
@@ -1942,6 +1943,38 @@ describe("restore-v3 candidate record inbox", () => {
         code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_RECORD_INPUT_INVALID",
       }),
     );
+
+    await expect(
+      bindAgentBackupRestoreV3CandidateRecordSession({
+        candidateFs,
+        session: SESSION,
+        control: operationControl(),
+        heldLock: null,
+      } as never),
+    ).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_RECORD_INPUT_INVALID",
+    });
+
+    const proxiedHeldLock = new Proxy(
+      {},
+      {
+        get: failTrap,
+        getPrototypeOf: failTrap,
+        ownKeys: failTrap,
+      },
+    );
+    await expect(
+      readAgentBackupRestoreV3CandidateRecord({
+        candidateFs,
+        session: SESSION,
+        componentIndex: 0,
+        dataIndex: 0,
+        control: operationControl(),
+        heldLock: proxiedHeldLock,
+      } as never),
+    ).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_RECORD_INPUT_INVALID",
+    });
 
     const forgedBrandedPrototype = Object.create(
       AgentBackupRestoreV3CandidateFs.prototype,

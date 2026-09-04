@@ -6,6 +6,16 @@
 
 import type { AgentBackupRestoreV3OperationControl } from "@elizaos/shared";
 import {
+  type AgentBackupRestoreV3CandidateFileTreeFileProof,
+  type AgentBackupRestoreV3CandidateFileTreeFileSpec,
+  type AgentBackupRestoreV3CandidateFileTreeLimits,
+  type AgentBackupRestoreV3CandidateFileTreeProof,
+  type AgentBackupRestoreV3CandidateFileTreeWriter,
+  createCandidateFsFileTreeFile,
+  ensureCandidateFsFileTreeDirectory,
+  proveCandidateFsFileTree,
+} from "./agent-backup-restore-v3-candidate-file-tree";
+import {
   AgentBackupRestoreV3CandidateFsControl,
   type AgentBackupRestoreV3CandidateFsIdentity,
   type AgentBackupRestoreV3CandidateFsLock,
@@ -49,6 +59,16 @@ const WEAK_SET_ADD = WeakSet.prototype.add;
 const WEAK_SET_HAS = WeakSet.prototype.has;
 
 export type {
+  AgentBackupRestoreV3CandidateFileTreeFileProof,
+  AgentBackupRestoreV3CandidateFileTreeFileSpec,
+  AgentBackupRestoreV3CandidateFileTreeLimits,
+  AgentBackupRestoreV3CandidateFileTreeProof,
+} from "./agent-backup-restore-v3-candidate-file-tree";
+export {
+  AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_LIMITS,
+  AgentBackupRestoreV3CandidateFileTreeWriter,
+} from "./agent-backup-restore-v3-candidate-file-tree";
+export type {
   AgentBackupRestoreV3CandidateFsIdentity,
   OpenAgentBackupRestoreV3CandidateFsInput,
 } from "./agent-backup-restore-v3-candidate-fs-control";
@@ -80,6 +100,16 @@ export {
   AGENT_BACKUP_RESTORE_V3_CANDIDATE_TREE_LIMITS,
 } from "./agent-backup-restore-v3-candidate-fs-tree";
 
+/**
+ * Authority for one stopped restore quarantine.
+ *
+ * POSIX flock is advisory: callers must keep both roots inaccessible to the
+ * workload and to non-cooperating same-UID writers until activation, and must
+ * route every authorized mutation through this capability while its lock is
+ * held. File-tree proofs additionally detect bounded in-operation races, but
+ * cannot manufacture an atomic multi-inode snapshot against a raw writer that
+ * deliberately ignores the quarantine boundary.
+ */
 export class AgentBackupRestoreV3CandidateFs {
   readonly trustedRoot: string;
   readonly attemptRoot: string;
@@ -235,6 +265,57 @@ export class AgentBackupRestoreV3CandidateFs {
     return proveCandidateFsTree(
       this.#control,
       relativeDirectory,
+      limitsValue,
+      snapshotOperationControl(control),
+      heldLock,
+    );
+  }
+
+  async ensureFileTreeDirectory(
+    relativeDirectory: string,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+    heldLock?: AgentBackupRestoreV3CandidateFsLock,
+  ): Promise<void> {
+    return ensureCandidateFsFileTreeDirectory(
+      this.#control,
+      relativeDirectory,
+      snapshotOperationControl(control),
+      heldLock,
+    );
+  }
+
+  async createFileTreeFile(
+    relativeDirectory: string,
+    spec: Readonly<AgentBackupRestoreV3CandidateFileTreeFileSpec>,
+    limitsValue:
+      | Partial<AgentBackupRestoreV3CandidateFileTreeLimits>
+      | undefined,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+    heldLock?: AgentBackupRestoreV3CandidateFsLock,
+  ): Promise<AgentBackupRestoreV3CandidateFileTreeWriter> {
+    return createCandidateFsFileTreeFile(
+      this.#control,
+      relativeDirectory,
+      spec,
+      limitsValue,
+      snapshotOperationControl(control),
+      heldLock,
+    );
+  }
+
+  async proveFileTree(
+    relativeDirectory: string,
+    expected: readonly Readonly<AgentBackupRestoreV3CandidateFileTreeFileProof>[],
+    limitsValue:
+      | Partial<AgentBackupRestoreV3CandidateFileTreeLimits>
+      | undefined,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+    heldLock?: AgentBackupRestoreV3CandidateFsLock,
+  ): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeProof>> {
+    return proveCandidateFsFileTree(
+      this.#control,
+      relativeDirectory,
+      expected,
       limitsValue,
       snapshotOperationControl(control),
       heldLock,
