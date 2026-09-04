@@ -17,7 +17,7 @@ goal hook calls out, in priority order:
    actually work and be tested**, with no secret material echoed to chat.
 
 Scope is intentionally narrow. The existing
-[`OrchestratorWorkbench.tsx`](../src/OrchestratorWorkbench.tsx) (4142 LOC) is
+[`OrchestratorWorkbench.tsx`](../../plugin-task-coordinator/src/OrchestratorWorkbench.tsx) (4142 LOC) is
 mature — rail, inspector, action bar, timeline, operator drawer, plan editor.
 We do not redesign it. We add a thin glance strip, fix the gaps, and lock
 behavior in tests.
