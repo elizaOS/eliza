@@ -361,6 +361,9 @@ async function runTests(
 		timeout: TIMEOUTS.test,
 		maxBuffer: EXEC_BUFFER,
 		env: nonInteractiveEnv(),
+		// npm resolves to npm.cmd on Windows. Without a shell, execFile cannot
+		// resolve the package-manager shim and the verification test never runs.
+		shell: process.platform === "win32",
 	};
 	let stdout = "";
 	let stderr = "";
