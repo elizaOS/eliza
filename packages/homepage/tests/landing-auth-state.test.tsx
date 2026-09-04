@@ -1,5 +1,6 @@
 /**
- * Landing auth CTA regression: neutral Sign in always, never inferred Dashboard.
+ * Landing auth CTA regression in a deterministic mocked-jsdom harness:
+ * neutral Sign in always, never inferred Dashboard.
  *
  * Repro (#28743): `packages/homepage/src/pages/landing.tsx` used
  * `localStorage.eliza_app_session` to decide between "Dashboard" and "Sign in".
@@ -10,8 +11,8 @@
  * homepage token.
  *
  * Red: with `eliza_app_session` set, old code renders Dashboard.
- * Green: fixed code renders Sign in regardless of that key, and never exposes
- * a bearer token to the marketing origin.
+ * Green: fixed code renders Sign in regardless of that key. This local harness
+ * does not exercise a live Cloud session, revocation, or bearer transport.
  */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
@@ -206,16 +207,16 @@ describe("LandingPage auth CTA", () => {
     unmount();
   });
 
-  test("renders Sign in for expired/revoked and logout states (no bearer exposure)", async () => {
+  test("renders Sign in for an arbitrary homepage token and cleared storage", async () => {
     const { container: c1, unmount: u1 } = await renderLanding((s) =>
-      s.setItem("eliza_app_session", "expired-token-123"),
+      s.setItem("eliza_app_session", "opaque-homepage-token"),
     );
     expect(
       (c1.querySelector(".landing-header-cta") as HTMLAnchorElement)
         .textContent,
     ).toBe("Sign in");
     u1();
-    // After logout (storage cleared), still Sign in — no inferred Dashboard.
+    // After homepage storage is cleared, still Sign in — no inferred Dashboard.
     const { container: c2, unmount: u2 } = await renderLanding();
     expect(
       (c2.querySelector(".landing-header-cta") as HTMLAnchorElement)

@@ -1,5 +1,7 @@
 /**
- * Landing header-CTA auth regression (#28743).
+ * Landing header-CTA auth regression (#28743), exercised in a deterministic
+ * localhost Playwright harness. This does not prove live staging session,
+ * revocation, expiry, or staging/production isolation behavior.
  *
  * The header CTA must stay neutral "Sign in" even when the same-origin
  * homepage session (`localStorage.eliza_app_session`) exists: that key
