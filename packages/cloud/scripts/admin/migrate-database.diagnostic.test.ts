@@ -33,17 +33,59 @@ interface JournalEntry {
   breakpoints: boolean;
 }
 
-function runAdminScript(args: string[], environment: NodeJS.ProcessEnv) {
-  return spawnSync(
+/**
+ * Wall-clock cap on one child run of the admin script.
+ *
+ * The `0295` case below drives a real destination migration and takes ~25 s
+ * locally, so this is roughly 2.5x headroom — thin enough that a loaded CI
+ * runner has hit it.
+ */
+const ADMIN_SCRIPT_TIMEOUT_MS = 60_000;
+
+/**
+ * Run the admin script once, failing loudly if the child did not exit on its
+ * own terms.
+ *
+ * Without this guard a `timeout` kill is the least legible failure this file
+ * can produce. `spawnSync` reports it as `status: null`, `signal: "SIGTERM"`,
+ * `error: ETIMEDOUT` — and with **empty** `stdout`/`stderr`, because the
+ * buffers die with the child. Every assertion here is of the form
+ * `expect(result.status, output).toBe(1)`, so the run surfaces as
+ *
+ *     expected null to be 1
+ *
+ * with a blank custom message, naming neither the timeout nor the cap. The one
+ * fact worth knowing is the one that gets dropped. Following the existing
+ * repo idiom for spawned children (`run-with-deadline.test.mjs` reports
+ * `status`/`signal`/`error` together; `provider-latency-report.test.ts`
+ * asserts `result.error` is undefined), classify that case up front.
+ */
+function runAdminScript(
+  args: string[],
+  environment: NodeJS.ProcessEnv,
+  timeoutMs: number = ADMIN_SCRIPT_TIMEOUT_MS,
+) {
+  const result = spawnSync(
     process.execPath,
     ["--conditions=eliza-source", scriptPath, ...args],
     {
       cwd: repositoryRoot,
       env: environment,
       encoding: "utf8",
-      timeout: 60_000,
+      timeout: timeoutMs,
     },
   );
+  if (result.error || result.signal !== null) {
+    throw new Error(
+      `admin script did not exit on its own: status=${String(result.status)} ` +
+        `signal=${String(result.signal)} error=${String(result.error)}. ` +
+        `The ${timeoutMs}ms spawnSync cap kills the child and discards its ` +
+        `output, so stdout/stderr below are expected to be empty.\n` +
+        `--- stdout ---\n${result.stdout ?? ""}\n` +
+        `--- stderr ---\n${result.stderr ?? ""}`,
+    );
+  }
+  return result;
 }
 
 async function seedLegacyPhoneJsonFailure(
@@ -240,5 +282,25 @@ describe("migrate-database fatal diagnostics", () => {
     });
     expect(JSON.stringify(diagnostic)).not.toContain(secretMessage);
     expect(Object.keys(diagnostic).sort()).toEqual(["code", "stage"]);
+  });
+
+  test("names the timeout when the child is killed instead of exiting", () => {
+    // Same code path as every case above, with a cap the child cannot meet, so
+    // this is the real kill rather than a synthetic result object. ~200ms.
+    let message = "";
+    try {
+      runAdminScript([], process.env, 200);
+      throw new Error("expected the harness to reject a killed child");
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    // The three facts a CI log needs and `expect(status).toBe(1)` throws away.
+    expect(message).toContain("did not exit on its own");
+    expect(message).toContain("signal=SIGTERM");
+    expect(message).toContain("200ms spawnSync cap");
+    // And it must say why the output it prints is blank, so an empty tail does
+    // not read as "the script produced nothing".
+    expect(message).toContain("discards its output");
   });
 });
