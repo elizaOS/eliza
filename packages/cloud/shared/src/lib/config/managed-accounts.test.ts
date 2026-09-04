@@ -20,6 +20,11 @@ import {
 } from "./managed-accounts";
 
 const ENV_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+const BLOOIO_HOSTED_GATEWAY_CREDENTIAL_SET = [
+  "ELIZA_APP_BLOOIO_API_KEY",
+  "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+  "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
+] as const;
 const REPOSITORY_ROOT = spawnSync("git", ["rev-parse", "--show-toplevel"], {
   cwd: path.dirname(new URL(import.meta.url).pathname),
   encoding: "utf8",
@@ -91,6 +96,13 @@ describe("managed-account manifest invariants", () => {
         ...Object.values(provider.secretPatterns ?? {}),
       ]);
       for (const set of spec.credentialSets) {
+        // The hosted gateway is a separate shipped consumer, not an OAuth
+        // registry alternative; admit only its exact external contract here.
+        const isBlooioHostedGatewaySet =
+          spec.id === "blooio" &&
+          set.length === BLOOIO_HOSTED_GATEWAY_CREDENTIAL_SET.length &&
+          BLOOIO_HOSTED_GATEWAY_CREDENTIAL_SET.every((name) => set.includes(name));
+        if (isBlooioHostedGatewaySet) continue;
         for (const name of set) {
           expect(registryVars.has(name)).toBe(true);
         }
@@ -118,6 +130,10 @@ describe("managed-account manifest invariants", () => {
         "packages/cloud",
         "plugins",
         ":(exclude)packages/cloud/shared/src/lib/config/managed-accounts.ts",
+        ":(exclude,glob)**/*.test.*",
+        ":(exclude,glob)**/*.spec.*",
+        ":(exclude,glob)**/__tests__/**",
+        ":(exclude,glob)**/*.md",
       ],
       { cwd: REPOSITORY_ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
     );
@@ -271,5 +287,65 @@ describe("managed WhatsApp 4-of-4 readiness contract", () => {
       );
       expect(JSON.stringify(report)).not.toContain(CONFIGURED);
     }
+  });
+});
+
+describe("managed Blooio readiness contracts", () => {
+  const blooio = MANAGED_ACCOUNTS.find((spec) => spec.id === "blooio");
+  if (!blooio) throw new Error("blooio managed account is missing");
+
+  it("classifies all 32 cross-namespace states without accepting split custody", () => {
+    const allNames = blooio.credentialSets.flat();
+    const combinations = 1 << allNames.length;
+    for (let mask = 0; mask < combinations; mask += 1) {
+      const env: Record<string, string> = {};
+      for (const [index, name] of allNames.entries()) {
+        if ((mask & (1 << index)) !== 0) env[name] = CONFIGURED;
+      }
+
+      const report = evaluateManagedAccount(blooio, env);
+      const hasCompleteAuthority = blooio.credentialSets.some((credentialSet) =>
+        credentialSet.every((name) => Boolean(env[name])),
+      );
+      expect(report.state).toBe(
+        hasCompleteAuthority ? "configured" : mask === 0 ? "missing" : "partial",
+      );
+      expect(report.missingEnvVars.every((name) => !env[name])).toBe(true);
+      expect(JSON.stringify(report)).not.toContain(CONFIGURED);
+    }
+  });
+
+  it("accepts the complete generic connection tuple without its optional webhook", () => {
+    const report = evaluateManagedAccount(blooio, {
+      BLOOIO_API_KEY: CONFIGURED,
+      BLOOIO_FROM_NUMBER: CONFIGURED,
+    });
+
+    expect(report.state).toBe("configured");
+    expect(report.missingEnvVars).toEqual([]);
+    expect(JSON.stringify(report)).not.toContain(CONFIGURED);
+  });
+
+  it("accepts the complete hosted gateway tuple", () => {
+    const report = evaluateManagedAccount(blooio, {
+      ELIZA_APP_BLOOIO_API_KEY: CONFIGURED,
+      ELIZA_APP_BLOOIO_PHONE_NUMBER: CONFIGURED,
+      ELIZA_APP_BLOOIO_WEBHOOK_SECRET: CONFIGURED,
+    });
+
+    expect(report.state).toBe("configured");
+    expect(report.missingEnvVars).toEqual([]);
+    expect(JSON.stringify(report)).not.toContain(CONFIGURED);
+  });
+
+  it("keeps the hosted gateway tuple partial when its webhook secret is missing", () => {
+    const report = evaluateManagedAccount(blooio, {
+      ELIZA_APP_BLOOIO_API_KEY: CONFIGURED,
+      ELIZA_APP_BLOOIO_PHONE_NUMBER: CONFIGURED,
+    });
+
+    expect(report.state).toBe("partial");
+    expect(report.missingEnvVars).toEqual(["ELIZA_APP_BLOOIO_WEBHOOK_SECRET"]);
+    expect(JSON.stringify(report)).not.toContain(CONFIGURED);
   });
 });
