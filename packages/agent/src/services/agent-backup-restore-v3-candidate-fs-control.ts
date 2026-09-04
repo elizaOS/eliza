@@ -19,14 +19,185 @@ const INTERNAL_CLEANUP_DEADLINE_MS = 5_000;
 const INTERNAL_CONTROL_DEADLINE_MS = 60_000;
 const LOCK_START_DEADLINE_MS = 5_000;
 const TEST_PLATFORM_LOCKS = new Set<string>();
-const ABORT_SIGNAL_ABORTED_GETTER = Object.getOwnPropertyDescriptor(
+const OBJECT_FREEZE = Object.freeze;
+const OBJECT_GET_OWN_PROPERTY_DESCRIPTOR = Object.getOwnPropertyDescriptor;
+const OBJECT_GET_OWN_PROPERTY_DESCRIPTORS = Object.getOwnPropertyDescriptors;
+const OBJECT_GET_PROTOTYPE_OF = Object.getPrototypeOf;
+const OBJECT_IS = Object.is;
+const OBJECT_PROTOTYPE = Object.prototype;
+const OBJECT_SET_PROTOTYPE_OF = Object.setPrototypeOf;
+const ARRAY_IS_ARRAY = Array.isArray;
+const ARRAY_INCLUDES = Array.prototype.includes;
+const ARRAY_JOIN = Array.prototype.join;
+const ARRAY_PUSH = Array.prototype.push;
+const ARRAY_SOME = Array.prototype.some;
+const IS_PROXY = utilTypes.isProxy;
+const REFLECT_OWN_KEYS = Reflect.ownKeys;
+const TYPED_ARRAY_PROTOTYPE = OBJECT_GET_PROTOTYPE_OF(Uint8Array.prototype);
+const TYPED_ARRAY_BYTE_LENGTH_GETTER = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
+  TYPED_ARRAY_PROTOTYPE,
+  "byteLength",
+)?.get;
+const TYPED_ARRAY_BUFFER_GETTER = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
+  TYPED_ARRAY_PROTOTYPE,
+  "buffer",
+)?.get;
+const TYPED_ARRAY_BYTE_OFFSET_GETTER = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
+  TYPED_ARRAY_PROTOTYPE,
+  "byteOffset",
+)?.get;
+const REFLECT_APPLY = Reflect.apply;
+const OBJECT_DEFINE_PROPERTIES = Object.defineProperties;
+const INTRINSIC_UINT8_ARRAY = Uint8Array;
+const INTRINSIC_SET = Set;
+const SET_ADD = Set.prototype.add;
+const SET_DELETE = Set.prototype.delete;
+const SET_HAS = Set.prototype.has;
+const STRING_CHAR_CODE_AT = String.prototype.charCodeAt;
+const STRING_INCLUDES = String.prototype.includes;
+const STRING_SPLIT = String.prototype.split;
+const STRING_STARTS_WITH = String.prototype.startsWith;
+const STRING_TRIM = String.prototype.trim;
+const UINT8_ARRAY_INCLUDES = Uint8Array.prototype.includes;
+const PATH_IS_ABSOLUTE = path.isAbsolute;
+const PATH_JOIN = path.join;
+const PATH_RELATIVE = path.relative;
+const PATH_RESOLVE = path.resolve;
+const PATH_SEPARATOR = path.sep;
+const BUFFER_BYTE_LENGTH = Buffer.byteLength;
+const ABORT_SIGNAL_ABORTED_GETTER = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
   AbortSignal.prototype,
   "aborted",
 )?.get;
-const ABORT_SIGNAL_REASON_GETTER = Object.getOwnPropertyDescriptor(
+const ABORT_SIGNAL_REASON_GETTER = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
   AbortSignal.prototype,
   "reason",
 )?.get;
+
+function typedArrayByteLength(value: Uint8Array): number {
+  return REFLECT_APPLY(
+    TYPED_ARRAY_BYTE_LENGTH_GETTER as () => number,
+    value,
+    [],
+  );
+}
+
+export function candidateFsByteView(
+  value: Uint8Array,
+  start = 0,
+  end = typedArrayByteLength(value),
+): Uint8Array {
+  const byteLength = typedArrayByteLength(value);
+  if (
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(end) ||
+    start < 0 ||
+    end < start ||
+    end > byteLength
+  ) {
+    candidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LIMIT_INVALID",
+      "Candidate byte view exceeds its exact array bounds",
+    );
+  }
+  const buffer = REFLECT_APPLY(
+    TYPED_ARRAY_BUFFER_GETTER as () => ArrayBuffer,
+    value,
+    [],
+  );
+  const byteOffset = REFLECT_APPLY(
+    TYPED_ARRAY_BYTE_OFFSET_GETTER as () => number,
+    value,
+    [],
+  );
+  return new INTRINSIC_UINT8_ARRAY(buffer, byteOffset + start, end - start);
+}
+
+/**
+ * Gives Node's JavaScript FileHandle shims a view whose metadata cannot be
+ * redirected through mutable TypedArray prototype accessors. The view shares
+ * the exact backing bytes, so reads and zeroization still affect the caller's
+ * owned buffer without mutating its object shape.
+ */
+export function candidateFsNativeIoView(value: Uint8Array): Uint8Array {
+  const view = candidateFsByteView(value);
+  const byteLength = typedArrayByteLength(view);
+  const buffer = REFLECT_APPLY(
+    TYPED_ARRAY_BUFFER_GETTER as () => ArrayBuffer,
+    view,
+    [],
+  );
+  const byteOffset = REFLECT_APPLY(
+    TYPED_ARRAY_BYTE_OFFSET_GETTER as () => number,
+    view,
+    [],
+  );
+  OBJECT_DEFINE_PROPERTIES(view, {
+    byteLength: { value: byteLength, enumerable: false },
+    buffer: { value: buffer, enumerable: false },
+    byteOffset: { value: byteOffset, enumerable: false },
+  });
+  return view;
+}
+
+function bufferUtf8ByteLength(value: string): number {
+  return REFLECT_APPLY(BUFFER_BYTE_LENGTH, Buffer, [value, "utf8"]);
+}
+
+function arrayIncludes<T>(value: readonly T[], search: T): boolean {
+  return REFLECT_APPLY(ARRAY_INCLUDES, value, [search]);
+}
+
+function arrayJoin(value: readonly string[], separator: string): string {
+  return REFLECT_APPLY(ARRAY_JOIN, value, [separator]);
+}
+
+function arrayPush<T>(value: T[], entry: T): void {
+  REFLECT_APPLY(ARRAY_PUSH, value, [entry]);
+}
+
+function arraySome<T>(
+  value: readonly T[],
+  predicate: (entry: T, index: number) => boolean,
+): boolean {
+  return REFLECT_APPLY(ARRAY_SOME, value, [predicate]);
+}
+
+function setAdd<T>(value: Set<T>, entry: T): void {
+  REFLECT_APPLY(SET_ADD, value, [entry]);
+}
+
+function setDelete<T>(value: Set<T>, entry: T): void {
+  REFLECT_APPLY(SET_DELETE, value, [entry]);
+}
+
+function setHas<T>(value: Set<T>, entry: T): boolean {
+  return REFLECT_APPLY(SET_HAS, value, [entry]);
+}
+
+function stringCharCodeAt(value: string, index: number): number {
+  return REFLECT_APPLY(STRING_CHAR_CODE_AT, value, [index]);
+}
+
+function stringIncludes(value: string, search: string): boolean {
+  return REFLECT_APPLY(STRING_INCLUDES, value, [search]);
+}
+
+function stringSplit(value: string, separator: string): string[] {
+  return REFLECT_APPLY(STRING_SPLIT, value, [separator]);
+}
+
+function stringStartsWith(value: string, prefix: string): boolean {
+  return REFLECT_APPLY(STRING_STARTS_WITH, value, [prefix]);
+}
+
+function stringTrim(value: string): string {
+  return REFLECT_APPLY(STRING_TRIM, value, []);
+}
+
+function byteArrayIncludes(value: Uint8Array, search: number): boolean {
+  return REFLECT_APPLY(UINT8_ARRAY_INCLUDES, value, [search]);
+}
 
 export interface AgentBackupRestoreV3CandidateFsIdentity {
   readonly device: string;
@@ -64,7 +235,7 @@ export class AgentBackupRestoreV3CandidateFsError extends ElizaError {
       ...(options.context === undefined ? {} : { context: options.context }),
       severity: options.severity ?? "fatal",
     });
-    Object.setPrototypeOf(this, new.target.prototype);
+    OBJECT_SET_PROTOTYPE_OF(this, new.target.prototype);
   }
 }
 
@@ -127,7 +298,7 @@ function exactStats(stats: BigIntStats): CandidateFsExactStats {
       "Candidate filesystem returned an unrepresentable file identity",
     );
   }
-  return Object.freeze({
+  return OBJECT_FREEZE({
     device: stats.dev,
     inode: stats.ino,
     mode: Number(stats.mode),
@@ -180,7 +351,7 @@ export function requirePositiveSafeInteger(
   value: number,
   field: string,
 ): number {
-  if (!Number.isSafeInteger(value) || value <= 0 || Object.is(value, -0)) {
+  if (!Number.isSafeInteger(value) || value <= 0 || OBJECT_IS(value, -0)) {
     candidateFsError(
       "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LIMIT_INVALID",
       `${field} must be a positive safe integer`,
@@ -199,21 +370,24 @@ export function snapshotOwnDataRecord(
   if (
     !value ||
     typeof value !== "object" ||
-    utilTypes.isProxy(value) ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
+    IS_PROXY(value) ||
+    ARRAY_IS_ARRAY(value) ||
+    OBJECT_GET_PROTOTYPE_OF(value) !== OBJECT_PROTOTYPE
   ) {
     candidateFsError(code, message);
   }
-  const keys = Reflect.ownKeys(value);
-  const allowed = new Set(allowedKeys);
+  const keys = REFLECT_OWN_KEYS(value);
+  const allowed = new INTRINSIC_SET(allowedKeys);
   if (
-    keys.some((key) => typeof key !== "string" || !allowed.has(key)) ||
-    requiredKeys.some((key) => !keys.includes(key))
+    arraySome(
+      keys,
+      (key) => typeof key !== "string" || !setHas(allowed, key),
+    ) ||
+    arraySome(requiredKeys, (key) => !arrayIncludes(keys, key))
   ) {
     candidateFsError(code, message);
   }
-  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const descriptors = OBJECT_GET_OWN_PROPERTY_DESCRIPTORS(value);
   const snapshot: Record<string, unknown> = {};
   for (const key of keys as string[]) {
     const descriptor = descriptors[key];
@@ -222,7 +396,7 @@ export function snapshotOwnDataRecord(
     }
     snapshot[key] = descriptor.value;
   }
-  return Object.freeze(snapshot);
+  return OBJECT_FREEZE(snapshot);
 }
 
 export function assertActive(
@@ -230,11 +404,11 @@ export function assertActive(
 ): void {
   const signalDescriptor =
     control && typeof control === "object"
-      ? Object.getOwnPropertyDescriptor(control, "signal")
+      ? OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(control, "signal")
       : undefined;
   const deadlineDescriptor =
     control && typeof control === "object"
-      ? Object.getOwnPropertyDescriptor(control, "deadlineEpochMs")
+      ? OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(control, "deadlineEpochMs")
       : undefined;
   const signal =
     signalDescriptor && "value" in signalDescriptor
@@ -248,7 +422,7 @@ export function assertActive(
   try {
     aborted = Boolean(
       ABORT_SIGNAL_ABORTED_GETTER &&
-        Reflect.apply(ABORT_SIGNAL_ABORTED_GETTER, signal, []),
+        REFLECT_APPLY(ABORT_SIGNAL_ABORTED_GETTER, signal, []),
     );
   } catch {
     aborted = false;
@@ -262,11 +436,11 @@ export function assertActive(
     !("value" in deadlineDescriptor) ||
     !Number.isSafeInteger(deadlineEpochMs) ||
     deadlineEpochMs <= 0 ||
-    Object.is(deadlineEpochMs, -0) ||
+    OBJECT_IS(deadlineEpochMs, -0) ||
     (!aborted &&
       (() => {
         try {
-          Reflect.apply(ABORT_SIGNAL_REASON_GETTER, signal, []);
+          REFLECT_APPLY(ABORT_SIGNAL_REASON_GETTER, signal, []);
           return false;
         } catch {
           return true;
@@ -279,7 +453,7 @@ export function assertActive(
     );
   }
   if (aborted) {
-    const reason = Reflect.apply(ABORT_SIGNAL_REASON_GETTER, signal, []);
+    const reason = REFLECT_APPLY(ABORT_SIGNAL_REASON_GETTER, signal, []);
     candidateFsError(
       "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_ABORTED",
       "Candidate filesystem operation was cancelled",
@@ -308,7 +482,7 @@ export function snapshotOperationControl(
     "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CONTROL_INVALID",
     "Candidate filesystem requires an explicit canonical signal and deadline",
   );
-  const snapshot = Object.freeze({
+  const snapshot = OBJECT_FREEZE({
     signal: record.signal,
     deadlineEpochMs: record.deadlineEpochMs,
   }) as Readonly<AgentBackupRestoreV3OperationControl>;
@@ -352,7 +526,7 @@ export async function runAllBoundedInternalCleanup(
     try {
       await boundedInternalCleanup(operation);
     } catch (cause) {
-      failures.push(cause);
+      arrayPush(failures, cause);
     }
   }
   if (failures.length === 1) throw failures[0];
@@ -384,7 +558,7 @@ export async function controlledAcquire<T>(
 }
 
 export function internalCleanupControl(): Readonly<AgentBackupRestoreV3OperationControl> {
-  return Object.freeze({
+  return OBJECT_FREEZE({
     signal: new AbortController().signal,
     deadlineEpochMs: Date.now() + INTERNAL_CONTROL_DEADLINE_MS,
   });
@@ -393,9 +567,9 @@ export function internalCleanupControl(): Readonly<AgentBackupRestoreV3Operation
 function requireAbsoluteCanonicalPath(value: string, field: string): string {
   if (
     typeof value !== "string" ||
-    !path.isAbsolute(value) ||
-    path.resolve(value) !== value ||
-    value.includes("\0")
+    !PATH_IS_ABSOLUTE(value) ||
+    PATH_RESOLVE(value) !== value ||
+    stringIncludes(value, "\0")
   ) {
     candidateFsError(
       "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_ROOT_INVALID",
@@ -406,19 +580,19 @@ function requireAbsoluteCanonicalPath(value: string, field: string): string {
 }
 
 function isStrictlyWithin(root: string, target: string): boolean {
-  const relative = path.relative(root, target);
+  const relative = PATH_RELATIVE(root, target);
   return (
     relative.length > 0 &&
     relative !== ".." &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
+    !stringStartsWith(relative, `..${PATH_SEPARATOR}`) &&
+    !PATH_IS_ABSOLUTE(relative)
   );
 }
 
 function hasAsciiControl(value: string): boolean {
-  for (const character of value) {
-    const codePoint = character.codePointAt(0);
-    if (codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)) {
+  for (let index = 0; index < value.length; index += 1) {
+    const codePoint = stringCharCodeAt(value, index);
+    if (codePoint <= 0x1f || codePoint === 0x7f) {
       return true;
     }
   }
@@ -431,11 +605,11 @@ export function requireControlName(value: string, field: string): string {
     value.length === 0 ||
     value === "." ||
     value === ".." ||
-    value.trim() !== value ||
-    value.includes("/") ||
-    value.includes("\\") ||
+    stringTrim(value) !== value ||
+    stringIncludes(value, "/") ||
+    stringIncludes(value, "\\") ||
     hasAsciiControl(value) ||
-    Buffer.byteLength(value, "utf8") > MAX_CONTROL_NAME_BYTES
+    bufferUtf8ByteLength(value) > MAX_CONTROL_NAME_BYTES
   ) {
     candidateFsError(
       "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PATH_FORBIDDEN",
@@ -451,11 +625,11 @@ export function requirePathSegment(value: string, field: string): string {
     value.length === 0 ||
     value === "." ||
     value === ".." ||
-    value.includes("/") ||
-    value.includes("\\") ||
-    value.includes("\0") ||
+    stringIncludes(value, "/") ||
+    stringIncludes(value, "\\") ||
+    stringIncludes(value, "\0") ||
     hasAsciiControl(value) ||
-    Buffer.byteLength(value, "utf8") > 255
+    bufferUtf8ByteLength(value) > 255
   ) {
     candidateFsError(
       "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PATH_FORBIDDEN",
@@ -469,19 +643,19 @@ export function requireRelativePath(value: string, field: string): string {
   if (
     typeof value !== "string" ||
     value.length === 0 ||
-    path.isAbsolute(value) ||
-    value.includes("\\") ||
-    value.includes("\0") ||
-    Buffer.byteLength(value, "utf8") > MAX_RELATIVE_PATH_BYTES
+    PATH_IS_ABSOLUTE(value) ||
+    stringIncludes(value, "\\") ||
+    stringIncludes(value, "\0") ||
+    bufferUtf8ByteLength(value) > MAX_RELATIVE_PATH_BYTES
   ) {
     candidateFsError(
       "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PATH_FORBIDDEN",
       `${field} must be one bounded relative path`,
     );
   }
-  const segments = value.split("/");
+  const segments = stringSplit(value, "/");
   if (
-    segments.some((segment) => {
+    arraySome(segments, (segment) => {
       try {
         requirePathSegment(segment, field);
         return false;
@@ -495,7 +669,7 @@ export function requireRelativePath(value: string, field: string): string {
       `${field} contains an unsafe path segment`,
     );
   }
-  return segments.join(path.sep);
+  return arrayJoin(segments, PATH_SEPARATOR);
 }
 
 export function requirePrivateDirectory(
@@ -528,7 +702,7 @@ export function requirePrivateSingleLinkFile(
 export function candidateFsIdentity(
   stats: CandidateFsExactStats,
 ): AgentBackupRestoreV3CandidateFsIdentity {
-  return Object.freeze({
+  return OBJECT_FREEZE({
     device: stats.device.toString(10),
     inode: stats.inode.toString(10),
   });
@@ -575,7 +749,7 @@ async function resolveDirectoryAuthority(
         `${field} cannot traverse a symbolic link or change while opening`,
       );
     }
-    return Object.freeze({
+    return OBJECT_FREEZE({
       path: canonical,
       stats: opened,
       handle,
@@ -614,13 +788,16 @@ async function resolveDescendantDirectoryAuthority(
       "Candidate attempt must be a strict descendant of its trusted root",
     );
   }
-  const relative = path.relative(trusted.path, canonical);
-  const segments = requireRelativePath(relative, field).split(path.sep);
+  const relative = PATH_RELATIVE(trusted.path, canonical);
+  const segments = stringSplit(
+    requireRelativePath(relative, field),
+    PATH_SEPARATOR,
+  );
   let currentAuthority = trusted;
   let ownedHandle: FileHandle | undefined;
   try {
     for (const segment of segments) {
-      const childPath = path.join(currentAuthority.anchor, segment);
+      const childPath = PATH_JOIN(currentAuthority.anchor, segment);
       const childHandle = await controlledAcquire(
         () =>
           fs.open(
@@ -643,12 +820,12 @@ async function resolveDescendantDirectoryAuthority(
         const previousAnchor = currentAuthority.anchor;
         if (previousHandle) await previousHandle.close();
         ownedHandle = childHandle;
-        currentAuthority = Object.freeze({
+        currentAuthority = OBJECT_FREEZE({
           path: canonical,
           stats: childStats,
           handle: childHandle,
           anchor: trusted.testOnlyPathnameEmulation
-            ? path.join(previousAnchor, segment)
+            ? PATH_JOIN(previousAnchor, segment)
             : `/proc/self/fd/${childHandle.fd}`,
           testOnlyPathnameEmulation: trusted.testOnlyPathnameEmulation,
         });
@@ -767,16 +944,13 @@ export async function writeAll(
   position: number,
   control: Readonly<AgentBackupRestoreV3OperationControl>,
 ): Promise<void> {
+  const byteLength = typedArrayByteLength(bytes);
+  const ioBytes = candidateFsNativeIoView(bytes);
   let offset = 0;
-  while (offset < bytes.byteLength) {
+  while (offset < byteLength) {
     const written = await controlled(
       () =>
-        handle.write(
-          bytes,
-          offset,
-          bytes.byteLength - offset,
-          position + offset,
-        ),
+        handle.write(ioBytes, offset, byteLength - offset, position + offset),
       control,
     );
     if (written.bytesWritten <= 0) {
@@ -814,7 +988,7 @@ async function waitForLockProcessReady(child: ChildProcess): Promise<void> {
       else reject(failure);
     };
     const onData = (bytes: Buffer) => {
-      if (bytes.includes(0x31)) finish();
+      if (byteArrayIncludes(bytes, 0x31)) finish();
     };
     const onError = (cause: unknown) => finish(cause);
     const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
@@ -938,7 +1112,7 @@ export class AgentBackupRestoreV3CandidateFsLock {
 
   #waitForUses(): Promise<void> {
     if (this.#activeUses === 0) return Promise.resolve();
-    return new Promise((resolve) => this.#drainWaiters.push(resolve));
+    return new Promise((resolve) => arrayPush(this.#drainWaiters, resolve));
   }
 
   release(
@@ -1105,7 +1279,7 @@ export class AgentBackupRestoreV3CandidateFsControl {
     this.#closePromise = (async () => {
       if (this.#pendingLockAcquisitions > 0) {
         await new Promise<void>((resolve) =>
-          this.#lockAcquisitionDrainWaiters.push(resolve),
+          arrayPush(this.#lockAcquisitionDrainWaiters, resolve),
         );
       }
       const activeLock = this.#activeLock;
@@ -1148,7 +1322,7 @@ export class AgentBackupRestoreV3CandidateFsControl {
   }
 
   directPath(name: string, field: string): string {
-    return path.join(
+    return PATH_JOIN(
       this.#attemptAuthority.anchor,
       requireControlName(name, field),
     );
@@ -1178,7 +1352,7 @@ export class AgentBackupRestoreV3CandidateFsControl {
       for (const rawSegment of segments) {
         const segment = requirePathSegment(rawSegment, "directory segment");
         const anchor = this.directoryAnchor(handle, testPath);
-        const childPath = path.join(anchor, segment);
+        const childPath = PATH_JOIN(anchor, segment);
         const childHandle = await controlledAcquire(
           () =>
             fs.open(
@@ -1210,14 +1384,14 @@ export class AgentBackupRestoreV3CandidateFsControl {
         }
         await handle.close();
         handle = childHandle;
-        testPath = path.join(testPath, segment);
+        testPath = PATH_JOIN(testPath, segment);
       }
       const stats = await controlled(() => fileStatExact(handle), control);
       requirePrivateDirectory(
         stats,
         "Candidate directory descriptor is no longer private",
       );
-      return Object.freeze({
+      return OBJECT_FREEZE({
         handle,
         stats,
         anchor: this.directoryAnchor(handle, testPath),
@@ -1265,16 +1439,16 @@ export class AgentBackupRestoreV3CandidateFsControl {
     let lease: KernelLockLease;
     if (this.#attemptAuthority.testOnlyPathnameEmulation) {
       const key = `${this.attemptRootIdentity.device}:${this.attemptRootIdentity.inode}`;
-      if (TEST_PLATFORM_LOCKS.has(key)) {
+      if (setHas(TEST_PLATFORM_LOCKS, key)) {
         candidateFsError(
           "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LOCK_BUSY",
           "Candidate filesystem emulated root inode is already locked",
         );
       }
-      TEST_PLATFORM_LOCKS.add(key);
-      lease = Object.freeze({
+      setAdd(TEST_PLATFORM_LOCKS, key);
+      lease = OBJECT_FREEZE({
         release: async () => {
-          TEST_PLATFORM_LOCKS.delete(key);
+          setDelete(TEST_PLATFORM_LOCKS, key);
         },
       });
     } else {
@@ -1315,7 +1489,7 @@ export class AgentBackupRestoreV3CandidateFsControl {
         }
         throw cause;
       }
-      lease = Object.freeze({
+      lease = OBJECT_FREEZE({
         release: async () => {
           let processFailure: unknown;
           try {

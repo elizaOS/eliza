@@ -392,6 +392,587 @@ describe("restore-v3 candidate filesystem", () => {
     });
   });
 
+  it("does not dispatch secrets through poisoned byte-array and Buffer intrinsics", async () => {
+    const { candidate, attemptRoot } = await fixture();
+    const control = operationControl();
+    const intrinsicReflectApply = Reflect.apply;
+    const ownerToken = "owner-token-visible-only-to-candidate-fs";
+    const payloadPlaintext = "payload-plaintext-intrinsics";
+    const canonicalSecret = "canonical-json-plaintext-intrinsics";
+    const treePlaintext = "tree-plaintext-intrinsics";
+    const payloadInput = Buffer.from(payloadPlaintext);
+    const canonicalValue = { secret: canonicalSecret };
+    const publicationName = "intrinsic-publication.json";
+    const publicationPrefix = createHash("sha256")
+      .update(publicationName)
+      .digest("hex")
+      .slice(0, 16);
+    const treeName = "intrinsic-tree";
+    await fs.mkdir(path.join(attemptRoot, treeName), { mode: 0o700 });
+    await writePrivateFile(
+      path.join(attemptRoot, treeName, "secret.txt"),
+      treePlaintext,
+    );
+
+    const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype);
+    const uint8ArrayDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "Uint8Array",
+    ) as PropertyDescriptor & { value: Uint8ArrayConstructor };
+    const byteLengthDescriptor = Object.getOwnPropertyDescriptor(
+      typedArrayPrototype,
+      "byteLength",
+    ) as PropertyDescriptor & { get: () => number };
+    const bufferDescriptor = Object.getOwnPropertyDescriptor(
+      typedArrayPrototype,
+      "buffer",
+    ) as PropertyDescriptor & { get: () => ArrayBufferLike };
+    const byteOffsetDescriptor = Object.getOwnPropertyDescriptor(
+      typedArrayPrototype,
+      "byteOffset",
+    ) as PropertyDescriptor & { get: () => number };
+    const fillDescriptor = Object.getOwnPropertyDescriptor(
+      typedArrayPrototype,
+      "fill",
+    ) as PropertyDescriptor & { value: Uint8Array["fill"] };
+    const subarrayDescriptor = Object.getOwnPropertyDescriptor(
+      typedArrayPrototype,
+      "subarray",
+    ) as PropertyDescriptor & { value: Uint8Array["subarray"] };
+    const equalsDescriptor = Object.getOwnPropertyDescriptor(
+      Buffer.prototype,
+      "equals",
+    ) as PropertyDescriptor & { value: Buffer["equals"] };
+    const toStringDescriptor = Object.getOwnPropertyDescriptor(
+      Buffer.prototype,
+      "toString",
+    ) as PropertyDescriptor & { value: Buffer["toString"] };
+    const fromDescriptor = Object.getOwnPropertyDescriptor(
+      Buffer,
+      "from",
+    ) as PropertyDescriptor & { value: typeof Buffer.from };
+    const bufferByteLengthDescriptor = Object.getOwnPropertyDescriptor(
+      Buffer,
+      "byteLength",
+    ) as PropertyDescriptor & { value: typeof Buffer.byteLength };
+    const reflectApplyDescriptor = Object.getOwnPropertyDescriptor(
+      Reflect,
+      "apply",
+    ) as PropertyDescriptor & { value: typeof Reflect.apply };
+    const definePropertiesDescriptor = Object.getOwnPropertyDescriptor(
+      Object,
+      "defineProperties",
+    ) as PropertyDescriptor & { value: typeof Object.defineProperties };
+    const getOwnPropertyDescriptorDescriptor = Object.getOwnPropertyDescriptor(
+      Object,
+      "getOwnPropertyDescriptor",
+    ) as PropertyDescriptor & { value: typeof Object.getOwnPropertyDescriptor };
+    const getOwnPropertyDescriptorsDescriptor = Object.getOwnPropertyDescriptor(
+      Object,
+      "getOwnPropertyDescriptors",
+    ) as PropertyDescriptor & {
+      value: typeof Object.getOwnPropertyDescriptors;
+    };
+    const getPrototypeOfDescriptor = Object.getOwnPropertyDescriptor(
+      Object,
+      "getPrototypeOf",
+    ) as PropertyDescriptor & { value: typeof Object.getPrototypeOf };
+    const freezeDescriptor = Object.getOwnPropertyDescriptor(
+      Object,
+      "freeze",
+    ) as PropertyDescriptor & { value: typeof Object.freeze };
+    const reflectOwnKeysDescriptor = Object.getOwnPropertyDescriptor(
+      Reflect,
+      "ownKeys",
+    ) as PropertyDescriptor & { value: typeof Reflect.ownKeys };
+    const stringIncludesDescriptor = Object.getOwnPropertyDescriptor(
+      String.prototype,
+      "includes",
+    ) as PropertyDescriptor & { value: typeof String.prototype.includes };
+    const stringStartsWithDescriptor = Object.getOwnPropertyDescriptor(
+      String.prototype,
+      "startsWith",
+    ) as PropertyDescriptor & { value: typeof String.prototype.startsWith };
+    const stringSplitDescriptor = Object.getOwnPropertyDescriptor(
+      String.prototype,
+      "split",
+    ) as PropertyDescriptor & { value: typeof String.prototype.split };
+    const stringTrimDescriptor = Object.getOwnPropertyDescriptor(
+      String.prototype,
+      "trim",
+    ) as PropertyDescriptor & { value: typeof String.prototype.trim };
+    const arrayIncludesDescriptor = Object.getOwnPropertyDescriptor(
+      Array.prototype,
+      "includes",
+    ) as PropertyDescriptor & { value: typeof Array.prototype.includes };
+    const arrayJoinDescriptor = Object.getOwnPropertyDescriptor(
+      Array.prototype,
+      "join",
+    ) as PropertyDescriptor & { value: typeof Array.prototype.join };
+    const arraySomeDescriptor = Object.getOwnPropertyDescriptor(
+      Array.prototype,
+      "some",
+    ) as PropertyDescriptor & { value: typeof Array.prototype.some };
+    const arraySortDescriptor = Object.getOwnPropertyDescriptor(
+      Array.prototype,
+      "sort",
+    ) as PropertyDescriptor & { value: typeof Array.prototype.sort };
+
+    const probe = await fs.open(
+      path.join(attemptRoot, "intrinsic-write-probe"),
+      "w+",
+      0o600,
+    );
+    const handlePrototype = Object.getPrototypeOf(probe) as object;
+    const writeDescriptor = Object.getOwnPropertyDescriptor(
+      handlePrototype,
+      "write",
+    ) as PropertyDescriptor & {
+      value: (
+        this: unknown,
+        buffer: Uint8Array,
+        offset?: number,
+        length?: number,
+        position?: number | null,
+      ) => Promise<unknown>;
+    };
+    const readDescriptor = Object.getOwnPropertyDescriptor(
+      handlePrototype,
+      "read",
+    ) as PropertyDescriptor & {
+      value: (
+        this: unknown,
+        buffer: Uint8Array,
+        offset?: number,
+        length?: number,
+        position?: number | null,
+      ) => Promise<unknown>;
+    };
+    const closeDescriptor = Object.getOwnPropertyDescriptor(
+      handlePrototype,
+      "close",
+    ) as PropertyDescriptor & {
+      value: (this: unknown) => Promise<unknown>;
+    };
+    await probe.close();
+    await fs.unlink(path.join(attemptRoot, "intrinsic-write-probe"));
+
+    const traps: string[] = [];
+    const payloadBuffers = new Set<Uint8Array>();
+    const canonicalBuffers = new Set<Uint8Array>();
+    const treeBuffers = new Set<Uint8Array>();
+    const failedCanonicalReadBuffers = new Set<Uint8Array>();
+    const failedCanonicalCloseBuffers = new Set<Uint8Array>();
+    let forceCanonicalReadFailure = false;
+    let forcedCanonicalReadFailureSeen = false;
+    let forceCanonicalCloseFailure = false;
+    let forcedCanonicalCloseFailureSeen = false;
+    let unsafeRelativePathRejected = false;
+    let canonicalCloseTarget: unknown = null;
+    const byteArrayIncludes = (
+      value: Uint8Array,
+      expected: string,
+    ): boolean => {
+      const length = intrinsicReflectApply(byteLengthDescriptor.get, value, []);
+      if (expected.length > length) return false;
+      outer: for (
+        let start = 0;
+        start <= length - expected.length;
+        start += 1
+      ) {
+        for (let index = 0; index < expected.length; index += 1) {
+          if (value[start + index] !== expected.charCodeAt(index))
+            continue outer;
+        }
+        return true;
+      }
+      return false;
+    };
+    const allZero = (value: Uint8Array): boolean => {
+      const length = intrinsicReflectApply(byteLengthDescriptor.get, value, []);
+      for (let index = 0; index < length; index += 1) {
+        if (value[index] !== 0) return false;
+      }
+      return true;
+    };
+
+    Object.defineProperty(handlePrototype, "write", {
+      ...writeDescriptor,
+      value: async function (
+        this: unknown,
+        buffer: Uint8Array,
+        offset?: number,
+        length?: number,
+        position?: number | null,
+      ): Promise<unknown> {
+        if (byteArrayIncludes(buffer, payloadPlaintext)) {
+          payloadBuffers.add(buffer);
+        }
+        if (byteArrayIncludes(buffer, canonicalSecret)) {
+          canonicalBuffers.add(buffer);
+        }
+        return intrinsicReflectApply(writeDescriptor.value, this, [
+          buffer,
+          offset,
+          length,
+          position,
+        ]);
+      },
+    });
+    Object.defineProperty(handlePrototype, "read", {
+      ...readDescriptor,
+      value: async function (
+        this: unknown,
+        buffer: Uint8Array,
+        offset?: number,
+        length?: number,
+        position?: number | null,
+      ): Promise<unknown> {
+        const result = await intrinsicReflectApply(readDescriptor.value, this, [
+          buffer,
+          offset,
+          length,
+          position,
+        ]);
+        if (byteArrayIncludes(buffer, treePlaintext)) {
+          treeBuffers.add(buffer);
+        }
+        if (
+          forceCanonicalReadFailure &&
+          byteArrayIncludes(buffer, canonicalSecret)
+        ) {
+          forceCanonicalReadFailure = false;
+          failedCanonicalReadBuffers.add(buffer);
+          throw new Error("forced canonical read failure after fill");
+        }
+        if (
+          forceCanonicalCloseFailure &&
+          byteArrayIncludes(buffer, canonicalSecret)
+        ) {
+          canonicalCloseTarget = this;
+          failedCanonicalCloseBuffers.add(buffer);
+        }
+        return result;
+      },
+    });
+    Object.defineProperty(handlePrototype, "close", {
+      ...closeDescriptor,
+      value: async function (this: unknown): Promise<unknown> {
+        const result = await intrinsicReflectApply(
+          closeDescriptor.value,
+          this,
+          [],
+        );
+        if (this === canonicalCloseTarget) {
+          canonicalCloseTarget = null;
+          forceCanonicalCloseFailure = false;
+          throw new Error("forced canonical close failure after fill");
+        }
+        return result;
+      },
+    });
+
+    const restorations: Array<
+      readonly [object, PropertyKey, PropertyDescriptor]
+    > = [
+      [typedArrayPrototype, "byteLength", byteLengthDescriptor],
+      [typedArrayPrototype, "buffer", bufferDescriptor],
+      [typedArrayPrototype, "byteOffset", byteOffsetDescriptor],
+      [typedArrayPrototype, "fill", fillDescriptor],
+      [typedArrayPrototype, "subarray", subarrayDescriptor],
+      [Buffer.prototype, "equals", equalsDescriptor],
+      [Buffer.prototype, "toString", toStringDescriptor],
+      [Buffer, "from", fromDescriptor],
+      [Buffer, "byteLength", bufferByteLengthDescriptor],
+      [globalThis, "Uint8Array", uint8ArrayDescriptor],
+      [Reflect, "apply", reflectApplyDescriptor],
+      [Object, "defineProperties", definePropertiesDescriptor],
+      [Object, "getOwnPropertyDescriptor", getOwnPropertyDescriptorDescriptor],
+      [
+        Object,
+        "getOwnPropertyDescriptors",
+        getOwnPropertyDescriptorsDescriptor,
+      ],
+      [Object, "getPrototypeOf", getPrototypeOfDescriptor],
+      [Object, "freeze", freezeDescriptor],
+      [Reflect, "ownKeys", reflectOwnKeysDescriptor],
+      [String.prototype, "includes", stringIncludesDescriptor],
+      [String.prototype, "startsWith", stringStartsWithDescriptor],
+      [String.prototype, "split", stringSplitDescriptor],
+      [String.prototype, "trim", stringTrimDescriptor],
+      [Array.prototype, "includes", arrayIncludesDescriptor],
+      [Array.prototype, "join", arrayJoinDescriptor],
+      [Array.prototype, "some", arraySomeDescriptor],
+      [Array.prototype, "sort", arraySortDescriptor],
+    ];
+    const poisonGetter = (
+      target: object,
+      key: PropertyKey,
+      descriptor: PropertyDescriptor & { get: () => unknown },
+      trap: string,
+    ) => {
+      Object.defineProperty(target, key, {
+        ...descriptor,
+        get: function (this: unknown) {
+          traps.push(trap);
+          return intrinsicReflectApply(descriptor.get, this, []);
+        },
+      });
+    };
+    const poisonMethod = (
+      target: object,
+      key: PropertyKey,
+      descriptor: PropertyDescriptor & { value: (...args: never[]) => unknown },
+      trap: string,
+    ) => {
+      Object.defineProperty(target, key, {
+        ...descriptor,
+        value: function (this: unknown, ...args: never[]) {
+          traps.push(trap);
+          return intrinsicReflectApply(descriptor.value, this, args);
+        },
+      });
+    };
+
+    try {
+      Object.defineProperty(globalThis, "Uint8Array", {
+        ...uint8ArrayDescriptor,
+        value: new Proxy(uint8ArrayDescriptor.value, {
+          construct(target, argumentsList) {
+            traps.push("Uint8Array constructor");
+            return Reflect.construct(target, argumentsList, target);
+          },
+        }),
+      });
+      poisonGetter(
+        typedArrayPrototype,
+        "byteLength",
+        byteLengthDescriptor,
+        "TypedArray.byteLength",
+      );
+      poisonGetter(
+        typedArrayPrototype,
+        "buffer",
+        bufferDescriptor,
+        "TypedArray.buffer",
+      );
+      poisonGetter(
+        typedArrayPrototype,
+        "byteOffset",
+        byteOffsetDescriptor,
+        "TypedArray.byteOffset",
+      );
+      poisonMethod(
+        typedArrayPrototype,
+        "fill",
+        fillDescriptor,
+        "TypedArray.fill",
+      );
+      poisonMethod(
+        typedArrayPrototype,
+        "subarray",
+        subarrayDescriptor,
+        "TypedArray.subarray",
+      );
+      poisonMethod(
+        Buffer.prototype,
+        "equals",
+        equalsDescriptor,
+        "Buffer.equals",
+      );
+      poisonMethod(
+        Buffer.prototype,
+        "toString",
+        toStringDescriptor,
+        "Buffer.toString",
+      );
+      poisonMethod(Buffer, "from", fromDescriptor, "Buffer.from");
+      poisonMethod(
+        Buffer,
+        "byteLength",
+        bufferByteLengthDescriptor,
+        "Buffer.byteLength",
+      );
+      poisonMethod(Reflect, "apply", reflectApplyDescriptor, "Reflect.apply");
+      poisonMethod(
+        Object,
+        "defineProperties",
+        definePropertiesDescriptor,
+        "Object.defineProperties",
+      );
+      poisonMethod(
+        Object,
+        "getOwnPropertyDescriptor",
+        getOwnPropertyDescriptorDescriptor,
+        "Object.getOwnPropertyDescriptor",
+      );
+      poisonMethod(
+        Object,
+        "getOwnPropertyDescriptors",
+        getOwnPropertyDescriptorsDescriptor,
+        "Object.getOwnPropertyDescriptors",
+      );
+      poisonMethod(
+        Object,
+        "getPrototypeOf",
+        getPrototypeOfDescriptor,
+        "Object.getPrototypeOf",
+      );
+      poisonMethod(Object, "freeze", freezeDescriptor, "Object.freeze");
+      poisonMethod(
+        Reflect,
+        "ownKeys",
+        reflectOwnKeysDescriptor,
+        "Reflect.ownKeys",
+      );
+      poisonMethod(
+        String.prototype,
+        "includes",
+        stringIncludesDescriptor,
+        "String.includes",
+      );
+      poisonMethod(
+        String.prototype,
+        "startsWith",
+        stringStartsWithDescriptor,
+        "String.startsWith",
+      );
+      poisonMethod(
+        String.prototype,
+        "split",
+        stringSplitDescriptor,
+        "String.split",
+      );
+      poisonMethod(
+        String.prototype,
+        "trim",
+        stringTrimDescriptor,
+        "String.trim",
+      );
+      poisonMethod(
+        Array.prototype,
+        "includes",
+        arrayIncludesDescriptor,
+        "Array.includes",
+      );
+      poisonMethod(Array.prototype, "join", arrayJoinDescriptor, "Array.join");
+      poisonMethod(Array.prototype, "some", arraySomeDescriptor, "Array.some");
+      poisonMethod(Array.prototype, "sort", arraySortDescriptor, "Array.sort");
+
+      try {
+        await candidate.createPayload(
+          "../../../../tmp/escape.payload",
+          { maximumBytes: 128, ownerToken },
+          control,
+        );
+      } catch (cause) {
+        unsafeRelativePathRejected =
+          cause instanceof Error &&
+          "code" in cause &&
+          cause.code === "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PATH_FORBIDDEN";
+      }
+
+      const writer = await candidate.createPayload(
+        "intrinsic.payload",
+        { maximumBytes: 128, ownerToken },
+        control,
+      );
+      await writer.write(payloadInput, control);
+      await writer.finalize(control);
+
+      await candidate.publishDurableJson(
+        publicationName,
+        canonicalValue,
+        { maximumBytes: 1_024 },
+        control,
+      );
+      forceCanonicalReadFailure = true;
+      try {
+        await candidate.publishDurableJson(
+          publicationName,
+          canonicalValue,
+          { maximumBytes: 1_024 },
+          control,
+        );
+      } catch (cause) {
+        forcedCanonicalReadFailureSeen =
+          cause instanceof Error &&
+          cause.message === "forced canonical read failure after fill";
+      } finally {
+        forceCanonicalReadFailure = false;
+      }
+      forceCanonicalCloseFailure = true;
+      try {
+        await candidate.publishDurableJson(
+          publicationName,
+          canonicalValue,
+          { maximumBytes: 1_024 },
+          control,
+        );
+      } catch (cause) {
+        forcedCanonicalCloseFailureSeen =
+          cause instanceof Error &&
+          cause.message === "forced canonical close failure after fill";
+      } finally {
+        forceCanonicalCloseFailure = false;
+        canonicalCloseTarget = null;
+      }
+      const publicationPath = path.join(attemptRoot, publicationName);
+      const interruptedTemp = path.join(
+        attemptRoot,
+        `.publish-${publicationPrefix}-intrinsic.tmp`,
+      );
+      await fs.link(publicationPath, interruptedTemp);
+      await candidate.publishDurableJson(
+        publicationName,
+        canonicalValue,
+        { maximumBytes: 1_024 },
+        control,
+      );
+      await candidate.proveTree(
+        treeName,
+        {
+          maximumBytes: 1_024,
+          maximumFiles: 4,
+          maximumDirectories: 2,
+          maximumDepth: 2,
+          maximumPathBytes: 128,
+        },
+        control,
+      );
+    } finally {
+      for (const [target, key, descriptor] of restorations.reverse()) {
+        Object.defineProperty(target, key, descriptor);
+      }
+      Object.defineProperty(handlePrototype, "write", writeDescriptor);
+      Object.defineProperty(handlePrototype, "read", readDescriptor);
+      Object.defineProperty(handlePrototype, "close", closeDescriptor);
+    }
+
+    expect(traps).toEqual([]);
+    expect(payloadInput.toString("utf8")).toBe(payloadPlaintext);
+    expect(payloadBuffers.size).toBeGreaterThan(0);
+    expect(canonicalBuffers.size).toBeGreaterThan(0);
+    expect(treeBuffers.size).toBeGreaterThan(0);
+    expect(forcedCanonicalReadFailureSeen).toBe(true);
+    expect(failedCanonicalReadBuffers.size).toBeGreaterThan(0);
+    expect(forcedCanonicalCloseFailureSeen).toBe(true);
+    expect(unsafeRelativePathRejected).toBe(true);
+    expect(failedCanonicalCloseBuffers.size).toBeGreaterThan(0);
+    expect([...payloadBuffers]).not.toContain(payloadInput);
+    expect([...payloadBuffers].every(allZero)).toBe(true);
+    expect([...canonicalBuffers].every(allZero)).toBe(true);
+    expect([...treeBuffers].every(allZero)).toBe(true);
+    expect([...failedCanonicalReadBuffers].every(allZero)).toBe(true);
+    expect([...failedCanonicalCloseBuffers].every(allZero)).toBe(true);
+    await expect(
+      fs.readFile(path.join(attemptRoot, "intrinsic.payload"), "utf8"),
+    ).resolves.toBe(payloadPlaintext);
+    await expect(
+      fs.readFile(path.join(attemptRoot, publicationName), "utf8"),
+    ).resolves.toBe(`{"secret":"${canonicalSecret}"}\n`);
+  });
+
   it("refuses payload symlinks, hardlinks, overflow, and pathname swaps", async () => {
     const { candidate, attemptRoot } = await fixture();
     const control = operationControl();

@@ -15,6 +15,7 @@ import {
   boundedInternalCleanup,
   type CandidateFsExactStats,
   candidateFsError,
+  candidateFsNativeIoView,
   controlled,
   controlledAcquire,
   fileStatExact,
@@ -32,6 +33,137 @@ import {
   writeAll,
 } from "./agent-backup-restore-v3-candidate-fs-control";
 
+const OBJECT_FREEZE = Object.freeze;
+const OBJECT_GET_OWN_PROPERTY_DESCRIPTOR = Object.getOwnPropertyDescriptor;
+const OBJECT_GET_PROTOTYPE_OF = Object.getPrototypeOf;
+const OBJECT_IS = Object.is;
+const OBJECT_PROTOTYPE = Object.prototype;
+const ARRAY_IS_ARRAY = Array.isArray;
+const ARRAY_JOIN = Array.prototype.join;
+const ARRAY_SORT = Array.prototype.sort;
+const IS_PROXY = utilTypes.isProxy;
+const JSON_PARSE = JSON.parse;
+const JSON_STRINGIFY = JSON.stringify;
+const REFLECT_OWN_KEYS = Reflect.ownKeys;
+const TYPED_ARRAY_PROTOTYPE = OBJECT_GET_PROTOTYPE_OF(Uint8Array.prototype);
+const TYPED_ARRAY_BYTE_LENGTH_GETTER = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
+  TYPED_ARRAY_PROTOTYPE,
+  "byteLength",
+)?.get;
+const TYPED_ARRAY_BUFFER_GETTER = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
+  TYPED_ARRAY_PROTOTYPE,
+  "buffer",
+)?.get;
+const TYPED_ARRAY_BYTE_OFFSET_GETTER = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
+  TYPED_ARRAY_PROTOTYPE,
+  "byteOffset",
+)?.get;
+const REFLECT_APPLY = Reflect.apply;
+const INTRINSIC_WEAK_SET = WeakSet;
+const WEAK_SET_ADD = WeakSet.prototype.add;
+const WEAK_SET_DELETE = WeakSet.prototype.delete;
+const WEAK_SET_HAS = WeakSet.prototype.has;
+const INTRINSIC_UINT8_ARRAY = Uint8Array;
+const UINT8_ARRAY_FILL = Uint8Array.prototype.fill;
+const BUFFER_FROM = Buffer.from;
+const BUFFER_BYTE_LENGTH = Buffer.byteLength;
+const BUFFER_EQUALS = Buffer.prototype.equals;
+const BUFFER_TO_STRING = Buffer.prototype.toString;
+const IS_UINT8_ARRAY = utilTypes.isUint8Array;
+const STRING_ENDS_WITH = String.prototype.endsWith;
+const STRING_INCLUDES = String.prototype.includes;
+const STRING_SLICE = String.prototype.slice;
+const STRING_STARTS_WITH = String.prototype.startsWith;
+
+function typedArrayByteLength(value: Uint8Array): number {
+  return REFLECT_APPLY(
+    TYPED_ARRAY_BYTE_LENGTH_GETTER as () => number,
+    value,
+    [],
+  );
+}
+
+function typedArrayBuffer(value: Uint8Array): ArrayBufferLike {
+  return REFLECT_APPLY(
+    TYPED_ARRAY_BUFFER_GETTER as () => ArrayBufferLike,
+    value,
+    [],
+  );
+}
+
+function typedArrayByteOffset(value: Uint8Array): number {
+  return REFLECT_APPLY(
+    TYPED_ARRAY_BYTE_OFFSET_GETTER as () => number,
+    value,
+    [],
+  );
+}
+
+function zeroBytes(value: Uint8Array, start?: number, end?: number): void {
+  REFLECT_APPLY(
+    UINT8_ARRAY_FILL,
+    value,
+    end === undefined
+      ? start === undefined
+        ? [0]
+        : [0, start]
+      : [0, start, end],
+  );
+}
+
+function bufferFromString(value: string, encoding: BufferEncoding): Buffer {
+  return REFLECT_APPLY(BUFFER_FROM, Buffer, [value, encoding]);
+}
+
+function bufferFromArrayBuffer(
+  value: ArrayBufferLike,
+  byteOffset: number,
+  byteLength: number,
+): Buffer {
+  return REFLECT_APPLY(BUFFER_FROM, Buffer, [value, byteOffset, byteLength]);
+}
+
+function bufferUtf8ByteLength(value: string): number {
+  return REFLECT_APPLY(BUFFER_BYTE_LENGTH, Buffer, [value, "utf8"]);
+}
+
+function bufferEquals(value: Buffer, other: Uint8Array): boolean {
+  return REFLECT_APPLY(BUFFER_EQUALS, value, [other]);
+}
+
+function bufferToUtf8(value: Buffer): string {
+  return REFLECT_APPLY(BUFFER_TO_STRING, value, ["utf8"]);
+}
+
+function joinStrings(value: readonly string[], separator: string): string {
+  return REFLECT_APPLY(ARRAY_JOIN, value, [separator]);
+}
+
+function sortStrings(value: string[]): string[] {
+  REFLECT_APPLY(ARRAY_SORT, value, []);
+  return value;
+}
+
+function stringEndsWith(value: string, suffix: string): boolean {
+  return REFLECT_APPLY(STRING_ENDS_WITH, value, [suffix]);
+}
+
+function stringIncludes(value: string, search: string): boolean {
+  return REFLECT_APPLY(STRING_INCLUDES, value, [search]);
+}
+
+function stringSlice(value: string, start: number, end?: number): string {
+  return REFLECT_APPLY(
+    STRING_SLICE,
+    value,
+    end === undefined ? [start] : [start, end],
+  );
+}
+
+function stringStartsWith(value: string, prefix: string): boolean {
+  return REFLECT_APPLY(STRING_STARTS_WITH, value, [prefix]);
+}
+
 export interface AgentBackupRestoreV3CandidateDurableJsonReceipt {
   readonly sizeBytes: number;
   readonly sha256: string;
@@ -43,7 +175,7 @@ export interface PublishAgentBackupRestoreV3CandidateDurableJsonOptions {
 }
 
 export function candidateFsCanonicalJson(value: unknown): string {
-  const seen = new WeakSet<object>();
+  const seen = new INTRINSIC_WEAK_SET<object>();
   let nodes = 0;
   const encode = (current: unknown, depth: number): string => {
     nodes += 1;
@@ -58,10 +190,10 @@ export function candidateFsCanonicalJson(value: unknown): string {
       typeof current === "string" ||
       typeof current === "boolean"
     ) {
-      return JSON.stringify(current);
+      return JSON_STRINGIFY(current);
     }
     if (typeof current === "number") {
-      if (!Number.isSafeInteger(current) || Object.is(current, -0)) {
+      if (!Number.isSafeInteger(current) || OBJECT_IS(current, -0)) {
         candidateFsError(
           "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
           "Candidate durable JSON contains a non-canonical number",
@@ -75,38 +207,40 @@ export function candidateFsCanonicalJson(value: unknown): string {
         "Candidate durable JSON contains a non-JSON value",
       );
     }
-    if (seen.has(current)) {
+    if (REFLECT_APPLY(WEAK_SET_HAS, seen, [current])) {
       candidateFsError(
         "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
         "Candidate durable JSON contains a cycle",
       );
     }
-    if (utilTypes.isProxy(current)) {
+    if (IS_PROXY(current)) {
       candidateFsError(
         "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
         "Candidate durable JSON cannot contain proxies",
       );
     }
-    seen.add(current);
+    REFLECT_APPLY(WEAK_SET_ADD, seen, [current]);
     try {
-      if (Array.isArray(current)) {
+      if (ARRAY_IS_ARRAY(current)) {
         if (current.length > 10_000) {
           candidateFsError(
             "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
             "Candidate durable JSON array exceeds its entry bound",
           );
         }
-        const ownKeys = Reflect.ownKeys(current);
-        if (
-          ownKeys.length !== current.length + 1 ||
-          ownKeys.some(
-            (key, index) =>
-              typeof key !== "string" ||
-              (index < current.length
-                ? key !== String(index)
-                : key !== "length"),
-          )
+        const ownKeys = REFLECT_OWN_KEYS(current);
+        let exactDenseKeys = ownKeys.length === current.length + 1;
+        for (
+          let index = 0;
+          exactDenseKeys && index < ownKeys.length;
+          index += 1
         ) {
+          const key = ownKeys[index];
+          exactDenseKeys =
+            typeof key === "string" &&
+            (index < current.length ? key === String(index) : key === "length");
+        }
+        if (!exactDenseKeys) {
           candidateFsError(
             "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
             "Candidate durable JSON arrays must be dense and have no additional keys or symbols",
@@ -114,7 +248,7 @@ export function candidateFsCanonicalJson(value: unknown): string {
         }
         const entries: string[] = [];
         for (let index = 0; index < current.length; index += 1) {
-          const descriptor = Object.getOwnPropertyDescriptor(
+          const descriptor = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
             current,
             String(index),
           );
@@ -128,58 +262,61 @@ export function candidateFsCanonicalJson(value: unknown): string {
               "Candidate durable JSON arrays cannot contain holes or accessors",
             );
           }
-          entries.push(encode(descriptor.value, depth + 1));
+          entries[entries.length] = encode(descriptor.value, depth + 1);
         }
-        return `[${entries.join(",")}]`;
+        return `[${joinStrings(entries, ",")}]`;
       }
-      const prototype = Object.getPrototypeOf(current);
-      if (prototype !== Object.prototype && prototype !== null) {
+      const prototype = OBJECT_GET_PROTOTYPE_OF(current);
+      if (prototype !== OBJECT_PROTOTYPE && prototype !== null) {
         candidateFsError(
           "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
           "Candidate durable JSON must contain only plain objects",
         );
       }
-      const ownKeys = Reflect.ownKeys(current);
-      if (
-        ownKeys.length > 10_000 ||
-        ownKeys.some((key) => typeof key !== "string")
+      const ownKeys = REFLECT_OWN_KEYS(current);
+      let exactStringKeys = ownKeys.length <= 10_000;
+      for (
+        let index = 0;
+        exactStringKeys && index < ownKeys.length;
+        index += 1
       ) {
+        exactStringKeys = typeof ownKeys[index] === "string";
+      }
+      if (!exactStringKeys) {
         candidateFsError(
           "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
           "Candidate durable JSON object has unsafe keys or symbols",
         );
       }
-      const keys = ownKeys as string[];
-      return `{${keys
-        .sort()
-        .map((key) => {
-          if (
-            key === "__proto__" ||
-            key === "prototype" ||
-            key === "constructor" ||
-            Buffer.byteLength(key, "utf8") > 512
-          ) {
-            candidateFsError(
-              "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
-              "Candidate durable JSON contains an unsafe field name",
-            );
-          }
-          const descriptor = Object.getOwnPropertyDescriptor(current, key);
-          if (
-            !descriptor ||
-            !("value" in descriptor) ||
-            !descriptor.enumerable
-          ) {
-            candidateFsError(
-              "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
-              "Candidate durable JSON objects cannot contain accessors or non-enumerable fields",
-            );
-          }
-          return `${JSON.stringify(key)}:${encode(descriptor.value, depth + 1)}`;
-        })
-        .join(",")}}`;
+      const keys = sortStrings(ownKeys as string[]);
+      const fields: string[] = [];
+      for (const key of keys) {
+        if (
+          key === "__proto__" ||
+          key === "prototype" ||
+          key === "constructor" ||
+          bufferUtf8ByteLength(key) > 512
+        ) {
+          candidateFsError(
+            "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
+            "Candidate durable JSON contains an unsafe field name",
+          );
+        }
+        const descriptor = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(current, key);
+        if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+          candidateFsError(
+            "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
+            "Candidate durable JSON objects cannot contain accessors or non-enumerable fields",
+          );
+        }
+        fields[fields.length] = `${JSON_STRINGIFY(key)}:${encode(
+          descriptor.value,
+          depth + 1,
+        )}`;
+      }
+      return `{${joinStrings(fields, ",")}}`;
     } finally {
-      seen.delete(current);
+      REFLECT_APPLY(WEAK_SET_DELETE, seen, [current]);
     }
   };
   return encode(value, 0);
@@ -213,17 +350,22 @@ async function readBoundRegularFile(
     (lateHandle) => lateHandle.close(),
     control,
   );
+  let bytes: Uint8Array | null = null;
+  let result: Uint8Array | null = null;
+  let primaryFailure: unknown;
+  let primaryFailed = false;
   try {
     const opened = await assertBoundFile(handle, filePath, visible, control);
-    const bytes = new Uint8Array(opened.size);
+    bytes = new INTRINSIC_UINT8_ARRAY(opened.size);
+    const ioBytes = candidateFsNativeIoView(bytes);
+    const byteLength = typedArrayByteLength(bytes);
     let offset = 0;
-    while (offset < bytes.byteLength) {
+    while (offset < byteLength) {
       const read = await controlled(
-        () => handle.read(bytes, offset, bytes.byteLength - offset, offset),
+        () => handle.read(ioBytes, offset, byteLength - offset, offset),
         control,
       );
       if (read.bytesRead <= 0) {
-        bytes.fill(0);
         candidateFsError(
           "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_TRUNCATED",
           "Candidate durable file ended before its descriptor size",
@@ -233,16 +375,43 @@ async function readBoundRegularFile(
     }
     const after = await assertBoundFile(handle, filePath, visible, control);
     if (!sameStableFile(opened, after)) {
-      bytes.fill(0);
       candidateFsError(
         "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_FILE_CHANGED",
         "Candidate durable file changed while it was read",
       );
     }
-    return bytes;
-  } finally {
-    await handle.close();
+    result = bytes;
+  } catch (cause) {
+    primaryFailed = true;
+    primaryFailure = cause;
   }
+  let cleanupFailure: unknown;
+  let cleanupFailed = false;
+  try {
+    await handle.close();
+  } catch (cause) {
+    cleanupFailed = true;
+    cleanupFailure = cause;
+  }
+  if (primaryFailed || cleanupFailed) {
+    if (bytes) zeroBytes(bytes);
+    if (primaryFailed && cleanupFailed) {
+      throw new AgentBackupRestoreV3CandidateFsError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_READ_CLEANUP_FAILED",
+        "Candidate durable file read and descriptor cleanup both failed",
+        { cause: new AggregateError([primaryFailure, cleanupFailure]) },
+      );
+    }
+    if (primaryFailed) throw primaryFailure;
+    throw cleanupFailure;
+  }
+  if (!result) {
+    candidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
+      "Candidate durable file read ended without exact bytes",
+    );
+  }
+  return result;
 }
 
 async function reconcileDurableJsonPublication(
@@ -251,10 +420,8 @@ async function reconcileDurableJsonPublication(
   control: Readonly<AgentBackupRestoreV3OperationControl>,
 ): Promise<void> {
   const finalPath = authority.directPath(name, "durable JSON name");
-  const prefix = `.publish-${createHash("sha256")
-    .update(name)
-    .digest("hex")
-    .slice(0, 16)}-`;
+  const derivation = createHash("sha256").update(name).digest("hex");
+  const prefix = `.publish-${stringSlice(derivation, 0, 16)}-`;
   let finalStats = null;
   try {
     finalStats = await controlled(() => lstatExact(finalPath), control);
@@ -289,34 +456,55 @@ async function reconcileDurableJsonPublication(
     while (true) {
       const directoryEntry = await controlled(() => directory.read(), control);
       if (directoryEntry === null) break;
-      const rawName =
-        directoryEntry instanceof Uint8Array
-          ? directoryEntry
-          : directoryEntry.name;
-      if (!(rawName instanceof Uint8Array)) continue;
-      const encodedName = Buffer.from(
-        rawName.buffer,
-        rawName.byteOffset,
-        rawName.byteLength,
+      const rawName = IS_UINT8_ARRAY(directoryEntry)
+        ? directoryEntry
+        : directoryEntry.name;
+      if (!IS_UINT8_ARRAY(rawName)) continue;
+      const encodedName = bufferFromArrayBuffer(
+        typedArrayBuffer(rawName),
+        typedArrayByteOffset(rawName),
+        typedArrayByteLength(rawName),
       );
-      const entry = encodedName.toString("utf8");
-      if (!Buffer.from(entry, "utf8").equals(encodedName)) continue;
-      if (!entry.startsWith(prefix) || !entry.endsWith(".tmp")) continue;
-      requireControlName(entry, "durable JSON temp name");
-      const aliasPath = authority.directPath(entry, "durable JSON temp name");
-      const aliasStats = await controlled(() => lstatExact(aliasPath), control);
-      if (
-        !aliasStats.file ||
-        aliasStats.symbolicLink ||
-        aliasStats.linkCount !== 2 ||
-        (aliasStats.mode & 0o7077) !== 0
-      ) {
-        candidateFsError(
-          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_FILE_UNSAFE",
-          "Candidate durable JSON temp has an unsafe link topology",
-        );
+      let entry: string;
+      try {
+        entry = bufferToUtf8(encodedName);
+        const roundTrip = bufferFromString(entry, "utf8");
+        try {
+          if (!bufferEquals(roundTrip, encodedName)) continue;
+          if (
+            !stringStartsWith(entry, prefix) ||
+            !stringEndsWith(entry, ".tmp")
+          )
+            continue;
+          requireControlName(entry, "durable JSON temp name");
+          const aliasPath = authority.directPath(
+            entry,
+            "durable JSON temp name",
+          );
+          const aliasStats = await controlled(
+            () => lstatExact(aliasPath),
+            control,
+          );
+          if (
+            !aliasStats.file ||
+            aliasStats.symbolicLink ||
+            aliasStats.linkCount !== 2 ||
+            (aliasStats.mode & 0o7077) !== 0
+          ) {
+            candidateFsError(
+              "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_FILE_UNSAFE",
+              "Candidate durable JSON temp has an unsafe link topology",
+            );
+          }
+          if (sameIdentity(aliasStats, finalStats)) {
+            aliases[aliases.length] = aliasPath;
+          }
+        } finally {
+          zeroBytes(roundTrip);
+        }
+      } finally {
+        zeroBytes(encodedName);
       }
-      if (sameIdentity(aliasStats, finalStats)) aliases.push(aliasPath);
     }
   } finally {
     await boundedInternalCleanup(() => directory.close());
@@ -373,7 +561,8 @@ export async function readCandidateFsCanonicalJson(
         { cause },
       );
     }
-    if (!text.endsWith("\n") || text.slice(0, -1).includes("\n")) {
+    const body = stringSlice(text, 0, -1);
+    if (!stringEndsWith(text, "\n") || stringIncludes(body, "\n")) {
       candidateFsError(
         "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
         "Candidate durable JSON does not have its exact framing",
@@ -381,7 +570,7 @@ export async function readCandidateFsCanonicalJson(
     }
     let parsed: unknown;
     try {
-      parsed = JSON.parse(text.slice(0, -1));
+      parsed = JSON_PARSE(body);
     } catch (cause) {
       candidateFsError(
         "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
@@ -397,7 +586,7 @@ export async function readCandidateFsCanonicalJson(
     }
     return parsed;
   } finally {
-    bytes.fill(0);
+    zeroBytes(bytes);
   }
 }
 
@@ -422,9 +611,10 @@ export async function publishCandidateFsDurableJson(
   );
   const finalPath = authority.directPath(name, "durable JSON name");
   const canonical = candidateFsCanonicalJson(value);
-  const persisted = Buffer.from(`${canonical}\n`, "utf8");
-  if (persisted.byteLength > maximumBytes) {
-    persisted.fill(0);
+  const persisted = bufferFromString(`${canonical}\n`, "utf8");
+  const persistedByteLength = typedArrayByteLength(persisted);
+  if (persistedByteLength > maximumBytes) {
+    zeroBytes(persisted);
     candidateFsError(
       "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_LIMIT",
       "Candidate durable JSON exceeds its explicit byte bound",
@@ -432,7 +622,7 @@ export async function publishCandidateFsDurableJson(
   }
   const sha256 = createHash("sha256").update(persisted).digest("hex");
   const expectedResult = {
-    sizeBytes: persisted.byteLength,
+    sizeBytes: persistedByteLength,
     sha256,
   } as const;
   const compareExisting = async (): Promise<"absent" | "exact"> => {
@@ -443,7 +633,7 @@ export async function publishCandidateFsDurableJson(
     );
     if (existing === null) return "absent";
     try {
-      if (!Buffer.from(existing).equals(persisted)) {
+      if (!bufferEquals(persisted, existing)) {
         candidateFsError(
           "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_CONFLICT",
           "Candidate durable JSON replay differs from the persisted value",
@@ -451,7 +641,7 @@ export async function publishCandidateFsDurableJson(
       }
       return "exact";
     } finally {
-      existing.fill(0);
+      zeroBytes(existing);
     }
   };
 
@@ -465,7 +655,11 @@ export async function publishCandidateFsDurableJson(
   try {
     await authority.assertAuthority(control);
     operationLock = await authority.operationLock(
-      `.publish-${createHash("sha256").update(name).digest("hex").slice(0, 16)}`,
+      `.publish-${stringSlice(
+        createHash("sha256").update(name).digest("hex"),
+        0,
+        16,
+      )}`,
       control,
       heldLock,
     );
@@ -481,12 +675,14 @@ export async function publishCandidateFsDurableJson(
     await reconcileDurableJsonPublication(authority, name, control);
     await authority.syncAttemptRoot(control);
     if ((await compareExisting()) === "exact") {
-      result = Object.freeze({ ...expectedResult, replayed: true });
+      result = OBJECT_FREEZE({ ...expectedResult, replayed: true });
     } else {
-      const tempName = `.publish-${createHash("sha256")
-        .update(name)
-        .digest("hex")
-        .slice(0, 16)}-${randomUUID()}.tmp`;
+      const tempDerivation = createHash("sha256").update(name).digest("hex");
+      const tempName = `.publish-${stringSlice(
+        tempDerivation,
+        0,
+        16,
+      )}-${randomUUID()}.tmp`;
       tempPath = authority.directPath(tempName, "durable JSON temp name");
       tempHandle = await controlledAcquire(
         () =>
@@ -543,7 +739,7 @@ export async function publishCandidateFsDurableJson(
           "Candidate durable JSON differs after no-replace publication",
         );
       }
-      result = Object.freeze({ ...expectedResult, replayed: !published });
+      result = OBJECT_FREEZE({ ...expectedResult, replayed: !published });
     }
     await authority.assertLockHeld(activeLock, control);
   } catch (cause) {
@@ -591,7 +787,7 @@ export async function publishCandidateFsDurableJson(
   } catch (cause) {
     cleanupFailure = cause;
   } finally {
-    persisted.fill(0);
+    zeroBytes(persisted);
   }
   if (primaryFailure !== undefined && cleanupFailure !== undefined) {
     throw new AgentBackupRestoreV3CandidateFsError(
