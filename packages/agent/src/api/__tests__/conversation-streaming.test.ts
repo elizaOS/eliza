@@ -18,6 +18,7 @@ import {
   type Memory,
   RoomHandlerQueue,
   stringToUuid,
+  trackPostDeliveryTask,
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
@@ -595,6 +596,69 @@ describe("chat route helper coverage", () => {
 });
 
 describe("generateChatResponse token streaming", () => {
+  it("publishes the authoritative result before post-delivery work drains", async () => {
+    let releasePostDelivery: (() => void) | undefined;
+    const postDeliveryGate = new Promise<void>((resolve) => {
+      releasePostDelivery = resolve;
+    });
+    let markReplyReady: (() => void) | undefined;
+    const replyReady = new Promise<void>((resolve) => {
+      markReplyReady = resolve;
+    });
+    const runtime = createRuntime({
+      messageService: {
+        async handleMessage(activeRuntime) {
+          void trackPostDeliveryTask(
+            activeRuntime,
+            "reply-ready-ordering-test",
+            async () => postDeliveryGate,
+          );
+          return {
+            didRespond: true,
+            responseContent: { text: "ready before receipts" },
+            responseMessages: [],
+          };
+        },
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+    let generationSettled = false;
+    let readyText: string | undefined;
+    const generation = generateChatResponse(
+      runtime,
+      createChatMessage("deliver before receipts"),
+      "Streaming Agent",
+      {
+        onReplyReady: (result) => {
+          readyText = result.text;
+          markReplyReady?.();
+        },
+      },
+    );
+    void generation.then(() => {
+      generationSettled = true;
+    });
+
+    await replyReady;
+    try {
+      expect(readyText).toBe("ready before receipts");
+      expect(generationSettled).toBe(false);
+    } finally {
+      releasePostDelivery?.();
+    }
+
+    await expect(generation).resolves.toMatchObject({
+      text: "ready before receipts",
+    });
+    expect(generationSettled).toBe(true);
+  });
+
   it("forwards onStreamChunk deltas to caller onChunk in order", async () => {
     // Tokens chosen so no token's prefix matches the prior token's suffix —
     // mergeStreamingText would otherwise treat overlap as a snapshot revision

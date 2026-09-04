@@ -972,6 +972,13 @@ export interface ChatGenerateOptions {
   onChunk?: (chunk: string, origin?: ChatStreamTextOrigin) => void;
   onSnapshot?: (text: string, origin?: ChatStreamTextOrigin) => void;
   /**
+   * Called once the authoritative generation result is settled, before the
+   * room's post-delivery bookkeeping is drained. Realtime transports can use
+   * this boundary to start delivery without weakening serialized room
+   * ownership or skipping trajectory/action-receipt work.
+   */
+  onReplyReady?: (result: ChatGenerationResult) => void | Promise<void>;
+  /**
    * In-flight phase changes for the rich status indicator. Emitted additively
    * alongside `onChunk`/`onSnapshot` — `thinking` before the first visible
    * token, then `streaming` (LLM tokens) or `running_action` (an action handler
@@ -4511,10 +4518,17 @@ export async function generateChatResponse(
     roomHandlerLease: RoomHandlerLease,
   ): Promise<ChatGenerationResult> => {
     try {
-      return await generateOwnedChatResponse(runtime, message, agentName, {
-        ...opts,
-        roomHandlerLease,
-      });
+      const result = await generateOwnedChatResponse(
+        runtime,
+        message,
+        agentName,
+        {
+          ...opts,
+          roomHandlerLease,
+        },
+      );
+      await opts?.onReplyReady?.(result);
+      return result;
     } finally {
       await drainRoomPostDeliveryTasks(runtime, message.roomId);
     }
