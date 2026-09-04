@@ -18,6 +18,7 @@ const fixturePath = fileURLToPath(
   new URL('../fixtures/smithers-worker-lifecycle-fixture.mjs', import.meta.url)
 );
 const originalBunBin = process.env.BUN_BIN;
+type UnrefTimer = ReturnType<typeof setTimeout> & { unref(): void };
 
 function workflow(): WorkflowDefinitionResponse {
   const now = new Date().toISOString();
@@ -164,6 +165,83 @@ describe('Smithers worker lifecycle', () => {
     expect(result.status).toBe('finished');
     expect(delivered).toEqual(['TaskStarted']);
     expect(result.events.map((event) => event.type)).toEqual(['TaskStarted']);
+  });
+
+  test('observes an immediate event delivery rejection before child outcome settles', async () => {
+    const deliveryError = new Error('immediate event delivery rejection');
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => {
+      if (reason === deliveryError) unhandledRejections.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+
+    try {
+      await expect(
+        run('event-before-result', {
+          onEvent: () => Promise.reject(deliveryError),
+        })
+      ).rejects.toBe(deliveryError);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandledRejections).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+  });
+
+  test('times out when event delivery does not settle after the worker exits', async () => {
+    const startedAt = Date.now();
+    const workflowOutcome = run('event-before-result', {
+      timeoutMs: 3_000,
+      onEvent: () => new Promise(() => {}),
+    }).then(
+      (value) => ({ kind: 'result' as const, value }),
+      (error) => ({ kind: 'error' as const, error })
+    );
+    let watchdogTimer: UnrefTimer | undefined;
+    const watchdogOutcome = new Promise<{ kind: 'watchdog' }>((resolve) => {
+      const timer = setTimeout(() => resolve({ kind: 'watchdog' }), 5_000) as unknown as UnrefTimer;
+      timer.unref();
+      watchdogTimer = timer;
+    });
+    try {
+      const outcome = await Promise.race([workflowOutcome, watchdogOutcome]);
+
+      expect(outcome).toMatchObject({
+        kind: 'error',
+        error: { code: 'SMTHRS_WORKFLOW_TIMEOUT' },
+      });
+      expect(Date.now() - startedAt).toBeLessThan(5_000);
+    } finally {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
+    }
+  });
+
+  test('cancels when event delivery does not settle after the worker exits', async () => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 500);
+    const startedAt = Date.now();
+    const workflowOutcome = run('event-before-result', {
+      signal: controller.signal,
+      timeoutMs: 3_000,
+      onEvent: () => new Promise(() => {}),
+    });
+    let watchdogTimer: UnrefTimer | undefined;
+    const watchdogOutcome = new Promise<{ status: 'watchdog' }>((resolve) => {
+      const timer = setTimeout(
+        () => resolve({ status: 'watchdog' }),
+        2_000
+      ) as unknown as UnrefTimer;
+      timer.unref();
+      watchdogTimer = timer;
+    });
+    try {
+      const outcome = await Promise.race([workflowOutcome, watchdogOutcome]);
+
+      expect(outcome.status).toBe('cancelled');
+      expect(Date.now() - startedAt).toBeLessThan(2_000);
+    } finally {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
+    }
   });
 
   test('terminates a worker whose stdout line exceeds the protocol budget', async () => {
