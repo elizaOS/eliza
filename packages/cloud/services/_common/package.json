@@ -19,11 +19,13 @@
     "./retry": "./src/retry.ts",
     "./telegram-connector": "./src/telegram-connector.ts",
     "./telegram-delivery": "./src/telegram-delivery.ts",
+    "./gateway-routing": "./src/gateway-routing.ts",
+    "./gateway-forward": "./src/gateway-forward.ts",
     "./bounded-fetch": "./src/bounded-fetch.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test tests",
+    "test": "bun test tests src",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",

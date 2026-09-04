@@ -67,6 +67,7 @@ export async function retryFetch(opts: RetryFetchOptions): Promise<Response> {
     nonRetriableStatuses = [400, 404],
     replayPolicy,
   } = opts;
+  init.signal?.throwIfAborted();
   const sanitizedUrl = sanitizeUrl(url);
   let result: Awaited<ReturnType<typeof executeResponseAttempts>>;
   try {
@@ -79,6 +80,7 @@ export async function retryFetch(opts: RetryFetchOptions): Promise<Response> {
       retryTransport: true,
       nonRetriableStatuses,
       baseDelayMs: initialDelayMs,
+      signal: init.signal,
       request: () =>
         fetch(url, {
           ...init,
@@ -111,6 +113,7 @@ export async function retryFetch(opts: RetryFetchOptions): Promise<Response> {
   } catch (error) {
     // error-policy:J1 This proxy boundary preserves the original transport error
     // identity after the shared retry engine records it as the terminal cause.
+    init.signal?.throwIfAborted();
     if (error instanceof Error && error.cause !== undefined) throw error.cause;
     throw error;
   }

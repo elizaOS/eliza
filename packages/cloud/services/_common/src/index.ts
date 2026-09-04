@@ -9,6 +9,22 @@ export {
   parseGatewayTokenResponse,
 } from "./gateway-auth";
 export {
+  executeGatewayForwardAttempts,
+  type GatewayForwardOptions,
+  type GatewayPostOptions,
+  type GatewayTargetResult,
+  postGatewayTarget,
+} from "./gateway-forward";
+export {
+  type GatewayRoutingRedis,
+  type GatewayServerLookup,
+  type GatewayWakeDependencies,
+  observeGatewayWake,
+  refreshGatewayActivity,
+  resolveGatewayAgentServer,
+  wakeGatewayServer,
+} from "./gateway-routing";
+export {
   type ConsistentHashRing,
   createHashRouter,
   type HashRouter,

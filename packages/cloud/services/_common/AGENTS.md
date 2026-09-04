@@ -30,6 +30,12 @@ structured logging, and Kubernetes ServiceAccount helpers. Private
   LINK-code recognition and user-facing confirmation results.
 - `src/gateway-auth.ts` (`./gateway-auth`) — strict short-lived gateway token
   response validation plus shared refresh and jittered retry timing.
+- `src/gateway-routing.ts` (`./gateway-routing`) — shared Redis route lookup,
+  KEDA activity refresh, and observed Kubernetes wake requests. Callers retain
+  their public missing-route result shape.
+- `src/gateway-forward.ts` (`./gateway-forward`) — target selection, fallback,
+  wake-on-zero, and bounded HTTP POST attempts. Gateway facades supply response
+  parsing, timeout replay policy, and any canonical ingress fallback.
 - `src/bounded-fetch.ts` (`./bounded-fetch`) — Web-standard REST transport
   owning deadlines, bounded decoded response reads and cancellation cleanup.
   Cloud shared and gateway adapters supply limits and public error factories.
