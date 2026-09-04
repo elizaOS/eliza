@@ -255,18 +255,22 @@ describe("SSE streaming bypass", () => {
       headers: {
         Accept: "text/event-stream",
         Authorization: "Bearer paired-device-token",
+        "X-ElizaOS-Turn-Correlation": "0123456789abcdef",
+        "X-ElizaOS-Turn-Attempt": "1",
       },
       body: "{}",
     });
 
-    expect(webFetchMock).toHaveBeenCalledWith(
-      url,
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: "Bearer paired-device-token",
-        }),
-      }),
+    expect(webFetchMock).toHaveBeenCalledTimes(1);
+    const streamedInit = webFetchMock.mock.calls[0]?.[1] as
+      | RequestInit
+      | undefined;
+    const streamedHeaders = new Headers(streamedInit?.headers);
+    expect(streamedHeaders.get("authorization")).toBe(
+      "Bearer paired-device-token",
     );
+    expect(streamedHeaders.has("X-ElizaOS-Turn-Correlation")).toBe(false);
+    expect(streamedHeaders.has("X-ElizaOS-Turn-Attempt")).toBe(false);
     expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
     expect(globalFetchMock).not.toHaveBeenCalled();
     expect(response?.body).not.toBeNull();

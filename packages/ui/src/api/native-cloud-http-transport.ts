@@ -181,6 +181,18 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     ) {
       const webFetch = nativeWebFetch();
       if (webFetch) {
+        if (isRemoteAgent) {
+          // These attempt-correlation headers are optional telemetry. Older
+          // self-hosted Vite frontends do not advertise them in CORS even when
+          // the underlying agent does, which rejects the entire browser fetch
+          // before the authenticated stream reaches the server. Keep the
+          // bearer/client/language contract intact and omit only telemetry on
+          // this compatibility path.
+          const headers = new Headers(init.headers ?? {});
+          headers.delete("X-ElizaOS-Turn-Correlation");
+          headers.delete("X-ElizaOS-Turn-Attempt");
+          return webFetch(url, { ...init, headers });
+        }
         return webFetch(url, init);
       }
     }
