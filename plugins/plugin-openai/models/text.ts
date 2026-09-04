@@ -310,8 +310,8 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
  *
  * In Cerebras mode the field defaults to `"low"` when unset only for the exact
  * models whose current provider contract exposes reasoning controls:
- * `gpt-oss-120b` and `zai-glm-4.7`. Both can spend a capped output budget on
- * hidden reasoning and return empty visible content when left unbounded.
+ * `gpt-oss-120b` and `zai-glm-4.7`. Qwen 3.8 defaults to `"none"` for
+ * interactive latency; explicit reasoning settings remain authoritative.
  * Family-name lookalikes and models without the knob must not receive the
  * field because compatible endpoints reject unsupported request properties.
  * An explicit valid `OPENAI_REASONING_EFFORT` always wins.
@@ -379,6 +379,7 @@ function resolveThinkingOffReasoningEffort(
     if (cerebrasId === "gpt-oss-120b") return "low";
     if (cerebrasId === "zai-glm-4.7") return "none";
     if (cerebrasId === "gemma-4-31b") return "none";
+    if (cerebrasId === "qwen-3.8-27b") return "none";
   }
 
   const exactModelId = modelName.trim().toLowerCase();
@@ -400,6 +401,9 @@ function resolveCerebrasDefaultReasoningEffort(
   if (!modelName) return undefined;
   const id = normalizeCerebrasModelId(modelName);
   if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
+  // Cerebras defaults Qwen to high reasoning. Keep ordinary interactive
+  // calls non-reasoning unless the caller explicitly requests otherwise.
+  if (id === "qwen-3.8-27b") return "none";
   return undefined;
 }
 
@@ -410,6 +414,13 @@ function resolveReasoningEffort(
   const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (normalized) {
+    if (
+      normalized === "none" &&
+      isCerebrasMode(runtime) &&
+      modelName &&
+      normalizeCerebrasModelId(modelName) === "qwen-3.8-27b"
+    )
+      return "none";
     if ((VALID_REASONING_EFFORTS as readonly string[]).includes(normalized)) {
       return normalized as ReasoningEffort;
     }

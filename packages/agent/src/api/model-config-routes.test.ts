@@ -704,13 +704,13 @@ describe("GET /api/models/config activeChat", () => {
       Record<string, { value: string; source: string } | null>
     >;
     // Unpinned cloud tiers report the plugin's code defaults so the operator
-    // sees what actually serves — both tiers use the supported Gemma model.
+    // sees what actually serves — both tiers use the supported Qwen model.
     expect(targets.small?.ELIZAOS_CLOUD_SMALL_MODEL).toEqual({
-      value: "gemma-4-31b",
+      value: "qwen-3.8-27b",
       source: "default",
     });
     expect(targets.large?.ELIZAOS_CLOUD_LARGE_MODEL).toEqual({
-      value: "gemma-4-31b",
+      value: "qwen-3.8-27b",
       source: "default",
     });
   });

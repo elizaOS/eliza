@@ -155,11 +155,20 @@ const CLAUDE_CODING_ENTRIES: ModelCatalogEntry[] = CLAUDE_MODELS.map((m) => ({
   roles: ["coding"],
 }));
 
-// All three Cerebras-served models are reasoning models: `reasoning_effort`
+// Cerebras-served models expose model-specific reasoning controls. Qwen 3.8
+// supports explicit "none" (provider docs verified 2026-09-04); older models'
+// `reasoning_effort`
 // was live-probed 2026-07-12 and modulates the emitted reasoning on each
 // (glm 90->1337 reasoning chars low->high; gemma 663->1133), so every entry
 // carries the knob — not just gpt-oss.
 const CEREBRAS_ENTRIES: ModelCatalogEntry[] = [
+  {
+    id: "qwen-3.8-27b",
+    display: "Qwen 3.8 27B",
+    efforts: ["none", "low", "medium", "high"],
+    defaultEffort: "none",
+    roles: ["small", "large"],
+  },
   {
     id: "gemma-4-31b",
     display: "Gemma 4 31B",
@@ -180,10 +189,17 @@ const CEREBRAS_ENTRIES: ModelCatalogEntry[] = [
   },
 ];
 
-// Curated per product decision: exactly the Cerebras trio as served by Eliza
+// Curated Cerebras text models as served by Eliza
 // Cloud (plus the `openai/` alias the cloud router also accepts) — nothing
 // else until the cloud catalog is opened up.
 const ELIZACLOUD_ENTRIES: ModelCatalogEntry[] = [
+  {
+    id: "qwen-3.8-27b",
+    display: "Qwen 3.8 27B",
+    efforts: ["none", "low", "medium", "high"],
+    defaultEffort: "none",
+    roles: ["small", "large"],
+  },
   {
     id: "gpt-oss-120b",
     display: "GPT-OSS 120B",
