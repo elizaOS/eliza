@@ -3,21 +3,13 @@
  * prompts. Dates, custom objects, accessors, sparse arrays, and values JSON
  * would omit are rejected before delivery; repeated references are permitted.
  */
-import { ElizaError } from "@elizaos/core/edge";
-
-type EventJsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | EventJsonValue[]
-  | { [key: string]: EventJsonValue };
+import { ElizaError, type JsonValue } from "@elizaos/core/edge";
 
 function cloneDataProperty(
   object: object,
   key: string | symbol,
   ancestors: Set<object>,
-): EventJsonValue {
+): JsonValue {
   const descriptor = Object.getOwnPropertyDescriptor(object, key);
   if (
     typeof key !== "string" ||
@@ -31,10 +23,7 @@ function cloneDataProperty(
   return cloneJsonValue(descriptor.value, ancestors);
 }
 
-function cloneJsonValue(
-  value: unknown,
-  ancestors: Set<object>,
-): EventJsonValue {
+function cloneJsonValue(value: unknown, ancestors: Set<object>): JsonValue {
   if (
     value === null ||
     typeof value === "string" ||
@@ -82,7 +71,7 @@ function cloneJsonValue(
 export function normalizeScheduledEventPayload(
   value: unknown,
   taskId: string,
-): EventJsonValue {
+): JsonValue {
   try {
     return cloneJsonValue(value, new Set());
   } catch (cause) {

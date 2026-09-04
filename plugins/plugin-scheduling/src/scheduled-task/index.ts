@@ -88,6 +88,7 @@ export {
   type InstallScheduledTaskEventBridgeArgs,
   installScheduledTaskEventBridge,
 } from "./event-bridge.js";
+export { normalizeScheduledEventPayload } from "./event-payload.js";
 export {
   createTaskGateRegistry,
   registerBuiltInGates,
