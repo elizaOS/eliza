@@ -2,6 +2,14 @@
   "schemaVersion": 1,
   "groups": [
     {
+      "id": "native-background-task-runner",
+      "source": "packages/app-core/platforms/shared/runners/eliza-tasks.js",
+      "generated": [
+        "packages/app-core/platforms/android/app/src/main/assets/runners/eliza-tasks.js",
+        "packages/app-core/platforms/ios/App/App/runners/eliza-tasks.js"
+      ]
+    },
+    {
       "id": "standalone-plugin-npm-deploy",
       "source": ".github/workflow-templates/plugin-npm-deploy.yml",
       "generated": [
