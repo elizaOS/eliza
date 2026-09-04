@@ -5,10 +5,12 @@
 import { describe, expect, it } from "vitest";
 import {
 	actionNameToKeywordStem,
+	CONTEXT_KEYWORD_STEMS,
 	countActionSearchKeywordMatches,
 	getActionSearchKeywordSources,
 	getActionSearchKeywordTerms,
 } from "./action-search-keywords.js";
+import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.ts";
 
 describe("action-search-keywords", () => {
 	it("converts action names to camelCase keyword stems", () => {
@@ -177,5 +179,29 @@ describe("action-search-keywords resolution edge cases", () => {
 		expect(
 			countActionSearchKeywordMatches(["forwarding this along"], ["forward"]),
 		).toBe(0);
+	});
+
+	it("resolves every context keyword stem to backing keyword data", () => {
+		const resolveStem = (stem: string): unknown => {
+			let node: unknown = VALIDATION_KEYWORD_DOCS;
+			for (const segment of stem.split(".")) {
+				if (typeof node !== "object" || node === null) {
+					return undefined;
+				}
+				node = (node as Record<string, unknown>)[segment];
+			}
+			return node;
+		};
+
+		const unresolved: string[] = [];
+		for (const [context, stems] of Object.entries(CONTEXT_KEYWORD_STEMS)) {
+			for (const stem of stems) {
+				if (resolveStem(stem) === undefined) {
+					unresolved.push(`${context} -> ${stem}`);
+				}
+			}
+		}
+
+		expect(unresolved).toEqual([]);
 	});
 });
