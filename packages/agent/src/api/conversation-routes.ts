@@ -4744,6 +4744,13 @@ export async function handleConversationRoutes(
                 type: "reply_ready",
                 fullText: visibleResolvedText,
               });
+              // Bun's node:http compatibility layer can retain a small write
+              // until the handler reaches its next I/O boundary. Explicitly
+              // yield here so realtime consumers receive the authoritative
+              // reply before the potentially expensive durable-action receipt
+              // work below. This is a transport flush only; `done` remains the
+              // sole durable completion boundary.
+              await new Promise<void>((resolve) => setImmediate(resolve));
             }
             assertConversationConnectionRuntime(
               state.runtime,
