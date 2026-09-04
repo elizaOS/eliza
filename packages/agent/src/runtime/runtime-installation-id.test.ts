@@ -224,19 +224,49 @@ describe("runtime installation identity", () => {
       path.join(root, "package.json"),
       JSON.stringify({ name: "identity-sibling-consumer", type: "module" }),
     );
+    // The fixture must be able to resolve the package at all, or "the deep
+    // subpath threw" proves nothing: every resolution failure would look like
+    // an enforced boundary. Import the public `./runtime` subpath first and
+    // require it to succeed, then require the blocked one to fail. Asserting
+    // the OUTCOME rather than an error message keeps this off Bun's
+    // resolver wording, which differs between releases.
     const script = [
-      'const specifier = "@elizaos/agent/runtime/runtime-installation-id";',
+      'const control = await import("@elizaos/agent/runtime");',
+      'if (Object.keys(control).length === 0) { console.error("control subpath resolved but exported nothing"); process.exit(8); }',
+      "let blocked = false;",
       "try {",
-      "  const loaded = await import(specifier);",
-      '  if ("__createRuntimeInstallationIdLoaderForTests" in loaded) process.exit(7);',
-      "} catch (error) {",
-      '  const expected = error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED" || String(error).includes("Cannot find module");',
-      "  if (!expected) throw error;",
+      '  await import("@elizaos/agent/runtime/runtime-installation-id");',
+      "} catch {",
+      "  blocked = true;",
       "}",
+      'if (!blocked) { console.error("blocked subpath was importable by a sibling consumer"); process.exit(7); }',
     ].join("\n");
     await expect(
       execFileAsync("bun", ["--eval", script], { cwd: root }),
     ).resolves.toMatchObject({ stderr: "" });
+  });
+
+  /**
+   * The consumer probe above can only prove the subpath stays unreachable. It
+   * cannot inspect a module it is forbidden to load, so the "no test controls
+   * escape" half is asserted here against the real module surface — by NAME
+   * SHAPE, not one hardcoded identifier. The previous probe looked for
+   * `__createRuntimeInstallationIdLoaderForTests`, which never existed in any
+   * implementation, so its leak branch was unreachable from the day it landed.
+   */
+  it("exports no test-only controls from the identity module", async () => {
+    const surface = await import("./runtime-installation-id.ts");
+    const testOnly = Object.keys(surface).filter(
+      (name) =>
+        name.startsWith("__") ||
+        /ForTests?$/.test(name) ||
+        name.toLowerCase().includes("fortest"),
+    );
+
+    expect(testOnly).toEqual([]);
+    // Guard the guard: the surface must be non-empty, or the filter above
+    // would pass on an empty module.
+    expect(Object.keys(surface).length).toBeGreaterThan(0);
   });
 
   it("accepts a trusted pre-existing state directory", async () => {
