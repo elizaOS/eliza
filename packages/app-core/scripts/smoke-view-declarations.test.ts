@@ -5,12 +5,15 @@
  * production-declared view can never be served as a fabricated bundle in audit
  * mode. Guards issue #15791.
  */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   checkSmokeViewParity,
   resolveBundleProvenance,
+  resolveSmokeViewDeclarations,
   smokeViewDeclarations,
 } from "./smoke-view-declarations.mjs";
 
@@ -43,31 +46,83 @@ describe("smoke view declaration parity (#15791)", () => {
     }
   });
 
-  it("declares the canonical Cloud, Notes, and Calendar views used by the visual audit", () => {
-    expect(smokeViewDeclarations).toEqual(
-      expect.arrayContaining([
-        [
-          "cloud",
-          "Cloud",
-          "plugin-elizacloud",
-          "/cloud",
-          "CloudView",
-          "gui",
-          { capabilities: ["agent-surface"] },
-        ],
-        ["notes", "Notes", "plugin-notes", "/notes", "NotesView"],
-        [
-          "calendar",
-          "Calendar",
-          "plugin-calendar",
-          "/calendar",
-          "CalendarView",
-        ],
-      ]),
-    );
-    expect(smokeViewDeclarations.map(([id]) => id)).not.toContain(
-      "simple-calendar",
-    );
+  it("reads imported surface ownership afresh instead of retaining fixture metadata", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "smoke-view-surface-"));
+    const src = path.join(root, "plugins", "plugin-example", "src");
+    mkdirSync(src, { recursive: true });
+    try {
+      writeFileSync(
+        path.join(src, "plugin.ts"),
+        `
+        import { PAGE_SURFACE as surface } from "./surface.js";
+        export const plugin = { views: [{
+          id: "example", path: "/example", componentExport: "ExampleView", surface,
+        }] };
+      `,
+      );
+      const surfacePath = path.join(src, "surface.ts");
+      const declarations = [
+        ["example", "Example", "plugin-example", "/example", "ExampleView"],
+      ];
+      writeFileSync(
+        surfacePath,
+        'export const PAGE_SURFACE = { header: "normal" } as const;',
+      );
+      expect(resolveSmokeViewDeclarations(root, declarations)[0]?.[6]).toEqual({
+        header: "normal",
+      });
+      writeFileSync(
+        surfacePath,
+        'export const PAGE_SURFACE = { header: "fullscreen", capabilities: ["agent-surface"], layout: { width: "wide" } } as const satisfies SurfaceManifest;',
+      );
+      expect(resolveSmokeViewDeclarations(root, declarations)[0]?.[6]).toEqual({
+        header: "fullscreen",
+        capabilities: ["agent-surface"],
+        layout: { width: "wide" },
+      });
+      for (const expression of [
+        "buildSurface()",
+        '{ ...sharedSurface, header: "fullscreen" }',
+        "MISSING_SURFACE",
+        "PAGE_SURFACE",
+      ]) {
+        writeFileSync(
+          surfacePath,
+          `export const PAGE_SURFACE = ${expression};`,
+        );
+        expect(() => resolveSmokeViewDeclarations(root, declarations)).toThrow(
+          /Cannot resolve surface expression/,
+        );
+      }
+      for (const property of [
+        'get surface() { return { header: "fullscreen" }; }',
+        'surface() { return { header: "fullscreen" }; }',
+      ]) {
+        writeFileSync(
+          path.join(src, "plugin.ts"),
+          `export const plugin = { views: [{ id: "example", path: "/example", componentExport: "ExampleView", ${property} }] };`,
+        );
+        expect(() => resolveSmokeViewDeclarations(root, declarations)).toThrow(
+          /Cannot resolve executable surface property/,
+        );
+      }
+      for (const factory of [
+        'function createPlugin() { const surface = { header: "fullscreen" }; return { views: [{ id: "example", path: "/example", componentExport: "ExampleView", surface }] }; }',
+        'function createPlugin(surface) { return { views: [{ id: "example", path: "/example", componentExport: "ExampleView", surface }] }; }',
+        'for (const surface of []) views.push({ id: "example", path: "/example", componentExport: "ExampleView", surface });',
+        'namespace Nested { const surface = { header: "fullscreen" }; const plugin = { views: [{ id: "example", path: "/example", componentExport: "ExampleView", surface }] }; }',
+      ]) {
+        writeFileSync(
+          path.join(src, "plugin.ts"),
+          `const surface = { header: "normal" }; ${factory}`,
+        );
+        expect(() => resolveSmokeViewDeclarations(root, declarations)).toThrow(
+          /Cannot resolve nested view declaration/,
+        );
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("fails parity when a deleted plugin id is (re)introduced", () => {

@@ -24,23 +24,15 @@ import ts from "typescript";
 
 /**
  * One GUI declaration per shipped plugin view: `[id, label, pluginDirName,
- * path, componentExport, viewType?, surface?]`. Every entry must pass
+ * path, componentExport, viewType?]`. Every entry must pass
  * `checkSmokeViewParity` — its plugin directory exists and its source both
- * declares the `id` and exports the `componentExport`. Surface grants are
- * explicit because omitting one makes the smoke registry less capable than the
- * production manifest and can turn a valid bridge action into a false denial.
+ * declares the `id` and exports the `componentExport`. The stub derives surface
+ * grants and layout from that production declaration, including imported literal
+ * constants, so the fixture cannot silently drop shell ownership or capabilities.
  * Do NOT add a view here for a plugin that no longer exists.
  */
 export const smokeViewDeclarations = [
-  [
-    "cloud",
-    "Cloud",
-    "plugin-elizacloud",
-    "/cloud",
-    "CloudView",
-    "gui",
-    { capabilities: ["agent-surface"] },
-  ],
+  ["cloud", "Cloud", "plugin-elizacloud", "/cloud", "CloudView"],
   ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsView"],
   // The decomposed personal-assistant domain views are the real surfaces (the
   // old monolithic `lifeops` overview view was removed). `documents` is
@@ -53,8 +45,6 @@ export const smokeViewDeclarations = [
     "plugin-computeruse",
     "/computer-use-sessions",
     "ComputerUseSessionsView",
-    "gui",
-    { capabilities: ["agent-surface"] },
   ],
   ["finances", "Finances", "plugin-finances", "/finances", "FinancesView"],
   ["focus", "Focus", "plugin-blocker", "/focus", "FocusView"],
@@ -71,18 +61,7 @@ export const smokeViewDeclarations = [
   ],
   ["messages", "Messages", "plugin-messages", "/messages", "MessagesView"],
   ["phone", "Phone", "plugin-phone", "/phone", "PhoneView"],
-  [
-    "wallet",
-    "Wallet",
-    "plugin-wallet",
-    "/wallet",
-    "InventoryView",
-    "gui",
-    {
-      background: "shared",
-      capabilities: ["agent-surface", "wallpaper"],
-    },
-  ],
+  ["wallet", "Wallet", "plugin-wallet", "/wallet", "InventoryView"],
   ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
   ["notes", "Notes", "plugin-notes", "/notes", "NotesView"],
   [
@@ -98,8 +77,6 @@ export const smokeViewDeclarations = [
     "plugin-task-coordinator",
     "/orchestrator",
     "OrchestratorView",
-    "gui",
-    { capabilities: ["agent-surface"] },
   ],
   [
     "trajectory-logger",
@@ -160,20 +137,139 @@ function stringProperty(object, propertyName) {
   return undefined;
 }
 
+function readSurfaceValue(node, sourceFile, files, resolving = new Set()) {
+  const fail = () => {
+    throw new Error(
+      `[smoke-view-declarations] Cannot resolve surface expression in ${sourceFile.fileName}: ${node.getText(sourceFile)}. Use static literals or relative imports of exported const literals; executable expressions and spreads cannot define audit metadata.`,
+    );
+  };
+  if (
+    ts.isAsExpression(node) ||
+    ts.isSatisfiesExpression(node) ||
+    ts.isParenthesizedExpression(node)
+  ) {
+    return readSurfaceValue(node.expression, sourceFile, files, resolving);
+  }
+  if (ts.isStringLiteralLike(node)) return node.text;
+  if (ts.isNumericLiteral(node)) return Number(node.text);
+  if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
+  if (node.kind === ts.SyntaxKind.NullKeyword) return null;
+  if (ts.isArrayLiteralExpression(node)) {
+    return node.elements.map((item) =>
+      readSurfaceValue(item, sourceFile, files, resolving),
+    );
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    return Object.fromEntries(
+      node.properties.map((property) => {
+        if (
+          !ts.isPropertyAssignment(property) ||
+          !(
+            ts.isIdentifier(property.name) ||
+            ts.isStringLiteralLike(property.name)
+          )
+        )
+          return fail();
+        return [
+          property.name.text,
+          readSurfaceValue(property.initializer, sourceFile, files, resolving),
+        ];
+      }),
+    );
+  }
+  if (ts.isIdentifier(node)) {
+    const key = `${sourceFile.fileName}#${node.text}`;
+    if (resolving.has(key)) return fail();
+    const next = new Set([...resolving, key]);
+    for (const statement of sourceFile.statements) {
+      if (
+        ts.isVariableStatement(statement) &&
+        statement.declarationList.flags & ts.NodeFlags.Const
+      ) {
+        const declaration = statement.declarationList.declarations.find(
+          (entry) =>
+            ts.isIdentifier(entry.name) && entry.name.text === node.text,
+        );
+        if (declaration?.initializer) {
+          return readSurfaceValue(
+            declaration.initializer,
+            sourceFile,
+            files,
+            next,
+          );
+        }
+      }
+      if (
+        !ts.isImportDeclaration(statement) ||
+        !ts.isStringLiteralLike(statement.moduleSpecifier) ||
+        !statement.moduleSpecifier.text.startsWith(".")
+      )
+        continue;
+      const bindings = statement.importClause?.namedBindings;
+      if (!bindings || !ts.isNamedImports(bindings)) continue;
+      const binding = bindings.elements.find(
+        (entry) => entry.name.text === node.text,
+      );
+      if (!binding) continue;
+      const importedPath = path.resolve(
+        path.dirname(sourceFile.fileName),
+        statement.moduleSpecifier.text,
+      );
+      const imported =
+        files.get(importedPath) ??
+        files.get(importedPath.replace(/\.js$/, ".ts")) ??
+        files.get(importedPath.replace(/\.js$/, ".tsx"));
+      if (!imported) return fail();
+      const exportedName = binding.propertyName?.text ?? binding.name.text;
+      for (const exported of imported.statements) {
+        if (
+          !ts.isVariableStatement(exported) ||
+          !(exported.declarationList.flags & ts.NodeFlags.Const) ||
+          !exported.modifiers?.some(
+            (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+          )
+        )
+          continue;
+        const declaration = exported.declarationList.declarations.find(
+          (entry) =>
+            ts.isIdentifier(entry.name) && entry.name.text === exportedName,
+        );
+        if (declaration?.initializer) {
+          return readSurfaceValue(
+            declaration.initializer,
+            imported,
+            files,
+            next,
+          );
+        }
+      }
+      return fail();
+    }
+  }
+  return fail();
+}
+
 function inspectViewDeclarations(
   sourceFiles,
   { id, viewPath, componentExport },
 ) {
   let declaresIdAndPath = false;
   let declaresExactView = false;
-  for (const { filePath, source } of sourceFiles) {
-    const sourceFile = ts.createSourceFile(
+  let surface;
+  const files = new Map(
+    sourceFiles.map(({ filePath, source }) => [
       filePath,
-      source,
-      ts.ScriptTarget.Latest,
-      true,
-      filePath.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-    );
+      ts.createSourceFile(
+        filePath,
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        filePath.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+      ),
+    ]),
+  );
+  for (const sourceFile of files.values()) {
     const visit = (node) => {
       if (ts.isObjectLiteralExpression(node)) {
         const objectId = stringProperty(node, "id");
@@ -182,6 +278,62 @@ function inspectViewDeclarations(
           declaresIdAndPath = true;
           if (stringProperty(node, "componentExport") === componentExport) {
             declaresExactView = true;
+            // Module-level const/import lookup is sound only outside lexical scopes
+            // that can shadow those bindings. Nested declarations fail explicitly.
+            for (
+              let scope = node.parent;
+              scope && !ts.isSourceFile(scope);
+              scope = scope.parent
+            ) {
+              if (
+                ts.isFunctionLike(scope) ||
+                ts.isBlock(scope) ||
+                ts.isModuleBlock(scope) ||
+                ts.isClassDeclaration(scope) ||
+                ts.isClassExpression(scope) ||
+                ts.isCatchClause(scope) ||
+                ts.isForStatement(scope) ||
+                ts.isForInStatement(scope) ||
+                ts.isForOfStatement(scope) ||
+                ts.isWhileStatement(scope) ||
+                ts.isDoStatement(scope)
+              ) {
+                throw new Error(
+                  `[smoke-view-declarations] Cannot resolve nested view declaration ${id} in ${sourceFile.fileName}; expose its surface through a module-level declaration so lexical bindings cannot be mistaken for imported metadata.`,
+                );
+              }
+            }
+            for (const property of node.properties) {
+              if (
+                ts.isSpreadAssignment(property) ||
+                (property.name && ts.isComputedPropertyName(property.name))
+              ) {
+                throw new Error(
+                  `[smoke-view-declarations] Cannot resolve spread or computed view declaration ${id} in ${sourceFile.fileName}; declare its audit metadata explicitly.`,
+                );
+              }
+              if (
+                !(
+                  ts.isIdentifier(property.name) ||
+                  ts.isStringLiteralLike(property.name)
+                ) ||
+                property.name.text !== "surface"
+              )
+                continue;
+              if (ts.isPropertyAssignment(property)) {
+                surface = readSurfaceValue(
+                  property.initializer,
+                  sourceFile,
+                  files,
+                );
+              } else if (ts.isShorthandPropertyAssignment(property)) {
+                surface = readSurfaceValue(property.name, sourceFile, files);
+              } else {
+                throw new Error(
+                  `[smoke-view-declarations] Cannot resolve executable surface property for ${id} in ${sourceFile.fileName}; use a static surface assignment.`,
+                );
+              }
+            }
           }
         }
       }
@@ -190,7 +342,7 @@ function inspectViewDeclarations(
     visit(sourceFile);
     if (declaresExactView) break;
   }
-  return { declaresExactView, declaresIdAndPath };
+  return { declaresExactView, declaresIdAndPath, surface };
 }
 
 /**
@@ -206,6 +358,7 @@ export function checkSmokeViewParity(
 ) {
   const pluginsDir = path.join(repoRoot, "plugins");
   const missing = [];
+  const resolved = [];
   for (const tuple of declarations) {
     const { id, pluginDirName, componentExport, viewPath } =
       toDeclaration(tuple);
@@ -225,6 +378,13 @@ export function checkSmokeViewParity(
       readSourceFiles(path.join(pluginDir, "src")),
       { id, viewPath, componentExport },
     );
+    if (declaration.declaresExactView) {
+      resolved.push([
+        ...tuple.slice(0, 5),
+        tuple[5] ?? "gui",
+        declaration.surface,
+      ]);
+    }
     if (!declaration.declaresExactView) {
       missing.push({
         id,
@@ -236,7 +396,26 @@ export function checkSmokeViewParity(
       });
     }
   }
-  return { declarations, missing, ok: missing.length === 0 };
+  return {
+    declarations,
+    resolvedDeclarations: resolved,
+    missing,
+    ok: missing.length === 0,
+  };
+}
+
+/** Derives the smoke registry's shell ownership and capability grants from production source. */
+export function resolveSmokeViewDeclarations(
+  repoRoot,
+  declarations = smokeViewDeclarations,
+) {
+  const result = checkSmokeViewParity(repoRoot, declarations);
+  if (!result.ok) {
+    throw new Error(
+      `[smoke-view-declarations] Production view declarations are unavailable: ${JSON.stringify(result.missing)}`,
+    );
+  }
+  return result.resolvedDeclarations;
 }
 
 /**

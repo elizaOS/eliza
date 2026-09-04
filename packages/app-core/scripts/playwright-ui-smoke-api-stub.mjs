@@ -21,7 +21,7 @@ import {
 // missing real bundle into an observable 424 instead of a synthesized surface.
 import {
   resolveBundleProvenance,
-  smokeViewDeclarations,
+  resolveSmokeViewDeclarations,
   VIEW_BUNDLE_PROVENANCE_HEADER,
 } from "./smoke-view-declarations.mjs";
 
@@ -90,10 +90,9 @@ const SMOKE_NETWORK_POLICY_PREFERENCES = {
   quietHours: [{ start: "22:00", end: "08:00" }],
 };
 
-// `smokeViewDeclarations` is imported from ./smoke-view-declarations.mjs so it
-// stays pinned to shipping plugins by `checkSmokeViewParity` (removed views such
-// as Shopify/Steward/Social Alpha cannot reappear here). The viewType contract
-// still accepts future modalities; this fixture ships GUI-only rows.
+// The fixture selects shipped routes; the existing source parser resolves each
+// route's production surface so header ownership and capability grants cannot
+// diverge when the audit renders its real bundle.
 
 function smokeViewObject({
   id,
@@ -139,7 +138,7 @@ function smokeViewObject({
 
 // The 6th tuple slot remains a viewType override for future compatibility, but
 // shipped fixture declarations default to GUI.
-const smokeViews = smokeViewDeclarations.flatMap(
+const smokeViews = resolveSmokeViewDeclarations(repoRoot).flatMap(
   ([
     id,
     label,

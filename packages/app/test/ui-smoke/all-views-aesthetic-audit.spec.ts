@@ -2123,6 +2123,20 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             viewRoot.getByText("Connected", { exact: true }),
           ).toHaveCount(0);
         }
+        if (view.id === "calendar") {
+          await expect(
+            page
+              .getByRole("heading", { name: "Calendar", exact: true })
+              .filter({ visible: true }),
+            "Calendar owns its fullscreen header; the dynamic host must not add a second one",
+          ).toHaveCount(1);
+        }
+        if (view.id === "cloud") {
+          await expect(
+            page.getByTestId("view-header").filter({ visible: true }),
+            "The dynamic Cloud body must leave its normal header to the host",
+          ).toHaveCount(1);
+        }
         await settleHomeEntrance(page);
         const { readableChars, semanticReady, overlayPresent } = paint;
         const renderStateIssues = [
