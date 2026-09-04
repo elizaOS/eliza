@@ -430,4 +430,31 @@ describe("validateMcpServerConfig", () => {
 			).toBeNull();
 		});
 	});
+
+	// The remote-host denylist used to be a second, smaller copy of the shared
+	// SSRF one. It had drifted: `.internal` was missing, so cloud-internal names
+	// reached the resolver and were rejected only if DNS happened to fail or to
+	// answer with a private address. These now short-circuit on the denylist,
+	// before any lookup, like every other case in this suite.
+	describe.each(["http", "streamable-http", "sse"])(
+		"%s remote host denylist",
+		(type) => {
+			test.each([
+				["localhost"],
+				["metadata.google.internal"],
+				["app.localhost"],
+				["printer.local"],
+				["foo.internal"],
+				["bar.ec2.internal"],
+				["node-1.compute.internal"],
+			])("blocks %s", async (host) => {
+				expect(
+					await validateMcpServerConfig({
+						type,
+						url: `https://${host}/mcp`,
+					}),
+				).toBe(`URL host "${host}" is blocked for security reasons`);
+			});
+		},
+	);
 });
