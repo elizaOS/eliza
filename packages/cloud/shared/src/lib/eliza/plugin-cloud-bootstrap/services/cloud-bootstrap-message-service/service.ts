@@ -50,6 +50,7 @@ import {
 import {
   getAvailableActionNames,
   parseNativePlannerDecision,
+  positiveIntSetting,
   toNativeActionParams,
   type ValidatedNativePlannerDecision,
   validateNativePlannerDecision,
@@ -552,9 +553,11 @@ export class CloudBootstrapMessageService implements IMessageService {
 
     const maxIterations =
       options?.maxNativePlannerIterations ??
-      parseInt(String(runtime.getSetting("NATIVE_PLANNER_MAX_ITERATIONS") ?? "6"));
-    const maxConsecutiveFailures = parseInt(
-      String(runtime.getSetting("NATIVE_PLANNER_MAX_CONSECUTIVE_FAILURES") ?? "2"),
+      positiveIntSetting(runtime, "NATIVE_PLANNER_MAX_ITERATIONS", 6);
+    const maxConsecutiveFailures = positiveIntSetting(
+      runtime,
+      "NATIVE_PLANNER_MAX_CONSECUTIVE_FAILURES",
+      2,
     );
     let iterationCount = 0;
     let consecutiveFailures = 0;
@@ -686,9 +689,7 @@ export class CloudBootstrapMessageService implements IMessageService {
         // PERF: Reduced from 5 to 3 retries. Each retry adds 1-4s with exponential backoff.
         // 3 balances latency (~6-12s max) vs. reliability for complex native-planner queries
         // where LLMs occasionally produce malformed JSON. Override via NATIVE_PLANNER_PARSE_RETRIES.
-        const maxParseRetries = parseInt(
-          String(runtime.getSetting("NATIVE_PLANNER_PARSE_RETRIES") ?? "2"),
-        );
+        const maxParseRetries = positiveIntSetting(runtime, "NATIVE_PLANNER_PARSE_RETRIES", 2);
         let stepResultRaw = "";
         let parsedStep: ValidatedNativePlannerDecision | null = null;
 
@@ -1112,9 +1113,7 @@ export class CloudBootstrapMessageService implements IMessageService {
       logger.info(`[LLM:nativeResponse] User Prompt:\n${summaryPrompt}`);
       logger.info("==============================================");
 
-      const maxSummaryRetries = parseInt(
-        String(runtime.getSetting("NATIVE_RESPONSE_PARSE_RETRIES") ?? "2"),
-      );
+      const maxSummaryRetries = positiveIntSetting(runtime, "NATIVE_RESPONSE_PARSE_RETRIES", 2);
       let finalOutput = "";
       let summary: Record<string, unknown> | null = null;
 
