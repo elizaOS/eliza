@@ -331,7 +331,11 @@ export const SCHEDULED_TASK_EDIT_READONLY_KEYS = [
   "__proto__",
 ] as const;
 
-export type ScheduledTaskRef = string | ScheduledTask;
+// Object refs may be input-shaped: `runPipeline` strips server-managed fields
+// and reschedules, `validateTaskRef` validates either shape, and the route
+// schema accepts `string | input`. The type admits both so callers can declare
+// pipeline children inline without fabricating `taskId`/`state`.
+export type ScheduledTaskRef = string | ScheduledTask | ScheduledTaskInput;
 export type EventFilter = unknown; // typed via EventKindRegistry per kind
 export type GateParams = unknown; // typed via TaskGateRegistry per kind
 export type CompletionCheckParams = unknown; // typed via CompletionCheckRegistry per kind

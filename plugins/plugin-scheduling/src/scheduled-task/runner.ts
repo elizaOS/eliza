@@ -54,6 +54,7 @@ import {
   type ScheduledTaskApplyIntentResult,
   type ScheduledTaskApplyResult,
   type ScheduledTaskFilter,
+  type ScheduledTaskInput,
   type ScheduledTaskLogEntry,
   type ScheduledTaskReceiptVerb,
   type ScheduledTaskRef,
@@ -796,10 +797,12 @@ function clearEscalationCursor(task: ScheduledTask): void {
 }
 
 function stripServerManaged(
-  task: ScheduledTask,
+  task: ScheduledTask | ScheduledTaskInput,
 ): Omit<ScheduledTask, "taskId" | "state"> {
-  const { taskId: _id, state: _state, ...rest } = task;
-  return rest;
+  const rest: Record<string, unknown> = { ...task };
+  delete rest.taskId;
+  delete rest.state;
+  return rest as Omit<ScheduledTask, "taskId" | "state">;
 }
 
 // ---------------------------------------------------------------------------
@@ -1974,7 +1977,8 @@ export function createScheduledTaskRunner(
       }
       const cloned = structuredClone(ref);
       // Strip server-managed fields if the caller passed a fully-shaped
-      // `ScheduledTask`. `schedule()` regenerates them.
+      // `ScheduledTask`; input-shaped refs pass through unchanged.
+      // `schedule()` regenerates the managed fields either way.
       const childInput = stripServerManaged(cloned);
       if (settlementKey && !childInput.idempotencyKey) {
         childInput.idempotencyKey = [
