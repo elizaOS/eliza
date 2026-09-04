@@ -442,3 +442,38 @@ ph eg`,
     expect(f.verdict).toBe("broken");
   });
 });
+
+describe("independent control transcript boundaries", () => {
+  it("accepts complete markers in separate regions while retaining full-frame leaks", () => {
+    const result = evaluateOcrContent({
+      ocr: ocr(
+        "Eliza Cloud [object Object] Forbidden administration\nConnect in Settings",
+        {
+          positiveSegments: [
+            "Eliza Cloud [object Object] Forbidden administration",
+            "Connect in Settings",
+          ],
+        },
+      ),
+      expectation: {
+        requireAll: ["Eliza Cloud", "Connect in Settings"],
+        forbid: ["Forbidden administration"],
+      },
+    });
+    expect(result.missingRequired).toEqual([]);
+    expect(result.errorLeaks).toContain("[object Object]");
+    expect(result.forbiddenPresent).toContain("Forbidden administration");
+    expect(result.verdict).toBe("broken");
+  });
+
+  it("does not assemble a required phrase across unrelated controls", () => {
+    const result = evaluateOcrContent({
+      ocr: ocr("Eliza Cloud\nConnect\nin Settings", {
+        positiveSegments: ["Eliza Cloud", "Connect", "in Settings"],
+      }),
+      expectation: { requireAll: ["Eliza Cloud", "Connect in Settings"] },
+    });
+    expect(result.verdict).toBe("broken");
+    expect(result.missingRequired).toContain("Connect in Settings");
+  });
+});

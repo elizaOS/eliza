@@ -1,7 +1,7 @@
 /**
  * Proves the OCR triage accepts exactly the current report manifest through both its function and real CLI boundaries.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -14,6 +14,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  bindAuditOcrControls,
+  parseAuditReport,
+} from "../../scripts/lib/audit-capture-manifest";
 import { resolveAuditAppOutput } from "../../scripts/lib/audit-output.mjs";
 import {
   authorizedShots,
@@ -373,11 +377,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       join(dir, "ocr.ndjson"),
       [
         ocrLine("desktop-landscape", "builtin-settings", "Settings Voice"),
-        ocrLine(
-          "mobile-portrait",
-          "plugin-cloud-gui",
-          "Eliza Cloud Credits",
-        ),
+        ocrLine("mobile-portrait", "plugin-cloud-gui", "Eliza Cloud Credits"),
         ocrLine(
           "ipad-portrait",
           "plugin-phone-gui",
@@ -710,4 +710,166 @@ describe("audit runner cleanup", () => {
     expect(existsSync(dir)).toBe(true);
     expect(existsSync(stale)).toBe(false);
   }, 30_000);
+});
+
+describe("measured-control OCR recovery through the real CLI", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "ocr-control-pixels-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  async function paint(
+    state: "visible" | "covered" | "absent" | "split",
+    scale = 1,
+  ) {
+    const button = (y: number, label: string) =>
+      `<rect x="635" y="${y}" width="170" height="40" rx="8" fill="#ff6a1f"/><text x="720" y="${y + 25}" text-anchor="middle" font-family="Arial" font-size="14" fill="black">${label}</text>`;
+    const controls =
+      state === "absent"
+        ? ""
+        : state === "split"
+          ? button(140, "Connect") + button(210, "in Settings")
+          : button(140, "Connect in Settings");
+    const svg = `<svg width="1440" height="900" xmlns="http://www.w3.org/2000/svg"><rect width="1440" height="900" fill="black"/><text x="720" y="90" text-anchor="middle" font-family="Arial" font-size="20" fill="white">Eliza Cloud</text><text x="720" y="122" text-anchor="middle" font-family="Arial" font-size="14" fill="#999">Connect to view credits, agents, API keys, and billing.</text>${controls}${state === "covered" ? '<rect x="635" y="140" width="170" height="40" fill="black"/>' : ""}</svg>`;
+    const bytes = await sharp(Buffer.from(svg))
+      .resize(1440 * scale, 900 * scale)
+      .png()
+      .toBuffer();
+    const viewport = "desktop-landscape";
+    const slug = "plugin-cloud-signed-out-gui";
+    mkdirSync(join(dir, viewport), { recursive: true });
+    const shotPath = join(dir, viewport, `${slug}.png`);
+    writeFileSync(shotPath, bytes);
+    const ocrControls = await bindAuditOcrControls(bytes, {
+      width: 1440,
+      height: 900,
+      rectangles: [140, ...(state === "split" ? [210] : [])].map((top) => ({
+        left: 635,
+        top,
+        width: 170,
+        height: 40,
+      })),
+    });
+    return {
+      bytes,
+      shotPath,
+      row: { slug, viewport, verdict: "good", ocrControls },
+    };
+  }
+
+  function run(row: ReportEntry) {
+    rmSync(join(dir, "ocr-triage.json"), { force: true });
+    writeFileSync(join(dir, "report.json"), JSON.stringify([row]));
+    const result = spawnSync("bun", [CLI, "--audit-dir", dir], {
+      env: { ...process.env, ELIZA_MVP_OCR_ENGINE: "packaged" },
+      cwd: APP_DIR,
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+    if (result.error) throw result.error;
+    const outputPath = join(dir, "ocr-triage.json");
+    return {
+      ...result,
+      report: existsSync(outputPath)
+        ? JSON.parse(readFileSync(outputPath, "utf8"))
+        : null,
+    };
+  }
+
+  it("reads the painted CTA omitted by full-frame segmentation without weakening legacy captures", async () => {
+    const { row } = await paint("visible");
+    const legacy = run({ ...row, ocrControls: undefined });
+    expect(legacy.status).toBe(1);
+    expect(legacy.report.entries[0].reasons.join(" ")).toContain(
+      "Connect in Settings",
+    );
+    const rescued = run(row);
+    expect(rescued.status).toBe(0);
+    expect(rescued.report.entries[0].ocrVerdict).toBe("verified");
+    expect(rescued.report.entries[0].positiveSegments).toContain(
+      "Connect in Settings",
+    );
+  });
+
+  it.each(["covered", "absent", "split"] as const)(
+    "does not invent a complete CTA from %s control pixels",
+    async (state) => {
+      const { row } = await paint(state);
+      const result = run(row);
+      expect(result.status).toBe(1);
+      expect(result.report.entries[0].ocrVerdict).toBe("broken");
+      expect(result.report.entries[0].reasons.join(" ")).toContain(
+        "Connect in Settings",
+      );
+    },
+  );
+
+  it("scales CSS geometry to a double-density screenshot and rejects stale pixel bindings", async () => {
+    const { row } = await paint("visible", 2);
+    expect(run(row).status).toBe(0);
+    await paint("covered", 2);
+    const result = run(row);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("does not match screenshot");
+  });
+
+  it("rejects invalid control geometry and incompatible screenshot scaling", async () => {
+    const { bytes, row } = await paint("visible");
+    for (const rectangle of [
+      { left: NaN, top: 0, width: 1, height: 1 },
+      { left: 0, top: 0, width: 0, height: 1 },
+      { left: 1439, top: 0, width: 3, height: 1 },
+    ]) {
+      expect(() =>
+        parseAuditReport([
+          {
+            ...row,
+            ocrControls: { ...row.ocrControls, rectangles: [rectangle] },
+          },
+        ]),
+      ).toThrow("rectangle");
+    }
+    await expect(
+      bindAuditOcrControls(bytes, { width: 720, height: 900, rectangles: [] }),
+    ).rejects.toThrow("scale");
+    const clipped = await bindAuditOcrControls(bytes, {
+      width: 1440,
+      height: 900,
+      rectangles: [{ left: -5, top: 895, width: 15, height: 20 }],
+    });
+    expect(clipped.rectangles[0]).toEqual({
+      left: 0,
+      top: 895,
+      width: 10,
+      height: 5,
+    });
+  });
+});
+
+it("keeps a missing-label failure when an unrelated fallback is inconclusive", () => {
+  const primary = {
+    ok: true,
+    text: "Eliza Cloud account management",
+    lines: ["Eliza Cloud account management"],
+    words: 4,
+    meanConfidence: 0.9,
+    pixelBlank: false,
+    pixelBlankReasons: [],
+    attempts: [
+      {
+        mode: "sparse-high-contrast",
+        ok: true,
+        text: "unrelated noise",
+        words: 2,
+        chars: 15,
+        meanConfidence: 0.1,
+      },
+    ],
+  };
+  const result = selectSemanticallyBestOcrAttempt(primary, {
+    expectation: { requireAll: ["Eliza Cloud", "Connect in Settings"] },
+  });
+  expect(result.finding.verdict).toBe("broken");
+  expect(result.finding.missingRequired).toContain("Connect in Settings");
 });
