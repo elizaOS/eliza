@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, describe, expect } from "vitest";
@@ -20,6 +21,7 @@ import { itIf } from "../../../../../packages/app-core/test/helpers/conditional-
 import { AppVerificationService } from "../app-verification.js";
 
 const execFileAsync = promisify(execFile);
+const TYPESCRIPT_CLI = fileURLToPath(import.meta.resolve("typescript/bin/tsc"));
 
 async function commandAvailable(
 	file: string,
@@ -101,11 +103,9 @@ function writeMinimalTsProject(workdir: string, source: string): void {
 				version: "0.0.0",
 				private: true,
 				scripts: {
-					// typecheck: invoke the locally-resolvable tsc via npx. If typescript
-					// is not installed locally, npx will download it on the fly — slow
-					// but acceptable for this single-file integration check.
-					typecheck:
-						"npx --yes -p typescript@5.6.2 tsc --noEmit -p tsconfig.json",
+					// Exercise a real compiler child process without adding network access to
+					// this deterministic fixture. TypeScript is a pinned workspace dependency.
+					typecheck: `${JSON.stringify(process.execPath)} ${JSON.stringify(TYPESCRIPT_CLI)} --noEmit -p tsconfig.json`,
 					lint: `node ${JSON.stringify(lintShim).slice(1, -1)}`,
 					test: `node ${JSON.stringify(testShim).slice(1, -1)}`,
 					build: `node ${JSON.stringify(buildShim).slice(1, -1)}`,
@@ -118,9 +118,8 @@ function writeMinimalTsProject(workdir: string, source: string): void {
 	);
 }
 
-// Integration tests below scaffold a temp project that depends on `npm` /
-// `npx` resolving in PATH and downloading TypeScript via the network. On
-// Windows the npm shim resolution + ad-hoc tsc install is flaky in CI;
+// Integration tests below scaffold a temp project that depends on `npm`
+// resolving in PATH. On Windows the npm shim resolution is flaky in CI;
 // the unit tests in `app-verification.test.ts` cover the same code paths
 // without network/shim dependencies. Skip the integration suite on
 // Windows hosts and keep the cross-platform unit coverage authoritative.
