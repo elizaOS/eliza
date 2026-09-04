@@ -17,6 +17,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { useAppSelector } from "../../state";
+import { ContentState } from "../composites/page-panel/content-state";
 import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "./settings-layout";
 
@@ -186,7 +187,7 @@ export function AppPermissionsSection() {
       variant="outline"
       size="sm"
       onClick={() => void refresh()}
-      className="h-9 gap-1.5 rounded-sm px-3 text-xs font-semibold"
+      className="min-h-11 gap-1.5 rounded-sm px-3 text-xs font-semibold"
       disabled={listStatus.state === "loading"}
     >
       {listStatus.state === "loading" ? (
@@ -198,21 +199,70 @@ export function AppPermissionsSection() {
     </SettingsActionButton>
   );
 
+  const noManifestDetails =
+    noManifestRows.length > 0 ? (
+      <details className="mt-4 text-left text-xs text-muted">
+        <summary className="flex min-h-11 cursor-pointer items-center">
+          {noManifestRows.length} registered app
+          {noManifestRows.length === 1 ? "" : "s"} without a permissions
+          manifest
+        </summary>
+        <ul className="mt-1.5 space-y-0.5 pl-4">
+          {noManifestRows.map((row) => (
+            <li key={row.view.slug} className="list-disc">
+              {row.view.slug}
+            </li>
+          ))}
+        </ul>
+      </details>
+    ) : null;
+
+  if (listStatus.state === "loading") {
+    return (
+      <SettingsStack>
+        <ContentState
+          state="loading"
+          heading="Loading app permissions"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        />
+      </SettingsStack>
+    );
+  }
+
+  if (listStatus.state === "error") {
+    return (
+      <SettingsStack>
+        <ContentState
+          state="error"
+          title="Unable to load app permissions"
+          description={listStatus.message}
+          action={refreshButton}
+        />
+      </SettingsStack>
+    );
+  }
+
+  if (grantableRows.length === 0) {
+    return (
+      <SettingsStack>
+        <ContentState
+          state="empty"
+          title="No apps declare permissions yet."
+          action={refreshButton}
+        >
+          {noManifestDetails}
+        </ContentState>
+      </SettingsStack>
+    );
+  }
+
   return (
     <SettingsStack>
       <div className="flex flex-wrap items-center justify-end gap-3">
         {refreshButton}
       </div>
-
-      {listStatus.state === "error" && (
-        <p className="text-xs text-danger">{listStatus.message}</p>
-      )}
-
-      {listStatus.state !== "loading" && grantableRows.length === 0 && (
-        <p className="py-6 text-center text-xs text-muted">
-          No apps declare permissions yet.
-        </p>
-      )}
 
       {grantableRows.map((row) => (
         <SettingsGroup
@@ -254,22 +304,7 @@ export function AppPermissionsSection() {
         </SettingsGroup>
       ))}
 
-      {noManifestRows.length > 0 && (
-        <details className="text-xs text-muted">
-          <summary className="cursor-pointer">
-            {noManifestRows.length} registered app
-            {noManifestRows.length === 1 ? "" : "s"} without a permissions
-            manifest
-          </summary>
-          <ul className="mt-1.5 space-y-0.5 pl-4">
-            {noManifestRows.map((row) => (
-              <li key={row.view.slug} className="list-disc">
-                {row.view.slug}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      {noManifestDetails}
     </SettingsStack>
   );
 }
