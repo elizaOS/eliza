@@ -15,7 +15,7 @@
  *                       running total.
  *   - `credit_balance` → the returned `newBalance` becomes `NaN` and is shown
  *                        verbatim: the low-balance email renders `$NaN`, and
- *                        `lowerOrgBalanceHint`/logs record a garbage figure.
+ *                        the cached balance hint and logs record a garbage figure.
  *
  * A real corrupt NUMERIC cannot be stored in PGlite/Postgres (they reject it),
  * so the healthy-path regression coverage lives in the PGlite-backed
