@@ -60,15 +60,23 @@ export function migrateImports(file, source) {
   );
   const replacements = [];
   for (const statement of sourceFile.statements) {
-    if (!ts.isImportDeclaration(statement)) continue;
-    const moduleName = statement.moduleSpecifier.text;
+    // `export { X } from "…"` carries the same module specifier as an import
+    // and was previously invisible here, so a re-export could keep a legacy
+    // deep specifier alive through a migration that reported nothing to do.
+    const specifier = ts.isImportDeclaration(statement)
+      ? statement.moduleSpecifier
+      : ts.isExportDeclaration(statement)
+        ? statement.moduleSpecifier
+        : undefined;
+    if (!specifier || !ts.isStringLiteral(specifier)) continue;
+    const moduleName = specifier.text;
     const pluginPublicSubpath =
       file.startsWith(path.join(repoRoot, "plugins")) &&
       /^@elizaos\/ui\/(button|card|input|dropdown-menu)$/.test(moduleName);
     if (!moduleName.startsWith(prefix) && !pluginPublicSubpath) continue;
     replacements.push({
-      end: statement.moduleSpecifier.getEnd() - 1,
-      start: statement.moduleSpecifier.getStart() + 1,
+      end: specifier.getEnd() - 1,
+      start: specifier.getStart() + 1,
       value: destination(moduleName, file),
     });
   }
@@ -131,4 +139,8 @@ if (
   process.stdout.write(
     `${write ? "Migrated" : "Would migrate"} ${changed.length} files${rebuildFromHead ? " from HEAD" : ""}\n${changed.join("\n")}\n`,
   );
+  // `:check` (no --write) is the gate half of this script: exit non-zero when
+  // work is pending so it can actually fail a build, matching format:check and
+  // generate:first-party:check. Writing runs still report and exit 0.
+  if (!write && changed.length > 0) process.exitCode = 1;
 }

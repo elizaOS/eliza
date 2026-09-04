@@ -36,6 +36,30 @@ const compatibilityModules = {
   );
 });
 
+test("the migration rewrites re-export declarations, not just imports", () => {
+  const source = [
+    'export { Button } from "@elizaos/ui/components/ui/button";',
+    'export { CompactCardSkeleton } from "@elizaos/ui/components/ui/skeleton-layouts";',
+    'export * from "@elizaos/ui/components/ui/spinner";',
+    "",
+  ].join("\n");
+
+  assert.equal(
+    migrateImports("fixture.ts", source),
+    [
+      'export { Button } from "@elizaos/ui/button";',
+      'export { CompactCardSkeleton } from "@elizaos/ui";',
+      'export * from "@elizaos/ui";',
+      "",
+    ].join("\n"),
+  );
+});
+
+test("the migration leaves export declarations without a module specifier alone", () => {
+  const source = "const Button = 1;\nexport { Button };\n";
+  assert.equal(migrateImports("fixture.ts", source), source);
+});
+
 test("the migration preserves dedicated public atom exports", () => {
   assert.equal(
     destination("@elizaos/ui/components/ui/button"),
