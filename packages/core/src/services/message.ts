@@ -2917,6 +2917,14 @@ function verifiedCrossRoomContent(memory: Memory): string {
 const PLANNER_MAX_OWN_REPLY_TURNS = 4;
 
 /**
+ * Voice needs enough immediate dialogue for natural follow-ups without sending
+ * an arbitrarily old room transcript before every spoken reply. The existing
+ * current-turn boundary tells the model that older messages remain searchable,
+ * so this is a bounded live window rather than lossy deletion.
+ */
+const VOICE_PRIOR_DIALOGUE_WINDOW_MESSAGES = 24;
+
+/**
  * Structural marker for an assistant memory whose text is a tool-derived
  * answer rather than plain dialogue: it carries merged action-callback
  * history, or its recorded actions include a real tool (anything beyond the
@@ -2957,7 +2965,7 @@ function appendPriorDialogueEvents(
 	if (!Array.isArray(recentMessages)) {
 		return;
 	}
-	const dialogue = recentMessages
+	const completeDialogue = recentMessages
 		.filter((memory): memory is Memory => {
 			if (!memory || typeof memory !== "object") return false;
 			const m = memory as Memory;
@@ -3013,6 +3021,10 @@ function appendPriorDialogueEvents(
 				: 0;
 			return aTime - bTime;
 		});
+	const dialogue =
+		currentMessage.content.channelType === ChannelType.VOICE_DM
+			? completeDialogue.slice(-VOICE_PRIOR_DIALOGUE_WINDOW_MESSAGES)
+			: completeDialogue;
 	// Bound how many of the agent's own turns render (newest win): the planner
 	// needs the immediate question/preview a continuation refers to, not the
 	// agent's whole side of a long conversation.
@@ -8876,6 +8888,8 @@ export async function runV5MessageRuntimeStage1(args: {
 		args.message.content?.channelType === ChannelType.VOICE_DM ||
 		args.message.content?.channelType === ChannelType.API ||
 		args.message.content?.channelType === ChannelType.SELF;
+	const voiceDirectMessageChannel =
+		args.message.content?.channelType === ChannelType.VOICE_DM;
 	// Ambient turn = a positively-identified unaddressed text-group turn
 	// (structural classifier only — channel type + addressing + source
 	// metadata, never message text; anything uncertain fails open to
@@ -8935,6 +8949,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			})
 		: null;
 	let useProviderOverflow = false;
+	// Realtime voice must keep the turn compact enough to answer naturally.
+	// Providers that expose `overflowText` retain a lossless retrieval manifest,
+	// so the model can still call MEMORY_SEARCH when the utterance needs older
+	// cross-room context without eagerly paying that full history on every turn.
+	if (voiceDirectMessageChannel && overflowContext) {
+		context = overflowContext;
+		useProviderOverflow = true;
+	}
 	const stage1PreprocessStartedAt = performance.now();
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
@@ -9005,8 +9027,6 @@ export async function runV5MessageRuntimeStage1(args: {
 	let messageHandlerStageTask: Promise<void> = Promise.resolve();
 	try {
 		const messageHandlerStartedAt = Date.now();
-		const voiceDirectMessageChannel =
-			args.message.content?.channelType === ChannelType.VOICE_DM;
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
 
@@ -10332,30 +10352,35 @@ export async function runV5MessageRuntimeStage1(args: {
 			codingMode: args.codingMode === true,
 		});
 		let effectivePlannerBudget = eagerPlannerBudget;
-		if (
+		const eagerPlannerExceedsBudget =
 			eagerPlannerBudget.estimatedInputTokens >
-			eagerPlannerBudget.dispatchThresholdTokens
+			eagerPlannerBudget.dispatchThresholdTokens;
+		if (
+			eagerPlannerExceedsBudget ||
+			(voiceDirectMessageChannel && losslessOverflowPlannerState)
 		) {
-			const plannerToolSizes = plannerTools
-				.map((tool) => ({
-					name: tool.name,
-					bytes: JSON.stringify(tool).length,
-				}))
-				.sort((left, right) => right.bytes - left.bytes);
-			args.runtime.logger.warn(
-				{
-					estimatedInputTokens: eagerPlannerBudget.estimatedInputTokens,
-					dispatchThresholdTokens: eagerPlannerBudget.dispatchThresholdTokens,
-					toolCount: plannerTools.length,
-					toolSchemaBytes: plannerToolSizes.reduce(
-						(total, tool) => total + tool.bytes,
-						0,
-					),
-					largestTools: plannerToolSizes.slice(0, 5),
-					losslessProviderProjection: losslessOverflowPlannerState !== null,
-				},
-				"[SERVICE:MESSAGE] Initial planner input exceeds the conservative dispatch budget",
-			);
+			if (eagerPlannerExceedsBudget) {
+				const plannerToolSizes = plannerTools
+					.map((tool) => ({
+						name: tool.name,
+						bytes: JSON.stringify(tool).length,
+					}))
+					.sort((left, right) => right.bytes - left.bytes);
+				args.runtime.logger.warn(
+					{
+						estimatedInputTokens: eagerPlannerBudget.estimatedInputTokens,
+						dispatchThresholdTokens: eagerPlannerBudget.dispatchThresholdTokens,
+						toolCount: plannerTools.length,
+						toolSchemaBytes: plannerToolSizes.reduce(
+							(total, tool) => total + tool.bytes,
+							0,
+						),
+						largestTools: plannerToolSizes.slice(0, 5),
+						losslessProviderProjection: losslessOverflowPlannerState !== null,
+					},
+					"[SERVICE:MESSAGE] Initial planner input exceeds the conservative dispatch budget",
+				);
+			}
 			if (losslessOverflowPlannerState) {
 				const overflowPlannerContext = await createV5MessageContextObject({
 					...args,
@@ -10475,8 +10500,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						effectivePlannerBudget = candidateBudget;
 						args.runtime.logger.warn(
 							{
-								estimatedInputTokens:
-									candidateBudget.estimatedInputTokens,
+								estimatedInputTokens: candidateBudget.estimatedInputTokens,
 								dispatchThresholdTokens:
 									candidateBudget.dispatchThresholdTokens,
 								candidateToolCount: candidateTools.length,

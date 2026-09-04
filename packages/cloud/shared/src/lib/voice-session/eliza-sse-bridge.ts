@@ -31,6 +31,7 @@ export const VOICE_CONVERSATION_HEADER = "X-Eliza-Conversation-Id";
 export const VOICE_ORGANIZATION_HEADER = "X-Eliza-Organization-Id";
 export const VOICE_USER_HEADER = "X-Eliza-User-Id";
 export const VOICE_STREAM_PROTOCOL = "delta-v2" as const;
+export const VOICE_CHANNEL_TYPE = "VOICE_DM" as const;
 
 const MAX_SERVER_TIMING_HEADER_CHARS = 2_048;
 const MAX_SERVER_TIMING_ENTRIES = 16;
@@ -234,6 +235,7 @@ export async function streamElizaConversation(
       // sharedRestMessageSend/bridgeStream executes and persists this turn.
       body: JSON.stringify({
         text: request.transcript,
+        channelType: VOICE_CHANNEL_TYPE,
         ...(request.messageRole ? { messageRole: request.messageRole } : {}),
         ...(request.clientMessageId ? { clientMessageId: request.clientMessageId } : {}),
         ...(request.historyCutoffAt !== undefined

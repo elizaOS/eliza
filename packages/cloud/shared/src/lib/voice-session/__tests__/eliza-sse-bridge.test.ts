@@ -809,6 +809,7 @@ describe("eliza sse bridge", () => {
     );
     expect(seenBody).toEqual({
       text: "hi",
+      channelType: "VOICE_DM",
       metadata: {
         clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
       },

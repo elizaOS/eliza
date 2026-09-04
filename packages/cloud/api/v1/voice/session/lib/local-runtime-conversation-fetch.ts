@@ -10,7 +10,10 @@ import {
   LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
   REALTIME_VOICE_CLIENT_TRANSPORT,
 } from "@elizaos/shared";
-import { VOICE_STREAM_PROTOCOL } from "@/lib/voice-session/eliza-sse-bridge";
+import {
+  VOICE_CHANNEL_TYPE,
+  VOICE_STREAM_PROTOCOL,
+} from "@/lib/voice-session/eliza-sse-bridge";
 
 const CLOUD_CONVERSATION_STREAM_PATH =
   /^\/api\/v1\/eliza\/agents\/([^/]+)\/api\/conversations\/([^/]+)\/messages\/stream$/;
@@ -147,6 +150,7 @@ function resolveRequestUrl(input: RequestInfo | URL): URL {
 
 function parseRequestBody(body: BodyInit | null | undefined): {
   text: string;
+  channelType: typeof VOICE_CHANNEL_TYPE;
   messageRole?: "system";
   clientMessageId?: string;
   metadata: { clientTransport: typeof REALTIME_VOICE_CLIENT_TRANSPORT };
@@ -205,6 +209,7 @@ function parseRequestBody(body: BodyInit | null | undefined): {
     }
     return {
       text: parsed.text,
+      channelType: VOICE_CHANNEL_TYPE,
       ...(parsed.messageRole === undefined
         ? {}
         : { messageRole: parsed.messageRole }),

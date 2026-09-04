@@ -79,6 +79,7 @@ describe("local runtime conversation fetch", () => {
     expect(calls[0]?.init?.redirect).toBe("error");
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
       text: "hello locally",
+      channelType: "VOICE_DM",
       messageRole: "system",
       clientMessageId: "twilio-call:CA123:started",
       metadata: {
@@ -162,6 +163,7 @@ describe("local runtime conversation fetch", () => {
         url: "http://127.0.0.1:31337/api/conversations/11111111-1111-4111-8111-111111111111/messages/stream",
         body: {
           text: "make your personality warmer",
+          channelType: "VOICE_DM",
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         },

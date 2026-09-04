@@ -1787,6 +1787,79 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent).toContain("### facts");
 	});
 
+	it("keeps live voice context bounded and losslessly searchable", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				shouldRespond: "IGNORE",
+				contexts: ["simple"],
+				replyText: "",
+			}),
+		]);
+		const recentMessages = Array.from(
+			{ length: 32 },
+			(_, index): Memory => ({
+				id: `00000000-0000-0000-0000-${String(index + 10).padStart(12, "0")}` as UUID,
+				entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+				agentId: "00000000-0000-0000-0000-000000000003" as UUID,
+				roomId: "00000000-0000-0000-0000-000000000004" as UUID,
+				createdAt: index + 10,
+				content: {
+					text:
+						index === 0
+							? "STALE_VOICE_ROOM_HISTORY"
+							: index === 31
+								? "RECENT_VOICE_ROOM_HISTORY"
+								: `voice room history ${index}`,
+					source: "test",
+				},
+			}),
+		);
+		const state: State = {
+			values: { availableContexts: "general" },
+			data: {
+				providerOrder: ["recent-conversations", "RECENT_MESSAGES"],
+				providers: {
+					"recent-conversations": {
+						text: "EAGER_CROSS_ROOM_HISTORY",
+						overflowText: "LOSSLESS_HISTORY_MANIFEST",
+						values: {},
+						data: {},
+					},
+					RECENT_MESSAGES: {
+						text: "EAGER_CURRENT_ROOM_HISTORY",
+						values: {},
+						data: { recentMessages },
+					},
+				},
+			},
+			text: "EAGER_CROSS_ROOM_HISTORY",
+		};
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.VOICE_DM,
+				text: "what did we discuss yesterday?",
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall).toBeDefined();
+		if (!firstCall) {
+			throw new Error("Expected the voice Stage-1 model call to be captured");
+		}
+		const messages = (
+			firstCall[1] as { messages?: Array<{ content?: unknown }> }
+		).messages;
+		const wireText = JSON.stringify(messages ?? []);
+		expect(wireText).toContain("LOSSLESS_HISTORY_MANIFEST");
+		expect(wireText).not.toContain("EAGER_CROSS_ROOM_HISTORY");
+		expect(wireText).toContain("RECENT_VOICE_ROOM_HISTORY");
+		expect(wireText).not.toContain("STALE_VOICE_ROOM_HISTORY");
+	});
+
 	it("keeps generic programming questions on the simple path even when stale attachments linger in state", async () => {
 		// Regression for the false-positive routing where a verb like "read"
 		// in a normal dev question ("read a large file line by line in node")
