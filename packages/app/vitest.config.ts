@@ -18,8 +18,11 @@ const unitExcludes = [
   "**/*.e2e.test.{ts,tsx}",
   "**/*.e2e.spec.{ts,tsx}",
   "**/*.spec.{ts,tsx}",
-  "test/ui-smoke/**",
-  "test/electrobun-packaged/**",
+  // These two directories are playwright suites, and the `**/*.spec.{ts,tsx}`
+  // and `**/*.e2e.spec.{ts,tsx}` patterns above already keep every one of their
+  // 168 specs out of vitest. Excluding the directories wholesale also swept up
+  // the handful of plain `*.test.ts` unit files that live beside them, which
+  // launch no browser and were running in no lane at all.
   // Script-level tests use Bun or Node test APIs and run through the package's
   // dedicated `bun test` phase, outside Vitest's jsdom transform.
   "scripts/**/*.test.{ts,tsx,mjs}",
