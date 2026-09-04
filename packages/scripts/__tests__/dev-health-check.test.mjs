@@ -12,6 +12,7 @@ import {
   DEFAULT_API_PORT,
   DEFAULT_UI_PORT,
   MAX_TIMER_MS,
+  attachDecodedChildOutput,
   parseArgs,
   parsePositiveIntMs,
   parsePositiveIntSeconds,
@@ -456,16 +457,49 @@ describe("dev-health-check CLI boundary", () => {
 });
 
 describe("dev-health-check multibyte", () => {
-  test("StringDecoder preserves split UTF-8 across chunk boundaries for log capture", async () => {
-    const { StringDecoder } = await import("node:string_decoder");
-    const decoder = new StringDecoder("utf8");
-    const part1 = Buffer.from([0xf0, 0x9f]);
-    const part2 = Buffer.from([0x8c, 0x9f]);
-    const text1 = decoder.write(part1);
-    const text2 = decoder.write(part2);
-    const trail = decoder.end();
-    const combined = `${text1}${text2}${trail}`;
+  test("production log wiring reassembles split halves without replacement chars", async () => {
+    const { EventEmitter } = await import("node:events");
+    // Deterministic red-on-revert control: naive chunk.toString("utf8")
+    // turns each half into U+FFFD, so this fails without the decoder.
+    const fake = { stdout: new EventEmitter(), stderr: new EventEmitter() };
+    const seen = [];
+    attachDecodedChildOutput(fake, {
+      onStdoutText: (text) => seen.push(text),
+      onStderrText: (text) => seen.push(text),
+    });
+    const star = Buffer.from("🌟", "utf8");
+    fake.stdout.emit("data", star.subarray(0, 2));
+    fake.stdout.emit("data", star.subarray(2));
+    fake.stdout.emit("end");
+    fake.stderr.emit("end");
+    const combined = seen.join("");
     expect(combined).toBe("🌟");
     expect(combined).not.toContain("\uFFFD");
   });
+
+  test("split child output survives real pipes into the log sinks", async () => {
+    const { spawn } = await import("node:child_process");
+    const seen = [];
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        'const s = Buffer.from("🌟", "utf8");' +
+          "process.stdout.write(s.subarray(0, 2));" +
+          'setTimeout(() => { process.stdout.write(s.subarray(2)); }, 100);',
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    attachDecodedChildOutput(child, {
+      onStdoutText: (text) => seen.push(text),
+      onStderrText: (text) => seen.push(text),
+    });
+    await new Promise((resolve, reject) => {
+      child.on("error", reject);
+      child.on("close", resolve);
+    });
+    const combined = seen.join("");
+    expect(combined).toContain("🌟");
+    expect(combined).not.toContain("\uFFFD");
+  }, 10_000);
 });

@@ -339,6 +339,35 @@ function appendLog(logChunks, logStream, source, chunk) {
   logStream.write(formatLogChunk(source, at, clean));
 }
 
+/**
+ * Production decode wiring for one supervised child. Kept standalone so tests
+ * can drive it with a real child over real pipes: split multibyte bytes
+ * across `data` events must reassemble without U+FFFD before reaching the
+ * log sinks.
+ */
+export function attachDecodedChildOutput(child, { onStdoutText, onStderrText }) {
+  const stdoutDecoder = new StringDecoder("utf8");
+  const stderrDecoder = new StringDecoder("utf8");
+  child.stdout.on("data", (chunk) => {
+    const text = typeof chunk === "string" ? chunk : stdoutDecoder.write(chunk);
+    if (!text) return;
+    onStdoutText(text);
+  });
+  child.stderr.on("data", (chunk) => {
+    const text = typeof chunk === "string" ? chunk : stderrDecoder.write(chunk);
+    if (!text) return;
+    onStderrText(text);
+  });
+  child.stdout.on("end", () => {
+    const remaining = stdoutDecoder.end();
+    if (remaining) onStdoutText(remaining);
+  });
+  child.stderr.on("end", () => {
+    const remaining = stderrDecoder.end();
+    if (remaining) onStderrText(remaining);
+  });
+}
+
 function allLogText(logChunks) {
   return logChunks
     .map((entry) => formatLogChunk(entry.source, entry.at, entry.text))
@@ -696,28 +725,11 @@ async function run() {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  const stdoutDecoder = new StringDecoder("utf8");
-  const stderrDecoder = new StringDecoder("utf8");
-
   let childExit = null;
   child.stdin?.on("error", () => {});
-  child.stdout.on("data", (chunk) => {
-    const text = typeof chunk === "string" ? chunk : stdoutDecoder.write(chunk);
-    if (!text) return;
-    appendLog(logChunks, logStream, "stdout", text);
-  });
-  child.stderr.on("data", (chunk) => {
-    const text = typeof chunk === "string" ? chunk : stderrDecoder.write(chunk);
-    if (!text) return;
-    appendLog(logChunks, logStream, "stderr", text);
-  });
-  child.stdout.on("end", () => {
-    const remaining = stdoutDecoder.end();
-    if (remaining) appendLog(logChunks, logStream, "stdout", remaining);
-  });
-  child.stderr.on("end", () => {
-    const remaining = stderrDecoder.end();
-    if (remaining) appendLog(logChunks, logStream, "stderr", remaining);
+  attachDecodedChildOutput(child, {
+    onStdoutText: (text) => appendLog(logChunks, logStream, "stdout", text),
+    onStderrText: (text) => appendLog(logChunks, logStream, "stderr", text),
   });
   child.on("error", (error) => {
     childExit = {

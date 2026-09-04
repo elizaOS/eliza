@@ -17,9 +17,12 @@ import { fileURLToPath } from "node:url";
 
 import { spawnSync } from "../../lib/spawn-sync-captured.mjs";
 import {
+  CONSOLE_TAIL_CAPACITY_CHARS,
   classifyResult,
   countStatuses,
+  createTaskOutputAccumulator,
   normalizeRunConcurrency,
+  truncateConsoleTail,
 } from "../lib/runner.mjs";
 
 const LABEL = "@elizaos/logger (packages/logger)#test";
@@ -407,24 +410,73 @@ describe("route: POST /api/run rejects invalid concurrency before live-lane side
 });
 
 describe("console runner multibyte", () => {
-  test("StringDecoder preserves split UTF-8 across chunk boundaries for tail and event", async () => {
-    const { StringDecoder } = await import("node:string_decoder");
-    const decoder = new StringDecoder("utf8");
-    const star = "🌟";
-    const buf = Buffer.from(star, "utf8");
-    const part1 = buf.subarray(0, 2);
-    const part2 = buf.subarray(2);
-    const t1 = decoder.write(part1);
-    expect(t1).toBe("");
-    const t2 = decoder.write(part2);
-    const trail = decoder.end();
-    const combined = `${t1}${t2}${trail}`;
-    expect(combined).toBe(star);
+  test("reassembles split halves fed as separate data events without replacement chars", () => {
+    const chunks: string[] = [];
+    const output = createTaskOutputAccumulator((text) => {
+      chunks.push(text);
+    });
+    // Deterministic red-on-revert control: naive chunk.toString("utf8") turns
+    // each half into U+FFFD, so this fails without the production decoder.
+    const star = Buffer.from("🌟", "utf8");
+    output.pushStdout(star.subarray(0, 2));
+    output.pushStdout(star.subarray(2));
+    output.endStdout();
+    const combined = chunks.join("");
+    expect(combined).toBe("🌟");
     expect(combined).not.toContain("\uFFFD");
-    // tail slicing preserves well-formed output
-    let tail = "";
-    tail = (tail + combined).slice(-16_384);
-    expect(tail).toContain(star);
-    expect(tail.isWellFormed()).toBe(true);
+    expect(output.getTail()).toBe("🌟");
+  });
+
+  test("reassembles a split multibyte sequence from a real child across data events", async () => {
+    const chunks: string[] = [];
+    const output = createTaskOutputAccumulator((text) => {
+      chunks.push(text);
+    });
+    // Delay-separated writes so the emoji halves arrive as distinct pipe
+    // chunks; the accumulator must reassemble them without U+FFFD.
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        'const s = Buffer.from("🌟", "utf8");' +
+          "process.stdout.write(s.subarray(0, 2));" +
+          'setTimeout(() => { process.stdout.write(s.subarray(2)); }, 100);',
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    await new Promise<void>((resolve, reject) => {
+      child.stdout.on("data", (chunk) => output.pushStdout(chunk));
+      child.stderr.on("data", (chunk) => output.pushStderr(chunk));
+      child.on("error", reject);
+      child.on("close", () => {
+        output.endStdout();
+        output.endStderr();
+        resolve();
+      });
+    });
+    const combined = chunks.join("");
+    expect(combined).toContain("🌟");
+    expect(combined).not.toContain("\uFFFD");
+    expect(output.getTail()).toContain("🌟");
+  });
+
+  test("truncateConsoleTail drops a severed low surrogate at the capacity boundary", () => {
+    const T = CONSOLE_TAIL_CAPACITY_CHARS;
+    // Fill past capacity, then append an emoji straddling the cut: the
+    // retained window starts with the lone low surrogate.
+    const tail = "y".repeat(T + 5);
+    const cut = truncateConsoleTail(`${tail}🌟${"x".repeat(T - 1)}`);
+    expect(cut.isWellFormed()).toBe(true);
+    expect(cut).not.toContain("\uFFFD");
+    expect(cut[0]).toBe("x");
+    expect(cut.length).toBe(T - 1);
+  });
+
+  test("truncateConsoleTail retains a whole pair fully inside the window", () => {
+    const T = CONSOLE_TAIL_CAPACITY_CHARS;
+    const kept = truncateConsoleTail(`${"y".repeat(T - 2)}🌟`);
+    expect(kept).toContain("🌟");
+    expect(kept.isWellFormed()).toBe(true);
+    expect(kept.length).toBe(T);
   });
 });

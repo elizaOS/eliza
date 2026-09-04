@@ -41,6 +41,55 @@ const CLOUD_LABEL = "cloud#test";
 export const MAX_RUN_CONCURRENCY = 32;
 
 /**
+ * Retained per-run tail capacity. Truncating the tail can sever a surrogate
+ * pair at the cut, leaving a lone low surrogate first — the same boundary
+ * `captured-test-output.mjs` guards. Drop it so the tail stays well-formed.
+ */
+export const CONSOLE_TAIL_CAPACITY_CHARS = 16_384;
+
+export function truncateConsoleTail(value) {
+  const truncated = value.slice(-CONSOLE_TAIL_CAPACITY_CHARS);
+  if (truncated.length === 0) return truncated;
+  const first = truncated.charCodeAt(0);
+  if (first >= 0xdc00 && first <= 0xdfff) return truncated.slice(1);
+  return truncated;
+}
+
+/**
+ * Production decode + tail accumulation for one task child. Kept as a
+ * standalone unit so tests can drive it with a real child process over real
+ * pipes: each observed `data` chunk goes to `pushStdout`/`pushStderr`, the
+ * stream ends go to `endStdout`/`endStderr`, and every decoded text —
+ * including multi-chunk reassembly — is delivered to `onChunk`.
+ */
+export function createTaskOutputAccumulator(onChunk) {
+  const stdoutDecoder = new StringDecoder("utf8");
+  const stderrDecoder = new StringDecoder("utf8");
+  let tail = "";
+  const push = (chunk, decoder) => {
+    const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
+    if (!text && Buffer.isBuffer(chunk)) return;
+    const emitText = text ?? String(chunk);
+    tail = truncateConsoleTail(tail + emitText);
+    onChunk(emitText);
+  };
+  const end = (decoder) => {
+    const remaining = decoder.end();
+    if (remaining) {
+      tail = truncateConsoleTail(tail + remaining);
+      onChunk(remaining);
+    }
+  };
+  return {
+    pushStdout: (chunk) => push(chunk, stdoutDecoder),
+    pushStderr: (chunk) => push(chunk, stderrDecoder),
+    endStdout: () => end(stdoutDecoder),
+    endStderr: () => end(stderrDecoder),
+    getTail: () => tail,
+  };
+}
+
+/**
  * Normalize the API's optional worker count before it reaches the pool.
  * Missing and blank values preserve the console's default; supplied values
  * must be bounded positive decimal integers so one request cannot fan out the
@@ -230,15 +279,7 @@ export class RunManager extends EventEmitter {
       });
       run.children.add(child);
 
-      let tail = "";
-      const stdoutDecoder = new StringDecoder("utf8");
-      const stderrDecoder = new StringDecoder("utf8");
-      const emitDecoded = (chunk, decoder) => {
-        logStream.write(chunk);
-        const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
-        if (!text && Buffer.isBuffer(chunk)) return;
-        const emitText = text ?? String(chunk);
-        tail = (tail + emitText).slice(-16_384);
+      const emitLogEvent = (emitText) => {
         this.emit("event", {
           type: "log",
           runId: run.runId,
@@ -246,32 +287,17 @@ export class RunManager extends EventEmitter {
           chunk: emitText,
         });
       };
-      child.stdout.on("data", (chunk) => emitDecoded(chunk, stdoutDecoder));
-      child.stderr.on("data", (chunk) => emitDecoded(chunk, stderrDecoder));
-      child.stdout.on("end", () => {
-        const remaining = stdoutDecoder.end();
-        if (remaining) {
-          tail = (tail + remaining).slice(-16_384);
-          this.emit("event", {
-            type: "log",
-            runId: run.runId,
-            label: entry.label,
-            chunk: remaining,
-          });
-        }
+      const output = createTaskOutputAccumulator(emitLogEvent);
+      child.stdout.on("data", (chunk) => {
+        logStream.write(chunk);
+        output.pushStdout(chunk);
       });
-      child.stderr.on("end", () => {
-        const remaining = stderrDecoder.end();
-        if (remaining) {
-          tail = (tail + remaining).slice(-16_384);
-          this.emit("event", {
-            type: "log",
-            runId: run.runId,
-            label: entry.label,
-            chunk: remaining,
-          });
-        }
+      child.stderr.on("data", (chunk) => {
+        logStream.write(chunk);
+        output.pushStderr(chunk);
       });
+      child.stdout.on("end", () => output.endStdout());
+      child.stderr.on("end", () => output.endStderr());
 
       child.once("close", (code, signal) => {
         run.children.delete(child);
@@ -283,7 +309,7 @@ export class RunManager extends EventEmitter {
           label: entry.label,
           code,
           signal,
-          tail,
+          tail: output.getTail(),
           cancelled: run.cancelled,
         });
         recordTaskStatus(entry.label, {

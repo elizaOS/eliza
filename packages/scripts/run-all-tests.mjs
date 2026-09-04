@@ -1284,8 +1284,15 @@ function runScript(
     };
 
     child.on("error", reject);
-    child.on("exit", (code, signal) => {
+    // `exit` fires when the process ends, but stdio data can still be in
+    // flight: ending the decoders here would corrupt a split multibyte
+    // sequence delivered after the flush (write-after-end). So `exit` only
+    // stops the timer; the flush and settlement run on `close`, after the
+    // streams have ended and every `data` handler has run.
+    child.on("exit", () => {
       if (timeoutTimer) clearTimeout(timeoutTimer);
+    });
+    child.on("close", (code, signal) => {
       const trailingStdout = stdoutDecoder.end();
       if (trailingStdout) {
         appendCapturedTestOutput(capturedOutput, trailingStdout, "stdout");

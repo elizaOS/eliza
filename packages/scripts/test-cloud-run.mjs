@@ -718,8 +718,10 @@ export function runCommandWithWatchdog(
           stdout = appendClassificationOutput(stdout, trailingOut);
           try {
             writeOut?.(trailingOut);
+            // error-policy:J6 best-effort stream passthrough during teardown.
           } catch {}
         }
+        // error-policy:J6 best-effort decoder flush during teardown.
       } catch {}
       try {
         const trailingErr = stderrDecoder.end();
@@ -733,12 +735,15 @@ export function runCommandWithWatchdog(
           stderr = appendClassificationOutput(stderr, trailingErr);
           try {
             writeErr?.(trailingErr);
+            // error-policy:J6 best-effort stream passthrough during teardown.
           } catch {}
         }
+        // error-policy:J6 best-effort decoder flush during teardown.
       } catch {}
       try {
         const trailingSup = supervisorDecoder.end();
         if (trailingSup) supervisorStatusOutput += trailingSup;
+        // error-policy:J6 best-effort decoder flush during teardown.
       } catch {}
       settled = true;
       clearTimeout(watchdog);
@@ -819,7 +824,10 @@ export function runCommandWithWatchdog(
       return terminationPromise;
     };
 
+    // Post-settlement bytes must not reach an ended decoder (write-after-end)
+    // or produce side effects after `finish()` resolved.
     child.stdout?.on("data", (chunk) => {
+      if (settled) return;
       const text = stdoutDecoder.write(chunk);
       if (!text) return;
       if (stdout.length + text.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
@@ -841,6 +849,7 @@ export function runCommandWithWatchdog(
       releaseDrainedSupervisor();
     });
     child.stderr?.on("data", (chunk) => {
+      if (settled) return;
       const text = stderrDecoder.write(chunk);
       if (!text) return;
       if (stderr.length + text.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
@@ -862,6 +871,7 @@ export function runCommandWithWatchdog(
       releaseDrainedSupervisor();
     });
     supervisorStatus?.on("data", (chunk) => {
+      if (settled) return;
       const text = supervisorDecoder.write(chunk);
       if (text) supervisorStatusOutput += text;
     });
