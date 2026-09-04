@@ -27,7 +27,7 @@ def llama_cpp_vendor_hint() -> str:
     return (
         "The llama.cpp fork submodule should already be checked out. If it is "
         f"missing, run: git submodule update --init {relative}. Then build "
-        "llama-quantize and llama-cli, or pass --llama-cpp-dir / set "
+        "llama-quantize and llama-completion, or pass --llama-cpp-dir / set "
         "LLAMA_CPP_DIR / place the binaries on PATH."
     )
 
@@ -123,15 +123,15 @@ def run_command(command: list[str | Path], logger: logging.Logger) -> None:
 
 
 def smoke_load_gguf(gguf_path: Path, quantize_bin: Path) -> dict[str, object]:
-    """Load a produced GGUF in llama-cli and require non-empty generation."""
+    """Load a produced GGUF with the fork's noninteractive completion tool."""
 
-    cli = quantize_bin.parent / "llama-cli"
+    cli = quantize_bin.parent / "llama-completion"
     if not cli.exists():
-        found = shutil.which("llama-cli")
+        found = shutil.which("llama-completion")
         if not found:
             return {
                 "ok": False,
-                "error": f"llama-cli not found next to {quantize_bin} or on PATH",
+                "error": f"llama-completion not found next to {quantize_bin} or on PATH",
             }
         cli = Path(found)
     command = [
@@ -143,6 +143,7 @@ def smoke_load_gguf(gguf_path: Path, quantize_bin: Path) -> dict[str, object]:
         "-n",
         "8",
         "-no-cnv",
+        "--no-display-prompt",
         "--temp",
         "0",
         "-t",
@@ -151,20 +152,21 @@ def smoke_load_gguf(gguf_path: Path, quantize_bin: Path) -> dict[str, object]:
     try:
         process = subprocess.run(
             command,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=180,
         )
     except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "llama-cli timed out (180s)"}
+        return {"ok": False, "error": "llama-completion timed out (180s)"}
     except OSError as error:
-        return {"ok": False, "error": f"llama-cli spawn failed: {error}"}
+        return {"ok": False, "error": f"llama-completion spawn failed: {error}"}
     output = (process.stdout or "").strip()
     if process.returncode != 0 or not output:
         return {
             "ok": False,
             "error": (
-                f"llama-cli rc={process.returncode}; stderr tail: "
+                f"llama-completion rc={process.returncode}; stderr tail: "
                 f"{(process.stderr or '')[-300:]}"
             ),
         }
@@ -219,7 +221,7 @@ def run_quant_profile(
         dest="smoke_load",
         action="store_false",
         help=(
-            "Skip the required post-quantize llama-cli load smoke. The "
+            "Skip the required post-quantize llama-completion load smoke. The "
             "artifact will be marked ineligible for release."
         ),
     )
@@ -301,7 +303,7 @@ def run_quant_profile(
         ),
         "smoke_load": smoke,
         "recipe_test": {
-            "name": "llama-cli-load-smoke",
+            "name": "llama-completion-load-smoke",
             "status": "passed" if release_eligible else "skipped",
             "release_eligible": release_eligible,
             "artifact": str(quant_path),
