@@ -36,11 +36,21 @@ export const DEFAULT_CONTENT_PROJECTION_AGGREGATE_TOKENS = 64_000;
  * tiny windows (≤ 50k) still get the 10k floor and large windows (≥ 200k)
  * scale up proportionally.
  *
- * **Important:** the scaled reserve only applies when (a) the model name was
- * passed AND resolved through `lookupModelContextWindow` AND (b) the caller
- * did not supply an explicit `reserveTokens`. Callers that pre-compute a
- * window-and-reserve pair keep their exact behavior — no regression for
- * existing call sites that don't pass `modelName`.
+ * **Important:** the scaled reserve applies when (a) the model name was passed
+ * AND resolved through `lookupModelContextWindow` AND (b) the caller supplied
+ * no `reserveTokens` — or supplied exactly `DEFAULT_INPUT_RESERVE_TOKENS`,
+ * which is treated as "carrying the legacy default" rather than as an
+ * override, so the planner-loop call site (which always forwards its 10k
+ * default) still gets the per-model derivation. Any other value, including
+ * `0`, is honored verbatim.
+ *
+ * That sentinel is easy to trip over: with a 1M-token window, passing
+ * `reserveTokens: 10_000` yields a 200k reserve, while `10_001` yields 10_001.
+ * To pin the flat 10k floor against a resolved model, omit `modelName` (no
+ * lookup fires) or pass `contextWindowTokens` explicitly.
+ *
+ * Callers that pre-compute a window-and-reserve pair keep their exact
+ * behavior — no regression for existing call sites that don't pass `modelName`.
  */
 export const MODEL_WINDOW_RESERVE_FRACTION = 0.2;
 
