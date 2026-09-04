@@ -10,6 +10,10 @@
  */
 
 import { createHash, createHmac } from "node:crypto";
+import {
+  classifyManagedDedicatedProvisionFailure,
+  type ManagedDedicatedProvisionFailureCode,
+} from "./managed-dedicated-provision-diagnostic";
 
 const STAGING_API_BASE_URL = "https://api-staging.eliza.app";
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
@@ -48,6 +52,53 @@ interface MutationSnapshot {
   agentDigest: string;
   jobCount: number;
   jobDigest: string;
+  selectedTarget: RereviewTargetDiagnostic;
+}
+
+interface RereviewTargetDiagnostic {
+  status: string;
+  databaseStatus: string;
+  provisionFailure: ManagedDedicatedProvisionFailureCode;
+  hasContainer: boolean;
+  hasBridge: boolean;
+}
+
+/** Emits only lifecycle vocabulary and presence flags from the retained row. */
+export function diagnoseRereviewTarget(target: {
+  status: string;
+  database_status: string;
+  error_message: string | null;
+  sandbox_id: string | null;
+  bridge_url: string | null;
+}): RereviewTargetDiagnostic {
+  if (
+    ![
+      "pending",
+      "provisioning",
+      "running",
+      "stopped",
+      "sleeping",
+      "disconnected",
+      "error",
+      "deletion_pending",
+      "deletion_failed",
+    ].includes(target.status) ||
+    !["none", "provisioning", "ready", "error"].includes(target.database_status)
+  ) {
+    throw new PersonalDedicatedRereviewOperatorError(
+      "selected_target_status_invalid",
+    );
+  }
+  return {
+    status: target.status,
+    databaseStatus: target.database_status,
+    provisionFailure: classifyManagedDedicatedProvisionFailure(
+      target.error_message,
+      "selected target error",
+    ),
+    hasContainer: Boolean(target.sandbox_id),
+    hasBridge: Boolean(target.bridge_url),
+  };
 }
 
 interface SelectionPreviewBase {
@@ -114,6 +165,7 @@ export interface RereviewOperatorEvidence {
   agentCount: number;
   jobCount: number;
   executed: boolean;
+  selectedTarget: RereviewTargetDiagnostic;
 }
 
 export interface RereviewOperatorDecisionEvidence {
@@ -409,6 +461,7 @@ export async function runRereviewOperator(
     agentCount: after.agentCount,
     jobCount: after.jobCount,
     executed: config.mode === "execute",
+    selectedTarget: after.selectedTarget,
   };
 }
 
@@ -624,11 +677,18 @@ async function defaultSnapshot(
       ),
     )
     .orderBy(jobs.id);
+  const selectedTarget = agentRows.find(
+    (row) => row.id === input.retainedAgentId,
+  );
+  if (!selectedTarget) {
+    throw new PersonalDedicatedRereviewOperatorError("selected_target_missing");
+  }
   return {
     agentCount: agentRows.length,
     agentDigest: digestRows(agentRows),
     jobCount: jobRows.length,
     jobDigest: digestRows(jobRows),
+    selectedTarget: diagnoseRereviewTarget(selectedTarget),
   };
 }
 
