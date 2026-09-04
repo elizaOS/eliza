@@ -543,6 +543,8 @@ describe("resolveInferenceAuthContext", () => {
     };
     const waited: Promise<unknown>[] = [];
     const cacheRead = spyOn(cache, "getWithOutcome");
+    const errorSpy = spyOn(logger, "error").mockImplementation(() => undefined);
+    const infoSpy = spyOn(logger, "info").mockImplementation(() => undefined);
     try {
       const result = await resolveInferenceAuthContext(reqWithApiKey(), {
         cacheOnly: true,
@@ -555,9 +557,34 @@ describe("resolveInferenceAuthContext", () => {
         reason: "credential_invalid",
       });
       expect(cacheRead).toHaveBeenCalledTimes(1);
+      const denialLogs = errorSpy.mock.calls.filter(
+        ([message]) => message === "[InferenceAuth] account standing denied inference",
+      );
+      expect(denialLogs).toHaveLength(1);
+      expect(denialLogs[0]).toEqual([
+        "[InferenceAuth] account standing denied inference",
+        expect.objectContaining({
+          status: 401,
+          reason: "credential_invalid",
+          cacheRead: "miss",
+          source: "authoritative",
+        }),
+      ]);
+      const authTraces = infoSpy.mock.calls
+        .filter(([message]) => message === "[InferenceAuth] trace")
+        .map(([, context]) => context);
+      expect(authTraces).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ cacheRead: "not_run", authoritative: "error" }),
+          expect.objectContaining({ cacheRead: "miss", authoritative: "rejected" }),
+        ]),
+      );
+      expect(authTraces).not.toContainEqual(expect.objectContaining({ cacheRead: "unavailable" }));
       await Promise.all(waited);
     } finally {
       cacheRead.mockRestore();
+      errorSpy.mockRestore();
+      infoSpy.mockRestore();
     }
   });
 
@@ -568,24 +595,54 @@ describe("resolveInferenceAuthContext", () => {
       return true;
     };
     const waited: Promise<unknown>[] = [];
+    const cacheRead = spyOn(cache, "getWithOutcome");
+    const errorSpy = spyOn(logger, "error").mockImplementation(() => undefined);
 
-    const cold = await resolveInferenceAuthContext(reqWithApiKey(), {
-      cacheOnly: true,
-      executionCtx: { waitUntil: (promise) => waited.push(promise) },
-    });
-    expect(cold).toEqual({
-      kind: "suspended",
-      userId: "user-1",
-      reason: "moderation_blocked",
-    });
-    await Promise.all(waited);
-    expect(moderationCalls).toBe(1);
+    try {
+      const cold = await resolveInferenceAuthContext(reqWithApiKey(), {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      });
+      expect(cold).toEqual({
+        kind: "suspended",
+        userId: "user-1",
+        reason: "moderation_blocked",
+      });
+      await Promise.all(waited);
+      expect(moderationCalls).toBe(1);
+      expect(cacheRead).toHaveBeenCalledTimes(1);
+      expect(errorSpy.mock.calls).toEqual([
+        [
+          "[InferenceAuth] account standing denied inference",
+          expect.objectContaining({
+            status: 403,
+            reason: "moderation_blocked",
+            cacheRead: "miss",
+            source: "authoritative",
+          }),
+        ],
+      ]);
 
-    const retry = await resolveInferenceAuthContext(reqWithApiKey(), {
-      cacheOnly: true,
-    });
-    expect(retry).toEqual({ kind: "suspended", reason: "moderation_blocked" });
-    expect(moderationCalls).toBe(1);
+      const retry = await resolveInferenceAuthContext(reqWithApiKey(), {
+        cacheOnly: true,
+      });
+      expect(retry).toEqual({ kind: "suspended", reason: "moderation_blocked" });
+      expect(moderationCalls).toBe(1);
+      expect(cacheRead).toHaveBeenCalledTimes(2);
+      expect(errorSpy).toHaveBeenCalledTimes(2);
+      expect(errorSpy).toHaveBeenLastCalledWith(
+        "[InferenceAuth] account standing denied inference",
+        expect.objectContaining({
+          status: 403,
+          reason: "moderation_blocked",
+          cacheRead: "rejected",
+          source: "cache",
+        }),
+      );
+    } finally {
+      cacheRead.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   test("inline continuation deadline returns warming after one cache read", async () => {

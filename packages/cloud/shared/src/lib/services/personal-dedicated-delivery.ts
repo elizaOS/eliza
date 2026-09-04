@@ -9,6 +9,7 @@
 
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
 import type { AppEnv } from "../../types/cloud-worker-env";
+import { logger } from "../utils/logger";
 import { checkAgentCreditGate } from "./agent-billing-gate";
 import { provisioningJobService } from "./provisioning-jobs";
 import { checkProvisioningWorkerHealth } from "./provisioning-worker-health";
@@ -116,7 +117,18 @@ export async function preparePersonalDedicatedDelivery(
 
   // The durable job is already committed. This kick only avoids waiting for
   // the periodic poller and observes its own transport failures internally.
-  executionCtx.waitUntil(provisioningJobService.triggerImmediate(env));
+  const trigger = provisioningJobService.triggerImmediate(env).catch((error) => {
+    // error-policy:J7 the durable lifecycle job remains observable by the
+    // daemon; retain a failed best-effort nudge as an operational diagnostic.
+    logger.warn("[personal-dedicated-delivery] Immediate provisioning nudge failed", {
+      agentId: target.id,
+      organizationId: identity.organizationId,
+      userId: identity.userId,
+      jobId: result.job.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  executionCtx.waitUntil(trigger);
   return {
     state: "starting",
     action: target.status === "sleeping" ? "wake" : "resume",

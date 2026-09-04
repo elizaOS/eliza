@@ -238,6 +238,8 @@ describe("forbidden Cloud agent mutations", () => {
       completedDedicatedQuoteResponseBodyCount: 0,
       parsedDedicatedQuoteResponseBodyCount: 0,
       decodedDedicatedQuoteResponseCount: 0,
+      dedicatedCutoverResponseStatus: null,
+      dedicatedCutoverResponseCode: null,
       uninspectableDedicatedQuoteResponseBodyCount: 0,
       dedicatedActivationPostRequestCount: 0,
       successfulDedicatedActivationPostResponseCount: 0,
@@ -436,6 +438,8 @@ describe("forbidden Cloud agent mutations", () => {
       uninspectableDedicatedActivationResponseBodyCount: 0,
       dedicatedActivationResponseStatus: 202,
       dedicatedActivationResponseCode: null,
+      dedicatedCutoverResponseStatus: 200,
+      dedicatedCutoverResponseCode: null,
       dedicatedCutoverPostRequestCount: 2,
       successfulDedicatedCutoverPostResponseCount: 1,
       clientErrorDedicatedCutoverPostResponseCount: 1,
@@ -493,6 +497,28 @@ describe("forbidden Cloud agent mutations", () => {
       "dedicated_quote_changed",
     );
     expect(JSON.stringify(snapshot)).not.toMatch(/private user detail|quoteId/);
+  });
+
+  it("retains only the latest bounded Dedicated cutover status and error code", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const cutover =
+      "https://api.test/api/v1/eliza/agents/private-target/upgrade-tier/cutover";
+    audit.observeRequest("POST", cutover);
+    audit.observeResponse(
+      "POST",
+      cutover,
+      409,
+      boundedJsonBody({
+        success: false,
+        code: "dedicated_not_healthy",
+        error: "private operator detail",
+      }).responseBody,
+    );
+
+    const snapshot = await audit.snapshot();
+    expect(snapshot.dedicatedCutoverResponseStatus).toBe(409);
+    expect(snapshot.dedicatedCutoverResponseCode).toBe("dedicated_not_healthy");
+    expect(JSON.stringify(snapshot)).not.toMatch(/private operator detail/);
   });
 
   it("fails closed when an approved quote is followed by another agent target", async () => {
