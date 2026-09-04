@@ -25,6 +25,32 @@ export type AgentBackupRestoreCoordinatorConfig =
       automaticFailoverEnabled: false;
     };
 
+/**
+ * Flags are parsed as strictly as the integer tunables below: `"1"` is on,
+ * unset / empty / `"0"` is off, and any OTHER value is a configuration error
+ * rather than a silent off.
+ *
+ * A bare `=== "1"` test defeats both guarantees in this file's header, because
+ * every value that is not `"1"` reads as off — including values that plainly
+ * mean on. `AGENT_BACKUP_RESTORE_FAILOVER_ENABLED=true` was neither refused
+ * for missing its parent nor rejected as unimplemented; an operator asking for
+ * failover got a running coordinator with failover silently off.
+ * `AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED=true` left the coordinator
+ * disabled while the deployment that set it believed otherwise.
+ *
+ * `"0"` is accepted as off on purpose: it is unambiguous intent, and rejecting
+ * it would turn a deployment that means "off" into a boot failure — trading
+ * this bug for a worse one. Only genuinely ambiguous values are refused.
+ */
+function readStrictFlag(env: NodeJS.ProcessEnv, name: string): boolean {
+  const raw = env[name];
+  if (raw === undefined || raw === "" || raw === "0") return false;
+  if (raw !== "1") {
+    throw new Error(`${name} must be "1" or "0" when set, or left unset`);
+  }
+  return true;
+}
+
 function readBoundedInteger(params: {
   env: NodeJS.ProcessEnv;
   name: string;
@@ -47,8 +73,8 @@ function readBoundedInteger(params: {
 export function readAgentBackupRestoreCoordinatorConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): AgentBackupRestoreCoordinatorConfig {
-  const failoverEnabled = env.AGENT_BACKUP_RESTORE_FAILOVER_ENABLED === "1";
-  if (env.AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED !== "1") {
+  const failoverEnabled = readStrictFlag(env, "AGENT_BACKUP_RESTORE_FAILOVER_ENABLED");
+  if (!readStrictFlag(env, "AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED")) {
     if (failoverEnabled) {
       throw new Error(
         "AGENT_BACKUP_RESTORE_FAILOVER_ENABLED requires AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED=1",
