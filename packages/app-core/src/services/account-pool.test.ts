@@ -272,6 +272,44 @@ describe("AccountPool provider-scoped account resolution", () => {
     expect(profileUrls).toHaveLength(0);
   });
 
+  it("does not replace account health or usage when Anthropic returns a malformed payload", async () => {
+    const writeAccount = vi.fn(async () => {});
+    const existing = account("anthropic-subscription", {
+      id: "malformed-usage",
+      email: "known@example.com",
+      health: "rate-limited",
+      healthDetail: { until: Date.now() + 60_000 },
+      usage: {
+        refreshedAt: 100,
+        sessionPct: 91,
+        weeklyPct: 72,
+        resetsAt: 1_900_000_000_000,
+      },
+    });
+    const pool = new AccountPool({
+      readAccounts: () => ({
+        "anthropic-subscription:malformed-usage": existing,
+      }),
+      writeAccount,
+    });
+
+    await expect(
+      pool.refreshUsage("malformed-usage", "token", {
+        providerId: "anthropic-subscription",
+        fetch: (async () =>
+          new Response(
+            JSON.stringify({
+              five_hour: 7,
+              seven_day: [],
+              limits: { kind: "weekly_all" },
+            }),
+            { status: 200 },
+          )) as unknown as typeof fetch,
+      }),
+    ).rejects.toMatchObject({ code: "anthropic_usage.invalid_shape" });
+    expect(writeAccount).not.toHaveBeenCalled();
+  });
+
   it("selects among multiple accounts for the same provider by priority", async () => {
     const accounts = {
       "openai-codex:personal": account("openai-codex", {

@@ -345,6 +345,112 @@ describe("pollAnthropicUsage", () => {
     expect(typeof snap.refreshedAt).toBe("number");
   });
 
+  it.each([
+    ["null root", null],
+    ["array root", []],
+    ["numeric five_hour window", { five_hour: 7 }],
+    ["array seven_day window", { seven_day: [] }],
+    ["object limits collection", { limits: { kind: "weekly_all" } }],
+    ["non-object limits entry", { limits: [null] }],
+    [
+      "non-object limit scope",
+      { limits: [{ kind: "weekly_scoped", scope: "all-models" }] },
+    ],
+    [
+      "non-object scoped model",
+      {
+        limits: [
+          {
+            kind: "weekly_scoped",
+            scope: { model: "Fable" },
+          },
+        ],
+      },
+    ],
+  ])("rejects a malformed Anthropic usage %s", async (_name, payload) => {
+    stubFetch(jsonResponse(payload));
+
+    await expect(pollAnthropicUsage("malformed-token")).rejects.toMatchObject({
+      code: "anthropic_usage.invalid_shape",
+    });
+  });
+
+  it.each([
+    {
+      name: "session window",
+      payload: { five_hour: null, seven_day: { utilization: 42 } },
+      expected: { weeklyPct: 42 },
+    },
+    {
+      name: "weekly window",
+      payload: { five_hour: { utilization: 27 }, seven_day: null },
+      expected: { sessionPct: 27 },
+    },
+    {
+      name: "limits collection",
+      payload: {
+        five_hour: { utilization: 13 },
+        seven_day: { utilization: 61 },
+        limits: null,
+      },
+      expected: { sessionPct: 13, weeklyPct: 61 },
+    },
+  ])(
+    "retains available usage when the $name is null",
+    async ({ payload, expected }) => {
+      stubFetch(jsonResponse(payload));
+
+      const { refreshedAt, ...usage } =
+        await pollAnthropicUsage("nullable-token");
+
+      expect(usage).toEqual(expected);
+      expect(refreshedAt).toBeGreaterThan(0);
+    },
+  );
+
+  it("keeps aggregate and named model usage when another model scope is null", async () => {
+    stubFetch(
+      jsonResponse({
+        limits: [
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 80,
+            scope: { model: null },
+          },
+          { kind: "weekly_all", group: "weekly", percent: 32 },
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 40,
+            scope: { model: { display_name: "Fable" } },
+          },
+        ],
+      }),
+    );
+
+    const { refreshedAt, ...usage } = await pollAnthropicUsage(
+      "nullable-model-token",
+    );
+
+    expect(usage).toEqual({
+      weeklyPct: 32,
+      weeklyModelBuckets: { Fable: { pct: 40 } },
+    });
+    expect(refreshedAt).toBeGreaterThan(0);
+  });
+
+  it("rejects malformed Anthropic usage JSON with a typed decoding error", async () => {
+    stubFetch(new Response("{", { status: 200 }));
+
+    await expect(
+      pollAnthropicUsage("malformed-json-token"),
+    ).rejects.toMatchObject({
+      code: "anthropic_usage.invalid_json",
+      cause: expect.any(SyntaxError),
+    });
+  });
+
   it("passes through an epoch-MILLISECONDS reset timestamp unchanged", async () => {
     const ms = 1_700_000_000_000; // already > 1e12
     stubFetch(jsonResponse({ seven_day: { resets_at: ms } }));
