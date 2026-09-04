@@ -20,6 +20,7 @@ import type {
   SchemaUniqueConstraint,
 } from "../types";
 import type { SchemaDiff } from "./diff-calculator";
+import { normalizeType } from "./type-normalization";
 
 /**
  * Data loss detection result
@@ -121,59 +122,6 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
   }
 
   return result;
-}
-
-/**
- * Normalize SQL types for comparison
- * Handles equivalent type variations between introspected DB and schema definitions
- */
-function normalizeType(type: string | undefined): string {
-  if (!type) return "";
-
-  const normalized = type.toLowerCase().trim();
-
-  // Handle timestamp variations - all are equivalent
-  if (
-    normalized === "timestamp without time zone" ||
-    normalized === "timestamp with time zone" ||
-    normalized === "timestamptz"
-  ) {
-    return "timestamp";
-  }
-
-  // Handle serial vs integer with identity
-  // serial is essentially integer with auto-increment
-  if (normalized === "serial") {
-    return "integer";
-  }
-  if (normalized === "bigserial") {
-    return "bigint";
-  }
-  if (normalized === "smallserial") {
-    return "smallint";
-  }
-
-  // Handle numeric/decimal equivalence
-  if (normalized.startsWith("numeric") || normalized.startsWith("decimal")) {
-    // Extract precision and scale if present
-    const match = normalized.match(/\((\d+)(?:,\s*(\d+))?\)/);
-    if (match) {
-      return `numeric(${match[1]}${match[2] ? `,${match[2]}` : ""})`;
-    }
-    return "numeric";
-  }
-
-  // Handle varchar/character varying
-  if (normalized.startsWith("character varying")) {
-    return normalized.replace("character varying", "varchar");
-  }
-
-  // Handle text array variations
-  if (normalized === "text[]" || normalized === "_text") {
-    return "text[]";
-  }
-
-  return normalized;
 }
 
 /**
@@ -681,12 +629,15 @@ function checkIfNeedsUsingClause(fromType: string, toType: string): boolean {
   // normalize to "varchar" so the pairs below (e.g. varchar→uuid) match.
   // Without this, an ALTER COLUMN id TYPE uuid is emitted without a USING
   // clause and Postgres rejects it ("cannot be cast automatically").
-  const normalizeType = (t: string) => {
+  // Named `baseType` rather than `normalizeType`: this strips the length/precision
+  // suffix to get a bare type name for the pair lookups below, which is a
+  // different job from the module-level `normalizeType` imported above.
+  const baseType = (t: string) => {
     const base = t.split("(")[0].toLowerCase().trim();
     return base === "character varying" ? "varchar" : base;
   };
-  const fromBase = normalizeType(fromType);
-  const toBase = normalizeType(toType);
+  const fromBase = baseType(fromType);
+  const toBase = baseType(toType);
 
   // Text/varchar to JSONB always needs USING
   if (
