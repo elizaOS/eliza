@@ -107,11 +107,40 @@ function validateArtifactBytes(bytes, artifact) {
   }
 }
 
+// CI downloads run anonymously from shared runner egress IPs, so the host can
+// answer 429 (or reset the connection) for traffic this repository did not
+// generate. A bounded, Retry-After-aware second chance keeps the pinned
+// download robust without masking a genuinely unavailable artifact: the final
+// attempt still produces the typed HTTP error below.
+const RETRYABLE_DOWNLOAD_STATUSES = new Set([429, 502, 503, 504]);
+const DEFAULT_DOWNLOAD_ATTEMPTS = 4;
+const DEFAULT_RETRY_DELAY_MS = 10_000;
+const MAX_RETRY_DELAY_MS = 60_000;
+
+function computeRetryDelayMs(response, attempt, { retryDelayMs }) {
+  const retryAfterHeader = response?.headers?.get("retry-after");
+  const retryAfter = Number(retryAfterHeader);
+  // An absent header reads as null, and Number(null) is 0 — only a present,
+  // parseable, non-negative value overrides the fixed backoff.
+  if (
+    retryAfterHeader !== null &&
+    retryAfterHeader !== undefined &&
+    Number.isFinite(retryAfter) &&
+    retryAfter >= 0
+  ) {
+    return Math.min(retryAfter * 1_000, MAX_RETRY_DELAY_MS);
+  }
+  return Math.min(retryDelayMs * attempt, MAX_RETRY_DELAY_MS);
+}
+
 export async function ensureEmbeddingArtifact({
   env = process.env,
   repoRoot = defaultRepoRoot,
   fetchImpl = fetch,
   artifact = FUSED_EMBEDDING_ARTIFACT,
+  downloadAttempts = DEFAULT_DOWNLOAD_ATTEMPTS,
+  retryDelayMs = DEFAULT_RETRY_DELAY_MS,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
   const targetPath = resolveEmbeddingArtifactPath({ env, repoRoot });
   if (existsSync(targetPath)) {
@@ -130,12 +159,28 @@ export async function ensureEmbeddingArtifact({
   log(
     `downloading ${artifact.filename} from pinned revision ${artifact.revision}`,
   );
-  const response = await fetchImpl(url, {
+  const requestOptions = {
     headers: env.HF_TOKEN
       ? { Authorization: `Bearer ${env.HF_TOKEN}` }
       : undefined,
     redirect: "follow",
-  });
+  };
+  let response;
+  for (let attempt = 1; ; attempt++) {
+    response = await fetchImpl(url, requestOptions);
+    if (
+      response.ok ||
+      !RETRYABLE_DOWNLOAD_STATUSES.has(response.status) ||
+      attempt >= downloadAttempts
+    ) {
+      break;
+    }
+    const delay = computeRetryDelayMs(response, attempt, { retryDelayMs });
+    log(
+      `download attempt ${attempt}/${downloadAttempts} for ${artifact.filename} returned HTTP ${response.status}; retrying in ${delay}ms`,
+    );
+    await sleep(delay);
+  }
   if (!response.ok) {
     throw new Error(
       `failed to download ${artifact.filename}: HTTP ${response.status}`,
