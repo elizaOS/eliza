@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isCloudflarePlacement,
   parseArgs,
   parseAuthServerTiming,
   parseAuthTrace,
@@ -18,6 +19,15 @@ import {
 } from "./inference-auth-latency.mjs";
 
 const SHA = "a".repeat(40);
+
+test("Cloudflare placement values retain only documented local and remote colos", () => {
+  assert.equal(isCloudflarePlacement("local-ORD"), true);
+  assert.equal(isCloudflarePlacement("remote-FRA"), true);
+  assert.equal(isCloudflarePlacement("local"), false);
+  assert.equal(isCloudflarePlacement("remote"), false);
+  assert.equal(isCloudflarePlacement("LOCAL-ORD"), false);
+  assert.equal(isCloudflarePlacement(null), false);
+});
 
 function authHeader(phase) {
   return phase === "hit"
@@ -175,7 +185,7 @@ test("auth parsers accept only bounded enums and finite auth durations", () => {
 });
 
 test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
-  const traceId = "0190f2f1-8b5a-7000-8000-000000000001";
+  const traceId = "0190f2f18b5a70008000000000000001";
   const telemetry = {
     v: 1,
     traceId,
@@ -218,7 +228,7 @@ test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
               "[InferenceAuth] trace",
               {
                 ...telemetry,
-                traceId: "0190f2f1-8b5a-7000-8000-000000000099",
+                traceId: "0190f2f18b5a70008000000000000099",
                 result: "unbounded-private-result",
                 userId: "private-user",
               },
@@ -274,11 +284,7 @@ test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
   );
   assert.throws(
     () =>
-      sanitizeInferenceAuthTail(
-        raw,
-        ["0190f2f1-8b5a-7000-8000-000000000002"],
-        SHA,
-      ),
+      sanitizeInferenceAuthTail(raw, ["0190f2f18b5a70008000000000000002"], SHA),
     /omitted 1/,
   );
 });
@@ -287,6 +293,7 @@ test("live sample retains timings and correlation but no credential, probe token
   const apiKey = "eliza_private_api_key_material";
   const probeToken = "private_probe_control_token";
   let sentProbeHeader = "";
+  let sentTraceId = "";
   let sentBody = "";
   const record = await probeAuthSample({
     baseUrl: "https://preview.example",
@@ -302,6 +309,7 @@ test("live sample retains timings and correlation but no credential, probe token
     })(),
     fetchImpl: async (_url, init) => {
       sentProbeHeader = init.headers["X-Eliza-Auth-Probe"];
+      sentTraceId = init.headers["X-Eliza-Trace-Id"];
       sentBody = init.body;
       return new Response(null, {
         status: 400,
@@ -317,6 +325,7 @@ test("live sample retains timings and correlation but no credential, probe token
   });
 
   assert.match(sentProbeHeader, /^private_probe_control_token:[0-9a-f]{32}$/);
+  assert.match(sentTraceId, /^[0-9a-f]{32}$/);
   assert.equal(sentBody, "{}");
   assert.equal(record.phase, "miss");
   assert.equal(record.totalMs, 12);
@@ -522,6 +531,7 @@ test("guard probes retain 401 taxonomy and reject forged probe controls", async 
   });
   assert.equal(invalid.status, 401);
   assert.equal(invalid.auth.result, "rejected");
+  assert.match(invalid.traceId, /^[0-9a-f]{32}$/);
 
   const suspended = await probeAuthGuardSample({
     baseUrl: "https://preview.example",
@@ -534,6 +544,7 @@ test("guard probes retain 401 taxonomy and reject forged probe controls", async 
   });
   assert.equal(suspended.status, 403);
   assert.equal(suspended.auth.result, "suspended");
+  assert.match(suspended.traceId, /^[0-9a-f]{32}$/);
   assert.equal(
     JSON.stringify(suspended).includes("private_probe_control_token"),
     false,

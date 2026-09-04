@@ -60,9 +60,40 @@ async function installMutableFirstRunStatus(page: Page): Promise<{
 
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
-      window.location.origin;
-    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
+    const origin = window.location.origin;
+    const secureStore = new Map<string, string>();
+    const win = window as unknown as Record<string, unknown>;
+    win.__ELIZA_APP_API_BASE__ = origin;
+    win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
+    win.__ELIZAOS_API_BASE__ = origin;
+    win.__electrobunWindowId = 1;
+    win.__ELIZA_ELECTROBUN_RPC__ = {
+      request: {
+        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
+        desktopRegisterShortcut: async () => ({ success: true }),
+        desktopSetTrayMenu: async () => undefined,
+        secureStoreGet: async ({ kind }: { kind: string }) =>
+          secureStore.has(kind)
+            ? { ok: true, value: secureStore.get(kind) }
+            : { ok: false, reason: "not_found" },
+        secureStoreSet: async ({
+          kind,
+          value,
+        }: {
+          kind: string;
+          value: string;
+        }) => {
+          secureStore.set(kind, value);
+          return { ok: true };
+        },
+        secureStoreDelete: async ({ kind }: { kind: string }) => ({
+          ok: true,
+          deleted: secureStore.delete(kind),
+        }),
+      },
+      onMessage: () => undefined,
+      offMessage: () => undefined,
+    };
   });
 }
 
@@ -82,6 +113,10 @@ async function installWalkthroughConversationStore(page: Page): Promise<void> {
   }> = [];
   let created = false;
   let sequence = 0;
+
+  await page.route("**/api/interactions/composer", async (route) => {
+    await fulfillJson(route, 200, { success: true });
+  });
 
   await page.route("**/api/conversations", async (route) => {
     const method = route.request().method();

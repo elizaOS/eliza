@@ -454,6 +454,9 @@ function AllDayBandCell({
             size="micro"
             align="start"
             data-state={selected ? "on" : "off"}
+            data-agent-id={`calendar-event-${event.id}`}
+            data-agent-role="button"
+            data-agent-label={event.title}
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
@@ -568,6 +571,9 @@ function DayColumnGrid({
             variant="selection"
             size="content"
             data-state={isSelected ? "on" : "off"}
+            data-agent-id={`calendar-event-${event.id}`}
+            data-agent-role="button"
+            data-agent-label={`${event.title} ${formatTimeOfDay(event.startAt)}`}
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
@@ -1192,7 +1198,7 @@ export function CalendarSection({
               </Button>
               <Button
                 variant="ghostMuted"
-                size="dense"
+                size="touch"
                 ref={todayNav.ref}
                 type="button"
                 onClick={calendar.goToToday}

@@ -272,9 +272,15 @@ function seedAppStore(overrides: Record<string, unknown> = {}): AppStoreSpies {
  * seeded onboarding turns are observable exactly as the overlay would render
  * them. `setConversationMessages` applies functional updaters for real.
  */
-function renderConductor(options?: { cloudOnly?: boolean }) {
+function renderConductor(options?: {
+  cloudOnly?: boolean;
+  statefulTranscript?: boolean;
+}) {
   const transcript: { current: ConversationMessage[] } = { current: [] };
-  const value: ConversationMessagesValue = {
+  let replaceTranscript = (messages: ConversationMessage[]) => {
+    transcript.current = messages;
+  };
+  const staticValue: ConversationMessagesValue = {
     conversationMessages: [],
     removeConversationMessage: () => {},
     prependConversationMessages: () => {},
@@ -283,7 +289,13 @@ function renderConductor(options?: { cloudOnly?: boolean }) {
         typeof updater === "function" ? updater(transcript.current) : updater;
     },
   };
-  const wrapper = ({ children }: { children: React.ReactNode }) =>
+  const BrandingWrapper = ({
+    children,
+    conversationValue,
+  }: {
+    children?: React.ReactNode;
+    conversationValue: ConversationMessagesValue;
+  }) =>
     React.createElement(
       BrandingContext.Provider,
       {
@@ -294,14 +306,40 @@ function renderConductor(options?: { cloudOnly?: boolean }) {
       },
       React.createElement(
         ConversationMessagesCtx.Provider,
-        { value },
+        { value: conversationValue },
         children,
       ),
     );
+  const StaticWrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(
+      BrandingWrapper,
+      { conversationValue: staticValue },
+      children,
+    );
+  const StatefulWrapper = ({ children }: { children: React.ReactNode }) => {
+    const [messages, setMessages] = React.useState<ConversationMessage[]>([]);
+    transcript.current = messages;
+    replaceTranscript = setMessages;
+    const value = React.useMemo<ConversationMessagesValue>(
+      () => ({
+        conversationMessages: messages,
+        removeConversationMessage: () => {},
+        prependConversationMessages: () => {},
+        setConversationMessages: setMessages,
+      }),
+      [messages],
+    );
+    return React.createElement(
+      BrandingWrapper,
+      { conversationValue: value },
+      children,
+    );
+  };
+  const wrapper = options?.statefulTranscript ? StatefulWrapper : StaticWrapper;
   const utils = renderHook(() => useFirstRunConductor(), { wrapper });
   const turn = (id: string): ConversationMessage | undefined =>
     transcript.current.find((message) => message.id === id);
-  return { transcript, turn, ...utils };
+  return { transcript, turn, replaceTranscript, ...utils };
 }
 
 async function waitForTurn(
@@ -1821,6 +1859,82 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     expect(confirmationTurn.text).not.toContain(quoteId);
     expect(confirmationTurn.text).not.toContain(dedicatedAgentId);
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
+
+    expect(
+      tryHandleFirstRunAction("__first_run__:dedicated-adoption:confirm"),
+    ).toBe(true);
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+    );
+    unmount();
+  });
+
+  it("restores pending Dedicated consent after server history replaces the onboarding transcript", async () => {
+    const quoteId = "c".repeat(64);
+    mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+      async (options: Record<string, unknown>) => {
+        const request = options.requestDedicatedAdoptionConfirmation as (
+          quote: Record<string, unknown>,
+          context: { reason: "initial"; signal?: AbortSignal },
+        ) => Promise<Record<string, unknown> | null>;
+        await request(
+          {
+            quoteId,
+            dedicatedAgentId: "00000000-0000-4000-8000-000000000021",
+            adoptionState: "available",
+            status: "stopped",
+            startsCompute: true,
+            hourlyRateUsd: 0.01,
+            dailyRateUsd: 0.24,
+            minimumBalanceUsd: 0.72,
+            minimumRunwayDays: 3,
+            balanceUsd: 10,
+            deficitUsd: 0,
+            stateDisposition: "verified_backup_present",
+            canAdopt: true,
+            requiresCatalogRestore: false,
+            requiresConfirmation: true,
+            action: "adopt_existing_dedicated",
+          },
+          { reason: "initial", signal: options.signal as AbortSignal },
+        );
+        return {
+          personalElizaId: PERSONAL_ELIZA_ID,
+          agentId: PERSONAL_ELIZA_ID,
+          activeAgentId: "00000000-0000-4000-8000-000000000021",
+          agentName: "Eliza Cloud",
+          apiBase: "https://dedicated.example.test",
+          runtime: "dedicated" as const,
+        };
+      },
+    );
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { replaceTranscript, transcript, unmount } = renderConductor({
+      statefulTranscript: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        transcript.current.some((message) =>
+          message.text.includes("Use your existing Dedicated agent?"),
+        ),
+      ).toBe(true);
+    });
+    act(() => {
+      replaceTranscript([
+        {
+          id: "server-history",
+          role: "assistant",
+          text: "Persisted server history",
+          timestamp: 1,
+        } as ConversationMessage,
+      ]);
+    });
+    await waitFor(() => {
+      expect(transcript.current.map((message) => message.id)).toContain(
+        "first-run:dedicated-adoption",
+      );
+    });
 
     expect(
       tryHandleFirstRunAction("__first_run__:dedicated-adoption:confirm"),

@@ -15,7 +15,7 @@ function isWellFormed(value: string): boolean {
 
 describe("dev-compat-routes surrogate-safe truncation (200)", () => {
   it("does not split astral pair at 200", () => {
-    const text = "a".repeat(199) + "🦊" + "b".repeat(10);
+    const text = `${"a".repeat(199)}🦊${"b".repeat(10)}`;
     const truncated = formatScreenshotErrorDetail(text);
     expect(truncated.length).toBe(199);
     expect(truncated).toBe("a".repeat(199));
@@ -40,7 +40,7 @@ describe("dev-compat-routes surrogate-safe truncation (200)", () => {
   });
 
   it("old slice would split surrogate but guard does not", () => {
-    const text = "a".repeat(199) + "🦊";
+    const text = `${"a".repeat(199)}🦊`;
     const old = text.slice(0, 200);
     expect(old.charCodeAt(199)).toBe(0xd83e);
     expect(isWellFormed(old)).toBe(false);
