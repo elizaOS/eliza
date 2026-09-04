@@ -120,6 +120,7 @@ import {
 } from "@elizaos/ui/first-run/first-run-action-channel";
 import {
   IOS_LOCAL_AGENT_IPC_BASE,
+  isMobileLocalAgentIpcUrl,
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
   normalizeMobileRuntimeMode,
@@ -258,7 +259,9 @@ import {
 } from "./runtime-chooser-override";
 import {
   isElizaCloudSharedHost,
+  isLoopbackApiHost,
   isTrustedCloudOnlyApiBaseUrl,
+  isTrustedPrivateHttpHost,
 } from "./url-trust-policy";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
@@ -2925,34 +2928,6 @@ function isPopoutWindow(): boolean {
   return getWindowUrlSearchParams().has("popout");
 }
 
-function isTrustedPrivateHttpHost(host: string): boolean {
-  return (
-    host === "0.0.0.0" ||
-    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^169\.254\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    host === "local" ||
-    host === "internal" ||
-    host === "lan" ||
-    host === "ts.net" ||
-    host.endsWith(".local") ||
-    host.endsWith(".lan") ||
-    host.endsWith(".internal") ||
-    host.endsWith(".ts.net")
-  );
-}
-
-function isLoopbackApiHost(host: string): boolean {
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "[::1]" ||
-    host === "::1"
-  );
-}
-
 /**
  * Dedicated Cloud agents serve their runtime on the canonical managed-agent
  * hostname family. The shared classifier also recognizes legacy agent hosts
@@ -2967,7 +2942,11 @@ function isNativeIosStoreBuild(): boolean {
 }
 
 function isIosLocalAgentIpcUrl(parsed: URL): boolean {
-  return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
+  // Delegates to the shared predicate rather than re-testing protocol+hostname:
+  // Chromium WebView parses a non-special URL's authority as path data, so
+  // `eliza-local-agent://ipc/api/status` arrives with an EMPTY hostname and the
+  // inline check silently failed there. `url-trust-policy.ts` already delegates.
+  return isMobileLocalAgentIpcUrl(parsed);
 }
 
 function isPrivateOrLoopbackApiHost(host: string): boolean {
