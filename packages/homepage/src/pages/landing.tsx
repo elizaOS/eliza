@@ -941,12 +941,10 @@ export default function LandingPage() {
   );
   const phoneCopyOperation = useRef(0);
   const browserWindow = typeof window === "undefined" ? null : window;
-  // fix(homepage): remove signed-in Dashboard heuristic (#28743).
-  // `eliza_app_session` is real same-origin homepage session state (written
-  // by homepage login), but it cannot attest the separate Cloud-app origin
-  // session. Gating a Dashboard CTA on it fabricates cross-origin session
-  // knowledge. Product decision: neutral Sign in CTA always.
-  const signedIn = false;
+  // fix(homepage): no signed-in Dashboard heuristic (#28743).
+  // `eliza_app_session` cannot attest the separate Cloud-app origin session,
+  // so the header CTA is neutral Sign in always — never an inferred Dashboard.
+  // (Unused `landing.dashboard` locale keys remain for translators.)
   const productNavigation = resolveHomepageProductNavigation(
     browserWindow?.location.hostname ?? "",
   );
@@ -1081,17 +1079,9 @@ export default function LandingPage() {
         </a>
         <a
           className="landing-cta landing-cta--white landing-header-cta"
-          href={
-            signedIn
-              ? productNavigation.dashboardUrl
-              : productNavigation.signInUrl
-          }
+          href={productNavigation.signInUrl}
         >
-          {signedIn
-            ? t("homepage_eliza.landing.dashboard", {
-                defaultValue: "Dashboard",
-              })
-            : t("homepage_eliza.landing.signIn", { defaultValue: "Sign in" })}
+          {t("homepage_eliza.landing.signIn", { defaultValue: "Sign in" })}
         </a>
       </header>
       <main className="landing-hero">
@@ -1194,20 +1184,10 @@ export default function LandingPage() {
           setContactSheetOpen(false);
           void handleCallEliza();
         }}
-        accountHref={
-          signedIn
-            ? productNavigation.dashboardUrl
-            : productNavigation.signInUrl
-        }
-        accountLabel={
-          signedIn
-            ? t("homepage_eliza.landing.dashboard", {
-                defaultValue: "Open your dashboard",
-              })
-            : t("homepage_eliza.landing.signInCloud", {
-                defaultValue: "Sign in to Eliza Cloud",
-              })
-        }
+        accountHref={productNavigation.signInUrl}
+        accountLabel={t("homepage_eliza.landing.signInCloud", {
+          defaultValue: "Sign in to Eliza Cloud",
+        })}
       />
     </div>
   );
