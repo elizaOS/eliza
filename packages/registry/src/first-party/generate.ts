@@ -266,16 +266,34 @@ export function generateFirstPartyRegistry(): {
   };
 }
 
+/**
+ * Every committed artifact paired with the exact bytes the generator would
+ * write for it right now, biome-formatted so the comparison matches what
+ * `format:check` expects. `main` and the drift test both consume this, so the
+ * gate and the generator cannot disagree about what "up to date" means.
+ */
+export function firstPartyArtifacts(): {
+  artifacts: [string, string][];
+  entryCount: number;
+  curatedCount: number;
+} {
+  const next = generateFirstPartyRegistry();
+  return {
+    artifacts: [
+      [GENERATED_PATH, biomeFormatJson(next.full, GENERATED_PATH)],
+      [CURATED_DEFS_PATH, biomeFormatJson(next.curated, CURATED_DEFS_PATH)],
+      [CHANNEL_MAP_PATH, biomeFormatJson(next.channels, CHANNEL_MAP_PATH)],
+      [PROVIDER_MAP_PATH, biomeFormatJson(next.providers, PROVIDER_MAP_PATH)],
+      [SHORTID_MAP_PATH, biomeFormatJson(next.shortIds, SHORTID_MAP_PATH)],
+    ],
+    entryCount: JSON.parse(next.full).entries.length,
+    curatedCount: JSON.parse(next.curated).length,
+  };
+}
+
 function main(): void {
   const check = process.argv.includes("--check");
-  const next = generateFirstPartyRegistry();
-  const artifacts: [string, string][] = [
-    [GENERATED_PATH, biomeFormatJson(next.full, GENERATED_PATH)],
-    [CURATED_DEFS_PATH, biomeFormatJson(next.curated, CURATED_DEFS_PATH)],
-    [CHANNEL_MAP_PATH, biomeFormatJson(next.channels, CHANNEL_MAP_PATH)],
-    [PROVIDER_MAP_PATH, biomeFormatJson(next.providers, PROVIDER_MAP_PATH)],
-    [SHORTID_MAP_PATH, biomeFormatJson(next.shortIds, SHORTID_MAP_PATH)],
-  ];
+  const { artifacts, entryCount, curatedCount } = firstPartyArtifacts();
   if (check) {
     for (const [path, expected] of artifacts) {
       const current =
@@ -293,10 +311,8 @@ function main(): void {
     return;
   }
   for (const [path, content] of artifacts) writeFileSync(path, content);
-  const count = JSON.parse(next.full).entries.length;
-  const curatedCount = JSON.parse(next.curated).length;
   console.log(
-    `[registry/generate] wrote ${count} entries + ${curatedCount} curated-app definitions`,
+    `[registry/generate] wrote ${entryCount} entries + ${curatedCount} curated-app definitions`,
   );
 }
 
