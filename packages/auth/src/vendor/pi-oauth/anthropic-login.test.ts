@@ -59,6 +59,17 @@ describe("refreshAnthropicToken", () => {
     expect(creds.access).toBe("at-new");
   });
 
+  it("keeps the current refresh token when refresh_token is null", async () => {
+    mockTokenResponse({
+      access_token: "at-new",
+      refresh_token: null,
+      expires_in: 3600,
+    });
+    const creds = await refreshAnthropicToken("rt-old");
+    expect(creds.refresh).toBe("rt-old");
+    expect(creds.access).toBe("at-new");
+  });
+
   it("throws when the response lacks an access token instead of persisting a broken blob", async () => {
     mockTokenResponse({ refresh_token: "rt-new", expires_in: 3600 });
     await expect(refreshAnthropicToken("rt-old")).rejects.toThrow(

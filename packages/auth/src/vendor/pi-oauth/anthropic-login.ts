@@ -142,6 +142,7 @@ async function parseAnthropicTokenResponse(
   if (
     mode === "refresh" &&
     refreshToken !== undefined &&
+    refreshToken !== null &&
     !isNonBlankString(refreshToken)
   ) {
     throw invalidTokenResponse(
@@ -298,8 +299,8 @@ export async function refreshAnthropicToken(
   const data = await parseAnthropicTokenResponse(response, "refresh");
   return {
     // Anthropic rotates refresh tokens (one-time-use). Per RFC 6749 §6 a
-    // response that omits refresh_token means "keep the current one" — never
-    // persist undefined over a still-valid stored refresh token.
+    // response that omits refresh_token means "keep the current one". Treat a
+    // null optional value equivalently and never replace a valid stored token.
     refresh: data.refreshToken ?? refreshToken,
     access: data.accessToken,
     expires: data.expiresAt,
