@@ -28,9 +28,7 @@ import { ChannelType } from "../types/primitives";
 import {
 	answerlessToolTurnReport,
 	DefaultMessageService,
-	NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
 	preservedSettledToolResult,
-	structuredEffectConfirmation,
 	subAgentCompletionRelayBody,
 } from "./message";
 
@@ -490,7 +488,7 @@ describe("answerlessToolTurnReport", () => {
 				{ success: false, text: "spawn failed" },
 				{ success: false, data: { actionName: "TASKS_SPAWN_AGENT" } },
 			),
-		).toBe(NO_REPORTABLE_TOOL_OUTCOME_MESSAGE);
+		).toBe("");
 	});
 
 	it("retains an ack only after applied acceptance proof", () => {
@@ -541,114 +539,7 @@ describe("answerlessToolTurnReport", () => {
 				{ success: false, userFacingText: "raw provider failure" },
 				{ success: false, data: { actionName: "TASKS_SPAWN_AGENT" } },
 			),
-		).toBe(NO_REPORTABLE_TOOL_OUTCOME_MESSAGE);
-	});
-});
-
-// The live tj-a835d4c6da235f shape: a deterministic VIEWS navigation succeeds
-// with an internal-visibility JSON effect receipt and no `userFacingText`.
-// The answerless floor must confirm from the accepted effect instead of
-// apologizing for a missing result; anything short of a successful accepted
-// effect keeps the honest fallback.
-describe("structuredEffectConfirmation", () => {
-	const receipt = (fields: Record<string, unknown>): string =>
-		JSON.stringify(fields);
-	const settle = (
-		result: Partial<PlannerToolResult>,
-		name = "VIEWS",
-	): Array<{ name: string; result: PlannerToolResult }> => [
-		{ name, result: { success: true, ...result } as PlannerToolResult },
-	];
-
-	it("confirms an accepted view navigation by its label", () => {
-		expect(
-			structuredEffectConfirmation(
-				settle({
-					text: receipt({
-						effect: "view_navigation",
-						status: "accepted",
-						viewId: "chat",
-						label: "Home",
-						path: "/",
-					}),
-					transcriptVisibility: "internal",
-				}),
-			),
-		).toBe("done — you're on Home.");
-	});
-
-	it("confirms an unknown accepted effect family generically", () => {
-		expect(
-			structuredEffectConfirmation(
-				settle({
-					text: receipt({
-						effect: "theme_change",
-						status: "accepted",
-						label: "Dark Mode",
-					}),
-				}),
-			),
-		).toBe("done — Dark Mode.");
-		expect(
-			structuredEffectConfirmation(
-				settle({ text: receipt({ effect: "refresh", status: "accepted" }) }),
-			),
-		).toBe("done.");
-	});
-
-	it("never confirms a non-accepted status, a failed result, or a terminal tool", () => {
-		expect(
-			structuredEffectConfirmation(
-				settle({
-					text: receipt({
-						effect: "view_navigation",
-						status: "unconfirmed",
-						label: "Home",
-					}),
-				}),
-			),
-		).toBeUndefined();
-		expect(
-			structuredEffectConfirmation(
-				settle({
-					success: false,
-					text: receipt({
-						effect: "view_navigation",
-						status: "accepted",
-						label: "Home",
-					}),
-				}),
-			),
-		).toBeUndefined();
-		expect(
-			structuredEffectConfirmation(
-				settle(
-					{
-						text: receipt({
-							effect: "view_navigation",
-							status: "accepted",
-							label: "Home",
-						}),
-					},
-					"REPLY",
-				),
-			),
-		).toBeUndefined();
-	});
-
-	it("treats malformed or non-effect JSON as no structured effect", () => {
-		expect(
-			structuredEffectConfirmation(settle({ text: "{not json" })),
-		).toBeUndefined();
-		expect(
-			structuredEffectConfirmation(
-				settle({ text: receipt({ status: "accepted" }) }),
-			),
-		).toBeUndefined();
-		expect(
-			structuredEffectConfirmation(settle({ text: "plain diagnostic" })),
-		).toBeUndefined();
-		expect(structuredEffectConfirmation(settle({}))).toBeUndefined();
+		).toBe("");
 	});
 });
 
@@ -674,7 +565,7 @@ describe("answerlessToolTurnReport — structured effect receipts", () => {
 			stageOneAck: "",
 		});
 
-	it("replaces the no-result apology with the effect confirmation on the live shape", () => {
+	it("leaves accepted effects without prose to model-backed recovery", () => {
 		expect(
 			report({
 				text: JSON.stringify({
@@ -686,14 +577,14 @@ describe("answerlessToolTurnReport — structured effect receipts", () => {
 				}),
 				transcriptVisibility: "internal",
 			}),
-		).toBe("done — you're on Home.");
+		).toBe("");
 	});
 
-	it("keeps the no-result apology for a genuinely empty success", () => {
-		expect(report({})).toBe(NO_REPORTABLE_TOOL_OUTCOME_MESSAGE);
+	it("does not manufacture a reply for an empty success", () => {
+		expect(report({})).toBe("");
 	});
 
-	it("prefers a preserved user-facing text over the effect confirmation", () => {
+	it("preserves existing user-facing text", () => {
 		expect(
 			report({
 				text: JSON.stringify({

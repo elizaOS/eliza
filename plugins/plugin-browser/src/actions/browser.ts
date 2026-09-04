@@ -904,6 +904,7 @@ export const browserAction: Action = {
               userFacingText: text,
               verifiedUserFacing: true,
               turnComplete: true,
+              modelReplyRequired: true,
             }
           : {}),
         success: true,
@@ -1080,6 +1081,7 @@ export const browserAction: Action = {
       name: "tabAction",
       description: "Tab operation when subaction is tab",
       required: false,
+      modelOmissionSentinels: [""],
       schema: {
         type: "string" as const,
         enum: ["close", "list", "new", "switch"],

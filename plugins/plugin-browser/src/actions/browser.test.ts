@@ -3,6 +3,7 @@
  */
 
 import type { HandlerCallback } from "@elizaos/core";
+import { validateToolArgs } from "@elizaos/core/actions/validate-tool-args";
 import { describe, expect, it, vi } from "vitest";
 import { BROWSER_SERVICE_TYPE } from "../browser-service.js";
 import { browserAction } from "./browser.js";
@@ -45,6 +46,30 @@ async function runBrowserAction(args: {
 }
 
 describe("BROWSER action", () => {
+  it("accepts an omitted tab operation without weakening enum validation", async () => {
+    const validation = validateToolArgs(browserAction, {
+      action: "get",
+      id: "btab_1",
+      tabAction: "",
+    });
+    expect(validation.valid).toBe(true);
+    expect(validation.args).not.toHaveProperty("tabAction");
+    const { service, result } = await runBrowserAction({
+      parameters: validation.args,
+    });
+    expect(result?.success).toBe(true);
+    expect(service?.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ subaction: "get", id: "btab_1" }),
+      undefined,
+    );
+    expect(
+      validateToolArgs(browserAction, {
+        action: "tab",
+        tabAction: "erase-everything",
+      }).valid,
+    ).toBe(false);
+  });
+
   it("routes page-reading planner aliases to the canonical browser action", () => {
     expect(browserAction.similes).toEqual(
       expect.arrayContaining([
@@ -123,6 +148,7 @@ describe("BROWSER action", () => {
       userFacingText: "Opened example.com/path.",
       verifiedUserFacing: true,
       turnComplete: true,
+      modelReplyRequired: true,
       values: {
         targetId: "workspace",
         viewId: "browser",

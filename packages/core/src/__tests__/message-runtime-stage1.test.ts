@@ -4611,6 +4611,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				text: "",
 				toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
 			},
+			JSON.stringify({
+				response: "I need more context to answer that question.",
+			}),
 		]);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -4634,9 +4637,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			const text = result.result.responseContent?.text ?? "";
-			expect(text).toBe(
-				"I don't have a useful answer to that right now — ask again and I will retry.",
-			);
+			expect(text).toBe("I need more context to answer that question.");
 			// Effect honesty: nothing ran this turn, so no failure narrative.
 			expect(text).not.toMatch(/ran the steps|failed/i);
 		}
@@ -4732,6 +4733,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyText: "",
 			}),
 			plannerReplyRejectedByEgress(),
+			JSON.stringify({
+				response: "I need more context to answer that question.",
+			}),
 		]);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -4747,7 +4751,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"I don't have a useful answer to that right now — ask again and I will retry.",
+				"I need more context to answer that question.",
 			);
 			expect(result.result.responseContent?.text).not.toBe(
 				HANDLED_STEP_FALLBACK_MESSAGE,
@@ -4789,6 +4793,9 @@ describe("runV5MessageRuntimeStage1", () => {
 						replyText: "",
 					}),
 					plannerReplyRejectedByEgress(),
+					JSON.stringify({
+						response: "I need more context to answer that question.",
+					}),
 				]),
 			);
 			const result = await runV5MessageRuntimeStage1({
@@ -4804,7 +4811,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.kind, testCase.label).toBe("planned_reply");
 			if (result.kind === "planned_reply") {
 				expect(result.result.responseContent?.text, testCase.label).toBe(
-					"I don't have a useful answer to that right now — ask again and I will retry.",
+					"I need more context to answer that question.",
 				);
 			}
 		}
@@ -4845,6 +4852,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					text: "",
 					toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
 				},
+				JSON.stringify({
+					response: "I need more context to answer that question.",
+				}),
 			]);
 			runtime.providers = [
 				{
@@ -5924,13 +5934,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				});
 				expect(decision.recover).toBe(true);
 				expect(decision.source).toBe("fallbackText");
-				expect(decision.text).toBe(
-					"I don't have a useful answer to that right now — ask again and I will retry.",
-				);
+				expect(decision.text).toBe("");
 				expect(decision.text).not.toMatch(/ran the steps|failed/i);
 			});
 
-			it("keeps the failed-steps fallback when failed steps actually ran", () => {
+			it("requires model-backed recovery when failed steps have no reply", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "",
 					actionResults: [{ success: false }],
@@ -5938,9 +5946,8 @@ describe("runV5MessageRuntimeStage1", () => {
 					earlyReplySent: false,
 				});
 				expect(decision.recover).toBe(true);
-				expect(decision.text).toContain(
-					"I ran the steps for that but they failed",
-				);
+				expect(decision.text).toBe("");
+				expect(decision.actionFailureCount).toBe(1);
 			});
 
 			it("prefers surviving planner text over everything else", () => {
@@ -5989,7 +5996,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(decision.source).toBe("fallbackText");
 			});
 
-			it("uses failure-aware fallback wording when every tool failed", () => {
+			it("preserves failure counts without producing canned prose", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "",
 					actionResults: [{ success: false }, { success: false }],
@@ -5997,13 +6004,12 @@ describe("runV5MessageRuntimeStage1", () => {
 					earlyReplySent: false,
 				});
 				expect(decision.source).toBe("fallbackText");
-				expect(decision.text).toContain("failed");
-				expect(decision.text).not.toContain("finished");
+				expect(decision.text).toBe("");
 				expect(decision.actionSuccessCount).toBe(0);
 				expect(decision.actionFailureCount).toBe(2);
 			});
 
-			it("reports completion without inviting a blind replay after a tool succeeded", () => {
+			it("leaves successful outcomes to model synthesis without inviting replay", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "",
 					actionResults: [{ success: true }],
@@ -6011,12 +6017,11 @@ describe("runV5MessageRuntimeStage1", () => {
 					earlyReplySent: false,
 				});
 				expect(decision.source).toBe("fallbackText");
-				expect(decision.text).toContain("completed");
-				expect(decision.text).toContain("Check the current state");
-				expect(decision.text).not.toContain("ask again");
+				expect(decision.text).toBe("");
+				expect(decision.actionSuccessCount).toBe(1);
 			});
 
-			it("reports mixed tool outcomes without presenting the turn as fully successful", () => {
+			it("preserves mixed outcomes for model synthesis", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "",
 					actionResults: [{ success: true }, { success: false }],
@@ -6024,9 +6029,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					earlyReplySent: false,
 				});
 				expect(decision.source).toBe("fallbackText");
-				expect(decision.text).toContain("Some steps completed and some failed");
-				expect(decision.text).toContain("Check the current state");
-				expect(decision.text).not.toContain("finished");
+				expect(decision.text).toBe("");
+				expect(decision.actionSuccessCount).toBe(1);
+				expect(decision.actionFailureCount).toBe(1);
 			});
 
 			it("recovers a mixed-outcome early-ack turn because one failed action may own the handoff", () => {
@@ -6038,7 +6043,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				});
 				expect(decision.recover).toBe(true);
 				expect(decision.source).toBe("fallbackText");
-				expect(decision.text).toContain("Some steps completed and some failed");
+				expect(decision.text).toBe("");
 				expect(decision.text).not.toBe("On it.");
 			});
 
@@ -7535,6 +7540,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				messageToUser:
 					"You're all set — I've scheduled your reminder for tomorrow.",
 			}),
+			JSON.stringify({ response: "The search returned sunny weather." }),
 		]);
 		const searchHandler = vi.fn(async () => ({
 			success: true,
@@ -7574,9 +7580,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 		]);
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toContain("couldn't verify");
+			expect(result.result.responseContent?.text).toBe(
+				"The search returned sunny weather.",
+			);
 			expect(result.result.responseContent?.text).not.toContain(
 				"scheduled your reminder",
 			);

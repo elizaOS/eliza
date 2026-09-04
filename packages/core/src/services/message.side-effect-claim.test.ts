@@ -999,10 +999,7 @@ describe("evaluatePlannedReplyEgress", () => {
 		expect(decision.verdict).toBe("reject");
 		if (decision.verdict !== "reject") throw new Error("expected rejection");
 		expect(decision.kind).toBe("completed_side_effect");
-		expect(replyClaimsCompletedSideEffect(decision.fallbackReply)).toBe(false);
-		expect(replyClaimsEmptyTrackedWorkState(decision.fallbackReply)).toBe(
-			false,
-		);
+		expect(decision).not.toHaveProperty("fallbackReply");
 	});
 
 	it("allows a completion claim only for an exact active applied receipt", () => {
@@ -1023,7 +1020,7 @@ describe("evaluatePlannedReplyEgress", () => {
 		).toEqual({ verdict: "allow" });
 	});
 
-	it("uses the unique receipt-owned action reply when the planner paraphrases a completed effect", () => {
+	it("rejects a paraphrased completion without manufacturing replacement prose", () => {
 		const canonical = "Updated “Local calendar proof” for tomorrow at 9:10 PM.";
 		const updated: ActionResult = {
 			success: true,
@@ -1041,7 +1038,6 @@ describe("evaluatePlannedReplyEgress", () => {
 		expect(decision).toEqual({
 			verdict: "reject",
 			kind: "completed_side_effect",
-			fallbackReply: canonical,
 		});
 	});
 
@@ -1197,9 +1193,7 @@ describe("evaluatePlannedReplyEgress", () => {
 		expect(ungrounded.verdict).toBe("reject");
 		if (ungrounded.verdict !== "reject") throw new Error("expected rejection");
 		expect(ungrounded.kind).toBe("empty_tracked_state");
-		expect(replyClaimsEmptyTrackedWorkState(ungrounded.fallbackReply)).toBe(
-			false,
-		);
+		expect(ungrounded).not.toHaveProperty("fallbackReply");
 		const read: ActionResult = {
 			success: true,
 			userFacingText: FABRICATED_EMPTY_DAY_REPLY,
