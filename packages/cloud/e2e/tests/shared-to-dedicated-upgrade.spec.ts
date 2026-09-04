@@ -141,7 +141,7 @@ test.describe("shared→dedicated tier upgrade", () => {
       expect(
         firstTurn.json.degraded,
         `first shared turn must use the configured mock model: ${JSON.stringify(firstTurn.json)}`,
-      ).not.toBe(true);
+      ).toBe(false);
       const secondTurn = await sendTurn(SECOND, "personal-upgrade-2");
       expect(
         secondTurn.status,
@@ -150,7 +150,7 @@ test.describe("shared→dedicated tier upgrade", () => {
       expect(
         secondTurn.json.degraded,
         `second shared turn must use the configured mock model: ${JSON.stringify(secondTurn.json)}`,
-      ).not.toBe(true);
+      ).toBe(false);
       const sharedHistory = await retrySharedRuntimeWarming(() =>
         c<{ messages?: Array<{ role: string; text: string }> }>(
           "GET",
