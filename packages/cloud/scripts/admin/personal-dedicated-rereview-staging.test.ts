@@ -59,6 +59,7 @@ function dependencies(overrides: Partial<RereviewOperatorDependencies> = {}) {
     | undefined;
   const value: RereviewOperatorDependencies = {
     verifyDeployment: async () => {},
+    reportAccountLifecycle: async () => {},
     resolveSelection: async () => resolved,
     preview: async () => preview,
     execute: async (input) => {
@@ -76,6 +77,28 @@ function dependencies(overrides: Partial<RereviewOperatorDependencies> = {}) {
 }
 
 describe("personal Dedicated staging re-review operator", () => {
+  test("reports lifecycle before a missing selection prevents review", async () => {
+    const events: string[] = [];
+    const deps = dependencies({
+      verifyDeployment: async () => {
+        events.push("deployment verified");
+      },
+      reportAccountLifecycle: async () => {
+        events.push("lifecycle reported");
+      },
+      resolveSelection: async () => {
+        throw new PersonalDedicatedRereviewOperatorError(
+          "selection_bootstrap_zero_candidates",
+        );
+      },
+    });
+    await expect(
+      runRereviewOperator(config("preview"), deps.value),
+    ).rejects.toThrow("selection_bootstrap_zero_candidates");
+    expect(events).toEqual(["deployment verified", "lifecycle reported"]);
+    expect(deps.executeCalls()).toBe(0);
+  });
+
   test("reports a provisioning failure without returning raw errors or locators", async () => {
     const privateLocator = "https://private-host.invalid/private-agent";
     const selectedTarget = diagnoseRereviewTarget({

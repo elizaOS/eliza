@@ -184,6 +184,7 @@ export interface RereviewOperatorDecisionEvidence {
 
 export interface RereviewOperatorDependencies {
   verifyDeployment(expectedCommit: string): Promise<void>;
+  reportAccountLifecycle(apiKey: string): Promise<void>;
   resolveSelection(apiKey: string): Promise<ResolvedSelection>;
   preview(input: ResolvedSelection): Promise<SelectionPreview>;
   execute(input: SelectionExecuteInput): Promise<void>;
@@ -371,6 +372,9 @@ export async function runRereviewOperator(
   dependencies: RereviewOperatorDependencies,
 ): Promise<RereviewOperatorEvidence> {
   await dependencies.verifyDeployment(config.expectedCloudCommit);
+  // A used or absent selection can reject before preview. Diagnose the owner
+  // first so that a stalled activation does not suppress lifecycle evidence.
+  await dependencies.reportAccountLifecycle(config.apiKey);
   const resolved = await dependencies.resolveSelection(config.apiKey);
   const preview = await dependencies.preview(resolved);
   if (preview.operation !== resolved.operation) {
@@ -480,44 +484,17 @@ async function defaultVerifyDeployment(expectedCommit: string): Promise<void> {
   }
 }
 
-async function defaultResolveSelection(
-  apiKey: string,
-): Promise<ResolvedSelection> {
-  const [
-    { and, asc, eq, inArray, isNull, notExists },
-    { dbWrite },
-    { apiKeys },
-    { users },
-    selectionSchema,
-    sandboxSchema,
-    shared,
-    targetService,
-    provenance,
-  ] = await Promise.all([
-    import("drizzle-orm"),
-    import("@elizaos/cloud-shared/db/client"),
-    import("@elizaos/cloud-shared/db/schemas/api-keys"),
-    import("@elizaos/cloud-shared/db/schemas/users"),
-    import(
-      "@elizaos/cloud-shared/db/schemas/personal-dedicated-adoption-selections"
-    ),
-    import("@elizaos/cloud-shared/db/schemas/agent-sandboxes"),
-    import(
-      "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent"
-    ),
-    import("@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target"),
-    import(
-      "@elizaos/cloud-shared/lib/services/personal-dedicated-adoption-provenance"
-    ),
-  ]);
-  const { personalDedicatedAdoptionSelections } = selectionSchema;
-  const { agentSandboxBackups, agentSandboxes } = sandboxSchema;
-  const { personalSharedAgentId } = shared;
-  const { adoptableUnmarkedTargetWhere } = targetService;
-  const {
-    personalDedicatedActivationAuthority,
-    personalDedicatedBackupProvenanceFromStored,
-  } = provenance;
+async function defaultResolveSmokeOwner(apiKey: string): Promise<{
+  id: string;
+  organizationId: string;
+}> {
+  const [{ and, eq, isNull }, { dbWrite }, { apiKeys }, { users }] =
+    await Promise.all([
+      import("drizzle-orm"),
+      import("@elizaos/cloud-shared/db/client"),
+      import("@elizaos/cloud-shared/db/schemas/api-keys"),
+      import("@elizaos/cloud-shared/db/schemas/users"),
+    ]);
   const keyHash = createHash("sha256").update(apiKey).digest("hex");
   // Identity and receipt resolution are execution authority. A replica can
   // lag key revocation or receipt replacement, so every read uses primary.
@@ -557,6 +534,44 @@ async function defaultResolveSelection(
   ) {
     throw new PersonalDedicatedRereviewOperatorError("smoke_owner_not_active");
   }
+  return { id: owner.id, organizationId: owner.organizationId };
+}
+
+async function defaultResolveSelection(
+  apiKey: string,
+): Promise<ResolvedSelection> {
+  const [
+    { and, asc, eq, inArray, notExists },
+    { dbWrite },
+    selectionSchema,
+    sandboxSchema,
+    shared,
+    targetService,
+    provenance,
+  ] = await Promise.all([
+    import("drizzle-orm"),
+    import("@elizaos/cloud-shared/db/client"),
+    import(
+      "@elizaos/cloud-shared/db/schemas/personal-dedicated-adoption-selections"
+    ),
+    import("@elizaos/cloud-shared/db/schemas/agent-sandboxes"),
+    import(
+      "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent"
+    ),
+    import("@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target"),
+    import(
+      "@elizaos/cloud-shared/lib/services/personal-dedicated-adoption-provenance"
+    ),
+  ]);
+  const { personalDedicatedAdoptionSelections } = selectionSchema;
+  const { agentSandboxBackups, agentSandboxes } = sandboxSchema;
+  const { personalSharedAgentId } = shared;
+  const { adoptableUnmarkedTargetWhere } = targetService;
+  const {
+    personalDedicatedActivationAuthority,
+    personalDedicatedBackupProvenanceFromStored,
+  } = provenance;
+  const owner = await defaultResolveSmokeOwner(apiKey);
   const sourceAgentId = personalSharedAgentId({
     organizationId: owner.organizationId,
     userId: owner.id,
@@ -692,8 +707,119 @@ async function defaultSnapshot(
   };
 }
 
+async function defaultReportAccountLifecycle(apiKey: string): Promise<void> {
+  const owner = await defaultResolveSmokeOwner(apiKey);
+  const [
+    { and, eq },
+    { dbWrite },
+    { agentSandboxes },
+    { jobs },
+    { personalDedicatedUpgradeAuthorities: authorities },
+    { personalDedicatedAdoptionSelections: selections },
+  ] = await Promise.all([
+    import("drizzle-orm"),
+    import("@elizaos/cloud-shared/db/client"),
+    import("@elizaos/cloud-shared/db/schemas/agent-sandboxes"),
+    import("@elizaos/cloud-shared/db/schemas/jobs"),
+    import(
+      "@elizaos/cloud-shared/db/schemas/personal-dedicated-upgrade-authorities"
+    ),
+    import(
+      "@elizaos/cloud-shared/db/schemas/personal-dedicated-adoption-selections"
+    ),
+  ]);
+  const [agentRows, jobRows, authorityRows, selectionRows] = await Promise.all([
+    dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.organization_id, owner.organizationId),
+          eq(agentSandboxes.user_id, owner.id),
+        ),
+      )
+      .orderBy(agentSandboxes.id),
+    dbWrite
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.organization_id, owner.organizationId),
+          eq(jobs.user_id, owner.id),
+        ),
+      )
+      .orderBy(jobs.created_at),
+    dbWrite
+      .select()
+      .from(authorities)
+      .where(
+        and(
+          eq(authorities.organization_id, owner.organizationId),
+          eq(authorities.user_id, owner.id),
+        ),
+      ),
+    dbWrite
+      .select()
+      .from(selections)
+      .where(
+        and(
+          eq(selections.organization_id, owner.organizationId),
+          eq(selections.user_id, owner.id),
+        ),
+      ),
+  ]);
+  const evidence = {
+    schemaVersion: 1,
+    kind: "account-lifecycle",
+    agents: agentRows.map((agent) => ({
+      ...diagnoseRereviewTarget(agent),
+      updatedAt: agent.updated_at,
+      selected: selectionRows.some(
+        (row) => row.dedicated_agent_id === agent.id,
+      ),
+      activationBound: authorityRows.some(
+        (row) => row.dedicated_agent_id === agent.id,
+      ),
+      cutoverActivated: authorityRows.some(
+        (row) =>
+          row.dedicated_agent_id === agent.id &&
+          row.cutover_activated_at !== null,
+      ),
+      jobs: jobRows
+        .filter((row) => row.agent_id === agent.id)
+        .map((job) => {
+          if (
+            ![
+              "pending",
+              "in_progress",
+              "completed",
+              "failed",
+              "cancelled",
+            ].includes(job.status)
+          ) {
+            throw new PersonalDedicatedRereviewOperatorError(
+              "diagnostic_job_status_invalid",
+            );
+          }
+          return {
+            status: job.status,
+            failure: classifyManagedDedicatedProvisionFailure(
+              job.error,
+              "lifecycle job error",
+            ),
+            attempts: job.attempts,
+            retryableRequeues: job.retryable_requeues,
+            updatedAt: job.updated_at,
+          };
+        }),
+    })),
+  };
+  process.stdout.write(`${JSON.stringify(evidence)}\n`);
+}
+
 const defaultDependencies: RereviewOperatorDependencies = {
   verifyDeployment: defaultVerifyDeployment,
+  reportAccountLifecycle: defaultReportAccountLifecycle,
   resolveSelection: defaultResolveSelection,
   preview: async (input) => {
     const { personalDedicatedAdoptionSelectionService } = await import(
