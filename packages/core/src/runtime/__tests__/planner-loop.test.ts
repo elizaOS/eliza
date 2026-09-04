@@ -5887,6 +5887,79 @@ describe("v5 planner loop — evaluator gate", () => {
 		).toBe("post_tool_model_reply");
 	});
 
+	it("evaluates all model-authored intents instead of finishing after one final-scope action", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "note-1",
+						name: "NOTES",
+						arguments: { action: "update", [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "view-1",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "notes",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE",
+				thought: "The note changed, but Notes has not opened.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH",
+				thought: "Both requested outcomes are confirmed.",
+				messageToUser: "Notes is open and your note is updated.",
+			});
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			modelReplyRequired: true,
+			text: "Confirmed operation.",
+		}));
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: {
+				id: "compound",
+				events: [
+					{
+						id: "routing",
+						type: "message_handler",
+						metadata: { plan: { intents: ["update note", "open notes"] } },
+					},
+				],
+			},
+			tools: [
+				{ name: "NOTES", description: "Edit notes" },
+				{ name: "VIEWS", description: "Navigate" },
+			],
+			executeToolCall,
+			evaluate,
+		});
+		expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
+			"NOTES",
+			"VIEWS",
+		]);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("Notes is open and your note is updated.");
+	});
+
 	it("falls back to the settled action when post-tool synthesis has a provider outage", async () => {
 		const providerError = Object.assign(new Error("provider unavailable"), {
 			statusCode: 503,

@@ -203,6 +203,31 @@ describe("v5 runtime failure before a respond decision", () => {
 		expect(visibleTexts).toHaveLength(1);
 	});
 
+	it("propagates exhausted reply grounding without a second apology model pass", async () => {
+		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+		const failure = Object.assign(new Error("Grounded reply unavailable"), {
+			code: "REPLY_GROUNDING_FAILED",
+		});
+		runtime.useModel = vi.fn(async () => {
+			throw failure;
+		}) as IAgentRuntime["useModel"];
+		const callback = vi.fn(async () => []);
+		await expect(
+			new DefaultMessageService().handleMessage(
+				runtime,
+				makeMessage({ channelType: ChannelType.DM }),
+				callback,
+			),
+		).rejects.toBe(failure);
+		expect(
+			vi
+				.mocked(runtime.useModel)
+				.mock.calls.map(([modelType]) => String(modelType))
+				.filter((modelType) => modelType !== "TEXT_EMBEDDING"),
+		).toEqual(["RESPONSE_HANDLER"]);
+		expect(callback).not.toHaveBeenCalled();
+	});
+
 	it("propagates caller cancellation without generating a failure reply", async () => {
 		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
 		const controller = new AbortController();

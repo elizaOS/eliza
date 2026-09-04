@@ -136,14 +136,15 @@ export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "intents",
 	description:
-		'Short verb phrases for this turn: ["schedule meeting", "draft email", "research X"]. Use 1-4. Helps action retrieval/routing. Empty for no actionable intent.',
+		'Short verb phrases covering every explicit requested outcome in this turn. Keep navigation and data changes as separate intents: "open notes and update a note" requires both. Do not discard one clause because another is more substantive. Empty for no actionable intent.',
 	descriptionCompressed:
-		"1-4 short verb phrases for this turn; empty when no actionable intent.",
+		"One short verb phrase per requested outcome, including navigation separately from edits; omit no requested clause. Empty when no actionable intent.",
 	priority: 15,
 	schema: {
 		type: "array",
 		items: { type: "string" },
-		description: "Verb-led intents. Lowercase. No punctuation. ~6 words max.",
+		description:
+			"Every requested outcome as a short verb-led intent, including navigation separately from data changes. Lowercase; no punctuation.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -176,15 +177,15 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "candidateActionNames",
 	description:
-		"Likely UPPER_SNAKE_CASE action names. Prefer available_actions; confident unlisted names ok. Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar-event reads/writes -> CALENDAR. Life-management (goals/todos/reminders/routines) -> the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER); hint, not a claim. Empty when no action likely.",
+		"Likely UPPER_SNAKE_CASE action names covering all requested intents. Prefer available_actions; confident unlisted names ok. Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar-event reads/writes -> CALENDAR. Opening a view and editing its data require both navigation and data actions, not just one. Life-management (goals/todos/reminders/routines) -> the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER); hint, not a claim. Empty when no action likely.",
 	descriptionCompressed:
-		"Likely UPPER_SNAKE_CASE action names. Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar events -> CALENDAR. Empty only when no action is needed.",
+		"Likely UPPER_SNAKE_CASE actions for every intent. Notes data -> NOTES; navigation/native device -> VIEWS; calendar data -> CALENDAR. Open-and-edit requires both navigation and data actions. Empty only when no action is needed.",
 	priority: 50,
 	schema: {
 		type: "array",
 		items: { type: "string" },
 		description:
-			"Action names. UPPER_SNAKE_CASE. Retrieval hints; high-precision hits expose planner actions.",
+			"UPPER_SNAKE_CASE retrieval hints covering all intents. Include navigation as well as data actions for open-and-edit requests.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];

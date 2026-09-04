@@ -46,9 +46,29 @@ async function runBrowserAction(args: {
 }
 
 describe("BROWSER action", () => {
+  it("allows automatic target selection and plugin-registered target IDs", async () => {
+    const automatic = validateToolArgs(browserAction, {
+      action: "snapshot",
+      target: "",
+    });
+    expect(automatic.valid).toBe(true);
+    expect(automatic.args).not.toHaveProperty("target");
+    const { service } = await runBrowserAction({ parameters: automatic.args });
+    expect(service?.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ subaction: "snapshot" }),
+      undefined,
+    );
+    expect(
+      validateToolArgs(browserAction, {
+        action: "snapshot",
+        target: "custom-registered-browser",
+      }).valid,
+    ).toBe(true);
+  });
+
   it("accepts an omitted tab operation without weakening enum validation", async () => {
     const validation = validateToolArgs(browserAction, {
-      action: "get",
+      action: "snapshot",
       id: "btab_1",
       tabAction: "",
     });
@@ -59,7 +79,7 @@ describe("BROWSER action", () => {
     });
     expect(result?.success).toBe(true);
     expect(service?.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ subaction: "get", id: "btab_1" }),
+      expect.objectContaining({ subaction: "snapshot", id: "btab_1" }),
       undefined,
     );
     expect(
@@ -69,6 +89,26 @@ describe("BROWSER action", () => {
       }).valid,
     ).toBe(false);
   });
+
+  it.each([
+    { action: "snapshot", selector: undefined },
+    { action: "get", selector: "h1" },
+  ])(
+    "dispatches $action using its explicit page-read contract",
+    async (parameters) => {
+      const service = browserService({ value: "Example Domain" });
+      const { result } = await runBrowserAction({ service, parameters });
+      expect(service.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subaction: parameters.action,
+          selector: parameters.selector,
+        }),
+        undefined,
+      );
+      expect(result?.success).toBe(true);
+      expect(result?.data.result.value).toBe("Example Domain");
+    },
+  );
 
   it("routes page-reading planner aliases to the canonical browser action", () => {
     expect(browserAction.similes).toEqual(
@@ -145,8 +185,6 @@ describe("BROWSER action", () => {
     );
     expect(result).toMatchObject({
       text: "Opened example.com/path.",
-      userFacingText: "Opened example.com/path.",
-      verifiedUserFacing: true,
       turnComplete: true,
       modelReplyRequired: true,
       values: {
@@ -155,6 +193,8 @@ describe("BROWSER action", () => {
         viewPath: "/browser",
       },
     });
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("verifiedUserFacing");
     expect(browserAction.suppressEarlyReply).toBe(true);
   });
 
@@ -215,10 +255,11 @@ describe("BROWSER action", () => {
     expect(callback).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       text: "Opened example.com.",
-      userFacingText: "Opened example.com.",
-      verifiedUserFacing: true,
       turnComplete: true,
+      modelReplyRequired: true,
     });
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("verifiedUserFacing");
   });
 
   it("does not fail the browser action when compact progress delivery fails", async () => {

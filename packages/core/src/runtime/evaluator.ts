@@ -1119,8 +1119,22 @@ const FINISH_PROGRESS_PROMISE_TAIL_RE =
  */
 const UNSERVED_INTENTS_THOUGHT_MARKER = "unserved declared intents";
 
-function declaredIntentsFromContext(context: ContextObject): string[] {
+export function declaredIntentsFromContext(context: ContextObject): string[] {
 	const events = Array.isArray(context.events) ? context.events : [];
+	const plan = [...events]
+		.reverse()
+		.find((event) => event.type === "message_handler")?.metadata?.plan;
+	if (
+		plan &&
+		typeof plan === "object" &&
+		!Array.isArray(plan) &&
+		Array.isArray(plan.intents)
+	) {
+		return plan.intents.filter(
+			(intent: unknown): intent is string =>
+				typeof intent === "string" && intent.trim().length > 0,
+		);
+	}
 	for (const event of events) {
 		if (
 			event &&
@@ -1145,6 +1159,14 @@ function repairFinishWithUnservedDeclaredIntents(
 	trajectory: PlannerTrajectory,
 ): EvaluatorOutput {
 	if (output.decision !== "FINISH") return output;
+	// The legacy instruction listed separate tool operations. Structured v5
+	// intents describe outcomes: one update may change a body AND preserve its
+	// title. Let the evaluator judge outcomes rather than demand one call each.
+	if (
+		!context.events?.some((event) => event.id === "stage1-declared-intents")
+	) {
+		return output;
+	}
 	const intents = declaredIntentsFromContext(context);
 	if (intents.length < 2) return output;
 	const priorCoercion = (trajectory.evaluatorOutputs ?? []).some((prior) =>
@@ -1246,15 +1268,13 @@ function recoverEvaluatorTextOutput(
 
 	if (!hasSuccessfulToolResult(trajectory)) return output;
 
-	const envelopeMessage = trailingFinishEnvelopeMessage(text);
-	if (envelopeMessage) {
+	const envelope = trailingEvaluatorEnvelope(text);
+	if (envelope) {
 		return {
-			success: true,
-			decision: "FINISH",
-			thought:
-				"Recovered the terminal evaluator envelope's answer from surrounding debris.",
-			messageToUser: envelopeMessage,
-			raw: { recoverySource: "trailing_finish_envelope_message" },
+			...envelope,
+			messageToUser:
+				envelope.decision === "FINISH" ? envelope.messageToUser : undefined,
+			raw: { recoverySource: "trailing_evaluator_envelope" },
 		};
 	}
 	if (!looksLikeUserFacingAnswer(text)) return output;
@@ -1327,32 +1347,25 @@ function latestVerifiedToolUserFacingText(
 }
 
 /**
- * Recover the user-facing answer from a valid trailing terminal envelope.
+ * Recover control flow from a valid trailing evaluator envelope.
  * Nonterminal envelopes remain planner control flow and must never be promoted
  * into a finished user reply merely because noisy text preceded them.
  */
-function trailingFinishEnvelopeMessage(text: string): string | null {
+function trailingEvaluatorEnvelope(text: string): EvaluatorOutput | null {
 	const trimmed = text.trimEnd();
 	if (!trimmed.endsWith("}")) return null;
-	const candidate = extractJsonObjects(trimmed).at(-1);
+	const objects = extractJsonObjects(trimmed);
+	if (objects.length !== 1) return null;
+	const candidate = objects[0];
 	if (!candidate || !trimmed.endsWith(candidate)) return null;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(candidate);
-	} catch {
-		// error-policy:J3 malformed model output is not a recoverable envelope.
+	if (!isEvaluatorEnvelopeObject(tryParseJson(candidate))) return null;
+	const parsed = parseEvaluatorOutput(candidate);
+	if (parsed.parseError) return null;
+	// A terminal envelope without an answer still uses the existing safe prose
+	// recovery. Nonterminal decisions must never be replaced by that prose.
+	if (parsed.decision === "FINISH" && !parsed.messageToUser?.trim())
 		return null;
-	}
-	if (!isEvaluatorEnvelopeObject(parsed)) return null;
-	const record = parsed as Record<string, unknown>;
-	const decision = String(record.decision ?? record.route)
-		.trim()
-		.toUpperCase();
-	if (decision !== "FINISH") return null;
-	const message = record.messageToUser;
-	return typeof message === "string" && message.trim().length > 0
-		? message.trim()
-		: null;
+	return parsed;
 }
 
 /**

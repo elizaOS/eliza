@@ -10,13 +10,37 @@ const message: Memory = {
 	content: { text: "Make a note about the picnic." },
 };
 
+const savedNote: ActionResult = {
+	success: true,
+	data: {
+		actionName: "NOTES",
+		note: { title: "Picnic", body: "bring a charger" },
+	},
+	effectReceipts: [
+		{
+			receiptId: "note-proof",
+			operation: "notes.create",
+			outcome: "applied",
+			resource: { kind: "note", id: "picnic" },
+			artifacts: [],
+			idempotency: { key: "picnic-request", replayed: false },
+			observedAt: "2026-09-04T12:00:00.000Z",
+			commit: {
+				kind: "durable",
+				id: "note-write",
+				committedAt: "2026-09-04T12:00:00.000Z",
+			},
+		},
+	],
+};
+
 describe("model-backed final reply recovery", () => {
 	it("preserves a valid model reply without another inference call", async () => {
 		const runtime = createMockRuntime({ useModel: vi.fn() });
 		const reply = "What would you like the note to say?";
 		await expect(
 			resolvePlannedReplyEgress({ runtime, message, reply, actionResults: [] }),
-		).resolves.toBe(reply);
+		).resolves.toEqual({ text: reply, effectReceiptIds: [] });
 		expect(runtime.useModel).not.toHaveBeenCalled();
 	});
 
@@ -52,7 +76,7 @@ describe("model-backed final reply recovery", () => {
 				reply: "I've created the note.",
 				actionResults,
 			}),
-		).resolves.toBe(response);
+		).resolves.toEqual({ text: response, effectReceiptIds: [] });
 		expect(useModel).toHaveBeenCalledTimes(1);
 		expect(useModel).toHaveBeenCalledWith(
 			ModelType.TEXT_SMALL,
@@ -76,33 +100,104 @@ describe("model-backed final reply recovery", () => {
 		});
 		const actionResults: ActionResult[] = [
 			{
-				success: true,
+				...savedNote,
 				userFacingText: response,
 				verifiedUserFacing: true,
-				data: { actionName: "NOTES" },
 				userFacingEffectReceiptIds: ["note-proof"],
-				effectReceipts: [
-					{
-						receiptId: "note-proof",
-						operation: "notes.create",
-						outcome: "applied",
-						resource: { kind: "note", id: "picnic" },
-						artifacts: [],
-						idempotency: { key: "picnic-request", replayed: false },
-						observedAt: "2026-09-04T12:00:00.000Z",
-						commit: {
-							kind: "durable",
-							id: "note-write",
-							committedAt: "2026-09-04T12:00:00.000Z",
-						},
-					},
-				],
 			},
 		];
 		await expect(
 			resolvePlannedReplyEgress({ runtime, message, reply: "", actionResults }),
-		).resolves.toBe(response);
+		).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
+	it("binds model-authored prose to the selected current-turn receipt without canned action text", async () => {
+		const response =
+			"I've created Picnic with your reminder to bring a charger.";
+		const runtime = createMockRuntime({
+			useModel: vi.fn(async () =>
+				JSON.stringify({ response, effectReceiptIds: ["note-proof"] }),
+			),
+		});
+		await expect(
+			resolvePlannedReplyEgress({
+				runtime,
+				message,
+				reply: "I've created the note.",
+				actionResults: [savedNote],
+			}),
+		).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(savedNote.userFacingText).toBeUndefined();
+	});
+
+	it.each(
+		[
+			[],
+			["invented-proof"],
+			["note-proof", "invented-proof"],
+			[42],
+			"note-proof",
+		].map((effectReceiptIds) => ({ effectReceiptIds })),
+	)(
+		"rejects unsupported or malformed model-selected receipt IDs: %j",
+		async ({ effectReceiptIds }) => {
+			const runtime = createMockRuntime({
+				useModel: vi.fn(async () =>
+					JSON.stringify({
+						response: "I've created the note.",
+						effectReceiptIds,
+					}),
+				),
+			});
+			await expect(
+				resolvePlannedReplyEgress({
+					runtime,
+					message,
+					reply: "",
+					actionResults: [savedNote],
+				}),
+			).rejects.toMatchObject({ code: "REPLY_GROUNDING_FAILED" });
+		},
+	);
+
+	it("does not turn a preview or a rolled-back write into a completed-change confirmation", async () => {
+		const runtime = createMockRuntime({
+			useModel: vi.fn(async () =>
+				JSON.stringify({
+					response: "I've created the note.",
+					effectReceiptIds: ["note-proof"],
+				}),
+			),
+		});
+		const applied = savedNote.effectReceipts?.[0];
+		if (!applied) throw new Error("Missing receipt fixture");
+		for (const effectReceipts of [
+			[{ ...applied, outcome: "preview" as const }],
+			[
+				applied,
+				{
+					...applied,
+					receiptId: "rollback",
+					outcome: "rolled_back" as const,
+					rollback: {
+						receiptId: "undo-write",
+						revertedReceiptIds: ["note-proof"],
+						rolledBackAt: "2026-09-04T12:01:00.000Z",
+					},
+				},
+			],
+		]) {
+			await expect(
+				resolvePlannedReplyEgress({
+					runtime,
+					message,
+					reply: "",
+					actionResults: [{ ...savedNote, effectReceipts }],
+				}),
+			).rejects.toMatchObject({ code: "REPLY_GROUNDING_FAILED" });
+		}
 	});
 
 	it.each([

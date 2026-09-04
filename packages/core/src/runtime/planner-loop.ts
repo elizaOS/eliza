@@ -81,7 +81,7 @@ import {
 	renderContextObject,
 	segmentBlock,
 } from "./context-renderer";
-import { runEvaluator } from "./evaluator";
+import { declaredIntentsFromContext, runEvaluator } from "./evaluator";
 import {
 	extractJsonObjects,
 	parseJsonObject,
@@ -364,6 +364,11 @@ async function runPlannerLoopIterations(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
 	const plannerContext = normalizePlannerContext(params.context);
+	// A single successful call cannot establish that every model-identified
+	// outcome was fulfilled. Keep the evaluator for compound turns even when
+	// the first tool call incorrectly declares final scope.
+	const requiresIntentEvaluation =
+		declaredIntentsFromContext(plannerContext).length > 1;
 	// Diagnostic projection for every context/event copy of tool-call
 	// arguments: runtime-known secrets composed with the shared tool-shape
 	// patterns. The raw calls stay on `trajectory.plannedQueue` for execution.
@@ -1813,6 +1818,7 @@ async function runPlannerLoopIterations(
 		if (
 			latestResult?.success === true &&
 			latestResult.modelReplyRequired === true &&
+			!requiresIntentEvaluation &&
 			trajectory.plannedQueue.length === 0 &&
 			failures.length === 0 &&
 			lastPlannerExplicitCompleted === true &&
@@ -1828,12 +1834,14 @@ async function runPlannerLoopIterations(
 		// action-owned completion. Falls through on any ambiguity. See
 		// `tryGateEvaluator` for the full contract.
 		const gateStartedAt = Date.now();
-		const gatedDecision = tryGateEvaluator({
-			trajectory,
-			failures,
-			lastPlannerExplicitMessageToUser,
-			lastPlannerExplicitCompleted,
-		});
+		const gatedDecision = requiresIntentEvaluation
+			? null
+			: tryGateEvaluator({
+					trajectory,
+					failures,
+					lastPlannerExplicitMessageToUser,
+					lastPlannerExplicitCompleted,
+				});
 		if (gatedDecision) {
 			const { output: gated, reason } = gatedDecision;
 			trajectory.evaluatorOutputs.push(

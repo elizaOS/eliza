@@ -16,7 +16,7 @@ import type { JSONSchema } from "../types/model";
 export const plannerTemplate = `task: Plan next native tool calls.
 
 rules:
-- use only tools array; smallest grounded queue
+- use only tools array; smallest grounded queue that covers every explicit requested outcome, including navigation separately from data changes. Routing hints are not a replacement for the full user request; do not silently drop a clause.
 - routed action: set parameters.action only if schema has it
 - args grounded in user request or prior tool results
 - obey schema; arrays as JSON arrays, not comma strings

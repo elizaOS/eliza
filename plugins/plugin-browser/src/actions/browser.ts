@@ -803,14 +803,13 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Firefox/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. Interaction: click, type (append), fill (replace), clear, press, scroll (direction/pixels, optional selector), hover, drag (selector -> targetSelector). action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
+    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Firefox/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. Read the current page with action=snapshot (page text and elements) or action=state (page state). action=get reads one element and requires selector; it does not read the whole page when selector is omitted. Interaction: click, type (append), fill (replace), clear, press, scroll (direction/pixels, optional selector), hover, drag (selector -> targetSelector). action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
   descriptionCompressed:
-    "Browser open|navigate|click|type|fill|clear|scroll|hover|drag|get page text|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
+    "Browser open|navigate|click|type|fill|clear|scroll|hover|drag; snapshot/state read page; get requires selector; screenshot|autofill_login|wait_for_url; bridge status elsewhere",
   routingHint:
     "drive an INTERACTIVE web browser session — navigate/click/type across pages, log into a site, or autofill saved credentials on a real browser target -> BROWSER; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
-  // Browser effects acknowledge the verified browser receipt. A speculative
-  // Stage-1 phrase such as "navigating now" would race that outcome and become
-  // a redundant text/voice utterance.
+  // Wait for the browser result before the model writes its reply. A speculative
+  // Stage-1 acknowledgement would race the result and duplicate text/voice.
   suppressEarlyReply: true,
   validate: async () => true,
   handler: async (
@@ -901,8 +900,6 @@ export const browserAction: Action = {
         text,
         ...(ownsTerminalReply
           ? {
-              userFacingText: text,
-              verifiedUserFacing: true,
               turnComplete: true,
               modelReplyRequired: true,
             }
@@ -995,12 +992,10 @@ export const browserAction: Action = {
     {
       name: "target",
       description:
-        "Optional registered browser backend. Omit to use the best available target. Use workspace for Eliza's built-in Browser view; never use the generic word browser as a target id.",
+        "Optional backend override. Omit (or use an empty string) for automatic selection among available targets. For the tabs shown in browser_workspace use workspace. Pin another target only when the user requested that surface and live context confirms it is available; registered does not mean connected.",
       required: false,
-      schema: {
-        type: "string" as const,
-        enum: ["workspace", "bridge", "computeruse", "stagehand"],
-      },
+      modelOmissionSentinels: [""],
+      schema: { type: "string" as const },
     },
     {
       name: "streamProgress",
@@ -1018,7 +1013,7 @@ export const browserAction: Action = {
     {
       name: "action",
       description:
-        "Browser action. Snake_case canonical; legacy kebab-case and subaction accepted.",
+        "Browser action. Use snapshot to read the current page's text and headings, state for page state, or get with selector to read one element. Snake_case canonical; legacy kebab-case and subaction accepted.",
       required: false,
       schema: {
         type: "string" as const,
@@ -1120,7 +1115,8 @@ export const browserAction: Action = {
     },
     {
       name: "selector",
-      description: "Selector for click, type, or wait",
+      description:
+        "Element selector for click, type, wait, or get. Required for get (for example h1); use snapshot instead when reading the whole page.",
       required: false,
       schema: { type: "string" as const },
     },

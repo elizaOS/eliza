@@ -94,6 +94,26 @@ describe("contextsFieldEvaluator", () => {
 });
 
 describe("intentsFieldEvaluator", () => {
+	it("preserves all distinct outcomes of a compound request", () => {
+		const intents = [
+			"open notes",
+			"update note body",
+			"open calendar",
+			"create event",
+			"open browser",
+			"read page",
+		];
+		expect(intentsFieldEvaluator.parse(intents)).toEqual(intents);
+		expect(
+			candidateActionNamesFieldEvaluator.parse([
+				"VIEWS",
+				"NOTES",
+				"CALENDAR",
+				"BROWSER",
+			]),
+		).toEqual(["VIEWS", "NOTES", "CALENDAR", "BROWSER"]);
+	});
+
 	it("lowercases, trims, and strips trailing sentence punctuation", () => {
 		expect(intentsFieldEvaluator.parse(["  Schedule Meeting!? "])).toEqual([
 			"schedule meeting",

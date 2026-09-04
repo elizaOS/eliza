@@ -2617,9 +2617,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"torch",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke explicit capabilities that a view declares when no dedicated domain action owns the data, including native device controls. Notes records belong to NOTES and calendar events belong to CALENDAR; VIEWS opens those surfaces.",
+			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke explicit capabilities that a view declares when no dedicated domain action owns the data, including native device controls. Notes records belong to NOTES and calendar events belong to CALENDAR; VIEWS opens those surfaces. action=interact invokes a capability without opening its view. An explicit open-and-edit request requires show/open navigation as well as the data operation.",
 		descriptionCompressed:
-			"navigate/close/arrange UI views; invoke explicit UI-only capabilities; Notes records use NOTES; Calendar records use CALENDAR",
+			"show/open navigates UI; interact invokes capabilities without navigation; Notes data uses NOTES, Calendar data uses CALENDAR; open-and-edit requires both operations",
 		routingHint: VIEWS_ROUTING_HINT,
 		allowAdditionalParameters: true,
 		toolSchemaStrict: false,

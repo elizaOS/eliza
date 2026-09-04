@@ -256,6 +256,34 @@ describe("NOTES operation parsing", () => {
     ]);
   });
 
+  it("returns the persisted label and body as evidence after a content update", async () => {
+    const runtime = await harness();
+    const created = await run(runtime, {
+      action: "create",
+      content: "Demo checklist",
+      body: "charger",
+    });
+    const updated = await run(runtime, {
+      action: "update",
+      content: "Demo checklist",
+      body: "Demo checklist\ncharger and water",
+    });
+    expect(updated.success).toBe(true);
+    expect(updated.modelReplyRequired).toBe(true);
+    expect(updated.data?.note).toMatchObject({
+      id: created.data?.noteId,
+      title: "Demo checklist",
+      body: "charger and water",
+    });
+    const listed = await run(runtime, {
+      action: "list",
+      content: "Demo checklist",
+    });
+    expect(listed.data?.notes).toEqual([
+      { title: "Demo checklist", body: "charger and water", color: "yellow" },
+    ]);
+  });
+
   it("lets the owner create, search/list, update, and delete in one store", async () => {
     const runtime = await harness();
     const created = await run(runtime, {
