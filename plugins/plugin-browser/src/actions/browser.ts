@@ -790,6 +790,10 @@ export const browserAction: Action = {
     "OPEN_SITE",
     "USE_BROWSER",
     "BROWSER_ACTION",
+    "BROWSER_GET_CONTEXT",
+    "BROWSER_GET_PAGE_STATE",
+    "BROWSER_READ_PAGE",
+    "BROWSER_SNAPSHOT",
     "BROWSER_AUTOFILL_LOGIN",
     "AGENT_AUTOFILL",
     "AUTOFILL_BROWSER_LOGIN",
@@ -801,7 +805,7 @@ export const browserAction: Action = {
   description:
     "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Firefox/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. Interaction: click, type (append), fill (replace), clear, press, scroll (direction/pixels, optional selector), hover, drag (selector -> targetSelector). action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
   descriptionCompressed:
-    "Browser open|navigate|click|type|fill|clear|scroll|hover|drag|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
+    "Browser open|navigate|click|type|fill|clear|scroll|hover|drag|get page text|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
   routingHint:
     "drive an INTERACTIVE web browser session — navigate/click/type across pages, log into a site, or autofill saved credentials on a real browser target -> BROWSER; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
   // Browser effects acknowledge the verified browser receipt. A speculative
@@ -895,9 +899,13 @@ export const browserAction: Action = {
       const text = formatBrowserSessionResult(command, result);
       return {
         text,
-        userFacingText: text,
-        verifiedUserFacing: true,
-        ...(ownsTerminalReply ? { turnComplete: true } : {}),
+        ...(ownsTerminalReply
+          ? {
+              userFacingText: text,
+              verifiedUserFacing: true,
+              turnComplete: true,
+            }
+          : {}),
         success: true,
         values: {
           success: true,

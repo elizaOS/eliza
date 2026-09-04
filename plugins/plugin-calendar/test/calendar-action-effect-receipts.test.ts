@@ -404,6 +404,92 @@ describe("CALENDAR effect receipt settlement", () => {
     expectBoundDelivery(delivered, result);
   });
 
+  it("re-extracts a natural-language planner timestamp before creating an event", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-04T18:00:00.000Z"));
+    try {
+      const runJsonModel = vi.fn(async (args: { prompt: string }) => {
+        if (!args.prompt.includes("Extract calendar event creation fields")) {
+          return null;
+        }
+        return {
+          rawResponse: JSON.stringify({
+            title: "Full QA Event",
+            startAt: "2026-09-05T16:00:00-04:00",
+            durationMinutes: 30,
+            timeZone: "America/New_York",
+          }),
+          parsed: {
+            title: "Full QA Event",
+            startAt: "2026-09-05T16:00:00-04:00",
+            durationMinutes: 30,
+            timeZone: "America/New_York",
+          },
+        };
+      });
+      const createdEvent: LifeOpsCalendarEvent = {
+        ...ELIZA_EVENT,
+        title: "Full QA Event",
+        startAt: "2026-09-05T20:00:00.000Z",
+        endAt: "2026-09-05T20:30:00.000Z",
+        timezone: "America/New_York",
+      };
+      const createCalendarEvent = vi.fn(async () => createdEvent);
+      const prepareCalendarEventCreate = vi.fn(
+        async (_url: URL, request: Record<string, unknown>) => ({
+          ...request,
+          side: "owner" as const,
+          grantId: "eliza-calendar",
+          calendarId: "primary",
+          endAt: "2026-09-05T16:30:00-04:00",
+        }),
+      );
+      const service = {
+        getCalendarFeed: vi.fn(async () => feed([])),
+        prepareCalendarEventCreate,
+        createCalendarEvent,
+      };
+      const action = createCalendarActionRunner(deps({ runJsonModel }));
+      const delivered: Content[] = [];
+
+      const result = await execute({
+        action,
+        service,
+        actor: message(
+          "Create a calendar event titled Full QA Event tomorrow at 4 PM for 30 minutes.",
+        ),
+        parameters: {
+          subaction: "create_event",
+          title: "Full QA Event",
+          details: {
+            startAt: "tomorrow at 4 PM",
+            durationMinutes: 30,
+            timeZone: "America/New_York",
+          },
+        },
+        delivered,
+      });
+
+      expect(runJsonModel).toHaveBeenCalledOnce();
+      expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({
+          startAt: "2026-09-05T16:00:00-04:00",
+          durationMinutes: 30,
+          timeZone: "America/New_York",
+        }),
+      );
+      expect(createCalendarEvent).toHaveBeenCalledOnce();
+      expect(result).toMatchObject({
+        success: true,
+        data: { approvalRequired: false, event: createdEvent },
+      });
+      expectBoundDelivery(delivered, result);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("updates a built-in event directly with its optimistic version", async () => {
     const modify = vi.fn();
     const updatedEvent: LifeOpsCalendarEvent = {

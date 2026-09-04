@@ -164,7 +164,7 @@ describe("calendar conversational mutation gateway guardrails", () => {
 
     expect(result?.success).toBe(false);
     expect(result?.text).toContain("complete, fresh view");
-    expect(runJsonModel).toHaveBeenCalledTimes(1);
+    expect(runJsonModel).not.toHaveBeenCalled();
     expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
     expect(schedule).not.toHaveBeenCalled();
     expect(service.createCalendarEvent).not.toHaveBeenCalled();

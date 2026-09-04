@@ -45,6 +45,17 @@ async function runBrowserAction(args: {
 }
 
 describe("BROWSER action", () => {
+  it("routes page-reading planner aliases to the canonical browser action", () => {
+    expect(browserAction.similes).toEqual(
+      expect.arrayContaining([
+        "BROWSER_GET_CONTEXT",
+        "BROWSER_GET_PAGE_STATE",
+        "BROWSER_READ_PAGE",
+        "BROWSER_SNAPSHOT",
+      ]),
+    );
+  });
+
   it("normalizes legacy action aliases and forwards target overrides", async () => {
     const service = browserService({
       tabs: [
@@ -288,16 +299,15 @@ describe("BROWSER action", () => {
     const closeService = browserService({ closed: true });
     const cursorService = browserService({ value: { x: 10.4, y: 20.6 } });
 
-    await expect(
-      runBrowserAction({
-        service: valueService,
-        parameters: { action: "state" },
-      }),
-    ).resolves.toMatchObject({
-      result: {
-        text: 'Browser state result (workspace):\n{\n  "ok": true\n}',
-      },
+    const state = await runBrowserAction({
+      service: valueService,
+      parameters: { action: "state" },
     });
+    expect(state.result).toMatchObject({
+      text: 'Browser state result (workspace):\n{\n  "ok": true\n}',
+    });
+    expect(state.result).not.toHaveProperty("verifiedUserFacing");
+    expect(state.result).not.toHaveProperty("userFacingText");
     await expect(
       runBrowserAction({
         service: snapshotService,

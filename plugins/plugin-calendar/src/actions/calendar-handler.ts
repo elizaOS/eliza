@@ -4372,10 +4372,13 @@ const calendarAction: CalendarHandlerAction = {
         // a fallback for umbrella or incomplete calls, not a mandatory second
         // interpretation of an already-structured planner decision.
         const plannerStartAt = detailString(details, "startAt");
+        const plannerEndAt = detailString(details, "endAt");
         const plannerTimeZone = detailString(details, "timeZone");
         const hasExecutablePlannerCreate = Boolean(
           explicitTitle &&
-            (plannerStartAt || detailString(details, "windowPreset")) &&
+            ((plannerStartAt && normalizeIsoDateTime(plannerStartAt)) ||
+              detailString(details, "windowPreset")) &&
+            (!plannerEndAt || normalizeIsoDateTime(plannerEndAt)) &&
             !(
               plannerStartAt?.toUpperCase().endsWith("Z") &&
               plannerTimeZone &&
