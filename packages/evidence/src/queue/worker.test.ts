@@ -1,11 +1,10 @@
-// The GPU queue worker driven end-to-end against a LOCAL HTTP stub standing in
-// for the llama-server: a reachable stub proves a real screenshot flows
-// enqueue → claim → OCR request → result merged into analysis.json (with the
-// pinned prompt and image data URL asserted on the wire). The unreachable and
-// drain paths prove the honesty contract — a down service yields a `skipped`
-// job result and a `skipped-missing-tool` analysis record naming why, NEVER a
-// fabricated empty transcript. No GPU, no model: just a Node http server.
+/**
+ * Exercises the GPU queue worker with real filesystem jobs and a local HTTP
+ * server standing in for the model service. Covers persisted analysis, honest
+ * unavailable outcomes, and cancellation cleanup through real polling timers.
+ */
 
+import { getEventListeners } from "node:events";
 import fs from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -327,5 +326,66 @@ describe("queue worker enforces a hard per-job timeout", () => {
     const jobResult = queue.readResult(job.id);
     expect(jobResult?.status).toBe("failed");
     expect(jobResult?.reason).toMatch(/hard timeout/);
+  });
+});
+
+describe("queue worker cancellation cleanup", () => {
+  it("releases each idle sleep listener before the next poll", async () => {
+    const queue = new FileJobQueue(newRoot());
+    const controller = new AbortController();
+    const listeners: number[] = [];
+
+    await runQueueWorker({
+      queue,
+      signal: controller.signal,
+      limits: { pollMs: 1 },
+      onEvent(event) {
+        if (event.type !== "idle") return;
+        listeners.push(getEventListeners(controller.signal, "abort").length);
+        if (listeners.length === 8) controller.abort();
+      },
+    });
+
+    expect(listeners.every((count) => count === 0)).toBe(true);
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+  });
+
+  it("stops before starting another sleep when cancelled during the idle event", async () => {
+    const controller = new AbortController();
+    const worker = runQueueWorker({
+      queue: new FileJobQueue(newRoot()),
+      signal: controller.signal,
+      limits: { pollMs: 50 },
+      onEvent(event) {
+        if (event.type === "idle") controller.abort();
+      },
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const nextTimer = new Promise<string>((resolve) => {
+        timer = setTimeout(() => resolve("still sleeping"), 0);
+      });
+      await expect(
+        Promise.race([worker.then(() => "stopped"), nextTimer]),
+      ).resolves.toBe("stopped");
+    } finally {
+      clearTimeout(timer);
+      await worker;
+    }
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+  });
+
+  it("interrupts an active idle sleep and removes its listener", async () => {
+    const controller = new AbortController();
+    const worker = runQueueWorker({
+      queue: new FileJobQueue(newRoot()),
+      signal: controller.signal,
+      limits: { pollMs: 60_000 },
+    });
+
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(1);
+    controller.abort();
+    await worker;
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
   });
 });
