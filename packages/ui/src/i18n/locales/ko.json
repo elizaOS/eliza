@@ -3027,7 +3027,7 @@
   "header.CloudCreditsBalanc": "클라우드 크레딧 잔액",
   "header.companionMode": "컴패니언 모드",
   "header.elizaCloudAuthRejected": "클라우드 키가 유효하지 않음",
-  "header.MobileNavigationDescription": "모바일 탐색 창에서 {{appName}} 섹션 간에 전환하세요.",
+  "header.MobileNavigationDescription": "모바일 탐색 창에서 섹션 간에 전환하세요.",
   "header.nativeMode": "네이티브 모드",
   "triggerform.cronFieldOrder": "분 시 일 월 요일",
   "triggerform.cronSchedule": "Cron 스케줄",
