@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  diagnoseRereviewTarget,
   PersonalDedicatedRereviewOperatorError,
   previewDecisionEvidence,
   type RereviewOperatorConfig,
@@ -34,6 +35,13 @@ const snapshot = {
   agentDigest: "c".repeat(64),
   jobCount: 0,
   jobDigest: "d".repeat(64),
+  selectedTarget: diagnoseRereviewTarget({
+    status: "stopped",
+    database_status: "ready",
+    error_message: null,
+    sandbox_id: null,
+    bridge_url: null,
+  }),
 };
 
 function config(mode: "preview" | "execute"): RereviewOperatorConfig {
@@ -51,6 +59,7 @@ function dependencies(overrides: Partial<RereviewOperatorDependencies> = {}) {
     | undefined;
   const value: RereviewOperatorDependencies = {
     verifyDeployment: async () => {},
+    reportAccountLifecycle: async () => {},
     resolveSelection: async () => resolved,
     preview: async () => preview,
     execute: async (input) => {
@@ -68,6 +77,59 @@ function dependencies(overrides: Partial<RereviewOperatorDependencies> = {}) {
 }
 
 describe("personal Dedicated staging re-review operator", () => {
+  test("reports lifecycle before a missing selection prevents review", async () => {
+    const events: string[] = [];
+    const deps = dependencies({
+      verifyDeployment: async () => {
+        events.push("deployment verified");
+      },
+      reportAccountLifecycle: async () => {
+        events.push("lifecycle reported");
+      },
+      resolveSelection: async () => {
+        throw new PersonalDedicatedRereviewOperatorError(
+          "selection_bootstrap_zero_candidates",
+        );
+      },
+    });
+    await expect(
+      runRereviewOperator(config("preview"), deps.value),
+    ).rejects.toThrow("selection_bootstrap_zero_candidates");
+    expect(events).toEqual(["deployment verified", "lifecycle reported"]);
+    expect(deps.executeCalls()).toBe(0);
+  });
+
+  test("reports a provisioning failure without returning raw errors or locators", async () => {
+    const privateLocator = "https://private-host.invalid/private-agent";
+    const selectedTarget = diagnoseRereviewTarget({
+      status: "error",
+      database_status: "ready",
+      error_message: `Headscale routing is required but HEADSCALE_API_KEY is not configured ${privateLocator}`,
+      sandbox_id: "private-container-id",
+      bridge_url: privateLocator,
+    });
+    const result = await runRereviewOperator(
+      config("preview"),
+      dependencies({
+        snapshot: async () => ({ ...snapshot, selectedTarget }),
+      }).value,
+    );
+    expect(result.selectedTarget.provisionFailure).toBe(
+      "ingress_headscale_not_configured",
+    );
+    expect(JSON.stringify(result)).not.toContain(privateLocator);
+    expect(JSON.stringify(result)).not.toContain("private-container-id");
+    expect(() =>
+      diagnoseRereviewTarget({
+        status: privateLocator,
+        database_status: "ready",
+        error_message: null,
+        sandbox_id: null,
+        bridge_url: null,
+      }),
+    ).toThrow("selected_target_status_invalid");
+  });
+
   test("classifies zero, one, and invariant-breaking receipt counts", () => {
     expect(resolveReceiptRow([])).toBeNull();
     expect(resolveReceiptRow([{ retainedAgentId: "retained" }])).toEqual({
