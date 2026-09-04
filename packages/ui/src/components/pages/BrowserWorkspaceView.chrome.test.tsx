@@ -1042,3 +1042,81 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     }
   });
 });
+
+describe("Browser workspace address draft durability", () => {
+  // POLL_INTERVAL_MS in BrowserWorkspaceView; the background refresh is the
+  // only thing driving a workspace snapshot change here.
+  const POLL_MS = 2_500;
+
+  it("keeps an in-progress address edit when a background poll drops the selected tab", async () => {
+    vi.useFakeTimers();
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const address = screen.getByTestId(
+        "browser-workspace-address-input",
+      ) as HTMLInputElement;
+      expect(address.value).toBe("https://www.apple.com/");
+
+      fireEvent.change(address, { target: { value: "docs.elizaos.ai" } });
+      expect(address.value).toBe("docs.elizaos.ai");
+
+      // The workspace endpoint blips: one poll reports no tabs at all.
+      vi.mocked(client.getBrowserWorkspace).mockResolvedValue({
+        mode: "web",
+        tabs: [],
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_MS + 100);
+      });
+
+      // The very next poll reports the same tab again.
+      vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_MS + 100);
+      });
+
+      expect(
+        screen.getByTestId("browser-workspace-address-input"),
+      ).toHaveProperty("value", "docs.elizaos.ai");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an in-progress address edit across an unchanged background poll", async () => {
+    vi.useFakeTimers();
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const address = screen.getByTestId(
+        "browser-workspace-address-input",
+      ) as HTMLInputElement;
+      fireEvent.change(address, { target: { value: "docs.elizaos.ai" } });
+      expect(address.value).toBe("docs.elizaos.ai");
+
+      // Same snapshot, three times: nothing about the workspace changed.
+      for (let i = 0; i < 3; i += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(POLL_MS + 100);
+        });
+      }
+
+      expect(
+        screen.getByTestId("browser-workspace-address-input"),
+      ).toHaveProperty("value", "docs.elizaos.ai");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
