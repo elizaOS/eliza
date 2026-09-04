@@ -9,18 +9,23 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 const { PGLiteSocketServer } = await import("@electric-sql/pglite-socket");
-const { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } = await import(
-  "../../client"
+const { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } =
+  await import("../../shared/src/db/client");
+// drizzle-orm/drizzle-kit install only under cloud-shared, which has no
+// package.json route from this tree — so schema push goes through the
+// shared re-export whose own imports resolve from its directory.
+const { pushSchemaToTestDb } = await import(
+  "../../shared/src/db/push-schema-for-tests"
 );
-const { pushSchemaToTestDb } = await import("../../push-schema-for-tests");
-const { organizations } = await import("../../schemas/organizations");
-const { users } = await import("../../schemas/users");
-const { apiKeys } = await import("../../schemas/api-keys");
-const { usageRecords } = await import("../../schemas/usage-records");
-// The loader under test lives in packages/cloud/scripts (no package.json
-// there), so it is imported by relative path; every other specifier
-// resolves from cloud-shared, which owns these devDependencies.
-const { loadDashboardInputs } = await import("../../../../../scripts/eliza1/dashboard-alerts");
+const { organizations } = await import(
+  "../../shared/src/db/schemas/organizations"
+);
+const { users } = await import("../../shared/src/db/schemas/users");
+const { apiKeys } = await import("../../shared/src/db/schemas/api-keys");
+const { usageRecords } = await import(
+  "../../shared/src/db/schemas/usage-records"
+);
+const { loadDashboardInputs } = await import("./dashboard-alerts");
 
 const TIMEOUT = 120_000;
 const ORG_ID = "00000000-0000-4000-8000-000000004001";
