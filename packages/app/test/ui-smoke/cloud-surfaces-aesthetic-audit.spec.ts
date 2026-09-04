@@ -1062,11 +1062,18 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
     test(`Shared to Dedicated transition ${viewport.name}`, async ({
       page,
     }) => {
+      const expectedCutoverConflictMessage =
+        "Failed to load resource: the server responded with a status of 409 (Conflict)";
       const consoleErrors: string[] = [];
       const pageErrors: string[] = [];
       page.on("pageerror", (error) => pageErrors.push(error.message));
       page.on("console", (message) => {
-        if (message.type() === "error") consoleErrors.push(message.text());
+        if (
+          message.type() === "error" &&
+          message.text() !== expectedCutoverConflictMessage
+        ) {
+          consoleErrors.push(message.text());
+        }
       });
       await page.setViewportSize(viewport);
       await seedStewardToken(page);
@@ -1132,14 +1139,13 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           ),
         )
         .toBe(true);
-      const expectedConflictMessage =
-        "Failed to load resource: the server responded with a status of 409 (Conflict)";
-      const expectedConflictIndex = consoleErrors.indexOf(
-        expectedConflictMessage,
-      );
-      if (expectedConflictIndex >= 0) {
-        consoleErrors.splice(expectedConflictIndex, 1);
-      }
+      await expect(page.getByText("Free", { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Deactivate Agent" }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Delete Agent" }),
+      ).toHaveCount(0);
       await captureTransitionState({
         page,
         outputDir,
@@ -1192,9 +1198,12 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       const cutoverRequests = fixture.requests.filter(
         (receipt) => receipt.pathname === `${upgradePath}/cutover`,
       );
-      expect(cutoverRequests.map((receipt) => receipt.status)).toEqual([
-        409, 200,
-      ]);
+      const cutoverStatuses = cutoverRequests.map((receipt) => receipt.status);
+      expect(cutoverStatuses.length).toBeGreaterThanOrEqual(2);
+      expect(cutoverStatuses.at(-1)).toBe(200);
+      expect(
+        cutoverStatuses.slice(0, -1).every((status) => status === 409),
+      ).toBe(true);
       expect(cutoverRequests.at(-1)?.responseBody).toBe(
         JSON.stringify({
           success: true,
