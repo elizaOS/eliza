@@ -147,8 +147,10 @@ export const logger = {
   child: () => logger,
 };
 
+// Alternation is longest-first: nothing anchors the end of the info string, so a
+// leading `json` would match inside ```json5 and strand the "5" in the capture.
 const MODEL_CODE_FENCE_PATTERN =
-  /^\s*```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
+  /^\s*```(?:json5|json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
 
 function stripModelWrappers(raw: string): string {
   let candidate = raw.trim();

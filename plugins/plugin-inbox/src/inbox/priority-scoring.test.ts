@@ -89,4 +89,30 @@ describe("scoreInboxMessages", () => {
       expect.objectContaining({ count: 1, modelId: "test-model" }),
     );
   });
+
+  it("scores a model response wrapped in a ```json5 code fence", async () => {
+    // The fence info string is not anchored, so a `json`-first alternation
+    // matched the first four characters of `json5` and left the stray "5" at
+    // the head of the stripped candidate, failing the whole batch. The body is
+    // strict JSON because the downstream parser is `JSON.parse`; only the fence
+    // label is under test.
+    const reportError = vi.fn();
+    const runtime = {
+      useModel: vi.fn(
+        async () =>
+          '```json5\n{"scores":[{"score":80,"category":"important","flags":[]}]}\n```',
+      ),
+      reportError,
+    } as unknown as IAgentRuntime;
+
+    const result = await scoreInboxMessages(runtime, [message("fenced")], {
+      model: "test-model",
+      concurrency: 1,
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({ score: 80, category: "important" }),
+    ]);
+    expect(reportError).not.toHaveBeenCalled();
+  });
 });

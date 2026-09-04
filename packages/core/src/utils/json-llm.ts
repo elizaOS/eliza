@@ -8,7 +8,11 @@
 
 import JSON5 from "json5";
 
-const jsonBlockPattern = /```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```/i;
+// WHY the alternation lists json5 before json: the info string is not followed
+// by an anchor, so `json` matches the first four characters of a ```json5 fence
+// and the overall match still succeeds -- leaving the stray "5" at the head of
+// the capture. Longest alternative first is what makes the json5 branch reachable.
+const jsonBlockPattern = /```(?:json5|json)?\s*\r?\n?([\s\S]*?)\r?\n?```/i;
 
 /**
  * Extract and parse JSON from text using JSON5 for LLM output tolerance.
