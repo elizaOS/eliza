@@ -1061,7 +1061,25 @@ export class PayoutProcessorService {
   /**
    * Persist the broadcast transaction hash the moment a payout is broadcast,
    * before waiting for confirmation. This is the recovery signal: a `processing`
-   * row with a recorded broadcast hash must never be re-broadcast.
+   * row with a recorded broadcast hash must never be re-broadcast **while the
+   * broadcast's outcome is unknown**. `recoverStaleProcessing()` therefore only
+   * ever touches rows with `broadcast_tx_hash IS NULL`, and
+   * `handleProcessingThrow()` re-reads the hash before deciding whether a throw
+   * is safe to retry.
+   *
+   * A CONFIRMED on-chain failure is the deliberate exception, and it is not a
+   * re-broadcast of an in-flight transaction: an EVM revert and a Solana
+   * `confirmation.value.err` both mean the transaction landed and executed no
+   * transfer, so the payout provably did not happen. `markFailed` clears
+   * `broadcast_tx_hash` on purpose in that case and the row is retried with a
+   * fresh signature. Pinned by cases (d3) and (d4) of
+   * `__tests__/payout-stale-lock-recovery.test.ts`.
+   *
+   * Do not "restore" the absolute reading. Keeping the hash on a confirmed
+   * failure carries it into the next attempt, so a worker death during that
+   * attempt leaves a row `recoverStaleProcessing()` refuses to touch — stranded
+   * in `processing` forever. Routing the confirmed failure to reconciliation
+   * instead sends every reverted payout to manual review.
    */
   private async recordBroadcast(redemptionId: string, broadcastTxHash: string): Promise<void> {
     await dbWrite
