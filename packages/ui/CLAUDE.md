@@ -225,8 +225,10 @@ interaction geometry**, **safe-area clearance**, and **tap-target minimums**
   (`bun run test:widget-cert-e2e`) mounts the widgets in real Chromium/WebKit
   and runs the SAME sweep against real layout, emitting evidence
   (`output-widget-cert/{widget-cert.json,widget-cert.txt,<engine>.png}`).
-  Playwright is flaky in CI — the runner SKIPs (exit 0) if the browser can't
-  launch; the vitest static layer is the always-green gate.
+  Dependency, bundling, browser, and execution failures exit nonzero and clear
+  prior output before starting. Completed layout findings remain diagnostic;
+  set `FAIL_ON_VIOLATIONS=1` to make those findings fail the command. The fixture
+  compiles the local Tailwind theme and requires both widget roots to render.
 
 **To certify a NEW widget:**
 
