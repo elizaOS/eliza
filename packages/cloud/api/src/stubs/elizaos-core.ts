@@ -280,14 +280,32 @@ export class ElizaError extends Error {
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
+// Registry symbol shared with packages/core/src/errors.ts. `@elizaos/core` is
+// aliased to this file inside the Worker bundle (wrangler.toml) while
+// `@elizaos/core/errors` still resolves to the real module, so both classes
+// ship in one bundle and `instanceof` alone is false across them.
+const ELIZA_ERROR_BRAND = Symbol.for("@elizaos/core:ElizaError");
+
+Object.defineProperty(ElizaError.prototype, ELIZA_ERROR_BRAND, {
+  value: true,
+  enumerable: false,
+  writable: false,
+  configurable: false,
+});
+
 export function isElizaError(value: unknown): value is ElizaError {
-  return value instanceof ElizaError;
+  if (value instanceof ElizaError) return true;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[ELIZA_ERROR_BRAND] === true
+  );
 }
 export function toElizaError(
   value: unknown,
   fallbackCode = "UNCLASSIFIED",
 ): ElizaError {
-  if (value instanceof ElizaError) return value;
+  if (isElizaError(value)) return value;
   if (value instanceof Error) {
     return new ElizaError(value.message, { code: fallbackCode, cause: value });
   }

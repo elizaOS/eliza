@@ -75,9 +75,48 @@ export interface ReportedError {
 	at: number;
 }
 
-/** Narrowing helper: true when `value` is an {@link ElizaError}. */
+/**
+ * Cross-copy brand for {@link isElizaError}.
+ *
+ * `instanceof` alone is not sufficient here: the class reaches a running
+ * process through more than one module instance, so two `ElizaError`
+ * constructors can coexist and `instanceof` is false across them. Two of those
+ * splits ship today:
+ *
+ * - `@elizaos/core` and `@elizaos/core/errors` are separate build entrypoints,
+ *   and each inlines its own copy of this module — so a value thrown by a
+ *   subpath importer fails `instanceof` in a barrel importer, in plain Node.
+ * - the Cloud Worker bundle aliases `@elizaos/core` to a hand-written
+ *   worker-safe mirror (`packages/cloud/api/src/stubs/elizaos-core.ts`) while
+ *   `@elizaos/core/errors` still resolves here, putting both classes in one
+ *   bundle.
+ *
+ * A registry symbol is shared by identity across every copy that uses the same
+ * key, so branding the prototype makes the narrowing hold across all of them.
+ * It is defined on the prototype (not as a field) so it is non-enumerable and
+ * inherited by subclasses: `JSON.stringify`, `Object.keys` and structural
+ * equality are unaffected.
+ */
+const ELIZA_ERROR_BRAND = Symbol.for("@elizaos/core:ElizaError");
+
+Object.defineProperty(ElizaError.prototype, ELIZA_ERROR_BRAND, {
+	value: true,
+	enumerable: false,
+	writable: false,
+	configurable: false,
+});
+
+/**
+ * Narrowing helper: true when `value` is an {@link ElizaError}, including one
+ * built by a different copy of this module (see {@link ELIZA_ERROR_BRAND}).
+ */
 export function isElizaError(value: unknown): value is ElizaError {
-	return value instanceof ElizaError;
+	if (value instanceof ElizaError) return true;
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		(value as Record<symbol, unknown>)[ELIZA_ERROR_BRAND] === true
+	);
 }
 
 /**
@@ -90,7 +129,7 @@ export function toElizaError(
 	value: unknown,
 	fallbackCode = "UNCLASSIFIED",
 ): ElizaError {
-	if (value instanceof ElizaError) return value;
+	if (isElizaError(value)) return value;
 	if (value instanceof Error) {
 		return new ElizaError(value.message, { code: fallbackCode, cause: value });
 	}
