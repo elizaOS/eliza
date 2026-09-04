@@ -7,6 +7,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { CarveOutDatabase } from "@elizaos/plugin-sql";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  ensureCalendarSourceIdentity,
   migrateCalendarTable,
   migrateCalendarTables,
   type SqlExecutor,
@@ -175,8 +176,8 @@ describe("Calendar historical source migration", () => {
     expect(events.rows).toEqual([
       {
         id: "event-1",
-        connector_account_id: null,
-        grant_id: null,
+        connector_account_id: "legacy:google:owner",
+        grant_id: "legacy:google:owner",
         purge_resync_required: false,
         purge_resync_reason: null,
         title: "Historical event",
@@ -196,9 +197,9 @@ describe("Calendar historical source migration", () => {
     `);
     expect(syncStates.rows).toEqual([
       {
-        id: "sync-1",
-        connector_account_id: null,
-        grant_id: null,
+        id: "agent-1:google:owner:grant:legacy:google:owner:calendar:primary",
+        connector_account_id: "legacy:google:owner",
+        grant_id: "legacy:google:owner",
         purge_resync_required: false,
         purge_resync_reason: null,
       },
@@ -231,6 +232,107 @@ describe("Calendar historical source migration", () => {
     );
   });
 
+  it("upgrades an already canonicalized calendar without duplicate rows or lost sync metadata", async () => {
+    // Reproduce the prior release: raw table copy followed by source-identity
+    // normalization, with no durable carve-out receipt.
+    await database.exec(`
+      INSERT INTO app_calendar.life_calendar_events (
+        id, agent_id, provider, side, calendar_id, external_event_id, title,
+        description, location, status, start_at, end_at, is_all_day, timezone,
+        html_link, conference_link, organizer_json, attendees_json, metadata_json,
+        synced_at, updated_at
+      ) SELECT * FROM app_lifeops.life_calendar_events;
+      INSERT INTO app_calendar.life_calendar_sync_states (
+        id, agent_id, provider, side, calendar_id, window_start_at,
+        window_end_at, synced_at, updated_at
+      ) SELECT * FROM app_lifeops.life_calendar_sync_states;
+      ALTER TABLE app_lifeops.life_calendar_events
+        ADD COLUMN grant_id TEXT, ADD COLUMN connector_account_id TEXT;
+      ALTER TABLE app_lifeops.life_calendar_sync_states
+        ADD COLUMN grant_id TEXT, ADD COLUMN connector_account_id TEXT;
+    `);
+    await ensureCalendarSourceIdentity(exec);
+    await database.exec(`
+      UPDATE app_calendar.life_calendar_sync_states
+         SET next_sync_token = 'preserve-live-provider-cursor';
+      INSERT INTO app_lifeops.life_calendar_events
+        SELECT 'event-2', agent_id, provider, side, calendar_id, 'external-2',
+          title, description, location, status, start_at, end_at, is_all_day,
+          timezone, html_link, conference_link, organizer_json, attendees_json,
+          metadata_json, synced_at, updated_at, grant_id, connector_account_id
+          FROM app_lifeops.life_calendar_events WHERE id = 'event-1';
+    `);
+    const legacyEvents = await exec(
+      "SELECT * FROM app_lifeops.life_calendar_events ORDER BY id",
+    );
+    const legacySync = await exec(
+      "SELECT * FROM app_lifeops.life_calendar_sync_states ORDER BY id",
+    );
+
+    await expect(migrateCalendarTables(carveOutDatabase)).resolves.toEqual([
+      { table: "life_calendar_events", outcome: "copied" },
+      { table: "life_calendar_sync_states", outcome: "copied" },
+    ]);
+    expect(
+      await exec(
+        "SELECT id FROM app_calendar.life_calendar_events ORDER BY id",
+      ),
+    ).toEqual([{ id: "event-1" }, { id: "event-2" }]);
+    expect(
+      await exec(`SELECT id, grant_id, connector_account_id, next_sync_token
+      FROM app_calendar.life_calendar_sync_states`),
+    ).toEqual([
+      {
+        id: "agent-1:google:owner:grant:legacy:google:owner:calendar:primary",
+        grant_id: "legacy:google:owner",
+        connector_account_id: "legacy:google:owner",
+        next_sync_token: "preserve-live-provider-cursor",
+      },
+    ]);
+    expect(
+      await exec("SELECT * FROM app_lifeops.life_calendar_events ORDER BY id"),
+    ).toEqual(legacyEvents);
+    expect(
+      await exec(
+        "SELECT * FROM app_lifeops.life_calendar_sync_states ORDER BY id",
+      ),
+    ).toEqual(legacySync);
+
+    await database.exec("DELETE FROM app_calendar.life_calendar_sync_states");
+    await expect(migrateCalendarTables(carveOutDatabase)).resolves.toEqual([
+      { table: "life_calendar_events", outcome: "already-migrated" },
+      { table: "life_calendar_sync_states", outcome: "already-migrated" },
+    ]);
+    expect(
+      await exec("SELECT * FROM app_calendar.life_calendar_sync_states"),
+    ).toEqual([]);
+  });
+
+  it("rolls back canonical normalization and leaves no receipt when source values conflict", async () => {
+    await database.exec(`
+      INSERT INTO app_calendar.life_calendar_sync_states (
+        id, agent_id, provider, side, calendar_id, window_start_at,
+        window_end_at, synced_at, updated_at
+      ) SELECT * FROM app_lifeops.life_calendar_sync_states;
+      UPDATE app_calendar.life_calendar_sync_states
+        SET window_end_at = '2026-11-01T00:00:00.000Z';
+    `);
+    const targetBefore = await exec(
+      "SELECT * FROM app_calendar.life_calendar_sync_states",
+    );
+    await expect(migrateCalendarTables(carveOutDatabase)).rejects.toMatchObject(
+      {
+        code: "CARVE_OUT_MIGRATION_COLLISION",
+      },
+    );
+    expect(
+      await exec("SELECT * FROM app_calendar.life_calendar_sync_states"),
+    ).toEqual(targetBefore);
+    expect(
+      await exec(`SELECT status FROM app_eliza_migrations.carve_out_receipts
+      WHERE migration_key = 'calendar/life_calendar_sync_states/v2'`),
+    ).toEqual([]);
+  });
   it("fails closed on a missing required column without completing its receipt", async () => {
     await database.exec(
       "ALTER TABLE app_lifeops.life_calendar_events DROP COLUMN title",

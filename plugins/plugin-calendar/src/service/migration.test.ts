@@ -1,6 +1,6 @@
 /**
  * Tests for the non-destructive app_lifeops→app_calendar table migration
- * helpers: verifies copy-if-target-empty and skip-if-source-missing semantics
+ * helpers: verifies reconciliation, failure, and skip-if-source-missing semantics
  * against a stubbed SQL executor.
  */
 
@@ -99,7 +99,9 @@ describe("CalendarMigration", () => {
       ),
     ).toBe(true);
     // never touches the source
-    expect(log.some((s) => /DROP|ALTER .*app_lifeops/.test(s))).toBe(false);
+    expect(
+      log.some((s) => /(?:DROP|ALTER) TABLE\s+app_lifeops\./.test(s)),
+    ).toBe(false);
   });
 
   it("fails closed when an existing calendar id has different values", async () => {
