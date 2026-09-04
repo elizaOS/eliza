@@ -481,6 +481,19 @@ function applyStreamChatDataLine(
   if (parsed.type === "token") {
     return applyStreamChatTokenEvent(parsed, state, onToken);
   }
+  if (parsed.type === "reply_ready") {
+    // The agent has settled the authoritative user-visible reply, but may
+    // still be persisting receipts and message metadata before `done`. Render
+    // this snapshot immediately and keep the stream open for that terminal
+    // bookkeeping. Treat it exactly like a non-provisional text snapshot so
+    // it replaces any provisional action callback instead of appending or
+    // speaking both versions.
+    return applyStreamChatTokenEvent(
+      { ...parsed, provisional: false },
+      state,
+      onToken,
+    );
+  }
   if (parsed.type === "status") {
     // Additive: a non-terminal status event. Surface it (when a consumer wants
     // it) and keep reading — it never ends the stream.

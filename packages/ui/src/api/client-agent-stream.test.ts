@@ -111,6 +111,85 @@ describe("ElizaClient agent streaming transport", () => {
     expect(cancel).toHaveBeenCalledWith("elizaos-sse-terminal-done");
   });
 
+  it("renders an authoritative reply_ready snapshot while terminal bookkeeping continues", async () => {
+    const encoder = new TextEncoder();
+    let releaseDone: (value: { done: boolean; value?: Uint8Array }) => void =
+      () => {};
+    const delayedDone = new Promise<{ done: boolean; value?: Uint8Array }>(
+      (resolve) => {
+        releaseDone = resolve;
+      },
+    );
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({
+        done: false,
+        value: encoder.encode(
+          'data: {"type":"token","text":"Opening notes...","fullText":"Opening notes...","provisional":true}\n\n' +
+            'data: {"type":"reply_ready","fullText":"Your notes are open."}\n\n',
+        ),
+      })
+      .mockImplementationOnce(() => delayedDone);
+    const cancel = vi.fn(async () => {});
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: { getReader: () => ({ read, cancel }) },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+    const onToken = vi.fn();
+
+    let settled = false;
+    const resultPromise = client
+      .streamChatEndpoint(
+        "/api/conversations/conversation-id/messages/stream",
+        "open notes",
+        onToken,
+      )
+      .finally(() => {
+        settled = true;
+      });
+
+    await vi.waitFor(() =>
+      expect(onToken).toHaveBeenLastCalledWith(
+        "",
+        "Your notes are open.",
+        false,
+      ),
+    );
+    expect(settled).toBe(false);
+
+    releaseDone({
+      done: false,
+      value: encoder.encode(
+        'data: {"type":"done","fullText":"Your notes are open.","agentName":"Eliza","messageId":"assistant-db-id"}\n\n',
+      ),
+    });
+
+    await expect(resultPromise).resolves.toEqual({
+      text: "Your notes are open.",
+      agentName: "Eliza",
+      completed: true,
+      messageId: "assistant-db-id",
+    });
+    expect(onToken).toHaveBeenNthCalledWith(
+      1,
+      "Opening notes...",
+      "Opening notes...",
+      true,
+    );
+    expect(onToken).toHaveBeenNthCalledWith(
+      2,
+      "",
+      "Your notes are open.",
+      false,
+    );
+    expect(cancel).toHaveBeenCalledWith("elizaos-sse-terminal-done");
+  });
+
   it("preserves the explicit no-DB-row marker for transient assistant replies", async () => {
     const encoder = new TextEncoder();
     const read = vi.fn().mockResolvedValueOnce({
