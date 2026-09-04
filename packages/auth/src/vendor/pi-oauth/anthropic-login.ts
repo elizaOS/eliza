@@ -8,6 +8,7 @@
  * the UI / CLI calls once the user has copied the code.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { generatePKCE } from "./pkce.ts";
 
 const decode = (s: string): string => atob(s);
@@ -38,6 +39,121 @@ export interface AnthropicOAuthFlowHandle {
   /** Resolves with credentials once `submitCode` lands and the token exchange succeeds. */
   completion: Promise<AnthropicOAuthCredentials>;
   cancel: (reason?: string) => void;
+}
+
+type AnthropicTokenResponseMode = "exchange" | "refresh";
+
+interface ParsedAnthropicRefreshResponse {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+}
+
+interface ParsedAnthropicExchangeResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function invalidTokenResponse(
+  mode: AnthropicTokenResponseMode,
+  reason: string,
+): ElizaError {
+  return new ElizaError(
+    `Anthropic OAuth token response was invalid: ${reason}`,
+    {
+      code: "anthropic_oauth.token_invalid_shape",
+      severity: "fatal",
+      context: { mode, reason },
+    },
+  );
+}
+
+function parseAnthropicTokenResponse(
+  response: Response,
+  mode: "exchange",
+): Promise<ParsedAnthropicExchangeResponse>;
+function parseAnthropicTokenResponse(
+  response: Response,
+  mode: "refresh",
+): Promise<ParsedAnthropicRefreshResponse>;
+async function parseAnthropicTokenResponse(
+  response: Response,
+  mode: AnthropicTokenResponseMode,
+): Promise<ParsedAnthropicRefreshResponse> {
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (cause) {
+    // error-policy:J2 context-adding rethrow — malformed provider JSON cannot
+    // become a partial credential record.
+    throw new ElizaError("Anthropic OAuth token response was not JSON", {
+      code: "anthropic_oauth.token_invalid_json",
+      severity: "fatal",
+      context: { mode },
+      cause,
+    });
+  }
+
+  if (!isRecord(payload)) {
+    throw invalidTokenResponse(mode, "response root must be an object");
+  }
+
+  const accessToken = payload.access_token;
+  const refreshToken = payload.refresh_token;
+  const expiresIn = payload.expires_in;
+  if (!isNonBlankString(accessToken)) {
+    throw invalidTokenResponse(
+      mode,
+      "missing access_token or invalid access_token; expected a non-blank string",
+    );
+  }
+  if (
+    typeof expiresIn !== "number" ||
+    !Number.isFinite(expiresIn) ||
+    expiresIn <= 0
+  ) {
+    throw invalidTokenResponse(
+      mode,
+      "missing or invalid expires_in; expected a positive finite number",
+    );
+  }
+  const expiresAt = Date.now() + expiresIn * 1000;
+  if (!Number.isFinite(expiresAt)) {
+    throw invalidTokenResponse(
+      mode,
+      "invalid expires_in; absolute expiry exceeds the supported numeric range",
+    );
+  }
+  if (mode === "exchange" && !isNonBlankString(refreshToken)) {
+    throw invalidTokenResponse(
+      mode,
+      "missing or invalid refresh_token; expected a non-blank string",
+    );
+  }
+  if (
+    mode === "refresh" &&
+    refreshToken !== undefined &&
+    !isNonBlankString(refreshToken)
+  ) {
+    throw invalidTokenResponse(
+      mode,
+      "invalid refresh_token; expected a non-blank string when present",
+    );
+  }
+
+  if (isNonBlankString(refreshToken)) {
+    return { accessToken, refreshToken, expiresAt };
+  }
+  return { accessToken, expiresAt };
 }
 
 function parseAnthropicAuthorizationInput(authCode: string): {
@@ -86,15 +202,14 @@ export async function exchangeAnthropicAuthorizationCode(
     const errText = await tokenResponse.text();
     throw new Error(`Token exchange failed: ${errText}`);
   }
-  const tokenData = (await tokenResponse.json()) as {
-    refresh_token: string;
-    access_token: string;
-    expires_in: number;
-  };
+  const tokenData = await parseAnthropicTokenResponse(
+    tokenResponse,
+    "exchange",
+  );
   return {
-    refresh: tokenData.refresh_token,
-    access: tokenData.access_token,
-    expires: Date.now() + tokenData.expires_in * 1000,
+    refresh: tokenData.refreshToken,
+    access: tokenData.accessToken,
+    expires: tokenData.expiresAt,
   };
 }
 
@@ -180,22 +295,13 @@ export async function refreshAnthropicToken(
     const errText = await response.text();
     throw new Error(`Anthropic token refresh failed: ${errText}`);
   }
-  const data = (await response.json()) as {
-    refresh_token?: string;
-    access_token?: string;
-    expires_in?: number;
-  };
-  if (!data.access_token || typeof data.expires_in !== "number") {
-    throw new Error(
-      "Anthropic token refresh failed: response missing access_token/expires_in",
-    );
-  }
+  const data = await parseAnthropicTokenResponse(response, "refresh");
   return {
     // Anthropic rotates refresh tokens (one-time-use). Per RFC 6749 §6 a
     // response that omits refresh_token means "keep the current one" — never
     // persist undefined over a still-valid stored refresh token.
-    refresh: data.refresh_token ?? refreshToken,
-    access: data.access_token,
-    expires: Date.now() + data.expires_in * 1000,
+    refresh: data.refreshToken ?? refreshToken,
+    access: data.accessToken,
+    expires: data.expiresAt,
   };
 }

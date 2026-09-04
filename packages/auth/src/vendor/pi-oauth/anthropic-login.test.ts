@@ -1,5 +1,6 @@
-/** Verifies Anthropic OAuth exchange, refresh rotation, and callback state validation at the HTTP boundary. */
+/** Verifies Anthropic OAuth exchange, token-response validation, refresh rotation, and callback state validation at the HTTP boundary. */
 
+import { ElizaError } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   exchangeAnthropicAuthorizationCode,
@@ -10,12 +11,28 @@ import {
 function mockTokenResponse(body: unknown, ok = true): void {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => ({
-      ok,
-      json: async () => body,
-      text: async () => JSON.stringify(body),
-    })),
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify(body), {
+          status: ok ? 200 : 400,
+          headers: { "content-type": "application/json" },
+        }),
+    ),
   );
+}
+
+async function expectTokenError(
+  operation: Promise<unknown>,
+  code: string,
+): Promise<void> {
+  try {
+    await operation;
+    throw new Error("Expected Anthropic token operation to reject");
+  } catch (error) {
+    expect(error).toBeInstanceOf(ElizaError);
+    if (!(error instanceof ElizaError)) throw error;
+    expect(error.code).toBe(code);
+  }
 }
 
 describe("refreshAnthropicToken", () => {
@@ -46,6 +63,61 @@ describe("refreshAnthropicToken", () => {
     mockTokenResponse({ refresh_token: "rt-new", expires_in: 3600 });
     await expect(refreshAnthropicToken("rt-old")).rejects.toThrow(
       /missing access_token/,
+    );
+  });
+
+  it.each([
+    ["non-object root", null],
+    ["numeric access token", { access_token: 7, expires_in: 3600 }],
+    ["blank access token", { access_token: "   ", expires_in: 3600 }],
+    [
+      "invalid rotated refresh token",
+      { access_token: "at-new", refresh_token: 7, expires_in: 3600 },
+    ],
+    ["zero lifetime", { access_token: "at-new", expires_in: 0 }],
+    ["negative lifetime", { access_token: "at-new", expires_in: -1 }],
+    ["null lifetime", { access_token: "at-new", expires_in: null }],
+    ["overflowing lifetime", { access_token: "at-new", expires_in: 1e308 }],
+    ["string lifetime", { access_token: "at-new", expires_in: "3600" }],
+  ])("rejects a successful response with %s", async (_name, body) => {
+    mockTokenResponse(body);
+    await expectTokenError(
+      refreshAnthropicToken("rt-old"),
+      "anthropic_oauth.token_invalid_shape",
+    );
+  });
+
+  it("wraps malformed successful JSON as a typed token response error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("{not-json", {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+    await expectTokenError(
+      refreshAnthropicToken("rt-old"),
+      "anthropic_oauth.token_invalid_json",
+    );
+  });
+
+  it("rejects a JSON lifetime that parses beyond the finite number range", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response('{"access_token":"at-new","expires_in":1e400}', {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+    await expectTokenError(
+      refreshAnthropicToken("rt-old"),
+      "anthropic_oauth.token_invalid_shape",
     );
   });
 
@@ -137,5 +209,56 @@ describe("Anthropic authorization exchange", () => {
     expect(creds.expires).toBe(now + 3600 * 1000);
     expect(creds.expires).not.toBe(now + 3600 * 1000 - 5 * 60 * 1000);
     vi.restoreAllMocks();
+  });
+
+  it.each([
+    ["non-object root", []],
+    ["missing access token", { refresh_token: "rt-ex", expires_in: 3600 }],
+    [
+      "missing refresh token",
+      { access_token: "at-ex", expires_in: 3600 },
+    ],
+    [
+      "numeric access token",
+      { access_token: 7, refresh_token: "rt-ex", expires_in: 3600 },
+    ],
+    [
+      "blank refresh token",
+      { access_token: "at-ex", refresh_token: " ", expires_in: 3600 },
+    ],
+    [
+      "non-positive lifetime",
+      { access_token: "at-ex", refresh_token: "rt-ex", expires_in: -1 },
+    ],
+    [
+      "string lifetime",
+      { access_token: "at-ex", refresh_token: "rt-ex", expires_in: "3600" },
+    ],
+    [
+      "overflowing lifetime",
+      { access_token: "at-ex", refresh_token: "rt-ex", expires_in: 1e308 },
+    ],
+  ])("rejects a successful response with %s", async (_name, body) => {
+    mockTokenResponse(body);
+    await expectTokenError(
+      exchangeAnthropicAuthorizationCode("code#state-value"),
+      "anthropic_oauth.token_invalid_shape",
+    );
+  });
+
+  it("wraps malformed successful JSON with its parse cause", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{not-json", { status: 200 })),
+    );
+    try {
+      await exchangeAnthropicAuthorizationCode("code#state-value");
+      throw new Error("Expected token exchange to reject");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      if (!(error instanceof ElizaError)) throw error;
+      expect(error.code).toBe("anthropic_oauth.token_invalid_json");
+      expect(error.cause).toBeInstanceOf(SyntaxError);
+    }
   });
 });
