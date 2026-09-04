@@ -655,15 +655,11 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     lineProcessingFailed = true;
     lineProcessingError = error;
   });
-  let lineProcessingTimer: NodeJS.Timeout | undefined;
-  let releaseLineProcessingTimer: (() => void) | undefined;
-  const lineProcessingDeadline = new Promise<void>((resolve) => {
-    releaseLineProcessingTimer = resolve;
-    lineProcessingTimer = setTimeout(resolve, WORKER_STDIO_DRAIN_GRACE_MS);
-  });
-  await Promise.race([observedLineProcessing, lineProcessingDeadline]);
-  if (lineProcessingTimer) clearTimeout(lineProcessingTimer);
-  releaseLineProcessingTimer?.();
+  // Protocol-owned generation is aborted as soon as the worker exits, so the
+  // remaining work here is ordered event delivery. It is part of the run
+  // contract: do not let the pipe-drain fallback skip a terminal result queued
+  // behind a slow persistence or runtime event callback.
+  await observedLineProcessing;
   if (lineProcessingFailed) throw lineProcessingError;
 
   if (outcome.processError) {

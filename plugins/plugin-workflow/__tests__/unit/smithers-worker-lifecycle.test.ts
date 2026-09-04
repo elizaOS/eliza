@@ -43,6 +43,7 @@ async function run(
     timeoutMs?: number;
     input?: Record<string, unknown>;
     generate?: SmithersRunRequest['generate'];
+    onEvent?: SmithersRunRequest['onEvent'];
   } = {}
 ) {
   return runSmithersWorkflow({
@@ -53,6 +54,7 @@ async function run(
     input: { fixtureMode: mode, ...options.input },
     timeoutMs: options.timeoutMs ?? 20_000,
     ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.onEvent ? { onEvent: options.onEvent } : {}),
     generate: options.generate ?? (async () => 'done'),
   });
 }
@@ -148,6 +150,20 @@ describe('Smithers worker lifecycle', () => {
   test('observes a closed stdin while preserving a valid terminal result', async () => {
     const result = await run('closed-input-result');
     expect(result.status).toBe('finished');
+  });
+
+  test('preserves a terminal result when durable event delivery exceeds pipe drain grace', async () => {
+    const delivered: string[] = [];
+    const result = await run('event-before-result', {
+      onEvent: async (event) => {
+        await new Promise((resolve) => setTimeout(resolve, 1_100));
+        delivered.push(event.type);
+      },
+    });
+
+    expect(result.status).toBe('finished');
+    expect(delivered).toEqual(['TaskStarted']);
+    expect(result.events.map((event) => event.type)).toEqual(['TaskStarted']);
   });
 
   test('terminates a worker whose stdout line exceeds the protocol budget', async () => {
