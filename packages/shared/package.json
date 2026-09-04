@@ -63,6 +63,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./first-run-config": {
+      "types": "./dist/first-run-config.d.ts",
+      "eliza-source": {
+        "types": "./src/first-run-config.ts",
+        "import": "./src/first-run-config.ts",
+        "default": "./src/first-run-config.ts"
+      },
+      "import": "./dist/first-run-config.js",
+      "default": "./dist/first-run-config.js"
+    },
     "./host-use-cases": {
       "types": "./dist/host-use-cases.d.ts",
       "eliza-source": {
