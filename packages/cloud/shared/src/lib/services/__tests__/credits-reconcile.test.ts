@@ -1372,6 +1372,61 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
   );
 
   test(
+    "disables auto top-up even when a drained org recovers nothing",
+    async () => {
+      if (!pgliteReady) return;
+      // The boundary the test above does not reach. There the org still had $50
+      // to claw back, so the org row was updated for its balance anyway. Here
+      // the balance is already 0: `applied_amount` is 0 and `credit_balance`
+      // does not move, so the only reason to touch the org row is the
+      // auto-top-up flag. This is also the worst case for the invariant --
+      // auto top-up fires on a LOW balance, so an org at 0 with the flag left
+      // on charges the refunded card again immediately.
+      await seedOrg("0");
+      await dbWrite.execute(
+        `UPDATE organizations SET auto_top_up_enabled = true WHERE id = '${ORG_ID}';`,
+      );
+
+      const r = await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 100,
+        description: "refund clawback on a drained org",
+        stripePaymentIntentId: "stripe:refund:ch_drained:10000",
+        metadata: { payment_intent_id: "pi_drained" },
+      });
+
+      expect(r.appliedAmount).toBeCloseTo(0, 6);
+      expect(r.shortfallAmount).toBeCloseTo(100, 6);
+      expect(r.newBalance).toBeCloseTo(0, 6);
+      expect(r.alreadyProcessed).toBe(false);
+      expect(await getBalance()).toBeCloseTo(0, 6);
+
+      const settings = await dbWrite.execute(
+        `SELECT auto_top_up_enabled FROM organizations WHERE id = '${ORG_ID}';`,
+      );
+      expect((settings.rows[0] as { auto_top_up_enabled: boolean }).auto_top_up_enabled).toBe(
+        false,
+      );
+
+      // A zero-value clawback row is still written, so the unrecoverable
+      // amount is auditable rather than absent.
+      expect(await countByType("clawback")).toBe(1);
+      const clawbackRow = await dbWrite.execute(
+        `SELECT amount, metadata FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'clawback';`,
+      );
+      const row = clawbackRow.rows[0] as {
+        amount: string;
+        metadata: Record<string, unknown>;
+      };
+      expect(Number(row.amount)).toBeCloseTo(0, 6);
+      expect(Number(row.metadata.applied_clawback_usd)).toBeCloseTo(0, 6);
+      expect(Number(row.metadata.requested_clawback_usd)).toBeCloseTo(100, 6);
+      expect(Number(row.metadata.unrecovered_clawback_usd)).toBeCloseTo(100, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "is idempotent on the stripePaymentIntentId key (no double claw on re-delivery)",
     async () => {
       if (!pgliteReady) return;
