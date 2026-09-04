@@ -9,16 +9,29 @@ import {
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1,
+  AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
+  AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION,
   AGENT_BACKUP_RESTORE_V3_SOURCE_AUTHORITY_DERIVATION,
   AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS,
+  AGENT_BACKUP_RESTORE_V3_STREAM_RECEIPT_FORMAT,
   AGENT_VAULT_KEY_AUTHORITY_FORMAT,
   AGENT_VAULT_KEY_AUTHORITY_RECEIPT_DERIVATION,
   type AgentBackupManifestV3,
   type AgentBackupManifestV3Draft,
   type AgentBackupRestoreV3AuthorityFence,
+  type AgentBackupRestoreV3CandidateReceipt,
+  type AgentBackupRestoreV3CandidateSealAuthorizationRequest,
+  type AgentBackupRestoreV3ComponentReceipt,
+  type AgentBackupRestoreV3OperationControl,
   type AgentBackupRestoreV3SourceAuthority,
+  type AgentBackupRestoreV3StagingSession,
+  canonicalizeAgentBackupRestoreV3CandidateReceipt,
+  canonicalizeAgentBackupRestoreV3SourceAuthority,
   createAgentBackupManifestV3,
+  parseAgentBackupRestoreV3CandidateReceipt,
+  parseAgentBackupRestoreV3CandidateSealAuthorizationRequest,
 } from "@elizaos/shared";
+import type { AgentBackupRestoreV3CandidateExecution } from "../agent-backup-restore-v3-candidate-execution";
 
 export const CANDIDATE_IDS = {
   organization: "10000000-0000-4000-8000-000000000001",
@@ -373,4 +386,219 @@ export async function seedCandidateAuthority(
       ],
     );
   }
+}
+
+export interface CompletedCandidate {
+  readonly session: Readonly<AgentBackupRestoreV3StagingSession>;
+  readonly receipt: AgentBackupRestoreV3CandidateReceipt;
+  readonly authorizationRequest: Readonly<AgentBackupRestoreV3CandidateSealAuthorizationRequest>;
+}
+
+export interface AdditionalAttemptIds {
+  readonly restoreAttemptId: string;
+  readonly leaseId: string;
+  readonly leaseGeneration: string;
+  readonly restoreOperationId: string;
+}
+
+function candidateComponentReceipt(index: number): AgentBackupRestoreV3ComponentReceipt {
+  const componentName = AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS[index];
+  const descriptor = AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS[index];
+  if (!componentName || !descriptor) throw new Error(`Unknown candidate component ${index}`);
+  const payloadBytes = new TextEncoder().encode(`seal-component-${index}`).byteLength;
+  return {
+    componentIndex: index,
+    componentName,
+    descriptor,
+    dataFrameCount: 1,
+    payloadBytes,
+    payloadSha256: fixtureSha256(`seal-component-receipt-${index}`),
+    recordStreamContentHmacSha256: fixtureSha256(`seal-component-hmac-${index}`),
+  };
+}
+
+export function buildCandidateSealReceipt(
+  fixture: CandidateFixture,
+  components: readonly AgentBackupRestoreV3ComponentReceipt[],
+): AgentBackupRestoreV3CandidateReceipt {
+  return parseAgentBackupRestoreV3CandidateReceipt({
+    format: AGENT_BACKUP_RESTORE_V3_STREAM_RECEIPT_FORMAT,
+    restoreAttemptId: fixture.authority.restoreAttemptId,
+    operationId: fixture.authority.operationId,
+    expectedManifestSha256: fixture.authority.expectedManifestSha256,
+    keyBundleGenerationId: fixture.manifest.encryption.operationKeyBundle.generationId,
+    sourceCopyRole: fixture.authority.copyRole,
+    sourceAuthorityDerivation: AGENT_BACKUP_RESTORE_V3_SOURCE_AUTHORITY_DERIVATION,
+    sourceAuthoritySha256: fixtureSha256(
+      canonicalizeAgentBackupRestoreV3SourceAuthority(fixture.sourceAuthority),
+    ),
+    objectCount: fixture.sourceAuthority.objects.length,
+    stagedPayloadBytes: components.reduce((total, component) => total + component.payloadBytes, 0),
+    stagedDataRecordCount: components.reduce(
+      (total, component) => total + component.dataFrameCount,
+      0,
+    ),
+    sourceObjects: fixture.sourceAuthority.objects.map((source, index) => ({
+      componentIndex: source.componentIndex,
+      componentName: source.componentName,
+      chunkIndex: source.chunkIndex,
+      copyRole: source.copyRole,
+      objectId: source.objectId,
+      exactReadReceiptDerivation: AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION,
+      exactReadReceiptSha256: fixtureSha256(`seal-exact-read-${index}`),
+      ciphertextSha256: source.catalog.ciphertextSha256,
+      sizeBytes: source.catalog.sizeBytes,
+    })),
+    components,
+    authorityRevalidated: true,
+  });
+}
+
+export function buildCandidateSealAuthorizationRequest(
+  fixture: CandidateFixture,
+  session: Readonly<AgentBackupRestoreV3StagingSession>,
+  receipt: Readonly<AgentBackupRestoreV3CandidateReceipt>,
+): Readonly<AgentBackupRestoreV3CandidateSealAuthorizationRequest> {
+  return parseAgentBackupRestoreV3CandidateSealAuthorizationRequest({
+    authority: fixture.authority,
+    sessionExecutionToken: session.executionToken,
+    candidate: {
+      restoreAttemptId: receipt.restoreAttemptId,
+      operationId: receipt.operationId,
+      expectedManifestSha256: receipt.expectedManifestSha256,
+      keyBundleGenerationId: receipt.keyBundleGenerationId,
+      sourceCopyRole: receipt.sourceCopyRole,
+      sourceAuthoritySha256: receipt.sourceAuthoritySha256,
+      objectCount: receipt.objectCount,
+      candidateReceiptSha256: fixtureSha256(
+        canonicalizeAgentBackupRestoreV3CandidateReceipt(receipt),
+      ),
+    },
+  });
+}
+
+export async function stageAndFinishCandidateComponent(
+  execution: AgentBackupRestoreV3CandidateExecution,
+  session: Readonly<AgentBackupRestoreV3StagingSession>,
+  index: number,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+): Promise<AgentBackupRestoreV3ComponentReceipt> {
+  const expected = candidateComponentReceipt(index);
+  const payload = new TextEncoder().encode(`seal-component-${index}`);
+  const entry =
+    expected.descriptor.contentKind === "file-set"
+      ? {
+          path: `${expected.componentName}.bin`,
+          fileOffsetBytes: 0,
+          fileSizeBytes: payload.byteLength,
+          mode: 0o600,
+          mtimeMs: 1_700_000_000_000,
+        }
+      : null;
+  const staged = await execution.stageRecord(
+    session,
+    {
+      componentIndex: expected.componentIndex,
+      componentName: expected.componentName,
+      dataIndex: 0,
+      offsetBytes: 0,
+      entry,
+      payload,
+    },
+    control,
+  );
+  payload.fill(0);
+  if (staged.payloadBytes !== expected.payloadBytes) {
+    throw new Error(`Unexpected staged payload size for component ${index}`);
+  }
+  return execution.finishComponent(session, expected, control);
+}
+
+export async function completeCandidate(
+  execution: AgentBackupRestoreV3CandidateExecution,
+  fixture: CandidateFixture,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+): Promise<CompletedCandidate> {
+  const session = await execution.begin(
+    { authority: fixture.authority, manifest: fixture.manifest },
+    control,
+  );
+  const components: AgentBackupRestoreV3ComponentReceipt[] = [];
+  for (let index = 0; index < AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS.length; index += 1) {
+    components.push(await stageAndFinishCandidateComponent(execution, session, index, control));
+  }
+  const receipt = buildCandidateSealReceipt(fixture, components);
+  return Object.freeze({
+    session,
+    receipt,
+    authorizationRequest: buildCandidateSealAuthorizationRequest(fixture, session, receipt),
+  });
+}
+
+export function withAdditionalAttempt(
+  fixture: CandidateFixture,
+  ids: AdditionalAttemptIds,
+): CandidateFixture {
+  const authority = Object.freeze({
+    ...fixture.authority,
+    restoreAttemptId: ids.restoreAttemptId,
+    leaseId: ids.leaseId,
+    fencingToken: ids.leaseGeneration,
+  });
+  return Object.freeze({ ...fixture, authority });
+}
+
+export async function seedAdditionalCandidateAttempt(
+  client: CandidateFixtureQueryClient,
+  fixture: CandidateFixture,
+  ids: AdditionalAttemptIds,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO agent_backup_restore_leases (
+      id, organization_id, agent_id, backup_id, restore_attempt_id, owner_id,
+      generation, catalog_epoch, copy_role, operation_id, activation_generation,
+      lifecycle_revision, expected_manifest_sha256, expires_at, created_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+      clock_timestamp() - INTERVAL '1 minute')`,
+    [
+      ids.leaseId,
+      fixture.authority.organizationId,
+      fixture.authority.agentId,
+      fixture.authority.backupId,
+      ids.restoreAttemptId,
+      fixture.authority.ownerId,
+      ids.leaseGeneration,
+      fixture.authority.catalogEpoch,
+      fixture.authority.copyRole,
+      fixture.authority.operationId,
+      fixture.authority.sourceActivationGeneration,
+      fixture.authority.sourceLifecycleRevision,
+      fixture.authority.expectedManifestSha256,
+      fixture.leaseExpiresAt,
+    ],
+  );
+  await client.query(
+    `INSERT INTO agent_backup_restore_operations (
+      id, organization_id, agent_id, backup_id, restore_attempt_id, lease_id,
+      lease_owner_id, lease_generation, catalog_epoch, copy_role,
+      expected_operation_id, expected_activation_generation,
+      expected_lifecycle_revision, expected_manifest_sha256, phase
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'reserved')`,
+    [
+      ids.restoreOperationId,
+      fixture.authority.organizationId,
+      fixture.authority.agentId,
+      fixture.authority.backupId,
+      ids.restoreAttemptId,
+      ids.leaseId,
+      fixture.authority.ownerId,
+      ids.leaseGeneration,
+      fixture.authority.catalogEpoch,
+      fixture.authority.copyRole,
+      fixture.authority.operationId,
+      fixture.authority.sourceActivationGeneration,
+      fixture.authority.sourceLifecycleRevision,
+      fixture.authority.expectedManifestSha256,
+    ],
+  );
 }

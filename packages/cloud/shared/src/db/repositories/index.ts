@@ -38,6 +38,7 @@ export * from "./affiliates";
 export * from "./agent-backup-restore-v3-candidate-cleanup";
 export * from "./agent-backup-restore-v3-candidate-codec";
 export * from "./agent-backup-restore-v3-candidate-execution";
+export * from "./agent-backup-restore-v3-candidate-seal-authority";
 export * from "./agent-billing";
 export * from "./agent-billing-runs";
 export * from "./agent-events";
