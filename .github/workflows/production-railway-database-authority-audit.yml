@@ -21,13 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - name: Require canonical develop source
+      - name: Require canonical main source
         env:
           SOURCE_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          if [ "$SOURCE_REF" != "refs/heads/develop" ]; then
-            echo "::error::Production database authority audits must run from refs/heads/develop"
+          if [ "$SOURCE_REF" != "refs/heads/main" ]; then
+            echo "::error::Production database authority audits must run from refs/heads/main"
             exit 1
           fi
 
@@ -155,7 +155,7 @@ jobs:
           if ! GITHUB_TOKEN='${{ github.token }}' \
             node packages/cloud/scripts/canonical-deploy-source-guard.mjs \
             --run-sha "$GITHUB_SHA" \
-            --canonical-ref refs/heads/develop \
+            --canonical-ref refs/heads/main \
             > "$evidence_dir/freshness.stdout" \
             2> "$evidence_dir/freshness.stderr"; then
             echo "::error::Production database audit source is no longer canonical"
