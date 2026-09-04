@@ -659,6 +659,7 @@
   "cloud.account.loadError": "Failed to load account",
   "cloud.account.loadErrorTitle": "Account unavailable",
   "cloud.account.loading": "Loading account",
+  "cloud.account.retrying": "Retrying…",
   "cloud.account.metaDescription": "Manage your account preferences, profile, and security settings",
   "cloud.account.metaTitle": "Account Settings",
   "cloud.account.notAvailable": "N/A",

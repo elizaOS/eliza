@@ -15,6 +15,7 @@ const accountState = vi.hoisted(() => ({
   value: {
     user: null as { id: string } | null,
     isPending: true,
+    isFetching: true,
     isReady: false,
     isAuthenticated: false,
     isError: false,
@@ -79,6 +80,7 @@ describe("AccountSurface", () => {
     accountState.value = {
       user: null,
       isPending: true,
+      isFetching: true,
       isReady: false,
       isAuthenticated: false,
       isError: false,
@@ -167,6 +169,7 @@ describe("AccountSurface", () => {
       isReady: true,
       isAuthenticated: true,
       isPending: false,
+      isFetching: false,
       isError: true,
       error,
     });
@@ -180,6 +183,25 @@ describe("AccountSurface", () => {
       /keyboard-focus-surface/,
     );
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("disables retry and announces progress while refetching", () => {
+    setAccountState({
+      isReady: true,
+      isAuthenticated: true,
+      isPending: false,
+      isFetching: true,
+      isError: true,
+      error: new Error("Profile service is offline"),
+    });
+
+    renderAccountSurface();
+
+    const retry = screen.getByRole("button", { name: "Retrying…" });
+    expect(retry).toHaveProperty("disabled", true);
+    expect(retry.getAttribute("aria-busy")).toBe("true");
+    fireEvent.click(retry);
+    expect(accountState.value.refetch).not.toHaveBeenCalled();
   });
 
   it("renders a terminal unavailable state when the profile query settles empty", () => {

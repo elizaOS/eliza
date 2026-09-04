@@ -65,8 +65,16 @@ export function AccountSurface({
   signInBusy = false,
 }: AccountSurfaceProps = {}) {
   const t = useCloudT();
-  const { user, isPending, isReady, isAuthenticated, isError, error, refetch } =
-    useUserProfile();
+  const {
+    user,
+    isPending,
+    isFetching,
+    isReady,
+    isAuthenticated,
+    isError,
+    error,
+    refetch,
+  } = useUserProfile();
 
   useSetPageHeader({
     title: t("cloud.account.headerTitle", { defaultValue: "Account" }),
@@ -161,8 +169,12 @@ export function AccountSurface({
             variant="outlineAccent"
             className="keyboard-focus-surface"
             onClick={() => void refetch()}
+            disabled={isFetching}
+            aria-busy={isFetching || undefined}
           >
-            {t("settings.sectionRetry", { defaultValue: "Retry" })}
+            {isFetching
+              ? t("cloud.account.retrying", { defaultValue: "Retrying…" })
+              : t("settings.sectionRetry", { defaultValue: "Retry" })}
           </Button>
         }
       />
