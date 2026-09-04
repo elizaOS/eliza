@@ -1,7 +1,6 @@
 /** Immutable payload ownership journals, replay, and streaming writer. */
 
-import { Buffer } from "node:buffer";
-import { createHash, type Hash } from "node:crypto";
+import { type BinaryLike, createHash, Hash } from "node:crypto";
 import { constants } from "node:fs";
 import fs, { type FileHandle } from "node:fs/promises";
 import { types as utilTypes } from "node:util";
@@ -39,13 +38,13 @@ import {
 import {
   publishCandidateFsDurableJson,
   readCandidateFsCanonicalJson,
+  readCandidateFsCanonicalJsonReadOnly,
 } from "./agent-backup-restore-v3-candidate-fs-json";
 
 const MAX_UINT64 = 18_446_744_073_709_551_615n;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const UINT64_PATTERN = /^(?:0|[1-9][0-9]*)$/;
 const PAYLOAD_OWNER_TOKEN_MINIMUM_BYTES = 32;
-const EMPTY_PAYLOAD_SHA256 = createHash("sha256").digest("hex");
 const OBJECT_FREEZE = Object.freeze;
 const OBJECT_GET_PROTOTYPE_OF = Object.getPrototypeOf;
 const OBJECT_IS = Object.is;
@@ -68,13 +67,47 @@ const ARRAY_BUFFER_BYTE_LENGTH_GETTER = Object.getOwnPropertyDescriptor(
   "byteLength",
 )?.get;
 const REFLECT_APPLY = Reflect.apply;
+const CREATE_HASH = createHash;
+const HASH_UPDATE = Hash.prototype.update as (
+  data: BinaryLike,
+  inputEncoding?: BufferEncoding,
+) => Hash;
+const HASH_DIGEST_HEX = Hash.prototype.digest as (encoding: "hex") => string;
+const HASH_COPY = Hash.prototype.copy as () => Hash;
 const INTRINSIC_UINT8_ARRAY = Uint8Array;
 const UINT8_ARRAY_SET = Uint8Array.prototype.set;
 const UINT8_ARRAY_FILL = Uint8Array.prototype.fill;
-const BUFFER_BYTE_LENGTH = Buffer.byteLength;
+const IS_PROXY = utilTypes.isProxy;
 const IS_UINT8_ARRAY = utilTypes.isUint8Array;
-const STRING_INCLUDES = String.prototype.includes;
 const STRING_SLICE = String.prototype.slice;
+const EMPTY_PAYLOAD_SHA256 = hashDigestHex(createSha256Hash());
+
+function createSha256Hash(): Hash {
+  return CREATE_HASH("sha256");
+}
+
+function updateHash(
+  hash: Hash,
+  data: BinaryLike,
+  inputEncoding?: BufferEncoding,
+): Hash {
+  if (inputEncoding === undefined) {
+    return REFLECT_APPLY(HASH_UPDATE, hash, [data]);
+  }
+  return REFLECT_APPLY(HASH_UPDATE, hash, [data, inputEncoding]);
+}
+
+function hashDigestHex(hash: Hash): string {
+  return REFLECT_APPLY(HASH_DIGEST_HEX, hash, ["hex"]);
+}
+
+function copyHash(hash: Hash): Hash {
+  return REFLECT_APPLY(HASH_COPY, hash, []);
+}
+
+function sha256Hex(data: BinaryLike, inputEncoding?: BufferEncoding): string {
+  return hashDigestHex(updateHash(createSha256Hash(), data, inputEncoding));
+}
 
 function sortedObjectKeys(value: object): string[] {
   return REFLECT_APPLY(ARRAY_SORT, OBJECT_KEYS(value), []);
@@ -89,10 +122,6 @@ function hasExactKeys(
   expected: readonly string[],
 ): boolean {
   return joinStrings(value, "\0") === joinStrings(expected, "\0");
-}
-
-function stringIncludes(value: string, search: string): boolean {
-  return REFLECT_APPLY(STRING_INCLUDES, value, [search]);
 }
 
 function stringSlice(value: string, start: number, end?: number): string {
@@ -121,10 +150,6 @@ function zeroBytes(value: Uint8Array, start?: number, end?: number): void {
         : [0, start]
       : [0, start, end],
   );
-}
-
-function bufferUtf8ByteLength(value: string): number {
-  return REFLECT_APPLY(BUFFER_BYTE_LENGTH, Buffer, [value, "utf8"]);
 }
 
 function payloadFragmentByteLength(fragment: Uint8Array): number {
@@ -182,12 +207,25 @@ export interface AgentBackupRestoreV3CandidatePayloadReceipt
 
 export interface CreateAgentBackupRestoreV3CandidatePayloadOptions {
   readonly maximumBytes: number;
-  /** Stable, secret attempt-scoped token used to recover response loss. */
-  readonly ownerToken: string;
+  /** Stable owner-owned binary capability used to recover response loss. */
+  readonly ownerToken: Uint8Array;
 }
 
 export interface ProveAgentBackupRestoreV3CandidatePayloadOptions {
   readonly maximumBytes: number;
+}
+
+export interface ReadAgentBackupRestoreV3CandidatePayloadOptions {
+  /** Atomic in-memory reads are deliberately limited to one I/O chunk. */
+  readonly maximumBytes: number;
+  /** Stable owner-owned binary capability; only its digest is persisted. */
+  readonly ownerToken: Uint8Array;
+}
+
+export interface AgentBackupRestoreV3CandidatePayloadRead {
+  readonly receipt: Readonly<AgentBackupRestoreV3CandidatePayloadReceipt>;
+  /** Caller-owned copy. The caller is responsible for zeroizing it. */
+  readonly payload: Uint8Array;
 }
 
 interface PayloadOwnerJournal {
@@ -249,21 +287,54 @@ function parsePayloadReceipt(
   });
 }
 
-function ownerTokenSha256(value: string): string {
-  const byteLength =
-    typeof value === "string" ? bufferUtf8ByteLength(value) : 0;
+function ownerTokenSha256(value: Uint8Array): string {
   if (
-    typeof value !== "string" ||
-    stringIncludes(value, "\0") ||
-    byteLength < PAYLOAD_OWNER_TOKEN_MINIMUM_BYTES ||
-    byteLength > 512
+    IS_PROXY(value) ||
+    !IS_UINT8_ARRAY(value) ||
+    OBJECT_GET_PROTOTYPE_OF(value) !== INTRINSIC_UINT8_ARRAY.prototype ||
+    !TYPED_ARRAY_BYTE_LENGTH_GETTER ||
+    !TYPED_ARRAY_BUFFER_GETTER ||
+    !ARRAY_BUFFER_BYTE_LENGTH_GETTER
   ) {
     candidateFsError(
       "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_OWNER_INVALID",
-      "Candidate payload owner token must be a bounded attempt-scoped secret",
+      "Candidate payload owner capability must be one bounded exact Uint8Array",
     );
   }
-  return createHash("sha256").update(value, "utf8").digest("hex");
+  let byteLength: number;
+  try {
+    const buffer = REFLECT_APPLY(TYPED_ARRAY_BUFFER_GETTER, value, []);
+    REFLECT_APPLY(ARRAY_BUFFER_BYTE_LENGTH_GETTER, buffer, []);
+    byteLength = typedArrayByteLength(value);
+  } catch (cause) {
+    candidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_OWNER_INVALID",
+      "Candidate payload owner capability requires private non-shared storage",
+      { cause },
+    );
+  }
+  if (byteLength < PAYLOAD_OWNER_TOKEN_MINIMUM_BYTES || byteLength > 512) {
+    candidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_OWNER_INVALID",
+      "Candidate payload owner capability must be one bounded exact Uint8Array",
+    );
+  }
+  const owned = new INTRINSIC_UINT8_ARRAY(byteLength);
+  try {
+    REFLECT_APPLY(UINT8_ARRAY_SET, owned, [value]);
+  } catch (cause) {
+    zeroBytes(owned);
+    candidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_OWNER_INVALID",
+      "Candidate payload owner capability could not be copied exactly",
+      { cause },
+    );
+  }
+  try {
+    return sha256Hex(candidateFsNativeIoView(owned));
+  } finally {
+    zeroBytes(owned);
+  }
 }
 
 function payloadJournalNames(name: string): {
@@ -272,7 +343,7 @@ function payloadJournalNames(name: string): {
   readonly receipt: string;
   readonly checkpoints: readonly [string, string];
 } {
-  const derivation = createHash("sha256").update(name, "utf8").digest("hex");
+  const derivation = sha256Hex(name, "utf8");
   const prefix = `.payload-${stringSlice(derivation, 0, 32)}`;
   return OBJECT_FREEZE({
     owner: `${prefix}.owner.json`,
@@ -610,7 +681,7 @@ async function hashAndValidatePayloadPrefix(
       "Candidate payload is shorter than its durable checkpoint",
     );
   }
-  const hash = createHash("sha256");
+  const hash = createSha256Hash();
   const chunk = new INTRINSIC_UINT8_ARRAY(
     Math.min(
       CANDIDATE_FS_IO_CHUNK_BYTES,
@@ -629,7 +700,7 @@ async function hashAndValidatePayloadPrefix(
       const checkpoint = checkpoints[
         checkpointIndex
       ] as PayloadCheckpointJournal;
-      if (hash.copy().digest("hex") !== checkpoint.prefixSha256) {
+      if (hashDigestHex(copyHash(hash)) !== checkpoint.prefixSha256) {
         candidateFsError(
           "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PAYLOAD_CONFLICT",
           "Candidate payload prefix differs from its durable checkpoint",
@@ -659,7 +730,7 @@ async function hashAndValidatePayloadPrefix(
           "Candidate payload ended before its durable checkpoint",
         );
       }
-      hash.update(candidateFsByteView(chunk, 0, read.bytesRead));
+      updateHash(hash, candidateFsByteView(chunk, 0, read.bytesRead));
       zeroBytes(chunk, 0, read.bytesRead);
       position += read.bytesRead;
       validateReachedCheckpoints();
@@ -802,7 +873,7 @@ async function proveOpenedPayload(
       "Candidate payload exceeds its explicit byte bound",
     );
   }
-  const hash = createHash("sha256");
+  const hash = createSha256Hash();
   const chunk = new INTRINSIC_UINT8_ARRAY(
     Math.min(CANDIDATE_FS_IO_CHUNK_BYTES, Math.max(1, before.size)),
   );
@@ -824,7 +895,7 @@ async function proveOpenedPayload(
           "Candidate payload ended before its bound descriptor size",
         );
       }
-      hash.update(candidateFsByteView(chunk, 0, read.bytesRead));
+      updateHash(hash, candidateFsByteView(chunk, 0, read.bytesRead));
       zeroBytes(chunk, 0, read.bytesRead);
       position += read.bytesRead;
     }
@@ -846,7 +917,7 @@ async function proveOpenedPayload(
   return OBJECT_FREEZE({
     ...candidateFsIdentity(after),
     sizeBytes: after.size,
-    sha256: hash.digest("hex"),
+    sha256: hashDigestHex(hash),
   });
 }
 
@@ -1086,14 +1157,14 @@ export class AgentBackupRestoreV3CandidatePayloadWriter {
         // overwritten value with uncertain provenance.
         await this.#owner.syncAttemptRoot(exactControl);
 
-        nextHash = (this.#prefixHash as Hash).copy();
-        nextHash.update(owned);
+        nextHash = copyHash(this.#prefixHash as Hash);
+        updateHash(nextHash, owned);
         const nextAcknowledgedBytes = durablePosition + byteLength;
         const nextCheckpoint = payloadCheckpoint(
           this.#identityJournal as PayloadIdentityJournal,
           nextGeneration,
           nextAcknowledgedBytes,
-          nextHash.copy().digest("hex"),
+          hashDigestHex(copyHash(nextHash)),
         );
         writeStarted = true;
         await writeAll(
@@ -1271,6 +1342,7 @@ export class AgentBackupRestoreV3CandidatePayloadWriter {
     releaseLockUse: () => void,
   ): Promise<Readonly<AgentBackupRestoreV3CandidatePayloadReceipt>> {
     let primaryFailure: unknown;
+    let primaryFailed = false;
     let result: Readonly<AgentBackupRestoreV3CandidatePayloadReceipt> | null =
       null;
     try {
@@ -1310,7 +1382,7 @@ export class AgentBackupRestoreV3CandidatePayloadWriter {
         const receipt = OBJECT_FREEZE({
           ...candidateFsIdentity(before),
           sizeBytes: before.size,
-          sha256: this.#prefixHash.copy().digest("hex"),
+          sha256: hashDigestHex(copyHash(this.#prefixHash)),
         });
         if (receipt.sha256 !== this.#currentCheckpoint.prefixSha256) {
           candidateFsError(
@@ -1342,13 +1414,14 @@ export class AgentBackupRestoreV3CandidatePayloadWriter {
         result = receipt;
       }
     } catch (cause) {
+      primaryFailed = true;
       primaryFailure = cause;
     }
     releaseLockUse();
     try {
       await this.#disposeResources();
     } catch (cleanupCause) {
-      if (primaryFailure !== undefined) {
+      if (primaryFailed) {
         throw new AgentBackupRestoreV3CandidateFsError(
           "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_WRITER_CLEANUP_FAILED",
           "Candidate payload finalization and resource cleanup both failed",
@@ -1357,7 +1430,7 @@ export class AgentBackupRestoreV3CandidatePayloadWriter {
       }
       throw cleanupCause;
     }
-    if (primaryFailure !== undefined) throw primaryFailure;
+    if (primaryFailed) throw primaryFailure;
     if (!result) {
       candidateFsError(
         "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_WRITER_STATE_INVALID",
@@ -1394,12 +1467,14 @@ export class AgentBackupRestoreV3CandidatePayloadWriter {
 
   async #disposeResources(): Promise<void> {
     let firstFailure: unknown;
+    let firstFailed = false;
     const handle = this.#handle;
     this.#handle = null;
     if (handle) {
       try {
         await boundedInternalCleanup(() => handle.close());
       } catch (cause) {
+        firstFailed = true;
         firstFailure = cause;
       }
     }
@@ -1409,13 +1484,13 @@ export class AgentBackupRestoreV3CandidatePayloadWriter {
       try {
         await lock.release(internalCleanupControl());
       } catch (cause) {
-        if (firstFailure !== undefined) {
+        if (firstFailed) {
           throw new AggregateError([firstFailure, cause]);
         }
         throw cause;
       }
     }
-    if (firstFailure !== undefined) throw firstFailure;
+    if (firstFailed) throw firstFailure;
   }
 }
 
@@ -1437,7 +1512,7 @@ export async function createCandidateFsPayload(
     payloadOptions.maximumBytes as number,
     "maximumBytes",
   );
-  const ownerSha256 = ownerTokenSha256(payloadOptions.ownerToken as string);
+  const ownerSha256 = ownerTokenSha256(payloadOptions.ownerToken as Uint8Array);
   const ownerJournal: PayloadOwnerJournal = OBJECT_FREEZE({
     version: 1,
     name: requireControlName(name, "payload name"),
@@ -1819,11 +1894,7 @@ export async function proveCandidateFsPayload(
   }
   await authority.assertAuthority(control);
   const operationLock = await authority.operationLock(
-    `.prove-${stringSlice(
-      createHash("sha256").update(name).digest("hex"),
-      0,
-      16,
-    )}`,
+    `.prove-${stringSlice(sha256Hex(name), 0, 16)}`,
     control,
     heldLock,
   );
@@ -1863,4 +1934,251 @@ export async function proveCandidateFsPayload(
       await operationLock.release(internalCleanupControl());
     }
   }
+}
+
+/**
+ * Reads one already-proved immutable payload from its exact descriptor while
+ * the candidate inode lock is held for the entire bounded operation.
+ */
+export async function readCandidateFsPayload(
+  authority: AgentBackupRestoreV3CandidateFsControl,
+  name: string,
+  expectedValue: Readonly<AgentBackupRestoreV3CandidatePayloadReceipt>,
+  options: Readonly<ReadAgentBackupRestoreV3CandidatePayloadOptions>,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+  heldLock?: AgentBackupRestoreV3CandidateFsLock,
+): Promise<Readonly<AgentBackupRestoreV3CandidatePayloadRead>> {
+  const readOptions = snapshotOwnDataRecord(
+    options,
+    ["maximumBytes", "ownerToken"],
+    ["maximumBytes", "ownerToken"],
+    "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LIMIT_INVALID",
+    "Candidate payload read options must be exact data properties",
+  );
+  const maximumBytes = requirePositiveSafeInteger(
+    readOptions.maximumBytes as number,
+    "maximumBytes",
+  );
+  if (maximumBytes > CANDIDATE_FS_IO_CHUNK_BYTES) {
+    candidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PAYLOAD_READ_LIMIT",
+      "Candidate atomic payload read exceeds 256 KiB",
+    );
+  }
+  const expected = parsePayloadReceipt(expectedValue, maximumBytes);
+  const exactName = requireControlName(name, "payload name");
+  const ownerJournal: PayloadOwnerJournal = OBJECT_FREEZE({
+    version: 1,
+    name: exactName,
+    ownerTokenSha256: ownerTokenSha256(readOptions.ownerToken as Uint8Array),
+    maximumBytes,
+  });
+  const journalNames = payloadJournalNames(exactName);
+  const payloadPath = authority.directPath(exactName, "payload name");
+  await authority.assertAuthority(control);
+  const operationLock = await authority.operationLock(
+    `.read-payload-${stringSlice(sha256Hex(exactName), 0, 16)}`,
+    control,
+    heldLock,
+  );
+  const activeLock = operationLock ?? heldLock;
+  if (!activeLock) {
+    candidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LOCK_INVALID",
+      "Candidate payload read did not obtain an exact inode-lock lease",
+    );
+  }
+  let handle: FileHandle | null = null;
+  let releaseLockUse: (() => void) | null = null;
+  let payload: Uint8Array | null = null;
+  let result: Readonly<AgentBackupRestoreV3CandidatePayloadRead> | null = null;
+  let primaryFailure: unknown;
+  let primaryFailed = false;
+  try {
+    releaseLockUse = authority.beginLockUse(activeLock);
+    await authority.assertLockHeld(activeLock, control);
+    const persistedOwner = await readCandidateFsCanonicalJsonReadOnly(
+      authority,
+      journalNames.owner,
+      4_096,
+      control,
+    );
+    const persistedIdentity = await readCandidateFsCanonicalJsonReadOnly(
+      authority,
+      journalNames.identity,
+      4_096,
+      control,
+    );
+    const persistedReceipt = await readCandidateFsCanonicalJsonReadOnly(
+      authority,
+      journalNames.receipt,
+      4_096,
+      control,
+    );
+    if (
+      persistedOwner === null ||
+      persistedIdentity === null ||
+      persistedReceipt === null
+    ) {
+      candidateFsError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PAYLOAD_CONFLICT",
+        "Candidate proved payload lacks its complete immutable owner journals",
+      );
+    }
+    parseOwnerJournal(persistedOwner, ownerJournal);
+    const identityJournal = parseIdentityJournal(
+      persistedIdentity,
+      ownerJournal,
+    );
+    const receiptJournal = parseReceiptJournal(persistedReceipt, ownerJournal);
+    if (
+      receiptJournal.receipt.sizeBytes !== expected.sizeBytes ||
+      receiptJournal.receipt.sha256 !== expected.sha256 ||
+      receiptJournal.receipt.device !== expected.device ||
+      receiptJournal.receipt.inode !== expected.inode ||
+      identityJournal.device !== expected.device ||
+      identityJournal.inode !== expected.inode
+    ) {
+      candidateFsError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PAYLOAD_CONFLICT",
+        "Candidate payload owner journals differ from its exact read receipt",
+      );
+    }
+    try {
+      handle = await controlledAcquire(
+        () => fs.open(payloadPath, constants.O_RDONLY | constants.O_NOFOLLOW),
+        (lateHandle) => lateHandle.close(),
+        control,
+      );
+    } catch (cause) {
+      if (isErrno(cause, "ENOENT")) {
+        candidateFsError(
+          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PAYLOAD_CONFLICT",
+          "Candidate proved payload is absent",
+        );
+      }
+      throw cause;
+    }
+    const opened = await controlled(
+      () => fileStatExact(handle as FileHandle),
+      control,
+    );
+    requirePrivateSingleLinkFile(
+      opened,
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_FILE_UNSAFE",
+      "Candidate payload read is not one private regular file",
+    );
+    if (
+      opened.size !== expected.sizeBytes ||
+      opened.device.toString(10) !== expected.device ||
+      opened.inode.toString(10) !== expected.inode
+    ) {
+      candidateFsError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PAYLOAD_CONFLICT",
+        "Candidate payload identity differs from its exact receipt",
+      );
+    }
+    const before = await assertBoundFile(
+      handle as FileHandle,
+      payloadPath,
+      opened,
+      control,
+    );
+    const exactPayload = new INTRINSIC_UINT8_ARRAY(before.size);
+    const ioPayload = candidateFsNativeIoView(exactPayload);
+    const exactPayloadByteLength = typedArrayByteLength(exactPayload);
+    payload = exactPayload;
+    let offset = 0;
+    const hash = createSha256Hash();
+    while (offset < exactPayloadByteLength) {
+      const read = await controlled(
+        () =>
+          (handle as FileHandle).read(
+            ioPayload,
+            offset,
+            exactPayloadByteLength - offset,
+            offset,
+          ),
+        control,
+      );
+      if (read.bytesRead <= 0) {
+        candidateFsError(
+          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PAYLOAD_TRUNCATED",
+          "Candidate payload ended before its exact receipt size",
+        );
+      }
+      updateHash(
+        hash,
+        candidateFsByteView(exactPayload, offset, offset + read.bytesRead),
+      );
+      offset += read.bytesRead;
+    }
+    const after = await assertBoundFile(
+      handle as FileHandle,
+      payloadPath,
+      opened,
+      control,
+    );
+    if (
+      !sameStableFile(before, after) ||
+      hashDigestHex(hash) !== expected.sha256
+    ) {
+      candidateFsError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PAYLOAD_CONFLICT",
+        "Candidate payload bytes differ from their exact receipt",
+      );
+    }
+    await authority.assertLockHeld(activeLock, control);
+    result = OBJECT_FREEZE({ receipt: expected, payload: exactPayload });
+  } catch (cause) {
+    primaryFailed = true;
+    primaryFailure = cause;
+  }
+
+  const cleanupFailures: unknown[] = [];
+  if (handle) {
+    try {
+      await boundedInternalCleanup(() => (handle as FileHandle).close());
+      handle = null;
+    } catch (cause) {
+      cleanupFailures.push(cause);
+    }
+  }
+  if (releaseLockUse) {
+    try {
+      releaseLockUse();
+      releaseLockUse = null;
+    } catch (cause) {
+      cleanupFailures.push(cause);
+    }
+  }
+  if (operationLock) {
+    try {
+      await operationLock.release(internalCleanupControl());
+    } catch (cause) {
+      cleanupFailures.push(cause);
+    }
+  }
+  if (primaryFailed || cleanupFailures.length > 0 || !result) {
+    if (payload) zeroBytes(payload);
+    if (primaryFailed && cleanupFailures.length > 0) {
+      throw new AgentBackupRestoreV3CandidateFsError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PAYLOAD_READ_FAILED",
+        "Candidate payload read and bounded cleanup both failed",
+        {
+          cause: new AggregateError([primaryFailure, ...cleanupFailures]),
+          severity: "fatal",
+        },
+      );
+    }
+    if (primaryFailed) throw primaryFailure;
+    if (cleanupFailures.length === 1) throw cleanupFailures[0];
+    if (cleanupFailures.length > 1) throw new AggregateError(cleanupFailures);
+    candidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PAYLOAD_READ_FAILED",
+      "Candidate payload read ended without an exact result",
+    );
+  }
+  payload = null;
+  return result;
 }

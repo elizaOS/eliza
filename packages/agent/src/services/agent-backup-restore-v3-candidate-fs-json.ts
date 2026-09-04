@@ -1,7 +1,7 @@
 /** Canonical and crash-reconcilable durable JSON publication. */
 
 import { Buffer } from "node:buffer";
-import { createHash, randomUUID } from "node:crypto";
+import { type BinaryLike, createHash, Hash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import fs, { type FileHandle } from "node:fs/promises";
 import { types as utilTypes } from "node:util";
@@ -59,12 +59,25 @@ const TYPED_ARRAY_BYTE_OFFSET_GETTER = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
   "byteOffset",
 )?.get;
 const REFLECT_APPLY = Reflect.apply;
+const CREATE_HASH = createHash;
+const RANDOM_UUID = randomUUID;
+const HASH_UPDATE = Hash.prototype.update as (
+  data: BinaryLike,
+  inputEncoding?: BufferEncoding,
+) => Hash;
+const HASH_DIGEST_HEX = Hash.prototype.digest as (encoding: "hex") => string;
 const INTRINSIC_WEAK_SET = WeakSet;
 const WEAK_SET_ADD = WeakSet.prototype.add;
 const WEAK_SET_DELETE = WeakSet.prototype.delete;
 const WEAK_SET_HAS = WeakSet.prototype.has;
 const INTRINSIC_UINT8_ARRAY = Uint8Array;
+const UINT8_ARRAY_SET = Uint8Array.prototype.set;
 const UINT8_ARRAY_FILL = Uint8Array.prototype.fill;
+const UTF8_ENCODER = new TextEncoder();
+const TEXT_ENCODER_ENCODE = TextEncoder.prototype.encode;
+const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+const TEXT_DECODER_DECODE = TextDecoder.prototype.decode;
+const BUFFER_ALLOC = Buffer.alloc;
 const BUFFER_FROM = Buffer.from;
 const BUFFER_BYTE_LENGTH = Buffer.byteLength;
 const BUFFER_EQUALS = Buffer.prototype.equals;
@@ -74,6 +87,29 @@ const STRING_ENDS_WITH = String.prototype.endsWith;
 const STRING_INCLUDES = String.prototype.includes;
 const STRING_SLICE = String.prototype.slice;
 const STRING_STARTS_WITH = String.prototype.startsWith;
+
+function createSha256Hash(): Hash {
+  return CREATE_HASH("sha256");
+}
+
+function updateHash(
+  hash: Hash,
+  data: BinaryLike,
+  inputEncoding?: BufferEncoding,
+): Hash {
+  if (inputEncoding === undefined) {
+    return REFLECT_APPLY(HASH_UPDATE, hash, [data]);
+  }
+  return REFLECT_APPLY(HASH_UPDATE, hash, [data, inputEncoding]);
+}
+
+function hashDigestHex(hash: Hash): string {
+  return REFLECT_APPLY(HASH_DIGEST_HEX, hash, ["hex"]);
+}
+
+function sha256Hex(data: BinaryLike, inputEncoding?: BufferEncoding): string {
+  return hashDigestHex(updateHash(createSha256Hash(), data, inputEncoding));
+}
 
 function typedArrayByteLength(value: Uint8Array): number {
   return REFLECT_APPLY(
@@ -111,8 +147,17 @@ function zeroBytes(value: Uint8Array, start?: number, end?: number): void {
   );
 }
 
-function bufferFromString(value: string, encoding: BufferEncoding): Buffer {
-  return REFLECT_APPLY(BUFFER_FROM, Buffer, [value, encoding]);
+function bufferFromUtf8String(value: string): Buffer {
+  const encoded = REFLECT_APPLY(TEXT_ENCODER_ENCODE, UTF8_ENCODER, [value]);
+  try {
+    const owned = REFLECT_APPLY(BUFFER_ALLOC, Buffer, [
+      typedArrayByteLength(encoded),
+    ]);
+    REFLECT_APPLY(UINT8_ARRAY_SET, owned, [encoded]);
+    return owned;
+  } finally {
+    zeroBytes(encoded);
+  }
 }
 
 function bufferFromArrayBuffer(
@@ -171,6 +216,10 @@ export interface AgentBackupRestoreV3CandidateDurableJsonReceipt {
 }
 
 export interface PublishAgentBackupRestoreV3CandidateDurableJsonOptions {
+  readonly maximumBytes: number;
+}
+
+export interface ReadAgentBackupRestoreV3CandidateDurableJsonOptions {
   readonly maximumBytes: number;
 }
 
@@ -420,7 +469,7 @@ async function reconcileDurableJsonPublication(
   control: Readonly<AgentBackupRestoreV3OperationControl>,
 ): Promise<void> {
   const finalPath = authority.directPath(name, "durable JSON name");
-  const derivation = createHash("sha256").update(name).digest("hex");
+  const derivation = sha256Hex(name);
   const prefix = `.publish-${stringSlice(derivation, 0, 16)}-`;
   let finalStats = null;
   try {
@@ -468,7 +517,7 @@ async function reconcileDurableJsonPublication(
       let entry: string;
       try {
         entry = bufferToUtf8(encodedName);
-        const roundTrip = bufferFromString(entry, "utf8");
+        const roundTrip = bufferFromUtf8String(entry);
         try {
           if (!bufferEquals(roundTrip, encodedName)) continue;
           if (
@@ -539,21 +588,11 @@ async function reconcileDurableJsonPublication(
   }
 }
 
-export async function readCandidateFsCanonicalJson(
-  authority: AgentBackupRestoreV3CandidateFsControl,
-  name: string,
-  maximumBytes: number,
-  control: Readonly<AgentBackupRestoreV3OperationControl>,
-): Promise<unknown | null> {
-  await reconcileDurableJsonPublication(authority, name, control);
-  await authority.syncAttemptRoot(control);
-  const filePath = authority.directPath(name, "durable JSON name");
-  const bytes = await readBoundRegularFile(filePath, maximumBytes, control);
-  if (bytes === null) return null;
+function decodeCandidateFsCanonicalJson(bytes: Uint8Array): unknown {
   try {
     let text: string;
     try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      text = REFLECT_APPLY(TEXT_DECODER_DECODE, UTF8_DECODER, [bytes]);
     } catch (cause) {
       candidateFsError(
         "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
@@ -590,6 +629,120 @@ export async function readCandidateFsCanonicalJson(
   }
 }
 
+/** Descriptor-bound canonical read with no reconciliation or filesystem write. */
+export async function readCandidateFsCanonicalJsonReadOnly(
+  authority: AgentBackupRestoreV3CandidateFsControl,
+  name: string,
+  maximumBytes: number,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+): Promise<unknown | null> {
+  const filePath = authority.directPath(name, "durable JSON name");
+  const bytes = await readBoundRegularFile(filePath, maximumBytes, control);
+  return bytes === null ? null : decodeCandidateFsCanonicalJson(bytes);
+}
+
+export async function readCandidateFsCanonicalJson(
+  authority: AgentBackupRestoreV3CandidateFsControl,
+  name: string,
+  maximumBytes: number,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+): Promise<unknown | null> {
+  await reconcileDurableJsonPublication(authority, name, control);
+  await authority.syncAttemptRoot(control);
+  return readCandidateFsCanonicalJsonReadOnly(
+    authority,
+    name,
+    maximumBytes,
+    control,
+  );
+}
+
+/**
+ * Reads one canonical durable JSON value while holding the candidate inode
+ * lock. This public read path is strictly read-only and never reconciles,
+ * creates, links, unlinks, or fsyncs a durable binding.
+ */
+export async function readCandidateFsDurableJson(
+  authority: AgentBackupRestoreV3CandidateFsControl,
+  name: string,
+  options: Readonly<ReadAgentBackupRestoreV3CandidateDurableJsonOptions>,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+  heldLock?: AgentBackupRestoreV3CandidateFsLock,
+): Promise<unknown | null> {
+  const readOptions = snapshotOwnDataRecord(
+    options,
+    ["maximumBytes"],
+    ["maximumBytes"],
+    "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LIMIT_INVALID",
+    "Candidate durable JSON read options must be exact data properties",
+  );
+  const maximumBytes = requirePositiveSafeInteger(
+    readOptions.maximumBytes as number,
+    "maximumBytes",
+  );
+  const exactName = requireControlName(name, "durable JSON name");
+  await authority.assertAuthority(control);
+  const operationLock = await authority.operationLock(
+    `.read-${stringSlice(sha256Hex(exactName), 0, 16)}`,
+    control,
+    heldLock,
+  );
+  const activeLock = operationLock ?? heldLock;
+  if (!activeLock) {
+    candidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LOCK_INVALID",
+      "Candidate JSON read did not obtain an exact inode-lock lease",
+    );
+  }
+  let releaseLockUse: (() => void) | null = null;
+  let result: unknown | null = null;
+  let primaryFailure: unknown;
+  let primaryFailed = false;
+  try {
+    releaseLockUse = authority.beginLockUse(activeLock);
+    await authority.assertLockHeld(activeLock, control);
+    result = await readCandidateFsCanonicalJsonReadOnly(
+      authority,
+      exactName,
+      maximumBytes,
+      control,
+    );
+    await authority.assertLockHeld(activeLock, control);
+  } catch (cause) {
+    primaryFailed = true;
+    primaryFailure = cause;
+  }
+  let cleanupFailure: unknown;
+  let cleanupFailed = false;
+  try {
+    const cleanupOperations: Array<() => Promise<void>> = [];
+    if (releaseLockUse) {
+      const releaseUse = releaseLockUse;
+      releaseLockUse = null;
+      cleanupOperations.push(async () => releaseUse());
+    }
+    if (operationLock) {
+      cleanupOperations.push(() =>
+        operationLock.release(internalCleanupControl()),
+      );
+    }
+    await runAllBoundedInternalCleanup(cleanupOperations);
+  } catch (cause) {
+    cleanupFailed = true;
+    cleanupFailure = cause;
+  }
+  if (primaryFailed && cleanupFailed) {
+    throw new AgentBackupRestoreV3CandidateFsError(
+      "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_READ_CLEANUP_FAILED",
+      "Candidate durable JSON read and bounded cleanup both failed",
+      { cause: new AggregateError([primaryFailure, cleanupFailure]) },
+    );
+  }
+  if (primaryFailed) throw primaryFailure;
+  if (cleanupFailed) throw cleanupFailure;
+  return result;
+}
+
 export async function publishCandidateFsDurableJson(
   authority: AgentBackupRestoreV3CandidateFsControl,
   name: string,
@@ -611,7 +764,7 @@ export async function publishCandidateFsDurableJson(
   );
   const finalPath = authority.directPath(name, "durable JSON name");
   const canonical = candidateFsCanonicalJson(value);
-  const persisted = bufferFromString(`${canonical}\n`, "utf8");
+  const persisted = bufferFromUtf8String(`${canonical}\n`);
   const persistedByteLength = typedArrayByteLength(persisted);
   if (persistedByteLength > maximumBytes) {
     zeroBytes(persisted);
@@ -620,7 +773,7 @@ export async function publishCandidateFsDurableJson(
       "Candidate durable JSON exceeds its explicit byte bound",
     );
   }
-  const sha256 = createHash("sha256").update(persisted).digest("hex");
+  const sha256 = sha256Hex(persisted);
   const expectedResult = {
     sizeBytes: persistedByteLength,
     sha256,
@@ -650,16 +803,13 @@ export async function publishCandidateFsDurableJson(
   let tempHandle: FileHandle | null = null;
   let releaseLockUse: (() => void) | null = null;
   let primaryFailure: unknown;
+  let primaryFailed = false;
   let result: Readonly<AgentBackupRestoreV3CandidateDurableJsonReceipt> | null =
     null;
   try {
     await authority.assertAuthority(control);
     operationLock = await authority.operationLock(
-      `.publish-${stringSlice(
-        createHash("sha256").update(name).digest("hex"),
-        0,
-        16,
-      )}`,
+      `.publish-${stringSlice(sha256Hex(name), 0, 16)}`,
       control,
       heldLock,
     );
@@ -677,12 +827,12 @@ export async function publishCandidateFsDurableJson(
     if ((await compareExisting()) === "exact") {
       result = OBJECT_FREEZE({ ...expectedResult, replayed: true });
     } else {
-      const tempDerivation = createHash("sha256").update(name).digest("hex");
+      const tempDerivation = sha256Hex(name);
       const tempName = `.publish-${stringSlice(
         tempDerivation,
         0,
         16,
-      )}-${randomUUID()}.tmp`;
+      )}-${RANDOM_UUID()}.tmp`;
       tempPath = authority.directPath(tempName, "durable JSON temp name");
       tempHandle = await controlledAcquire(
         () =>
@@ -743,10 +893,12 @@ export async function publishCandidateFsDurableJson(
     }
     await authority.assertLockHeld(activeLock, control);
   } catch (cause) {
+    primaryFailed = true;
     primaryFailure = cause;
   }
 
   let cleanupFailure: unknown;
+  let cleanupFailed = false;
   try {
     const cleanupOperations: Array<() => Promise<void>> = [];
     if (tempHandle) {
@@ -785,19 +937,20 @@ export async function publishCandidateFsDurableJson(
     }
     await runAllBoundedInternalCleanup(cleanupOperations);
   } catch (cause) {
+    cleanupFailed = true;
     cleanupFailure = cause;
   } finally {
     zeroBytes(persisted);
   }
-  if (primaryFailure !== undefined && cleanupFailure !== undefined) {
+  if (primaryFailed && cleanupFailed) {
     throw new AgentBackupRestoreV3CandidateFsError(
       "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PUBLICATION_FAILED",
       "Candidate durable JSON publication and bounded cleanup both failed",
       { cause: new AggregateError([primaryFailure, cleanupFailure]) },
     );
   }
-  if (primaryFailure !== undefined) throw primaryFailure;
-  if (cleanupFailure !== undefined) throw cleanupFailure;
+  if (primaryFailed) throw primaryFailure;
+  if (cleanupFailed) throw cleanupFailure;
   if (!result) {
     candidateFsError(
       "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_PUBLICATION_FAILED",

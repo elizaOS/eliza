@@ -1,7 +1,7 @@
 /** Deterministic tree proof and bounded post-order volatile cleanup. */
 
 import { Buffer } from "node:buffer";
-import { createHash } from "node:crypto";
+import { type BinaryLike, createHash, Hash } from "node:crypto";
 import { constants } from "node:fs";
 import fs, { type FileHandle } from "node:fs/promises";
 import path from "node:path";
@@ -64,6 +64,12 @@ const TYPED_ARRAY_BYTE_OFFSET_GETTER = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
   "byteOffset",
 )?.get;
 const REFLECT_APPLY = Reflect.apply;
+const CREATE_HASH = createHash;
+const HASH_UPDATE = Hash.prototype.update as (
+  data: BinaryLike,
+  inputEncoding?: BufferEncoding,
+) => Hash;
+const HASH_DIGEST_HEX = Hash.prototype.digest as (encoding: "hex") => string;
 const INTRINSIC_UINT8_ARRAY = Uint8Array;
 const INTRINSIC_SET = Set;
 const SET_ADD = Set.prototype.add;
@@ -72,7 +78,10 @@ const STRING_SLICE = String.prototype.slice;
 const STRING_SPLIT = String.prototype.split;
 const PATH_JOIN = path.join;
 const PATH_SEPARATOR = path.sep;
+const UINT8_ARRAY_SET = Uint8Array.prototype.set;
 const UINT8_ARRAY_FILL = Uint8Array.prototype.fill;
+const UTF8_ENCODER = new TextEncoder();
+const TEXT_ENCODER_ENCODE = TextEncoder.prototype.encode;
 const BUFFER_ALLOC = Buffer.alloc;
 const BUFFER_FROM = Buffer.from;
 const BUFFER_BYTE_LENGTH = Buffer.byteLength;
@@ -86,6 +95,29 @@ const TREE_DIRECTORY_MARKER = candidateFsNativeIoView(
 const TREE_FILE_MARKER = candidateFsNativeIoView(
   new INTRINSIC_UINT8_ARRAY([0x46]),
 );
+
+function createSha256Hash(): Hash {
+  return CREATE_HASH("sha256");
+}
+
+function updateHash(
+  hash: Hash,
+  data: BinaryLike,
+  inputEncoding?: BufferEncoding,
+): Hash {
+  if (inputEncoding === undefined) {
+    return REFLECT_APPLY(HASH_UPDATE, hash, [data]);
+  }
+  return REFLECT_APPLY(HASH_UPDATE, hash, [data, inputEncoding]);
+}
+
+function hashDigestHex(hash: Hash): string {
+  return REFLECT_APPLY(HASH_DIGEST_HEX, hash, ["hex"]);
+}
+
+function sha256Hex(data: BinaryLike, inputEncoding?: BufferEncoding): string {
+  return hashDigestHex(updateHash(createSha256Hash(), data, inputEncoding));
+}
 
 function typedArrayByteLength(value: Uint8Array): number {
   return REFLECT_APPLY(
@@ -127,8 +159,15 @@ function bufferAlloc(byteLength: number): Buffer {
   return REFLECT_APPLY(BUFFER_ALLOC, Buffer, [byteLength]);
 }
 
-function bufferFromString(value: string, encoding: BufferEncoding): Buffer {
-  return REFLECT_APPLY(BUFFER_FROM, Buffer, [value, encoding]);
+function bufferFromUtf8String(value: string): Buffer {
+  const encoded = REFLECT_APPLY(TEXT_ENCODER_ENCODE, UTF8_ENCODER, [value]);
+  try {
+    const owned = bufferAlloc(typedArrayByteLength(encoded));
+    REFLECT_APPLY(UINT8_ARRAY_SET, owned, [encoded]);
+    return owned;
+  } finally {
+    zeroBytes(encoded);
+  }
 }
 
 function bufferFromArrayBuffer(
@@ -276,33 +315,31 @@ function snapshotCleanupNames(value: readonly string[]): readonly string[] {
   return OBJECT_FREEZE(names);
 }
 
-function updateUint64(
-  hash: ReturnType<typeof createHash>,
-  value: number,
-): void {
+function updateUint64(hash: Hash, value: number): void {
   const framed = bufferAlloc(8);
   try {
     writeBigUint64(framed, BigInt(value));
-    hash.update(candidateFsNativeIoView(framed));
+    updateHash(hash, candidateFsNativeIoView(framed));
   } finally {
     zeroBytes(framed);
   }
 }
 
 function updateTreeHeader(
-  hash: ReturnType<typeof createHash>,
+  hash: Hash,
   kind: "directory" | "file",
   relativePath: string,
   mode: number,
   size: number,
 ): void {
-  const encodedPath = bufferFromString(relativePath, "utf8");
+  const encodedPath = bufferFromUtf8String(relativePath);
   try {
-    hash.update(
+    updateHash(
+      hash,
       kind === "directory" ? TREE_DIRECTORY_MARKER : TREE_FILE_MARKER,
     );
     updateUint64(hash, typedArrayByteLength(encodedPath));
-    hash.update(candidateFsNativeIoView(encodedPath));
+    updateHash(hash, candidateFsNativeIoView(encodedPath));
     updateUint64(hash, mode & 0o777);
     updateUint64(hash, size);
   } finally {
@@ -311,8 +348,8 @@ function updateTreeHeader(
 }
 
 function compareNames(left: string, right: string): number {
-  const encodedLeft = bufferFromString(left, "utf8");
-  const encodedRight = bufferFromString(right, "utf8");
+  const encodedLeft = bufferFromUtf8String(left);
+  const encodedRight = bufferFromUtf8String(right);
   try {
     return bufferCompare(encodedLeft, encodedRight);
   } finally {
@@ -355,7 +392,7 @@ async function readExactDirectoryNames(
       let name: string;
       try {
         name = bufferToUtf8(encodedName);
-        const roundTrip = bufferFromString(name, "utf8");
+        const roundTrip = bufferFromUtf8String(name);
         try {
           if (bufferCompare(roundTrip, encodedName) !== 0) {
             candidateFsError(unsafeCode, unsafeMessage);
@@ -487,9 +524,7 @@ export async function proveCandidateFsTree(
   );
   const segments = stringSplit(normalizedDirectory, PATH_SEPARATOR);
   await authority.assertAuthority(control);
-  const treeDerivation = createHash("sha256")
-    .update(relativeDirectory)
-    .digest("hex");
+  const treeDerivation = sha256Hex(relativeDirectory);
   const operationLock = await authority.operationLock(
     `.tree-${stringSlice(treeDerivation, 0, 16)}`,
     control,
@@ -508,8 +543,8 @@ export async function proveCandidateFsTree(
     releaseLockUse = authority.beginLockUse(activeLock);
     const root = await authority.openDirectorySegments(segments, control);
     rootHandle = root.handle;
-    const hash = createHash("sha256");
-    hash.update(TREE_PROOF_DERIVATION, "utf8");
+    const hash = createSha256Hash();
+    updateHash(hash, TREE_PROOF_DERIVATION, "utf8");
     updateTreeHeader(hash, "directory", ".", root.stats.mode, 0);
     let bytes = 0;
     let files = 0;
@@ -668,7 +703,8 @@ export async function proveCandidateFsTree(
                   "Candidate tree file ended while it was proved",
                 );
               }
-              hash.update(
+              updateHash(
+                hash,
                 candidateFsNativeIoView(
                   candidateFsByteView(chunk, 0, read.bytesRead),
                 ),
@@ -738,7 +774,7 @@ export async function proveCandidateFsTree(
     return OBJECT_FREEZE({
       derivation: TREE_PROOF_DERIVATION,
       ...candidateFsIdentity(finalRoot),
-      sha256: hash.digest("hex"),
+      sha256: hashDigestHex(hash),
       bytes,
       files,
       directories,
