@@ -3294,7 +3294,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       gcCommitted = true;
       await Promise.all([cleanupInsert, ownerErasure]);
       expect(ownerErasureError).toBeUndefined();
-      expect(erasedRows).toBe(1);
+      expect(Number(erasedRows)).toBe(1);
       expect(String(cleanupError)).toContain(
         "restore-v3 restore attempt is permanently closed by GC tombstone",
       );
