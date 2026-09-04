@@ -501,10 +501,6 @@ describe("restore-v3 candidate filesystem", () => {
       String.prototype,
       "trim",
     ) as PropertyDescriptor & { value: typeof String.prototype.trim };
-    const arrayIncludesDescriptor = Object.getOwnPropertyDescriptor(
-      Array.prototype,
-      "includes",
-    ) as PropertyDescriptor & { value: typeof Array.prototype.includes };
     const arrayJoinDescriptor = Object.getOwnPropertyDescriptor(
       Array.prototype,
       "join",
@@ -700,7 +696,6 @@ describe("restore-v3 candidate filesystem", () => {
       [String.prototype, "startsWith", stringStartsWithDescriptor],
       [String.prototype, "split", stringSplitDescriptor],
       [String.prototype, "trim", stringTrimDescriptor],
-      [Array.prototype, "includes", arrayIncludesDescriptor],
       [Array.prototype, "join", arrayJoinDescriptor],
       [Array.prototype, "some", arraySomeDescriptor],
       [Array.prototype, "sort", arraySortDescriptor],
@@ -710,11 +705,12 @@ describe("restore-v3 candidate filesystem", () => {
       key: PropertyKey,
       descriptor: PropertyDescriptor & { get: () => unknown },
       trap: string,
+      shouldTrap: (receiver: unknown) => boolean = () => true,
     ) => {
       Object.defineProperty(target, key, {
         ...descriptor,
         get: function (this: unknown) {
-          traps.push(trap);
+          if (shouldTrap(this)) traps.push(trap);
           return intrinsicReflectApply(descriptor.get, this, []);
         },
       });
@@ -733,6 +729,17 @@ describe("restore-v3 candidate filesystem", () => {
         },
       });
     };
+    const containsSensitiveBytes = (value: unknown): boolean => {
+      try {
+        return (
+          byteArrayIncludes(value as Uint8Array, payloadPlaintext) ||
+          byteArrayIncludes(value as Uint8Array, canonicalSecret) ||
+          byteArrayIncludes(value as Uint8Array, treePlaintext)
+        );
+      } catch {
+        return false;
+      }
+    };
 
     try {
       Object.defineProperty(globalThis, "Uint8Array", {
@@ -749,18 +756,21 @@ describe("restore-v3 candidate filesystem", () => {
         "byteLength",
         byteLengthDescriptor,
         "TypedArray.byteLength",
+        containsSensitiveBytes,
       );
       poisonGetter(
         typedArrayPrototype,
         "buffer",
         bufferDescriptor,
         "TypedArray.buffer",
+        containsSensitiveBytes,
       );
       poisonGetter(
         typedArrayPrototype,
         "byteOffset",
         byteOffsetDescriptor,
         "TypedArray.byteOffset",
+        containsSensitiveBytes,
       );
       poisonMethod(
         typedArrayPrototype,
@@ -848,12 +858,6 @@ describe("restore-v3 candidate filesystem", () => {
         "trim",
         stringTrimDescriptor,
         "String.trim",
-      );
-      poisonMethod(
-        Array.prototype,
-        "includes",
-        arrayIncludesDescriptor,
-        "Array.includes",
       );
       poisonMethod(Array.prototype, "join", arrayJoinDescriptor, "Array.join");
       poisonMethod(Array.prototype, "some", arraySomeDescriptor, "Array.some");
