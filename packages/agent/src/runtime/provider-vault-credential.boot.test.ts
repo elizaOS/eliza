@@ -15,6 +15,27 @@ import {
   setAgentHostBridge,
 } from "./host-bridge.ts";
 
+function createBootVault(providerKey?: string) {
+  const values = new Map<string, string>();
+  if (providerKey) values.set("providers.cerebras.api-key", providerKey);
+  const get = async (key: string): Promise<string> => {
+    const value = values.get(key);
+    if (value === undefined) throw new Error(`Missing test Vault key: ${key}`);
+    return value;
+  };
+  return {
+    ...defaultAgentHostBridge.sharedVault(),
+    get,
+    has: vi.fn(async (key: string) => values.has(key)),
+    reveal: vi.fn(async (key: string, _caller?: string) => get(key)),
+    setIfAbsent: async (key: string, value: string): Promise<boolean> => {
+      if (values.has(key)) return false;
+      values.set(key, value);
+      return true;
+    },
+  };
+}
+
 const savedStateDir = process.env.ELIZA_STATE_DIR;
 const savedProfileResolver = process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER;
 const savedCerebrasKey = process.env.CEREBRAS_API_KEY;
@@ -44,17 +65,11 @@ describe("selected provider credential boot readiness", () => {
     process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER = "1";
     delete process.env.CEREBRAS_API_KEY;
 
-    const has = vi.fn(
-      async (key: string) => key === "providers.cerebras.api-key",
-    );
-    const reveal = vi.fn(async () => "vault-only-cerebras-key");
+    const vault = createBootVault("vault-only-cerebras-key");
+    const { has, reveal } = vault;
     setAgentHostBridge({
       ...defaultAgentHostBridge,
-      sharedVault: () => ({
-        ...defaultAgentHostBridge.sharedVault(),
-        has,
-        reveal,
-      }),
+      sharedVault: () => vault,
     });
     const abort = new AbortController();
     const onRuntimeCreated = vi.fn(
@@ -104,15 +119,15 @@ describe("selected provider credential boot readiness", () => {
     delete process.env.CEREBRAS_API_KEY;
 
     const cause = new Error("test Vault storage unavailable");
+    const vault = createBootVault();
+    const has = vault.has;
+    vault.has = vi.fn(async (key: string) => {
+      if (key === "providers.cerebras.api-key") throw cause;
+      return has(key);
+    });
     setAgentHostBridge({
       ...defaultAgentHostBridge,
-      sharedVault: () => ({
-        ...defaultAgentHostBridge.sharedVault(),
-        has: vi.fn(async (key: string) => {
-          if (key === "providers.cerebras.api-key") throw cause;
-          return false;
-        }),
-      }),
+      sharedVault: () => vault,
     });
     const onRuntimeCreated = vi.fn();
 

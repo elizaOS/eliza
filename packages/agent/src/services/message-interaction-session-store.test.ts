@@ -971,7 +971,7 @@ describe("FileMessageInteractionSessionStore", () => {
       stateDirectory,
       "message-interaction-sessions.v1.json.lock",
     );
-    const staleIdentity = await writeLock(lockPath, {
+    await writeLock(lockPath, {
       pid: 2_000_000_000,
       processIdentity: null,
       token: "stale-generation",
@@ -1013,13 +1013,23 @@ describe("FileMessageInteractionSessionStore", () => {
     const second = new FileMessageInteractionSessionStore(
       options,
     ).deleteExpired(now);
-    await bothObserved;
-    allowRecovery();
-    await winnerRelease.entered;
+    const settled = Promise.allSettled([first, second]);
+    try {
+      await bothObserved;
+      allowRecovery();
+      await winnerRelease.entered;
 
-    const freshIdentity = await lockIdentity(lockPath);
-    expect(freshIdentity).not.toBe(staleIdentity);
-    winnerRelease.release();
+      // Filesystems may reuse an unlinked inode immediately. The persisted
+      // owner token identifies the fresh generation even when dev/ino repeats.
+      const freshOwner = JSON.parse(await fs.readFile(lockPath, "utf8"));
+      expect(freshOwner.token).not.toBe("stale-generation");
+      expect(freshOwner.pid).toBe(process.pid);
+      expect(freshOwner.expiresAt).toBeGreaterThan(now);
+    } finally {
+      allowRecovery();
+      winnerRelease.release();
+      await settled;
+    }
     await expect(Promise.all([first, second])).resolves.toEqual([0, 0]);
   });
 
