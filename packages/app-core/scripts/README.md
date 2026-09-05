@@ -32,6 +32,18 @@ the matching staging API and authenticated Cloud app hosts.
 - Recommended: **Bun 1.3.x stable** for `dev:win` flows.
 - Canary builds can change ESM/CJS interop behavior. `dev-ui.mjs` prints a startup advisory when it detects canary or non-1.3 Bun.
 
+### Node runtime for the supervised Vite proxy
+
+`bun run dev` proxies the dashboard's `/api` and `/ws` traffic through Vite,
+whose proxy calls Node-only socket methods (for example `socket.destroySoon`)
+that Bun does not implement. `dev-ui.mjs` therefore pins its **Vite child** to a
+Node 24+ executable even when the orchestrator itself runs under Bun; the API
+runtime is resolved independently and may stay Bun-backed. A checkout without a
+compliant Node (the pinned `engines.node`) fails at supervisor start with an
+actionable `No usable Node.js 24+ executable found` message. Install Node 24+,
+or set `ELIZA_NODE_PATH=/absolute/path/to/node` if a compliant Node is not on
+`PATH`.
+
 ### Supporting modules (`eliza/packages/app-core/scripts/lib/`)
 
 | Module | Why it exists |
