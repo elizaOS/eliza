@@ -100,6 +100,7 @@ artifacts (root exists but is empty).
 | `walkthrough-reports` | `reports/walkthrough/` | — |
 | `live-test-runs` | `reports/live-test-runs/` | — |
 | `scenario-runner` | `reports/scenarios/` | scenario |
+| `cloud-stability` | `artifacts/cloud-stability/` | cloud-stability |
 | `group-chat-timing` | `reports/group-chat-timing/` | evaluation |
 | `content-context` | `reports/content-context/` | content-context |
 

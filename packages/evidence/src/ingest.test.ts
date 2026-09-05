@@ -100,6 +100,12 @@ function buildFixtureRepo(): string {
   write(repo, "reports/live-test-runs/run-1/server.log", "log");
   // Canonical scenario-runner package commands write repo-level reports.
   write(repo, "reports/scenarios/live/native.jsonl", "{}\n");
+  write(repo, "artifacts/cloud-stability/current/stability.json", "{}");
+  write(
+    repo,
+    "artifacts/cloud-stability/current/attempt-1/trajectory.jsonl",
+    "{}\n",
+  );
   // Stage-1 group-chat timing evaluation reports.
   write(repo, "reports/group-chat-timing/when2speak.json", "{}\n");
   // Progressive content access corpus, benchmark, and access-ledger output.
@@ -405,6 +411,11 @@ describe("ingestAllSilos", () => {
         silo: "scenario-runner",
         status: "ingested",
         artifactCount: 1,
+      },
+      "cloud-stability": {
+        silo: "cloud-stability",
+        status: "ingested",
+        artifactCount: 2,
       },
       "group-chat-timing": {
         silo: "group-chat-timing",

@@ -49,16 +49,37 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
       - uses: ./.github/actions/cloud-setup-test-env
+      - name: Snapshot canonical evidence producers
+        id: evidence-baseline
+        run: bun run --cwd packages/evidence bundle:snapshot -- --repo-root "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/stability-evidence-baseline.json"
       - name: Establish Linux scenario containment boundary
         run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes acl bubblewrap iptables
+          sudo apt-get install --yes acl bubblewrap iptables apparmor
+          # AppArmor's pinned upstream profile grants bwrap user namespaces but
+          # stacks capability denial onto executed children. The host-wide
+          # unprivileged-userns restriction stays enabled.
+          profile="$RUNNER_TEMP/stability-bwrap.profile"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            https://gitlab.com/apparmor/apparmor/-/raw/v4.0.1/profiles/apparmor/profiles/extras/bwrap-userns-restrict \
+            --output "$profile"
+          printf '%s  %s\n' 11d39094f044f0cda0febb3ad517b830301da6b2ce929664af09ee9e4dd264f9 "$profile" | sha256sum --check
+          sudo apparmor_parser --replace "$profile"
+          sudo aa-status --enabled
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
             /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
           echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
       - name: Prove Linux containment against adversarial escapes
-        run: bun run --cwd packages/cloud/e2e test:containment
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/cloud-stability/diagnostics
+          bun run --cwd packages/cloud/e2e test:containment 2>&1 | tee artifacts/cloud-stability/diagnostics/linux-containment.log
       - name: Run exact-three keyless AgentRuntime scenario
         run: >-
           bun run --cwd packages/cloud/e2e stability:keyless --
@@ -66,13 +87,29 @@ jobs:
           --output ${{ github.workspace }}/artifacts/cloud-stability/pr
       - name: Verify retained deterministic artifacts
         run: bun run --cwd packages/cloud/e2e stability:verify -- --output "${{ github.workspace }}/artifacts/cloud-stability/pr"
+      - name: Retain AppArmor diagnostics after failure
+        if: failure()
+        run: |
+          mkdir -p artifacts/cloud-stability/diagnostics
+          sudo journalctl -k --no-pager --grep='apparmor=' > artifacts/cloud-stability/diagnostics/apparmor.log
+      - name: Finalize and verify canonical evidence bundle
+        id: evidence-bundle
+        if: always() && steps.evidence-baseline.outcome == 'success'
+        run: |
+          set -euo pipefail
+          result="$RUNNER_TEMP/stability-evidence-bundle.json"
+          bun run --cwd packages/evidence bundle:create -- --tier cpu --repo-root "$GITHUB_WORKSPACE" --out "$GITHUB_WORKSPACE/evidence/runs" --baseline "$RUNNER_TEMP/stability-evidence-baseline.json" --json > "$result"
+          bundle_dir="$(node --input-type=module -e 'import { readFileSync } from "node:fs"; const parsed = JSON.parse(readFileSync(process.argv[1], "utf8")); if (typeof parsed.bundleDir !== "string" || parsed.bundleDir.length === 0 || !Number.isSafeInteger(parsed.artifactCount) || parsed.artifactCount < 1) throw new Error("stability evidence bundle is unavailable or empty"); process.stdout.write(parsed.bundleDir);' "$result")"
+          bun run --cwd packages/evidence bundle:verify -- "$bundle_dir"
+          echo "bundle_dir=$bundle_dir" >> "$GITHUB_OUTPUT"
       - name: Upload deterministic trajectories and ledgers
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: cloud-stability-keyless-${{ github.run_attempt }}
           path: |
-            artifacts/cloud-stability/pr
+            artifacts/cloud-stability
+            ${{ steps.evidence-bundle.outputs.bundle_dir }}
             packages/cloud/e2e/.logs
           retention-days: 14
           include-hidden-files: true
@@ -99,16 +136,37 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
       - uses: ./.github/actions/cloud-setup-test-env
+      - name: Snapshot canonical evidence producers
+        id: evidence-baseline
+        run: bun run --cwd packages/evidence bundle:snapshot -- --repo-root "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/stability-evidence-baseline.json"
       - name: Establish Linux scenario containment boundary
         run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes acl bubblewrap iptables
+          sudo apt-get install --yes acl bubblewrap iptables apparmor
+          # AppArmor's pinned upstream profile grants bwrap user namespaces but
+          # stacks capability denial onto executed children. The host-wide
+          # unprivileged-userns restriction stays enabled.
+          profile="$RUNNER_TEMP/stability-bwrap.profile"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            https://gitlab.com/apparmor/apparmor/-/raw/v4.0.1/profiles/apparmor/profiles/extras/bwrap-userns-restrict \
+            --output "$profile"
+          printf '%s  %s\n' 11d39094f044f0cda0febb3ad517b830301da6b2ce929664af09ee9e4dd264f9 "$profile" | sha256sum --check
+          sudo apparmor_parser --replace "$profile"
+          sudo aa-status --enabled
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
           sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
             /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
           echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
       - name: Prove Linux containment against adversarial escapes
-        run: bun run --cwd packages/cloud/e2e test:containment
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/cloud-stability/diagnostics
+          bun run --cwd packages/cloud/e2e test:containment 2>&1 | tee artifacts/cloud-stability/diagnostics/linux-containment.log
       - name: Run exact-three real-model scenario over mock services
         env:
           OPENAI_API_KEY: ${{ inputs.provider == 'openai' && secrets.OPENAI_API_KEY || '' }}
@@ -134,13 +192,29 @@ jobs:
       - name: Verify retained real-model artifacts
         run: bun run --cwd packages/cloud/e2e stability:verify -- --output "${{ github.workspace }}/artifacts/cloud-stability/real"
 
+      - name: Retain AppArmor diagnostics after failure
+        if: failure()
+        run: |
+          mkdir -p artifacts/cloud-stability/diagnostics
+          sudo journalctl -k --no-pager --grep='apparmor=' > artifacts/cloud-stability/diagnostics/apparmor.log
+      - name: Finalize and verify canonical evidence bundle
+        id: evidence-bundle
+        if: always() && steps.evidence-baseline.outcome == 'success'
+        run: |
+          set -euo pipefail
+          result="$RUNNER_TEMP/stability-evidence-bundle.json"
+          bun run --cwd packages/evidence bundle:create -- --tier cpu --repo-root "$GITHUB_WORKSPACE" --out "$GITHUB_WORKSPACE/evidence/runs" --baseline "$RUNNER_TEMP/stability-evidence-baseline.json" --json > "$result"
+          bundle_dir="$(node --input-type=module -e 'import { readFileSync } from "node:fs"; const parsed = JSON.parse(readFileSync(process.argv[1], "utf8")); if (typeof parsed.bundleDir !== "string" || parsed.bundleDir.length === 0 || !Number.isSafeInteger(parsed.artifactCount) || parsed.artifactCount < 1) throw new Error("stability evidence bundle is unavailable or empty"); process.stdout.write(parsed.bundleDir);' "$result")"
+          bun run --cwd packages/evidence bundle:verify -- "$bundle_dir"
+          echo "bundle_dir=$bundle_dir" >> "$GITHUB_OUTPUT"
       - name: Upload real-model trajectories and mock-service ledgers
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: cloud-stability-real-${{ github.run_attempt }}
           path: |
-            artifacts/cloud-stability/real
+            artifacts/cloud-stability
+            ${{ steps.evidence-bundle.outputs.bundle_dir }}
             packages/cloud/e2e/.logs
           retention-days: 30
           include-hidden-files: true

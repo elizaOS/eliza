@@ -13,6 +13,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createBundle, ingestNamedSilo, verifyBundle } from "@elizaos/evidence";
 import type { ScenarioStabilityExecutionAdapter } from "@elizaos/scenario-runner";
 import { authorityChildEnvironment } from "./cloud-stability-environment.ts";
 import {
@@ -78,6 +79,48 @@ async function resealCloudStabilityReport(
 }
 
 describe("Cloud stability manifest", () => {
+  test("canonical evidence ingestion preserves a produced failure report and detects tampering", async () => {
+    const repo = await mkdtemp(path.join(tmpdir(), "stability-bundle-"));
+    directories.push(repo);
+    const outputRoot = path.join(repo, "artifacts/cloud-stability/current");
+    const report = await runCloudStabilityLane({
+      manifest,
+      outputRoot,
+      adapter: {
+        async execute() {
+          throw new Error("pre-admission failure");
+        },
+        async terminate() {},
+      },
+    });
+    const bundle = createBundle({
+      rootDir: path.join(repo, "evidence/runs"),
+      provenance: {
+        commit: "a".repeat(40),
+        branch: "fix/stability-bundle-test",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: { node: process.version },
+      },
+    });
+    await ingestNamedSilo(bundle, repo, "cloud-stability");
+    const { manifest: bundleManifest } = await bundle.finalize();
+    const artifact = bundleManifest.artifacts.find((entry) =>
+      entry.path.endsWith("/current/stability.json"),
+    );
+    if (!artifact)
+      throw new Error("produced stability report was not ingested");
+    const bundledReport = path.join(bundle.dir, artifact.path);
+    expect(await readFile(bundledReport)).toEqual(
+      await readFile(path.join(outputRoot, "stability.json")),
+    );
+    expect(JSON.parse(await readFile(bundledReport, "utf8"))).toEqual(report);
+    expect(report.status).toBe("failed");
+    expect((await verifyBundle(bundle.dir)).ok).toBe(true);
+    await writeFile(bundledReport, "{}");
+    expect((await verifyBundle(bundle.dir)).ok).toBe(false);
+  });
+
   test("authority environment drops ambient credentials", () => {
     const environment = authorityChildEnvironment(
       {

@@ -420,6 +420,13 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     roots: [{ label: "repo", dir: "reports/scenarios" }],
   },
   {
+    silo: "cloud-stability",
+    source: "cloud-stability",
+    producedBy: "packages/cloud/e2e/scripts/run-stability-lane.ts",
+    lane: "cloud-stability",
+    roots: [{ label: "repo", dir: "artifacts/cloud-stability" }],
+  },
+  {
     silo: "group-chat-timing",
     source: "group-chat-timing",
     producedBy: "packages/scenario-runner eval:when2speak",

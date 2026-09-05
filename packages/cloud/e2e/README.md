@@ -128,10 +128,23 @@ pinned-Bun preload remains application-level diagnostics; private `/run`,
 io_uring entry points close host AF_UNIX delegation paths. The kernel boundary
 also rejects direct TCP, UDP, DNS, and raw-socket bypasses.
 
+Ubuntu 24.04 requires a per-executable AppArmor policy for bubblewrap's user
+namespace setup. The CI lane verifies and loads the upstream AppArmor 4.0.1
+`bwrap-userns-restrict` profile: it grants namespace setup to `/usr/bin/bwrap`
+and stacks capability denial onto executed children. It does not disable the
+host-wide user-namespace restriction or make bubblewrap setuid. See
+[Ubuntu's namespace policy](https://ubuntu.com/blog/ubuntu-23-10-restricted-unprivileged-user-namespaces)
+and the [upstream profile](https://gitlab.com/apparmor/apparmor/-/blob/v4.0.1/profiles/apparmor/profiles/extras/bwrap-userns-restrict).
+
 Attempts retain trajectories, tool receipts, transitions, bounded logs,
 network and mock-service ledgers, and authority hashes. The aggregate retains
 first-attempt success, failure clusters, 3/3 status, a canonical report hash,
 and the asserted three-cycle seed/reset ledger. Failures still upload evidence.
+The canonical evidence inventory registers `artifacts/cloud-stability/` as
+`cloud-stability`. CI snapshots producers before execution, finalizes a bundle
+from this run's new artifacts, verifies its exact returned directory, and uploads
+it alongside the native artifacts. Custom output directories outside that root
+require deliberate ad-hoc ingestion; normal review does not discover them.
 `stability.json` is stored as bounded canonical JSON; its raw SHA-256 is the
 exact digest in both `stability.sha256` and `manifest.json`. Verify retained
 evidence before consuming it with
