@@ -7,7 +7,9 @@ import { buildPlugin } from "../plugin-build";
 
 // Single-quoted re-export to keep the emitted .d.ts byte-stable.
 const reexport = "export * from '../index';\nexport { default } from '../index';\n";
-const endpointDeclaration = `export type EndpointSettingReader = (key: string) => string | undefined;
+const endpointDeclaration = `import type { IAgentRuntime } from "@elizaos/core";
+export type EndpointSettingReader = (key: string) => string | undefined;
+export declare function isCerebrasMode(runtime: IAgentRuntime): boolean;
 export declare function resolveOpenAIBaseURL(
   readSetting: EndpointSettingReader,
   options?: { browser?: boolean; mockBaseURL?: string },
