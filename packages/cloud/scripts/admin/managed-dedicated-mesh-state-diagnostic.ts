@@ -44,14 +44,14 @@ type RuntimeProcessState = {
 type ApplicationState = {
   health: "accepted" | "response" | "unreachable" | "unknown";
   root: "accepted" | "response" | "unreachable" | "unknown";
-  cloudProvisioned: boolean;
-  apiExposePortEnabled: boolean;
+  cloudProvisioned: boolean | null;
+  apiExposePortEnabled: boolean | null;
 };
 
 type HostRuntimeState = {
-  liveRestoreConfigured: boolean;
-  dockerServiceActive: boolean;
-  containerdServiceActive: boolean;
+  liveRestoreConfigured: boolean | null;
+  dockerServiceActive: boolean | null;
+  containerdServiceActive: boolean | null;
 };
 
 function outputFacts(output: string): Map<string, string> {
@@ -160,19 +160,30 @@ export function classifyApplicationState(output: string): ApplicationState {
   return {
     health: classifyProbe(facts.get("health")),
     root: classifyProbe(facts.get("root")),
-    cloudProvisioned: facts.get("cloud_provisioned") === "true",
-    apiExposePortEnabled: facts.get("api_expose_port") === "true",
+    cloudProvisioned: booleanFact(facts.get("cloud_provisioned")),
+    apiExposePortEnabled: booleanFact(facts.get("api_expose_port")),
   };
 }
 
 /** Retain only closed Docker host configuration and service-health facts. */
 export function classifyHostRuntimeState(output: string): HostRuntimeState {
   const facts = outputFacts(output);
-  return {
-    liveRestoreConfigured: facts.get("live_restore") === "true",
-    dockerServiceActive: facts.get("docker_service") === "active",
-    containerdServiceActive: facts.get("containerd_service") === "active",
+  const serviceActive = (value: string | undefined): boolean | null => {
+    if (value === "active") return true;
+    return value !== undefined &&
+      ["inactive", "failed", "activating", "deactivating"].includes(value)
+      ? false
+      : null;
   };
+  return {
+    liveRestoreConfigured: booleanFact(facts.get("live_restore")),
+    dockerServiceActive: serviceActive(facts.get("docker_service")),
+    containerdServiceActive: serviceActive(facts.get("containerd_service")),
+  };
+}
+
+function booleanFact(value: string | undefined): boolean | null {
+  return value === "true" ? true : value === "false" ? false : null;
 }
 
 async function observe(
@@ -275,7 +286,7 @@ async function run(suffix: string): Promise<void> {
     );
     const hostRuntime = await observe(
       ssh,
-      `python3 -c 'import json; print("live_restore=true" if json.load(open("/etc/docker/daemon.json")).get("live-restore") is True else "live_restore=false")' 2>/dev/null || echo live_restore=false; printf 'docker_service=%s\\n' "$(systemctl is-active docker.service 2>/dev/null || true)"; printf 'containerd_service=%s\\n' "$(systemctl is-active containerd.service 2>/dev/null || true)"`,
+      `python3 -c 'import json; print("live_restore=true" if json.load(open("/etc/docker/daemon.json")).get("live-restore") is True else "live_restore=false")' 2>/dev/null || echo live_restore=unknown; printf 'docker_service=%s\\n' "$(systemctl is-active docker.service 2>/dev/null || true)"; printf 'containerd_service=%s\\n' "$(systemctl is-active containerd.service 2>/dev/null || true)"`,
     );
     const processState = await observe(
       ssh,
@@ -389,15 +400,9 @@ async function run(suffix: string): Promise<void> {
     const configuredImage = process.env.ELIZA_AGENT_IMAGE?.trim();
     console.log(
       `MESH_DIAGNOSTIC=${JSON.stringify({
-        schemaVersion: 3,
+        schemaVersion: 4,
         targetCount: 1,
-        host: hostRuntime.ok
-          ? hostRuntimeState
-          : {
-              liveRestoreConfigured: false,
-              dockerServiceActive: false,
-              containerdServiceActive: false,
-            },
+        host: hostRuntimeState,
         container: {
           inspect: inspect.ok ? "success" : "error",
           status: containerStatus,
@@ -420,14 +425,7 @@ async function run(suffix: string): Promise<void> {
         },
         logs: logSignals,
         runtime: runtimeState,
-        application: application.ok
-          ? applicationState
-          : {
-              health: "unknown",
-              root: "unknown",
-              cloudProvisioned: false,
-              apiExposePortEnabled: false,
-            },
+        application: applicationState,
       })}`,
     );
   } finally {

@@ -41,6 +41,7 @@ import {
   isNodeUnreachableMessage,
 } from "./docker-error-classifier";
 import {
+  buildDockerLiveRestoreProofCommand,
   clearPlacementCommandFailures,
   dockerNodeManager,
   isDockerSshCommandTimeoutError,
@@ -1315,8 +1316,8 @@ const HEALTH_CHECK_POLL_INTERVAL_MS = 3_000;
  * mismatch.
  */
 const HEADSCALE_DOCKER_BINDING_MAX_OBSERVATIONS = 130;
-const HEADSCALE_DOCKER_BINDING_POLL_INTERVAL_MS = 1_000;
 const HEADSCALE_DOCKER_BINDING_TIMEOUT_MS = 130_000;
+const HEADSCALE_DOCKER_BINDING_POLL_INTERVAL_MS = 1_000;
 
 /**
  * Health-check polling: total timeout (ms). A cold dedicated agent (first image
@@ -4073,12 +4074,12 @@ export class DockerSandboxProvider implements SandboxProvider {
               observation < HEADSCALE_DOCKER_BINDING_MAX_OBSERVATIONS;
               observation += 1
             ) {
-              const remainingMs = bindingDeadline - this.now();
-              if (remainingMs <= 0) break;
+              const remaining = bindingDeadline - this.now();
+              if (remaining <= 0) break;
               try {
                 const containerTailnetOutput = await ssh.exec(
                   `docker exec ${shellQuote(createdContainerId)} tailscale --socket=/tmp/tailscaled.sock ip -4`,
-                  Math.min(DOCKER_CMD_TIMEOUT_MS, remainingMs),
+                  Math.min(DOCKER_CMD_TIMEOUT_MS, remaining),
                 );
                 containerTailnetLines = containerTailnetOutput
                   .split(/\r?\n/)
@@ -4086,7 +4087,8 @@ export class DockerSandboxProvider implements SandboxProvider {
                   .filter(Boolean);
                 lastTailnetQueryError = undefined;
               } catch (error: unknown) {
-                // error-policy:J4 a bounded joining-state retry preserves the final cause.
+                // error-policy:J4 a pending local netmap remains unavailable
+                // until the bounded observer proves the exact address binding.
                 // A joining tailscaled can reject `ip -4` before its local
                 // netmap catches up with the already-observed control-plane
                 // registration. Preserve the final cause, but let the bounded
@@ -4096,11 +4098,12 @@ export class DockerSandboxProvider implements SandboxProvider {
               }
               if (containerTailnetLines.length > 0) break;
               if (observation < HEADSCALE_DOCKER_BINDING_MAX_OBSERVATIONS - 1) {
-                const delayMs = Math.min(
+                const delay = Math.min(
                   HEADSCALE_DOCKER_BINDING_POLL_INTERVAL_MS,
                   bindingDeadline - this.now(),
                 );
-                if (delayMs > 0) await this.headscaleDockerBindingDelay(delayMs);
+                if (delay <= 0) break;
+                await this.headscaleDockerBindingDelay(delay);
               }
             }
             const containerTailnetIp = containerTailnetLines[0];
@@ -5387,6 +5390,8 @@ export class DockerSandboxProvider implements SandboxProvider {
           logger.info(`[docker-sandbox] Container stopped: ${meta.containerName}`);
         }
       } catch (err) {
+        // error-policy:J1 Retain the stop failure for the final teardown verdict;
+        // only an authoritative remove or absence result can resolve it.
         stopErr = err;
         logger.warn(
           `[docker-sandbox] docker stop failed for ${meta.containerName}: ${err instanceof Error ? err.message : String(err)}`,
@@ -5416,6 +5421,8 @@ export class DockerSandboxProvider implements SandboxProvider {
           logger.info(`[docker-sandbox] Container removed: ${meta.containerName}`);
         }
       } catch (err) {
+        // error-policy:J1 The final teardown verdict below preserves this
+        // remote failure unless recovery proves the exact container absent.
         rmErr = err;
         logger.error(
           `[docker-sandbox] docker rm failed for ${meta.containerName}: ${err instanceof Error ? err.message : String(err)}`,
@@ -5471,9 +5478,9 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // One exact Docker-command timeout proves that SSH reached the node but the
     // daemon failed to answer. A pair of transport failures can also be a
-    // poisoned SSH session, so the isolated recovery connection first proves
-    // live-restore and re-probes Docker. A healthy daemon is never restarted;
-    // an unavailable daemon is restarted without touching containerd, then
+    // poisoned SSH session, so the isolated recovery connection re-probes
+    // Docker. A healthy daemon is never restarted; recovery requires the
+    // running daemon to confirm live restore before any restart, then
     // health and exact-name removal are proved. Remote command failures such as
     // auth/permission errors remain ineligible. Production remains protected-off
     // until staging proof.
@@ -5494,25 +5501,31 @@ export class DockerSandboxProvider implements SandboxProvider {
         meta.hostKeyFingerprint,
         meta.sshUser,
       );
-      let recoveryStage = "live_restore_proof";
+      let recoveryStage = "docker_info_probe";
       try {
         logger.error("[docker-sandbox] Docker teardown failed twice; probing daemon recovery", {
           nodeId: meta.nodeId,
           containerName: meta.containerName,
           agentId: meta.agentId,
         });
-        await recoverySsh.exec(
-          'python3 -c \'import json; assert json.load(open("/etc/docker/daemon.json")).get("live-restore") is True\'',
-          TEARDOWN_DOCKER_SELF_HEAL_STAGE_TIMEOUT_MS,
-        );
-        recoveryStage = "docker_info_probe";
         const dockerHealth = (
           await recoverySsh.exec(
             "if timeout -k 2s 20s docker info >/dev/null 2>&1; then printf healthy; else printf unavailable; fi",
             TEARDOWN_DOCKER_SELF_HEAL_STAGE_TIMEOUT_MS,
           )
         ).trim();
+        if (dockerHealth !== "healthy" && dockerHealth !== "unavailable") {
+          throw new ElizaError("Docker recovery returned an invalid health probe result", {
+            code: "SANDBOX_DELETION_DOCKER_HEALTH_INVALID",
+            context: { nodeId: meta.nodeId, containerName: meta.containerName },
+          });
+        }
         if (dockerHealth !== "healthy") {
+          recoveryStage = "live_restore_proof";
+          await recoverySsh.exec(
+            buildDockerLiveRestoreProofCommand(),
+            TEARDOWN_DOCKER_SELF_HEAL_STAGE_TIMEOUT_MS,
+          );
           recoveryStage = "docker_force_stop";
           await recoverySsh.exec(
             "systemctl kill --kill-who=main -s SIGKILL docker.service 2>/dev/null || true; systemctl stop docker.socket 2>/dev/null || true; sleep 2",
@@ -5542,6 +5555,8 @@ export class DockerSandboxProvider implements SandboxProvider {
           agentId: meta.agentId,
         });
       } catch (recoveryError) {
+        // error-policy:J1 Recovery failure leaves the original stop/remove
+        // failures authoritative in the typed teardown result below.
         logger.error("[docker-sandbox] Docker daemon recovery did not prove container removal", {
           nodeId: meta.nodeId,
           containerName: meta.containerName,
@@ -6114,10 +6129,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       hostname: dbNode.hostname,
       containerName: sandbox.container_name,
       agentId: sandbox.id,
-      // Primary provisions use the deterministic container name as
-      // TS_HOSTNAME. Rehydrating it lets a restarted worker retire the stale
-      // Headscale registration after it proves compute is absent.
-      tsHostname: sandbox.container_name,
       sshPort: dbNode.ssh_port ?? DEFAULT_SSH_PORT,
       sshUser: dbNode.ssh_user ?? DEFAULT_SSH_USERNAME,
       hostKeyFingerprint: dbNode.host_key_fingerprint ?? undefined,
@@ -6137,26 +6148,31 @@ export class DockerSandboxProvider implements SandboxProvider {
     ) {
       throw new Error("[docker-sandbox] Invalid lifecycle-captured deletion locator");
     }
-    const hasCompleteSshAuthority =
-      Boolean(locator.hostname?.trim()) &&
-      Boolean(locator.sshUser?.trim()) &&
-      Number.isSafeInteger(locator.sshPort) &&
-      (locator.sshPort ?? 0) >= 1 &&
-      (locator.sshPort ?? 0) <= 65_535;
+    const hasCapturedSshAuthority =
+      locator.hostname !== undefined ||
+      locator.sshUser !== undefined ||
+      locator.sshPort !== undefined ||
+      locator.hostKeyFingerprint !== undefined;
     logger.info("[docker-sandbox] Teardown sandbox authority resolved", {
       agentId: locator.agentId,
     });
-    const dbNode = hasCompleteSshAuthority
+    const dbNode = hasCapturedSshAuthority
       ? null
       : await dockerNodesRepository.findByNodeIdOnPrimary(locator.nodeId);
-    if (!hasCompleteSshAuthority && !dbNode) {
+    if (!hasCapturedSshAuthority && !dbNode) {
       throw new Error(
         `[docker-sandbox] Missing persisted docker node metadata for node "${locator.nodeId}"`,
       );
     }
-    const hostname = hasCompleteSshAuthority ? locator.hostname : dbNode?.hostname;
-    const sshPort = hasCompleteSshAuthority ? locator.sshPort : dbNode?.ssh_port;
-    const sshUser = hasCompleteSshAuthority ? locator.sshUser : dbNode?.ssh_user;
+    logger.info("[docker-sandbox] Teardown node authority resolved", {
+      agentId: locator.agentId,
+    });
+    logger.info("[docker-sandbox] Teardown target resolved from lifecycle authority", {
+      agentId: locator.agentId,
+    });
+    const hostname = hasCapturedSshAuthority ? locator.hostname : dbNode?.hostname;
+    const sshUser = hasCapturedSshAuthority ? locator.sshUser : dbNode?.ssh_user;
+    const sshPort = hasCapturedSshAuthority ? locator.sshPort : dbNode?.ssh_port;
     if (
       typeof hostname !== "string" ||
       !hostname.trim() ||
@@ -6167,28 +6183,33 @@ export class DockerSandboxProvider implements SandboxProvider {
       sshPort < 1 ||
       sshPort > 65_535
     ) {
-      throw new ElizaError("Deletion node SSH authority is incomplete", {
+      throw new ElizaError("Deletion requires complete, valid SSH authority", {
         code: "SANDBOX_DELETION_SSH_AUTHORITY_INVALID",
-        context: { nodeId: locator.nodeId },
+        context: { agentId: locator.agentId, nodeId: locator.nodeId, hasCapturedSshAuthority },
       });
     }
-    logger.info("[docker-sandbox] Teardown node authority resolved", {
-      agentId: locator.agentId,
-    });
-    logger.info("[docker-sandbox] Teardown target resolved from lifecycle authority", {
-      agentId: locator.agentId,
-    });
+    const tracked = this.containers.get(sandboxId);
+    const trackedRegistration =
+      tracked?.nodeId === locator.nodeId &&
+      tracked.containerName === locator.containerName &&
+      tracked.agentId === locator.agentId
+        ? {
+            tsHostname: tracked.tsHostname,
+            vpnNodeId: tracked.vpnNodeId,
+            previousVpnNodeId: tracked.previousVpnNodeId,
+          }
+        : {};
     return {
       nodeId: locator.nodeId,
-      hostname,
+      hostname: hostname.trim(),
       containerName: locator.containerName,
       agentId: locator.agentId,
-      tsHostname: locator.containerName,
       sshPort,
-      sshUser,
-      hostKeyFingerprint: hasCompleteSshAuthority
+      sshUser: sshUser.trim(),
+      hostKeyFingerprint: hasCapturedSshAuthority
         ? locator.hostKeyFingerprint
         : (dbNode?.host_key_fingerprint ?? undefined),
+      ...trackedRegistration,
     };
   }
 

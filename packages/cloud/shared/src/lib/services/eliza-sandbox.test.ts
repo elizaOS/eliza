@@ -6776,7 +6776,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
         error: unknown;
       }>;
       // Let getProvider() + the try-body microtasks settle so the timeout
-      // timer is actually armed, then cross the four-minute recovery deadline.
+      // timer is actually armed, then pass the four-minute teardown budget.
       await Promise.resolve();
       jest.advanceTimersByTime(240_001);
       const res = await pending;

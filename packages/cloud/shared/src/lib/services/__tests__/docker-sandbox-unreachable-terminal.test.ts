@@ -105,7 +105,7 @@ describe("DockerSandboxProvider deletion policy on unreachable node", () => {
     execBehavior = async (command) => {
       if (command.startsWith("sh -lc")) return "present";
       if (command.startsWith("docker stop")) {
-        throw new Error("[docker-ssh] Command timed out after 25000ms on host: docker [redacted]");
+        throw new Error("[docker-ssh] Connection error: channel closed during stop");
       }
       if (command.startsWith("docker rm")) disconnectsBeforeRemove = disconnectCalls;
       return "";

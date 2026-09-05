@@ -862,8 +862,10 @@ share runtime identity, storage ownership, health, or fallback semantics.
     observer had completed, while a registered node could still take time to
     appear in the local netmap. Managed containers now receive a 300-second
     join budget, the worker observes the exact Headscale registration for 360
-    seconds, and the router performs a bounded 130-second local-IP convergence
-    retry. The three deadlines are ordered instead of racing one another.
+    seconds, and the provider limits local-IP observations by a 130-second elapsed
+    budget, including command execution and retry delays. Reconnecting SSH
+    can add its bounded 10-second handshake. The budgets stop repeated slow
+    commands from extending this stage indefinitely.
 11. **Deletion reused a cancellation-damaged SSH session.** A command timeout
     closes its channel, not necessarily the underlying pooled connection. A
     later force-remove could therefore inherit an unusable session, and every
@@ -876,9 +878,16 @@ share runtime identity, storage ownership, health, or fallback semantics.
     before bridge and web ports are assigned. After a worker restart, deletion
     used the ordinary runtime hydrator, rejected those missing ports, and could
     never reach Docker even when the container was already absent. Teardown now
-    rehydrates only its durable node/container/SSH authority and reconstructs
-    the deterministic Headscale name independently of runtime ports. Runtime
-    operations retain the strict port requirement.
+    rehydrates only its durable node/container/SSH authority. VPN cleanup uses
+    an observed registration identity; container names and mutable display
+    names cannot reconstruct that authority after a restart. Runtime operations
+    retain the strict port requirement.
+
+Automatic Docker recovery requires a successful runtime `LiveRestoreEnabled`
+read before any daemon restart. An on-disk setting may not have been reloaded,
+so configuration alone is not proof. A fully unresponsive daemon requires
+operator recovery; failed safety probes preserve the original teardown failure
+and its capacity ownership. Recovery never restarts containerd.
 
 ### 2026-09-03 retained-canary investigation
 

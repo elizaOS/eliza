@@ -196,9 +196,10 @@ jobs:
       # Worker flag only with the required staging evidence.
       WARM_POOL_ENABLED: ${{ vars.WARM_POOL_ENABLED || 'false' }}
       # A wedged staging dockerd otherwise traps delete tombstones forever even
-      # while SSH remains healthy. The recovery path first proves live-restore,
-      # restarts the daemon stack, proves Docker responsive, and retries only
-      # the exact container. Production remains opt-in pending separate proof.
+      # while SSH remains healthy. Recovery requires the running daemon to
+      # confirm live restore, restarts only dockerd, proves Docker responsive,
+      # and retries the exact container. Missing proof requires an operator.
+      # Production remains disabled pending separate proof.
       CONTAINERS_PREPULL_SELF_HEAL_RESTART: ${{ needs.determine-env.outputs.environment == 'staging' && 'true' || 'false' }}
       # The edge Worker forwards the original per-agent host to this daemon.
       # Keep the daemon's parser on the same environment-specific suffix or a

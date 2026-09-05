@@ -106,8 +106,8 @@ describe("managed Dedicated mesh-state diagnostic", () => {
     expect(classifyApplicationState("health=private-status")).toEqual({
       health: "unknown",
       root: "unknown",
-      cloudProvisioned: false,
-      apiExposePortEnabled: false,
+      cloudProvisioned: null,
+      apiExposePortEnabled: null,
     });
   });
 
@@ -122,6 +122,15 @@ describe("managed Dedicated mesh-state diagnostic", () => {
       containerdServiceActive: true,
     });
     expect(classifyHostRuntimeState("private-host-output")).toEqual({
+      liveRestoreConfigured: null,
+      dockerServiceActive: null,
+      containerdServiceActive: null,
+    });
+    expect(
+      classifyHostRuntimeState(
+        "live_restore=false\ndocker_service=inactive\ncontainerd_service=failed",
+      ),
+    ).toEqual({
       liveRestoreConfigured: false,
       dockerServiceActive: false,
       containerdServiceActive: false,

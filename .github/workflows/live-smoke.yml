@@ -1198,7 +1198,11 @@ jobs:
             set -euo pipefail
             [[ "$CANARY_HEADSCALE_IP" =~ ^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || exit 1
             [[ "$CANARY_DIAGNOSTIC_SUFFIX" =~ ^[a-z0-9-]{8,80}$ ]] || exit 1
-            status_json="$(sudo tailscale status --json 2>/dev/null || true)"
+            if ! status_json="$(sudo tailscale status --json 2>/dev/null)" ||
+              ! jq -e 'type == "object" and (.Peer | type == "object" or . == null)' <<<"$status_json" >/dev/null 2>&1; then
+              echo 'control_plane_tailnet_observation=unavailable'
+              exit 1
+            fi
             backend="$(jq -r '.BackendState // "unknown"' <<<"$status_json" 2>/dev/null || echo unknown)"
             self_ip=false
             peer_present=false
@@ -1212,9 +1216,18 @@ jobs:
             if jq -e --arg ip "$CANARY_HEADSCALE_IP" '[.Peer[]? | select(((.TailscaleIPs // []) | index($ip)) and .Online == true)] | length == 1' <<<"$status_json" >/dev/null 2>&1; then
               peer_online=true
             fi
-            suffix_peer_count="$(jq -r --arg suffix "$CANARY_DIAGNOSTIC_SUFFIX" '[.Peer[]? | select(((.HostName // "") | contains($suffix)) or ((.DNSName // "") | contains($suffix)))] | length' <<<"$status_json" 2>/dev/null || echo 0)"
-            suffix_peer_online_count="$(jq -r --arg suffix "$CANARY_DIAGNOSTIC_SUFFIX" '[.Peer[]? | select((((.HostName // "") | contains($suffix)) or ((.DNSName // "") | contains($suffix))) and .Online == true)] | length' <<<"$status_json" 2>/dev/null || echo 0)"
-            suffix_peer_ip="$(jq -r --arg suffix "$CANARY_DIAGNOSTIC_SUFFIX" '[.Peer[]? | select(((.HostName // "") | contains($suffix)) or ((.DNSName // "") | contains($suffix)))] | if length == 1 then (.[0].TailscaleIPs[0] // "") else "" end' <<<"$status_json" 2>/dev/null || true)"
+            suffix_peer_count="$(jq -r --arg suffix "$CANARY_DIAGNOSTIC_SUFFIX" '[.Peer[]? | select(((.HostName // "") | contains($suffix)) or ((.DNSName // "") | contains($suffix)))] | length' <<<"$status_json")"
+            suffix_peer_online_count="$(jq -r --arg suffix "$CANARY_DIAGNOSTIC_SUFFIX" '[.Peer[]? | select((((.HostName // "") | contains($suffix)) or ((.DNSName // "") | contains($suffix))) and .Online == true)] | length' <<<"$status_json")"
+            suffix_peer_ip="$(jq -r --arg suffix "$CANARY_DIAGNOSTIC_SUFFIX" '
+              [.Peer[]? | select(((.HostName // "") | contains($suffix)) or ((.DNSName // "") | contains($suffix)))]
+              | if length == 1 then
+                  [.[0].TailscaleIPs[]?
+                    | select(type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"))
+                    | split(".") | map(tonumber)
+                    | select(.[0] == 100 and .[1] >= 64 and .[1] <= 127 and all(.[]; . >= 0 and . <= 255))
+                    | map(tostring) | join(".")] | unique
+                  | if length == 1 then .[0] else "" end
+                else "" end' <<<"$status_json")"
             suffix_ip_matches_database=false
             suffix_route_tailnet=false
             suffix_ping_reachable=false
@@ -1520,10 +1533,10 @@ jobs:
             unset probe_status
             jq -e '
               keys == ["application", "container", "host", "logs", "runtime", "schemaVersion", "tailscale", "targetCount"] and
-              .schemaVersion == 3 and
+              .schemaVersion == 4 and
               .targetCount == 1 and
               (.host | keys == ["containerdServiceActive", "dockerServiceActive", "liveRestoreConfigured"]) and
-              ([.host.containerdServiceActive, .host.dockerServiceActive, .host.liveRestoreConfigured] | all(type == "boolean")) and
+              ([.host.containerdServiceActive, .host.dockerServiceActive, .host.liveRestoreConfigured] | all(type == "boolean" or . == null)) and
               (.container | keys == ["exitCode", "health", "imageMatchesConfigured", "inspect", "status"]) and
               (.container.inspect == "success" or .container.inspect == "error") and
               (.container.status | IN("created", "running", "paused", "restarting", "removing", "exited", "dead", "unknown")) and
@@ -1543,7 +1556,7 @@ jobs:
               and (.application | keys == ["apiExposePortEnabled", "cloudProvisioned", "health", "root"])
               and (.application.health | IN("accepted", "response", "unreachable", "unknown"))
               and (.application.root | IN("accepted", "response", "unreachable", "unknown"))
-              and ([.application.apiExposePortEnabled, .application.cloudProvisioned] | all(type == "boolean"))
+              and ([.application.apiExposePortEnabled, .application.cloudProvisioned] | all(type == "boolean" or . == null))
             ' <<<"$diagnostic" >/dev/null
             jq -r '
               "private_mesh_container_status=" + .container.status,
@@ -1979,7 +1992,7 @@ jobs:
             recent_recovery_completed_count="$(printf '%s\n' "$recent_recovery_lower" | grep -Fc 'docker daemon recovered and container removed' || true)"
             recent_recovery_failed_count="$(printf '%s\n' "$recent_recovery_lower" | grep -Fc 'docker daemon recovery did not prove container removal' || true)"
             recent_recovery_decision_count="$(printf '%s\n' "$recent_recovery_lower" | grep -Fc 'docker teardown recovery decision' || true)"
-            case "$recent_recovery_lower" in
+            case "$lower" in
               *'recoverystage'*'live_restore_proof'*) docker_recovery_stage='live_restore_proof' ;;
               *'recoverystage'*'docker_info_probe'*) docker_recovery_stage='docker_info_probe' ;;
               *'recoverystage'*'docker_force_stop'*) docker_recovery_stage='docker_force_stop' ;;
