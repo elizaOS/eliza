@@ -18,6 +18,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core/errors";
 
 const KEY_ENV_VAR = "ELIZA_TOKEN_ENCRYPTION_KEY";
 const KEY_FILENAME = ".encryption-key";
@@ -53,17 +54,66 @@ function decodeKeyMaterial(raw: string): Buffer {
 
 function loadOrCreateKeyFile(credentialsDir: string): Buffer {
   const filePath = path.join(credentialsDir, KEY_FILENAME);
-  if (fs.existsSync(filePath)) {
-    const raw = fs.readFileSync(filePath, "utf8");
-    return decodeKeyMaterial(raw);
+  try {
+    return decodeKeyMaterial(fs.readFileSync(filePath, "utf8"));
+  } catch (cause) {
+    // error-policy:J3 only an absent key permits creation; invalid existing
+    // material must never be replaced with a key that cannot decrypt tokens.
+    if (
+      !(cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+    ) {
+      throw new ElizaError(
+        "Unable to read the persisted connector encryption key",
+        {
+          code: "TOKEN_ENCRYPTION_KEY_UNAVAILABLE",
+          cause,
+          context: { credentialsDir },
+        },
+      );
+    }
   }
-  fs.mkdirSync(credentialsDir, { recursive: true, mode: 0o700 });
-  const key = crypto.randomBytes(KEY_BYTES);
-  fs.writeFileSync(filePath, key.toString("base64"), {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  return key;
+  try {
+    return publishKeyFile(credentialsDir, filePath);
+  } catch (cause) {
+    // error-policy:J2 retain the filesystem failure and identify the key store.
+    throw new ElizaError("Unable to publish the connector encryption key", {
+      code: "TOKEN_ENCRYPTION_KEY_UNAVAILABLE",
+      cause,
+      context: { credentialsDir },
+    });
+  }
+}
+
+function publishKeyFile(credentialsDir: string, filePath: string): Buffer {
+  const temporaryPath = `${filePath}.${crypto.randomUUID()}.tmp`;
+  try {
+    fs.mkdirSync(credentialsDir, { recursive: true, mode: 0o700 });
+    const key = crypto.randomBytes(KEY_BYTES);
+    const descriptor = fs.openSync(temporaryPath, "wx", 0o600);
+    try {
+      fs.writeFileSync(descriptor, key.toString("base64"), "utf8");
+      fs.fsyncSync(descriptor);
+    } finally {
+      fs.closeSync(descriptor);
+    }
+    try {
+      // Publish a complete key atomically without replacing another writer's
+      // winner. Opening the final path with wx exposes a partially written key;
+      // renaming over it can strand tokens already encrypted by another host.
+      fs.linkSync(temporaryPath, filePath);
+      return key;
+    } catch (cause) {
+      // error-policy:J3 a publication collision means another complete key won.
+      if (
+        !(cause instanceof Error && "code" in cause && cause.code === "EEXIST")
+      ) {
+        throw cause;
+      }
+      return decodeKeyMaterial(fs.readFileSync(filePath, "utf8"));
+    }
+  } finally {
+    fs.rmSync(temporaryPath, { force: true });
+  }
 }
 
 /**
