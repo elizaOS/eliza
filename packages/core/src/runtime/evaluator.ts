@@ -6,6 +6,7 @@
  */
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
+import { timeInferenceSpan } from "../inference-timing";
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
 import {
 	composeToolDiagnosticRedactor,
@@ -573,14 +574,18 @@ export async function runEvaluator(
 		params.context,
 		params.trajectory,
 	);
-	await emitStreamingHook(streamingContext, "onEvaluation", {
-		evaluation: projectToolDiagnosticValue(
-			output,
-			redactDiagnosticText,
-		) as EvaluatorOutput,
-		messageId: streamingContext?.messageId,
-	});
-	await applyEvaluatorEffects(output, params.effects);
+	await timeInferenceSpan("evaluator:stream-hook", () =>
+		emitStreamingHook(streamingContext, "onEvaluation", {
+			evaluation: projectToolDiagnosticValue(
+				output,
+				redactDiagnosticText,
+			) as EvaluatorOutput,
+			messageId: streamingContext?.messageId,
+		}),
+	);
+	await timeInferenceSpan("evaluator:effects", () =>
+		applyEvaluatorEffects(output, params.effects),
+	);
 
 	const snapshot = selectedCall?.preparedAttempt;
 	await recordEvaluationStage({
@@ -627,7 +632,8 @@ async function recordEvaluationStage(args: {
 	prefixHash: string;
 	logger?: EvaluatorRuntime["logger"];
 }): Promise<void> {
-	if (!args.recorder || !args.trajectoryId) return;
+	const { recorder, trajectoryId } = args;
+	if (!recorder || !trajectoryId) return;
 	try {
 		const responseText =
 			typeof args.raw === "string"
@@ -674,7 +680,9 @@ async function recordEvaluationStage(args: {
 				prefixHash: args.prefixHash,
 			},
 		};
-		await args.recorder.recordStage(args.trajectoryId, stage);
+		await timeInferenceSpan("evaluator:record-stage", () =>
+			recorder.recordStage(trajectoryId, stage),
+		);
 	} catch (err) {
 		// error-policy:J7 Evaluation recording is diagnostic and cannot alter
 		// the evaluator decision it observes.
