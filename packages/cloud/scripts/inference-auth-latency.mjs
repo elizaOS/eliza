@@ -499,7 +499,7 @@ function assertRequiredTimings(timings, auth) {
   }
   for (const name of required) {
     if (!Object.hasOwn(timings, name))
-      throw new Error(`Missing required ${auth.result} timing`);
+      throw new Error(`Missing required ${auth.result} timing: ${name}`);
   }
 }
 

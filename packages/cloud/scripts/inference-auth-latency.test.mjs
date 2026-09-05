@@ -289,6 +289,30 @@ test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
   );
 });
 
+test("an incomplete origin timing fails with only the missing metric name", async () => {
+  await assert.rejects(
+    probeAuthSample({
+      baseUrl: "https://preview.example",
+      apiKey: "private-key",
+      probeToken: "private-token",
+      deploySha: SHA,
+      phase: "miss",
+      sequence: 0,
+      timeoutMs: 1_000,
+      fetchImpl: async (_url, init) =>
+        new Response("{}", {
+          status: 400,
+          headers: {
+            "X-Eliza-Trace-Id": init.headers["X-Eliza-Trace-Id"],
+            "X-Eliza-Auth-Trace": authHeader("miss"),
+            "Server-Timing": timingHeader("hit"),
+          },
+        }),
+    }),
+    { message: "Missing required authorized_origin timing: auth_key_lookup" },
+  );
+});
+
 test("live sample retains timings and correlation but no credential, probe token, or body", async () => {
   const apiKey = "eliza_private_api_key_material";
   const probeToken = "private_probe_control_token";
