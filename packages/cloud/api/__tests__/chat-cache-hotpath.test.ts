@@ -4,6 +4,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as actualOrganizationInferenceAdmission from "@/lib/services/organization-inference-admission";
 
 const aiActual = require("ai") as Record<string, unknown>;
 const languageModelActual = await import("@/lib/providers/language-model");
@@ -153,6 +154,7 @@ const admitOrganizationInference = mock(
   },
 );
 mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...actualOrganizationInferenceAdmission,
   admitOrganizationInference,
 }));
 

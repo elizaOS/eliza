@@ -10,6 +10,8 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { APICallError } from "ai";
+import * as actualCredits from "@/lib/services/credits";
+import * as actualOrganizationInferenceAdmission from "@/lib/services/organization-inference-admission";
 
 const aiActual = require("ai") as Record<string, unknown>;
 const languageModelActual = await import("@/lib/providers/language-model");
@@ -119,6 +121,7 @@ let ledger = makeLedgerReservation(100, 0.015);
 const admissionCalls: Array<Record<string, unknown>> = [];
 
 mock.module("@/lib/services/credits", () => ({
+  ...actualCredits,
   assertCreditRefundWithinReservation: () => {
     throw new Error("credit refund assertion is outside this test path");
   },
@@ -136,6 +139,7 @@ mock.module("@/lib/services/credits", () => ({
 }));
 
 mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...actualOrganizationInferenceAdmission,
   admitOrganizationInference: mock(async (params: Record<string, unknown>) => {
     admissionCalls.push(params);
     let settlement: Promise<unknown> | undefined;
