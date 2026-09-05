@@ -85,6 +85,7 @@ type FetchWithOptionalPreconnect = typeof fetch & {
 
 function toNativeAgentPlugin(
   plugin: NativeAgentPlugin | null | undefined,
+  nativeMethods?: readonly { name: string }[],
 ): NativeAgentPlugin | null {
   if (!plugin) return null;
   const start = plugin.start?.bind(plugin);
@@ -92,7 +93,12 @@ function toNativeAgentPlugin(
   const getStatus = plugin.getStatus?.bind(plugin);
   const getLocalAgentBootState = plugin.getLocalAgentBootState?.bind(plugin);
   const request = plugin.request?.bind(plugin);
-  const requestStream = plugin.requestStream?.bind(plugin);
+  // Capacitor proxies manufacture functions even for absent native methods.
+  // The native header is authoritative when this resolver has one.
+  const requestStream =
+    nativeMethods && !nativeMethods.some(({ name }) => name === "requestStream")
+      ? undefined
+      : plugin.requestStream?.bind(plugin);
   const addListener = plugin.addListener?.bind(plugin);
   if (!start && !stop && !getStatus && !request && !getLocalAgentBootState) {
     return null;
@@ -185,11 +191,18 @@ async function resolveNativeAgentPlugin(): Promise<NativeAgentPlugin | null> {
   try {
     const capacitorWithPlugins = Capacitor as typeof Capacitor & {
       Plugins?: Record<string, NativeAgentPlugin | undefined>;
+      PluginHeaders?: readonly {
+        name: string;
+        methods: readonly { name: string }[];
+      }[];
     };
     const registeredAgent =
       capacitorWithPlugins.Plugins?.[agentPluginName] ??
       Capacitor.registerPlugin<NativeAgentPlugin>(agentPluginName);
-    const agent = toNativeAgentPlugin(registeredAgent);
+    const nativeMethods = capacitorWithPlugins.PluginHeaders?.find(
+      ({ name }) => name === agentPluginName,
+    )?.methods;
+    const agent = toNativeAgentPlugin(registeredAgent, nativeMethods);
     if (agent) return agent;
   } catch {
     // error-policy:J4 capability probe — a failed plugin registration means

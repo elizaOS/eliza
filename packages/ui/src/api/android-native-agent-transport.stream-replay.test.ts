@@ -1,11 +1,15 @@
 /**
  * Exercises Android transport replay policy against a real HTTP mutation
  * counter. The native event adapter is deterministic; the production transport
- * and stream lifecycle run unchanged, without an Android device or UDS bridge.
+ * and stream lifecycle run unchanged. Legacy capability detection also runs the
+ * installed Capacitor proxy and its dispatcher, without Android or a UDS bridge.
  */
 import { createServer, type Server } from "node:http";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { Capacitor } from "@capacitor/core";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
+  __resetAndroidNativeAgentTransportForTests,
+  androidNativeAgentTransportForUrl,
   createAndroidNativeAgentTransport,
   type NativeAgentRequestOptions,
   type NativeAgentRequestResult,
@@ -147,3 +151,57 @@ it.each(["requestStream", "addListener"] as const)(
     expect(native.listeners.size).toBe(0);
   },
 );
+
+it("uses the installed Capacitor proxy's native header before dispatching to a legacy Agent", async () => {
+  const nativeCapacitor = Capacitor as typeof Capacitor & {
+    Plugins: Record<string, NativeAgentPlugin | undefined>;
+  };
+  const originals = Object.getOwnPropertyDescriptors(Capacitor);
+  const originalAgent = Object.getOwnPropertyDescriptor(
+    nativeCapacitor.Plugins,
+    "Agent",
+  );
+  const dispatched: string[] = [];
+  vi.stubGlobal("androidBridge", {});
+  Object.assign(Capacitor, {
+    PluginHeaders: [
+      { name: "Agent", methods: [{ name: "request", rtype: "promise" }] },
+    ],
+    async nativePromise(
+      pluginName: string,
+      methodName: string,
+      options?: NativeAgentRequestOptions,
+    ) {
+      if (pluginName !== "Agent" || methodName !== "request" || !options) {
+        throw new Error(
+          `Unexpected native dispatch: ${pluginName}.${methodName}`,
+        );
+      }
+      dispatched.push(methodName);
+      return forward(options);
+    },
+  });
+  try {
+    const proxy = Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
+    // This is the misleading capability exposed by the real Capacitor proxy.
+    expect(typeof proxy.requestStream).toBe("function");
+    const transport = await androidNativeAgentTransportForUrl(endpoint);
+    if (!transport) throw new Error("Legacy Android transport is unavailable");
+    const response = await transport.request(endpoint, request);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ mutation: 1, body: payload });
+    expect(mutations).toEqual([payload]);
+    expect(dispatched).toEqual(["request"]);
+  } finally {
+    __resetAndroidNativeAgentTransportForTests();
+    for (const name of ["PluginHeaders", "nativePromise"]) {
+      const descriptor = originals[name];
+      if (descriptor) Object.defineProperty(Capacitor, name, descriptor);
+      else Reflect.deleteProperty(Capacitor, name);
+    }
+    if (originalAgent) {
+      Object.defineProperty(nativeCapacitor.Plugins, "Agent", originalAgent);
+    } else Reflect.deleteProperty(nativeCapacitor.Plugins, "Agent");
+    vi.unstubAllGlobals();
+  }
+});
