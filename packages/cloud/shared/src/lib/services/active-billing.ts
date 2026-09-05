@@ -186,7 +186,15 @@ class ActiveBillingService {
             billableAgentAuthorityPredicate(),
             inArray(agentSandboxes.billing_status, ["active", "warning", "shutdown_pending"]),
             or(
-              inArray(agentSandboxes.status, ["running", "deletion_pending", "deletion_failed"]),
+              eq(agentSandboxes.status, "running"),
+              and(
+                inArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
+                or(
+                  isNull(agentSandboxes.deletion_previous_status),
+                  ne(agentSandboxes.deletion_previous_status, "stopped"),
+                  isNotNull(agentSandboxes.last_backup_at),
+                ),
+              ),
               and(eq(agentSandboxes.status, "stopped"), isNotNull(agentSandboxes.last_backup_at)),
             ),
           ),

@@ -274,6 +274,36 @@ describe("active billing warm-pool authority", () => {
     expect(ids).not.toContain(poolId);
   });
 
+  test("deleting a provider-confirmed stopped agent without a backup never advertises a new storage charge", async () => {
+    const agentId = await seedAgent({ status: "stopped", lastBackupAt: null });
+    expect(await activeBillingService.listActiveResources(organizationId)).toEqual([]);
+    for (const status of ["deletion_pending", "deletion_failed"] as const) {
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status, deletion_previous_status: "stopped" })
+        .where(eq(agentSandboxes.id, agentId));
+      expect(await activeBillingService.listActiveResources(organizationId)).toEqual([]);
+    }
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ last_backup_at: new Date() })
+      .where(eq(agentSandboxes.id, agentId));
+    expect(await activeBillingService.listActiveResources(organizationId)).toMatchObject([
+      {
+        resourceId: agentId,
+        unitPrice: 0.0025,
+        metadata: { billableReason: "idle_snapshot_storage" },
+      },
+    ]);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ deletion_previous_status: "running", last_backup_at: null })
+      .where(eq(agentSandboxes.id, agentId));
+    expect(await activeBillingService.listActiveResources(organizationId)).toMatchObject([
+      { resourceId: agentId, unitPrice: 0.01, metadata: { billableReason: "running_agent" } },
+    ]);
+  });
+
   test("pool capacity cannot be cancelled or mutated through the billing surface", async () => {
     const poolId = await seedDedicated("unclaimed");
 
