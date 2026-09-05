@@ -272,6 +272,7 @@ describe("provider stop never mutates node capacity", () => {
     execBehavior = async (command) => {
       commands.push(command);
       if (command.startsWith("sh -lc")) return "unknown\n";
+      if (command.startsWith("if timeout")) return "unavailable";
       if (command.startsWith("docker stop") || command.startsWith("docker rm")) {
         throw new Error(
           "[docker-ssh] Command timed out after 25000ms on 138.201.80.125: docker [redacted]",
@@ -285,7 +286,7 @@ describe("provider stop never mutates node capacity", () => {
     await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
       kind: "not-running-proven",
     });
-    expect(commands.some((command) => command.includes("/etc/docker/daemon.json"))).toBe(true);
+    expect(commands.some((command) => command.includes("LiveRestoreEnabled"))).toBe(true);
     expect(commands.some((command) => command.includes("--kill-who=main"))).toBe(true);
     expect(commands.some((command) => command.includes("systemctl start docker.service"))).toBe(
       true,
@@ -302,6 +303,39 @@ describe("provider stop never mutates node capacity", () => {
     expect(decrementSpy).not.toHaveBeenCalled();
   });
 
+  test.each(["unavailable-proof", "invalid-health"])(
+    "a deletion preserves its failure without restarting when recovery has %s",
+    async (failure) => {
+      process.env.CONTAINERS_PREPULL_SELF_HEAL_RESTART = "true";
+      const commands: string[] = [];
+      execBehavior = async (command) => {
+        commands.push(command);
+        if (command.startsWith("sh -lc")) return "unknown\n";
+        if (command.startsWith("docker stop") || command.startsWith("docker rm")) {
+          throw new Error("[docker-ssh] Command timed out after 25000ms on node: docker");
+        }
+        if (command.startsWith("if timeout")) {
+          return failure === "invalid-health" ? "" : "unavailable";
+        }
+        if (command.includes("LiveRestoreEnabled")) {
+          throw new Error("Active Docker live-restore proof is unavailable");
+        }
+        return "";
+      };
+      const provider = new DockerSandboxProvider();
+      seedContainer(provider);
+
+      await expect(provider.stopForDeletion(SANDBOX_ID)).rejects.toThrow(
+        "Failed to stop container",
+      );
+      expect(commands.some((command) => command.includes("LiveRestoreEnabled"))).toBe(
+        failure === "unavailable-proof",
+      );
+      expect(commands.some((command) => command.includes("systemctl"))).toBe(false);
+      expect(decrementSpy).not.toHaveBeenCalled();
+    },
+  );
+
   test("an opted-in deletion recovers when the Docker timeout poisons the reconnect", async () => {
     process.env.CONTAINERS_PREPULL_SELF_HEAL_RESTART = "true";
     const commands: string[] = [];
@@ -309,6 +343,7 @@ describe("provider stop never mutates node capacity", () => {
     execBehavior = async (command) => {
       commands.push(command);
       if (command.startsWith("sh -lc")) return "unknown\n";
+      if (command.startsWith("if timeout")) return "unavailable";
       if (command.startsWith("docker stop")) {
         throw new Error(
           "[docker-ssh] Command timed out after 25000ms on 138.201.80.125: docker [redacted]",
@@ -328,7 +363,7 @@ describe("provider stop never mutates node capacity", () => {
     await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
       kind: "not-running-proven",
     });
-    expect(commands.some((command) => command.includes("/etc/docker/daemon.json"))).toBe(true);
+    expect(commands.some((command) => command.includes("LiveRestoreEnabled"))).toBe(true);
     expect(commands.some((command) => command.includes("--kill-who=main"))).toBe(true);
     expect(deleteAttempts).toBe(1);
     expect(
@@ -346,11 +381,11 @@ describe("provider stop never mutates node capacity", () => {
     execBehavior = async (command) => {
       commands.push(command);
       if (command.startsWith("sh -lc")) return "unknown\n";
+      if (command.startsWith("if timeout")) return "healthy";
       if (command.startsWith("docker stop") || command.startsWith("docker rm")) {
         initialDeleteAttempts += 1;
         throw new Error("[docker-ssh] stream error on node: channel closed");
       }
-      if (command.startsWith("if timeout") && command.includes("docker info")) return "healthy";
       return "";
     };
     const provider = new DockerSandboxProvider();
@@ -360,7 +395,7 @@ describe("provider stop never mutates node capacity", () => {
       kind: "not-running-proven",
     });
     expect(initialDeleteAttempts).toBe(2);
-    expect(commands.some((command) => command.includes("/etc/docker/daemon.json"))).toBe(true);
+    expect(commands.some((command) => command.includes("LiveRestoreEnabled"))).toBe(false);
     expect(commands.some((command) => command.includes("--kill-who=main"))).toBe(false);
     expect(
       commands.some((command) =>
@@ -377,6 +412,7 @@ describe("provider stop never mutates node capacity", () => {
     execBehavior = async (command) => {
       commands.push(command);
       if (command.startsWith("sh -lc")) return "unknown\n";
+      if (command.startsWith("if timeout")) return "unavailable";
       if (command.startsWith("docker stop")) {
         throw new Error(
           "[docker-ssh] Command exited with code 1 on node: Cannot connect to the Docker daemon",
@@ -398,7 +434,7 @@ describe("provider stop never mutates node capacity", () => {
     await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
       kind: "not-running-proven",
     });
-    expect(commands.some((command) => command.includes("/etc/docker/daemon.json"))).toBe(true);
+    expect(commands.some((command) => command.includes("LiveRestoreEnabled"))).toBe(true);
     expect(commands.some((command) => command.includes("--kill-who=main"))).toBe(true);
     expect(deleteAttempts).toBe(1);
     expect(

@@ -883,6 +883,12 @@ share runtime identity, storage ownership, health, or fallback semantics.
     names cannot reconstruct that authority after a restart. Runtime operations
     retain the strict port requirement.
 
+Automatic Docker recovery requires a successful runtime `LiveRestoreEnabled`
+read before any daemon restart. An on-disk setting may not have been reloaded,
+so configuration alone is not proof. A fully unresponsive daemon requires
+operator recovery; failed safety probes preserve the original teardown failure
+and its capacity ownership. Recovery never restarts containerd.
+
 ### 2026-09-03 retained-canary investigation
 
 The capacity guard found exactly one retained canary, suffix

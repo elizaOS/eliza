@@ -403,8 +403,8 @@ export const containersEnv = {
    * Auto-recover a node whose dockerd coordinator has wedged. Repeated failed
    * pre-pulls and a deletion whose stop plus force-remove both time out may use
    * the same bounded daemon restart instead of requiring manual intervention.
-   * The recovery command itself requires `live-restore=true` before mutation
-   * so running agents survive the restart. Read via
+   * The running daemon must confirm live restore before mutation; configuration
+   * alone is insufficient, and an unavailable proof requires operator recovery. Read via
    * `CONTAINERS_PREPULL_SELF_HEAL_RESTART` (with `ELIZA_` fallback); only the
    * literal string `"true"` enables it. Off by default — a docker restart is a
    * shared-host operation, so each environment opts in explicitly.

@@ -653,10 +653,17 @@ export function buildPrePullReapCommand(pidFile: string, image: string): string 
   return `sh -c ${shellQuote(script)}`;
 }
 
+/** Require the running daemon to confirm live restore before shared-host recovery. */
+export function buildDockerLiveRestoreProofCommand(): string {
+  return `(live_restore="$(timeout -k 2s 20s docker info --format '{{.LiveRestoreEnabled}}')" && test "$live_restore" = true)`;
+}
+
 export function buildPrePullSelfHealRecoverCommand(): string {
   return [
     "set -e",
-    'python3 -c \'import json; assert json.load(open("/etc/docker/daemon.json")).get("live-restore") is True\'',
+    // A configured value may not have been reloaded by the running daemon.
+    // Missing runtime proof leaves recovery to an operator.
+    buildDockerLiveRestoreProofCommand(),
     // Kill only the daemon's main process so live-restore can keep workloads
     // running. A socket unit commonly has no process of its own, so stopping it
     // is best-effort and must not trip set -e before the required start and
@@ -1483,8 +1490,8 @@ export class DockerNodeManager {
    *     verifying the process is still a `docker pull` for the same image.
    * (b) If a node keeps failing (its daemon is already wedged) and self-heal
    *     is enabled, restart docker once per cooldown to recover automatically
-   *     instead of paging an operator. `live-restore` (node bootstrap
-   *     daemon.json) keeps running agent containers alive across the restart.
+   *     only when the running daemon confirms live restore. A daemon that
+   *     cannot provide this proof requires operator recovery.
    */
   private async recoverAfterTimedOutPrePull(
     ssh: DockerSSHClient,
@@ -1527,10 +1534,8 @@ export class DockerNodeManager {
       },
     );
     try {
-      // Live staging showed graceful `systemctl restart docker` can hang when
-      // dockerd/containerd content ingest is already wedged. Stamp the cooldown
-      // before attempting the shared-host recovery, then force-kill dockerd and
-      // bounce containerd; live-restore plus container shims keep agents alive.
+      // Stamp the cooldown before the bounded proof and recovery attempt so
+      // an unavailable safety prerequisite cannot create a tight retry loop.
       state.lastSelfHealMs = Date.now();
       prePullFailureState.set(node.node_id, state);
       await ssh.exec(buildPrePullSelfHealRecoverCommand(), 120_000);

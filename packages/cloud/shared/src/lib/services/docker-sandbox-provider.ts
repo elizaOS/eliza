@@ -41,6 +41,7 @@ import {
   isNodeUnreachableMessage,
 } from "./docker-error-classifier";
 import {
+  buildDockerLiveRestoreProofCommand,
   clearPlacementCommandFailures,
   dockerNodeManager,
   isDockerSshCommandTimeoutError,
@@ -5480,9 +5481,9 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // One exact Docker-command timeout proves that SSH reached the node but the
     // daemon failed to answer. A pair of transport failures can also be a
-    // poisoned SSH session, so the isolated recovery connection first proves
-    // live-restore and re-probes Docker. A healthy daemon is never restarted;
-    // an unavailable daemon is restarted without touching containerd, then
+    // poisoned SSH session, so the isolated recovery connection re-probes
+    // Docker. A healthy daemon is never restarted; recovery requires the
+    // running daemon to confirm live restore before any restart, then
     // health and exact-name removal are proved. Remote command failures such as
     // auth/permission errors remain ineligible. Production remains protected-off
     // until staging proof.
@@ -5503,25 +5504,31 @@ export class DockerSandboxProvider implements SandboxProvider {
         meta.hostKeyFingerprint,
         meta.sshUser,
       );
-      let recoveryStage = "live_restore_proof";
+      let recoveryStage = "docker_info_probe";
       try {
         logger.error("[docker-sandbox] Docker teardown failed twice; probing daemon recovery", {
           nodeId: meta.nodeId,
           containerName: meta.containerName,
           agentId: meta.agentId,
         });
-        await recoverySsh.exec(
-          'python3 -c \'import json; assert json.load(open("/etc/docker/daemon.json")).get("live-restore") is True\'',
-          TEARDOWN_DOCKER_SELF_HEAL_STAGE_TIMEOUT_MS,
-        );
-        recoveryStage = "docker_info_probe";
         const dockerHealth = (
           await recoverySsh.exec(
             "if timeout -k 2s 20s docker info >/dev/null 2>&1; then printf healthy; else printf unavailable; fi",
             TEARDOWN_DOCKER_SELF_HEAL_STAGE_TIMEOUT_MS,
           )
         ).trim();
+        if (dockerHealth !== "healthy" && dockerHealth !== "unavailable") {
+          throw new ElizaError("Docker recovery returned an invalid health probe result", {
+            code: "SANDBOX_DELETION_DOCKER_HEALTH_INVALID",
+            context: { nodeId: meta.nodeId, containerName: meta.containerName },
+          });
+        }
         if (dockerHealth !== "healthy") {
+          recoveryStage = "live_restore_proof";
+          await recoverySsh.exec(
+            buildDockerLiveRestoreProofCommand(),
+            TEARDOWN_DOCKER_SELF_HEAL_STAGE_TIMEOUT_MS,
+          );
           recoveryStage = "docker_force_stop";
           await recoverySsh.exec(
             "systemctl kill --kill-who=main -s SIGKILL docker.service 2>/dev/null || true; systemctl stop docker.socket 2>/dev/null || true; sleep 2",

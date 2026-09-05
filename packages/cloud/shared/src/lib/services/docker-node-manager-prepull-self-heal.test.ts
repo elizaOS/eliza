@@ -5,6 +5,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   __resetPrePullFailureStateForTests,
   buildPrePullReapCommand,
@@ -128,8 +132,7 @@ describe("tracked pre-pull commands", () => {
     const command = buildPrePullSelfHealRecoverCommand();
 
     expect(command).toStartWith("set -e; ");
-    expect(command).toContain("/etc/docker/daemon.json");
-    expect(command).toContain('get("live-restore") is True');
+    expect(command).toContain("docker info --format '{{.LiveRestoreEnabled}}'");
     expect(command).toContain("systemctl kill --kill-who=main -s SIGKILL docker.service");
     expect(command).toContain(
       "systemctl kill --kill-who=main -s SIGKILL docker.service 2>/dev/null || true",
@@ -140,6 +143,48 @@ describe("tracked pre-pull commands", () => {
     expect(command).toContain("systemctl start docker.service");
     expect(command).toContain("timeout -k 2s 20s docker info");
     expect(command).not.toContain("systemctl restart docker");
+  });
+
+  test.each([
+    { runtimeValue: "true", status: 0, recovers: true },
+    { runtimeValue: "false", status: 0, recovers: false },
+    { runtimeValue: "", status: 0, recovers: false },
+    { runtimeValue: "true", status: 124, recovers: false },
+  ])("executes recovery only with successful active-daemon proof: %j", (probe) => {
+    const directory = mkdtempSync(join(tmpdir(), "docker-live-restore-proof-"));
+    const journal = join(directory, "mutations");
+    writeFileSync(journal, "");
+    try {
+      const executables = {
+        timeout: '#!/bin/sh\nshift 3\nexec "$@"\n',
+        docker:
+          '#!/bin/sh\nif [ "$2" = --format ]; then printf "%s\\n" "$PROBE_VALUE"; exit "$PROBE_STATUS"; fi\n',
+        systemctl: '#!/bin/sh\nprintf "%s\\n" "$*" >> "$MUTATION_JOURNAL"\n',
+        sleep: "#!/bin/sh\nexit 0\n",
+      };
+      for (const [name, source] of Object.entries(executables)) {
+        writeFileSync(join(directory, name), source, { mode: 0o700 });
+      }
+      const result = spawnSync("/bin/sh", ["-c", buildPrePullSelfHealRecoverCommand()], {
+        env: {
+          ...process.env,
+          PATH: `${directory}:${process.env.PATH}`,
+          PROBE_VALUE: probe.runtimeValue,
+          PROBE_STATUS: String(probe.status),
+          MUTATION_JOURNAL: journal,
+        },
+        encoding: "utf8",
+      });
+      if (probe.recovers) {
+        expect(result.status).toBe(0);
+        expect(readFileSync(journal, "utf8")).toContain("start docker.service");
+      } else {
+        expect(result.status).not.toBe(0);
+        expect(readFileSync(journal, "utf8")).toBe("");
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 
