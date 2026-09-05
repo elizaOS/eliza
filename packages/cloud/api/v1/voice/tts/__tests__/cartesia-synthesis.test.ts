@@ -14,8 +14,13 @@ import {
   synthesizeCartesiaWav,
 } from "../cartesia-synthesis";
 
+// The cloud unit lane runs this file under `bun test`, whose vitest-compat `vi`
+// implements neither `stubGlobal` nor `unstubAllGlobals` — those calls failed
+// every stubbing test at setup and the whole file at teardown. Only `fetch` is
+// stubbed here, so assign it directly and restore it after each test.
+const realFetch = globalThis.fetch;
 afterEach(() => {
-  vi.unstubAllGlobals();
+  globalThis.fetch = realFetch;
 });
 
 /** In-memory Cartesia socket: on the generation request, replay frames+done. */
@@ -266,7 +271,7 @@ describe("makeWorkersCartesiaWebSocketFactory", () => {
         webSocket: upstreamSocket,
       });
     });
-    vi.stubGlobal("fetch", fetchImpl);
+    globalThis.fetch = fetchImpl as unknown as typeof fetch;
     const beforeProviderDispatch = vi.fn(async () => {
       events.push("callback:start");
       await Promise.resolve();
@@ -292,7 +297,7 @@ describe("makeWorkersCartesiaWebSocketFactory", () => {
 
   it("does not attempt the upgrade when the dispatch callback rejects", async () => {
     const fetchImpl = vi.fn(async () => new Response(null));
-    vi.stubGlobal("fetch", fetchImpl);
+    globalThis.fetch = fetchImpl as unknown as typeof fetch;
     const beforeProviderDispatch = vi.fn(async () => {
       throw new Error("dispatch marker unavailable");
     });
