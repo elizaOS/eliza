@@ -10,6 +10,7 @@
 
 import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import type { PageScope } from "@elizaos/ui/components/pages/page-scoped-conversations";
+import { ActionNoticeToast } from "@elizaos/ui/components/shell/ActionNoticeToast";
 import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
 import { AppWorkspaceChrome } from "@elizaos/ui/components/workspace/AppWorkspaceChrome";
@@ -222,7 +223,7 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
       return (
         <DetachedWorkspaceView chatScope="page-settings">
           <DetachedLazyBoundary>
-            <section className="w-full flex-1 min-h-0 overflow-hidden">
+            <section className="flex w-full min-h-0 flex-1 flex-col overflow-hidden">
               <DetachedSettingsSectionView section={target.settingsSection} />
             </section>
           </DetachedLazyBoundary>
@@ -245,8 +246,14 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
 export function DetachedShellRoot({
   route,
 }: DetachedShellRootProps): JSX.Element {
-  const { authRequired, firstRunComplete, retryStartup, startupError, t } =
-    useApp();
+  const {
+    actionNotice,
+    authRequired,
+    firstRunComplete,
+    retryStartup,
+    startupError,
+    t,
+  } = useApp();
   if (startupError) {
     return <StartupFailureView error={startupError} onRetry={retryStartup} />;
   }
@@ -281,6 +288,7 @@ export function DetachedShellRoot({
       >
         <DetachedShellContent route={route} />
       </main>
+      <ActionNoticeToast actionNotice={actionNotice} />
     </div>
   );
 }
