@@ -1,4 +1,6 @@
+/** Tests final reply grounding and recovery against real evaluator parsing and receipt validation. */
 import { describe, expect, it, vi } from "vitest";
+import { parseEvaluatorOutput } from "../runtime/evaluator";
 import { createMockRuntime } from "../testing/mock-runtime";
 import { type ActionResult, type Memory, ModelType } from "../types";
 import { resolvePlannedReplyEgress } from "./message";
@@ -35,6 +37,106 @@ const savedNote: ActionResult = {
 };
 
 describe("model-backed final reply recovery", () => {
+	it("delivers the evaluator's receipt-bound reply without another model call", async () => {
+		const reply = "I've created Picnic with your reminder to bring a charger.";
+		const evaluator = parseEvaluatorOutput(
+			JSON.stringify({
+				thought: "The recorded note write completed the request.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: reply,
+				effectReceiptIds: ["note-proof"],
+			}),
+		);
+		const runtime = createMockRuntime({ useModel: vi.fn() });
+		await expect(
+			resolvePlannedReplyEgress({
+				runtime,
+				message,
+				reply,
+				actionResults: [savedNote],
+				evaluator,
+			}),
+		).resolves.toEqual({ text: reply, effectReceiptIds: ["note-proof"] });
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(savedNote.userFacingText).toBeUndefined();
+	});
+
+	it.each([
+		"missing receipt",
+		"invented receipt",
+		"nonterminal verdict",
+		"changed final reply",
+		"changed evaluator reply",
+		"other turn",
+		"preview",
+		"rollback",
+	])("does not reuse evaluator proof after %s", async (condition) => {
+		const reply = "I've created the picnic note.";
+		const evaluator = parseEvaluatorOutput(
+			JSON.stringify({
+				thought: "Check the note write.",
+				success: true,
+				decision: condition === "nonterminal verdict" ? "CONTINUE" : "FINISH",
+				messageToUser: reply,
+				effectReceiptIds:
+					condition === "missing receipt"
+						? []
+						: condition === "invented receipt"
+							? ["unrelated-proof"]
+							: ["note-proof"],
+			}),
+		);
+		if (condition === "changed evaluator reply")
+			evaluator.messageToUser = "I've created a different note.";
+		const receipt = savedNote.effectReceipts?.[0];
+		if (!receipt) throw new Error("Missing receipt fixture");
+		const actionResults: ActionResult[] =
+			condition === "other turn"
+				? []
+				: [
+						{
+							...savedNote,
+							effectReceipts:
+								condition === "preview"
+									? [{ ...receipt, outcome: "preview" }]
+									: condition === "rollback"
+										? [
+												receipt,
+												{
+													...receipt,
+													receiptId: "rollback",
+													outcome: "rolled_back",
+													rollback: {
+														receiptId: "undo-write",
+														revertedReceiptIds: ["note-proof"],
+														rolledBackAt: "2026-09-04T12:01:00.000Z",
+													},
+												},
+											]
+										: [receipt],
+						},
+					];
+		const recovery = "The saved result could not be confirmed.";
+		const runtime = createMockRuntime({
+			useModel: vi.fn(async () =>
+				JSON.stringify({ response: recovery, effectReceiptIds: [] }),
+			),
+		});
+		await expect(
+			resolvePlannedReplyEgress({
+				runtime,
+				message,
+				reply: condition.startsWith("changed")
+					? "I've created a different note."
+					: reply,
+				actionResults,
+				evaluator,
+			}),
+		).resolves.toEqual({ text: recovery, effectReceiptIds: [] });
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
 	it("preserves a valid model reply without another inference call", async () => {
 		const runtime = createMockRuntime({ useModel: vi.fn() });
 		const reply = "What would you like the note to say?";

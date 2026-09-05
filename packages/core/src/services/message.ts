@@ -4701,12 +4701,32 @@ export type PlannedReplyClaimKind =
 function appliedEffectReceiptIdsForReply(
 	reply: string,
 	results: readonly ActionResult[],
+	evaluator?: EvaluatorOutput,
 ): readonly string[] {
 	const normalizedReply = reply.trim();
 	if (!normalizedReply) return [];
 	const allTurnReceipts = mergeEffectReceipts(
 		...results.map((result) => result.effectReceipts),
 	);
+	// Keep the model's proof attached to its original prose. Planner fallbacks,
+	// sanitizers and hooks must not borrow these IDs for a different message.
+	if (
+		evaluator?.decision === "FINISH" &&
+		!evaluator.protocolFailure &&
+		evaluator.messageToUser?.trim() === normalizedReply &&
+		typeof evaluator.raw?.messageToUser === "string" &&
+		evaluator.raw.messageToUser.trim() === normalizedReply
+	) {
+		const receipts = resolveAppliedUserFacingEffectReceipts(
+			{
+				verifiedUserFacing: true,
+				userFacingText: normalizedReply,
+				userFacingEffectReceiptIds: evaluator.effectReceiptIds,
+			},
+			allTurnReceipts,
+		);
+		if (receipts) return receipts.map((receipt) => receipt.receiptId);
+	}
 	for (const result of results) {
 		if (result.userFacingText?.trim() !== normalizedReply) continue;
 		const receipts = resolveAppliedUserFacingEffectReceipts(
@@ -4723,7 +4743,7 @@ function appliedEffectReceiptIdsForReply(
 /**
  * An action result grounds only the capability it actually proves.
  * Empty tracked-work claims require a `resource:tracked-work` read action.
- * Completion claims require exact action-owned text bound to an active
+ * Completion claims require exact action-owned or evaluator-authored text bound to an active
  * committed receipt from this turn — applied, or a replayed no-op proving the
  * desired state was already committed; bare success, previews, non-replayed
  * no-ops, failures, and rolled-back effects cannot ground them.
@@ -4733,7 +4753,14 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 	reply: string;
 	results: readonly ActionResult[];
 	actions: readonly Action[];
+	evaluator?: EvaluatorOutput;
 }): boolean {
+	if (args.kind === "completed_side_effect") {
+		return (
+			appliedEffectReceiptIdsForReply(args.reply, args.results, args.evaluator)
+				.length > 0
+		);
+	}
 	const actionsByName = new Map(
 		args.actions.map((action) => [
 			normalizeActionIdentifier(action.name),
@@ -4748,11 +4775,6 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 			canonicalUserFacingText !== args.reply.trim()
 		) {
 			return false;
-		}
-		if (args.kind === "completed_side_effect") {
-			return (
-				appliedEffectReceiptIdsForReply(args.reply, args.results).length > 0
-			);
 		}
 		if (result.success !== true) return false;
 		const actionName =
@@ -4801,6 +4823,7 @@ export function evaluatePlannedReplyEgress(args: {
 	reply: string;
 	actionResults: readonly ActionResult[];
 	actions: readonly Action[];
+	evaluator?: EvaluatorOutput;
 }): PlannedReplyEgressDecision {
 	const reply = args.reply.trim();
 	if (!reply) return { verdict: "allow" };
@@ -4811,6 +4834,7 @@ export function evaluatePlannedReplyEgress(args: {
 				reply,
 				results: args.actionResults,
 				actions: args.actions,
+				evaluator: args.evaluator,
 			})
 		) {
 			return { verdict: "allow" };
@@ -4849,11 +4873,13 @@ export async function resolvePlannedReplyEgress(args: {
 	message: Memory;
 	reply: string;
 	actionResults: readonly ActionResult[];
+	evaluator?: EvaluatorOutput;
 }): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
 	const decision = evaluatePlannedReplyEgress({
 		reply: args.reply,
 		actionResults: args.actionResults,
 		actions: args.runtime.actions,
+		evaluator: args.evaluator,
 	});
 	if (args.reply.trim() && decision.verdict === "allow") {
 		return {
@@ -4861,6 +4887,7 @@ export async function resolvePlannedReplyEgress(args: {
 			effectReceiptIds: appliedEffectReceiptIdsForReply(
 				args.reply,
 				args.actionResults,
+				args.evaluator,
 			),
 		};
 	}
@@ -11404,6 +11431,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						reply: String(plannerResult.finalMessage ?? ""),
 						actionResults: egressActionResults,
 						actions: args.runtime.actions,
+						evaluator: plannerResult.evaluator,
 					});
 		// A reply an action callback already delivered this turn (verbatim or as
 		// a strict superset) is a planner echo: the suppression below drops it, so
@@ -11432,6 +11460,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				message: args.message,
 				reply: plannerResult.finalMessage ?? "",
 				actionResults: egressActionResults,
+				evaluator: plannerResult.evaluator,
 			});
 			plannerResult = {
 				...plannerResult,
@@ -11629,6 +11658,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						reply: effectiveReplyText,
 						actionResults,
 						actions: args.runtime.actions,
+						evaluator: plannerResult.evaluator,
 					});
 		if (finalReplyEgressDecision.verdict === "reject") {
 			recoveredReply = await resolvePlannedReplyEgress({
@@ -11636,6 +11666,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				message: args.message,
 				reply: effectiveReplyText,
 				actionResults,
+				evaluator: plannerResult.evaluator,
 			});
 			effectiveReplyText = recoveredReply.text;
 			replyRecovered = true;
@@ -11833,6 +11864,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				: appliedEffectReceiptIdsForReply(
 						effectiveDeliveredReplyText,
 						actionResults,
+						plannerResult.evaluator,
 					);
 		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
 		// provenance. A byte-exact canonical action result also needs preservation:
@@ -11841,9 +11873,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		// punctuation or exact values. Mixed evaluator/tool prose and hardcoded
 		// fallbacks remain unmarked so canned strings still receive the voice pass.
 		const effectiveReplyIsModelVoice =
-			!plannedText &&
-			stageOneAck.length > 0 &&
-			effectiveReplyText === stageOneAck;
+			(!plannedText &&
+				stageOneAck.length > 0 &&
+				effectiveReplyText === stageOneAck) ||
+			(effectiveReplyReceiptIds.length > 0 &&
+				plannerResult.evaluator?.messageToUser?.trim() ===
+					effectiveDeliveredReplyText);
 		const effectiveReplyIsCanonicalActionText = actionResults.some(
 			(result) =>
 				result.verifiedUserFacing === true &&

@@ -85,6 +85,7 @@ interface RawEvaluatorOutput {
 	nextTool?: unknown;
 	nextRecommendedTool?: unknown;
 	messageToUser?: unknown;
+	effectReceiptIds?: unknown;
 	copyToClipboard?: unknown;
 	recommendedToolCallId?: unknown;
 }
@@ -104,6 +105,7 @@ const EVALUATOR_ENVELOPE_KEYS = new Set([
 	"nextTool",
 	"nextRecommendedTool",
 	"messageToUser",
+	"effectReceiptIds",
 	"copyToClipboard",
 	"recommendedToolCallId",
 ]);
@@ -670,6 +672,7 @@ async function recordEvaluationStage(args: {
 				decision: args.output.decision,
 				thought: args.output.thought,
 				messageToUser: args.output.messageToUser,
+				effectReceiptIds: args.output.effectReceiptIds,
 				copyToClipboard: args.output.copyToClipboard,
 				recommendedToolCallId: args.output.recommendedToolCallId,
 				protocolFailure: args.output.protocolFailure,
@@ -877,6 +880,9 @@ export function parseEvaluatorOutput(
 			parsed.messageToUser.trim().length > 0
 				? parsed.messageToUser
 				: undefined,
+		...(Array.isArray(parsed.effectReceiptIds)
+			? { effectReceiptIds: parsed.effectReceiptIds as string[] }
+			: {}),
 		copyToClipboard: normalizeClipboard(parsed.copyToClipboard),
 		recommendedToolCallId:
 			typeof parsed.recommendedToolCallId === "string"
@@ -913,6 +919,16 @@ function evaluatorEnvelopeProtocolError(
 		typeof output.messageToUser !== "string"
 	) {
 		return 'optional field "messageToUser" must be a string';
+	}
+	if (
+		Object.hasOwn(output, "effectReceiptIds") &&
+		(!Array.isArray(output.effectReceiptIds) ||
+			output.effectReceiptIds.some(
+				(id) => typeof id !== "string" || !id.trim(),
+			) ||
+			new Set(output.effectReceiptIds).size !== output.effectReceiptIds.length)
+	) {
+		return 'optional field "effectReceiptIds" must be an array of distinct nonempty strings';
 	}
 	if (
 		Object.hasOwn(output, "recommendedToolCallId") &&
