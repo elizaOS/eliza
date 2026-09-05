@@ -125,7 +125,7 @@ export class CloudContainerService
       architecture: request.architecture ?? defaults.defaultArchitecture,
     };
 
-    const response = await client.post<CreateContainerResponse>("/containers", payload);
+    const response = await client.requestData<CreateContainerResponse>("POST", "/containers", { json: payload });
 
     // Track the new container
     this.tracked.set(response.data.id, {
@@ -146,13 +146,19 @@ export class CloudContainerService
 
   async listContainers(): Promise<CloudContainer[]> {
     const client = this.getClient();
-    const response = await client.get<ContainerListResponse>("/containers");
+    const response = await client.requestData<ContainerListResponse>(
+      "GET",
+      "/containers",
+    );
     return response.data;
   }
 
   async getContainer(containerId: string): Promise<CloudContainer> {
     const client = this.getClient();
-    const response = await client.get<ContainerGetResponse>(`/containers/${containerId}`);
+    const response = await client.requestData<ContainerGetResponse>(
+      "GET",
+      `/containers/${containerId}`,
+    );
 
     // Update local tracking
     const existing = this.tracked.get(containerId);
@@ -285,7 +291,10 @@ export class CloudContainerService
 
   async getContainerHealth(containerId: string): Promise<ContainerHealthResponse> {
     const client = this.getClient();
-    return client.get<ContainerHealthResponse>(`/containers/${containerId}/health`);
+    return client.requestData<ContainerHealthResponse>(
+      "GET",
+      `/containers/${containerId}/health`,
+    );
   }
 
   // ─── Coding Containers / VFS Promotion ────────────────────────────────
@@ -298,9 +307,10 @@ export class CloudContainerService
     }
 
     try {
-      return await this.getClient().post<PromoteVfsToCloudContainerResponse>(
+      return await this.getClient().requestData<PromoteVfsToCloudContainerResponse>(
+        "POST",
         "/coding-containers/promotions",
-        request,
+        { json: request },
       );
     } catch (error) {
       if (isMissingCloudCodingEndpoint(error)) {
@@ -320,9 +330,10 @@ export class CloudContainerService
     }
 
     try {
-      return await this.getClient().post<RequestCodingAgentContainerResponse>(
+      return await this.getClient().requestData<RequestCodingAgentContainerResponse>(
+        "POST",
         "/coding-containers",
-        request,
+        { json: request },
       );
     } catch (error) {
       if (isMissingCloudCodingEndpoint(error)) {
@@ -343,9 +354,10 @@ export class CloudContainerService
     }
 
     try {
-      return await this.getClient().post<SyncCloudCodingContainerResponse>(
+      return await this.getClient().requestData<SyncCloudCodingContainerResponse>(
+        "POST",
         `/coding-containers/${encodeURIComponent(containerId)}/sync`,
-        request,
+        { json: request },
       );
     } catch (error) {
       if (isMissingCloudCodingEndpoint(error)) {

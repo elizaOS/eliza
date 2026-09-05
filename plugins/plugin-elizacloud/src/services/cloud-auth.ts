@@ -590,7 +590,9 @@ export class CloudAuthService extends Service {
   private async probeApiKey(key: string): Promise<ApiKeyProbe> {
     try {
       const validationClient = new CloudApiClient(this.client.getBaseUrl(), key);
-      await validationClient.get("/models", { timeoutMs: 2_500 });
+      await validationClient.requestData("GET", "/models", {
+        timeoutMs: 2_500,
+      });
       return "valid";
     } catch (err) {
       if (err instanceof CloudApiError && (err.statusCode === 401 || err.statusCode === 403)) {
@@ -664,11 +666,9 @@ export class CloudAuthService extends Service {
 
     logger.info(`[CloudAuth] Authenticating device (platform=${platform})`);
 
-    const response = await this.client.postUnauthenticated<DeviceAuthResponse>("/device-auth", {
-      deviceId,
-      platform,
-      appVersion,
-      deviceName: os.hostname(),
+    const response = await this.client.requestData<DeviceAuthResponse>("POST", "/device-auth", {
+      skipAuth: true,
+      json: { deviceId, platform, appVersion, deviceName: os.hostname() },
     });
 
     this.credentials = {

@@ -45,7 +45,9 @@ export const creditBalanceProvider: Provider = {
 
     let balance: number;
     try {
-      const { data } = await auth.getClient().get<CreditBalanceResponse>("/credits/balance");
+      const { data } = await auth
+        .getClient()
+        .requestData<CreditBalanceResponse>("GET", "/credits/balance");
       balance = data.balance;
     } catch (err) {
       logger.warn(

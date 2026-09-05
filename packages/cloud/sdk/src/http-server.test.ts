@@ -5,7 +5,7 @@
 import { createServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ElizaCloudClient } from "./client.js";
-import { ElizaCloudHttpClient } from "./http.js";
+import { CloudApiClient, ElizaCloudHttpClient } from "./http.js";
 
 let baseUrl: string;
 const server = createServer((req, res) => {
@@ -86,6 +86,30 @@ describe("real HTTP parsed response contracts", () => {
       new ElizaCloudHttpClient({ baseUrl }).get(`/bodyless/${status}`),
     ).resolves.toBeUndefined();
   });
+  it.each([204, 205])(
+    "preserves successful bodyless mutations with HTTP %s",
+    async (status) => {
+      const client = new CloudApiClient(baseUrl);
+      const path = `/bodyless/${status}`;
+      await expect(
+        client.post(path, { value: "updated" }),
+      ).resolves.toBeUndefined();
+      await expect(
+        client.put(path, { value: "updated" }),
+      ).resolves.toBeUndefined();
+      await expect(
+        client.patch(path, { value: "updated" }),
+      ).resolves.toBeUndefined();
+      await expect(client.delete(path)).resolves.toBeUndefined();
+      await expect(
+        client.postUnauthenticated(path, { value: "updated" }),
+      ).resolves.toBeUndefined();
+      await expect(client.requestData("DELETE", path)).rejects.toMatchObject({
+        statusCode: status,
+        errorBody: { code: "empty_response_body" },
+      });
+    },
+  );
   it("returns absence for HEAD and preserves text through raw access", async () => {
     const client = new ElizaCloudHttpClient({ baseUrl });
     await expect(client.request("HEAD", "/head")).resolves.toBeUndefined();
