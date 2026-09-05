@@ -648,6 +648,14 @@ export function createElectrobunConfig(): ElectrobunConfig {
   const appId = (process.env.ELIZA_APP_ID ?? "").trim() || "ai.elizaos.app";
   const urlScheme = (process.env.ELIZA_URL_SCHEME ?? "").trim() || "elizaos";
   const appVersion = resolveDesktopAppVersion();
+  const bunVersion = readJsonFile(
+    path.join(elizaWorkspaceRoot, ".github", "ci-bun-version.json"),
+  ).version;
+  if (typeof bunVersion !== "string" || !/^\d+\.\d+\.\d+$/.test(bunVersion)) {
+    throw new Error(
+      "Desktop packaging requires the canonical repository Bun version.",
+    );
+  }
   const releaseUrl = (process.env.ELIZA_RELEASE_URL ?? "").trim() || "";
   const runtimeDistDir =
     (process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
@@ -707,6 +715,8 @@ export function createElectrobunConfig(): ElectrobunConfig {
       postWrap: "scripts/postwrap-diagnostics.ts",
     },
     build: {
+      // Electrobun otherwise bundles its own runtime, independently of the host Bun.
+      bunVersion,
       bun: {
         entrypoint: "src/index.ts",
         plugins: [createElectrobunWorkspaceResolvePlugin()],
