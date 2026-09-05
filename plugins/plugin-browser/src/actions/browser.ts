@@ -807,7 +807,7 @@ export const browserAction: Action = {
   descriptionCompressed:
     "Browser open|navigate|click|type|fill|clear|scroll|hover|drag; snapshot/state read page; get requires selector; screenshot|autofill_login|wait_for_url; bridge status elsewhere",
   routingHint:
-    "drive an INTERACTIVE web browser session — navigate/click/type across pages, log into a site, or autofill saved credentials on a real browser target -> BROWSER; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
+    "drive an INTERACTIVE web browser session — navigate/click/type across pages, log into a site, or autofill saved credentials on a real browser target -> BROWSER; Eliza app navigation (home, Notes, Calendar, etc.) uses VIEWS, not website navigation; never invent a domain from an app navigation request; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
   // Wait for the browser result before the model writes its reply. A speculative
   // Stage-1 acknowledgement would race the result and duplicate text/voice.
   suppressEarlyReply: true,
@@ -1109,7 +1109,8 @@ export const browserAction: Action = {
     },
     {
       name: "url",
-      description: "URL for open or navigate",
+      description:
+        "Website URL for open or navigate, grounded in the user's requested website or observed page links. Do not invent a URL from an Eliza app navigation command; app screens use VIEWS.",
       required: false,
       schema: { type: "string" as const },
     },

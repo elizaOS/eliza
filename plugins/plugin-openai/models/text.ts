@@ -2440,8 +2440,9 @@ async function generateTextByModelType(
         : { prompt: promptText };
   // AI SDK v6 derives the provider-level response format from its `output`
   // contract; a similarly named top-level setting is ignored by generateText.
-  // Cerebras accepts JSON mode but not the SDK's JSON Schema wire payload, so
-  // its unstructured JSON output deliberately carries no schema.
+  // The Cerebras compatibility lane uses JSON mode with caller-side schema
+  // validation. A responseSchema alone must enable that mode; silently dropping
+  // it lets evaluator calls return tool markup instead of a decision envelope.
   const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown })
     .responseFormat;
   const responseFormatType =
@@ -2464,7 +2465,10 @@ async function generateTextByModelType(
       ? buildStructuredOutput(sanitizedResponseSchema, modelType)
       : undefined;
   const requestedOutput: NativeOutput | undefined =
-    preparedOutput?.output ?? (responseFormatType === "json_object" ? Output.json() : undefined);
+    preparedOutput?.output ??
+    (responseFormatType === "json_object" || (cerebrasMode && sanitizedResponseSchema)
+      ? Output.json()
+      : undefined);
   const restoreResponseText = (text: string): string =>
     preparedOutput?.transform?.restoreText(text) ?? text;
 

@@ -111,3 +111,87 @@ verification, not proof of model-driven delete behavior.
 | Compound QA 1921 | charger, water, and headphones | `note-23a477fa-e138-426b-8390-24515482b5d3` |
 | Local Acceptance 1936 | bring a charger | `note-55a7ac3f-344a-43cd-a6d6-32cae030bcc5` |
 | Notes check 1947 | charger and water | `note-804e0f13-ed21-4b60-b0ad-207ca1a8fceb` |
+
+## Follow-up: Browser "go home" regression (20:45–21:04 EDT)
+
+Starting revision: `dde5ca69603` on the same protected branch and local stack.
+These changes have not been deployed to VPS or Pixel. Tests below were typed
+in the user's existing preview with voice off. No saved notes or calendar
+events were created, edited, or deleted in this follow-up.
+
+### Root causes addressed
+
+- Original trace `step-1788569091476-fshhs5` selected BROWSER with an invented
+  `https://go.home` URL. Its later reply-synthesis output was raw VIEWS tool
+  markup, not a user reply. A core fallback substituted the literal
+  `The requested action completed.` and finished without verifying the intent.
+  That literal originated in `f30c39fc34f` (August 19). It is now removed.
+- Single declared intents now receive the existing real evaluator, not just
+  compound intents. Invalid required-reply output goes through evaluation and
+  authorized replanning, never fabricated completion or execution of an
+  unsolicited synthesis tool call. A synthesis-only caller without an action
+  catalog receives `POST_TOOL_REPLY_INCOMPLETE` if evaluation cannot finish.
+- Removed the second, literal UI-label check: it rejected a valid model reply
+  saying "main chat" because the navigation receipt label was "Home". Existing
+  reply-safety checks and the evaluator remain. Already-delivered verified
+  action callbacks are not rewritten into duplicate replies.
+- VIEWS and BROWSER contracts explicitly distinguish app Home (`chat`) from
+  website navigation. No regex intent router or canned navigation reply added.
+- The OpenAI-compatible Cerebras adapter dropped `responseSchema` unless the
+  caller also specified `responseFormat`. The existing JSON-mode lane now
+  honors schema-only calls; core retains schema validation. The real HTTP
+  wire-format test verifies `response_format: {type: "json_object"}`.
+- Live Notes recency QA exposed a separate data omission: list results discarded
+  stored IDs and timestamps. Results now retain the existing service's full
+  note records. Tool descriptions distinguish topic filters from recency;
+  no new storage, sorting heuristic, or alternate notes service was added.
+
+### Fresh visible evidence
+
+| Scenario | Result | Trace / foreground time |
+| --- | --- | --- |
+| Home before duplicate-label fix | Correct destination but unnecessary reply rewrites | `step-1788569529578-43jx6b`; 13.30 s |
+| Home after duplicate-label fix | Visible scenery/home, preserved chat and focused composer | `step-1788569693673-ilr1go`; 5.80 s |
+| Notes before timestamp fix | Opened Notes, but could not establish most-recent note | `step-1788569860522-o78v06`; 8.18 s; lookup FAIL |
+| Notes after timestamp fix | NOTES/list without a fake recency filter; model selected `Live refresh verified.` from the real updatedAt value, also checked against state API | `step-1788570058308-p35jop`; 5.98 s |
+| Calendar open and lookup | Visible Calendar; verified Qwen model QA event September 5 at noon EDT | `step-1788570074303-2m6hfm`; 23.01 s; speed FAIL |
+| Browser open and read | Visible example.com destination; BROWSER navigate then snapshot; generated answer `Example Domain` | `step-1788570159188-7a8mnd`; 8.90 s excluding queue wait |
+| Exact `go home` from Browser, final build | VIEWS/show/chat; real evaluator FINISH; visible forest Home and intact chat/input focus | `step-1788570196816-bs44jj`; 6.44 s |
+
+The final Notes, Calendar, Browser, and Home evaluator outputs were JSON,
+not leaked tool markup. These are samples, not an exhaustive correctness claim.
+
+### Latency finding that remains open
+
+Calendar's text arrived after 23.01 s, but its trajectory did not complete until
+84.77 s. The following Browser request visibly waited before its own trajectory
+started. Calendar's foreground included an 8.43 s action (7.96 s text-model
+span) and a 7.44 s planner evaluator. A separate post-turn evaluator produced
+fact/preference/relationship/identity/success results before terminalization.
+`generateChatResponse` awaits `drainRoomPostDeliveryTasks` after publishing the
+ready reply; the tracked RUN_ENDED barrier includes that post-turn evaluator.
+This establishes a completion/queue-delay path, not the provider-side reason
+for the individual slow model calls. Do not treat foreground timing as complete
+user-perceived latency. Do not disable room-state ordering to hide this delay.
+
+### Verification for this follow-up
+
+- Core planner, evaluator, reply recovery, failure suppression, candidate
+  surface, and user-facing-text group: **457 tests passed**.
+- OpenAI provider: **438 tests passed** in 31 files, including the real
+  loopback HTTP wire-format assertion; package build and typecheck passed.
+- App-control view switching/ownership: **211 passed**; current-view provider:
+  **11 passed**. Browser action/provider: **30 passed**.
+- Notes: **95 tests passed**, including timestamp/identity retention and
+  real temporary-store CRUD. Two UI suites failed to collect because existing
+  UI imports could not resolve `@elizaos/core/errors`; full Notes suite is HOLD.
+- Core, OpenAI, App-control, Browser, and Notes typechecks passed. Changed-file
+  Biome and whitespace checks passed.
+- Root `bun run verify` passed guide parity and Biome-version checks, then
+  failed the existing missing-i18n-key gate (including 13 missing English keys).
+  Full repository verification is not green.
+
+**Still HOLD:** end-to-end latency and post-turn queue delay; physical voice,
+silence/end-of-turn/audio playback; VPS; Pixel; repository-wide elimination of
+legacy hardcoded fallbacks. The existing local preview is left at `/chat` for
+user testing. No claim of universal/perfect behavior is warranted.

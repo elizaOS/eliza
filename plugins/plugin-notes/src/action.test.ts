@@ -111,7 +111,7 @@ describe("NOTES operation parsing", () => {
 
     expect(result.success).toBe(true);
     expect(result.text).toBe("You have 1 note.");
-    expect(result.data?.notes).toEqual([
+    expect(result.data?.notes).toMatchObject([
       { title: "wifi is on the fridge", body: "", color: "yellow" },
     ]);
   });
@@ -186,6 +186,36 @@ describe("NOTES operation parsing", () => {
     });
   });
 
+  it("preserves stored identity and timestamps so the model can compare recency", async () => {
+    const runtime = await harness();
+    const created = await run(runtime, {
+      action: "create",
+      content: "Recency check\noriginal body",
+    });
+    const updated = await run(runtime, {
+      action: "update",
+      content: "Recency check",
+      body: "Recency check\nupdated body",
+    });
+    const result = await run(runtime, { action: "list" });
+
+    expect(result.data?.notes).toEqual([updated.data?.note]);
+    expect(result.data?.notes).toMatchObject([
+      {
+        id: created.data?.noteId,
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+        title: "Recency check",
+        body: "updated body",
+      },
+    ]);
+    const filtered = await run(runtime, {
+      action: "list",
+      content: "Recency check",
+    });
+    expect(filtered.data?.notes).toEqual(result.data?.notes);
+  });
+
   it("keeps a topic-scoped read from exposing unrelated notes", async () => {
     const runtime = await harness();
     await run(runtime, {
@@ -199,7 +229,7 @@ describe("NOTES operation parsing", () => {
 
     const match = await run(runtime, { action: "list", content: "PLUMBER" });
     expect(match.text).toBe("I found 1 matching note.");
-    expect(match.data?.notes).toEqual([
+    expect(match.data?.notes).toMatchObject([
       {
         title: "the plumber comes thursday morning",
         body: "",
@@ -247,7 +277,7 @@ describe("NOTES operation parsing", () => {
       "Stable Local Notes QA — Cerebras local note persistence",
     );
     const listed = await run(runtime, { action: "list" });
-    expect(listed.data?.notes).toEqual([
+    expect(listed.data?.notes).toMatchObject([
       {
         title: "Stable Local Notes QA",
         body: "Cerebras local note persistence",
@@ -279,7 +309,7 @@ describe("NOTES operation parsing", () => {
       action: "list",
       content: "Demo checklist",
     });
-    expect(listed.data?.notes).toEqual([
+    expect(listed.data?.notes).toMatchObject([
       { title: "Demo checklist", body: "charger and water", color: "yellow" },
     ]);
   });
@@ -295,7 +325,7 @@ describe("NOTES operation parsing", () => {
 
     const listed = await run(runtime, { action: "list" });
     expect(listed.success).toBe(true);
-    expect(listed.data?.notes).toEqual([
+    expect(listed.data?.notes).toMatchObject([
       { title: "bins go out tuesday", body: "", color: "yellow" },
     ]);
 
@@ -367,7 +397,7 @@ describe("identical-duplicate notes", () => {
     expect(result.text).toContain("removed 4 identical copies");
 
     const after = await run(runtime, { action: "list" });
-    expect(after.data?.notes).toEqual([
+    expect(after.data?.notes).toMatchObject([
       { title: "spare key under the mat", body: "", color: "yellow" },
     ]);
   });
@@ -396,7 +426,7 @@ describe("identical-duplicate notes", () => {
     expect(result.data).toMatchObject({ consolidatedCount: 3 });
     const after = await run(runtime, { action: "list" });
     expect(after.data).toMatchObject({ count: 1, total: 1 });
-    expect(after.data?.notes).toEqual([
+    expect(after.data?.notes).toMatchObject([
       { title: "i already bought milk", body: "", color: "yellow" },
     ]);
   });

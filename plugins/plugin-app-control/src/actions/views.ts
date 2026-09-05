@@ -2440,6 +2440,7 @@ function asViewInteractionDataValue(
 
 const VIEWS_ROUTING_HINT = [
 	"UI view/window/panel/app navigation and layout -> VIEWS.",
+	"Eliza's home screen is the chat view: return home with action=show view=chat. The views-manager is the app list, not home. App navigation never requires turning the user's words into a website URL.",
 	"The UI Context capability list is informational: never invoke a capability merely because the user asks which view is open or what can be done there; answer that meta-question directly from UI Context.",
 	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
 	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and explicit capabilities that the selected view declares when no dedicated domain action owns the data.",
@@ -2617,7 +2618,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"torch",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke explicit capabilities that a view declares when no dedicated domain action owns the data, including native device controls. Notes records belong to NOTES and calendar events belong to CALENDAR; VIEWS opens those surfaces. action=interact invokes a capability without opening its view. An explicit open-and-edit request requires show/open navigation as well as the data operation.",
+			"Manage and navigate Eliza UI views. Return to the home/main chat screen with action=show view=chat. List available views, report the current view, open or close a view, search views, show the view manager (app list, not home), arrange layouts, and invoke explicit capabilities that a view declares when no dedicated domain action owns the data, including native device controls. Notes records belong to NOTES and calendar events belong to CALENDAR; VIEWS opens those surfaces. action=interact invokes a capability without opening its view. An explicit open-and-edit request requires show/open navigation as well as the data operation.",
 		descriptionCompressed:
 			"show/open navigates UI; interact invokes capabilities without navigation; Notes data uses NOTES, Calendar data uses CALENDAR; open-and-edit requires both operations",
 		routingHint: VIEWS_ROUTING_HINT,
@@ -2651,7 +2652,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "view",
 				description:
-					"View name, label, or id (show / open / close / edit / delete).",
+					"View name, label, or id (show / open / close / edit / delete). The home/main chat screen is chat; views-manager is the app list.",
 				required: false,
 				schema: { type: "string" },
 			},

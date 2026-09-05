@@ -364,11 +364,11 @@ async function runPlannerLoopIterations(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
 	const plannerContext = normalizePlannerContext(params.context);
-	// A single successful call cannot establish that every model-identified
-	// outcome was fulfilled. Keep the evaluator for compound turns even when
-	// the first tool call incorrectly declares final scope.
+	// Tool success proves execution, not fulfillment of the user's intent.
+	// Evaluate even a single declared intent: a final-scope call can still
+	// target the wrong resource or surface.
 	const requiresIntentEvaluation =
-		declaredIntentsFromContext(plannerContext).length > 1;
+		declaredIntentsFromContext(plannerContext).length > 0;
 	// Diagnostic projection for every context/event copy of tool-call
 	// arguments: runtime-known secrets composed with the shared tool-shape
 	// patterns. The raw calls stay on `trajectory.plannedQueue` for execution.
@@ -810,22 +810,20 @@ async function runPlannerLoopIterations(
 			lastPlannerExplicitCompleted = plannerOutput.completed;
 			if (synthesizingRequiredModelReply) {
 				pendingRequiredModelReply = false;
-				if (plannerOutput.toolCalls.length > 0) {
-					// Fail closed (#22609): the required-reply synthesis is a
-					// tool-free round. When a non-compliant provider returns BOTH
-					// prose and an unsolicited tool call, the response is invalid AS
-					// A WHOLE — its prose must NOT be accepted and the invented tool
-					// must NOT run. Route the already-completed sole action (it ran
-					// exactly once before this round was armed) through the normal
-					// evaluator/fallback path, exactly as if the model-reply request
-					// had never been made. This prevents an unsolicited tool call
-					// from smuggling its co-emitted prose past evaluator review.
+				const requiredModelReply = userSafeRescueReply(
+					userSafeCapturedAnswerCandidate(plannerOutput.messageToUser),
+					trajectory,
+				);
+				if (plannerOutput.toolCalls.length > 0 || !requiredModelReply) {
+					// Tool syntax can arrive as plain text with no parsed toolCalls.
+					// Neither shape is a closing reply. Reject the whole response and
+					// let the evaluator inspect the settled result; never invent success.
 					params.runtime.logger?.warn?.(
 						{
 							iteration,
 							inventedToolCalls: plannerOutput.toolCalls.length,
 						},
-						"[planner-loop] required-reply synthesis returned an unsolicited tool call; rejecting the whole response and routing the completed action through the evaluator",
+						"[planner-loop] required-reply synthesis returned no valid closing reply; routing the settled action through the evaluator",
 					);
 					let evaluator: EvaluatorOutput;
 					try {
@@ -906,37 +904,20 @@ async function runPlannerLoopIterations(
 							),
 						};
 					}
-					// The evaluator declined to FINISH, but this round has no tool
-					// catalog and the invented tool must never execute. Relay the
-					// completed action's own truthful result instead of replaying
-					// work or fabricating a save.
-					const relay = deterministicSuccessfulToolRelay(trajectory);
-					return {
-						status: "finished",
-						trajectory,
-						evaluator,
-						finalMessage: userSafeFinalMessage(
-							terminalMessageWithFailureAuthority(
-								trajectory,
-								relay ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE,
-							),
-							trajectory,
-						),
-					};
+					if (postToolReplySeed) {
+						throw new ElizaError(
+							"The settled action did not yield a verified final reply",
+							{ code: "POST_TOOL_REPLY_INCOMPLETE", context: { iteration } },
+						);
+					}
+					// Resume normal planning with the authorized catalog and existing
+					// result history. The rejected synthesis call is never executed.
+					lastPlannerExplicitMessageToUser = undefined;
+					lastPlannerExplicitCompleted = false;
+					continue;
 				}
-				const requiredModelReply = userSafeCapturedAnswerCandidate(
-					plannerOutput.messageToUser,
-				);
 				const finalMessage = userSafeFinalMessage(
-					terminalMessageWithFailureAuthority(
-						trajectory,
-						preferredFinalMessageFromToolOrModel(
-							trajectory,
-							requiredModelReply,
-							deterministicSuccessfulToolRelay(trajectory) ??
-								REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE,
-						),
-					),
+					terminalMessageWithFailureAuthority(trajectory, requiredModelReply),
 					trajectory,
 				);
 				trajectory.steps.push({
@@ -5671,66 +5652,10 @@ function hasSuccessfulNonTerminalToolStep(
 }
 
 /**
- * Return the destination label from the newest accepted UI-navigation receipt.
- * Navigation tools keep their receipt internal, so the model must carry this
- * human label into its own final prose instead of ending on a generic progress
- * acknowledgement such as "On it.".
- */
-function acceptedViewNavigationLabel(
-	trajectory: PlannerTrajectory,
-): string | undefined {
-	for (const step of [
-		...trajectory.archivedSteps,
-		...trajectory.steps,
-	].reverse()) {
-		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
-		if (step.result?.success !== true) continue;
-		const raw = getNonEmptyString(step.result.text);
-		if (!raw?.startsWith("{")) continue;
-		try {
-			const receipt = JSON.parse(raw) as {
-				effect?: unknown;
-				status?: unknown;
-				label?: unknown;
-			};
-			if (
-				receipt.effect === "view_navigation" &&
-				receipt.status === "accepted" &&
-				typeof receipt.label === "string" &&
-				receipt.label.trim().length > 0
-			) {
-				return receipt.label.trim();
-			}
-		} catch {
-			// Non-JSON diagnostic text is not a structured navigation receipt.
-		}
-	}
-	return undefined;
-}
-
-function replyNamesAcceptedViewDestination(
-	message: string | undefined,
-	trajectory: PlannerTrajectory,
-): boolean {
-	const label = acceptedViewNavigationLabel(trajectory);
-	if (!label) return true;
-	const normalize = (value: string): string =>
-		value
-			.toLocaleLowerCase()
-			.replace(/[^\p{L}\p{N}]+/gu, " ")
-			.trim();
-	const reply = normalize(message ?? "");
-	const destination = normalize(label);
-	return (
-		reply.length > 0 && destination.length > 0 && reply.includes(destination)
-	);
-}
-
-/**
  * Tool-turn reply guarantee (post-pass of {@link runPlannerLoop}). A finished
  * turn that executed at least one successful non-terminal tool but carries no
- * usable final message — undefined, blank, the handled-step placeholder, or a
- * UI-navigation reply that omits the accepted destination — gets ONE forced
+ * usable final message — undefined, blank, the handled-step placeholder, or
+ * only a progress acknowledgement — gets ONE forced
  * no-tools synthesis call so the user receives a reply grounded in the tool
  * results instead of silence or a generic progress acknowledgement. Deliberate silence
  * (`endedWithDeliberateSilence`) and coding mode (which owns its own
@@ -5746,11 +5671,22 @@ async function ensureToolTurnFinalMessage(
 	if (result.endedWithDeliberateSilence) return result;
 	if (params.codingMode === true) return result;
 	const message = result.finalMessage;
+	// A verified action-owned response may already have been delivered by its
+	// callback. Do not generate a duplicate merely because it sounds like an ack.
+	if (
+		message &&
+		message === singleVerifiedUserFacingToolResultText(result.trajectory)
+	) {
+		return result;
+	}
 	const unusable =
 		message === undefined ||
 		message.trim() === "" ||
 		message === HANDLED_STEP_FALLBACK_MESSAGE ||
-		!replyNamesAcceptedViewDestination(message, result.trajectory);
+		!userSafeCapturedAnswerCandidate(message);
+	// The evaluator verifies intent fulfillment against tool results. Requiring
+	// literal UI-label wording here would reject valid aliases and translations
+	// and pay for another model call without adding effect evidence.
 	if (!unusable) return result;
 	if (!hasSuccessfulNonTerminalToolStep(result.trajectory)) return result;
 	const iteration = result.trajectory.steps.length + 1;
@@ -5774,7 +5710,7 @@ async function ensureToolTurnFinalMessage(
 			finalMessage !== undefined &&
 			finalMessage.trim() !== "" &&
 			finalMessage !== HANDLED_STEP_FALLBACK_MESSAGE &&
-			replyNamesAcceptedViewDestination(finalMessage, synthesized.trajectory);
+			userSafeCapturedAnswerCandidate(finalMessage) !== undefined;
 		params.runtime.logger?.warn?.(
 			{ iteration, synthesizedUsable },
 			"[planner-loop] tool work finished without a usable reply; forced a no-tools synthesis pass",
@@ -5786,10 +5722,7 @@ async function ensureToolTurnFinalMessage(
 			params,
 			result.trajectory,
 		);
-		if (
-			rescued &&
-			replyNamesAcceptedViewDestination(rescued, result.trajectory)
-		) {
+		if (rescued && userSafeCapturedAnswerCandidate(rescued)) {
 			result.trajectory.steps.push({
 				iteration: iteration + 1,
 				thought: "rescue synthesis from successful tool results",
@@ -6908,8 +6841,6 @@ export const GATED_EVALUATOR_THOUGHT =
 
 export const MODEL_REPLY_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: successful final-scope action received one safe model-authored reply; evaluator LLM call skipped.";
-
-const REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE = "The requested action completed.";
 
 export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";

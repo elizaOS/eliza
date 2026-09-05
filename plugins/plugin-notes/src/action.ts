@@ -151,7 +151,7 @@ export const notesAction: Action = {
   descriptionCompressed:
     "notes: create, list/search, update full content (preserve unedited label/body), delete; opening the Notes view separately needs VIEWS",
   routingHint:
-    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES action=create. ANY read over the user's notes -> NOTES action=list. For a specific topic ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X'), pass content=X so unrelated personal notes are not exposed; omit content only when the owner asks for every note. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES action=delete with content=the identifying text. CHANGING one ('change the note about X to Y', 'update my note about X') -> NOTES action=update with content=the existing text and body=the replacement. Deleting and updating are NOT reads: never answer a removal or change request with action=list. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; when that block reports notes it did not show, call action=list before answering. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
+    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES action=create. ANY read over the user's notes -> NOTES action=list. For a specific topic ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X'), pass content=X so unrelated personal notes are not exposed; omit content when the owner asks for all notes, counts, or a recency comparison without a topic. Recency is determined from returned createdAt/updatedAt fields, never by searching for words such as 'latest' or 'most recently updated'. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES action=delete with content=the identifying text. CHANGING one ('change the note about X to Y', 'update my note about X') -> NOTES action=update with content=the existing text and body=the replacement. Deleting and updating are NOT reads: never answer a removal or change request with action=list. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; when that block reports notes it did not show, call action=list before answering. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
@@ -203,11 +203,7 @@ export const notesAction: Action = {
         total: notes.length,
         filterApplied: topic !== undefined,
         ...(topic ? { topic } : {}),
-        notes: matches.map(({ title, body, color }) => ({
-          title,
-          body,
-          color,
-        })),
+        notes: matches,
       });
     }
 
@@ -290,7 +286,7 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "For create, the complete new note: title on the first line and body on subsequent lines. Prefer this single field and omit body. For update/delete, this identifies the EXISTING note, not its replacement. On list, pass the requested topic to return only matching notes; omit it when listing or counting every note.",
+        "For create, the complete new note: title on the first line and body on subsequent lines. Prefer this single field and omit body. For update/delete, this identifies the EXISTING note, not its replacement. On list, pass only a requested topic to filter note text. Omit it for all notes, counts, or recency questions without a topic; use the returned createdAt/updatedAt timestamps to compare recency, not a text filter such as 'most recently updated'.",
       required: false,
       // Strict providers may serialize an omitted optional string as "". The
       // empty string is never valid note content (minLength is 1), so normalize
