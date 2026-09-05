@@ -13,6 +13,8 @@ import { handleActionPlanner, handleTextSmall } from "../models/text";
 interface WireRequest {
   model: string;
   stream?: boolean;
+  temperature?: number;
+  top_p?: number;
   messages: Array<{ role: string; content: string }>;
   tools?: unknown[];
   response_format?: {
@@ -118,6 +120,8 @@ async function invoke(options: {
   tools?: Array<{ name: string; description: string; parameters: object; strict: boolean }>;
   responseFormat?: { type: "json_object" };
   actionPlanner?: boolean;
+  temperature?: number;
+  topP?: number;
 }) {
   const chunks: string[] = [];
   const handler = options.actionPlanner ? handleActionPlanner : handleTextSmall;
@@ -133,6 +137,8 @@ async function invoke(options: {
     ...(options.tools ? { tools: options.tools } : {}),
     ...(options.responseFormat ? { responseFormat: options.responseFormat } : {}),
     stream: options.stream ?? false,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+    ...(options.topP !== undefined ? { topP: options.topP } : {}),
     onStreamChunk: (chunk: string) => chunks.push(chunk),
   } as never);
   if (!result || typeof result !== "object" || !("text" in result)) {
@@ -150,6 +156,41 @@ async function invoke(options: {
 }
 
 describe("Qwen3.8 response-schema wire contract", () => {
+  it.each([false, true])(
+    "preserves explicit sampling independently, including zero and omission (stream=%s)",
+    async (stream) => {
+      const samples: Array<{ temperature?: number; topP?: number }> = [
+        {},
+        { temperature: 0 },
+        { topP: 0 },
+        { temperature: 0.4, topP: 0.7 },
+        {},
+      ];
+      for (const sample of samples) {
+        expect(await invoke({ stream, ...sample })).toEqual(verdict);
+        const sent = requests.at(-1);
+        if (!sent) throw new Error("Expected outbound SDK request");
+        if (sample.temperature === undefined) expect(sent).not.toHaveProperty("temperature");
+        else expect(sent.temperature).toBe(sample.temperature);
+        if (sample.topP === undefined) expect(sent).not.toHaveProperty("top_p");
+        else expect(sent.top_p).toBe(sample.topP);
+      }
+      expect(requests).toHaveLength(samples.length);
+    }
+  );
+
+  it.each([false, true])(
+    "retains SDK omission for unsupported reasoning-model sampling (stream=%s)",
+    async (stream) => {
+      vi.stubEnv("ELIZA_PROVIDER", "openai");
+      expect(await invoke({ stream, model: "o3", temperature: 0, topP: 0.7 })).toEqual(verdict);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].model).toBe("o3");
+      expect(requests[0]).not.toHaveProperty("temperature");
+      expect(requests[0]).not.toHaveProperty("top_p");
+    }
+  );
+
   it.each([false, true])(
     "sends the actual evaluator schema strictly without requiring optional outputs (stream=%s)",
     async (stream) => {

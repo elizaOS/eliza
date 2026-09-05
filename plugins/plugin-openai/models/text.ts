@@ -1964,7 +1964,7 @@ function createLlmCallDetails(
     responseSchema: originalParams.responseSchema,
     providerOptions:
       providerOptions ?? nativeParams?.providerOptions ?? originalParams.providerOptions,
-    temperature: params.temperature ?? 0,
+    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
     maxTokens:
       typeof nativeParams?.maxOutputTokens === "number"
         ? nativeParams.maxOutputTokens
@@ -2686,6 +2686,8 @@ async function generateTextByModelType(
     ...(params.omitMaxTokens || params.maxTokens === undefined
       ? {}
       : { maxOutputTokens: params.maxTokens }),
+    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+    ...(params.topP !== undefined ? { topP: params.topP } : {}),
     experimental_telemetry: telemetryConfig,
     ...(sanitizedTools ? { tools: sanitizedTools } : {}),
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
