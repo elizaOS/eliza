@@ -79,6 +79,7 @@ src/
   db/
     index.ts                          re-exports schema.ts
     schema.ts                         drizzle pgSchema('app_inbox') + 3 tables
+    sql.ts                            Runtime DB lookup and shared raw-SQL helpers
   components/
     inbox/
       InboxView.tsx                   React inbox triage view
@@ -120,6 +121,9 @@ the operation truly needs lifecycle ownership; export public contracts from
 - **Complete planner choices.** Triage responses emit an actionable choice block for every returned entry. Do not cap the entry count in `appendInboxTriageChoiceMarkers`; connector-specific hard limits belong in the connector adapter, which must preserve every option through native controls or a truthful free-text fallback.
 - **Schema name is `app_inbox`** (not `inbox`) to avoid collisions with any host-app `inbox` table the runtime might also surface.
 - **Snooze is additive.** `snoozed_until` is append-only schema growth on `life_inbox_triage_entries`; migration repairs old targets and maps old `app_lifeops` rows with `NULL AS snoozed_until`.
+- **`src/db/sql.ts` delegates common SQL primitives to `@elizaos/shared/db/raw-sql`.**
+  Runtime database lookup stays local. Invalid adapter results fail explicitly;
+  no PA dependency is introduced.
 - **Two build steps.** The JS/types build (tsup + tsc) and the Vite views build are separate. The views bundle (`dist/views/bundle.js`) is what the view registration's `bundlePath` points to. Both must be run for a complete build.
 - **Peer deps.** React 19 and react-dom 19 are peer dependencies. The host app must provide them.
 - See the root `CLAUDE.md` for repo-wide architecture rules, logger requirements,

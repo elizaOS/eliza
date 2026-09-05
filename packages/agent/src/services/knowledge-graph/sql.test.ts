@@ -142,7 +142,7 @@ describe("parseJsonValue", () => {
 
   it("throws on invalid JSON strings and non-object primitives", () => {
     expect(() => parseJsonValue("not json", null)).toThrow(
-      "Invalid JSON value",
+      "Invalid SQL JSON value",
     );
     expect(() => parseJsonValue(42, null)).toThrow(
       "Expected JSON string or object, received number",
@@ -170,14 +170,14 @@ describe("parseJsonRecord", () => {
   });
 
   it("throws when the parsed value is not an object", () => {
-    expect(() => parseJsonRecord("[1]")).toThrow("Expected JSON object");
-    expect(() => parseJsonRecord([])).toThrow("Expected JSON object");
-    expect(() => parseJsonRecord("null")).toThrow("Expected JSON object");
-    expect(() => parseJsonRecord('"x"')).toThrow("Expected JSON object");
+    expect(() => parseJsonRecord("[1]")).toThrow("Expected SQL JSON object");
+    expect(() => parseJsonRecord([])).toThrow("Expected SQL JSON object");
+    expect(() => parseJsonRecord("null")).toThrow("Expected SQL JSON object");
+    expect(() => parseJsonRecord('"x"')).toThrow("Expected SQL JSON object");
   });
 
   it("throws on invalid JSON strings and non-object primitives", () => {
-    expect(() => parseJsonRecord("not json")).toThrow("Invalid JSON value");
+    expect(() => parseJsonRecord("not json")).toThrow("Invalid SQL JSON value");
     expect(() => parseJsonRecord(42)).toThrow(
       "Expected JSON string or object, received number",
     );
@@ -204,10 +204,10 @@ describe("parseJsonArray", () => {
   });
 
   it("throws when the parsed value is not an array", () => {
-    expect(() => parseJsonArray('{"a":1}')).toThrow("Expected JSON array");
-    expect(() => parseJsonArray({ a: 1 })).toThrow("Expected JSON array");
-    expect(() => parseJsonArray("null")).toThrow("Expected JSON array");
-    expect(() => parseJsonArray('"x"')).toThrow("Expected JSON array");
+    expect(() => parseJsonArray('{"a":1}')).toThrow("Expected SQL JSON array");
+    expect(() => parseJsonArray({ a: 1 })).toThrow("Expected SQL JSON array");
+    expect(() => parseJsonArray("null")).toThrow("Expected SQL JSON array");
+    expect(() => parseJsonArray('"x"')).toThrow("Expected SQL JSON array");
   });
 });
 
@@ -233,12 +233,12 @@ describe("sql literals", () => {
     expect(sqlInteger(0)).toBe("0");
     expect(sqlInteger(null)).toBe("NULL");
     expect(sqlInteger(undefined)).toBe("NULL");
-    expect(() => sqlInteger(Number.NaN)).toThrow("invalid numeric SQL literal");
+    expect(() => sqlInteger(Number.NaN)).toThrow("Invalid numeric SQL literal");
     expect(() => sqlInteger(Number.POSITIVE_INFINITY)).toThrow(
-      "invalid numeric SQL literal",
+      "Invalid numeric SQL literal",
     );
     expect(() => sqlInteger(Number.NEGATIVE_INFINITY)).toThrow(
-      "invalid numeric SQL literal",
+      "Invalid numeric SQL literal",
     );
   });
 
@@ -248,9 +248,9 @@ describe("sql literals", () => {
     expect(sqlNumber(0)).toBe("0");
     expect(sqlNumber(null)).toBe("NULL");
     expect(sqlNumber(undefined)).toBe("NULL");
-    expect(() => sqlNumber(Number.NaN)).toThrow("invalid numeric SQL literal");
+    expect(() => sqlNumber(Number.NaN)).toThrow("Invalid numeric SQL literal");
     expect(() => sqlNumber(Number.POSITIVE_INFINITY)).toThrow(
-      "invalid numeric SQL literal",
+      "Invalid numeric SQL literal",
     );
   });
 
@@ -290,7 +290,7 @@ describe("executeRawSql", () => {
     ]);
   });
 
-  it("drops non-object entries from an array result", async () => {
+  it("rejects non-object entries from an array result", async () => {
     const runtime = runtimeWithExecute(async () => [
       { id: "keep" },
       null,
@@ -298,14 +298,14 @@ describe("executeRawSql", () => {
       "nope",
       1,
     ]);
-    await expect(executeRawSql(runtime, "SELECT 1")).resolves.toEqual([
-      { id: "keep" },
-    ]);
+    await expect(executeRawSql(runtime, "SELECT 1")).rejects.toMatchObject({
+      code: "SQL_RESULT_INVALID",
+    });
   });
 
-  it("extracts object rows from a { rows } envelope", async () => {
+  it("extracts object rows from a valid { rows } envelope", async () => {
     const runtime = runtimeWithExecute(async () => ({
-      rows: [{ id: "a" }, null, { id: "b" }, "skip"],
+      rows: [{ id: "a" }, { id: "b" }],
     }));
     await expect(executeRawSql(runtime, "SELECT 1")).resolves.toEqual([
       { id: "a" },
@@ -313,18 +313,26 @@ describe("executeRawSql", () => {
     ]);
   });
 
-  it("returns an empty list when { rows } is missing or not an array", async () => {
+  it("rejects when { rows } is missing or not an array", async () => {
     const missing = runtimeWithExecute(async () => ({ count: 0 }));
     const notArray = runtimeWithExecute(async () => ({ rows: "nope" }));
-    await expect(executeRawSql(missing, "SELECT 1")).resolves.toEqual([]);
-    await expect(executeRawSql(notArray, "SELECT 1")).resolves.toEqual([]);
+    await expect(executeRawSql(missing, "SELECT 1")).rejects.toMatchObject({
+      code: "SQL_RESULT_INVALID",
+    });
+    await expect(executeRawSql(notArray, "SELECT 1")).rejects.toMatchObject({
+      code: "SQL_RESULT_INVALID",
+    });
   });
 
-  it("returns an empty list for a non-object, non-array execute result", async () => {
+  it("rejects a non-object, non-array execute result", async () => {
     const none = runtimeWithExecute(async () => null);
     const scalar = runtimeWithExecute(async () => 42);
-    await expect(executeRawSql(none, "SELECT 1")).resolves.toEqual([]);
-    await expect(executeRawSql(scalar, "SELECT 1")).resolves.toEqual([]);
+    await expect(executeRawSql(none, "SELECT 1")).rejects.toMatchObject({
+      code: "SQL_RESULT_INVALID",
+    });
+    await expect(executeRawSql(scalar, "SELECT 1")).rejects.toMatchObject({
+      code: "SQL_RESULT_INVALID",
+    });
   });
 
   it("throws when the runtime database adapter is unavailable", async () => {

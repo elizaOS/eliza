@@ -23,6 +23,7 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { executeSql, type RuntimeDb } from "@elizaos/shared/db/raw-sql";
 
 export const INBOX_MIGRATION_LOG_PREFIX = "[Inbox]";
 export const INBOX_MIGRATION_SERVICE_TYPE = "inbox_migration";
@@ -184,10 +185,6 @@ export async function migrateInboxTables(
   return results;
 }
 
-type RuntimeDb = {
-  execute: (query: unknown) => Promise<unknown>;
-};
-
 function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
   const db = runtime.db as RuntimeDb | undefined;
   if (!db || typeof db.execute !== "function") {
@@ -196,25 +193,6 @@ function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
     );
   }
   return db;
-}
-
-function extractRows(result: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(result)) {
-    return result.filter(
-      (row): row is Record<string, unknown> =>
-        typeof row === "object" && row !== null && !Array.isArray(row),
-    );
-  }
-  if (result && typeof result === "object" && "rows" in result) {
-    const rows = (result as { rows: unknown }).rows;
-    if (Array.isArray(rows)) {
-      return rows.filter(
-        (row): row is Record<string, unknown> =>
-          typeof row === "object" && row !== null && !Array.isArray(row),
-      );
-    }
-  }
-  return [];
 }
 
 /**
@@ -235,9 +213,7 @@ export class InboxMigrationService extends Service {
 
   private async run(): Promise<void> {
     const db = getRuntimeDb(this.runtime);
-    const { sql } = await import("drizzle-orm");
-    const exec: SqlExecutor = async (statement) =>
-      extractRows(await db.execute(sql.raw(statement)));
+    const exec: SqlExecutor = (statement) => executeSql(db, statement);
 
     const results = await migrateInboxTables(exec);
     const copied = results.filter((r) => r.outcome === "copied");

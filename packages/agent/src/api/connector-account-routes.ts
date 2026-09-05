@@ -31,6 +31,7 @@ import {
   parseCanonicalInteger,
   type ReadJsonBodyOptions,
 } from "@elizaos/shared";
+import { extractRows, sqlQuote } from "@elizaos/shared/db/raw-sql";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
 import {
@@ -645,29 +646,6 @@ interface ConnectorAccountAuditReader {
   getDatabase?: () => {
     execute?: (query: unknown) => Promise<unknown>;
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function extractRows(value: unknown): Record<string, unknown>[] {
-  if (Array.isArray(value)) {
-    return value
-      .map(asRecord)
-      .filter((row): row is Record<string, unknown> => row !== null);
-  }
-  const record = asRecord(value);
-  if (!record || !Array.isArray(record.rows)) return [];
-  return record.rows
-    .map(asRecord)
-    .filter((row): row is Record<string, unknown> => row !== null);
-}
-
-function sqlQuote(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
 }
 
 export function parseAuditLimit(value: string | undefined): number | "invalid" {

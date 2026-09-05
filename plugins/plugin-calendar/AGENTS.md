@@ -32,6 +32,9 @@ behind its OWNER/ADMIN role gate.
 - **Contract types live in `@elizaos/shared/contracts/calendar`** so `@elizaos/ui`
   (which types its `client` against them) and the plugins can both depend on them
   without a cycle.
+- **`src/internal/sql.ts` delegates common SQL primitives to `@elizaos/shared/db/raw-sql`.**
+  Runtime database lookup and calendar transaction requirements stay local.
+  Invalid adapter results fail explicitly; no PA dependency is introduced.
 - **Logger only, never `console`.** Prefix with `[ClassName]`.
 
 ## Layout
