@@ -365,6 +365,7 @@ import {
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
 import { toWellFormedUnicode } from "../utils/well-formed";
+import { validateActionKeywords } from "../validation/keywords";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
@@ -1437,6 +1438,33 @@ async function composeResponseState(
 }
 
 /** Replace provider text only with explicitly declared lossless retrieval forms. */
+/**
+ * Whether any provider that offers a lossless `overflowText` manifest is
+ * relevant to the current message by its own declared `relevanceKeywords`.
+ * Only the current message is consulted: the recent window would keep the
+ * eager form on nearly every turn, which is the cost this gate exists to avoid.
+ * A provider with a manifest but no declared keywords counts as relevant so its
+ * eager form is never withheld on a guess.
+ */
+function stage1EagerHistoryRelevant(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State,
+): boolean {
+	const providerResults = state.data.providers;
+	if (!providerResults) return true;
+	for (const [name, result] of Object.entries(providerResults)) {
+		if (typeof result?.overflowText !== "string") continue;
+		const provider = runtime.providers?.find(
+			(candidate) => candidate.name === name,
+		);
+		const keywords = provider?.relevanceKeywords;
+		if (!Array.isArray(keywords) || keywords.length === 0) return true;
+		if (validateActionKeywords(message, [], keywords)) return true;
+	}
+	return false;
+}
+
 function withProviderOverflowText(state: State): State | null {
 	const providerResults = state.data.providers;
 	const providerOrder = Array.isArray(state.data.providerOrder)
@@ -9056,6 +9084,19 @@ export async function runV5MessageRuntimeStage1(args: {
 	if (voiceDirectMessageChannel && overflowContext) {
 		context = overflowContext;
 		useProviderOverflow = true;
+	} else if (
+		overflowContext &&
+		!stage1EagerHistoryRelevant(args.runtime, args.message, args.state)
+	) {
+		// Text turns take the same manifest whenever the message itself carries
+		// no recall signal: a provider that declares `relevanceKeywords` names
+		// the requests its eager form exists to answer directly ("what did we
+		// discuss…", "remember when…"). Every other turn pays only the
+		// manifest (live 2026-09-05: the eager cross-room history was 22.7K of a
+		// 44K-token Stage-1 prompt on a calendar read), and the planner keeps
+		// its own eager/manifest decision below. Providers without keywords
+		// keep the eager form: their relevance cannot be judged here.
+		context = overflowContext;
 	}
 	const stage1PreprocessStartedAt = performance.now();
 
@@ -16300,7 +16341,11 @@ export class DefaultMessageService implements IMessageService {
 		// evaluator child step, and the run terminal follows in the same detached
 		// barrier so the parent cannot close while that child's telemetry is still
 		// being written. Child failure is reported at that barrier, which still
-		// releases the trajectory exactly once after the child settles.
+		// releases the trajectory exactly once after the child settles. The work
+		// runs on the deferred lane: its outputs (facts, relationships, task
+		// completion) are eventually consistent, so it must not hold the room
+		// lease and put another model call in front of the room's next turn
+		// (live: 1.4-7.5 s per follow-up message, tens of seconds under 429s).
 		runTerminalOwner.track(
 			"post_turn",
 			async () => {
