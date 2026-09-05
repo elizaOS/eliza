@@ -7,6 +7,10 @@
  * is complete and uncapped; synthetic conversation artifacts (system-authored
  * summaries, relays) are not conversation turns and are excluded everywhere.
  */
+import {
+	dedupeHygienicDialogueMessages,
+	isHygienicDialogueMessage,
+} from "../features/basic-capabilities/providers/recentMessages.ts";
 import type { IAgentRuntime, Memory } from "../types";
 import { isSyntheticConversationArtifactMemory } from "../utils/synthetic-conversation-artifact.ts";
 
@@ -26,8 +30,30 @@ export function getRoomTranscript(
 			unique: false,
 		})
 		.then((memories) =>
-			memories.filter(
-				(memory) => !isSyntheticConversationArtifactMemory(memory),
+			// The same hygiene + dedupe pass the RECENT_MESSAGES transcript applies:
+			// connector record-of-send rows duplicate every delivered reply (live
+			// Discord: two identical agent rows per reply, ~100 ms apart), and the
+			// merged post-turn prompt otherwise carries each of them.
+			dedupeHygienicDialogueMessages(
+				memories
+					.filter(
+						(memory) =>
+							!isSyntheticConversationArtifactMemory(memory) &&
+							isHygienicDialogueMessage(memory, runtime.agentId),
+					)
+					.sort((left, right) => {
+						const l = Number.isFinite(left.createdAt ?? 0)
+							? (left.createdAt ?? 0)
+							: 0;
+						const r = Number.isFinite(right.createdAt ?? 0)
+							? (right.createdAt ?? 0)
+							: 0;
+						return (
+							l - r ||
+							String(left.id ?? "").localeCompare(String(right.id ?? ""))
+						);
+					}),
+				runtime.agentId,
 			),
 		);
 	transcriptByMessage.set(message, loading);
