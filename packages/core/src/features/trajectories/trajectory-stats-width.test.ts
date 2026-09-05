@@ -1,6 +1,6 @@
 /**
  * Aggregate-width coverage for TrajectoriesService.getStats: the per-agent
- * token totals are sums over INTEGER columns, and Postgres returns sum(integer)
+ * step, call, and token totals are sums over INTEGER columns, and Postgres returns sum(integer)
  * as bigint. Narrowing that back to int raises "integer out of range" once an
  * agent's lifetime tokens pass 2^31-1, which turns GET /api/trajectories/stats
  * into a permanent 500. Real PGlite database, real service, real schema.
@@ -40,7 +40,7 @@ beforeAll(async () => {
           total_prompt_tokens, total_completion_tokens,
           total_cache_read_input_tokens, total_cache_creation_input_tokens
         ) VALUES (
-          'traj-${i}', '${AGENT_ID}', 1000, 2000, 1000, 1, 1,
+          'traj-${i}', '${AGENT_ID}', 1000, 2000, 1000, ${PER_ROW}, ${PER_ROW},
           ${PER_ROW}, ${PER_ROW}, ${PER_ROW}, ${PER_ROW}
         )
       `),
@@ -56,6 +56,8 @@ describe("TrajectoriesService.getStats aggregate width", () => {
 	it("reports lifetime token totals past 2^31-1 instead of throwing", async () => {
 		const stats = await service.getStats();
 		expect(stats.totalTrajectories).toBe(3);
+		expect(stats.totalSteps).toBe(3 * PER_ROW);
+		expect(stats.totalLlmCalls).toBe(3 * PER_ROW);
 		expect(stats.totalPromptTokens).toBe(3 * PER_ROW);
 		expect(stats.totalCompletionTokens).toBe(3 * PER_ROW);
 		expect(stats.totalCacheReadInputTokens).toBe(3 * PER_ROW);
