@@ -1676,6 +1676,19 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	getCaches<T>(keys: string[]): Promise<Map<string, T>>;
 	setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean>;
 	deleteCaches(keys: string[]): Promise<boolean>;
+	/**
+	 * Atomic conditional write for one cache key: replace the stored value with
+	 * `replacement` only if it currently deep-equals `expected`.
+	 * `expected === undefined` means insert only if absent. Resolves `false`
+	 * ONLY for a conflict; storage failures throw typed errors. Atomic at the
+	 * shared durable backing store (SQL conditional statement), so two
+	 * processes sharing the cache cannot lose updates between them.
+	 */
+	compareAndSetCache<T>(
+		key: string,
+		expected: unknown,
+		replacement: T,
+	): Promise<boolean>;
 
 	// Only task instance methods - definitions are in-memory
 	/**

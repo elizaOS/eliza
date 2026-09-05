@@ -5557,6 +5557,19 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.adapter.deleteCaches([key]);
 	}
 
+	/**
+	 * Runtime pass-through to the adapter's atomic compare-and-set. See
+	 * {@link IAgentRuntime.compareAndSetCache} for the semantics contract;
+	 * atomicity lives in the adapter (SQL conditional statement), never here.
+	 */
+	async compareAndSetCache<T>(
+		key: string,
+		expected: unknown,
+		replacement: T,
+	): Promise<boolean> {
+		return this.adapter.compareAndSetCache(key, expected, replacement);
+	}
+
 	// Batch task methods
 	async createTasks(tasks: Task[]): Promise<UUID[]> {
 		const ids = await this.adapter.createTasks(tasks);
