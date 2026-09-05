@@ -69,6 +69,7 @@ import {
 	isExpectedLocalEmbeddingUnavailability,
 	modelProviderFailureDetails,
 } from "../../utils/expected-local-embedding-unavailability";
+import { extractUserText } from "../../utils/message-text";
 
 function reportUnexpectedEmbeddingFailure(
 	runtime: IAgentRuntime,
@@ -92,7 +93,7 @@ function reportUnexpectedEmbeddingFailure(
 
 /** Normalize query text so trivially-different strings share one cache slot. */
 function normalizeQuery(text: string): string {
-	return text.trim().replace(/\s+/g, " ").toLowerCase();
+	return extractUserText(text).replace(/\s+/g, " ").toLowerCase();
 }
 
 interface TurnEmbedCache {
@@ -296,7 +297,7 @@ export async function embedRecallQuery(
 			// surface as an unhandled rejection instead of degraded recall.
 			pending = Promise.resolve(
 				runtime.useModel(ModelType.TEXT_EMBEDDING, {
-					text: queryText,
+					text: extractUserText(queryText),
 					...(signal ? { signal } : {}),
 				}) as Promise<number[]>,
 			);

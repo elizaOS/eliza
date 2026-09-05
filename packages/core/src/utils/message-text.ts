@@ -65,7 +65,7 @@ export function hasDocumentAugmentationEnvelope(text: unknown): boolean {
 
 /**
  * Produces a persist-safe copy of an inbound user `Memory` whose `content.text`
- * has been stripped of the document augmentation envelope. The wrapper is added
+ * has been stripped of document and language augmentation. These are added
  * transiently for the current turn's LLM prompt; the stored memory (and its
  * embedding) must hold the clean user text so the UI echo, message history, and
  * subsequent-turn context all see what the user actually typed.
@@ -80,8 +80,13 @@ export function stripAugmentationForPersistence<
 	const content = message?.content;
 	if (!content || typeof content !== "object") return message;
 	const rendered = (content as { text?: unknown }).text;
-	if (!hasDocumentAugmentationEnvelope(rendered)) return message;
-	const clean = extractUserText(rendered as string);
+	if (
+		typeof rendered !== "string" ||
+		(!hasDocumentAugmentationEnvelope(rendered) &&
+			!LANGUAGE_INSTRUCTION_SUFFIX.test(rendered))
+	)
+		return message;
+	const clean = extractUserText(rendered);
 	if (clean === rendered) return message;
 	return {
 		...message,
