@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openaiPlugin } from "../index";
 
 const runtime = {
@@ -21,9 +21,16 @@ describe("provider preconnect on message ingress", () => {
     vi.setSystemTime(1_000_000_000);
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
   it("warms the provider connection once per throttle window, not per message", async () => {
     const preconnect = vi.fn();
-    (globalThis.fetch as unknown as { preconnect?: unknown }).preconnect = preconnect;
+    const fetch = vi.fn();
+    // Bun's native fetch.preconnect is readonly; replace the fetch binding instead.
+    vi.stubGlobal("fetch", Object.assign(fetch, { preconnect }));
     await fireMessageReceived();
     await fireMessageReceived();
     expect(preconnect).toHaveBeenCalledTimes(1);
@@ -31,10 +38,13 @@ describe("provider preconnect on message ingress", () => {
     vi.setSystemTime(1_000_000_000 + 20_000);
     await fireMessageReceived();
     expect(preconnect).toHaveBeenCalledTimes(2);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("is a no-op where fetch.preconnect is absent", async () => {
-    (globalThis.fetch as unknown as { preconnect?: unknown }).preconnect = undefined;
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
     await expect(fireMessageReceived()).resolves.not.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
