@@ -4,8 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       expected_deploy_sha:
-        description: Exact 40-character develop SHA that staging must serve.
+        description: Exact 40-character develop ancestor that staging must serve.
         required: true
+        type: string
+      acknowledged_contract_digest:
+        description: Exact SHA-256 acknowledgement after reviewing verifier changes since the deployed revision; blank when unchanged.
+        required: false
+        default: ""
         type: string
       run_auth:
         description: Also run protected inference-auth hit, miss, non-standing guards, and sanitized Worker Tail proof.
@@ -35,6 +40,7 @@ jobs:
       BUN_VERSION: "1.3.14"
       NODE_VERSION: "24.15.0"
       EXPECTED_DEPLOY_SHA: ${{ inputs.expected_deploy_sha }}
+      ACKNOWLEDGED_CONTRACT_DIGEST: ${{ inputs.acknowledged_contract_digest }}
       RUN_AUTH: ${{ inputs.run_auth }}
       RUN_SUSPENDED: ${{ inputs.run_suspended }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -54,10 +60,6 @@ jobs:
           fi
           if [[ "$GITHUB_REF" != "refs/heads/develop" ]]; then
             echo "::error::Cloud latency certification must dispatch the trusted develop workflow definition."
-            exit 1
-          fi
-          if [[ "$EXPECTED_DEPLOY_SHA" != "$GITHUB_SHA" ]]; then
-            echo "::error::Dispatch must select develop at the exact expected_deploy_sha; refusing arbitrary checkout bytes."
             exit 1
           fi
           if [[ "$RUN_SUSPENDED" == "true" && "$RUN_AUTH" != "true" ]]; then
@@ -93,6 +95,7 @@ jobs:
         with:
           persist-credentials: false
           submodules: false
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -112,6 +115,7 @@ jobs:
           args=(
             --deploy-sha "$EXPECTED_DEPLOY_SHA"
             --output-dir "$output_dir"
+            --acknowledged-contract-digest "$ACKNOWLEDGED_CONTRACT_DIGEST"
           )
           if [[ "$RUN_AUTH" == "true" ]]; then
             args+=(--auth)

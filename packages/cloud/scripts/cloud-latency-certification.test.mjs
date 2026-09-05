@@ -32,7 +32,7 @@ function pairedRecord(index, overrides = {}) {
     ok: true,
     transportOk: true,
     proofMatched: true,
-    ci: { sha: SHA },
+    ci: { sha: SHA, gatewayDeploySha: SHA },
     headers: index % 2 === 0 ? {} : { "cf-placement": "local-ORD" },
     ...overrides,
   };
@@ -126,6 +126,7 @@ test("parseCertificationArgs requires an exact SHA and explicit output directory
     {
       deploySha: SHA,
       outputDir: join(process.cwd(), "artifacts/cert"),
+      acknowledgedContractDigest: "",
       runAuth: true,
       runSuspended: false,
     },
@@ -308,6 +309,32 @@ test("paired certification requires exactly 44 balanced successful proofs", () =
           SHA,
         ),
       /invalid Worker placement/,
+    );
+  }
+});
+
+test("paired evidence keeps trusted verifier and deployed identities distinct", () => {
+  const sourceSha = "b".repeat(40);
+  const records = Array.from({ length: 44 }, (_, index) =>
+    pairedRecord(index, {
+      ci: { sha: sourceSha, gatewayDeploySha: SHA },
+    }),
+  );
+  assert.equal(
+    validatePairedEvidence(jsonl(records), SHA, sourceSha).records.length,
+    44,
+  );
+  for (const ci of [
+    { sha: SHA, gatewayDeploySha: SHA },
+    { sha: sourceSha, gatewayDeploySha: sourceSha },
+    { sha: sourceSha },
+  ]) {
+    const invalid = records.map((record, index) =>
+      index === 0 ? { ...record, ci } : record,
+    );
+    assert.throws(
+      () => validatePairedEvidence(jsonl(invalid), SHA, sourceSha),
+      /source and deployment SHAs/,
     );
   }
 });

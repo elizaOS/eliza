@@ -28,6 +28,10 @@ import {
   summarizeDeferredCacheWrites,
   waitForInferenceAuthTail,
 } from "./inference-auth-latency.mjs";
+import {
+  verifyCertificationSource,
+  withVerifiedDeployment,
+} from "./latency-certification-provenance.mjs";
 
 const STAGING_BASE_URL = "https://api-staging.eliza.app";
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai";
@@ -67,6 +71,7 @@ export function parseCertificationArgs(argv) {
     options: {
       "deploy-sha": { type: "string" },
       "output-dir": { type: "string" },
+      "acknowledged-contract-digest": { type: "string", default: "" },
       auth: { type: "boolean", default: false },
       suspended: { type: "boolean", default: false },
     },
@@ -85,6 +90,7 @@ export function parseCertificationArgs(argv) {
   return {
     deploySha,
     outputDir: resolve(outputDir),
+    acknowledgedContractDigest: values["acknowledged-contract-digest"],
     runAuth: values.auth,
     runSuspended: values.suspended,
   };
@@ -150,7 +156,7 @@ export async function verifyExactDeployment(deploySha, fetchImpl = fetch) {
   return { kind: "deployment", deploySha, environment: "staging" };
 }
 
-export function validatePairedEvidence(text, deploySha) {
+export function validatePairedEvidence(text, deploySha, sourceSha = deploySha) {
   const records = parseJsonLines(text, "Paired latency evidence");
   if (records.length !== EXPECTED_PAIRED_RECORDS) {
     throw new Error(
@@ -170,9 +176,12 @@ export function validatePairedEvidence(text, deploySha) {
     ) {
       throw new Error("Paired latency evidence contains a failed proof");
     }
-    if (record.ci?.sha !== deploySha) {
+    if (
+      record.ci?.sha !== sourceSha ||
+      record.ci?.gatewayDeploySha !== deploySha
+    ) {
       throw new Error(
-        "Paired latency evidence is not bound to the dispatch SHA",
+        "Paired latency evidence is not bound to source and deployment SHAs",
       );
     }
     const placement = record.headers?.["cf-placement"];
@@ -472,7 +481,7 @@ async function waitForSanitizedTail(rawPath, traceIds, deploySha) {
   );
 }
 
-async function runPaired({ deploySha, outputDir, env }) {
+async function runPaired({ deploySha, sourceSha, outputDir, env }) {
   requirePairedSecrets(env);
   const outputPath = join(outputDir, "paired.jsonl");
   const stderrPath = join(outputDir, ".paired.stderr");
@@ -511,6 +520,7 @@ async function runPaired({ deploySha, outputDir, env }) {
     return validatePairedEvidence(
       await readFile(outputPath, "utf8"),
       deploySha,
+      sourceSha,
     );
   } finally {
     await rm(stderrPath, { force: true });
@@ -642,57 +652,82 @@ export async function runCertification(
   options,
   { env = process.env, fetchImpl = fetch } = {},
 ) {
+  const source = await verifyCertificationSource({
+    sourceRef: env.GITHUB_REF,
+    sourceSha: env.GITHUB_SHA,
+    deploySha: options.deploySha,
+    acknowledgedContractDigest: options.acknowledgedContractDigest,
+  });
   await mkdir(options.outputDir, { recursive: true, mode: 0o700 });
-  const deployment = await verifyExactDeployment(options.deploySha, fetchImpl);
   await writeFile(
-    join(options.outputDir, "deployment.json"),
-    `${JSON.stringify(deployment)}\n`,
+    join(options.outputDir, "source.json"),
+    `${JSON.stringify(source)}\n`,
     { mode: 0o600, flag: "wx" },
   );
-  const paired = await runPaired({ ...options, env });
-  // Start trace lookup immediately after the paired calls. Its rejection is
-  // observed here so a slower auth failure cannot create an unhandled promise;
-  // the finally below still waits for private-response cleanup and evidence.
-  const traceOutcomePromise = runTraces({
-    ...options,
-    env,
-    pairedRecords: paired.records,
-  }).then(
-    (value) => ({ value, error: null }),
-    (error) => ({ value: null, error }),
+  const { paired, auth, traces } = await withVerifiedDeployment(
+    options.deploySha,
+    (sha) => verifyExactDeployment(sha, fetchImpl),
+    async (deployment) => {
+      await writeFile(
+        join(options.outputDir, "deployment.json"),
+        `${JSON.stringify(deployment)}\n`,
+        { mode: 0o600, flag: "wx" },
+      );
+      const paired = await runPaired({
+        ...options,
+        sourceSha: source.sourceSha,
+        env,
+      });
+      // Start trace lookup immediately after the paired calls. Its rejection is
+      // observed here so a slower auth failure cannot create an unhandled promise;
+      // the finally below still waits for private-response cleanup and evidence.
+      const traceOutcomePromise = runTraces({
+        ...options,
+        env,
+        pairedRecords: paired.records,
+      }).then(
+        (value) => ({ value, error: null }),
+        (error) => ({ value: null, error }),
+      );
+      let auth = {
+        skipped: true,
+        reason: "not_requested",
+        suspendedGuard: "not_requested",
+      };
+      let authFailure;
+      let traceOutcome;
+      try {
+        if (options.runAuth) auth = await runAuth({ ...options, env });
+      } catch (error) {
+        // error-policy:J5 the same auth failure is rethrown after the concurrent
+        // trace capture has finished and removed all raw telemetry.
+        authFailure = error;
+      } finally {
+        traceOutcome = await traceOutcomePromise;
+      }
+      if (authFailure && traceOutcome.error) {
+        // error-policy:J2 neither boundary may hide the other; retain both causes
+        // privately while the CLI emits only this bounded category.
+        throw new Error(
+          "Auth probe and distributed trace collection both failed",
+          {
+            cause: new AggregateError([authFailure, traceOutcome.error]),
+          },
+        );
+      }
+      if (authFailure) throw authFailure;
+      if (traceOutcome.error) throw traceOutcome.error;
+      return { paired, auth, traces: traceOutcome.value };
+    },
   );
-  let auth = {
-    skipped: true,
-    reason: "not_requested",
-    suspendedGuard: "not_requested",
-  };
-  let authFailure;
-  let traceOutcome;
-  try {
-    if (options.runAuth) auth = await runAuth({ ...options, env });
-  } catch (error) {
-    // error-policy:J5 the same auth failure is rethrown after the concurrent
-    // trace capture has finished and removed all raw telemetry.
-    authFailure = error;
-  } finally {
-    traceOutcome = await traceOutcomePromise;
-  }
-  if (authFailure && traceOutcome.error) {
-    // error-policy:J2 neither boundary may hide the other; retain both causes
-    // privately while the CLI emits only this bounded category.
-    throw new Error("Auth probe and distributed trace collection both failed", {
-      cause: new AggregateError([authFailure, traceOutcome.error]),
-    });
-  }
-  if (authFailure) throw authFailure;
-  if (traceOutcome.error) throw traceOutcome.error;
   const summary = {
     kind: "cloud_latency_certification",
     deploySha: options.deploySha,
+    source,
     environment: "staging",
     paired: { records: paired.records.length, counts: paired.counts },
     auth,
-    traces: traceOutcome.value,
+    traces,
   };
   await writeFile(
     join(options.outputDir, "summary.json"),
