@@ -222,7 +222,13 @@ export function createFamilyCommunicationsAction(
     contexts: ["general", "calendar", "tasks"],
     suppressPostActionContinuation: true,
     toolSchemaStrict: false,
+    // The tool is advertised only while its service is live: after a failed
+    // boot-time start the planner otherwise selected it, paid a full tool stage
+    // and evaluation, and the handler threw (live 2026-09-05). The runtime
+    // retries eager service starts, so the action returns once the service is up.
     validate: async (runtime, message) =>
+      (deps.getService?.(runtime) ??
+        getFamilyCommunicationsService(runtime)) !== null &&
       (await deps.resolveAuthenticatedPrincipal(runtime, message)) !== null,
     parameters: [
       {
