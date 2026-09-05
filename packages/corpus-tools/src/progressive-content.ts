@@ -20,6 +20,10 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import {
+  canonicalJsonProgressive as canonicalJson,
+  sha256,
+} from "./canonical.ts";
+import {
   buildProgressiveFormatFixtureOracles,
   extractProgressiveFormatFixture,
   generateProgressiveFormatFixtures,
@@ -206,22 +210,6 @@ export const PROGRESSIVE_CONTENT_BOUNDARY_BYTES = [
   1024 * 1024,
   10 * 1024 * 1024,
 ] as const;
-
-function sha256(value: string | Uint8Array): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
 
 const OWNED_DIRECTORIES = ["objects", "formats"] as const;
 

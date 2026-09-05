@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { strToU8, unzipSync, zipSync } from "fflate";
+import { canonicalJsonProgressive as canonicalJson } from "./canonical.ts";
 
 export type ProgressiveFormatKind =
   | "markdown"
@@ -111,18 +112,6 @@ function parseCsvRow(row: string): string[] {
   if (quoted) throw new Error("unterminated CSV quote");
   values.push(value);
   return values;
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function unescapePdfLiteral(value: string): string {
