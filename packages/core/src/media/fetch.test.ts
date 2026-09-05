@@ -155,6 +155,17 @@ describe("fetchRemoteMedia", () => {
 		expect(result.fileName).toBe("report.txt");
 	});
 
+	it("preserves semicolons inside quoted filename= values", async () => {
+		const result = await fetchWithContentDisposition(
+			'attachment; filename="my;file.pdf"',
+		);
+		expect(result.fileName).toBe("my;file.pdf");
+		const result2 = await fetchWithContentDisposition(
+			"attachment; filename='a;b.txt'",
+		);
+		expect(result2.fileName).toBe("a;b.txt");
+	});
+
 	it("keeps surrogate pairs intact in diagnostic error snippets", async () => {
 		const { readErrorBodySnippet } = await import("./fetch.ts");
 		const emojiBody = `${"a".repeat(50)}🦊${"b".repeat(50)}`;
