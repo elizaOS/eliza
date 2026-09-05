@@ -465,7 +465,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
 /**
  * Selection state says what is configured; the serving axes say what actually
- * answered chat. When a direct external provider is serving, do not leave the
+ * answered chat. When serving is unconfirmed or external, do not leave the
  * Local or Cloud tile labelled Active merely because that routing toggle is
  * still selected. Mark a matching key-provider entry active when one exists.
  *
@@ -475,18 +475,35 @@ export function reconcileProviderEntriesWithServingAxes(
   entries: ProviderListEntry[],
   axes: ServingAxes,
 ): ProviderListEntry[] {
-  if (axes.inference !== "external") return entries;
+  if (axes.inference !== "external" && axes.inference !== "unknown") {
+    return entries;
+  }
   const providerId = axes.activeChatProvider?.trim().toLowerCase() ?? "";
   return entries.map((entry) => {
+    // Coding-only subscriptions are independent of the chat serving source.
+    if (
+      entry.category === "subscription" &&
+      entry.id !== "openai-subscription"
+    ) {
+      return entry;
+    }
     const current =
-      entry.category === "key" && entry.id.trim().toLowerCase() === providerId;
+      axes.inference === "external" &&
+      entry.category === "key" &&
+      entry.id.trim().toLowerCase() === providerId;
     const selectedInferenceTile =
       entry.category === "local" || entry.category === "cloud";
     return {
       ...entry,
       current,
       ...(selectedInferenceTile && entry.status.label === "Active"
-        ? { status: { tone: "muted" as const, label: "Available" } }
+        ? {
+            status: {
+              tone: "muted" as const,
+              label:
+                axes.inference === "unknown" ? "Unconfirmed" : "Not serving",
+            },
+          }
         : {}),
     };
   });

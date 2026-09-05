@@ -216,14 +216,14 @@ describe("ProviderSwitcher", () => {
     expect(screen.getByTestId("serving-runtime-value").textContent).toBe(
       "This device",
     );
-    // Inference resolves from the server's activeChat, so it reads "Checking…"
+    // Inference resolves from the server's activeChat, so it reads "Unconfirmed"
     // until that lands — never a fabricated "This device".
     expect(screen.getByTestId("serving-inference-value").textContent).toBe(
-      "Checking…",
+      "Unconfirmed",
     );
     await waitFor(() => {
       expect(screen.getByTestId("serving-inference-value").textContent).toBe(
-        "This device",
+        "Unconfirmed",
       );
     });
   });
@@ -233,7 +233,7 @@ describe("ProviderSwitcher", () => {
     // Let the activeChat fetch settle so its state update stays inside act().
     await waitFor(() => {
       expect(screen.getByTestId("serving-inference-value").textContent).toBe(
-        "This device",
+        "Unconfirmed",
       );
     });
     expect(screen.getByText("Active for coding agents")).toBeTruthy();
@@ -251,52 +251,59 @@ describe("ProviderSwitcher", () => {
     render(<ProviderSwitcher />);
     await waitFor(() => {
       expect(screen.getByTestId("serving-inference-value").textContent).toBe(
-        "This device",
+        "Unconfirmed",
       );
     });
     fireEvent.click(screen.getByRole("button", { name: "cloud panel" }));
     expect(selection.handleSelectCloud).toHaveBeenCalled();
   });
 
-  it("uses the live external serving source for Active provider labels", () => {
-    const entries = [
-      {
-        id: "__local__",
-        icon: Cpu,
-        label: "Local",
-        category: "local" as const,
-        status: { tone: "ok" as const, label: "Active" },
-        current: true,
-      },
-      {
-        id: "cerebras",
-        icon: KeyRound,
-        label: "Cerebras",
-        category: "key" as const,
-        status: { tone: "ok" as const, label: "Ready" },
-        current: false,
-      },
-    ];
+  it.each(["external", "unknown"] as const)(
+    "reconciles Active labels with %s serving evidence",
+    (inference) => {
+      const entries = [
+        {
+          id: "__local__",
+          icon: Cpu,
+          label: "Local",
+          category: "local" as const,
+          status: { tone: "ok" as const, label: "Active" },
+          current: true,
+        },
+        {
+          id: "cerebras",
+          icon: KeyRound,
+          label: "Cerebras",
+          category: "key" as const,
+          status: { tone: "ok" as const, label: "Ready" },
+          current: false,
+        },
+      ];
 
-    const displayed = reconcileProviderEntriesWithServingAxes(entries, {
-      runtime: "local",
-      inference: "external",
-      combination: "external-inference",
-      inferenceFallback: false,
-      activeChatProvider: "cerebras",
-      activeChatEndpoint: "api.cerebras.ai",
-    });
+      const displayed = reconcileProviderEntriesWithServingAxes(entries, {
+        runtime: "local",
+        inference,
+        combination:
+          inference === "external" ? "external-inference" : "inference-unknown",
+        inferenceFallback: false,
+        activeChatProvider: inference === "external" ? "cerebras" : null,
+        activeChatEndpoint: inference === "external" ? "api.cerebras.ai" : null,
+      });
 
-    expect(displayed.find((entry) => entry.id === "__local__")?.current).toBe(
-      false,
-    );
-    expect(displayed.find((entry) => entry.id === "__local__")?.status).toEqual(
-      { tone: "muted", label: "Available" },
-    );
-    expect(displayed.find((entry) => entry.id === "cerebras")?.current).toBe(
-      true,
-    );
-  });
+      expect(displayed.find((entry) => entry.id === "__local__")?.current).toBe(
+        false,
+      );
+      expect(
+        displayed.find((entry) => entry.id === "__local__")?.status,
+      ).toEqual({
+        tone: "muted",
+        label: inference === "unknown" ? "Unconfirmed" : "Not serving",
+      });
+      expect(displayed.find((entry) => entry.id === "cerebras")?.current).toBe(
+        inference === "external",
+      );
+    },
+  );
 
   it("preserves a non-serving provider warning under external routing", () => {
     const entries = [
