@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PACKAGED_WINDOWS_BOOTSTRAP_PARTITION } from "../main-window-session";
 import {
   CSRF_COOKIE_NAME,
+  isLoopbackBase,
   persistSession,
   SESSION_COOKIE_NAME,
 } from "../native/auth-bridge";
@@ -101,6 +102,7 @@ vi.mock("../native/auth-bridge", async (importOriginal) => {
   );
   return {
     ...actual,
+    isLoopbackBase: actual.isLoopbackBase,
     loadOrCreateDesktopSession: authBridgeState.loadOrCreateDesktopSession,
   };
 });
@@ -579,5 +581,53 @@ describe("desktop-session-prime", () => {
     );
     expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(2);
     expect(electrobunState.defaultCookies).toEqual([]);
+  });
+
+  it("primes session for external loopback runtime across both apiBase and dev-server renderer origin", async () => {
+    seedPersistedSession();
+    const externalLoopback = "http://127.0.0.1:3000";
+    const devServerOrigin = "http://localhost:5173";
+
+    await expect(
+      primeDesktopSessionAuth(externalLoopback, devServerOrigin),
+    ).resolves.toBe(true);
+
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledWith({
+      apiBase: externalLoopback,
+      reusePersistedSession: false,
+    });
+    // Session and CSRF installed on both apiOrigin and rendererOrigin
+    expect(cookieNames(electrobunState.defaultCookies)).toEqual([
+      SESSION_COOKIE_NAME,
+      CSRF_COOKIE_NAME,
+      SESSION_COOKIE_NAME,
+      CSRF_COOKIE_NAME,
+    ]);
+  });
+
+  it("identifies loopback bases correctly and excludes remote external runtimes from local authority", () => {
+    expect(isLoopbackBase("http://127.0.0.1:3000")).toBe(true);
+    expect(isLoopbackBase("http://localhost:3000")).toBe(true);
+    expect(isLoopbackBase("http://[::1]:3000")).toBe(true);
+    expect(isLoopbackBase("http://[::1]")).toBe(true);
+
+    expect(isLoopbackBase("https://api.elizaos.ai")).toBe(false);
+    expect(isLoopbackBase("http://192.168.1.100:3000")).toBe(false);
+    expect(isLoopbackBase("http://example.com")).toBe(false);
+    expect(isLoopbackBase("not-a-valid-url")).toBe(false);
+  });
+
+  it("fails closed when external loopback auth bridge produces no session", async () => {
+    authBridgeState.loadOrCreateDesktopSession.mockResolvedValueOnce(null);
+    const externalLoopback = "http://127.0.0.1:3000";
+
+    await expect(
+      primeDesktopSessionAuth(externalLoopback, RENDERER_ORIGIN),
+    ).resolves.toBe(false);
+
+    expect(electrobunState.defaultCookies).toHaveLength(0);
+    expect(logger.info).toHaveBeenCalledWith(
+      "[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
+    );
   });
 });

@@ -22,6 +22,7 @@ import Electrobun, {
 } from "electrobun/bun";
 import {
   resolveDesktopRuntimeModeWithDeployment,
+  resolveHttpLoopbackRendererOriginForApiClient,
   resolveInitialApiBase,
   resolveRendererFacingApiBase,
 } from "./api-base";
@@ -96,6 +97,7 @@ import {
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
 } from "./native/agent";
+import { isLoopbackBase } from "./native/auth-bridge";
 import {
   isBrowserBridgeLoopbackApiBase,
   startBrowserBridgeDesktopLifecycle,
@@ -1993,7 +1995,35 @@ async function _startAgent(): Promise<void> {
         );
       }
     }
-    injectApiBaseIntoOpenRendererWindows();
+
+    if (
+      runtimeResolution.mode === "external" &&
+      externalApiBase &&
+      isLoopbackBase(externalApiBase)
+    ) {
+      const devServerRenderer = resolveHttpLoopbackRendererOriginForApiClient(
+        process.env as Record<string, string | undefined>,
+      );
+      const rendererBase = devServerRenderer ?? externalApiBase;
+      const sessionPrimed = await primeDesktopSessionAuth(
+        externalApiBase,
+        rendererBase,
+      );
+      const apiToken =
+        resolveApiToken(process.env) ??
+        resolveQualifiedExternalToken(runtimeResolution, externalApiBase) ??
+        "";
+      publishAgentApiBase(rendererBase, apiToken, collectOpenRendererWindows());
+      setAgentReady(runtimeResolution.externalReachability !== "unavailable");
+      await reloadRendererAfterDesktopSessionPrime({
+        sessionPrimed,
+        backendGeneration: `external:${externalApiBase}`,
+        window: currentWindow,
+        resolveRendererUrl: resolveMainWindowRendererUrl,
+      });
+    } else {
+      injectApiBaseIntoOpenRendererWindows();
+    }
     return;
   }
 
@@ -3160,10 +3190,12 @@ async function main(): Promise<void> {
   // in main(), but _startAgent will push the actual port once the agent
   // reports it.
   const rt = resolveDesktopRuntime();
-  if (rt.mode === "external") {
-    injectApiBaseIntoOpenRendererWindows();
-  } else if (rt.mode === "local") {
-    logger.info("[Main] Starting embedded agent (local mode).");
+  if (rt.mode === "external" || rt.mode === "local") {
+    if (rt.mode === "local") {
+      logger.info("[Main] Starting embedded agent (local mode).");
+    } else {
+      logger.info("[Main] Initializing external agent runtime.");
+    }
     _startAgent().catch((err) => {
       logger.error(
         `[Main] Agent auto-start failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -3172,6 +3204,8 @@ async function main(): Promise<void> {
       sendToActiveRenderer("agentStartupFailed", { error });
       console.error(`title: "${BRAND.appName} startup failed"`);
     });
+  } else {
+    injectApiBaseIntoOpenRendererWindows();
   }
 
   void setupUpdater();
