@@ -6,6 +6,7 @@ import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import sharp from "sharp";
+import type { ModelHubSnapshot } from "../../../ui/src/api/client-local-inference";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
@@ -133,7 +134,10 @@ async function busyWallpaperDataUrl(): Promise<string> {
   return `data:image/jpeg;base64,${buf.toString("base64")}`;
 }
 
-async function installSettingsBackgroundRoutes(page: Page): Promise<void> {
+async function installSettingsBackgroundRoutes(
+  page: Page,
+  hubOverrides: Partial<ModelHubSnapshot> = {},
+): Promise<void> {
   await installDefaultAppRoutes(page);
 
   await page.route("**/api/config", async (route) => {
@@ -223,6 +227,7 @@ async function installSettingsBackgroundRoutes(page: Page): Promise<void> {
           TEXT_LARGE: slot("TEXT_LARGE"),
         },
       },
+      ...hubOverrides,
     });
   });
   await page.route(
@@ -492,6 +497,101 @@ test.describe("settings shares the unified app background (#9143)", () => {
 
   test.afterEach(async ({ page }, testInfo) => {
     await expectNoPageDiagnostics(page, testInfo.title);
+  });
+
+  test("shows a failed model activation in detached Settings", async ({
+    page,
+  }) => {
+    await seedSettingsBackgroundStorage(page, {
+      mode: "image",
+      color: "#ef5a1f",
+      imageUrl: "/bg-sunset.webp",
+    });
+    await installReadyDesktopStatusBridge(page);
+    await installSettingsBackgroundRoutes(page, {
+      catalog: [
+        {
+          id: "eliza-1-2b",
+          displayName: "Eliza-1",
+          hfRepo: "elizaos/eliza-1",
+          ggufFile: "model.gguf",
+          params: "2B",
+          quant: "Q4_K_M",
+          sizeGb: 1.4,
+          minRamGb: 4,
+          category: "chat",
+          bucket: "small",
+          blurb: "Local text model",
+          publishStatus: "published",
+        },
+      ],
+      installed: [
+        {
+          id: "eliza-1-2b",
+          displayName: "Eliza-1",
+          path: "/models/model.gguf",
+          sizeBytes: 1400000000,
+          installedAt: "2026-09-05T00:00:00Z",
+          lastUsedAt: null,
+          source: "eliza-download",
+        },
+      ],
+    });
+    await page.route("**/api/local-inference/active", (route) =>
+      fulfillJson(route, {
+        modelId: "eliza-1-2b",
+        status: "error",
+        error:
+          "Model activation failed its quality checks. Choose another model.",
+      }),
+    );
+    await openAppPath(page, "/settings?shell=settings#ai-model");
+    await page
+      .getByRole("button", { name: "Make active", exact: true })
+      .click();
+    const notice = page.getByTestId("shell-action-notice");
+    await expect(notice).toContainText(
+      "Model activation failed its quality checks",
+    );
+    await expect(notice).toBeInViewport();
+    await page.getByRole("button", { name: "General", exact: true }).click();
+    await expect(page.getByTestId("background-catalog-gallery")).toBeVisible();
+  });
+
+  test("scrolls detached Settings to its lower controls", async ({ page }) => {
+    await page.setViewportSize({ width: 1044, height: 768 });
+    await seedSettingsBackgroundStorage(page, {
+      mode: "image",
+      color: "#ef5a1f",
+      imageUrl: "/bg-sunset.webp",
+    });
+    await installReadyDesktopStatusBridge(page);
+    await installSettingsBackgroundRoutes(page);
+    await openAppPath(page, "/settings?shell=settings#ai-model");
+    const scroller = page.getByTestId("settings-scroll-region");
+    await expect(scroller).toBeVisible();
+    const advanced = page.getByRole("button", {
+      name: "Custom providers & model overrides",
+      exact: true,
+    });
+    for (const viewport of [
+      { width: 1044, height: 768 },
+      { width: 760, height: 560 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await scroller.evaluate((el) => {
+        el.scrollTop = 0;
+      });
+      await expect(advanced).not.toBeInViewport();
+      await scroller.hover();
+      await page.mouse.wheel(0, 10000);
+      await expect(advanced).toBeInViewport({ ratio: 1 });
+      await advanced.click();
+      await expect(advanced).toHaveAttribute("aria-expanded", "true");
+      await advanced.press("Enter");
+      await expect(advanced).toHaveAttribute("aria-expanded", "false");
+      await screenshot(page, `detached-settings-bottom-${viewport.width}`);
+    }
   });
 
   test("reveals the selected wallpaper without shifting the detached settings window", async ({
