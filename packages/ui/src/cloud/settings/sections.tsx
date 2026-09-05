@@ -47,6 +47,7 @@ export function CloudAccountSection(): React.JSX.Element {
   const handleSignIn = useCallback(() => {
     claimCloudLoginWindow();
     void handleInteractiveCloudLogin().catch((error) => {
+      // error-policy:J4 Sign-in launch failures remain visible as an error notice.
       setActionNotice(
         error instanceof Error
           ? error.message

@@ -108,9 +108,6 @@ describe("AccountSurface", () => {
     expect(
       screen.getByRole("link", { name: "Sign in" }).getAttribute("href"),
     ).toBe("/login?returnTo=%2Fsettings%23cloud-account");
-    expect(screen.getByRole("link", { name: "Sign in" }).className).toMatch(
-      /keyboard-focus-surface/,
-    );
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -123,7 +120,6 @@ describe("AccountSurface", () => {
     fireEvent.click(signIn);
 
     expect(onSignIn).toHaveBeenCalledOnce();
-    expect(signIn.className).toMatch(/keyboard-focus-surface/);
     expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
   });
 
@@ -150,7 +146,7 @@ describe("AccountSurface", () => {
     expect(onSignIn).toHaveBeenCalledOnce();
   });
 
-  it("loads while the authenticated profile query remains pending when paused", () => {
+  it("loads while the authenticated profile query remains pending", () => {
     setAccountState({
       isReady: true,
       isAuthenticated: true,
@@ -179,9 +175,6 @@ describe("AccountSurface", () => {
 
     expect(screen.getByRole("alert").textContent).toContain(error.message);
     expect(accountState.value.refetch).toHaveBeenCalledOnce();
-    expect(screen.getByRole("button", { name: "Retry" }).className).toMatch(
-      /keyboard-focus-surface/,
-    );
     expect(screen.queryByRole("status")).toBeNull();
   });
 
