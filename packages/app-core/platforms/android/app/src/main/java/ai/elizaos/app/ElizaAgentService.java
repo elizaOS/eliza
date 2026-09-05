@@ -2226,22 +2226,6 @@ public class ElizaAgentService extends Service {
             if (!env.containsKey("ELIZA_DEVICE_GENERATE_TIMEOUT_MS")) {
                 agentEnv.put("ELIZA_DEVICE_GENERATE_TIMEOUT_MS", "600000");
             }
-            // The mobile bridge ships the bge embedding GGUF disabled
-            // by default (`ELIZA_LOCAL_EMBEDDING_ENABLED!="1"`) because
-            // mmapping it alongside the chat GGUF would OOM a 4 GB
-            // Moto G Play class device. With the embedding handler
-            // returning the zero vector for every call, the chat-
-            // augmentation document-retrieval branch never lands a
-            // match above `CHAT_DOCUMENTS_THRESHOLD`, and its LLM-
-            // driven query recovery fallback wastes one full
-            // generate-text round-trip per turn (~60–90 s on this
-            // hardware) producing queries that themselves match
-            // nothing. Skip the whole augmentation path when the
-            // embedding handler is in the disabled state.
-            if (!env.containsKey("ELIZA_DOCUMENT_AUGMENTATION_DISABLED")
-                    && !"1".equals(env.get("ELIZA_LOCAL_EMBEDDING_ENABLED"))) {
-                agentEnv.put("ELIZA_DOCUMENT_AUGMENTATION_DISABLED", "1");
-            }
             // Skip the auto-download of recommended GGUF models that
             // mobile-device-bridge-bootstrap kicks off at registration
             // time. On Android the bun process cannot reach the network
