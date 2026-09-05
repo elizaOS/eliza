@@ -675,6 +675,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected migrationService?: DatabaseMigrationService;
   private migrationRunPromise: Promise<void> | null = null;
   private readonly migratedSchemaEntries = new Map<string, Map<string, unknown>>();
+  private transactionWrites?: Array<() => void>;
+  private transactionEntityContext?: UUID | null;
+
+  /** Defers external write publication until the outermost SQL transaction commits. */
+  protected publishCommittedWrite(write: () => void): void {
+    if (this.transactionWrites) this.transactionWrites.push(write);
+    else write();
+  }
+
   private _connectorAccountStore?: ConnectorAccountStore;
   private messageSearchTrigramAvailable: boolean | null = null;
   private lastDocumentListStatement?: {
@@ -6634,11 +6643,76 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   async transaction<T>(
     callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>,
-    _options?: { entityContext?: UUID }
+    options?: { entityContext?: UUID }
   ): Promise<T> {
-    // Delegate to the callback with this adapter as the transaction context.
-    // True DB-level transactions are handled by drizzle's this.db.transaction() in individual methods.
-    return callback(this as IDatabaseAdapter<DrizzleDatabase>);
+    const writes: Array<() => void> = [];
+    const entityContext = options?.entityContext ?? this.transactionEntityContext ?? null;
+    const result = await this.withEntityContext(entityContext, async (db) => {
+      // The facade shares immutable adapter configuration but never replaces
+      // the global connection or its connection-bound store cache.
+      const scoped = Object.create(this) as BaseDrizzleAdapter;
+      scoped.db = db;
+      scoped.transactionWrites = writes;
+      scoped.transactionEntityContext = entityContext;
+      scoped._connectorAccountStore = undefined;
+      scoped.withDatabase = (operation) => operation();
+      scoped.withEntityContext = (requestedEntity, operation) => {
+        if (
+          entityContext !== null &&
+          requestedEntity !== null &&
+          requestedEntity !== entityContext
+        ) {
+          throw new ElizaError("A transaction cannot change its entity context.", {
+            code: "TRANSACTION_ENTITY_CONTEXT_MISMATCH",
+            context: { entityContext, requestedEntity },
+          });
+        }
+        return db.transaction(async (savepoint) => {
+          // System transactions may call entity-scoped methods for multiple
+          // entities. A child scope must restore the parent's RLS setting.
+          if (
+            entityContext === null &&
+            requestedEntity !== null &&
+            this.databaseBackend !== "pglite" &&
+            process.env.ENABLE_DATA_ISOLATION === "true"
+          ) {
+            const before = await savepoint.execute(
+              sql`SELECT current_setting('app.entity_id', true) AS entity_id`
+            );
+            await savepoint.execute(
+              sql`SELECT set_config('app.entity_id', ${requestedEntity}, true)`
+            );
+            const value = await operation(savepoint);
+            await savepoint.execute(
+              sql`SELECT set_config('app.entity_id', ${before.rows[0]?.entity_id ?? ""}, true)`
+            );
+            return value;
+          }
+          return operation(savepoint);
+        });
+      };
+      return callback(scoped);
+    });
+    const publicationErrors: unknown[] = [];
+    for (const write of writes) {
+      try {
+        this.publishCommittedWrite(write);
+      } catch (error) {
+        // error-policy:J2 attempt every committed publication before reporting the committed failure.
+        publicationErrors.push(error);
+      }
+    }
+    if (publicationErrors.length > 0) {
+      throw new ElizaError(
+        "SQL committed, but publishing its writes failed. Do not replay the transaction.",
+        {
+          code: "TRANSACTION_PUBLICATION_FAILED",
+          context: { committed: true, failedPublications: publicationErrors.length },
+          cause: new AggregateError(publicationErrors, "Committed write publication failed"),
+        }
+      );
+    }
+    return result;
   }
 
   // ── Component batch methods ───────────────────────────────────────────
