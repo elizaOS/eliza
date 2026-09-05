@@ -138,12 +138,29 @@ async function clickIfVisible(
   timeoutMs = 2_000,
 ): Promise<boolean> {
   const target = locator.first();
+  // Bound both the visibility wait and the click action independently so a
+  // continuously re-rendered optional control cannot inherit and exhaust
+  // the enclosing test's overall deadline (#29534). Measured failure:
+  // canonical staging run 33049523461 exhausted its 2,100-second budget
+  // before any Personal identity request because the Cloud runtime choice
+  // stayed detached/re-rendered and `clickIfVisible` inherited the full
+  // test deadline. The 5s click bound preserves the slow supported path
+  // (normal first-run paint is < 2s) with ample headroom while treating a
+  // never-settling control as absent (typed fail-closed for optional
+  // onboarding).
   await target.waitFor({ state: "visible", timeout: timeoutMs }).catch(() => {
     /* absent in this first-run variant */
   });
   if (!(await target.isVisible().catch(() => false))) return false;
-  await target.click();
-  return true;
+  try {
+    await target.click({ timeout: Math.min(timeoutMs, 5_000) });
+    return true;
+  } catch {
+    // A control that re-renders mid-click is treated as unavailable so the
+    // caller falls through to the next onboarding variant instead of
+    // inheriting the enclosing test deadline.
+    return false;
+  }
 }
 
 async function startCloudRuntime(page: Page): Promise<void> {
@@ -1070,4 +1087,46 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
   await chatSendButton(page).click();
 
   await expectDeterministicChatTurn(page, "my name is Shaw and I want Discord");
+});
+
+// Chromium regression for #29534: clickIfVisible must bound its click
+// action so a continuously replaced control falls through instead of
+// inheriting the enclosing test deadline.
+test.describe("clickIfVisible bounded click", () => {
+  test("stable control returns true and clicks", async ({ page }) => {
+    await page.setContent('<button id="target">go</button>');
+    const clicked = page.evaluate(() => {
+      const btn = document.getElementById("target") as HTMLButtonElement;
+      btn.addEventListener("click", () => btn.setAttribute("data-clicked", "yes"));
+    });
+    await clicked;
+    const target = page.locator("#target");
+    const result = await clickIfVisible(target, 2_000);
+    expect(result).toBe(true);
+    await expect(page.locator("#target")).toHaveAttribute("data-clicked", "yes");
+  });
+
+  test("continuously replaced control falls through within bounded time", async ({
+    page,
+  }, testInfo) => {
+    testInfo.setTimeout(30_000);
+    // The #29534 path calls clickIfVisible(cloudRuntime, 10_000), so the
+    // effective cap is Math.min(10_000, 5_000) = 5_000ms. Drive the helper
+    // with the production argument. A STATIC pointer-events:none keeps the
+    // element visible but never receivable, so Playwright's actionability
+    // check deterministically burns the 5s cap on any machine speed (no
+    // toggle race).
+    await page.setContent(
+      '<button id="target" style="pointer-events:none">go</button>',
+    );
+    const target = page.locator("#target");
+    const startedAt = Date.now();
+    const result = await clickIfVisible(target, 10_000);
+    const elapsedMs = Date.now() - startedAt;
+    // The never-receivable control must trip the 5s click cap and fall
+    // through (false), with elapsed near the cap — not a fast click.
+    expect(result).toBe(false);
+    expect(elapsedMs).toBeGreaterThanOrEqual(3_000);
+    expect(elapsedMs).toBeLessThan(15_000);
+  });
 });
