@@ -9121,3 +9121,180 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
 });
+
+describe("runV5MessageRuntimeStage1 consumer boundary: addressedTo persistence", () => {
+	// The isolated helpers (resolveAddressedTargets / applyAddressedTo) are
+	// covered in runtime/__tests__/addressed-to-resolution.test.ts; this block
+	// pins the CONSUMER seam — the Stage-1 entry in services/message.ts must
+	// dispatch applyAddressedTo for the parsed extract.addressedTo so the
+	// relationship store actually gains "addressed" edges from the speaker to
+	// each addressee. Disconnecting the production dispatch (e.g. dropping the
+	// guard at services/message.ts `!args.stage1DecisionOnly && addressedTo`)
+	// must make these tests fail even though every helper-level suite stays
+	// green.
+	const OTHER_BOT_ID = "00000000-0000-0000-0000-0000000000bb" as UUID;
+	const ALICE_ID = "00000000-0000-0000-0000-0000000000cc" as UUID;
+
+	interface RelationshipRecord {
+		id: string;
+		sourceEntityId: UUID;
+		targetEntityId: UUID;
+		tags: string[];
+		metadata: Record<string, unknown>;
+	}
+
+	function stage1AddressedResponse(addressedTo: string[]): unknown {
+		return {
+			text: "",
+			toolCalls: [
+				{
+					id: "handle-response-addr",
+					name: "HANDLE_RESPONSE",
+					arguments: {
+						shouldRespond: "RESPOND",
+						thought: "Direct answer.",
+						contexts: ["simple"],
+						intents: [],
+						candidateActionNames: [],
+						replyText: "Sure — happy to take a look with them.",
+						facts: [],
+						relationships: [],
+						addressedTo,
+					},
+				},
+			],
+			finishReason: "tool_calls",
+		};
+	}
+
+	function runtimeWithRecordingRelationshipStore(): {
+		runtime: IAgentRuntime;
+		store: {
+			relationships: RelationshipRecord[];
+			created: number;
+			updated: number;
+		};
+	} {
+		const runtime = makeRuntime([stage1AddressedResponse(["Alice"])]);
+		const store = {
+			relationships: [] as RelationshipRecord[],
+			created: 0,
+			updated: 0,
+		};
+		const base = runtime as unknown as Record<string, unknown>;
+		// The Stage-1 path reads model registrations for context-window budgeting
+		// (responseHandlerContextWindow); an empty registry yields "no budget"
+		// and the overflow branch is skipped, so the harness needs no model
+		// metadata.
+		base.getModelRegistrations = vi.fn(() => []);
+		base.getEntitiesForRoom = vi.fn(async () => [
+			{ id: OTHER_BOT_ID, names: ["OtherBot"] },
+			{ id: ALICE_ID, names: ["Alice"] },
+		]);
+		base.getRelationships = vi.fn(
+			async (query: { entityIds?: UUID[]; tags?: string[] }) =>
+				store.relationships.filter(
+					(rel) =>
+						(!query.entityIds ||
+							query.entityIds.includes(rel.sourceEntityId)) &&
+						(!query.tags || query.tags.some((tag) => rel.tags.includes(tag))),
+				),
+		);
+		base.createRelationship = vi.fn(
+			async (input: {
+				sourceEntityId: UUID;
+				targetEntityId: UUID;
+				tags?: string[];
+				metadata?: Record<string, unknown>;
+			}) => {
+				store.created += 1;
+				store.relationships.push({
+					id: `rel-${store.relationships.length + 1}`,
+					sourceEntityId: input.sourceEntityId,
+					targetEntityId: input.targetEntityId,
+					tags: [...(input.tags ?? [])],
+					metadata: { ...(input.metadata ?? {}) },
+				});
+				return store.relationships[store.relationships.length - 1];
+			},
+		);
+		base.updateRelationship = vi.fn(async (rel: RelationshipRecord) => {
+			store.updated += 1;
+			const index = store.relationships.findIndex((r) => r.id === rel.id);
+			if (index === -1) throw new Error("relationship not found");
+			store.relationships[index] = rel;
+		});
+		return { runtime, store };
+	}
+
+	it("persists addressed edges from the speaker to each resolved addressee", async () => {
+		const { runtime, store } = runtimeWithRecordingRelationshipStore();
+		(runtime.useModel as ReturnType<typeof vi.fn>).mockImplementation(
+			vi.fn(async () => stage1AddressedResponse(["Alice", "OtherBot"])),
+		);
+		// Neutral text: a leading vocative ("Alice, ...") routes the turn to
+		// deliberation — the persistence seam must be pinned on a plain direct
+		// turn so the test owns exactly one variable.
+		const message = makeMessage({
+			text: "hey, can you both take a look at this?",
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000d1" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		// The addressedTo persistence is fire-and-forget; wait for the store
+		// write to land before asserting on the edges.
+		await vi.waitFor(() => {
+			expect(store.created).toBe(2);
+		});
+		const edgeToAlice = store.relationships.find(
+			(rel) => rel.targetEntityId === ALICE_ID,
+		);
+		const edgeToOtherBot = store.relationships.find(
+			(rel) => rel.targetEntityId === OTHER_BOT_ID,
+		);
+		expect(edgeToAlice).toBeDefined();
+		expect(edgeToOtherBot).toBeDefined();
+		for (const edge of [edgeToAlice, edgeToOtherBot]) {
+			expect(edge?.sourceEntityId).toBe(message.entityId);
+			expect(edge?.tags).toEqual(["addressed", "addressed:auto"]);
+			const metadata = edge?.metadata as Record<string, unknown>;
+			expect(metadata.source).toBe("message_handler_addressedTo");
+			expect(metadata.lastInteractionAt).toBeTypeOf("string");
+		}
+	});
+
+	it("upserts: a second turn to the same addressee updates the existing edge instead of duplicating", async () => {
+		const { runtime, store } = runtimeWithRecordingRelationshipStore();
+		(runtime.useModel as ReturnType<typeof vi.fn>).mockImplementation(
+			vi.fn(async () => stage1AddressedResponse(["Alice"])),
+		);
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Alice, one more thing" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000d2" as UUID,
+		});
+		await vi.waitFor(() => {
+			expect(store.created).toBe(1);
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Alice, thanks" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000d3" as UUID,
+		});
+		await vi.waitFor(() => {
+			expect(store.created).toBe(1);
+			expect(store.updated).toBe(1);
+		});
+		expect(store.relationships).toHaveLength(1);
+	});
+});
