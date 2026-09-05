@@ -34,6 +34,7 @@ interface HarnessOptions {
   runtime?: {
     getModelRegistrations: () => unknown[];
     getSetting?: (key: string) => string | null;
+    getLastResolvedModelProvider?: (type: string) => string | undefined;
   } | null;
 }
 
@@ -680,6 +681,44 @@ describe("GET /api/models/config activeChat", () => {
       getSetting: (key: string) => settings[key] ?? null,
     };
   }
+
+  it.each([
+    { registered: true, lastProvider: "codex-cli", serving: true },
+    { registered: true, lastProvider: undefined, serving: false },
+    { registered: true, lastProvider: "openai", serving: false },
+    { registered: false, lastProvider: "codex-cli", serving: false },
+  ])(
+    "reports subscription serving evidence: %j",
+    async ({ registered, lastProvider, serving }) => {
+      const { ctx, json } = makeHarness("GET", null, {
+        config: {
+          serviceRouting: {
+            llmText: { backend: "openai-subscription", transport: "direct" },
+          },
+        },
+        runtime: {
+          getModelRegistrations: () =>
+            registered
+              ? [{ modelType: ModelType.TEXT_LARGE, provider: "codex-cli" }]
+              : [],
+          getLastResolvedModelProvider: () => lastProvider,
+          getSetting: () => null,
+        },
+        processEnv: { OPENAI_BASE_URL: "https://unrelated.example/v1" },
+      });
+      await handleModelConfigRoutes(ctx as never);
+      const { body } = responseOf(json);
+      if (serving) {
+        expect(body.activeChat).toEqual({
+          provider: "openai-codex",
+          family: "OPENAI",
+          endpoint: "chatgpt.com",
+        });
+      } else {
+        expect(body.activeChat).toBeUndefined();
+      }
+    },
+  );
 
   it("names the cloud brain + its endpoint under cloud-proxy routing", async () => {
     const { ctx, json } = makeHarness("GET", null, {
