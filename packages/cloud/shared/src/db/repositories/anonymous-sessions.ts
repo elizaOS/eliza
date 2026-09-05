@@ -6,6 +6,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
+import { envInt } from "../../lib/env-int";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type AnonymousSession, anonymousSessions, userIdentities } from "../schemas";
@@ -222,7 +223,7 @@ export class AnonymousSessionsRepository {
    * @throws Error if session not found.
    */
   async incrementHourlyCount(sessionId: string): Promise<AnonymousHourlyRateLimitResult> {
-    const hourlyLimit = Number.parseInt(process.env.ANON_HOURLY_LIMIT || "10", 10);
+    const hourlyLimit = envInt(process.env.ANON_HOURLY_LIMIT, 10);
     const now = new Date();
     const oneHourAgo = new Date(now.getTime() - HOUR_MS);
 
