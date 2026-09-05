@@ -28,6 +28,7 @@ import {
   parseReviewerVerdicts,
   type ReviewerVerdictsDocument,
   resolveGpuQueueExecutor,
+  spawnRunAllTests,
 } from "./orchestrate.ts";
 import type { RollupResult } from "./rollup.ts";
 import { verifyCertification } from "./sign.ts";
@@ -720,5 +721,52 @@ describe("certify CLI subcommand", () => {
       io,
     );
     expect(code).toBe(1);
+  });
+});
+
+describe("spawnRunAllTests", () => {
+  it("preserves multibyte UTF-8 characters across chunk boundaries in runner output", async () => {
+    const repoRoot = tmpDir("evidence-runner-test-");
+    const scriptsDir = path.join(repoRoot, "packages", "scripts");
+    fs.mkdirSync(scriptsDir, { recursive: true });
+
+    // A runner script that emits multibyte UTF-8 characters split across raw chunks.
+    const fakeScript = path.join(scriptsDir, "run-all-tests.mjs");
+    fs.writeFileSync(
+      fakeScript,
+      `import process from "node:process";
+
+// Astral character (4-byte UTF-8 emoji '🌟' = 0xf0 0x9f 0x8c 0x9f) split 2 + 2
+process.stdout.write(Buffer.from([0xf0, 0x9f]));
+process.stdout.write(Buffer.from([0x8c, 0x9f]));
+process.stdout.write("\\n");
+
+// Multibyte CJK (3-byte UTF-8 'テ' = 0xe3 0x83 0x86) split 2 + 1 on stderr
+process.stderr.write(Buffer.from([0xe3, 0x83]));
+process.stderr.write(Buffer.from([0x86]));
+process.stderr.write("\\n");
+`,
+    );
+
+    const out: string[] = [];
+    const err: string[] = [];
+    const io = {
+      out: (msg: string) => out.push(msg),
+      err: (msg: string) => err.push(msg),
+    };
+
+    const result = await spawnRunAllTests({
+      repoRoot,
+      tier: "cpu",
+      io,
+      args: [],
+    });
+
+    expect(result.lanes).toHaveLength(1);
+    expect(result.lanes[0]?.passed).toBe(1);
+    const log = result.lanes[0]?.log ?? "";
+    expect(log).not.toContain("\uFFFD");
+    expect(log).toContain("🌟");
+    expect(log).toContain("テ");
   });
 });
