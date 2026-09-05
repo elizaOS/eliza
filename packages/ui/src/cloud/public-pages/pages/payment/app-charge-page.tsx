@@ -5,6 +5,7 @@
  * sign-out). Polls for confirmation after returning from the provider.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   AlertCircle,
   CheckCircle2,
@@ -306,7 +307,7 @@ export default function AppChargePaymentPage() {
     : isExpired
       ? "border-accent/30 bg-accent-subtle text-accent"
       : "border-border-strong bg-surface text-txt";
-  const shortId = charge.id.slice(0, 8);
+  const shortId = truncateWellFormed(toWellFormedUnicode(charge.id), 8);
 
   return (
     <div className="theme-cloud min-h-[100dvh] bg-bg px-4 py-8 text-txt sm:px-6 lg:px-8">
@@ -325,7 +326,7 @@ export default function AppChargePaymentPage() {
                 />
               ) : (
                 <div className="flex size-12 shrink-0 items-center justify-center border border-border bg-bg-elevated text-sm font-semibold text-muted">
-                  {details.app.name.slice(0, 2).toUpperCase()}
+                  {truncateWellFormed(toWellFormedUnicode(details.app.name), 2).toUpperCase()}
                 </div>
               )}
               <div className="min-w-0">
