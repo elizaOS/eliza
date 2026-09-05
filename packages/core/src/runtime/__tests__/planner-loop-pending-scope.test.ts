@@ -77,6 +77,66 @@ function harness(args: {
 }
 
 describe("planner-declared pending work", () => {
+	it("finishes a consistently final multi-call batch without another planner round", async () => {
+		const h = harness({
+			plans: [
+				{
+					text: "",
+					toolCalls: [call("READ", "final"), call("NAVIGATE", "final")],
+				},
+			],
+			evaluations: [
+				JSON.stringify({
+					thought:
+						"The requested read succeeded; the queued navigation remains.",
+					success: false,
+					decision: "NEXT_RECOMMENDED",
+					recommendedToolCallId: "navigate",
+				}),
+				finish("The record was read and the destination is open."),
+			],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ", "NAVIGATE"]);
+		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.finalMessage).toBe(
+			"The record was read and the destination is open.",
+		);
+		expect(result.trajectory.plannedQueue).toEqual([]);
+	});
+
+	it("keeps a conflicting batch pending until a later explicit final declaration", async () => {
+		const h = harness({
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						call("READ", "more_work_pending"),
+						call("CHECK", "final"),
+					],
+				},
+				{ text: "", toolCalls: [call("NAVIGATE", "final")] },
+			],
+			evaluations: [
+				finish("Only read."),
+				finish("Only checked."),
+				finish("All done."),
+			],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ", "CHECK", "NAVIGATE"]);
+		expect(result.finalMessage).toBe("All done.");
+		expect(h.useModel).toHaveBeenCalledTimes(5);
+		expect(result.trajectory.evaluatorOutputs.slice(0, 2)).toEqual([
+			expect.objectContaining({ decision: "CONTINUE", success: false }),
+			expect.objectContaining({ decision: "CONTINUE", success: false }),
+		]);
+	});
+
 	it("replans after a successful FINISH that abandons the declared next operation", async () => {
 		const h = harness({
 			plans: [
