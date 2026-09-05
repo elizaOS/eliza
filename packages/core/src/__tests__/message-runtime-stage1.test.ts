@@ -3482,6 +3482,97 @@ describe("runV5MessageRuntimeStage1", () => {
 	);
 
 	it.each([
+		{
+			label: "recalled advice without a new effect",
+			status: "none",
+			reply: "A charger and water.",
+			planned: false,
+		},
+		{
+			label: "recall incorrectly classified as applied",
+			status: "applied",
+			reply: "A charger and water.",
+			planned: true,
+		},
+		{
+			label: "a claimed new effect without execution proof",
+			status: "applied",
+			reply: "The new packing reminder is on the books.",
+			planned: true,
+		},
+		{
+			label: "recall beside pending navigation",
+			status: "pending",
+			reply: "A charger and water. I will open Home now.",
+			planned: true,
+		},
+	])(
+		"preserves current-turn effect routing for $label",
+		async ({ status, reply, planned }) => {
+			// Queued model outputs test the declared routing contract, not whether
+			// a live model assigns the correct status to conversational recall.
+			const priorAdvice = "Bring a charger and water.";
+			const state: State = {
+				...makeState(),
+				text: `# Conversation Messages\nassistant: ${priorAdvice}`,
+			};
+			const finalReply =
+				status === "pending"
+					? "I said to bring a charger and water. I couldn't open Home."
+					: "I said to bring a charger and water.";
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					intents: [],
+					candidateActionNames: [],
+					replyText: reply,
+					extra: { replyEffectStatus: status },
+				}),
+				...(planned
+					? [
+							{
+								text: "",
+								toolCalls: [
+									{
+										id: "recall-final-reply",
+										name: "REPLY",
+										arguments: { text: finalReply },
+									},
+								],
+							},
+						]
+					: []),
+			]);
+			runtime.composeState = vi.fn(async () => state);
+			const earlyReply = vi.fn(async () => undefined);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "What two things did you say to bring?" }),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onResponseHandlerEarlyReply: earlyReply,
+			});
+
+			expect(result.kind).toBe(planned ? "planned_reply" : "direct_reply");
+			expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				...(planned ? [ModelType.ACTION_PLANNER] : []),
+			]);
+			if (result.kind === "direct_reply" || result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text).toBe(
+					planned ? finalReply : reply,
+				);
+			}
+			if (status === "applied") expect(earlyReply).not.toHaveBeenCalled();
+			for (const [, params] of useModelCalls(runtime)) {
+				expect(
+					JSON.stringify((params as { messages?: unknown }).messages),
+				).toContain(priorAdvice);
+			}
+		},
+	);
+
+	it.each([
 		"I'll look up BTC’s current price now.",
 		"I will look up the current price of Bitcoin in US dollars from a current market source now.",
 		"稍等，我会打开主页并查看最新行情。",

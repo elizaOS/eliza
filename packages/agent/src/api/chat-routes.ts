@@ -518,6 +518,8 @@ export interface ChatActionResultSummary {
 export type ChatStreamTextOrigin = "model" | "action_callback";
 
 export interface ChatGenerateOptions {
+  /** Internal host timer begun before room admission; never read from a request body. */
+  inferenceTimer?: InferenceTurnTimer;
   onChunk?: (chunk: string, origin?: ChatStreamTextOrigin) => void;
   onSnapshot?: (text: string, origin?: ChatStreamTextOrigin) => void;
   /**
@@ -3852,12 +3854,14 @@ async function generateOwnedChatResponse(
     return result;
   }
 
-  const timer = new InferenceTurnTimer({
-    turnId: nextInferenceTurnId(),
-    traceId: opts?.traceId,
-    label: "chat-request",
-    roomId: message.roomId,
-  });
+  const timer =
+    opts?.inferenceTimer ??
+    new InferenceTurnTimer({
+      turnId: nextInferenceTurnId(),
+      traceId: opts?.traceId,
+      label: "chat-request",
+      roomId: message.roomId,
+    });
   return runWithInferenceTiming(timer, async () => {
     try {
       const result = await runWithGenerationTimeout(

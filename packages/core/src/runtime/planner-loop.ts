@@ -592,13 +592,54 @@ async function runPlannerLoopIterations(
 	// rather than a final answer). The gate refuses ambiguous signals to avoid
 	// surfacing a thought as the user-facing reply.
 	let lastPlannerExplicitMessageToUser: string | undefined;
-	// Tracks the most recent planner output's explicit `completed` flag, when
-	// emitted as a boolean. The gate (`tryGateEvaluator`) treats
-	// `completed === false` as a hard veto on synthesizing a FINISH — the
-	// planner is explicitly signaling that this turn's tool calls do not yet
-	// achieve the goal (e.g. read-then-act, multi-step deploy). When the
-	// field is absent the gate's other preconditions are honored as before.
+	// An omitted declaration cannot erase work the planner explicitly left
+	// pending. A later explicit final declaration releases this authority.
 	let lastPlannerExplicitCompleted: boolean | undefined;
+	const correctPendingSuccessfulFinish = (
+		evaluator: EvaluatorOutput,
+		iteration: number,
+	): EvaluatorOutput | null => {
+		if (
+			lastPlannerExplicitCompleted !== false ||
+			evaluator.decision !== "FINISH" ||
+			evaluator.success !== true
+		) {
+			return null;
+		}
+		const latestResult = [...trajectory.archivedSteps, ...trajectory.steps]
+			.reverse()
+			.find((step) => step.toolCall && step.result)?.result;
+		// A failed operation or a user-owned prerequisite may legitimately stop
+		// the chain. Do not turn confirmation/input pauses into automatic retries.
+		if (
+			latestResult &&
+			(latestResult.success === false ||
+				hasAwaitingUserInputMarker(latestResult) ||
+				hasRequiresConfirmationMarker(latestResult))
+		) {
+			return { ...evaluator, success: false };
+		}
+		appendPlannerModelFeedbackEvent(trajectory, {
+			id: `pending-scope-finish:${iteration}`,
+			type: "instruction",
+			source: "planner-loop",
+			createdAt: Date.now(),
+			metadata: { plannerCompleted: false, rejectedDecision: "FINISH" },
+			content:
+				"A successful FINISH was rejected because the planner explicitly declared more_work_pending. " +
+				"Continue the remaining planned work from the recorded results without repeating settled operations. " +
+				"If a genuine blocker prevents completion, report that stopped outcome with success=false. " +
+				"Only an explicit final planner declaration can supersede the pending scope.",
+		});
+		return {
+			...evaluator,
+			success: false,
+			decision: "CONTINUE",
+			messageToUser: undefined,
+			thought:
+				"The planner explicitly left work pending; successful completion requires a later final declaration.",
+		};
+	};
 	// A successful sole action may request one natural, model-authored terminal
 	// reply after its effect completes. This is deliberately narrower than the
 	// evaluator's general CONTINUE path: only an explicit final-scope tool call
@@ -788,10 +829,25 @@ async function runPlannerLoopIterations(
 			// top-level `completed` boolean, or — in native mode, where the
 			// provider envelope has no such field — the reserved
 			// `eliza_turn_scope` tool argument (#17034). Anything unspecified is
-			// "no opinion" and does not influence the gate — only an explicit
-			// "not complete" blocks. This keeps backward compat with planner
-			// outputs that don't carry either signal.
-			lastPlannerExplicitCompleted = plannerOutput.completed;
+			// "no opinion" and cannot erase an earlier explicit pending scope.
+			if (plannerOutput.completed !== undefined) {
+				lastPlannerExplicitCompleted = plannerOutput.completed;
+				// The evaluator renders the immutable base plus modelHistory, so a
+				// context-only assignment would hide this declaration from its model.
+				appendPlannerModelFeedbackEvent(trajectory, {
+					id: `planner-scope:${iteration}`,
+					type: "instruction",
+					source: "planner-loop",
+					createdAt: Date.now(),
+					metadata: { plannerCompleted: plannerOutput.completed },
+					content: JSON.stringify({
+						plannerCompleted: plannerOutput.completed,
+						turnScope: plannerOutput.completed
+							? TURN_SCOPE_FINAL
+							: TURN_SCOPE_MORE_WORK_PENDING,
+					}),
+				});
+			}
 			if (synthesizingRequiredModelReply) {
 				pendingRequiredModelReply = false;
 				const requiredModelReply = userSafeRescueReply(
@@ -838,6 +894,11 @@ async function runPlannerLoopIterations(
 							),
 						};
 					}
+					const pendingCompletionCorrection = correctPendingSuccessfulFinish(
+						evaluator,
+						iteration,
+					);
+					evaluator = pendingCompletionCorrection ?? evaluator;
 					trajectory.evaluatorOutputs.push(
 						projectToolDiagnosticValue(
 							evaluator,
@@ -864,6 +925,12 @@ async function runPlannerLoopIterations(
 								trajectory,
 							),
 						};
+					}
+					if (
+						pendingCompletionCorrection?.decision === "CONTINUE" &&
+						!postToolReplySeed
+					) {
+						continue;
 					}
 					if (evaluator.decision === "FINISH") {
 						return {
@@ -951,6 +1018,29 @@ async function runPlannerLoopIterations(
 					trajectory,
 					evaluator: gated,
 					finalMessage,
+				};
+			}
+
+			if (
+				!codingDrainQueue &&
+				requiresIntentEvaluation &&
+				hasExecutedNonTerminalTool(trajectory) &&
+				plannerOutput.toolCalls.every(isTerminalToolCall) &&
+				plannerOutput.toolCalls.some(
+					(call) => call.name.toUpperCase() === "REPLY",
+				)
+			) {
+				// Native REPLY is a proposed answer, not proof that the earlier tool
+				// fulfilled every intent. Reuse text-terminal judgment and delivery;
+				// callPlanner already recorded the original native calls and raw output.
+				// STOP/IGNORE without REPLY remain deliberate silence.
+				plannerOutput = {
+					...plannerOutput,
+					messageToUser: terminalMessageFromToolCalls(
+						plannerOutput.toolCalls,
+						plannerOutput.messageToUser,
+					),
+					toolCalls: [],
 				};
 			}
 
@@ -1084,11 +1174,24 @@ async function runPlannerLoopIterations(
 							),
 						};
 					}
-					const evaluator = await evaluateTrajectory(
-						params,
-						trajectory,
+					let evaluator: EvaluatorOutput;
+					try {
+						evaluator = await evaluateTrajectory(params, trajectory, iteration);
+					} catch (error) {
+						// error-policy:J4 a settled internal effect survives expected
+						// reply-model unavailability without replay or fabricated prose.
+						const unavailable = evaluatorFailureAfterInternalEffect(
+							trajectory,
+							error,
+						);
+						if (unavailable) return unavailable;
+						throw error;
+					}
+					const pendingCompletionCorrection = correctPendingSuccessfulFinish(
+						evaluator,
 						iteration,
 					);
+					evaluator = pendingCompletionCorrection ?? evaluator;
 					trajectory.evaluatorOutputs.push(
 						projectToolDiagnosticValue(
 							evaluator,
@@ -1118,6 +1221,7 @@ async function runPlannerLoopIterations(
 						};
 					}
 
+					if (pendingCompletionCorrection?.decision === "CONTINUE") continue;
 					if (evaluator.decision === "FINISH") {
 						return {
 							status: "finished",
@@ -1356,10 +1460,17 @@ async function runPlannerLoopIterations(
 				const terminalReplyMessage = hasReplyCall
 					? terminalMessageWithFailureAuthority(trajectory, finalMessage)
 					: undefined;
-				const terminalEvaluator = terminalToolCallFinish(
+				let terminalEvaluator = terminalToolCallFinish(
 					terminalReplyMessage,
 					!terminalFollowsFailedTool,
 				);
+				const pendingCompletionCorrection = hasReplyCall
+					? correctPendingSuccessfulFinish(terminalEvaluator, iteration)
+					: null;
+				terminalEvaluator = pendingCompletionCorrection ?? terminalEvaluator;
+				if (pendingCompletionCorrection?.decision === "CONTINUE") {
+					continue;
+				}
 				// Only record an evaluation stage when the trajectory already has
 				// prior evaluator outputs. A terminal-only iteration on the very
 				// first planner turn (e.g. REPLY) is purely terminal and should
@@ -1829,35 +1940,8 @@ async function runPlannerLoopIterations(
 		try {
 			evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		} catch (err) {
-			const noProvider =
-				err instanceof Error && err.name === "NoModelProviderConfiguredError";
-			if (
-				latestResult?.transcriptVisibility === "internal" &&
-				latestResult.effectReceipts?.length &&
-				(noProvider || isModelProviderError(err))
-			) {
-				// This action already settled, but intentionally left its reply to
-				// the evaluator. Reuse the non-replayable presentation-failure
-				// channel; neither retry the mutation nor promote internal facts to
-				// canned conversational text when the model is unavailable.
-				const replyFailure = createUnavailableGroundedActionReply({
-					kind: noProvider
-						? "no_provider"
-						: modelProviderErrorDetail(err)?.status === 429
-							? "rate_limited"
-							: "provider_issue",
-					code: "EVALUATOR_REPLY_GENERATION_FAILED",
-				}).failure;
-				// Downstream message and nested-planner boundaries consume the
-				// settled result's typed presentation failure to suppress recovery
-				// and post-turn hooks. Keep the original success/data/receipts intact.
-				latestResult.replyFailure = replyFailure;
-				return {
-					status: "finished",
-					trajectory,
-					terminalFailure: replyFailure,
-				};
-			}
+			const unavailable = evaluatorFailureAfterInternalEffect(trajectory, err);
+			if (unavailable) return unavailable;
 			// error-policy:J4 explicit user-facing degrade - only an EXPECTED
 			// provider/model failure degrades to the completed tool's truthful
 			// output; every other error shape propagates.
@@ -1898,6 +1982,11 @@ async function runPlannerLoopIterations(
 				),
 			};
 		}
+		const pendingCompletionCorrection = correctPendingSuccessfulFinish(
+			evaluator,
+			iteration,
+		);
+		evaluator = pendingCompletionCorrection ?? evaluator;
 		trajectory.evaluatorOutputs.push(
 			projectToolDiagnosticValue(
 				evaluator,
@@ -1929,6 +2018,9 @@ async function runPlannerLoopIterations(
 			};
 		}
 
+		// Preserve queued calls when rejecting an inconsistent completion; the
+		// ordinary CONTINUE branch below deliberately discards a stale plan.
+		if (pendingCompletionCorrection?.decision === "CONTINUE") continue;
 		if (evaluator.decision === "FINISH") {
 			if (
 				shouldRecoverSilentFailedFinish({
@@ -3268,6 +3360,37 @@ function extractProviderName(
 		}
 	}
 	return undefined;
+}
+
+function evaluatorFailureAfterInternalEffect(
+	trajectory: PlannerTrajectory,
+	error: unknown,
+): PlannerLoopResult | undefined {
+	const latestResult = allTrajectorySteps(trajectory)
+		.reverse()
+		.find((step) => step.result)?.result;
+	const noProvider =
+		error instanceof Error && error.name === "NoModelProviderConfiguredError";
+	if (
+		latestResult?.transcriptVisibility !== "internal" ||
+		!latestResult.effectReceipts?.length ||
+		(!noProvider && !isModelProviderError(error))
+	) {
+		return undefined;
+	}
+	// This action already settled and left its reply to the evaluator. Keep
+	// success/data/receipts intact, and propagate presentation failure through
+	// the existing non-replayable boundary instead of promoting internal facts.
+	const replyFailure = createUnavailableGroundedActionReply({
+		kind: noProvider
+			? "no_provider"
+			: modelProviderErrorDetail(error)?.status === 429
+				? "rate_limited"
+				: "provider_issue",
+		code: "EVALUATOR_REPLY_GENERATION_FAILED",
+	}).failure;
+	latestResult.replyFailure = replyFailure;
+	return { status: "finished", trajectory, terminalFailure: replyFailure };
 }
 
 async function evaluateTrajectory(

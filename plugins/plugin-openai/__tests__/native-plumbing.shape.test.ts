@@ -117,6 +117,7 @@ interface CapturedLlmCall {
   cacheCreationInputTokens?: number;
   finishReason?: string;
   toolCalls?: unknown;
+  temperature?: number;
 }
 
 function createRuntime(options?: { trajectoryCalls?: CapturedLlmCall[] }) {
@@ -980,6 +981,47 @@ describe("OpenAI native text plumbing", () => {
       finishReason: "stop",
       toolCalls,
     });
+  });
+
+  it.each([false, true])("records only caller-supplied temperature (stream=%s)", async (stream) => {
+    const trajectoryCalls: CapturedLlmCall[] = [];
+    const runtime = createRuntime({ trajectoryCalls });
+    const { handleTextSmall } = await import("../models/text");
+    for (const temperature of [undefined, 0, 0.4]) {
+      const result = {
+        text: "ok",
+        toolCalls: [],
+        finishReason: "stop",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+      aiMocks.generateText.mockResolvedValue(result);
+      aiMocks.streamText.mockResolvedValue({
+        textStream: (async function* () {
+          yield "ok";
+        })(),
+        text: Promise.resolve(result.text),
+        toolCalls: Promise.resolve(result.toolCalls),
+        finishReason: Promise.resolve(result.finishReason),
+        usage: Promise.resolve(result.usage),
+      });
+      await runWithTrajectoryContext({ trajectoryStepId: "sampling-metadata" }, async () => {
+        const value = await handleTextSmall(runtime, {
+          prompt: "sampling",
+          stream,
+          ...(temperature !== undefined ? { temperature } : {}),
+        });
+        if (typeof value !== "string" && value.textStream) {
+          for await (const _chunk of value.textStream) {
+            /* Finish trajectory capture. */
+          }
+        }
+      });
+      const recorded = trajectoryCalls.at(-1);
+      expect(recorded).toBeDefined();
+      if (temperature === undefined) expect(recorded).not.toHaveProperty("temperature");
+      else expect(recorded?.temperature).toBe(temperature);
+    }
+    expect(trajectoryCalls).toHaveLength(3);
   });
 
   it("records completed buffered-stream output and usage before returning", async () => {

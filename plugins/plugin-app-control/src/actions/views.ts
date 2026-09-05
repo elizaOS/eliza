@@ -994,12 +994,9 @@ function isViewNavigationRequest(
 	const explicitTarget = readViewTargetOption(options);
 	// A schema-valid planner decision owns the operation boundary. Text scoring
 	// may infer a capability only when the planner did not explicitly choose
-	// navigation to a named target; target validity belongs to the navigation
-	// boundary so stale ids fail honestly instead of becoming mutations.
-	if (
-		(normalizedExplicit === "show" || normalizedExplicit === "open") &&
-		explicitTarget
-	) {
+	// navigation; missing or stale targets belong to the navigation boundary
+	// and must fail honestly instead of becoming foreground-view operations.
+	if (normalizedExplicit === "show" || normalizedExplicit === "open") {
 		return true;
 	}
 	if (

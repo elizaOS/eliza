@@ -5718,7 +5718,7 @@ describe("v5 planner loop — evaluator gate", () => {
 		).toBe("action_terminal_result");
 	});
 
-	it("WITHHOLDS in native-mode when the call declares more_work_pending scope — and strips the arg", async () => {
+	it("WITHHOLDS in native-mode for pending scope and allows an unsuccessful evaluator stop", async () => {
 		const runtime = {
 			useModel: plannerNativeWith({
 				toolCalls: [
@@ -5745,9 +5745,9 @@ describe("v5 planner loop — evaluator gate", () => {
 			turnComplete: true,
 		}));
 		const evaluate = vi.fn(async () => ({
-			success: true,
+			success: false,
 			decision: "FINISH" as const,
-			thought: "The evaluator arbitrates the planner-declared multi-step turn.",
+			thought: "The remaining operation is unavailable, so the turn must stop.",
 			messageToUser: "Shell access is off.",
 		}));
 
@@ -6450,9 +6450,9 @@ describe("v5 planner loop — evaluator gate", () => {
 			}),
 		};
 		const evaluate = vi.fn(async () => ({
-			success: true,
+			success: false,
 			decision: "FINISH" as const,
-			thought: "The planner explicitly said more work remains.",
+			thought: "More work remains, but the required capability is unavailable.",
 			messageToUser: "Notes are open.",
 		}));
 

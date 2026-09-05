@@ -32,11 +32,13 @@ import {
   createMessageMemory,
   createUnavailableGroundedActionReply,
   getInferenceTimer,
+  InferenceTurnTimer,
   logger,
   type Memory,
   ModelType,
   quarantinePostDeliveryTasks,
   RoomHandlerQueue,
+  runWithInferenceTiming,
   stringToUuid,
   trackPostDeliveryTask,
   type UUID,
@@ -157,6 +159,7 @@ import {
   persistConversationMemory,
   persistExactConversationMemoryResult,
   persistInterruptedAssistantReceipt,
+  readChatRequestPayload,
 } from "../chat-routes.ts";
 import { serializeConversationConnectionRoomDeletion } from "../conversation-connection-readiness.ts";
 import type {
@@ -1493,6 +1496,130 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(streamingStatusIndex).toBeLessThan(firstTokenIndex);
   });
 
+  it.each(["stream", "non-stream"] as const)(
+    "includes inbound preparation and room lease wait once in %s inference timing",
+    async (transport) => {
+      const { ctx, record, state, useModel } = createCtx();
+      if (transport === "non-stream") {
+        ctx.pathname = "/api/conversations/conv-1/messages";
+      }
+      const runtime = state.runtime;
+      if (!runtime) throw new Error("runtime fixture missing");
+      const heldLease = await runtime.roomHandlerQueue.acquire(ROOM_ID);
+      const startedAt = Date.now();
+      let now = startedAt;
+      const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+      let timer: ReturnType<typeof getInferenceTimer>;
+      let leaseTimer: ReturnType<typeof getInferenceTimer>;
+      const unsubscribe = runtime.roomHandlerQueue.onEvent((event) => {
+        if (event.type === "enqueued") leaseTimer = getInferenceTimer();
+      });
+      const modelImpl = useModel.getMockImplementation();
+      const payloadImpl = vi
+        .mocked(readChatRequestPayload)
+        .getMockImplementation();
+      if (!modelImpl || !payloadImpl)
+        throw new Error("fixture implementation missing");
+      vi.mocked(readChatRequestPayload).mockImplementationOnce(
+        async (...args) => {
+          now += 100;
+          return payloadImpl(...args);
+        },
+      );
+      useModel.mockImplementation(async (...args) => {
+        timer = getInferenceTimer();
+        now += 200;
+        return modelImpl(...args);
+      });
+      const request = handleConversationRoutes(ctx);
+      try {
+        await vi.waitFor(() =>
+          expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(2),
+        );
+        expect(useModel).not.toHaveBeenCalled();
+        now += 3_000;
+        await heldLease.release();
+        await request;
+
+        if (!timer)
+          throw new Error("generation did not receive an inference timer");
+        const summary = timer.summary();
+        expect(timer).toBe(leaseTimer);
+        if (transport === "stream") {
+          expect(record.headers["X-Eliza-Trace-Id"]).toBe(timer.traceId);
+        }
+        expect(summary.t0EpochMs).toBe(startedAt);
+        expect(summary.timeToFirstVisibleMs).toBe(3_300);
+        expect(summary.totalMs).toBe(3_300);
+        expect(
+          summary.spans.filter((span) => span.name === "chat:room-lease-wait"),
+        ).toEqual([
+          {
+            name: "chat:room-lease-wait",
+            startMs: 100,
+            endMs: 3_100,
+            durationMs: 3_000,
+          },
+        ]);
+        expect(summary.anomalies).toEqual([]);
+        expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+        expect(
+          vi
+            .mocked(runtime.createLogs)
+            .mock.calls.flatMap(([rows]) => rows)
+            .filter((row) => row.type === "inference_timing"),
+        ).toHaveLength(1);
+      } finally {
+        await heldLease.release();
+        await request;
+        unsubscribe();
+        clock.mockRestore();
+      }
+    },
+  );
+
+  it("preserves an inherited caller-owned timer across lease admission without closing or emitting it", async () => {
+    const { ctx, state, useModel } = createCtx();
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    const timer = new InferenceTurnTimer({
+      turnId: "caller-owned-conversation",
+      traceId: "0123456789abcdef0123456789abcdef",
+      label: "caller-owned",
+      roomId: ROOM_ID,
+    });
+    let leaseTimer: ReturnType<typeof getInferenceTimer>;
+    let modelTimer: ReturnType<typeof getInferenceTimer>;
+    const unsubscribe = runtime.roomHandlerQueue.onEvent((event) => {
+      if (event.type === "enqueued") leaseTimer = getInferenceTimer();
+    });
+    const modelImpl = useModel.getMockImplementation();
+    if (!modelImpl) throw new Error("useModel fixture lost implementation");
+    useModel.mockImplementation(async (...args) => {
+      modelTimer = getInferenceTimer();
+      return modelImpl(...args);
+    });
+    try {
+      await runWithInferenceTiming(timer, () => handleConversationRoutes(ctx));
+      expect(leaseTimer).toBe(timer);
+      expect(modelTimer).toBe(timer);
+      expect(timer.summary().closedAtEpochMs).toBeNull();
+      expect(
+        timer
+          .summary()
+          .spans.filter((span) => span.name === "chat:room-lease-wait"),
+      ).toHaveLength(1);
+      expect(
+        vi
+          .mocked(runtime.createLogs)
+          .mock.calls.flatMap(([rows]) => rows)
+          .filter((row) => row.type === "inference_timing"),
+      ).toHaveLength(0);
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("adopts and echoes a valid inbound trace through the inference timer", async () => {
     const { ctx, record, useModel } = createCtx();
     const inboundTrace = "0123456789abcdef0123456789abcdef";
@@ -1889,10 +2016,24 @@ describe("conversation stream SSE contract (#10712)", () => {
       expect.objectContaining({ type: "error" }),
     );
     expect(second.record.ended).toBe(true);
+    expect(second.ctx.req.listenerCount("aborted")).toBe(0);
+    // Admission cancellation has no completed generation timing to publish.
+    expect(
+      vi
+        .mocked(runtime.createLogs)
+        .mock.calls.flatMap(([rows]) => rows)
+        .filter((row) => row.type === "inference_timing"),
+    ).toHaveLength(0);
 
     firstGate.resolve();
     await firstTurn;
     expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+    expect(
+      vi
+        .mocked(runtime.createLogs)
+        .mock.calls.flatMap(([rows]) => rows)
+        .filter((row) => row.type === "inference_timing"),
+    ).toHaveLength(1);
   });
 
   it("releases an undelivered connection failure for retry with the same id", async () => {
@@ -2204,11 +2345,13 @@ describe("conversation stream SSE contract (#10712)", () => {
     const handled: string[] = [];
     let roomState = "before reflection";
     let firstReplyId: string | undefined;
+    let firstTimer: ReturnType<typeof getInferenceTimer>;
     const messageService = createViewShortcutMessageService();
     messageService.handleMessage = async (runtime, message) => {
       const text = String(message.content.text);
       handled.push(text);
       if (text === "first fenced turn") {
+        firstTimer = getInferenceTimer();
         void trackPostDeliveryTask(
           runtime,
           "deferred-room-reflection",
@@ -2259,6 +2402,9 @@ describe("conversation stream SSE contract (#10712)", () => {
         messageId: expect.any(String),
       });
       firstReplyId = done[0].messageId as string;
+      if (!firstTimer) throw new Error("first turn has no inference timer");
+      const deliveredTiming = firstTimer.summary();
+      expect(deliveredTiming.closedAtEpochMs).not.toBeNull();
       expect(roomState).toBe("before reflection");
       expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(1);
       // Server background suppression stays active; the browser receives done.
@@ -2279,6 +2425,10 @@ describe("conversation stream SSE contract (#10712)", () => {
 
       postDeliveryGate.resolve();
       await Promise.all([firstTurn, secondTurn]);
+      expect(firstTimer.summary().closedAtEpochMs).toBe(
+        deliveredTiming.closedAtEpochMs,
+      );
+      expect(firstTimer.summary().totalMs).toBe(deliveredTiming.totalMs);
       expect(handled).toEqual(["first fenced turn", "second fenced turn"]);
       expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
       expect(first.state.activeChatTurnCount).toBe(0);

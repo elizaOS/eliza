@@ -1,15 +1,8 @@
 /**
- * View-switching API-level coverage.
- *
- * Exercises the VIEWS action end-to-end at the resolver level: given a user
- * phrase (ACTIVE navigation) or an intent-only phrase (PASSIVE routing), assert
- * the correct view id resolves and a navigate POST is dispatched to
- * /api/views/<id>/navigate. Covers EVERY user-facing built-in/first-party view
- * with an active command, plus the product-spec passive intents.
- *
- * This is the seam the orchestrator/scenario harness stops short of: it drives
- * the real createViewsAction handler + resolveView/scoreView against a fake
- * registry and a captured navigate fetch.
+ * Planner-owned view switching through the real VIEWS action handler.
+ * Uses a fake view registry and captured navigation transport to verify that
+ * structured targets, not user-utterance inference, determine the destination.
+ * Compatibility-only intent helper coverage remains separate below.
  */
 
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
@@ -279,7 +272,7 @@ async function runShow(
 		{ agentId: "agent-1" } as never,
 		message(text) as never,
 		undefined,
-		options,
+		{ action: "show", ...options },
 		callback,
 	);
 	return { result, callback };
@@ -294,7 +287,7 @@ describe("view switching — VIEWS action resolver", () => {
 		vi.clearAllMocks();
 	});
 
-	it("keeps inventory internal through the public wrapper while preserving natural navigation replies", async () => {
+	it("keeps inventory and navigation receipts internal through the public wrapper", async () => {
 		const action = createViewsAction({
 			client: clientFor(REGISTRY),
 			hasOwnerAccess: vi.fn(async () => true),
@@ -332,9 +325,8 @@ describe("view switching — VIEWS action resolver", () => {
 		expect(navigation?.turnComplete).toBeUndefined();
 	});
 
-	describe("ACTIVE navigation — every user-facing view reachable by an explicit command", () => {
-		// [phrase, expected view id]. These are the explicit-navigation commands a
-		// user would type. The resolver must dispatch a navigate POST to that id.
+	describe("structured navigation — registered targets reach the requested view", () => {
+		// The planner supplies the view id; the accompanying utterance is context.
 		const ACTIVE_CASES: ReadonlyArray<readonly [string, string]> = [
 			["open the chat view", "chat"],
 			["go to chat", "chat"],
@@ -360,10 +352,12 @@ describe("view switching — VIEWS action resolver", () => {
 		];
 
 		it.each(ACTIVE_CASES)(
-			'"%s" navigates to view "%s"',
+			'"%s" with planner target "%s" navigates to that view',
 			async (phrase, expectedId) => {
 				const { navigated } = installNavigateCapture();
-				const { result } = await runShow(REGISTRY, phrase);
+				const { result } = await runShow(REGISTRY, phrase, {
+					view: expectedId,
+				});
 				expect(result?.success).toBe(true);
 				expect(result?.values?.viewId).toBe(expectedId);
 				expect(navigated).toEqual([expectedId]);
@@ -372,7 +366,7 @@ describe("view switching — VIEWS action resolver", () => {
 
 		it("dispatches navigate to the exact /api/views/<id>/navigate endpoint", async () => {
 			installNavigateCapture();
-			await runShow(REGISTRY, "open the wallet view");
+			await runShow(REGISTRY, "open the wallet view", { view: "wallet" });
 			expect(globalThis.fetch).toHaveBeenCalledWith(
 				"http://127.0.0.1:3456/api/views/wallet/navigate",
 				expect.objectContaining({ method: "POST" }),
@@ -652,7 +646,13 @@ describe("view switching — VIEWS action resolver", () => {
 		it("leaves successful view-switch wording to one post-tool model reply", async () => {
 			installNavigateCapture();
 
-			const { result, callback } = await runShow(REGISTRY, "open the calendar");
+			const { result, callback } = await runShow(
+				REGISTRY,
+				"open the calendar",
+				{
+					view: "calendar",
+				},
+			);
 
 			expect(callback).not.toHaveBeenCalled();
 			expect(result).toMatchObject({
@@ -687,6 +687,7 @@ describe("view switching — VIEWS action resolver", () => {
 				const { result, callback } = await runShow(
 					REGISTRY,
 					"open the calendar",
+					{ view: "calendar" },
 				);
 
 				expect(callback).not.toHaveBeenCalled();
@@ -713,7 +714,7 @@ describe("view switching — VIEWS action resolver", () => {
 				},
 			];
 
-			const home = await runShow(messagesView, "go home");
+			const home = await runShow(messagesView, "go home", { view: "home" });
 			expect(home.callback).not.toHaveBeenCalled();
 			expect(home.result).toMatchObject({
 				success: true,
@@ -724,7 +725,9 @@ describe("view switching — VIEWS action resolver", () => {
 				label: "Home",
 			});
 
-			const messages = await runShow(messagesView, "open messages");
+			const messages = await runShow(messagesView, "open messages", {
+				view: "messages",
+			});
 			expect(messages.callback).not.toHaveBeenCalled();
 			expect(messages.result).toMatchObject({
 				success: true,
@@ -737,16 +740,22 @@ describe("view switching — VIEWS action resolver", () => {
 		});
 	});
 
-	describe("semantic Calendar preference", () => {
+	describe("planner-selected Calendar variants", () => {
 		it.each([
 			{ phrase: "open calendar", kind: "explicit English command" },
 			{ phrase: "what's on my calendar", kind: "passive English intent" },
 			{ phrase: "muéstrame mi calendario", kind: "multilingual command" },
 		])(
-			"opens Simple Calendar for a $kind when both Calendar views are registered",
+			"honors the Simple Calendar target beside a $kind when both variants are registered",
 			async ({ phrase }) => {
 				const { navigated } = installNavigateCapture();
-				const { result } = await runShow(REGISTRY_WITH_SIMPLE_CALENDAR, phrase);
+				const { result } = await runShow(
+					REGISTRY_WITH_SIMPLE_CALENDAR,
+					phrase,
+					{
+						view: "simple-calendar",
+					},
+				);
 
 				expect(result).toMatchObject({
 					success: true,
@@ -764,9 +773,11 @@ describe("view switching — VIEWS action resolver", () => {
 			},
 		);
 
-		it("falls back to the connected Calendar when Simple Calendar is absent", async () => {
+		it("opens the selected connected Calendar when Simple Calendar is absent", async () => {
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, "open calendar");
+			const { result } = await runShow(REGISTRY, "open calendar", {
+				view: "calendar",
+			});
 
 			expect(result).toMatchObject({
 				success: true,
@@ -775,7 +786,7 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(navigated).toEqual(["calendar"]);
 		});
 
-		it("falls back to the connected Calendar when Simple Calendar is unavailable", async () => {
+		it("opens the selected connected Calendar when Simple Calendar is unavailable", async () => {
 			const { navigated } = installNavigateCapture();
 			const unavailableRegistry = [
 				...REGISTRY,
@@ -784,6 +795,7 @@ describe("view switching — VIEWS action resolver", () => {
 			const { result } = await runShow(
 				unavailableRegistry,
 				"muéstrame mi calendario",
+				{ view: "calendar" },
 			);
 
 			expect(result).toMatchObject({
@@ -833,66 +845,63 @@ describe("view switching — VIEWS action resolver", () => {
 			},
 		);
 
-		// The deterministic intent->view fallback (resolveIntentView) routes the
-		// spec's passive examples even when the planner does NOT pre-resolve the
-		// id: an intent-only utterance like "what is on my calendar" maps straight
-		// to the calendar view, where previously the whole-phrase keyword scorer
-		// returned 0 and nothing resolved.
-		it("resolves an intent-only phrase from raw text via the intent fallback", async () => {
+		it("does not infer a missing planner target from an intent-only phrase", async () => {
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(
+			const { result, callback } = await runShow(
 				REGISTRY,
 				"show me what is on my calendar",
 			);
-			expect(result?.success).toBe(true);
-			expect(navigated).toEqual(["calendar"]);
+			expect(result).toMatchObject({
+				success: false,
+				transcriptVisibility: "internal",
+				turnComplete: false,
+			});
+			expect(callback).not.toHaveBeenCalled();
+			expect(navigated).toEqual([]);
+			expect(globalThis.fetch).not.toHaveBeenCalled();
 		});
 
-		// When the view *name* appears as a trailing token the keyword resolver
-		// does pick it up (label substring match), so a lightly-phrased intent
-		// still routes without the planner.
-		it("resolves when the view label is a trailing token of the phrase", async () => {
+		it("does not infer a missing target from a trailing view label", async () => {
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, "show me the calendar");
-			expect(result?.success).toBe(true);
-			expect(navigated).toEqual(["calendar"]);
+			const { result, callback } = await runShow(
+				REGISTRY,
+				"show me the calendar",
+			);
+			expect(result).toMatchObject({
+				success: false,
+				transcriptVisibility: "internal",
+				turnComplete: false,
+			});
+			expect(callback).not.toHaveBeenCalled();
+			expect(navigated).toEqual([]);
+			expect(globalThis.fetch).not.toHaveBeenCalled();
 		});
 	});
 
-	describe("model param hallucination — user's words win over a wrong view param", () => {
-		// A weak local planner can emit VIEWS with a WRONG view
-		// param (e.g. view:"wallet" for "open my calendar"). The user's own words
-		// are authoritative when they name a registered domain surface, so the
-		// hallucinated param must not mis-navigate. This is the "structured
-		// guidance so the model doesn't have to guess the parameter" guarantee.
-		const HALLUCINATION_CASES: ReadonlyArray<
-			readonly [string, string, string]
-		> = [
-			["open my calendar", "wallet", "calendar"],
-			["check my messages", "calendar", "inbox"],
-			["show my wallet", "calendar", "wallet"],
-			["muéstrame mi calendario", "wallet", "calendar"],
-			["我的钱包", "calendar", "wallet"],
+	describe("structured destination ownership — utterances cannot override the planner target", () => {
+		const CONFLICTING_TEXT_CASES: ReadonlyArray<readonly [string, string]> = [
+			["open my calendar", "wallet"],
+			["check my messages", "calendar"],
+			["show my wallet", "calendar"],
+			["muéstrame mi calendario", "wallet"],
+			["我的钱包", "calendar"],
 		];
-		it.each(HALLUCINATION_CASES)(
-			'"%s" + bogus view param "%s" still navigates to "%s"',
-			async (phrase, bogusView, expected) => {
+		it.each(CONFLICTING_TEXT_CASES)(
+			'"%s" does not replace structured target "%s"',
+			async (phrase, viewId) => {
 				const { navigated } = installNavigateCapture();
 				const { result } = await runShow(REGISTRY, phrase, {
 					action: "show",
-					view: bogusView,
+					view: viewId,
 				});
 				expect(result?.success).toBe(true);
-				expect(navigated).toEqual([expected]);
+				expect(result?.values?.viewId).toBe(viewId);
+				expect(navigated).toEqual([viewId]);
 			},
 		);
 
-		// But when the intent maps to a surface this deployment does NOT have, the
-		// planner's explicit, registered target is honored (no over-correction).
-		it("keeps a registered explicit target when the intent view is not registered", async () => {
+		it("keeps a registered explicit target when the utterance mentions another capability", async () => {
 			const { navigated } = installNavigateCapture();
-			// "add a feature" → task-coordinator (not in REGISTRY); planner picked
-			// the registered plugins-page → honor it.
 			const { result } = await runShow(
 				REGISTRY,
 				"I want to add a new feature to my app",
@@ -904,9 +913,11 @@ describe("view switching — VIEWS action resolver", () => {
 	});
 
 	describe("ambiguity + miss handling", () => {
-		it("returns no-match (not a wrong view) for an unknown target", async () => {
+		it("does not replace an unknown structured target with a view mentioned in the utterance", async () => {
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, "open the spaceship view");
+			const { result } = await runShow(REGISTRY, "open calendar", {
+				view: "spaceship",
+			});
 			expect(result?.success).toBe(false);
 			expect(result?.text).toContain("No view matches");
 			expect(navigated).toEqual([]);
@@ -914,7 +925,9 @@ describe("view switching — VIEWS action resolver", () => {
 
 		it("does not fall back to Knowledge/Documents for standalone notes when no notes view is registered", async () => {
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, "open notes");
+			const { result } = await runShow(REGISTRY, "open notes", {
+				view: "notes",
+			});
 			expect(result?.success).toBe(false);
 			expect(result?.text).toContain('No view matches "notes"');
 			expect(navigated).toEqual([]);
@@ -936,16 +949,18 @@ describe("view switching — VIEWS action resolver", () => {
 				},
 			];
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(withNotes, "open notes");
+			const { result } = await runShow(withNotes, "open notes", {
+				view: "notes",
+			});
 			expect(result?.success).toBe(true);
 			expect(navigated).toEqual(["notes"]);
 		});
 
-		it("asks which one when a target is genuinely ambiguous", async () => {
+		it("does not navigate when an explicit target has equal-scoring registered matches", async () => {
 			const ambiguousRegistry: ViewSummary[] = [
 				{
 					id: "notes-a",
-					label: "Notes",
+					label: "Scratch A",
 					description: "Sticky notes",
 					pluginName: "a",
 					available: true,
@@ -954,7 +969,7 @@ describe("view switching — VIEWS action resolver", () => {
 				},
 				{
 					id: "notes-b",
-					label: "Notes Pro",
+					label: "Scratch B",
 					description: "Advanced notes",
 					pluginName: "b",
 					available: true,
@@ -963,42 +978,51 @@ describe("view switching — VIEWS action resolver", () => {
 				},
 			];
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(ambiguousRegistry, "open notes view");
-			// scoreView: "notes" exact-label-matches notes-a (100) but only
-			// substring-matches notes-b (80) → unambiguous winner notes-a.
-			// This asserts the tie-break picks one rather than dispatching both.
-			expect(navigated.length).toBeLessThanOrEqual(1);
-			if (result?.success) expect(navigated).toEqual(["notes-a"]);
+			const { result, callback } = await runShow(
+				ambiguousRegistry,
+				"open the scratch view",
+				{
+					view: "Scratch",
+				},
+			);
+			expect(result).toMatchObject({
+				success: false,
+				transcriptVisibility: "internal",
+			});
+			expect(result?.data?.candidates).toEqual(ambiguousRegistry);
+			expect(callback).not.toHaveBeenCalled();
+			expect(navigated).toEqual([]);
+			expect(globalThis.fetch).not.toHaveBeenCalled();
 		});
 	});
 
-	describe("spec ACTIVE example 'go to my email' → inbox view", () => {
-		// Product spec: "go to my email" -> switch to the inbox view. Now routed by
-		// the deterministic intent->view fallback (my email/inbox/messages -> inbox)
-		// AND by the inbox view's email/mail aliases. Previously the keyword
-		// resolver scored 0 (no email token) and returned no-match.
-		it("routes 'go to my email' to the inbox view", async () => {
+	describe("planner-selected Inbox for an email request", () => {
+		it("navigates to the supplied Inbox id", async () => {
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, "go to my email");
+			const { result } = await runShow(REGISTRY, "go to my email", {
+				view: "inbox",
+			});
 			expect(result?.success).toBe(true);
 			expect(navigated).toEqual(["inbox"]);
 		});
 
-		it("still routes once an 'email' tag/alias is on the inbox view", async () => {
+		it("honors the registered Inbox label when the view also has email tags", async () => {
 			const withEmailAlias = REGISTRY.map((v) =>
 				v.id === "inbox"
 					? { ...v, tags: [...(v.tags ?? []), "email", "mail"] }
 					: v,
 			);
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(withEmailAlias, "go to my email");
+			const { result } = await runShow(withEmailAlias, "go to my email", {
+				view: "Inbox",
+			});
 			expect(result?.success).toBe(true);
 			expect(navigated).toEqual(["inbox"]);
 		});
 	});
 
-	describe("passive intent -> view fallback (no explicit view name)", () => {
-		it("routes 'I want to add a new feature to my app' to the coding view", async () => {
+	describe("missing structured target — no passive navigation fallback", () => {
+		it("does not infer the coding view from a feature request even when it is registered", async () => {
 			const codingRegistry: ViewSummary[] = [
 				...REGISTRY,
 				{
@@ -1020,37 +1044,41 @@ describe("view switching — VIEWS action resolver", () => {
 				},
 			];
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(
+			const { result, callback } = await runShow(
 				codingRegistry,
 				"I want to add a new feature to my app",
 			);
-			expect(result?.success).toBe(true);
-			expect(navigated).toEqual(["task-coordinator"]);
+			expect(result).toMatchObject({
+				success: false,
+				transcriptVisibility: "internal",
+				turnComplete: false,
+			});
+			expect(callback).not.toHaveBeenCalled();
+			expect(navigated).toEqual([]);
+			expect(globalThis.fetch).not.toHaveBeenCalled();
 		});
 
-		it("routes 'check my messages' to the inbox (owner decision)", async () => {
-			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, "check my messages");
-			expect(result?.success).toBe(true);
-			expect(navigated).toEqual(["inbox"]);
-		});
-
-		it("routes 'show me my balance' to the wallet", async () => {
-			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, "show me my balance");
-			expect(result?.success).toBe(true);
-			expect(navigated).toEqual(["wallet"]);
-		});
-
-		it("routes 'give me an overview of my wallet' to wallet (no 'view'-in-overview misparse)", async () => {
-			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(
-				REGISTRY,
-				"give me an overview of my wallet",
-			);
-			expect(result?.success).toBe(true);
-			expect(navigated).toEqual(["wallet"]);
-		});
+		it.each([
+			"check my messages",
+			"show me my balance",
+			"give me an overview of my wallet",
+			"muéstrame mi calendario",
+			"我的钱包",
+		])(
+			'does not navigate from "%s" without a planner target',
+			async (phrase) => {
+				const { navigated } = installNavigateCapture();
+				const { result, callback } = await runShow(REGISTRY, phrase);
+				expect(result).toMatchObject({
+					success: false,
+					transcriptVisibility: "internal",
+					turnComplete: false,
+				});
+				expect(callback).not.toHaveBeenCalled();
+				expect(navigated).toEqual([]);
+				expect(globalThis.fetch).not.toHaveBeenCalled();
+			},
+		);
 	});
 
 	describe("validate() gating", () => {
@@ -1066,7 +1094,7 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(ok).toBe(true);
 		});
 
-		it("owner-gates create/edit/delete", async () => {
+		it("owner-gates a structured delete operation", async () => {
 			const owner = vi.fn(async () => false);
 			const action = createViewsAction({
 				client: clientFor(REGISTRY),
@@ -1075,6 +1103,8 @@ describe("view switching — VIEWS action resolver", () => {
 			const ok = await action.validate(
 				{ agentId: "agent-1" } as never,
 				message("delete the wallet plugin view") as never,
+				undefined as never,
+				{ action: "delete", view: "wallet" } as never,
 			);
 			expect(ok).toBe(false);
 			expect(owner).toHaveBeenCalled();
@@ -1376,6 +1406,7 @@ describe("view switching — VIEWS action resolver", () => {
 				runtimeWithTasks([
 					{
 						id: "task-1",
+						agentId: "agent-1",
 						tags: ["views-create-intent"],
 						metadata: { roomId: "room-1", intent: "make a habit tracker" },
 					},
@@ -1419,7 +1450,7 @@ describe("view switching — VIEWS action resolver", () => {
 		});
 	});
 
-	describe("BUG PROBE: developerMode-gated views reachable by ACTIVE command", () => {
+	describe("developer visibility remains owned by the registry route", () => {
 		// listViews() in the show path is called WITHOUT developerMode, so the
 		// route returns only non-developer views to a normal user — but the action
 		// asks the client with no developerMode flag. We assert what the client is
@@ -1436,9 +1467,10 @@ describe("view switching — VIEWS action resolver", () => {
 				{ agentId: "agent-1" } as never,
 				message("open the logs view") as never,
 				undefined,
-				undefined,
+				{ action: "show", view: "logs" },
 				vi.fn(),
 			);
+			expect(client.listViews).toHaveBeenCalled();
 			const calls = (client.listViews as ReturnType<typeof vi.fn>).mock.calls;
 			// Every listViews call must NOT request developerMode (the action relies
 			// on the route's default visibility filtering, not its own escalation).
@@ -1451,12 +1483,9 @@ describe("view switching — VIEWS action resolver", () => {
 	});
 });
 
-// Deterministic intent->view mapping (resolveIntentView) — the local-first
-// safety net that routes passive/implicit navigation to a concrete view id
-// without an LLM. Covers the expanded English surfaces, generic phrasings, AND
-// major non-English languages so view switching works even on small/local
-// models. resolveIntentView is pure (text -> viewId|null).
-describe("resolveIntentView — expanded surfaces + multilingual", () => {
+// Compatibility export only: the first-party show action does not use this
+// pure helper to infer or override a structured navigation target.
+describe("resolveIntentView compatibility export — expanded surfaces + multilingual", () => {
 	describe("English: every domain surface routes to its view", () => {
 		const EN_CASES: ReadonlyArray<readonly [string, string]> = [
 			["what's on my calendar", "calendar"],

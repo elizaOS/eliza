@@ -21,6 +21,8 @@ import {
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
+  getInferenceTimer,
+  getTrajectoryContext,
   JSON_SCHEMA_ARRAY_KEYWORDS,
   JSON_SCHEMA_MAP_KEYWORDS,
   JSON_SCHEMA_MIXED_MAP_KEYWORDS,
@@ -1962,7 +1964,7 @@ function createLlmCallDetails(
     responseSchema: originalParams.responseSchema,
     providerOptions:
       providerOptions ?? nativeParams?.providerOptions ?? originalParams.providerOptions,
-    temperature: params.temperature ?? 0,
+    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
     maxTokens:
       typeof nativeParams?.maxOutputTokens === "number"
         ? nativeParams.maxOutputTokens
@@ -2451,6 +2453,88 @@ interface BufferedStreamResult {
   toolCalls: Awaited<ReturnType<typeof streamText<ToolSet>>["toolCalls"]> | undefined;
   usage: LanguageModelUsage | undefined;
   finishReason: string | undefined;
+  observeDelivery?: () => void;
+}
+
+type StreamAttemptTiming = {
+  onChunk: (event: {
+    chunk: { type: string; text?: string; delta?: string; inputTextDelta?: string };
+  }) => void;
+  delivery: () => void;
+};
+
+function observeStreamTiming(runtime: IAgentRuntime, observe: () => void): void {
+  try {
+    observe();
+  } catch {
+    // error-policy:J7 diagnostics cannot alter stream delivery. Report only a
+    // fixed error: an observer exception can itself contain private payloads.
+    try {
+      runtime.reportError?.(
+        "OpenAI.streamTiming",
+        new ElizaError("Stream timing observation failed", {
+          code: "STREAM_TIMING_OBSERVER_FAILED",
+        })
+      );
+    } catch {
+      // error-policy:J7 a failed diagnostic sink must not recurse or replace
+      // the stream's own outcome.
+      return;
+    }
+  }
+}
+
+function createStreamTiming(
+  runtime: IAgentRuntime,
+  modelType: ModelTypeName,
+  mode: "live-text" | "live-structured" | "buffered-transform" | "buffered-full-surface"
+) {
+  let beginAttempt: ((attempt: number) => StreamAttemptTiming) | undefined;
+  observeStreamTiming(runtime, () => {
+    // Capture the owner before returning an async iterable; consumers may
+    // pull it from another ALS scope. No new timer or exporter is created.
+    const timer = getInferenceTimer();
+    if (!timer) return;
+    const streamCallId = globalThis.crypto.randomUUID();
+    const slot = Object.values(ModelType).find((known) => known === modelType) ?? "other";
+    const rawPurpose = getTrajectoryContext()?.purpose;
+    const purpose =
+      rawPurpose === "message_handler" ||
+      rawPurpose === "planner" ||
+      rawPurpose === "evaluation" ||
+      rawPurpose === "external_llm"
+        ? rawPurpose
+        : "other";
+    beginAttempt = (streamAttempt) => {
+      const meta = { streamCallId, streamAttempt, modelType: slot, mode, purpose };
+      const record = (name: string) =>
+        observeStreamTiming(runtime, () => timer.recordSpan(name, 0, meta));
+      record("openai.stream.mode");
+      let sdkObserved = false;
+      let delivered = false;
+      return {
+        onChunk: ({ chunk }) =>
+          observeStreamTiming(runtime, () => {
+            if (sdkObserved || (chunk.type !== "text-delta" && chunk.type !== "tool-input-delta"))
+              return;
+            const delta =
+              chunk.type === "text-delta"
+                ? (chunk.text ?? chunk.delta)
+                : (chunk.inputTextDelta ?? chunk.delta);
+            if (!delta) return;
+            sdkObserved = true;
+            // SDK onChunk runs after output parsing, not at raw HTTP arrival.
+            record("openai.stream.first-sdk-delta");
+          }),
+        delivery: () => {
+          if (delivered) return;
+          delivered = true;
+          record("openai.stream.first-adapter-delivery");
+        },
+      };
+    };
+  });
+  return beginAttempt;
 }
 
 /**
@@ -2474,6 +2558,7 @@ async function consumeStreamWithTransientRetry(
     retryState: ModelRetryTelemetry;
     maxRetries?: number;
     beforeAttempt?: () => void;
+    streamTiming?: ReturnType<typeof createStreamTiming>;
   }
 ): Promise<BufferedStreamResult> {
   const maxRetries = opts.maxRetries ?? 5;
@@ -2487,15 +2572,18 @@ async function consumeStreamWithTransientRetry(
       // and rethrow after consumption so the retry below can act on it. (This
       // is the same reason opencode attaches an onError to its streamText.)
       let capturedError: unknown;
+      const attemptTiming = opts.streamTiming?.(attempt + 1);
       opts.beforeAttempt?.();
       const result = streamText({
         ...(generateParams as Parameters<typeof streamText>[0]),
         onError: ({ error }: { error: unknown }) => {
           capturedError = error;
         },
+        ...(attemptTiming ? { onChunk: attemptTiming.onChunk } : {}),
       });
       let text = "";
       for await (const chunk of result.textStream) {
+        if (chunk && onChunk) attemptTiming?.delivery();
         onChunk?.(chunk);
         text += chunk;
       }
@@ -2506,7 +2594,13 @@ async function consumeStreamWithTransientRetry(
       const usage = await result.usage;
       const finishReason = (await result.finishReason) as string | undefined;
       if (capturedError) throw capturedError;
-      return { text, toolCalls, usage, finishReason };
+      return {
+        text,
+        toolCalls,
+        usage,
+        finishReason,
+        ...(attemptTiming ? { observeDelivery: attemptTiming.delivery } : {}),
+      };
     } catch (rawError) {
       // error-policy:J2 context-adding rethrow — terminal, retry-exhausted, or
       // cancelled errors rethrow enriched with the provider's real body
@@ -2706,6 +2800,8 @@ async function generateTextByModelType(
     ...(params.omitMaxTokens || params.maxTokens === undefined
       ? {}
       : { maxOutputTokens: params.maxTokens }),
+    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+    ...(params.topP !== undefined ? { topP: params.topP } : {}),
     experimental_telemetry: telemetryConfig,
     ...(sanitizedTools ? { tools: sanitizedTools } : {}),
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
@@ -2727,6 +2823,17 @@ async function generateTextByModelType(
       fullActionSurface === "true" ||
       fullActionSurface === "yes" ||
       fullActionSurface === "on";
+    const streamTiming = createStreamTiming(
+      runtime,
+      modelType,
+      preparedOutput?.transform
+        ? "buffered-transform"
+        : shouldBufferStream
+          ? "buffered-full-surface"
+          : params.streamStructured === true
+            ? "live-structured"
+            : "live-text"
+    );
     if (shouldBufferStream) {
       const details = createLlmCallDetails(
         modelName,
@@ -2749,6 +2856,7 @@ async function generateTextByModelType(
             retryState,
             maxRetries: 5,
             beforeAttempt: () => attestLlmInputSubstring(details),
+            streamTiming,
           }
         ).catch((error: unknown) => {
           noteRateLimitCooldown(runtime, modelName, error);
@@ -2783,6 +2891,7 @@ async function generateTextByModelType(
       return {
         textStream: (async function* replayBufferedStream() {
           if (buffered.text) {
+            buffered.observeDelivery?.();
             if (hasResponseTransform) {
               params.onStreamChunk?.(buffered.text);
             }
@@ -2839,14 +2948,17 @@ async function generateTextByModelType(
     let streamCompanions!: ReturnType<typeof observeStreamCompanions>;
     let streamIterator!: AsyncIterator<unknown>;
     let firstItem: IteratorResult<unknown> | undefined;
+    let attemptTiming: StreamAttemptTiming | undefined;
     for (let attempt = 0; ; attempt++) {
       capturedStreamError = undefined;
       attestLlmInputSubstring(details);
+      attemptTiming = streamTiming?.(attempt + 1);
       result = await streamText({
         ...generateParams,
         onError: ({ error }: { error: unknown }) => {
           capturedStreamError = error;
         },
+        ...(attemptTiming ? { onChunk: attemptTiming.onChunk } : {}),
       });
       // Companion promises can reject at the same instant as the first stream
       // pull. Observe them before that pull so an owner abort never becomes an
@@ -3034,12 +3146,14 @@ async function generateTextByModelType(
                   : null;
               if (!chunk) continue;
               responseChunks.push(chunk);
+              attemptTiming?.delivery();
               params.onStreamChunk?.(chunk);
               yield chunk;
             }
           } else {
             for await (const chunk of iterateStream()) {
               responseChunks.push(chunk as string);
+              if (chunk) attemptTiming?.delivery();
               params.onStreamChunk?.(chunk as string);
               yield chunk as string;
             }

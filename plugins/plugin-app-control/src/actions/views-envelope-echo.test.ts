@@ -156,9 +156,10 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(target).not.toContain("\n");
 	});
 
-	it("show: verb scan runs on the payload, not the warning text", async () => {
+	it("show: only the structured target is reported, not the warning text", async () => {
 		const { result, callback } = await runViews(
 			envelopedMessage("open the zorptastic view"),
+			{ action: "show", view: "zorptastic" },
 		);
 
 		expect(result?.success).toBe(false);

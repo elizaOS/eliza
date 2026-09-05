@@ -462,7 +462,12 @@ describe("VIEWS action ownership after planner selection", () => {
 					],
 				})
 				.mockResolvedValue(
-					'```json\n{"response":"You\'re in Notes now."}\n```',
+					JSON.stringify({
+						thought: "The requested Notes navigation succeeded.",
+						success: true,
+						decision: "FINISH",
+						messageToUser: "You're in Notes now.",
+					}),
 				);
 			const runtime = makeRuntime(action, useModel);
 			const delivered = vi.fn(async () => []);
@@ -532,6 +537,69 @@ describe("VIEWS action ownership after planner selection", () => {
 			expect(listViews).toHaveBeenCalledTimes(1);
 		},
 	);
+
+	it("preserves the planner's Home destination after the same request reads Notes", async () => {
+		const { action, listViews } = makeAction();
+		listViews.mockResolvedValue([
+			NOTES_VIEW,
+			{
+				...NOTES_VIEW,
+				id: "chat",
+				label: "Home",
+				path: "/views",
+				capabilities: [],
+			},
+		]);
+		const runtime = makeRuntime(action);
+		const callback = vi.fn(async () => []);
+		const result = await executeViews(
+			runtime,
+			message(
+				"Read my Continuity check 2145 note, then go home and tell me its text. Do not change the note.",
+			),
+			{ action: "show", view: "chat" },
+			callback,
+		);
+
+		expect(result).toMatchObject({
+			success: true,
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+			values: { mode: "show", viewId: "chat", viewPath: "/views" },
+		});
+		expect(JSON.parse(result.text ?? "{}")).toMatchObject({
+			effect: "view_navigation",
+			status: "accepted",
+			viewId: "chat",
+			path: "/views",
+		});
+		expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledExactlyOnceWith(
+			"http://127.0.0.1:3456/api/views/chat/navigate",
+			expect.objectContaining({ method: "POST" }),
+		);
+		expect(callback).not.toHaveBeenCalled();
+		expect(runtime.useModel).not.toHaveBeenCalled();
+	});
+
+	it("returns a missing navigation target to the planner without reading foreground Notes", async () => {
+		const { action } = makeAction();
+		const runtime = makeRuntime(action);
+		const callback = vi.fn(async () => []);
+		const result = await executeViews(
+			runtime,
+			message("Read my note, then go home."),
+			{ action: "show" },
+			callback,
+		);
+		expect(result).toMatchObject({
+			success: false,
+			transcriptVisibility: "internal",
+			turnComplete: false,
+		});
+		expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
+		expect(runtime.useModel).not.toHaveBeenCalled();
+	});
 
 	it("keeps an unknown explicit show target on the typed navigation failure path", async () => {
 		const { action, listViews } = makeAction();
