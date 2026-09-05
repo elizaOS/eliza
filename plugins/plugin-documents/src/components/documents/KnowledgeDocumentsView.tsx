@@ -29,7 +29,6 @@ import {
   FormSelect,
   FormSelectItem,
   Input,
-  ListSkeleton,
 } from "@elizaos/ui/components";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { SettingsGroup } from "@elizaos/ui/components/composites/settings";
@@ -1283,13 +1282,10 @@ function KnowledgeDocumentsViewForAuthority({
       );
   } else if (loading && documents.length === 0) {
     listBody = (
-      <div role="status" aria-label="Loading Knowledge">
-        <ListSkeleton
-          rows={6}
-          className="gap-0 p-0"
-          rowClassName="h-16 rounded-none border-b border-[color:var(--settings-hairline)] bg-[var(--settings-fill)] last:border-b-0"
-        />
-      </div>
+      <PagePanel.Loading
+        heading={t("common.loading", { defaultValue: "Loading…" })}
+        aria-label="Loading Knowledge"
+      />
     );
   } else if (documents.length === 0 && facet !== "all") {
     // Facet-empty (#13594): the list is server-filtered to this facet, so an

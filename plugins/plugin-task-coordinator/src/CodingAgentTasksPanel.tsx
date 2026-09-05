@@ -5,6 +5,7 @@ import type {
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
 } from "@elizaos/ui/api/client-types-cloud";
+import { PageLoadingState } from "@elizaos/ui/components/composites/page-panel";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { Archive, Bot, ListChecks, Terminal } from "lucide-react";
 import {
@@ -999,11 +1000,11 @@ export function CodingAgentTasksPanel({
           {threads.length < 4 ? <SparseWatermark icon={ListChecks} /> : null}
         </>
       ) : loading ? (
-        <div className="text-sm text-muted">
-          {t("codingagenttaskspanel.loadingTasks", {
-            defaultValue: "Loading",
+        <PageLoadingState
+          heading={t("codingagenttaskspanel.loadingTasks", {
+            defaultValue: "Loading…",
           })}
-        </div>
+        />
       ) : (
         <TaskEmptyState
           title={

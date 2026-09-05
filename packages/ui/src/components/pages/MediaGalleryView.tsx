@@ -554,13 +554,10 @@ export function MediaGalleryView({
             {error}
           </div>
         ) : loading ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex flex-1 items-center justify-center text-sm italic text-muted"
-          >
-            {t("mediagalleryview.ScanningForMedia")}
-          </div>
+          <PagePanel.Loading
+            heading={t("mediagalleryview.ScanningForMedia")}
+            className="flex-1"
+          />
         ) : !selectedItem ? (
           <PagePanel.Empty
             variant="surface"

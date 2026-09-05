@@ -54,6 +54,7 @@ import {
 import { formatSchedule } from "../../utils/cron-format";
 import { mergeUnifiedTasks } from "../../utils/merge-unified-tasks";
 import { openExternalUrl } from "../../utils/openExternalUrl";
+import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -64,7 +65,6 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { ListSkeleton } from "../ui/skeleton-layouts";
 import { Spinner } from "../ui/spinner";
 import { StatusDot } from "../ui/status-badge";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -765,7 +765,9 @@ export function AutomationsFeed({
 
             <div className="border-y border-border/50">
               {(loading || dataState.cacheKey !== cacheKey) && !data ? (
-                <ListSkeleton rows={6} className="p-3" />
+                <PagePanel.Loading
+                  heading={t("common.loading", { defaultValue: "Loading…" })}
+                />
               ) : workflowServiceIssue && rows.length === 0 ? (
                 <WorkflowServiceIssuePanel
                   issue={workflowServiceIssue}

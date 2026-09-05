@@ -277,6 +277,7 @@ import {
   CharacterSectionNav,
   isCharacterSectionPath,
 } from "./components/character/CharacterSectionNav";
+import { PageLoadingState } from "./components/composites/page-panel";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
 import { LauncherSurface } from "./components/pages/LauncherSurface";
 import {
@@ -636,9 +637,10 @@ function RegisteredAppShellPage({
         cacheKey={registration.id}
         componentProps={{ ...APP_SHELL_VIEW_PROPS, ...viewProps }}
         fallback={
-          <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
-            Loading {registration.label}…
-          </div>
+          <PageLoadingState
+            heading={`Loading ${registration.label}…`}
+            className="flex-1"
+          />
         }
         onError={(error) => (
           <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center px-4 text-center text-sm text-destructive">

@@ -10,16 +10,11 @@
  * rather than inventing a second error surface.
  */
 
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Ban,
-  LoaderCircle,
-  RotateCw,
-} from "lucide-react";
+import { AlertTriangle, ArrowLeft, Ban, RotateCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { shellHistory } from "../../surface-realm-channel";
+import { PageLoadingState } from "../composites/page-panel";
 import { Alert } from "../ui/alert.tsx";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
@@ -98,10 +93,11 @@ export function ViewStatusFrame({
 export function ViewLoadingSkeleton() {
   const { t } = useTranslation();
   return (
-    <ViewStatusFrame
-      tone="loading"
-      icon={<LoaderCircle className="size-5 animate-spin" aria-hidden="true" />}
-      title={t("dynamicviewloader.loading", { defaultValue: "Loading view…" })}
+    <PageLoadingState
+      heading={t("dynamicviewloader.loading", {
+        defaultValue: "Loading view…",
+      })}
+      className="min-h-[12rem] flex-1"
     />
   );
 }
