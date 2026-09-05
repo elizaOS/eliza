@@ -37,6 +37,7 @@ function wasCheckoutCanceled(): boolean {
 export interface BillingSectionBodyProps {
   onSignIn?: () => void;
   signInBusy?: boolean;
+  signInError?: string | null;
 }
 
 interface InteractiveSignInButtonProps {
@@ -142,6 +143,7 @@ function RetryButton({ busy, label, onRetry }: RetryButtonProps) {
 export function BillingSectionBody({
   onSignIn,
   signInBusy = false,
+  signInError = null,
 }: BillingSectionBodyProps = {}) {
   const t = useCloudT();
   const {
@@ -178,14 +180,24 @@ export function BillingSectionBody({
   if (!isAuthenticated) {
     return (
       <ContentState
-        state="empty"
+        state={signInError ? "error" : "empty"}
         placement="surface"
-        title={t("cloud.billing.signInTitle", {
-          defaultValue: "Sign in required",
-        })}
-        description={t("cloud.billing.signInDescription", {
-          defaultValue: "Sign in to manage billing and Eliza Cloud credits.",
-        })}
+        role={signInError ? "alert" : undefined}
+        title={
+          signInError
+            ? t("cloud.billing.signInFailed", {
+                defaultValue: "Sign in unavailable",
+              })
+            : t("cloud.billing.signInTitle", {
+                defaultValue: "Sign in required",
+              })
+        }
+        description={
+          signInError ??
+          t("cloud.billing.signInDescription", {
+            defaultValue: "Sign in to manage billing and Eliza Cloud credits.",
+          })
+        }
         action={
           onSignIn ? (
             <InteractiveSignInButton

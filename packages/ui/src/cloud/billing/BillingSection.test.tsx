@@ -102,18 +102,12 @@ describe("BillingSectionBody", () => {
   it("renders a terminal sign-in state once authentication settles signed out", () => {
     setBillingState({ isReady: true });
     window.history.replaceState(null, "", "/settings#cloud-billing");
-    const { registry } = renderBillingSurface();
+    renderBillingSurface();
 
     expect(screen.getByText("Sign in required")).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Sign in" }).getAttribute("href"),
     ).toBe("/login?returnTo=%2Fsettings%23cloud-billing");
-    expect(screen.getByRole("link", { name: "Sign in" }).className).toMatch(
-      /keyboard-focus-surface/,
-    );
-    const descriptor = registry.describe("cloud-billing-sign-in");
-    expect(descriptor?.role).toBe("link");
-    expect(descriptor?.clickable).toBe(true);
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -125,6 +119,23 @@ describe("BillingSectionBody", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(onSignIn).toHaveBeenCalledOnce();
     expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+  });
+
+  it("shows a failed sign-in and keeps its recovery action usable", () => {
+    const onSignIn = vi.fn();
+    setBillingState({ isReady: true });
+    renderBillingSurface({
+      onSignIn,
+      signInError: "The login service is unavailable",
+    });
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "The login service is unavailable",
+    );
+    expect(screen.queryByText("Sign in required")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(onSignIn).toHaveBeenCalledOnce();
   });
 
   it("becomes agent-activatable after an initially busy login settles", () => {

@@ -297,13 +297,20 @@ describe("isTouchPrimaryWebBrowser", () => {
 });
 
 describe("buildSameTabCloudLoginPath", () => {
-  it.each(["cloud-account", "cloud-billing"])("preserves the %s section in returnTo", (section) => {
-    expect(buildSameTabCloudLoginPath({
-      pathname: "/settings",
-      search: "?t=c",
-      hash: `#${section}`,
-    })).toBe(`/login?returnTo=${encodeURIComponent(`/settings?t=c#${section}`)}`);
-  });
+  it.each(["cloud-account", "cloud-billing"])(
+    "preserves the %s section in returnTo",
+    (section) => {
+      expect(
+        buildSameTabCloudLoginPath({
+          pathname: "/settings",
+          search: "?t=c",
+          hash: `#${section}`,
+        }),
+      ).toBe(
+        `/login?returnTo=${encodeURIComponent(`/settings?t=c#${section}`)}`,
+      );
+    },
+  );
 
   it("falls back to /chat when already on the login page", () => {
     expect(buildSameTabCloudLoginPath({ pathname: "/login", search: "" })).toBe(

@@ -81,7 +81,12 @@ describe("CloudBillingSection", () => {
     );
 
     expect(claimCloudLoginWindow).toHaveBeenCalledOnce();
-    expect(appState.handleInteractiveCloudLogin).toHaveBeenCalledOnce();
+    expect(
+      appState.handleInteractiveCloudLogin,
+    ).toHaveBeenCalledExactlyOnceWith({
+      requireClientAuth: true,
+      forceReauth: true,
+    });
   });
 
   it("passes the app login busy state to the billing control", () => {

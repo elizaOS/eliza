@@ -1444,6 +1444,7 @@
   "cloud.billing.retrying": "Retrying…",
   "cloud.billing.signInDescription": "Sign in to manage billing and Eliza Cloud credits.",
   "cloud.billing.signInError": "Could not start Eliza Cloud sign-in.",
+  "cloud.billing.signInFailed": "Sign in unavailable",
   "cloud.billing.signInTitle": "Sign in required",
   "cloud.billing.unavailableDescription": "Your session is active, but no billing account is available.",
   "cloud.billing.unavailableTitle": "Billing unavailable",
