@@ -800,6 +800,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       bridgeStatus: bridgeStatus.result,
       directHealth,
       fetchHealth,
+      fetchContract,
       localInference: {
         hub: localInferenceHub,
         providers: localInferenceProviders,
