@@ -51,7 +51,7 @@ import {
   type UserContent,
 } from "ai";
 import { createOpenAIClient } from "../providers";
-import type { TextStreamResult, TokenUsage } from "../types";
+import type { OpenAiUsageProvider, TextStreamResult, TokenUsage } from "../types";
 import {
   getActionPlannerModel,
   getBaseURL,
@@ -512,7 +512,11 @@ function buildStructuredOutput(
 
   const schemaOptions =
     responseSchema && typeof responseSchema === "object" && "schema" in responseSchema
-      ? (responseSchema as { schema: unknown; name?: string; description?: string })
+      ? (responseSchema as {
+          schema: unknown;
+          name?: string;
+          description?: string;
+        })
       : { schema: responseSchema };
   const preparedSchema = prepareResponseFormatSchema(schemaOptions.schema, modelType);
 
@@ -702,7 +706,10 @@ function sanitizeToolDescriptionPreservingDescriptors<T extends object>(tool: T)
   if (description === descriptor.value) return tool;
   const sanitized = Object.create(Object.getPrototypeOf(tool)) as T;
   Object.defineProperties(sanitized, Object.getOwnPropertyDescriptors(tool));
-  Object.defineProperty(sanitized, "description", { ...descriptor, value: description });
+  Object.defineProperty(sanitized, "description", {
+    ...descriptor,
+    value: description,
+  });
   return sanitized;
 }
 
@@ -1776,7 +1783,7 @@ function buildNativeTextResult(
     providerMetadata?: unknown;
   },
   modelName: string,
-  provider: "cerebras" | "evolink" | "openai",
+  provider: OpenAiUsageProvider,
   retry?: ModelRetryTelemetry
 ): NativeGenerateTextResult {
   const identity = mergeProviderIdentity(result.providerMetadata, modelName, provider) as Record<
@@ -1821,7 +1828,7 @@ function handledMappedPromise<T, U>(
 function mergeProviderIdentity(
   providerMetadata: unknown,
   modelName: string,
-  provider: "cerebras" | "evolink" | "openai"
+  provider: OpenAiUsageProvider
 ): unknown {
   if (
     providerMetadata &&
@@ -2459,7 +2466,10 @@ async function generateTextByModelType(
 
   // Shared across whichever retry lane serves this call; exactly one lane runs
   // per call, so the totals are per-request, never cross-request.
-  const retryState: ModelRetryTelemetry = { retryCount: 0, lastRetryReason: undefined };
+  const retryState: ModelRetryTelemetry = {
+    retryCount: 0,
+    lastRetryReason: undefined,
+  };
   const retryMetadata = () => ({
     retryCount: retryState.retryCount,
     ...(retryState.lastRetryReason !== undefined
@@ -2583,7 +2593,11 @@ async function generateTextByModelType(
         ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(buffered.toolCalls) } : {}),
         usage: Promise.resolve(convertUsage(buffered.usage)),
         finishReason: Promise.resolve(buffered.finishReason),
-        providerMetadata: { modelName, provider: usageProvider, ...retryMetadata() },
+        providerMetadata: {
+          modelName,
+          provider: usageProvider,
+          ...retryMetadata(),
+        },
       };
     }
     const details = createLlmCallDetails(
@@ -2851,7 +2865,11 @@ async function generateTextByModelType(
       ...(shouldReturnNativeResult ? { toolCalls: restoredToolCallsPromise } : {}),
       usage: usagePromise,
       finishReason: finishReasonPromise,
-      providerMetadata: { modelName, provider: usageProvider, ...retryMetadata() },
+      providerMetadata: {
+        modelName,
+        provider: usageProvider,
+        ...retryMetadata(),
+      },
     };
   }
 
