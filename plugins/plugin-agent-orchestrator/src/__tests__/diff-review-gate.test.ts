@@ -293,6 +293,45 @@ describe("reviewDiff — case-insensitive secret matching (parity with core)", (
     expect(result.blocking).toHaveLength(0);
   });
 
+  it.each([
+    [
+      "indented object field",
+      (value: string) => `  serviceCredential: "${value}",`,
+    ],
+    [
+      "tab-indented object field",
+      (value: string) => `\tclientSecret: '${value}',`,
+    ],
+    [
+      "indented member assignment",
+      (value: string) => `  this.apiKey = "${value}";`,
+    ],
+    [
+      "nested member assignment",
+      (value: string) => `  config.auth.accessToken = '${value}';`,
+    ],
+    [
+      "declared credential",
+      (value: string) => `const credential = "${value}";`,
+    ],
+    [
+      "exported dotenv scalar",
+      (value: string) => `export serviceCredential=${value}`,
+    ],
+  ])("blocks a %s and keeps the value out of findings", (_case, addedLine) => {
+    const value = ["fixture", "credential", "123456789"].join("-");
+    const result = reviewDiff({
+      diff: addedFileDiff("config.ts", [addedLine(value)]),
+      changedFiles: ["config.ts"],
+    });
+    expect(result.passed).toBe(false);
+    expect(result.blocking).toEqual([
+      expect.objectContaining({ check: "secret", severity: "block" }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain(value);
+    expect(summarizeDiffGate(result)).not.toContain(value);
+  });
+
   it("blocks a lowercase `authorization: bearer …` header", () => {
     const diff = addedFileDiff("req.ts", [
       'const h = "authorization: bearer abcdefghijklmnopqrstuvwxyz012345";',
