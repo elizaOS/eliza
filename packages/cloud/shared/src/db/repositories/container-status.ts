@@ -21,6 +21,7 @@ export const CONTAINER_STATUSES = [
   "running",
   "stopped",
   "failed",
+  "cleanup_required",
   "deleting",
   "deleted",
 ] as const satisfies readonly ContainerStatus[];
