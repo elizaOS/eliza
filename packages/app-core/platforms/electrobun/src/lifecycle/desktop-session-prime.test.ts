@@ -638,7 +638,7 @@ describe("desktop-session-prime", () => {
       const externalApiBase = "http://127.0.0.1:3000";
       const devServerOrigin = "http://localhost:5173";
       const loadURL = vi.fn();
-      const currentWindow = { webview: { loadURL } };
+      const currentWindow = { webview: { loadURL, rpc: undefined } };
       const publishAgentApiBase = vi.fn();
       const setAgentReady = vi.fn();
       const injectApiBaseIntoWindows = vi.fn();
@@ -646,7 +646,7 @@ describe("desktop-session-prime", () => {
       const result = await initializeExternalDesktopRuntimeSession({
         mode: "external",
         externalApiBase,
-        externalReachability: "available",
+        externalReachability: "verified",
         currentWindow,
         resolveRendererOrigin: () => devServerOrigin,
         resolveApiToken: () => "test-token",
@@ -676,7 +676,7 @@ describe("desktop-session-prime", () => {
       seedPersistedSession();
       const externalApiBase = "https://api.elizaos.ai";
       const loadURL = vi.fn();
-      const currentWindow = { webview: { loadURL } };
+      const currentWindow = { webview: { loadURL, rpc: undefined } };
       const publishAgentApiBase = vi.fn();
       const setAgentReady = vi.fn();
       const injectApiBaseIntoWindows = vi.fn();
@@ -684,7 +684,7 @@ describe("desktop-session-prime", () => {
       const result = await initializeExternalDesktopRuntimeSession({
         mode: "external",
         externalApiBase,
-        externalReachability: "available",
+        externalReachability: "verified",
         currentWindow,
         publishAgentApiBase,
         collectOpenWindows: () => [currentWindow],
@@ -703,7 +703,7 @@ describe("desktop-session-prime", () => {
 
     it("does not prime session when mode is disabled", async () => {
       const loadURL = vi.fn();
-      const currentWindow = { webview: { loadURL } };
+      const currentWindow = { webview: { loadURL, rpc: undefined } };
       const injectApiBaseIntoWindows = vi.fn();
 
       const result = await initializeExternalDesktopRuntimeSession({

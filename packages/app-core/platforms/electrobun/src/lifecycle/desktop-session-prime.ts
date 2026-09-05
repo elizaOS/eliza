@@ -8,6 +8,7 @@ import {
   isLoopbackBase,
   loadOrCreateDesktopSession,
 } from "../native/auth-bridge";
+import type { PushableWindow } from "./agent-ready-publish";
 import { reloadRendererAfterDesktopSessionPrime } from "./desktop-session-renderer-ready";
 
 // Tracks whether the desktop loopback session has already been primed for the
@@ -176,7 +177,7 @@ export async function primeDesktopSessionAuth(
   return desktopSessionPrimed;
 }
 
-export interface ExternalRuntimeDesktopWindow {
+export interface ExternalRuntimeDesktopWindow extends PushableWindow {
   webview: {
     loadURL(url: string): void;
     rpc?: unknown;
@@ -185,23 +186,25 @@ export interface ExternalRuntimeDesktopWindow {
 
 export interface ExternalDesktopRuntimeInitOptions {
   mode: "local" | "external" | "disabled";
-  externalApiBase?: string;
-  externalReachability?: "available" | "unavailable" | "unknown";
+  externalApiBase?: string | null;
+  externalReachability?: "verified" | "unavailable";
   env?: Record<string, string | undefined>;
   currentWindow: ExternalRuntimeDesktopWindow | null;
   resolveRendererOrigin?: (
     env: Record<string, string | undefined>,
-  ) => string | undefined;
+  ) => string | null | undefined;
   resolveApiToken?: (
     env: Record<string, string | undefined>,
-  ) => string | undefined;
-  resolveQualifiedToken?: (externalApiBase: string) => string | undefined;
+  ) => string | null | undefined;
+  resolveQualifiedToken?: (
+    externalApiBase: string,
+  ) => string | null | undefined;
   publishAgentApiBase: (
     rendererBase: string,
     apiToken: string,
-    windows: Iterable<{ webview: { rpc?: unknown } }>,
+    windows: Iterable<PushableWindow>,
   ) => void;
-  collectOpenWindows: () => Iterable<{ webview: { rpc?: unknown } }>;
+  collectOpenWindows: () => Iterable<PushableWindow>;
   setAgentReady: (ready: boolean) => void;
   resolveRendererUrl: () => Promise<string>;
   injectApiBaseIntoWindows: () => void;
