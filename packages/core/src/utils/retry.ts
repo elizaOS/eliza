@@ -24,6 +24,9 @@ export async function sleepWithAbort(
 	ms: number,
 	abortSignal?: AbortSignal,
 ): Promise<void> {
+	if (abortSignal?.aborted) {
+		throw new Error("aborted");
+	}
 	if (ms <= 0) {
 		return;
 	}
