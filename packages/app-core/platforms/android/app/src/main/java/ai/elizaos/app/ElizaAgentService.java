@@ -195,6 +195,7 @@ public class ElizaAgentService extends Service {
     // resolution + first model load — runs ~60-90s on an emulated CPU). Past
     // this the boot is considered failed and a relaunch is allowed.
     private static final long AGENT_BOOT_GRACE_MS = 120_000L;
+    private static final long CHILD_START_JOURNAL_GRACE_MS = 10_000L;
 
     private final Object processLock = new Object();
     private final Object notificationLock = new Object();
@@ -1896,7 +1897,8 @@ public class ElizaAgentService extends Service {
                 AgentChildStart childStart = readLatestAgentChildStart(launchStartedAt);
                 if (coldBootStampTrustworthy(
                         childStart != null,
-                        childStart != null && isAgentChildProcessAlive(childStart.childPid))) {
+                        childStart != null && isAgentChildProcessAlive(childStart.childPid),
+                        System.currentTimeMillis() - launchStartedAt)) {
                     detachedAgentMode = true;
                     detachedLaunchStartedAtMs = launchStartedAt;
                     Map<String, String> details = new LinkedHashMap<>();
@@ -1918,12 +1920,12 @@ public class ElizaAgentService extends Service {
                 }
                 Map<String, String> staleDetails = new LinkedHashMap<>();
                 staleDetails.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
-                staleDetails.put("childPid", childStart.childPid);
+                if (childStart != null) staleDetails.put("childPid", childStart.childPid);
+                staleDetails.put("childStartJournaled", String.valueOf(childStart != null));
                 appendDiagnosticEvent("detached-agent-cold-boot-guard-stale", staleDetails);
                 Log.w(TAG, "Detached agent launch stamp is "
                     + (System.currentTimeMillis() - launchStartedAt)
-                    + "ms old but child pid " + childStart.childPid
-                    + " is gone with no journaled exit; relaunching instead of trusting the stamp.");
+                    + "ms old without a live journaled child; relaunching.");
             }
 
             String abi = resolveRuntimeAbi();
@@ -2978,19 +2980,13 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Whether the cold-boot guard may trust the persisted launch stamp. The
-     * stamp says a boot STARTED recently; only the journaled child's /proc
-     * liveness says it is still going. No journaled start yet means the
-     * launcher is inside its first second — trust the stamp rather than
-     * relaunch-churn over it. A journaled child that is gone from /proc with
-     * no exit record is the force-stop/LMK signature (#15189): the kill took
-     * launch-child.sh down with bun, so no agent-child-exited line was ever
-     * written, and trusting the stamp would shepherd a corpse for the rest of
-     * the grace window.
+     * A journaled live child keeps its cold-boot window. An absent journal only
+     * gets time for the launch handshake; a timestamp cannot prove liveness.
      */
     static boolean coldBootStampTrustworthy(
-            boolean childStartJournaled, boolean childProcessAlive) {
-        return !childStartJournaled || childProcessAlive;
+            boolean childStartJournaled, boolean childProcessAlive, long launchAgeMs) {
+        if (childStartJournaled) return childProcessAlive;
+        return launchAgeMs >= 0L && launchAgeMs < CHILD_START_JOURNAL_GRACE_MS;
     }
 
     /**
@@ -3320,6 +3316,25 @@ public class ElizaAgentService extends Service {
         Thread probe = new Thread(() -> {
             long deadline = launchStartedAtMs + STARTUP_HEALTH_GRACE_MS;
             while (!shuttingDown && System.currentTimeMillis() < deadline) {
+                // A successor can adopt during the brief journal handshake.
+                // Recheck it here so one start request cannot wait out the full health deadline.
+                AgentChildStart childStart = readLatestAgentChildStart(launchStartedAtMs);
+                long launchAgeMs = System.currentTimeMillis() - launchStartedAtMs;
+                if (childStart == null && !coldBootStampTrustworthy(false, false, launchAgeMs)
+                        && !isLocalAgentSocketListening()) {
+                    synchronized (processLock) {
+                        if (!detachedAgentMode || detachedLaunchStartedAtMs != launchStartedAtMs) return;
+                        currentStatus = "child-start-missing";
+                    }
+                    Map<String, String> details = new LinkedHashMap<>();
+                    details.put("ageMs", String.valueOf(launchAgeMs));
+                    details.put("journalGraceMs", String.valueOf(CHILD_START_JOURNAL_GRACE_MS));
+                    appendDiagnosticEvent("detached-agent-child-start-missing", details);
+                    Log.w(TAG, "Detached launch has no child-start journal or listening socket. Scheduling restart.");
+                    updateNotification();
+                    scheduleRestart();
+                    return;
+                }
                 ElizaAgentWatchdogPolicy.ProbeResult result = probeHealth();
                 if (result == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
                     restartAttempts = 0;

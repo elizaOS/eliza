@@ -125,18 +125,19 @@ public class ElizaAgentAutostartPolicyTest {
             "cloud-hybrid", belowHybridFloor));
     }
 
-    /**
-     * Cold-boot-guard stamp trust: the stamp is only as alive as the child it
-     * describes. No journaled start yet = launcher's first second, trust it; a
-     * journaled child that is gone from /proc = the force-stop/LMK signature,
-     * relaunch instead of shepherding a corpse (#15189).
-     */
     @Test
-    public void coldBootStampTrustFollowsChildLiveness() {
-        assertTrue(ElizaAgentService.coldBootStampTrustworthy(false, false));
-        assertTrue(ElizaAgentService.coldBootStampTrustworthy(false, true));
-        assertTrue(ElizaAgentService.coldBootStampTrustworthy(true, true));
-        assertFalse(ElizaAgentService.coldBootStampTrustworthy(true, false));
+    public void journaledColdBootFollowsChildLiveness() {
+        assertTrue(ElizaAgentService.coldBootStampTrustworthy(true, true, 60_000L));
+        assertFalse(ElizaAgentService.coldBootStampTrustworthy(true, false, 60_000L));
+    }
+
+    @Test
+    public void missingJournalCannotKeepAnAbsentChildBooting() {
+        assertTrue(ElizaAgentService.coldBootStampTrustworthy(false, false, 0L));
+        assertTrue(ElizaAgentService.coldBootStampTrustworthy(false, false, 9_999L));
+        assertFalse(ElizaAgentService.coldBootStampTrustworthy(false, false, 10_000L));
+        assertFalse(ElizaAgentService.coldBootStampTrustworthy(false, false, 30_000L));
+        assertFalse(ElizaAgentService.coldBootStampTrustworthy(false, false, -1L));
     }
 
     @Test
