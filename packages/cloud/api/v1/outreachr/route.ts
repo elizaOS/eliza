@@ -3,7 +3,10 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { listManagedGoogleConnectorAccounts } from "@/lib/services/agent-google-connector";
+import {
+  initiateManagedGoogleConnection,
+  listManagedGoogleConnectorAccounts,
+} from "@/lib/services/agent-google-connector";
 import {
   AgentGoogleConnectorError,
   googleFetch,
@@ -21,6 +24,7 @@ import { validateOutreachrGoogleRequest } from "@/lib/services/outreachr-google-
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { createGoogleConnectHandler } from "./google-connect";
 
 const app = new Hono<AppEnv>();
 app.use("*", bodyLimit({ maxSize: 1_600_000 }));
@@ -109,6 +113,14 @@ app.get("/google/connections", async (c) => {
   });
   return c.json({ success: true, connections });
 });
+
+app.post(
+  "/google/connect",
+  createGoogleConnectHandler({
+    delegation: outreachrDelegationService,
+    connect: initiateManagedGoogleConnection,
+  }),
+);
 
 app.post("/google/request", async (c) => {
   const user = await outreachrDelegationService.authorize(
