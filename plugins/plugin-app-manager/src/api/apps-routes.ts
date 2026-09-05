@@ -1669,7 +1669,37 @@ export async function handleAppsRoutes(
         const pkgPath = path.join(subdir, "package.json");
         const raw = await fs.readFile(pkgPath, "utf8").catch(() => null);
         if (raw === null) continue;
-        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(raw) as Record<string, unknown>;
+        } catch (parseError) {
+          // error-policy:J3 A syntactically malformed package.json is invalid
+          // on-disk input for this one entry, not a batch failure. Record it as
+          // a rejection and continue — the same shape as the permissions
+          // rejection below — so every valid sibling app still registers while
+          // the caller still learns which manifest failed. Use the error's name
+          // (e.g. "SyntaxError"), not its message: V8 embeds a slice of the
+          // offending file bytes in JSON.parse messages, and this reason is
+          // persisted through recordManifestRejection; `path` already identifies
+          // which manifest failed. The non-Error arm stays a constant for the
+          // same hygiene reason, though JSON.parse only ever throws SyntaxError.
+          const reason = `invalid JSON: ${
+            parseError instanceof Error ? parseError.name : "non-Error thrown"
+          }`;
+          const rejection = {
+            directory: subdir,
+            packageName: null,
+            reason,
+            path: pkgPath,
+          };
+          rejectedManifests.push(rejection);
+          await registry.recordManifestRejection?.({
+            ...rejection,
+            requesterEntityId: null,
+            requesterRoomId: null,
+          });
+          continue;
+        }
         const elizaos =
           parsed.elizaos && typeof parsed.elizaos === "object"
             ? (parsed.elizaos as Record<string, unknown>)
