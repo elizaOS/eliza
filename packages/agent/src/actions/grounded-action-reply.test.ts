@@ -661,4 +661,35 @@ describe("renderGroundedActionReply", () => {
       'Complete conversation: ["User: repeat this","User: repeat this","User: repeat this"]',
     );
   });
+
+  it("delivers the canonical fallback when the polish call fails on a structural provider error", async () => {
+    // A 429 surfaces from the AI SDK as a RetryError wrapping the APICallError
+    // on .lastError; the committed action's grounded reply must not be lost.
+    const retryError = Object.assign(
+      new Error("Failed after 3 attempts. Last error: Too Many Requests"),
+      {
+        name: "AI_RetryError",
+        lastError: Object.assign(new Error("Too Many Requests"), {
+          statusCode: 429,
+        }),
+      },
+    );
+    const useModel = vi.fn(async () => {
+      throw retryError;
+    }) as IAgentRuntime["useModel"];
+    const { reply } = await renderWith({
+      useModel,
+      fallback: "Created “Gym session” for Tuesday at 7:00 AM.",
+    });
+    expect(reply).toBe("Created “Gym session” for Tuesday at 7:00 AM.");
+  });
+
+  it("keeps non-provider polish failures loud", async () => {
+    const useModel = vi.fn(async () => {
+      throw new Error("boom");
+    }) as IAgentRuntime["useModel"];
+    await expect(renderWith({ useModel, fallback: "x" })).rejects.toThrow(
+      "boom",
+    );
+  });
 });

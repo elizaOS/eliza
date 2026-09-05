@@ -8,7 +8,9 @@
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   ElizaError,
+  isModelProviderError,
   ModelType,
+  modelProviderErrorDetail,
   NoModelProviderConfiguredError,
   parseJSONObjectFromText,
   renderActionResultsForModel,
@@ -212,14 +214,29 @@ export async function renderGroundedActionReply(
       prompt,
     });
   } catch (error) {
-    // error-policy:J4 A zero-key runtime has no model capable of polishing the
-    // already-grounded canonical reply. Return that reply exactly; every
-    // configured-provider failure remains loud so outages cannot masquerade as
-    // successful model output.
+    // error-policy:J4 The canonical fallback IS the complete grounded reply
+    // built from the already-completed action, so polishing failures degrade
+    // to it: a zero-key runtime (no provider), or a structural provider failure
+    // (HTTP 4xx/5xx — e.g. a 429 wrapped in the AI SDK RetryError — or a
+    // network error). The committed step's success and receipts are not the
+    // polish model's to fail (observed live: a committed calendar create was
+    // reported as failed after a post-commit 429). Anything else stays loud.
     if (
       error instanceof NoModelProviderConfiguredError &&
       error.reason === "no-provider"
     ) {
+      return args.fallback;
+    }
+    if (isModelProviderError(error)) {
+      args.runtime.logger?.warn(
+        {
+          src: "grounded-action-reply",
+          domain: args.domain,
+          scenario: args.scenario,
+          ...modelProviderErrorDetail(error),
+        },
+        "[GroundedActionReply] provider failed after the action completed; delivering the canonical grounded reply",
+      );
       return args.fallback;
     }
     throw error;
