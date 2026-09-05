@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Pure form model and constants for the Triggers feature: the trigger form
  * state shape and empty default, duration-unit math (best-fit unit, ms
@@ -212,12 +213,14 @@ export function getTemplateInstructions(
 // ── Misc helpers ───────────────────────────────────────────────────
 
 export function railMonogram(label: string): string {
-  const words = label.trim().split(/\s+/).filter(Boolean);
+  const wellFormed = toWellFormedUnicode(label);
+  const words = wellFormed.trim().split(/\s+/).filter(Boolean);
   const initials = words
     .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? "")
+    .map((word) => truncateWellFormed(word, 1).toUpperCase())
     .join("");
-  return (initials || label.slice(0, 1).toUpperCase() || "?").slice(0, 2);
+  const fallback = truncateWellFormed(wellFormed, 1).toUpperCase() || "?";
+  return truncateWellFormed(initials || fallback, 2);
 }
 
 export { parsePositiveInteger };
@@ -247,12 +250,16 @@ export function scheduleLabel(
 }
 
 export function humanizeEventKind(value: string): string {
-  return value
+  const wellFormed = toWellFormedUnicode(value);
+  return wellFormed
     .trim()
     .replace(/[_-]+/g, ".")
     .split(".")
     .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .map((part) => {
+      const head = truncateWellFormed(part, 1);
+      return head.toUpperCase() + part.slice(head.length);
+    })
     .join(" ");
 }
 
