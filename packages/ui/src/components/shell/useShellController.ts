@@ -408,6 +408,7 @@ function describeRealtimeVoiceFailure(
   }
   if (surfacedError) return surfacedError;
   if (outcome.kind === "fallback-to-batch") {
+    if (outcome.message) return outcome.message;
     if (outcome.reason === "consent") {
       return "Cartesia voice could not confirm microphone consent. Tap Talk to retry.";
     }

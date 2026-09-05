@@ -343,6 +343,8 @@ export interface RealServerConfig {
   /** Loopback listen port. Omit to let the OS choose an ephemeral test port. */
   listenPort?: number;
   faultInjection?: "cartesia-stt-auth-fail";
+  /** Local evidence-only rollout gate for verified browser AEC overlap. */
+  allowContinuousHandoff?: boolean;
 }
 
 export interface RunningRealServer {
@@ -575,6 +577,7 @@ export async function startRealVoiceServer(
           isRevoked: (j) => isVoiceSessionTokenRevoked(j),
           onTurnMetrics: (receipt) =>
             hooks.log("info", "voice turn metrics", { ...receipt }),
+          allowContinuousHandoff: config.allowContinuousHandoff,
           downlink,
         }),
     });
