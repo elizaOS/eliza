@@ -175,7 +175,10 @@ run() {
   /usr/sbin/useradd --system --no-create-home --shell /usr/sbin/nologin "$sandbox_user"
   SANDBOX_USER="$sandbox_user"
   SANDBOX_CLEANED=0
-  trap sandbox_cleanup EXIT INT TERM HUP
+  trap sandbox_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
   local uid
   uid="$(/usr/bin/id -u "$sandbox_user")"
   local gid
@@ -195,7 +198,10 @@ run() {
   SANDBOX_CHAIN="$chain"
   SANDBOX_OUTPUT_DIR="$output_dir"
   SANDBOX_CLEANED=0
-  trap sandbox_cleanup EXIT INT TERM HUP
+  trap sandbox_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
 
   /usr/sbin/iptables -w 5 -N "$chain"
   SANDBOX_IPV4_CHAIN=1
