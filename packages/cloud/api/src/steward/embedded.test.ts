@@ -237,6 +237,38 @@ describe("providers isolate cache capacity", () => {
 });
 
 describe("resolveStewardUpstream", () => {
+  it("routes to the owned login service when a legacy binding is also present", async () => {
+    const calls = stubFetch(async () => Response.json(providersJson()));
+    const app = makeApp(
+      baseEnv({ LOGIN_API_URL: "https://login.example.test/" }),
+    );
+    const response = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+    );
+    expect(response.status).toBe(200);
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://login.example.test/auth/providers",
+    ]);
+  });
+
+  it.each([
+    "",
+    "not a URL",
+    "ftp://login.example.test",
+    "https://api.elizacloud.ai/steward",
+  ])(
+    "refuses invalid owned login binding %j without contacting the legacy service",
+    async (loginApiUrl) => {
+      const calls = stubFetch(async () => Response.json(providersJson()));
+      const app = makeApp(baseEnv({ LOGIN_API_URL: loginApiUrl }));
+      const response = await app.request(
+        "https://api.elizacloud.ai/steward/auth/providers",
+      );
+      expect(response.status).toBe(503);
+      expect(calls).toEqual([]);
+    },
+  );
+
   it("returns 503 when neither upstream candidate is configured", async () => {
     const app = makeApp({} as AppEnv["Bindings"]);
     const response = await app.request(

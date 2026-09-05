@@ -67,8 +67,8 @@ vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
   };
 });
 
-vi.mock("@stwd/sdk", () => ({
-  StewardApiError: class StewardApiError extends Error {
+vi.mock("@elizaos/login", () => ({
+  LoginApiError: class LoginApiError extends Error {
     status: number;
     data: unknown;
     constructor(message: string, status: number, data?: unknown) {
@@ -78,7 +78,7 @@ vi.mock("@stwd/sdk", () => ({
       this.data = data;
     }
   },
-  StewardAuth: class {
+  LoginAuth: class {
     getProviders = stewardAuthSpies.getProviders;
     getSession = stewardAuthSpies.getSession;
     refreshSession = stewardAuthSpies.refreshSession;
@@ -135,7 +135,7 @@ vi.mock("../../lib/login-return-to", () => ({
   storePendingOAuthReturnTo: () => undefined,
 }));
 
-import { StewardApiError } from "@stwd/sdk";
+import { LoginApiError } from "@elizaos/login";
 import StewardLoginSection from "./steward-login-section";
 
 function renderSection() {
@@ -336,7 +336,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
     stewardAuthSpies.signInWithPasskey.mockRejectedValue(
-      new StewardApiError(
+      new LoginApiError(
         "WebAuthn authentication cancelled or failed: NotAllowedError",
         0,
       ),
@@ -399,7 +399,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
     stewardAuthSpies.signInWithPasskey.mockRejectedValue(
-      new StewardApiError("Passkey sign-in is unavailable", 500),
+      new LoginApiError("Passkey sign-in is unavailable", 500),
     );
 
     renderSection();
@@ -428,7 +428,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
     stewardAuthSpies.signInWithPasskey.mockRejectedValue(
-      new StewardApiError(
+      new LoginApiError(
         "WebAuthn authentication cancelled or failed: NotAllowedError",
         0,
       ),
@@ -463,7 +463,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
     stewardAuthSpies.signInWithPasskey.mockRejectedValue(
-      new StewardApiError(
+      new LoginApiError(
         "WebAuthn authentication cancelled or failed: User verification was required, but user could not be verified",
         0,
       ),
@@ -495,10 +495,10 @@ describe("StewardLoginSection passkey capability gating", () => {
   });
 
   it.each([
-    new StewardApiError("Network request failed", 0),
-    new StewardApiError("Passkey service unavailable", 500),
-    new StewardApiError("User verification service unavailable", 500),
-    new StewardApiError("Gateway timed out", 504),
+    new LoginApiError("Network request failed", 0),
+    new LoginApiError("Passkey service unavailable", 500),
+    new LoginApiError("User verification service unavailable", 500),
+    new LoginApiError("Gateway timed out", 504),
   ])(
     "surfaces hard failure %s without recovery or enrollment",
     async (passkeyError) => {
@@ -528,13 +528,13 @@ describe("StewardLoginSection passkey capability gating", () => {
     capabilityRef.reason = "available";
     stewardAuthSpies.signInWithPasskey
       .mockRejectedValueOnce(
-        new StewardApiError(
+        new LoginApiError(
           "WebAuthn authentication cancelled or failed: NotAllowedError",
           0,
         ),
       )
       .mockRejectedValueOnce(
-        new StewardApiError("User verification service unavailable", 500),
+        new LoginApiError("User verification service unavailable", 500),
       );
 
     renderSection();
@@ -603,7 +603,7 @@ describe("StewardLoginSection passkey capability gating", () => {
       emailGrant: "grant-1",
     });
     stewardAuthSpies.addPasskey.mockRejectedValue(
-      new StewardApiError(
+      new LoginApiError(
         "WebAuthn registration cancelled or failed: NotAllowedError: the operation was aborted",
         0,
       ),
@@ -659,7 +659,7 @@ describe("StewardLoginSection passkey capability gating", () => {
   it.each([
     [
       "server conflict",
-      new StewardApiError(
+      new LoginApiError(
         "A passkey already exists for this email. Sign in with it instead.",
         409,
         {
@@ -672,7 +672,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     ],
     [
       "browser duplicate signal",
-      new StewardApiError(
+      new LoginApiError(
         "WebAuthn registration cancelled or failed: InvalidStateError: The authenticator was previously registered",
         0,
       ),
@@ -723,7 +723,7 @@ describe("StewardLoginSection passkey capability gating", () => {
       emailGrant: "grant-conflict",
     });
     stewardAuthSpies.addPasskey.mockRejectedValue(
-      new StewardApiError(
+      new LoginApiError(
         "A passkey already exists for this email. Sign in with it instead.",
         409,
       ),
@@ -756,7 +756,7 @@ describe("StewardLoginSection passkey capability gating", () => {
       .mockResolvedValueOnce({ emailGrant: "grant-2" });
     stewardAuthSpies.addPasskey
       .mockRejectedValueOnce(
-        new StewardApiError(
+        new LoginApiError(
           "WebAuthn registration cancelled or failed: NotAllowedError",
           0,
         ),

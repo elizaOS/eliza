@@ -51,8 +51,8 @@ vi.mock("@elizaos/shared/steward-session-client", async () => {
   };
 });
 
-vi.mock("@stwd/sdk", () => ({
-  StewardAuth: class {
+vi.mock("@elizaos/login", () => ({
+  LoginAuth: class {
     getSession() {
       return null;
     }

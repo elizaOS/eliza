@@ -1842,7 +1842,7 @@ const VENDOR_CRYPTO_TEST =
 // import the crypto chunk and form an init-order cycle (the wagmi 3.x `connect`
 // / `ConnectorUnavailableReconnectingError` TDZ crash).
 const VENDOR_WALLET_TEST =
-  /\/node_modules\/(wagmi|@wagmi\/|viem\/|@rainbow-me\/|@walletconnect\/|@reown\/|@coinbase\/wallet|mipd|eventemitter3)(\/|$)/;
+  /\/node_modules\/(wagmi|@wagmi\/[^/]+|viem|@rainbow-me\/[^/]+|@walletconnect\/[^/]+|@reown\/[^/]+|@coinbase\/wallet[^/]*|mipd|eventemitter3)(\/|$)/;
 
 // Solana wallet/web3 stack — also folded into `vendor-crypto` (it imports the
 // same bn.js/buffer core).

@@ -454,7 +454,7 @@ app.post("/", async (c) => {
   logExchange("ok");
   // Returning `token` here so the SPA can mirror it into localStorage. The
   // HttpOnly cookies above are the canonical session; the localStorage copy is
-  // what @stwd/react's `useAuth()` and the SPA's
+  // what @elizaos/ui's `useAuth()` and the SPA's
   // `readStewardSessionFromStorage()` actually read on `/cloud` route
   // mount to decide `isAuthenticated`. Without this, OAuth users land back
   // on `/login` after a successful exchange (wallet/SIWE keeps working only

@@ -3,14 +3,15 @@
  * `steward-sidecar.ts`: constructor accessors, factory env/override
  * precedence, credential load, missing entry, legacy data migration, and a
  * real loopback child for start/stop/restart/crash. Drives the real module
- * against temp directories and a tiny HTTP stand-in; no collaborator mocks.
+ * against temp directories and a tiny HTTP stand-in. Module discovery is
+ * unavailable in the failed-start scenarios; explicit child paths are real.
  */
 
 import fs from "node:fs";
 import { createServer, type Server } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   allocateFirstFreeLoopbackPort,
   createDesktopStewardSidecar,
@@ -22,6 +23,14 @@ import {
   StewardSidecar,
   type StewardSidecarStatus,
 } from "./steward-sidecar";
+
+vi.mock("./steward-sidecar/process-management", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("./steward-sidecar/process-management")
+    >();
+  return { ...actual, findStewardEntryPoint: async () => null };
+});
 
 const ENV_KEYS = [
   "STEWARD_DATA_DIR",
@@ -90,6 +99,7 @@ const plantedCredentials: StewardCredentials = {
   agentId: "agent-1",
   agentToken: "agent-token-1",
   walletAddress: "0xplanted",
+  masterPassword: "planted-vault-root",
 };
 
 const tempDirs: string[] = [];
@@ -294,7 +304,7 @@ describe("StewardSidecar constructor and accessors", () => {
 
     expect(sidecar.getApiBase()).toBe("http://127.0.0.1:43123");
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(fs.existsSync(path.join(home, "wallet-state", "data"))).toBe(true);
     expect(fs.existsSync(path.join(home, "wallet-state", "logs"))).toBe(true);
@@ -326,7 +336,7 @@ describe("createDesktopStewardSidecar", () => {
     const sidecar = track(createDesktopStewardSidecar());
     expect(sidecar.getApiBase()).toBe("http://127.0.0.1:3200");
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(
       fs.existsSync(
@@ -344,7 +354,7 @@ describe("createDesktopStewardSidecar", () => {
 
     const sidecar = track(createDesktopStewardSidecar());
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(
       fs.existsSync(
@@ -362,7 +372,7 @@ describe("createDesktopStewardSidecar", () => {
 
     const sidecar = track(createDesktopStewardSidecar());
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(
       fs.existsSync(
@@ -381,7 +391,7 @@ describe("createDesktopStewardSidecar", () => {
 
     const sidecar = track(createDesktopStewardSidecar());
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(fs.existsSync(path.join(xdg, "eliza", "steward", "data"))).toBe(
       true,
@@ -396,7 +406,7 @@ describe("createDesktopStewardSidecar", () => {
 
     const sidecar = track(createDesktopStewardSidecar());
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(fs.existsSync(path.join(explicit, "data"))).toBe(true);
     expect(fs.existsSync(path.join(xdg, "eliza", "steward"))).toBe(false);
@@ -416,7 +426,7 @@ describe("createDesktopStewardSidecar", () => {
     );
     expect(sidecar.getApiBase()).toBe("http://127.0.0.1:4600");
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(fs.existsSync(path.join(fromOverride, "data"))).toBe(true);
     expect(fs.existsSync(path.join(fromEnv, "data"))).toBe(false);
@@ -460,11 +470,11 @@ describe("start without a steward entry", () => {
     );
 
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(sidecar.getStatus().state).toBe("error");
     expect(sidecar.getStatus().error).toMatch(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(sidecar.getStatus().pid).toBeNull();
     expect(fs.existsSync(path.join(dataDir, "data"))).toBe(true);
@@ -487,7 +497,7 @@ describe("start without a steward entry", () => {
     expect(second.status).toBe("rejected");
     if (first.status === "rejected" && second.status === "rejected") {
       expect(first.reason).toBe(second.reason);
-      expect(String(first.reason)).toMatch(/Steward API entry point not found/);
+      expect(String(first.reason)).toMatch(/Login API entry point not found/);
     }
   });
 
@@ -497,7 +507,7 @@ describe("start without a steward entry", () => {
     const sidecar = track(new StewardSidecar({ dataDir }));
 
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(sidecar.getStatus()).toMatchObject({
       walletAddress: "0xplanted",
@@ -520,7 +530,10 @@ describe("start without a steward entry", () => {
 
   it("fills a missing masterPassword from config and keeps one already on disk", async () => {
     const fillDir = openTempDir("steward-sidecar-pw-fill-");
-    plantCredentials(fillDir, plantedCredentials);
+    plantCredentials(fillDir, {
+      ...plantedCredentials,
+      masterPassword: undefined,
+    });
     const filling = track(
       new StewardSidecar({
         dataDir: fillDir,
@@ -528,7 +541,7 @@ describe("start without a steward entry", () => {
       }),
     );
     await expect(filling.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(filling.getCredentials()?.masterPassword).toBe("from-config");
 
@@ -544,12 +557,12 @@ describe("start without a steward entry", () => {
       }),
     );
     await expect(keeping.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(keeping.getCredentials()?.masterPassword).toBe("from-file");
   });
 
-  it("recreates after unreadable credentials instead of throwing a parse error", async () => {
+  it("preserves unreadable credentials and rejects startup before replacing wallet keys", async () => {
     const dataDir = openTempDir("steward-sidecar-bad-json-");
     plantCredentials(dataDir, plantedCredentials);
     fs.writeFileSync(
@@ -559,9 +572,12 @@ describe("start without a steward entry", () => {
     );
     const sidecar = track(new StewardSidecar({ dataDir }));
 
-    await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
-    );
+    await expect(sidecar.start()).rejects.toMatchObject({
+      code: "LOGIN_CREDENTIALS_UNREADABLE",
+    });
+    expect(
+      fs.readFileSync(path.join(dataDir, "credentials.json"), "utf8"),
+    ).toBe("{not-json");
     expect(sidecar.getCredentials()).toBeNull();
     expect(sidecar.getStatus().walletAddress).toBeNull();
   });
@@ -573,7 +589,7 @@ describe("start without a steward entry", () => {
       }),
     );
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     await sidecar.stop();
     expect(sidecar.getStatus().state).toBe("stopped");
@@ -581,7 +597,7 @@ describe("start without a steward entry", () => {
     expect(sidecar.getStatus().pid).toBeNull();
     expect(sidecar.getStatus().startedAt).toBeNull();
     expect(sidecar.getStatus().error).toMatch(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
   });
 
@@ -592,7 +608,7 @@ describe("start without a steward entry", () => {
       }),
     );
     await expect(sidecar.restart()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(sidecar.getStatus().restartCount).toBe(0);
     expect(sidecar.getStatus().state).toBe("error");
@@ -610,7 +626,7 @@ describe("legacy steward data migration", () => {
     const dataDir = path.join(home, "eliza-steward");
     const sidecar = track(new StewardSidecar({ dataDir }));
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(
       fs.readFileSync(path.join(dataDir, "data", "PG_VERSION"), "utf8"),
@@ -630,7 +646,7 @@ describe("legacy steward data migration", () => {
 
     const sidecar = track(new StewardSidecar({ dataDir }));
     await expect(sidecar.start()).rejects.toThrow(
-      /Steward API entry point not found/,
+      /Login API entry point not found/,
     );
     expect(
       fs.readFileSync(path.join(dataDir, "data", "PG_VERSION"), "utf8"),
@@ -719,6 +735,7 @@ describe("lifecycle with a real loopback steward", () => {
         tenantApiKey: "tenant-key-1",
         agentId: "agent-1",
         walletAddress: "0xcheckpoint",
+        masterPassword: "checkpoint-vault-root",
       },
     });
     const status = await sidecar.start();

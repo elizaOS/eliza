@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const stewardStylesImport = 'import "@stwd/react/styles.css";';
+const stewardStylesImport = 'import "@elizaos/ui/styles/login.css";';
 
 describe("Steward renderer stylesheet ownership", () => {
   it("keeps the runtime graph JavaScript-only and loads Steward CSS from @elizaos/ui/styles", () => {

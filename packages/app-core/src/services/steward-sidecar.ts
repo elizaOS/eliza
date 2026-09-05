@@ -33,9 +33,11 @@ import { readAliasedEnv } from "@elizaos/shared";
 import { waitForHealthy } from "./steward-sidecar/health-check";
 import {
   allocateFirstFreeLoopbackPort,
-  generateMasterPassword,
+  fingerprintRandomToken,
+  generateApiKey,
   resolveDataDir,
 } from "./steward-sidecar/helpers";
+import { loadOrCreateLoginMasterPassword } from "./steward-sidecar/master-password";
 import {
   findStewardEntryPoint,
   pipeOutput,
@@ -138,6 +140,7 @@ export class StewardSidecar {
   private startPromise: Promise<StewardSidecarStatus> | null = null;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private credentials: StewardCredentials | null = null;
+  private readonly bootstrapPlatformKey = generateApiKey();
   private healthCheckAbort: AbortController | null = null;
 
   constructor(config: StewardSidecarConfig) {
@@ -239,6 +242,7 @@ export class StewardSidecar {
             this.updateStatus(p);
           }
         },
+        this.bootstrapPlatformKey,
       );
       if (!this.isLifecycleActive(generation)) {
         return this.status;
@@ -419,22 +423,37 @@ export class StewardSidecar {
           this.credentials.masterPassword = this.config.masterPassword;
         }
 
+        this.config.masterPassword = loadOrCreateLoginMasterPassword(
+          path.join(this.config.dataDir, "data"),
+          this.credentials.masterPassword || this.config.masterPassword,
+          Boolean(
+            this.credentials.masterPassword || this.config.masterPassword,
+          ),
+        );
+        this.credentials.masterPassword = this.config.masterPassword;
         this.updateStatus({
           walletAddress: this.credentials.walletAddress,
           agentId: this.credentials.agentId,
           tenantId: this.credentials.tenantId,
         });
         return;
-      } catch {
-        logger.warn(
-          "[StewardSidecar] Failed to parse credentials, will recreate",
+      } catch (error) {
+        // error-policy:J2 never replace credentials that may unlock an existing wallet.
+        throw new ElizaError(
+          "Local login credentials could not be loaded. Restore the existing credentials file before restarting.",
+          {
+            code: "LOGIN_CREDENTIALS_UNREADABLE",
+            context: { path: credPath },
+            cause: error,
+          },
         );
       }
     }
 
-    if (!this.config.masterPassword) {
-      this.config.masterPassword = generateMasterPassword();
-    }
+    this.config.masterPassword = loadOrCreateLoginMasterPassword(
+      path.join(this.config.dataDir, "data"),
+      this.config.masterPassword,
+    );
   }
 
   private async spawnProcess(generation: number): Promise<boolean> {
@@ -443,7 +462,7 @@ export class StewardSidecar {
 
     if (!entryPoint) {
       throw new Error(
-        "Steward API entry point not found. Set STEWARD_ENTRY_POINT or install a package that exposes @stwd/api.",
+        "Login API entry point not found. Install the @elizaos/login workspace or set STEWARD_ENTRY_POINT to its embedded entry.",
       );
     }
 
@@ -467,6 +486,15 @@ export class StewardSidecar {
       ),
       PORT: String(this.config.port),
       STEWARD_LOCAL: "true",
+      STEWARD_ACK_LOCAL_CUSTODY: "true",
+      STEWARD_ALLOW_API_KEY_ADMIN_MUTATIONS: "true",
+      STEWARD_PLATFORM_KEY: this.bootstrapPlatformKey,
+      STEWARD_PLATFORM_KEY_SCOPES: JSON.stringify({
+        [fingerprintRandomToken(this.bootstrapPlatformKey)]: [
+          "platform:write",
+          "platform:tenant:create",
+        ],
+      }),
       STEWARD_BIND_HOST: "127.0.0.1",
       NODE_ENV: "production",
     };
@@ -506,11 +534,15 @@ export class StewardSidecar {
 
       proc.exited.then((code: number) => this.observeProcessExit(proc, code));
     } else {
-      const child = childProcess.spawn("node", [entryPoint], {
-        env,
-        cwd: path.dirname(entryPoint),
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      const child = childProcess.spawn(
+        this.config.stewardEntryPoint ? "node" : "bun",
+        this.config.stewardEntryPoint ? [entryPoint] : ["run", entryPoint],
+        {
+          env,
+          cwd: path.dirname(entryPoint),
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
 
       const exitPromise = new Promise<number>((resolve) => {
         child.on("exit", (code) => resolve(code ?? 1));

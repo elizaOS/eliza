@@ -1,6 +1,6 @@
 // Coordinates cloud service server wallets behavior behind route handlers.
 import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk/wallet-provision-challenge";
-import { StewardApiError } from "@stwd/sdk";
+import { LoginApiError } from "@elizaos/login";
 import { and, eq } from "drizzle-orm";
 import { verifyMessage } from "viem";
 import { db } from "../../db/client";
@@ -118,7 +118,7 @@ function isUniqueViolation(error: unknown): boolean {
 
 function isStewardConflictError(error: unknown): boolean {
   const status =
-    error instanceof StewardApiError
+    error instanceof LoginApiError
       ? error.status
       : typeof error === "object" && error !== null
         ? Reflect.get(error, "status")

@@ -5,7 +5,7 @@ import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 /**
  * Component tests for AuthorizeContent, the app-authorize consent screen. Drives
  * the signed-in and signed-out branches and the OAuth-start / cancel-redirect
- * paths against a mocked `@stwd/react` auth hook (deterministic; no live Steward
+ * paths against a mocked `@elizaos/ui` auth hook (deterministic; no live Steward
  * backend), asserting on rendered controls and redirect behaviour in jsdom.
  */
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -50,14 +50,14 @@ const searchParamsRef = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("@stwd/react", () => ({
+vi.mock("../../../login/index", () => ({
   DiscordIcon: ({ size }: { size?: number }) => (
     <svg aria-hidden="true" data-size={size} data-testid="discord-icon" />
   ),
   GoogleIcon: ({ size }: { size?: number }) => (
     <svg aria-hidden="true" data-size={size} data-testid="google-icon" />
   ),
-  StewardLogin: ({
+  LoginForm: ({
     showDiscord,
     showGoogle,
     title,
