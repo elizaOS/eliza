@@ -123,12 +123,42 @@ function isAutoJoinTask(task: ScheduledTask): boolean {
   return task.metadata?.[AUTO_JOIN_METADATA_FLAG] === true;
 }
 
-function isLive(task: ScheduledTask): boolean {
-  return (
-    task.state.status === "scheduled" ||
-    task.state.status === "fired" ||
-    task.state.status === "acknowledged"
-  );
+/**
+ * Event + policy-generation idempotency key. Every schedule this module issues
+ * carries one; the scheduling spine enforces at-most-one row per
+ * `(agentId, idempotencyKey)` (unique constraint in the SQL store, replayed by
+ * `scheduleWithResult` — see `plugin-scheduling` `runner.ts`/`db-schema.ts`).
+ * That is the concurrency contract the reconcile path relies on: two concurrent
+ * syncs that both observe an empty task set and hold the SAME policy compute the
+ * SAME key for the same event/generation/mode/role, so only one row is ever
+ * inserted and the loser replays it instead of creating a duplicate
+ * approval/join.
+ *
+ * The `mode` segment is load-bearing for the cross-policy race: an `all` join
+ * is a DIRECT `custom` task while an `ask` join is an `after_task`
+ * approval-gated `custom` task, yet both carry role `join`. Without the mode in
+ * the key, a stale `all` reconcile and a current `ask` reconcile that both see
+ * an empty set would compute the same `join` key for semantically different
+ * tasks; the spine would then replay whichever won and could leave an `ask`
+ * agent with a direct (approval-skipping) join. Keying on mode keeps the two
+ * generations' join tasks distinct; the fire-time policy-epoch guard in
+ * `meeting-join-dispatch.ts` then refuses any task whose mode no longer matches
+ * the current policy, so a superseded direct join can never actually fire.
+ *
+ * `generation` is a monotonic per-event token (the count of prior task
+ * lifecycles for the event; task rows are only ever added, never removed, and
+ * each policy epoch is retired by dismissal before the next is scheduled). A
+ * fresh epoch therefore always gets a strictly higher generation and a fresh
+ * key, so a policy round-trip back to a mode (all→ask→all) is a NEW generation
+ * rather than a collision with the retired one.
+ */
+function autoJoinIdempotencyKey(
+  eventId: string,
+  generation: number,
+  mode: MeetingAutoJoinPolicy,
+  role: "join" | "approval",
+): string {
+  return `calendar-auto-join:${eventId}:g${generation}:${mode}:${role}`;
 }
 
 async function listAutoJoinTasksForEvent(
@@ -148,7 +178,11 @@ async function dismissTasks(
   reason: string,
 ): Promise<void> {
   for (const task of tasks) {
-    if (!isLive(task)) continue;
+    // Retire any non-dismissed task, terminal (completed/skipped/expired/
+    // failed) included: dismissing a stale terminal task is what starts a
+    // fresh policy generation on the next matching sync. Already-dismissed
+    // tasks are skipped so a periodic sync does not re-dismiss them.
+    if (task.state.status === "dismissed") continue;
     await runner.apply(task.taskId, "dismiss", { reason });
   }
 }
@@ -164,6 +198,7 @@ function joinTaskInput(
   parsed: ParsedMeetingUrl,
   mode: MeetingAutoJoinPolicy,
   trigger: ScheduledTaskInput["trigger"],
+  generation: number,
 ): ScheduledTaskInput {
   const metadata: AutoJoinTaskMetadata = {
     [AUTO_JOIN_METADATA_FLAG]: true,
@@ -176,6 +211,7 @@ function joinTaskInput(
   };
   return {
     kind: "custom",
+    idempotencyKey: autoJoinIdempotencyKey(event.id, generation, mode, "join"),
     promptInstructions: `Join the ${MEETING_PLATFORM_LABELS[parsed.platform]} meeting "${event.title.trim() || "Untitled event"}" as the owner's notetaker.`,
     trigger,
     priority: "high",
@@ -199,6 +235,7 @@ function joinTaskInput(
 function approvalTaskInput(
   event: LifeOpsCalendarEvent,
   parsed: ParsedMeetingUrl,
+  generation: number,
 ): ScheduledTaskInput {
   const metadata: AutoJoinTaskMetadata = {
     [AUTO_JOIN_METADATA_FLAG]: true,
@@ -211,6 +248,12 @@ function approvalTaskInput(
   };
   return {
     kind: "approval",
+    idempotencyKey: autoJoinIdempotencyKey(
+      event.id,
+      generation,
+      "ask",
+      "approval",
+    ),
     promptInstructions: `Send the agent to join "${event.title.trim() || "Untitled event"}" on ${MEETING_PLATFORM_LABELS[parsed.platform]} at ${startLabel(event)}? Approve to have it attend and transcribe the meeting.`,
     trigger: {
       kind: "relative_to_anchor",
@@ -253,27 +296,38 @@ async function reconcileEvent(
     ? parseMeetingUrl(event.conferenceLink)
     : null;
   const existing = await listAutoJoinTasksForEvent(runner, event.id);
-  const live = existing.filter(isLive);
+
+  // Monotonic per-event generation token: the count of task lifecycles that
+  // already exist for this event (rows are only ever added, never removed).
+  // Concurrent syncs that both observe the same snapshot compute the SAME
+  // generation — hence the same idempotency key — so the spine dedups them;
+  // each retired policy epoch adds rows, so the next epoch gets a strictly
+  // higher generation and a fresh key.
+  const generation = existing.length;
 
   const endMs = Date.parse(event.endAt);
   const eventOver = Number.isFinite(endMs) && endMs <= nowMs;
 
   if (!parsed || policy === "off" || eventOver) {
-    if (live.length > 0) {
+    // Retire the whole non-dismissed lifecycle (live and terminal) so that
+    // re-enabling later starts a fresh generation instead of resurrecting a
+    // completed task from before this event window was disabled.
+    const retire = existing.filter((task) => task.state.status !== "dismissed");
+    if (retire.length > 0) {
       const reason = !parsed
         ? "conference link removed or unrecognized"
         : policy === "off"
           ? "meeting auto-join disabled"
           : "event already ended";
-      await dismissTasks(runner, live, reason);
+      await dismissTasks(runner, retire, reason);
       logger.info(
         {
           src: "calendar:meeting-auto-join",
           eventId: event.id,
-          dismissed: live.length,
+          dismissed: retire.length,
           reason,
         },
-        `${LOG_PREFIX} Dismissed ${live.length} auto-join task(s) for event ${event.id}: ${reason}.`,
+        `${LOG_PREFIX} Dismissed ${retire.length} auto-join task(s) for event ${event.id}: ${reason}.`,
       );
     }
     return [];
@@ -282,9 +336,16 @@ async function reconcileEvent(
   // Keep the anchor current so a rescheduled event fires at the new start.
   registerEventStartAnchor(runtime, event.id, event.startAt);
 
-  // Live tasks created under a different policy mode are stale — dismiss and
-  // recreate under the current mode.
-  const stale = live.filter((task) => taskMode(task) !== policy);
+  // Tasks created under a different policy mode are stale — dismiss and
+  // recreate under the current mode. This retires terminal (completed/…)
+  // tasks too, not just live ones: a completed task from a superseded policy
+  // generation must not survive to be treated as the current lifecycle when
+  // the policy later round-trips back to that mode (all→ask→all,
+  // ask→all→ask). Without retiring it, `existingForMode` below would find the
+  // old terminal task and suppress the new generation's fresh task.
+  const stale = existing.filter(
+    (task) => taskMode(task) !== policy && task.state.status !== "dismissed",
+  );
   if (stale.length > 0) {
     await dismissTasks(
       runner,
@@ -292,17 +353,38 @@ async function reconcileEvent(
       `auto-join policy changed to "${policy}"`,
     );
   }
-  const current = live.filter((task) => taskMode(task) === policy);
+
+  // Gate (re)creation on tasks that already exist for this event under the
+  // current policy mode in ANY non-dismissed state — not just live ones. A
+  // one-shot approval/join whose lifecycle already ran (terminal status
+  // completed/skipped/expired/failed) must NOT be resurrected within the same
+  // event window under the CURRENT policy generation: recreating a completed
+  // approval re-prompts the owner to approve a meeting they already approved,
+  // and recreating a completed join schedules a fresh join anchored at
+  // start-1min (now in the past → due immediately) that re-joins the same
+  // meeting. Only `dismissed` — the state reserved for tasks we intentionally
+  // retired — is treated as absent. Tasks from a superseded generation are
+  // already dismissed by the stale pass above, so a policy round-trip back to
+  // this mode reaches this filter with an empty set and creates fresh tasks.
+  const existingForMode = existing.filter(
+    (task) => taskMode(task) === policy && task.state.status !== "dismissed",
+  );
 
   if (policy === "all") {
-    const join = current.find((task) => taskRole(task) === "join");
+    const join = existingForMode.find((task) => taskRole(task) === "join");
     if (join) return [join];
     const scheduled = await runner.schedule(
-      joinTaskInput(event, parsed, "all", {
-        kind: "relative_to_anchor",
-        anchorKey: eventStartAnchorKey(event.id),
-        offsetMinutes: JOIN_OFFSET_MINUTES,
-      }),
+      joinTaskInput(
+        event,
+        parsed,
+        "all",
+        {
+          kind: "relative_to_anchor",
+          anchorKey: eventStartAnchorKey(event.id),
+          offsetMinutes: JOIN_OFFSET_MINUTES,
+        },
+        generation,
+      ),
     );
     logger.info(
       {
@@ -317,9 +399,11 @@ async function reconcileEvent(
   }
 
   // policy === "ask"
-  let approval = current.find((task) => taskRole(task) === "approval");
+  let approval = existingForMode.find((task) => taskRole(task) === "approval");
   if (!approval) {
-    approval = await runner.schedule(approvalTaskInput(event, parsed));
+    approval = await runner.schedule(
+      approvalTaskInput(event, parsed, generation),
+    );
     logger.info(
       {
         src: "calendar:meeting-auto-join",
@@ -329,14 +413,20 @@ async function reconcileEvent(
       `${LOG_PREFIX} Scheduled join approval for event ${event.id}.`,
     );
   }
-  let join = current.find((task) => taskRole(task) === "join");
+  let join = existingForMode.find((task) => taskRole(task) === "join");
   if (!join) {
     join = await runner.schedule(
-      joinTaskInput(event, parsed, "ask", {
-        kind: "after_task",
-        taskId: approval.taskId,
-        outcome: "completed",
-      }),
+      joinTaskInput(
+        event,
+        parsed,
+        "ask",
+        {
+          kind: "after_task",
+          taskId: approval.taskId,
+          outcome: "completed",
+        },
+        generation,
+      ),
     );
     logger.info(
       {
@@ -379,18 +469,22 @@ export async function reconcileMeetingAutoJoin(
       await reconcileEvent(runtime, runner, event, settings.policy, nowMs);
     }
     for (const eventId of removedEventIds) {
-      const live = (await listAutoJoinTasksForEvent(runner, eventId)).filter(
-        isLive,
+      // Retire the whole non-dismissed lifecycle (terminal included), not just
+      // live tasks: a completed approval/join left non-dismissed would be
+      // treated as the current lifecycle by `existingForMode` and suppress a
+      // fresh generation if the same event id later reappears in the window.
+      const retire = (await listAutoJoinTasksForEvent(runner, eventId)).filter(
+        (task) => task.state.status !== "dismissed",
       );
-      if (live.length > 0) {
-        await dismissTasks(runner, live, "calendar event deleted");
+      if (retire.length > 0) {
+        await dismissTasks(runner, retire, "calendar event deleted");
         logger.info(
           {
             src: "calendar:meeting-auto-join",
             eventId,
-            dismissed: live.length,
+            dismissed: retire.length,
           },
-          `${LOG_PREFIX} Dismissed ${live.length} auto-join task(s) for deleted event ${eventId}.`,
+          `${LOG_PREFIX} Dismissed ${retire.length} auto-join task(s) for deleted event ${eventId}.`,
         );
       }
     }
@@ -403,8 +497,11 @@ export async function reconcileMeetingAutoJoin(
 }
 
 /**
- * Dismiss every live auto-join task owned by this module. Used when the
- * policy is switched to `"off"`.
+ * Dismiss every non-dismissed auto-join task owned by this module. Used when
+ * the policy is switched to `"off"`. Terminal (completed/skipped/expired/
+ * failed) tasks are retired too, not just live ones: a completed task left
+ * non-dismissed would otherwise be resurrected by `existingForMode` when the
+ * same mode is later re-enabled, suppressing the fresh generation.
  */
 export async function cancelAllMeetingAutoJoinTasks(
   runtime: IAgentRuntime,
@@ -414,7 +511,7 @@ export async function cancelAllMeetingAutoJoinTasks(
   if (!runner) return 0;
   const tasks = (await runner.list({ source: "plugin" }))
     .filter(isAutoJoinTask)
-    .filter(isLive);
+    .filter((task) => task.state.status !== "dismissed");
   await dismissTasks(runner, tasks, "meeting auto-join disabled");
   if (tasks.length > 0) {
     logger.info(
