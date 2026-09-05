@@ -53,7 +53,10 @@ import {
 } from "../config/dev-cloud-env-authority.ts";
 import type { RuntimeOperationManager } from "../runtime/operations/index.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
-import { hasCloudTextHandlerRegistered } from "./agent-model.ts";
+import {
+  hasCloudTextHandlerRegistered,
+  lastServingTextProvider,
+} from "./agent-model.ts";
 import {
   buildModelCatalog,
   CODING_MODEL_DEFAULTS,
@@ -700,6 +703,28 @@ export function resolveActiveChat(
   const llmText = routing?.llmText;
   const backend =
     typeof llmText?.backend === "string" ? llmText.backend : undefined;
+  if (llmText?.transport === "direct" && backend === "openai-subscription") {
+    // Subscription credentials belong to the Codex OAuth cache, not the
+    // OpenAI API-key environment. A completed call supplies serving evidence.
+    if (
+      !runtime ||
+      !hasTextHandlerRegistered(runtime, "codex-cli") ||
+      lastServingTextProvider(runtime) !== "codex-cli"
+    ) {
+      return null;
+    }
+    const runtimeBase = runtime.getSetting("CODEX_BASE_URL");
+    return {
+      provider: "openai-codex",
+      family: "OPENAI",
+      endpoint:
+        hostOf(
+          typeof runtimeBase === "string"
+            ? runtimeBase
+            : resolveEffective(config, processEnv, "CODEX_BASE_URL")?.value,
+        ) ?? "chatgpt.com",
+    };
+  }
   const cloudProxyConfigured =
     llmText?.transport === "cloud-proxy" && backend === "elizacloud";
   let provider: string | undefined;
