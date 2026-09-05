@@ -449,6 +449,28 @@ describe("stuck-provisioning owner predicates", () => {
     expect(await sandboxStatus(agentId)).toBe("running");
   });
 
+  test("health recovery cannot publish while a replacement owns unfinished restoration", async () => {
+    const { organizationId, userId } = await seedOrgAndUser();
+    const agentId = await seedProvisioningAgent(organizationId, userId);
+    const probed = await sandboxCapture(agentId);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        replacement_cleanup_sandbox_id: "candidate-sandbox",
+        replacement_cleanup_node_id: "candidate-node",
+        replacement_cleanup_container_name: "candidate-container",
+        replacement_cleanup_attempt_id: crypto.randomUUID(),
+        replacement_cleanup_container_id: "a".repeat(64),
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      })
+      .where(eq(agentSandboxes.id, agentId));
+
+    expect(await repo.markRunningFromProvisioning(probed)).toBeUndefined();
+    expect(await repo.markRunningFromProvisioning(await sandboxCapture(agentId))).toBeUndefined();
+    expect(await sandboxStatus(agentId)).toBe("provisioning");
+  });
+
   test("recovery CAS never promotes forged Shared or unknown rows with container locators", async () => {
     for (const executionTier of ["shared", "future-container-tier"] as const) {
       const { organizationId, userId } = await seedOrgAndUser();
