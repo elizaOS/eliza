@@ -1275,7 +1275,10 @@ export class MatrixService extends Service implements IMatrixService {
     const isDirectRoom = room.getJoinedMemberCount() <= 2;
     if (state.settings.requireMention && !isDirectRoom) {
       const localpart = getMatrixLocalpart(state.settings.userId);
-      const mentionPattern = new RegExp(`@?${escapeRegExp(localpart)}`, "i");
+      const mentionPattern = new RegExp(
+        `(?<![\\p{L}\\p{N}_@:])@?${escapeRegExp(localpart)}(?![\\p{L}\\p{N}_])`,
+        "iu"
+      );
       if (!mentionPattern.test(message.content)) {
         return;
       }

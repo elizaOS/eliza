@@ -56,6 +56,14 @@ type TestState = {
   syncing: boolean;
 };
 
+// Structural view of the private `MatrixService.handleRoomMessage` used to
+// drive the mention gate directly without a live homeserver.
+type TestHandleRoomMessage = (
+  state: TestState,
+  event: ReturnType<typeof createEvent>,
+  room: ReturnType<typeof createRoom>
+) => void;
+
 function createRuntime(settings: Record<string, unknown> = {}): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
@@ -609,6 +617,67 @@ describe("Matrix service hardening", () => {
       expect(client.listenerCount("sync")).toBe(0);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("requires a real mention and ignores the localpart as a bare substring", () => {
+    const settings: MatrixSettings = {
+      accountId: "work",
+      homeserver: "https://matrix.example",
+      userId: "@ai:example",
+      accessToken: "token",
+      rooms: [],
+      autoJoin: false,
+      encryption: false,
+      requireMention: true,
+      enabled: true,
+    };
+    const handle = (
+      body: string,
+      runtime: IAgentRuntime,
+      state: TestState,
+      service: MatrixService
+    ) => {
+      const fn = (
+        service as unknown as { handleRoomMessage: TestHandleRoomMessage }
+      ).handleRoomMessage.bind(service);
+      const room = createRoom();
+      room.getJoinedMemberCount = vi.fn(() => 3);
+      fn(state, createEvent({ msgtype: "m.text", body }), room);
+      return runtime.emitEvent;
+    };
+    // unrelated words containing "ai" must NOT dispatch
+    for (const body of [
+      "ok let's wait for the build",
+      "email me later",
+      "maintain the docs",
+      "aié nearby",
+      "@bob:ai.example.com hello",
+    ]) {
+      const { runtime, service, state } = createService({ settings });
+      handle(body, runtime, state, service);
+      expect(runtime.emitEvent).not.toHaveBeenCalled();
+    }
+    // genuine mentions must dispatch
+    for (const body of [
+      "hey @ai can you help",
+      "ai: please review",
+      "hey @ai, thanks",
+      "ai help",
+      "@ai:matrix.org hi",
+      "hi @ai",
+    ]) {
+      const { runtime, service, state } = createService({ settings });
+      const fn = (
+        service as unknown as { handleRoomMessage: TestHandleRoomMessage }
+      ).handleRoomMessage.bind(service);
+      const room = createRoom();
+      room.getJoinedMemberCount = vi.fn(() => 3);
+      fn(state, createEvent({ msgtype: "m.text", body }), room);
+      expect(runtime.emitEvent).toHaveBeenCalledWith(
+        MatrixEventTypes.MESSAGE_RECEIVED,
+        expect.anything()
+      );
     }
   });
 });
