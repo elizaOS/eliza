@@ -32,8 +32,8 @@ registerAppShellPage({
   group: "wallet",
   order: 50,
   surface: {
-    background: "shared",
-    capabilities: ["wallpaper"],
+    background: "opaque",
+    capabilities: [],
   },
   loader: () =>
     import("./InventoryView.tsx").then((module) => ({

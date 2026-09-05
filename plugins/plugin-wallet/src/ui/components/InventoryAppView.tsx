@@ -1289,7 +1289,7 @@ function WalletRailTabButton({
       size="compact"
       ref={ref}
       type="button"
-      className="min-w-0 shrink-0"
+      className="min-w-0 shrink-0 px-2 sm:px-3"
       data-state={active ? "on" : "off"}
       onClick={() => onSelect(tab.id)}
       aria-label={tab.label}
@@ -1301,7 +1301,7 @@ function WalletRailTabButton({
       data-testid={`wallet-tab-${tab.id}`}
       {...agentProps}
     >
-      <tab.icon className="size-3.5 shrink-0" />
+      <tab.icon className="hidden size-3.5 shrink-0 sm:block" />
       <span>{tab.label}</span>
     </Button>
   );

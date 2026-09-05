@@ -1016,7 +1016,8 @@ export function CodingAgentTasksPanel({
                 })
           }
           hint={t("codingagenttaskspanel.empty.hint", {
-            defaultValue: "Dispatched coding tasks show up here.",
+            defaultValue:
+              "Ask Eliza to work on a coding project. Its tasks will appear here.",
           })}
         />
       )}

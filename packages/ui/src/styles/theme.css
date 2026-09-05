@@ -59,7 +59,7 @@
 
 [data-theme="dark"],
 .dark {
-  --bg: var(--brand-black);
+  --bg: #141414;
   --bg-accent: var(--brand-black);
   --bg-elevated: rgba(255, 255, 255, 0.04);
   --bg-hover: rgba(255, 255, 255, 0.08);
