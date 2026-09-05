@@ -119,9 +119,10 @@ function agent(agentId: string): HTMLElement {
 }
 
 async function selectFilter(agentId: string, option: string): Promise<void> {
-  HTMLElement.prototype.scrollIntoView = vi.fn();
-  fireEvent.keyDown(agent(agentId), { key: "Enter" });
-  fireEvent.click(await screen.findByRole("option", { name: option }));
+  const choice = await screen.findByRole<HTMLOptionElement>("option", {
+    name: option,
+  });
+  fireEvent.change(agent(agentId), { target: { value: choice.value } });
 }
 
 afterEach(() => {
