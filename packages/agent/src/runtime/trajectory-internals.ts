@@ -25,6 +25,7 @@ import {
   resolveStateDir,
   resolveTrajectoryGate,
   sanitizeTrajectoryJsonObject,
+  timeInferenceSpan,
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
@@ -832,7 +833,10 @@ export async function executeRawSqlTransaction<T>(
     });
   }
   const raw = await getSqlRaw();
-  return db.transaction((tx) => work((sqlText) => tx.execute(raw(sqlText))));
+  const transaction = db.transaction.bind(db);
+  return timeInferenceSpan("trajectory:db-transaction", () =>
+    transaction((tx) => work((sqlText) => tx.execute(raw(sqlText)))),
+  );
 }
 
 export function extractRows(result: unknown): unknown[] {
