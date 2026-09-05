@@ -2314,9 +2314,9 @@ function applyStatedDateToCreateRequest(args: {
  * Pin the create zone on the request and express every planner timestamp as
  * an instant in that zone: offset-less values are the owner's wall time,
  * values with a "Z" or numeric offset already name an instant. The service
- * stores this zone on the event, so later reads render in it too. An end
- * that does not follow the start is dropped so the default duration applies
- * instead of a hard 400 (live: the planner echoed the start as the end).
+ * stores this zone on the event, so later reads render in it too. Bound
+ * validation (end after start) stays with the service so the planner receives
+ * structured guidance instead of an invented duration.
  */
 function anchorCreateRequestToTimeZone(
   request: CreateLifeOpsCalendarEventRequest,
@@ -2337,107 +2337,6 @@ function anchorCreateRequestToTimeZone(
       timeZone,
     );
   }
-  if (
-    request.startAt &&
-    request.endAt &&
-    Date.parse(request.endAt) <= Date.parse(request.startAt)
-  ) {
-    delete request.endAt;
-  }
-}
-
-const CLOCK_TIME_PATTERN =
-  /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])|\b(noon|midnight)\b/g;
-
-type ClockTime = { hour: number; minute: number };
-
-/**
- * Clock times the user wrote themselves ("7am", "7:30 pm", "noon"). Bare
- * hours and 24-hour digits are ambiguous and deliberately not parsed.
- */
-export function parseExplicitClockTimes(value: string): ClockTime[] {
-  const times: ClockTime[] = [];
-  for (const match of normalizeText(value).matchAll(CLOCK_TIME_PATTERN)) {
-    if (match[4]) {
-      times.push(
-        match[4] === "noon" ? { hour: 12, minute: 0 } : { hour: 0, minute: 0 },
-      );
-      continue;
-    }
-    const rawHour = Number(match[1]);
-    const minute = Number(match[2] ?? "0");
-    if (rawHour < 1 || rawHour > 12 || minute > 59) continue;
-    const pm = (match[3] ?? "").startsWith("p");
-    const hour = rawHour === 12 ? (pm ? 12 : 0) : pm ? rawHour + 12 : rawHour;
-    times.push({ hour, minute });
-  }
-  return times;
-}
-
-function soleClockTime(value: string): ClockTime | null {
-  const distinct = new Map<string, ClockTime>();
-  for (const time of parseExplicitClockTimes(value)) {
-    distinct.set(`${time.hour}:${time.minute}`, time);
-  }
-  if (distinct.size !== 1) return null;
-  return [...distinct.values()][0] ?? null;
-}
-
-/**
- * The one clock time the user stated wins over the planner's rendering of it.
- * Live 2026-09-05: "tuesday at 7am" arrived as "2026-09-09T07:00:00Z" and
- * "2026-09-08T07:00:00.000Z" — the right digits under a fabricated "Z" — and
- * was stored at midnight Pacific. A message naming two different times is
- * left to the planner; the Stage-1 intent is consulted only when the message
- * itself names none.
- */
-function applyStatedClockTimeToCreateRequest(args: {
-  request: CreateLifeOpsCalendarEventRequest;
-  currentMessage: string;
-  intent: string;
-  timeZone: string;
-}): { corrected: boolean; fromLocalTime?: string; toLocalTime?: string } {
-  const startAtIso = args.request.startAt;
-  if (!startAtIso) {
-    return { corrected: false };
-  }
-  const startDate = new Date(startAtIso);
-  if (Number.isNaN(startDate.getTime())) {
-    return { corrected: false };
-  }
-  const stated =
-    parseExplicitClockTimes(args.currentMessage).length > 0
-      ? soleClockTime(args.currentMessage)
-      : soleClockTime(args.intent);
-  if (!stated) {
-    return { corrected: false };
-  }
-  const startParts = getZonedDateParts(startDate, args.timeZone);
-  if (startParts.hour === stated.hour && startParts.minute === stated.minute) {
-    return { corrected: false };
-  }
-  const shifted = buildUtcDateFromLocalParts(args.timeZone, {
-    year: startParts.year,
-    month: startParts.month,
-    day: startParts.day,
-    hour: stated.hour,
-    minute: stated.minute,
-    second: 0,
-  });
-  const deltaMs = shifted.getTime() - startDate.getTime();
-  args.request.startAt = shifted.toISOString();
-  if (typeof args.request.endAt === "string") {
-    const endDate = new Date(args.request.endAt);
-    if (!Number.isNaN(endDate.getTime())) {
-      args.request.endAt = new Date(endDate.getTime() + deltaMs).toISOString();
-    }
-  }
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return {
-    corrected: true,
-    fromLocalTime: `${pad(startParts.hour)}:${pad(startParts.minute)}`,
-    toLocalTime: `${pad(stated.hour)}:${pad(stated.minute)}`,
-  };
 }
 
 function suggestCreateEventStartAt(args: {
@@ -4567,16 +4466,24 @@ const calendarAction: CalendarHandlerAction = {
         const plannerStartAt = detailString(details, "startAt");
         const plannerEndAt = detailString(details, "endAt");
         const plannerTimeZone = detailString(details, "timeZone");
+        // A "Z" instant for an owner who is not in UTC is the planner's most
+        // common mistake (live 2026-09-05: "tuesday at 7am" arrived as
+        // 2026-09-09T07:00:00Z). It is not executable as typed; the
+        // timezone-grounded extractor re-derives the wall time from the
+        // user's words with local-date anchors instead of trusting the
+        // fabricated instant.
+        const utcInstantForNonUtcOwner = Boolean(
+          plannerStartAt?.toUpperCase().endsWith("Z") &&
+            (plannerTimeZone
+              ? plannerTimeZone !== "UTC"
+              : calendarContext.calendarTimeZone !== "UTC"),
+        );
         const hasExecutablePlannerCreate = Boolean(
           explicitTitle &&
             ((plannerStartAt && normalizeIsoDateTime(plannerStartAt)) ||
               detailString(details, "windowPreset")) &&
             (!plannerEndAt || normalizeIsoDateTime(plannerEndAt)) &&
-            !(
-              plannerStartAt?.toUpperCase().endsWith("Z") &&
-              plannerTimeZone &&
-              plannerTimeZone !== "UTC"
-            ),
+            !utcInstantForNonUtcOwner,
         );
         const extractedDetails = hasExecutablePlannerCreate
           ? {}
@@ -4601,21 +4508,15 @@ const calendarAction: CalendarHandlerAction = {
         });
         const { title, resolvedStartAt, resolvedWindowPreset, request } =
           createEventBuild;
-        // Planner timestamps arrive in every shape (offset-less wall time, a
-        // fabricated "Z", a real offset). Anchor them to the create zone so
-        // the stored event and every rendering share the owner's zone, then
-        // let the user's own words correct the day and the clock time.
+        // Planner timestamps arrive as offset-less wall time or with a real
+        // offset. Anchor them to the create zone so the stored event and every
+        // rendering share the owner's zone; the stated-day guard then keeps
+        // the day the user named.
         const createTimeZone =
           plannerRequestedTimeZone({ timeZone: request.timeZone }) ??
           calendarContext.calendarTimeZone;
         anchorCreateRequestToTimeZone(request, createTimeZone);
         applyStatedDateToCreateRequest({
-          request,
-          currentMessage: messageText(message).trim(),
-          intent,
-          timeZone: createTimeZone,
-        });
-        applyStatedClockTimeToCreateRequest({
           request,
           currentMessage: messageText(message).trim(),
           intent,

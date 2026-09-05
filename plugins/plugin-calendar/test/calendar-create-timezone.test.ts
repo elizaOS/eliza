@@ -1,11 +1,12 @@
 /**
  * Create requests anchor planner timestamps to the owner's zone: offset-less
- * values are wall time in the configured TIMEZONE, a fabricated "Z" or a wrong
- * day is corrected from the user's own words, and the stored event carries that
- * zone so replies render in it. CalendarService is stubbed with the real
- * range resolver; the request handed to prepareCalendarEventCreate and the
- * created event are inspected. Clock pinned to Saturday 2026-09-05 so
- * "tuesday" resolves to 2026-09-08. No model, no database.
+ * values are wall time in the configured TIMEZONE, a fabricated "Z" instant
+ * for a non-UTC owner is handed to the timezone-grounded extractor instead of
+ * being trusted, and the stored event carries the zone so replies render in
+ * it. CalendarService is stubbed with the real range resolver; the request
+ * handed to prepareCalendarEventCreate, the created event and the extractor
+ * call are inspected. Clock pinned to Saturday 2026-09-05 so "tuesday"
+ * resolves to 2026-09-08. The extractor model is a fixture; no database.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import type {
@@ -104,11 +105,31 @@ function stubService(feedEvents: LifeOpsCalendarEvent[] = []) {
 
 type StubService = ReturnType<typeof stubService>;
 
-const deps: CalendarActionDeps = {
-  runTextModel: async () => null,
-  runJsonModel: async () => null,
-  recentConversationTexts: async () => [],
+/** Zone-grounded extraction fixture: what the domain extractor returns for "tuesday at 7am". */
+const GROUNDED_EXTRACTION = {
+  title: "Gym session",
+  startAt: "2026-09-08T07:00:00-07:00",
+  durationMinutes: 60,
+  timeZone: OWNER_TIME_ZONE,
 };
+
+function makeDeps() {
+  const runJsonModel = vi.fn(async (args: { prompt: string }) => {
+    if (!args.prompt.includes("Extract calendar event creation fields")) {
+      return null;
+    }
+    return {
+      rawResponse: JSON.stringify(GROUNDED_EXTRACTION),
+      parsed: GROUNDED_EXTRACTION,
+    };
+  });
+  const deps: CalendarActionDeps = {
+    runTextModel: async () => null,
+    runJsonModel: runJsonModel as unknown as CalendarActionDeps["runJsonModel"],
+    recentConversationTexts: async () => [],
+  };
+  return { deps, runJsonModel };
+}
 
 function fakeRuntime(
   service: StubService,
@@ -135,6 +156,7 @@ async function createThroughHandler(args: {
   feedEvents?: LifeOpsCalendarEvent[];
 }) {
   const service = stubService(args.feedEvents);
+  const { deps, runJsonModel } = makeDeps();
   const action = createCalendarActionRunner(deps);
   const result = await action.handler(
     fakeRuntime(service, args.settings ?? { TIMEZONE: OWNER_TIME_ZONE }),
@@ -155,12 +177,15 @@ async function createThroughHandler(args: {
     vi.fn(async () => []),
   );
   if (!result) throw new Error("Expected a Calendar action result");
-  expect(service.createCalendarEvent).toHaveBeenCalledTimes(1);
-  const [, created] = service.createCalendarEvent.mock.calls[0] as unknown as [
-    URL,
-    { startAt: string; endAt: string; timeZone: string },
-  ];
-  return { result, created };
+  const createdCall = service.createCalendarEvent.mock.calls[0] as
+    | [URL, { startAt: string; endAt: string; timeZone: string }]
+    | undefined;
+  return {
+    result,
+    created: createdCall?.[1],
+    createCalls: service.createCalendarEvent.mock.calls.length,
+    extractorCalls: runJsonModel.mock.calls.length,
+  };
 }
 
 describe("calendar create anchors planner timestamps to the owner's zone", () => {
@@ -176,16 +201,6 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
     ["offset-less wall time", "2026-09-08T07:00:00", "2026-09-08T08:00:00"],
     ["wall time without seconds", "2026-09-08T07:00", "2026-09-08T08:00"],
     [
-      "a fabricated Z on the right digits",
-      "2026-09-08T07:00:00.000Z",
-      "2026-09-08T08:00:00.000Z",
-    ],
-    [
-      "a fabricated Z on the wrong day",
-      "2026-09-09T07:00:00Z",
-      "2026-09-09T08:00:00Z",
-    ],
-    [
       "the wrong date as wall time",
       "2026-09-01T07:00:00",
       "2026-09-01T08:00:00",
@@ -196,14 +211,15 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
       "2026-09-08T08:00:00-07:00",
     ],
   ])(
-    "stores 'tuesday at 7am' at 7 AM Pacific when the planner sends %s",
+    "stores 'tuesday at 7am' at 7 AM Pacific without a model call when the planner sends %s",
     async (_label, start, end) => {
-      // Live 2026-09-05: every one of these shapes was recorded for the same
-      // request; four of them were stored at 07:00Z and read back as 7 AM UTC.
-      const { result, created } = await createThroughHandler({
+      // Live 2026-09-05: these shapes were recorded for the same request; the
+      // offset-less ones were stored at 07:00Z and read back as 7 AM UTC.
+      const { result, created, extractorCalls } = await createThroughHandler({
         text: "add gym session tuesday at 7am to my calendar",
         details: { start, end, calendarId: "primary" },
       });
+      expect(extractorCalls).toBe(0);
       expect(created).toMatchObject({
         startAt: TUESDAY_7AM_PDT,
         endAt: TUESDAY_8AM_PDT,
@@ -216,6 +232,55 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
       expect(evidence).not.toContain("AM UTC");
     },
   );
+
+  it.each([
+    ["a fabricated Z on the right digits", "2026-09-08T07:00:00.000Z"],
+    ["a fabricated Z on the wrong day", "2026-09-09T07:00:00Z"],
+  ])(
+    "hands %s to the timezone-grounded extractor instead of trusting the instant",
+    async (_label, start) => {
+      // Live 2026-09-05: both shapes were recorded for "tuesday at 7am" and
+      // stored at midnight Pacific. The user's prose is not re-parsed here;
+      // the grounded extraction model re-derives the wall time.
+      const { created, extractorCalls } = await createThroughHandler({
+        text: "add gym session tuesday at 7am to my calendar",
+        details: { start, calendarId: "primary" },
+      });
+      expect(extractorCalls).toBe(1);
+      expect(created).toMatchObject({
+        startAt: TUESDAY_7AM_PDT,
+        endAt: TUESDAY_8AM_PDT,
+        timeZone: OWNER_TIME_ZONE,
+      });
+    },
+  );
+
+  it("trusts a UTC instant when the owner's zone is UTC", async () => {
+    const { created, extractorCalls } = await createThroughHandler({
+      text: "add gym session tuesday at 7am to my calendar",
+      details: { start: "2026-09-08T07:00:00Z" },
+      settings: { TIMEZONE: "UTC" },
+    });
+    expect(extractorCalls).toBe(0);
+    expect(created).toMatchObject({
+      startAt: "2026-09-08T07:00:00.000Z",
+      timeZone: "UTC",
+    });
+  });
+
+  it("does not reinterpret a correct planner time from other clock times in the sentence", async () => {
+    // Review counterexample: the only clock time in the sentence belongs to
+    // the train, not to the requested event.
+    const { created, extractorCalls } = await createThroughHandler({
+      text: "create packing time tuesday one hour before my train leaves at 7am",
+      details: { start: "2026-09-08T06:00:00", durationMinutes: 60 },
+    });
+    expect(extractorCalls).toBe(0);
+    expect(created).toMatchObject({
+      startAt: "2026-09-08T13:00:00.000Z",
+      timeZone: OWNER_TIME_ZONE,
+    });
+  });
 
   it("keeps the configured zone when the feed is full of UTC-stamped events", async () => {
     const feedEvents = [
@@ -257,23 +322,22 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
     });
   });
 
-  it("drops an end that echoes the start so the default duration applies", async () => {
-    const { created } = await createThroughHandler({
+  it("returns structured validation instead of inventing a duration when the end does not follow the start", async () => {
+    const { result, createCalls } = await createThroughHandler({
       text: "add gym session tuesday at 7am to my calendar",
       details: { start: "2026-09-08T07:00:00", end: "2026-09-08T07:00:00" },
     });
-    expect(created).toMatchObject({
-      startAt: TUESDAY_7AM_PDT,
-      endAt: TUESDAY_8AM_PDT,
+    expect(createCalls).toBe(0);
+    expect(result.success).toBe(false);
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      operation: "calendar.create_event",
+      outcome: "failed",
+      failure: { code: "CALENDAR_SERVICE_400" },
     });
-  });
-
-  it("leaves the planner's instant alone when the user named two different times", async () => {
-    const { created } = await createThroughHandler({
-      text: "add a call with bob at 3pm and remind me at 2pm on tuesday",
-      details: { start: "2026-09-08T15:00:00Z", end: "2026-09-08T16:00:00Z" },
+    expect(result.data?.replyContext).toMatchObject({
+      scenario: "service_error",
+      facts: expect.stringMatching(/end time lands before the start/),
     });
-    expect(created.startAt).toBe("2026-09-08T15:00:00.000Z");
   });
 
   it("falls back to the host zone when no TIMEZONE is configured", async () => {
