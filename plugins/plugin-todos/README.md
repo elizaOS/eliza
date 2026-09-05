@@ -70,7 +70,7 @@ dashboard bundle, Node filesystem API, or plugin-sql lifecycle service.
 | `cancel` | Transition one Todo to `cancelled` |
 | `delete` | Remove one Todo while preserving the original replay outcome |
 | `list` | Read current Todos; no mutation receipt is written |
-| `clear` | Remove Todos in the current trusted scope/room and preserve the original count for replay |
+| `clear` | Remove the user's whole entity-scoped Todo list across every room — matching what `list` and `CURRENT_TODOS` read — and preserve the original count for replay. Requires a valid `roomId` as a fail-closed precondition but never filters the delete by it; use the store's explicit `clear({ roomId })` opt-in for room-scoped deletion |
 
 Todos support `parentTodoId` for hierarchy and `activeForm` for a
 present-continuous display label such as "Adding tests." Todo requests are not

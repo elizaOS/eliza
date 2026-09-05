@@ -1103,11 +1103,28 @@ describe("TODO action", () => {
   });
 
   describe("action=clear", () => {
-    it("removes all todos for the user in this room", async () => {
+    it("removes the user's whole entity-scoped list, including other rooms (#28006)", async () => {
+      // A todo created from another room must still be cleared: reads are
+      // entity-scoped across rooms, so "clear my todos" must be too. Before the
+      // fix the action copied message.roomId into the clear filter and left
+      // this row behind for the entity-scoped provider to keep surfacing.
+      const otherRoom = "11111111-2222-4333-8444-555555555555";
+      await service.create({
+        entityId: ENTITY,
+        agentId: AGENT,
+        roomId: otherRoom,
+        worldId: null,
+        content: "made in another room",
+        status: "pending",
+      });
       await invoke(runtime, { action: "create", content: "a" });
       await invoke(runtime, { action: "create", content: "b" });
+      expect(service.rows.length).toBe(3);
+
       const result = await invoke(runtime, { action: "clear" });
       expect(result.success).toBe(true);
+      const data = result.data as Record<string, unknown>;
+      expect(data.count).toBe(3);
       expect(service.rows.length).toBe(0);
     });
   });
