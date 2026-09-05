@@ -2,7 +2,7 @@
 
 import type { ViewCapability } from "@elizaos/core";
 
-export const CONTACTS_VIEW_CAPABILITIES = [
+export const CONTACTS_VIEW_CAPABILITIES: ViewCapability[] = [
   {
     id: "list-contacts",
     description: "List or search contacts from the Android address book.",
@@ -84,7 +84,7 @@ export const CONTACTS_VIEW_CAPABILITIES = [
       "Inspect renderer-owned state or elements outside the complete semantic contact read.",
     authority: "human",
   },
-] satisfies ViewCapability[];
+];
 
 export type ContactsViewCapabilityId =
   | "list-contacts"

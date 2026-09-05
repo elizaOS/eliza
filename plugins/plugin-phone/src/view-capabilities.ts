@@ -2,7 +2,7 @@
 
 import type { ViewCapability } from "@elizaos/core";
 
-export const PHONE_VIEW_CAPABILITIES = [
+export const PHONE_VIEW_CAPABILITIES: ViewCapability[] = [
   {
     id: "phone-state",
     description: "Read Android phone status and recent calls.",
@@ -97,7 +97,7 @@ export const PHONE_VIEW_CAPABILITIES = [
       "Inspect renderer-owned state or elements outside the complete semantic phone read.",
     authority: "human",
   },
-] satisfies ViewCapability[];
+];
 
 export type PhoneViewCapabilityId =
   | "phone-state"

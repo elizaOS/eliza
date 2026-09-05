@@ -2,7 +2,7 @@
 
 import type { ViewCapability } from "@elizaos/core";
 
-export const MESSAGES_VIEW_CAPABILITIES = [
+export const MESSAGES_VIEW_CAPABILITIES: ViewCapability[] = [
   {
     id: "list-threads",
     description:
@@ -69,7 +69,7 @@ export const MESSAGES_VIEW_CAPABILITIES = [
       "Inspect renderer-owned state or elements outside the complete semantic message read.",
     authority: "human",
   },
-] satisfies ViewCapability[];
+];
 
 export type MessagesViewCapabilityId =
   | "list-threads"
