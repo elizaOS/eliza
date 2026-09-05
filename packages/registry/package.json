@@ -44,7 +44,7 @@
   },
   "scripts": {
     "validate": "bun run src/validate-cli.ts",
-    "generate": "bun run src/generate.ts",
+    "generate": "bun run src/generate-cli.ts",
     "generate:first-party": "bun run src/first-party/generate.ts",
     "generate:first-party:check": "bun run src/first-party/generate.ts --check",
     "typecheck": "tsc --noEmit -p tsconfig.json",
