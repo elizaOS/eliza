@@ -79,51 +79,112 @@ afterEach(async () => {
 });
 
 describe("runtime installation identity filesystem races", () => {
-  it("does not open SELinux-protected ancestors above an Android app-data boundary", async () => {
-    const root = await fs.mkdtemp(
-      path.join(os.tmpdir(), "runtime-id-android-open-"),
+  it.each(["directory", "platform-alias"])(
+    "does not open SELinux-protected ancestors above an Android %s boundary",
+    async (layout) => {
+      const root = await fs.realpath(
+        await fs.mkdtemp(path.join(os.tmpdir(), "runtime-id-android-open-")),
+      );
+      cleanup.push(root);
+      const physicalUser = path.join(root, "data", "data");
+      const lexicalUser =
+        layout === "platform-alias"
+          ? path.join(root, "data", "user", "0")
+          : physicalUser;
+      const appDataDirectory = path.join(lexicalUser, "ai.elizaos.app");
+      const physicalAppData = path.join(physicalUser, "ai.elizaos.app");
+      const stateDirectory = path.join(
+        appDataDirectory,
+        "files",
+        "agent-state",
+      );
+      await fs.mkdir(path.join(physicalAppData, "files"), {
+        recursive: true,
+        mode: 0o700,
+      });
+      if (layout === "platform-alias") {
+        await fs.mkdir(path.dirname(lexicalUser), {
+          recursive: true,
+          mode: 0o700,
+        });
+        await fs.symlink(physicalUser, lexicalUser, "dir");
+      }
+      const previousPlatform = process.env.ELIZA_PLATFORM;
+      const previousBoundary = process.env.ELIZA_ANDROID_APP_DATA_DIR;
+      process.env.ELIZA_PLATFORM = "android";
+      process.env.ELIZA_ANDROID_APP_DATA_DIR = appDataDirectory;
+      faults.beforeOpen = async (target) => {
+        const inside = [appDataDirectory, physicalAppData].some((boundary) => {
+          const relative = path.relative(boundary, path.resolve(target));
+          return (
+            relative === "" ||
+            (!relative.startsWith("..") && !path.isAbsolute(relative))
+          );
+        });
+        if (!inside) {
+          throw Object.assign(new Error(`SELinux denied open: ${target}`), {
+            code: "EACCES",
+          });
+        }
+      };
+      try {
+        await expect(
+          loadOrCreateRuntimeInstallationId(stateDirectory),
+        ).resolves.toMatch(/^[a-f0-9-]{36}$/);
+      } finally {
+        if (previousPlatform === undefined) delete process.env.ELIZA_PLATFORM;
+        else process.env.ELIZA_PLATFORM = previousPlatform;
+        if (previousBoundary === undefined)
+          delete process.env.ELIZA_ANDROID_APP_DATA_DIR;
+        else process.env.ELIZA_ANDROID_APP_DATA_DIR = previousBoundary;
+      }
+    },
+  );
+
+  it("rejects replacement of a captured Android platform alias before creating identity", async () => {
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "runtime-id-android-retarget-")),
     );
-    const appDataDirectory = path.join(
-      root,
-      "data",
-      "user",
-      "0",
-      "ai.elizaos.app",
-    );
-    const stateDirectory = path.join(appDataDirectory, "files", "agent-state");
     cleanup.push(root);
-    await fs.mkdir(path.dirname(stateDirectory), {
-      recursive: true,
-      mode: 0o700,
-    });
-    await fs.chmod(appDataDirectory, 0o700);
+    const first = path.join(root, "first");
+    const second = path.join(root, "second");
+    const alias = path.join(root, "user-zero");
+    for (const target of [first, second]) {
+      await fs.mkdir(path.join(target, "app", "files"), {
+        recursive: true,
+        mode: 0o700,
+      });
+    }
+    await fs.symlink(first, alias, "dir");
     const previousPlatform = process.env.ELIZA_PLATFORM;
     const previousBoundary = process.env.ELIZA_ANDROID_APP_DATA_DIR;
     process.env.ELIZA_PLATFORM = "android";
-    process.env.ELIZA_ANDROID_APP_DATA_DIR = appDataDirectory;
-    faults.beforeOpen = async (target) => {
-      const relative = path.relative(appDataDirectory, path.resolve(target));
-      const inside =
-        relative === "" ||
-        (!relative.startsWith("..") && !path.isAbsolute(relative));
-      if (!inside) {
-        throw Object.assign(new Error(`SELinux denied open: ${target}`), {
-          code: "EACCES",
-        });
+    process.env.ELIZA_ANDROID_APP_DATA_DIR = path.join(alias, "app");
+    let replaced = false;
+    faults.afterLstat = async (target) => {
+      if (target === alias && !replaced) {
+        replaced = true;
+        await fs.rename(alias, path.join(root, "captured-alias"));
+        await fs.symlink(second, alias, "dir");
       }
     };
     try {
       await expect(
-        loadOrCreateRuntimeInstallationId(stateDirectory),
-      ).resolves.toMatch(/^[a-f0-9-]{36}$/);
+        loadOrCreateRuntimeInstallationId(
+          path.join(alias, "app", "files", "state"),
+        ),
+      ).rejects.toThrow("Runtime state lexical path changed during validation");
+      for (const target of [first, second]) {
+        await expect(
+          fs.access(path.join(target, "app", "files", "state")),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+      }
     } finally {
       if (previousPlatform === undefined) delete process.env.ELIZA_PLATFORM;
       else process.env.ELIZA_PLATFORM = previousPlatform;
-      if (previousBoundary === undefined) {
+      if (previousBoundary === undefined)
         delete process.env.ELIZA_ANDROID_APP_DATA_DIR;
-      } else {
-        process.env.ELIZA_ANDROID_APP_DATA_DIR = previousBoundary;
-      }
+      else process.env.ELIZA_ANDROID_APP_DATA_DIR = previousBoundary;
     }
   });
 
