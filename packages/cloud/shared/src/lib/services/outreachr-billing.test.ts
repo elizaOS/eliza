@@ -20,6 +20,23 @@ function fixture() {
   const requests: { path: string; method: string; body: URLSearchParams }[] = [];
   let foreign = false;
   let amount = 4900;
+  let priceOverrides: Partial<Stripe.Price> = {};
+  let existingSubscription = false;
+  let existingQuantity: number | undefined;
+  const price = () => ({
+    id: "price_sol",
+    object: "price",
+    active: true,
+    currency: "usd",
+    unit_amount: amount,
+    billing_scheme: "per_unit",
+    type: "recurring",
+    transform_quantity: null,
+    recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
+    product: "prod_outreachr",
+    metadata: { outreachr_app_id: appId },
+    ...priceOverrides,
+  });
   const stripe = new Stripe("sk_test_outreachr_fixture", {
     maxNetworkRetries: 0,
     httpClient: Stripe.createFetchHttpClient(async (input, init) => {
@@ -39,25 +56,53 @@ function fixture() {
             outreachr_workspace_id: workspaceId,
           },
         };
-      else if (url.pathname === "/v1/prices/price_sol")
-        result = {
-          id: "price_sol",
-          object: "price",
-          active: true,
-          currency: "usd",
-          unit_amount: amount,
-          recurring: { interval: "month", interval_count: 1 },
-          product: "prod_outreachr",
-          metadata: { outreachr_app_id: appId },
-        };
+      else if (url.pathname === "/v1/prices/price_sol") result = price();
+      else if (url.pathname === "/v1/prices/price_astra")
+        result = { ...price(), id: "price_astra", unit_amount: 20000 };
       else if (url.pathname === "/v1/subscriptions")
-        result = { object: "list", data: [], has_more: false };
+        result = {
+          object: "list",
+          has_more: false,
+          data: existingSubscription
+            ? [
+                {
+                  id: "sub_fixture",
+                  object: "subscription",
+                  metadata: { outreachr_app_id: appId, outreachr_workspace_id: workspaceId },
+                  status: "active",
+                  created: 1_700_000_000,
+                  cancel_at_period_end: false,
+                  items: {
+                    object: "list",
+                    has_more: false,
+                    data: [
+                      {
+                        id: "si_fixture",
+                        price: price(),
+                        quantity: existingQuantity,
+                        current_period_start: 1_700_000_000,
+                        current_period_end: 1_702_592_000,
+                      },
+                    ],
+                  },
+                },
+              ]
+            : [],
+        };
       else if (url.pathname === "/v1/checkout/sessions")
         result = {
           object: "checkout.session",
           id: "cs_fixture",
           url: "https://checkout.stripe.com/c/pay/fixture",
           status: "open",
+        };
+      else if (url.pathname === "/v1/billing_portal/configurations")
+        result = { id: "bpc_fixture", object: "billing_portal.configuration" };
+      else if (url.pathname === "/v1/billing_portal/sessions")
+        result = {
+          id: "bps_fixture",
+          object: "billing_portal.session",
+          url: "https://billing.stripe.com/p/session/fixture",
         };
       else throw new Error(`Unexpected fixture request: ${url.pathname}`);
       return Response.json(result, { headers: { "request-id": "req_fixture" } });
@@ -71,6 +116,13 @@ function fixture() {
     },
     setWrongPrice: () => {
       amount = 3000;
+    },
+    setPrice: (overrides: Partial<Stripe.Price>) => {
+      priceOverrides = overrides;
+    },
+    setSubscription: (quantity: number | undefined) => {
+      existingSubscription = true;
+      existingQuantity = quantity;
     },
   };
 }
@@ -156,5 +208,105 @@ describe("Outreachr scoped Stripe billing", () => {
         signature: foreignSignature,
       }),
     ).resolves.toEqual({ eventId: "evt_fixture", workspaceId: null });
+  });
+
+  test("rejects quantity transformations before creating a per-seat checkout", async () => {
+    const f = fixture();
+    f.setPrice({ transform_quantity: { divide_by: 10, round: "up" } });
+    await expect(
+      outreachrBillingOperation(f.stripe, registration, config, {
+        action: "checkout",
+        workspaceId,
+        customerId: "cus_fixture",
+        attemptId: "33333333-3333-4333-8333-333333333333",
+        plan: "sol",
+        seats: 3,
+      }),
+    ).rejects.toMatchObject({ code: "OUTREACHR_BILLING_SCOPE" });
+    expect(f.requests.some((request) => request.method === "POST")).toBe(false);
+  });
+
+  test("rejects transformed subscription prices instead of reporting them as per-seat plans", async () => {
+    const f = fixture();
+    f.setSubscription(3);
+    f.setPrice({ transform_quantity: { divide_by: 10, round: "up" } });
+    await expect(
+      outreachrBillingOperation(f.stripe, registration, config, {
+        action: "subscriptions",
+        workspaceId,
+        customerId: "cus_fixture",
+      }),
+    ).rejects.toMatchObject({ code: "OUTREACHR_BILLING_SCOPE" });
+  });
+
+  test("rejects unavailable or invalid subscription quantities instead of returning a seat entitlement", async () => {
+    for (const quantity of [undefined, 0, -1, 1.5, 1001]) {
+      const f = fixture();
+      f.setSubscription(quantity);
+      await expect(
+        outreachrBillingOperation(f.stripe, registration, config, {
+          action: "subscriptions",
+          workspaceId,
+          customerId: "cus_fixture",
+        }),
+      ).rejects.toMatchObject({ code: "OUTREACHR_BILLING_SCOPE" });
+    }
+  });
+
+  test("reads complete seat entitlements from an ordinary licensed per-unit subscription", async () => {
+    const f = fixture();
+    f.setSubscription(3);
+    await expect(
+      outreachrBillingOperation(f.stripe, registration, config, {
+        action: "subscriptions",
+        workspaceId,
+        customerId: "cus_fixture",
+      }),
+    ).resolves.toMatchObject({ subscriptions: [{ id: "sub_fixture", plan: "sol", seats: 3 }] });
+  });
+
+  test("rejects a transformed current plan before creating any billing portal configuration", async () => {
+    const f = fixture();
+    f.setSubscription(3);
+    f.setPrice({ transform_quantity: { divide_by: 10, round: "up" } });
+    await expect(
+      outreachrBillingOperation(f.stripe, registration, config, {
+        action: "portal",
+        workspaceId,
+        customerId: "cus_fixture",
+        attemptId: "33333333-3333-4333-8333-333333333333",
+        minimumSeats: 3,
+      }),
+    ).rejects.toMatchObject({ code: "OUTREACHR_BILLING_SCOPE" });
+    expect(f.requests.some((request) => request.method === "POST")).toBe(false);
+  });
+
+  test("retains the registered plan and seat-floor constraints in a valid portal upgrade", async () => {
+    const f = fixture();
+    f.setSubscription(3);
+    await outreachrBillingOperation(f.stripe, registration, config, {
+      action: "portal",
+      workspaceId,
+      customerId: "cus_fixture",
+      attemptId: "33333333-3333-4333-8333-333333333333",
+      minimumSeats: 3,
+      update: { subscriptionId: "sub_fixture", plan: "astra", seats: 4 },
+    });
+    const configuration = f.requests.find(
+      (request) => request.path === "/v1/billing_portal/configurations",
+    )!;
+    expect(
+      configuration.body.get(
+        "features[subscription_update][products][0][adjustable_quantity][minimum]",
+      ),
+    ).toBe("3");
+    const portal = f.requests.find((request) => request.path === "/v1/billing_portal/sessions")!;
+    expect(portal.body.get("flow_data[subscription_update_confirm][subscription]")).toBe(
+      "sub_fixture",
+    );
+    expect(portal.body.get("flow_data[subscription_update_confirm][items][0][price]")).toBe(
+      "price_astra",
+    );
+    expect(portal.body.get("flow_data[subscription_update_confirm][items][0][quantity]")).toBe("4");
   });
 });
