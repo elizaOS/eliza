@@ -13,6 +13,22 @@ import {
 } from "./humanize.ts";
 
 describe("describeCronSchedule", () => {
+  it("only claims an every-N-minutes cadence when N divides 60", () => {
+    // A minute-field step restarts each hour, so the literal phrasing is only
+    // true for divisors of 60. Verified against computeNextCronRunAtMs: */7
+    // fires 7,7,7,7,7,7,7,4; */45 alternates 15,45; */59 and */90 fire hourly.
+    expect(describeCronSchedule("*/5 * * * *")).toBe("every 5 minutes");
+    expect(describeCronSchedule("*/15 * * * *")).toBe("every 15 minutes");
+    expect(describeCronSchedule("*/30 * * * *")).toBe("every 30 minutes");
+    expect(describeCronSchedule("*/1 * * * *")).toBe("every minute");
+
+    expect(describeCronSchedule("*/7 * * * *")).toBeNull();
+    expect(describeCronSchedule("*/25 * * * *")).toBeNull();
+    expect(describeCronSchedule("*/45 * * * *")).toBeNull();
+    expect(describeCronSchedule("*/59 * * * *")).toBeNull();
+    expect(describeCronSchedule("*/90 * * * *")).toBeNull();
+  });
+
   it("maps daily crons onto time-of-day nouns", () => {
     expect(describeCronSchedule("0 8 * * *")).toBe("every morning at 8am");
     expect(describeCronSchedule("30 14 * * *")).toBe(
