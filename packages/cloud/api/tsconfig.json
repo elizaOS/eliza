@@ -49,6 +49,10 @@
       "@elizaos/plugin-cloud-apps/*": [
         "../../../plugins/plugin-cloud-apps/src/*"
       ],
+      "@elizaos/plugin-doordash": [
+        "../../../plugins/plugin-doordash/src/index.ts"
+      ],
+      "@elizaos/plugin-doordash/*": ["../../../plugins/plugin-doordash/src/*"],
       "@elizaos/plugin-elizacloud": [
         "../../../plugins/plugin-elizacloud/src/index.ts"
       ],

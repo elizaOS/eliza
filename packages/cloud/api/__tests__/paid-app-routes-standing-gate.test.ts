@@ -31,6 +31,17 @@ const generateDiscordAnnouncement = mock(async () => "preview");
 const deductCredits = mock(async () => ({ success: true }));
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
+  asGenerativeCacheApiError: (error: unknown) => error,
+  deferredCredentialAdmissionGuard: () => ({
+    credentialForAdmission: () => undefined,
+    async [Symbol.asyncDispose]() {},
+  }),
+  getGenerativeOperationContext: () => ({
+    organizationId: "org-1",
+    userId: "user-1",
+    apiKeyId: null,
+    requestId: "request-1",
+  }),
   requireGenerativeRouteCaller,
 }));
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
@@ -82,6 +93,11 @@ mock.module("@/lib/promotion-pricing", () => ({
   estimateAssetGenerationCost: () => ({ total: 5 }),
 }));
 mock.module("@/lib/services/credits", () => ({
+  COST_BUFFER: 1.5,
+  InsufficientCreditsError: class InsufficientCreditsError extends Error {},
+  MIN_RESERVATION: 0.000001,
+  RESERVATION_SWEEP_GRACE_MS: 0,
+  ReservationNotFoundError: class ReservationNotFoundError extends Error {},
   creditsService: {
     deductCredits,
     refundCredits: mock(async () => undefined),

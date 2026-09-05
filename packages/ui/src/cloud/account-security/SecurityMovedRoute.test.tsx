@@ -3,13 +3,8 @@
 
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
-import { runAsPrivilegedShell } from "../../surface-realm-channel";
+import { describe, expect, it } from "vitest";
 import SecurityMovedRoute from "./SecurityMovedRoute";
-
-vi.mock("../../surface-realm-channel", () => ({
-  runAsPrivilegedShell: vi.fn((operation: () => unknown) => operation()),
-}));
 
 describe("SecurityMovedRoute", () => {
   it("sends stale bookmarks to Account without exposing a Security page", async () => {
@@ -23,6 +18,5 @@ describe("SecurityMovedRoute", () => {
     );
 
     expect(await screen.findByText("Account page")).toBeTruthy();
-    expect(runAsPrivilegedShell).toHaveBeenCalledTimes(1);
   });
 });

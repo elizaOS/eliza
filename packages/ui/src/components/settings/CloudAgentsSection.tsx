@@ -25,7 +25,7 @@ import {
   agentLifecycleLabel,
   statusToneForState,
 } from "../ui/status-badge.helpers";
-import { useCloudAgentManagement } from "./cloud-panel/cloud-agent-management-pattern";
+import { useCloudAgentManagement } from "./cloud-agent-management";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 /** Maximum length accepted for a (new or edited) cloud agent name. */

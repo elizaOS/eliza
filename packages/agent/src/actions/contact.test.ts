@@ -294,7 +294,7 @@ describe("CONTACT create", () => {
 });
 
 describe("CONTACT search and read", () => {
-  it("preserves graph ordering, numbers results, and caps the search limit", async () => {
+  it("preserves graph ordering, numbers results, and forwards the requested search limit", async () => {
     const first = {
       ...makePerson(1, "Zed"),
       aliases: ["Z"],
@@ -320,7 +320,7 @@ describe("CONTACT search and read", () => {
     expect(getGraphSnapshot).toHaveBeenCalledWith({
       search: "ali",
       platform: "discord",
-      limit: 25,
+      limit: 500,
     });
     expect(result.text).toContain("  1 | Zed (aka Z)");
     expect(result.text).toContain("  2 | Alice — none");
@@ -727,7 +727,7 @@ describe("CONTACT activity", () => {
     expect(tied.map((item) => item.type)).toEqual(["relationship", "identity"]);
   });
 
-  it("uses safe empty defaults and caps oversized pages at 100 items", async () => {
+  it("uses safe empty defaults and preserves explicitly requested page sizes", async () => {
     const empty = makeRuntime();
     const emptyResult = await invoke(empty.runtime, {
       action: "activity",
@@ -738,7 +738,7 @@ describe("CONTACT activity", () => {
       total: 0,
       count: 0,
       offset: 0,
-      limit: 50,
+      limit: undefined,
     });
     expect(emptyResult.text).toContain("(no activity yet)");
 
@@ -752,16 +752,16 @@ describe("CONTACT activity", () => {
     const full = makeRuntime({
       relationships: makeGraph({ getGraphSnapshot }),
     });
-    const capped = await invoke(full.runtime, {
+    const complete = await invoke(full.runtime, {
       action: "activity",
       limit: 1_000,
     });
-    expect(capped.values).toMatchObject({
+    expect(complete.values).toMatchObject({
       total: 101,
-      count: 100,
-      limit: 100,
+      count: 101,
+      limit: 1_000,
     });
-    expect(capped.data).toMatchObject({ hasMore: true });
+    expect(complete.data).toMatchObject({ hasMore: false });
   });
 });
 

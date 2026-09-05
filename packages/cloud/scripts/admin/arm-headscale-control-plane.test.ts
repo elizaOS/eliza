@@ -144,22 +144,44 @@ function namedStep(workflow: HeadscaleWorkflow, name: string): WorkflowStep {
 }
 
 describe("Headscale control-plane self-enrollment", () => {
-  test("forces reauthentication only after minting a fresh single-use key", () => {
+  test("requires live canonical control authority before skipping reauthentication", () => {
     const remote = renderRemoteScript();
     const forceReauth = remote.indexOf("    --force-reauth \\");
     const mintKey = remote.indexOf(
       "PREAUTH_KEY=$(sudo headscale preauthkeys create",
     );
+    const inspectPrefs = remote.indexOf("sudo tailscale debug prefs");
+    const convergedBranch = remote.indexOf(
+      "CP router enrollment already converged (category=cp-router-already-enrolled)",
+    );
+    const retireStaleNode = remote.indexOf(
+      'sudo headscale nodes delete --identifier "$STALE_NODE_ID" --force',
+    );
     const tailscaleUp = remote.indexOf("sudo tailscale up \\");
+    const resetProfile = remote.indexOf("      --reset \\");
     const loginServer = remote.indexOf('    --login-server="$LOGIN_SERVER" \\');
 
+    expect(inspectPrefs).toBeGreaterThan(0);
+    expect(inspectPrefs).toBeLessThan(convergedBranch);
+    expect(remote).toContain("CONTROL_URL_MATCH=true");
     expect(forceReauth).toBeGreaterThan(mintKey);
     expect(forceReauth).toBeGreaterThan(tailscaleUp);
+    expect(resetProfile).toBeGreaterThan(tailscaleUp);
+    expect(resetProfile).toBeLessThan(forceReauth);
     expect(forceReauth).toBeLessThan(loginServer);
+    expect(retireStaleNode).toBeGreaterThan(mintKey);
+    expect(retireStaleNode).toBeLessThan(tailscaleUp);
     expect(remote.match(/--force-reauth/g)).toHaveLength(1);
+    expect(remote).toContain("--tags tag:eliza-proxy");
+    expect(remote).not.toContain("      --advertise-tags=");
     expect(remote).toContain(
-      "CP router enrollment already present (category=cp-router-already-enrolled)",
+      "CP router forced reauthentication failed (category=cp-router-reauth-failed)",
     );
+    expect(remote).toContain(
+      "CP router live identity and canonical control URL verified (category=cp-router-visible)",
+    );
+    expect(remote).toContain('.BackendState == "Running"');
+    expect(remote).toContain("(.Self.TailscaleIPs // []) | length > 0");
   });
 
   test("does not emit forced reauthentication when router enrollment is skipped", () => {
@@ -293,5 +315,18 @@ describe("Headscale protected workflow contract", () => {
       "node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs",
     );
     expect(converge).not.toContain("force-reauth");
+  });
+
+  test("emits only closed remote failure categories", () => {
+    const step = namedStep(workflow, "Inspect or converge Headscale control plane");
+    const run = String(step.run ?? "");
+
+    expect(run).toContain(
+      "grep -hEo 'category=(headscale|cp-router)-[a-z0-9-]+'",
+    );
+    expect(run).toContain('safe_category="headscale-remote-failed"');
+    expect(run).toContain("raw-output=suppressed");
+    expect(run).not.toContain('cat "$arm_stdout"');
+    expect(run).not.toContain('cat "$arm_stderr"');
   });
 });

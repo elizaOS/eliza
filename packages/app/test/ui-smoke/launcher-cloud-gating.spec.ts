@@ -248,7 +248,7 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
         page.getByTestId("desktop-settings-navigation"),
       ).toBeVisible();
       await expect(
-        page.getByTestId("desktop-settings-item-identity"),
+        page.getByTestId("desktop-settings-item-ai-model"),
       ).toBeVisible();
       await expect(
         page.getByTestId("desktop-settings-group-cloud"),

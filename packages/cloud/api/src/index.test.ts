@@ -1714,7 +1714,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(config.migrations).toBeUndefined();
   });
 
-  test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {
+  test("binds the global native limiter for general routes and keeps inference shells gate-free", async () => {
     type RateLimitBinding = {
       name?: string;
       simple?: { limit?: number; period?: number };
@@ -1745,8 +1745,8 @@ describe("cloud-api worker entrypoint", () => {
 
     // #17805 retired the per-route native gates from the generative hot path:
     // rate policy rides the IAC v2 admission snapshot through the org-level
-    // limiter. The inference route sources must stay free of per-route native
-    // bindings, while both Worker app builders keep the global gate.
+    // limiter. The inference route sources and thin shell must stay free of
+    // native bindings, while the general bootstrap app keeps the global gate.
     const [
       chat,
       completions,
@@ -1768,6 +1768,6 @@ describe("cloud-api worker entrypoint", () => {
       expect(source).not.toContain("bindingName:");
     }
     expect(bootstrapApp).toContain('bindingName: "GLOBAL_RATE_LIMITER"');
-    expect(inferenceApp).toContain('bindingName: "GLOBAL_RATE_LIMITER"');
+    expect(inferenceApp).not.toContain('bindingName: "GLOBAL_RATE_LIMITER"');
   });
 });

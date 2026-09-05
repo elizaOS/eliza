@@ -22,6 +22,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { useState } from "react";
 
@@ -86,14 +87,44 @@ export interface RelationshipsSpatialViewProps {
   onAction?: (action: string) => void;
 }
 
+function AgentActionButton({
+  action,
+  label,
+  onAction,
+}: {
+  action: string;
+  label: string;
+  onAction?: (action: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: action,
+    role: "button",
+    label,
+    group: "relationships",
+    onActivate: () => onAction?.(action),
+  });
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      size="sm"
+      onClick={() => onAction?.(action)}
+    >
+      {label}
+    </Button>
+  );
+}
+
 export function RelationshipsSpatialView({
   snapshot,
   onAction,
 }: RelationshipsSpatialViewProps) {
-  const dispatch = (action: string) => () => onAction?.(action);
-
   return (
-    <Card variant="transparentSquare" className="w-full min-w-0">
+    <Card
+      variant="transparentSquare"
+      className="w-full min-w-0"
+      data-testid="relationships-view"
+    >
       {snapshot.state === "loading" ? (
         <PagePanel.ContentState
           state="loading"
@@ -109,9 +140,11 @@ export function RelationshipsSpatialView({
           title="Could not load relationships"
           description={snapshot.error ?? "Could not load relationships."}
           action={
-            <Button size="sm" data-agent-id="retry" onClick={dispatch("retry")}>
-              Retry
-            </Button>
+            <AgentActionButton
+              action="retry"
+              label="Retry"
+              onAction={onAction}
+            />
           }
         />
       ) : snapshot.state === "empty" ? (
@@ -121,9 +154,11 @@ export function RelationshipsSpatialView({
           title="No relationships yet"
           description="Add a person to start building the relationship graph."
           action={
-            <Button size="sm" data-agent-id="add" onClick={dispatch("add")}>
-              Add someone
-            </Button>
+            <AgentActionButton
+              action="add"
+              label="Add someone"
+              onAction={onAction}
+            />
           }
         />
       ) : (
@@ -246,6 +281,14 @@ function EntityNodeBlock({
   node: EntityNode;
   onAction?: (action: string) => void;
 }) {
+  const action = `open:${node.id}`;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `open-${node.id}`,
+    role: "button",
+    label: `Open ${node.name}`,
+    group: "relationships",
+    onActivate: () => onAction?.(action),
+  });
   return (
     <div className="min-w-0 py-3" data-agent-id={`rel-${node.id}`}>
       <div className="flex min-w-0 items-center gap-3">
@@ -261,11 +304,12 @@ function EntityNodeBlock({
         </div>
         <span className="shrink-0 text-xs text-muted">{node.kindLabel}</span>
         <Button
+          ref={ref}
+          {...agentProps}
           variant="ghost"
           size="icon-sm"
           aria-label={`Open ${node.name}`}
-          data-agent-id={`open-${node.id}`}
-          onClick={() => onAction?.(`open:${node.id}`)}
+          onClick={() => onAction?.(action)}
         >
           ›
         </Button>

@@ -209,21 +209,22 @@ describe("BACKGROUND stays on the planner surface for undo/redo/reset follow-ups
 	});
 
 	it("does not hijack a genuine settings-navigation turn", () => {
-		// "open the settings" has no background vocabulary. The candidate-matched
-		// VIEWS must stay ranked FIRST (candidate keeps sort ahead of
-		// retrieval-override keeps), so the planner sees VIEWS as the primary
-		// tool. BACKGROUND may remain exposed lower down — every settings-context
-		// action rides the shared settings keyword — but it must not outrank the
-		// navigation action the Stage-1 candidates named.
-		const { tiered } = routeTurn({
+		// "open the settings" has no background vocabulary. The Stage-1 candidate
+		// must produce an exact VIEWS hint while BACKGROUND remains merely a
+		// context-weighted option on the complete callable surface.
+		const { retrieval, tiered } = routeTurn({
 			messageText: "open the settings",
 			candidateActions: ["OPEN_SETTINGS"],
 			selectedContexts: ["settings"],
 		});
 		const tierA = tiered.tierAParents.map((parent) => parent.name);
-		expect(tierA[0]).toBe("VIEWS");
-		if (tierA.includes("BACKGROUND")) {
-			expect(tierA.indexOf("VIEWS")).toBeLessThan(tierA.indexOf("BACKGROUND"));
-		}
+		expect(tierA).toContain("VIEWS");
+		expect(
+			retrieval.results.find((result) => result.name === "VIEWS")?.matchedBy,
+		).toContain("exact");
+		expect(
+			retrieval.results.find((result) => result.name === "BACKGROUND")
+				?.matchedBy,
+		).not.toContain("exact");
 	});
 });

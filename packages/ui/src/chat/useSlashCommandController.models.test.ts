@@ -31,6 +31,7 @@ const { listCommands, listCustomActions, getModelsCatalog } = vi.hoisted(
 
 vi.mock("../api", () => ({
   client: {
+    getBaseUrl: () => "http://localhost:2138",
     listCommands: (surface?: string) => listCommands(surface),
     listCustomActions: () => listCustomActions(),
     getModelsCatalog: () => getModelsCatalog(),
@@ -155,7 +156,7 @@ describe("useSlashCommandController — models choice source", () => {
         argIndex: 1,
         precedingTokens: ["coding"],
       }),
-    ).toEqual(["codex", "claude", "opencode", "elizaos"]);
+    ).toEqual(["codex", "claude", "elizaos"]);
     expect(
       result.current.resolveChoices("models", {
         commandKey: "model",

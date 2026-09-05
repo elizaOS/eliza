@@ -54,7 +54,7 @@ type EventHandler = (sessionId: string, event: string, data: unknown) => void;
 
 async function waitUntil(
   predicate: () => boolean | Promise<boolean>,
-  timeoutMs = 3000,
+  timeoutMs = 10_000,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

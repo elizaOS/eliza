@@ -15,8 +15,10 @@ registerAppShellPage({
   pathPatterns: ["/apps/relationships", "/character/relationships"],
   tabAffinity: "relationships",
   order: 930,
-  viewKind: "developer",
-  developerOnly: true,
+  // Relationships is a user-facing Character section. Launcher curation keeps
+  // it out of the app grid, but its direct route must remain available without
+  // enabling unrelated developer tooling.
+  viewKind: "release",
   surface: {
     header: "fullscreen",
     capabilities: ["agent-surface"],

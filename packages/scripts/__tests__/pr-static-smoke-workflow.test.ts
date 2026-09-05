@@ -1,4 +1,4 @@
-/** Verifies PR admission combines source contracts, affected static checks, billing replay, and Windows security. */
+/** Verifies PR admission combines source contracts, PostgreSQL subscription authority, affected static checks, billing replay, and Windows security. */
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -24,8 +24,10 @@ const workflow = Bun.YAML.parse(source) as {
       uses?: string;
       "runs-on"?: string;
       needs?: string[];
+      services?: Record<string, { image?: string }>;
       steps?: Array<{
         id?: string;
+        if?: string;
         name?: string;
         env?: Record<string, string>;
         run?: string;
@@ -71,7 +73,7 @@ function workspaceClosure(seedDirs: readonly string[]): Set<string> {
 }
 
 describe("PR Static Smoke workflow", () => {
-  test("owns cancelable source, billing replay, and Windows lanes behind the stable admission context", () => {
+  test("owns every cancelable admission lane behind the stable context", () => {
     expect(workflow.concurrency?.group).toContain(
       "github.event.pull_request.number",
     );
@@ -79,6 +81,7 @@ describe("PR Static Smoke workflow", () => {
     expect(Object.keys(workflow.jobs ?? {})).toEqual([
       "source-smoke",
       "billing-payment-replay-e2e",
+      "subscription-authority-postgres",
       "browser-bridge-windows-security",
       "static-smoke",
     ]);
@@ -89,8 +92,46 @@ describe("PR Static Smoke workflow", () => {
       "source-smoke",
       "browser-bridge-windows-security",
       "billing-payment-replay-e2e",
+      "subscription-authority-postgres",
     ]);
     expect(workflow.jobs?.["static-smoke"]?.name).toBe("All Tests Passed");
+  });
+
+  test("runs subscription authority concurrency constraints against PostgreSQL 16", () => {
+    const postgresJob = workflow.jobs?.["subscription-authority-postgres"];
+    expect(postgresJob?.needs).toBeUndefined();
+    const detectStep = postgresJob?.steps?.find(
+      (step) => step.id === "authority-diff",
+    );
+    expect(detectStep?.run).toContain(
+      "packages/cloud/shared packages/core packages/shared",
+    );
+    expect(detectStep?.run).toContain('echo "run=true"');
+    const postgresStep = postgresJob?.steps?.find(
+      (step) =>
+        step.name === "Run subscription authority PostgreSQL constraints",
+    );
+    expect(postgresStep?.if).toBe("steps.authority-diff.outputs.run == 'true'");
+    expect(postgresStep?.env?.SUBSCRIPTION_AUTHORITY_POSTGRES_URL).toContain(
+      "127.0.0.1:5432",
+    );
+    expect(postgresStep?.run).toContain("postgres:16-alpine");
+    expect(postgresStep?.run).toContain(
+      "subscription-authority.postgres.integration.test.ts",
+    );
+    const outcomeStep = postgresJob?.steps?.find(
+      (step) => step.name === "Require subscription authority outcome",
+    );
+    expect(outcomeStep?.if).toBe("always()");
+    expect(outcomeStep?.run).toContain(
+      '"$SHOULD_RUN" = "true" ] && [ "$TEST_OUTCOME" != "success"',
+    );
+    const admission = workflow.jobs?.["static-smoke"]?.steps?.find(
+      (step) => step.name === "Require every admission lane",
+    );
+    expect(admission?.env?.RESULTS).toContain(
+      "subscription-authority-postgres=${{",
+    );
   });
 
   test("runs billing replay in parallel and fails closed over its contract surface", () => {

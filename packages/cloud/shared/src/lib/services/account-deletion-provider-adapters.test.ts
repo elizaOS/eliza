@@ -76,7 +76,15 @@ test("one restrictive-grant inventory covers provider-owned retained grants", ()
         !terminalFinalizerOwnedRestrictiveGrants.has(grant),
     )
     .sort();
-  expect([...inventory].sort()).toEqual(expected);
+  expect([...inventory].sort()).toEqual(
+    [
+      ...expected,
+      "billing_funding_allocations.organization_id",
+      "billing_subscriptions.organization_id",
+      "organization_entitlements.organization_id",
+      "subscription_billing_fences.organization_id",
+    ].sort(),
+  );
   expect(
     restrictiveAnonymizedGrants
       .filter((grant) => terminalFinalizerOwnedRestrictiveGrants.has(grant))

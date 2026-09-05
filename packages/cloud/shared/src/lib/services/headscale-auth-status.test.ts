@@ -48,6 +48,13 @@ describe("classifyMeshAuthStatus", () => {
     expect(classifyMeshAuthStatus({ logs: "AUTHKEY EXPIRED" })).toBe("auth_expired");
   });
 
+  it.each(['{"BackendState":"NeedsLogin"}', "RegisterReq: machineAuthorized=false; authURL=false"])(
+    "does not classify transient fresh-daemon state as rejected auth: %s",
+    (line) => {
+      expect(classifyMeshAuthStatus({ logs: line })).toBe("unknown");
+    },
+  );
+
   it("returns unknown for a healthy / unrelated failure (never a false re-key)", () => {
     expect(classifyMeshAuthStatus({ exitCode: 0, logs: "listening on :2138" })).toBe("unknown");
     expect(classifyMeshAuthStatus({ exitCode: 1, logs: "OOMKilled" })).toBe("unknown");

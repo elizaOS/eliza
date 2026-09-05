@@ -24,6 +24,7 @@ const APP_CHAT_RESERVATION_SETTLEMENT_MARKER = "app_chat_reservation_v1";
 
 const ORG_ID = "00000000-0000-0000-0000-0000000000d4";
 const USER_ID = "00000000-0000-0000-0000-0000000000e5";
+const APP_ID = "00000000-0000-4000-8000-0000000000a6";
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
@@ -102,7 +103,7 @@ async function insertAppChatReservation(
 ): Promise<string> {
   const createdAt = new Date(Date.now() - ageMs).toISOString();
   const metadata = {
-    appId: "app-chat-test",
+    appId: APP_ID,
     userId: USER_ID,
     type: "app_chat_reservation",
     settlement_marker: APP_CHAT_RESERVATION_SETTLEMENT_MARKER,
@@ -219,6 +220,10 @@ beforeAll(async () => {
         pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true,
         steward_tenant_id text,
         steward_tenant_api_key text,
+        account_lifecycle_state text NOT NULL DEFAULT 'active',
+        account_lifecycle_revision bigint NOT NULL DEFAULT 0,
+        account_deletion_request_id uuid,
+        paid_work_fenced_at timestamp,
         is_active boolean NOT NULL DEFAULT true,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
@@ -234,6 +239,82 @@ beforeAll(async () => {
         stripe_payment_intent_id text,
         created_at timestamp NOT NULL DEFAULT now(),
         settled_at timestamp
+      )`,
+      `CREATE TABLE IF NOT EXISTS apps (
+        id uuid PRIMARY KEY,
+        name text,
+        description text,
+        slug text,
+        organization_id uuid,
+        created_by_user_id uuid,
+        app_url text,
+        allowed_origins jsonb,
+        api_key_id uuid,
+        affiliate_code text,
+        referral_bonus_credits numeric,
+        total_requests bigint,
+        total_users bigint,
+        total_credits_used numeric,
+        logo_url text,
+        website_url text,
+        contact_email text,
+        metadata jsonb,
+        deployment_status text,
+        production_url text,
+        last_deployed_at timestamp,
+        github_repo text,
+        linked_character_ids jsonb,
+        monetization_enabled boolean,
+        inference_markup_percentage numeric,
+        purchase_share_percentage numeric,
+        platform_offset_amount numeric,
+        custom_pricing_enabled boolean,
+        total_creator_earnings numeric,
+        total_platform_revenue numeric,
+        discord_automation jsonb,
+        telegram_automation jsonb,
+        twitter_automation jsonb,
+        promotional_assets jsonb,
+        email_notifications boolean,
+        response_notifications boolean,
+        is_active boolean,
+        is_approved boolean,
+        review_status text,
+        review_content_hash text,
+        reviewed_at timestamp,
+        created_at timestamp,
+        updated_at timestamp,
+        last_used_at timestamp
+      )`,
+      `CREATE TABLE IF NOT EXISTS app_reservation_settlements (
+        reservation_transaction_id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL,
+        app_id uuid NOT NULL,
+        user_id uuid NOT NULL,
+        creator_user_id uuid,
+        terminal_source text NOT NULL,
+        outcome text NOT NULL,
+        reserved_base_cost numeric(16,6) NOT NULL,
+        actual_base_cost numeric(16,6) NOT NULL,
+        markup_percentage numeric(12,6) NOT NULL,
+        reserved_total_cost numeric(16,6) NOT NULL,
+        actual_total_cost numeric(16,6) NOT NULL,
+        organization_adjustment numeric(16,6) NOT NULL,
+        creator_adjustment numeric(16,6) NOT NULL,
+        platform_adjustment numeric(16,6) NOT NULL,
+        credit_transaction_id uuid,
+        redeemable_ledger_entry_id uuid,
+        app_earnings_transaction_id uuid,
+        settled_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE TABLE IF NOT EXISTS app_reservation_settlement_quarantines (
+        reservation_transaction_id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL,
+        app_id text NOT NULL,
+        user_id text NOT NULL,
+        creator_user_id text,
+        reason text NOT NULL,
+        quarantined_at timestamptz NOT NULL DEFAULT now()
       )`,
       // applyCreditIncrease (the refund path) uses
       // `ON CONFLICT (stripe_payment_intent_id) DO NOTHING`, which requires this

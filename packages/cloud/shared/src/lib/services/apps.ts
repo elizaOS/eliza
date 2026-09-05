@@ -350,22 +350,30 @@ export class AppsService {
    */
   async invalidateCache(appId: string, apiKeyId?: string, slug?: string): Promise<void> {
     invalidateInferenceAppByIdState(appId);
-    await withAppCacheFences({ appId, apiKeyId, slug }, async () => {
-      const promises: Promise<void>[] = [
-        cache.del(CacheKeys.app.byId(appId)),
-        cache.del(CacheKeys.app.costMarkup(appId)),
-      ];
+    try {
+      await withAppCacheFences({ appId, apiKeyId, slug }, async () => {
+        const promises: Promise<void>[] = [
+          cache.del(CacheKeys.app.byId(appId)),
+          cache.del(CacheKeys.app.costMarkup(appId)),
+        ];
 
-      if (apiKeyId) {
-        promises.push(cache.del(CacheKeys.app.byApiKeyId(apiKeyId)));
-      }
+        if (apiKeyId) {
+          promises.push(cache.del(CacheKeys.app.byApiKeyId(apiKeyId)));
+        }
 
-      if (slug) {
-        promises.push(cache.del(CacheKeys.app.bySlug(slug)));
-      }
+        if (slug) {
+          promises.push(cache.del(CacheKeys.app.bySlug(slug)));
+        }
 
-      await Promise.all(promises);
-    });
+        await Promise.all(promises);
+      });
+    } finally {
+      // A read can race the asynchronous shared-cache delete and repopulate
+      // this isolate's LRU with the stale row. Clear it again after completion;
+      // deletes remain commutative across isolates and cannot resurrect an
+      // older approval or monetization state.
+      invalidateInferenceAppByIdState(appId);
+    }
     logger.debug("[Apps] Invalidated app cache", { appId });
   }
 

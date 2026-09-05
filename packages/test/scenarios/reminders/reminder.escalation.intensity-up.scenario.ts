@@ -1,5 +1,6 @@
 /** Scenario fixture for reminder escalation intensity up; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { reminderDispatchModelFixtures } from "./reminder-dispatch-model-fixtures";
 
 /**
  * Deterministic escalation control driving the REAL
@@ -141,10 +142,7 @@ async function resetSharedRateLimits(): Promise<string | undefined> {
 
 export default scenario({
   lane: "pr-deterministic",
-  modelFixtures: {
-    mode: "model-free",
-    reason: "Direct API turns exercise runtime contracts without model calls.",
-  },
+  modelFixtures: reminderDispatchModelFixtures(3),
   id: "reminder.escalation.intensity-up",
   title: "Ignored reminder escalates intensity on next check",
   domain: "reminders",

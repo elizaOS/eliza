@@ -33,6 +33,7 @@ interface WorkflowJob {
 interface LiveSmokeWorkflow {
   jobs: {
     dedicated: WorkflowJob;
+    "dedicated-diagnostic": WorkflowJob;
     "shared-staging-onboarding": WorkflowJob;
     smoke: WorkflowJob;
   };
@@ -40,6 +41,11 @@ interface LiveSmokeWorkflow {
     workflow_dispatch: {
       inputs: {
         stale_canary_suffix: {
+          default: string;
+          required: boolean;
+          type: string;
+        };
+        diagnose_canary_suffix: {
           default: string;
           required: boolean;
           type: string;
@@ -98,20 +104,28 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(
       workflow.on.workflow_dispatch.inputs.stale_canary_suffix,
     ).toMatchObject({ default: "", required: false, type: "string" });
+    expect(
+      workflow.on.workflow_dispatch.inputs.diagnose_canary_suffix,
+    ).toMatchObject({ default: "", required: false, type: "string" });
     expect(workflow.on.workflow_dispatch.inputs.cleanup_only).toMatchObject({
       default: false,
       required: false,
       type: "boolean",
     });
     expect(workflow.jobs.smoke.if).toBe(
-      githubExpression("!inputs.cleanup_only && inputs.suite != 'dedicated'"),
+      githubExpression(
+        "inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated'",
+      ),
     );
     expect(dedicated.if).toBe(
-      "inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated'",
+      "inputs.diagnose_canary_suffix == '' && (inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated')",
+    );
+    expect(workflow.jobs["dedicated-diagnostic"].if).toBe(
+      "inputs.diagnose_canary_suffix != ''",
     );
     expect(workflow.jobs["shared-staging-onboarding"].if).toBe(
       githubExpression(
-        "always() && !inputs.cleanup_only && (inputs.suite == 'all' || inputs.suite == 'cloud')",
+        "always() && inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && (inputs.suite == 'all' || inputs.suite == 'cloud')",
       ),
     );
     expect(existsSync(retiredWorkflowPath)).toBe(false);
@@ -125,6 +139,208 @@ describe("managed dedicated live-smoke workflow contract", () => {
       group: "managed-dedicated-staging-canary",
       "cancel-in-progress": false,
     });
+    expect(workflow.jobs["dedicated-diagnostic"].concurrency).toEqual({
+      group: "managed-dedicated-staging-canary",
+      "cancel-in-progress": false,
+    });
+  });
+
+  test("restores an exact, read-only, privacy-safe provisioning diagnostic", () => {
+    const diagnostic = workflow.jobs["dedicated-diagnostic"];
+    expect(diagnostic.environment).toBe("staging");
+    expect(diagnostic["timeout-minutes"]).toBe(10);
+    expect(diagnostic.env?.CANARY_DIAGNOSTIC_SUFFIX).toBe(
+      githubExpression("inputs.diagnose_canary_suffix"),
+    );
+
+    const query = diagnostic.steps.find(
+      (step) => step.name === "Query exact failed canary read-only",
+    );
+    expect(query?.env?.PGOPTIONS).toContain("default_transaction_read_only=on");
+    expect(query?.run).toContain("BEGIN READ ONLY");
+    expect(query?.run).toContain("jobs.type = 'agent_provision'");
+    expect(query?.run).toContain(
+      "agent_name = 'managed-dedicated-canary-' || :'suffix'",
+    );
+    expect(query?.run).toContain("mutually exclusive");
+
+    const classify = diagnostic.steps.find(
+      (step) => step.name === "Classify privacy-safe provision diagnostic",
+    );
+    expect(classify?.run).toContain(
+      "managed-dedicated-provision-diagnostic.ts",
+    );
+    expect(classify?.run).toContain("rm -f --");
+
+    const reconciliation = diagnostic.steps.find(
+      (step) =>
+        step.name ===
+        "Summarize replacement cleanup reconciliation eligibility",
+    );
+    expect(reconciliation?.id).toBe("cleanup_reconciliation");
+    expect(reconciliation?.run).toContain("cleanupFencePresent");
+    expect(reconciliation?.run).toContain("inspectableCandidatePresent");
+    expect(reconciliation?.run).toContain(".cleanupCreatedAt == null");
+    expect(reconciliation?.run).toContain("fence_present=");
+    expect(reconciliation?.run).toContain("inspectable_candidate_present=");
+    expect(reconciliation?.run).toContain("agent_id=");
+
+    const meshInspection = diagnostic.steps.find(
+      (step) => step.name === "Inspect exact private mesh candidate",
+    );
+    expect(meshInspection?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.fence_present == 'true' || steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'",
+    );
+
+    const headscaleExchange = diagnostic.steps.find(
+      (step) => step.name === "Classify exact Headscale registration exchange",
+    );
+    expect(headscaleExchange?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(headscaleExchange?.env?.CANARY_AGENT_ID).toBe(
+      githubExpression("steps.cleanup_reconciliation.outputs.agent_id"),
+    );
+    expect(headscaleExchange?.with?.script).toContain("headscale.service");
+    expect(headscaleExchange?.with?.script).toContain(
+      "headscale_registration_category=",
+    );
+    expect(headscaleExchange?.with?.script).not.toContain('echo "$block"');
+
+    const headscaleIngress = diagnostic.steps.find(
+      (step) => step.name === "Summarize Headscale ingress protocol",
+    );
+    expect(headscaleIngress?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(headscaleIngress?.with?.script).toContain("headscale version");
+    expect(headscaleIngress?.with?.script).toContain(
+      "/var/log/nginx/access.log",
+    );
+    expect(headscaleIngress?.with?.script).toContain("ts2021_total=");
+    expect(headscaleIngress?.with?.script).toContain("machine_register_total=");
+    expect(headscaleIngress?.with?.script).toContain("response[1]");
+    expect(headscaleIngress?.with?.script).not.toContain("response[2]");
+    expect(headscaleIngress?.with?.script).not.toContain('echo "$version_raw"');
+
+    const suffixJournal = diagnostic.steps.find(
+      (step) => step.name === "Classify exact canary journal by suffix",
+    );
+    expect(suffixJournal).toBeDefined();
+    expect(suffixJournal?.env?.CANARY_DIAGNOSTIC_SUFFIX).toBe(
+      githubExpression("inputs.diagnose_canary_suffix"),
+    );
+    expect(suffixJournal?.with?.script).toContain(
+      "managed-dedicated-canary-$CANARY_DIAGNOSTIC_SUFFIX",
+    );
+    expect(suffixJournal?.with?.script).toContain("::add-mask::$agent_id");
+    expect(suffixJournal?.with?.script).toContain(
+      "suffix_journal_mesh_category=",
+    );
+    expect(suffixJournal?.with?.script).toContain(
+      "suffix_journal_observation_present=",
+    );
+    expect(suffixJournal?.with?.script).not.toContain('echo "$journal"');
+    expect(suffixJournal?.with?.script).not.toContain('echo "$block"');
+
+    const headscaleKeys = diagnostic.steps.find(
+      (step) => step.name === "Summarize recent agent pre-auth key state",
+    );
+    expect(headscaleKeys?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(headscaleKeys?.with?.script).toContain(
+      "headscale preauthkeys list --output json",
+    );
+    expect(headscaleKeys?.with?.script).toContain(
+      "headscale_recent_agent_key_used=",
+    );
+    expect(headscaleKeys?.with?.script).not.toContain('echo "$raw"');
+
+    const classifyMeshFailure = diagnostic.steps.find(
+      (step) => step.name === "Classify private mesh observation failure",
+    );
+    expect(classifyMeshFailure).toBeDefined();
+    expect(classifyMeshFailure?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(classifyMeshFailure?.env?.CANARY_AGENT_ID).toBe(
+      githubExpression("steps.cleanup_reconciliation.outputs.agent_id"),
+    );
+    expect(classifyMeshFailure?.with?.script).toContain(
+      "docker candidate mesh observation before cleanup",
+    );
+    expect(classifyMeshFailure?.with?.script).toContain(
+      "tailscale_daemon_unavailable",
+    );
+    expect(classifyMeshFailure?.with?.script).toContain(
+      "tailscale_status_unavailable",
+    );
+    expect(classifyMeshFailure?.with?.script).toContain(
+      "headscale_control_unreachable",
+    );
+    expect(classifyMeshFailure?.with?.script).toContain(
+      "tailscale_register_request_not_sent",
+    );
+    expect(classifyMeshFailure?.with?.script).toContain(
+      "private_mesh_observation_present",
+    );
+
+    const lifecycleJournal = diagnostic.steps.find(
+      (step) => step.name === "Classify exact dedicated lifecycle journal",
+    );
+    expect(lifecycleJournal?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.agent_id != ''",
+    );
+    expect(lifecycleJournal?.env?.CANARY_AGENT_ID).toBe(
+      githubExpression("steps.cleanup_reconciliation.outputs.agent_id"),
+    );
+    expect(lifecycleJournal?.env?.CANARY_DELETE_JOB_ID).toBe(
+      githubExpression("steps.cleanup_reconciliation.outputs.delete_job_id"),
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "dedicated_lifecycle_signals=",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "dedicated_heartbeat_failure_category=",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "container_oom_killed",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "container_module_resolution",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "container_database_terminal",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "container_inspect_unavailable",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "dedicated_delete_failure_category=",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "timestamp_shape_invalid",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "sandbox_row_delete_query_failed",
+    );
+
+    const cleanupFailure = diagnostic.steps.find(
+      (step) =>
+        step.name === "Classify control-plane replacement cleanup failure",
+    );
+    expect(cleanupFailure?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.fence_present == 'true'",
+    );
+
+    const upload = diagnostic.steps.find(
+      (step) => step.name === "Upload privacy-safe provision diagnostic",
+    );
+    expect(upload?.with?.path).toBe(
+      "reports/managed-dedicated-provision-diagnostic.json",
+    );
+    expect(upload?.with?.["retention-days"]).toBe(14);
   });
 
   test("fails closed on credentials, target drift, and invalid recovery intent", () => {

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "sourceAtomicSchemaVersion": 1,
-  "scannedFiles": 897,
+  "scannedFiles": 886,
   "canonicalContracts": [
     {
       "id": "auth-result-shell",
@@ -80,7 +80,7 @@
       "behavioralTest": "packages/ui/src/components/settings/settings-layout.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/components/settings/settings-agent-rows.tsx",
-        "packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx"
+        "packages/ui/src/components/settings/DesktopShortcutsSection.tsx"
       ],
       "minimumMaintainedReferences": 10,
       "responsibility": "Label, description, control, and navigation alignment for settings.",
@@ -108,7 +108,7 @@
       "maintainedReferences": 2
     }
   ],
-  "eligibleComponents": 103,
+  "eligibleComponents": 101,
   "clusters": [
     {
       "archetype": "row",
@@ -905,87 +905,6 @@
     {
       "archetype": "panel",
       "atomicDependencies": [
-        "badge",
-        "button",
-        "input"
-      ],
-      "entries": [
-        {
-          "atomicDependencies": [
-            "badge",
-            "button",
-            "input"
-          ],
-          "file": "packages/ui/src/components/settings/cloud-panel/sections/AgentSection.tsx",
-          "line": 109,
-          "name": "AgentSection",
-          "renderedTags": [
-            "Button",
-            "Circle",
-            "CloudRow",
-            "Input",
-            "Pause",
-            "Pencil",
-            "Play",
-            "Plus",
-            "RefreshCw",
-            "SettingsGroup",
-            "SettingsStack",
-            "StatusBadge",
-            "Trash2",
-            "dd",
-            "div",
-            "dl",
-            "dt",
-            "label",
-            "p",
-            "span"
-          ],
-          "archetype": "panel"
-        },
-        {
-          "atomicDependencies": [
-            "badge",
-            "button",
-            "input"
-          ],
-          "file": "packages/ui/src/components/settings/CloudAgentsSection.tsx",
-          "line": 77,
-          "name": "CloudAgentsSection",
-          "renderedTags": [
-            "Bot",
-            "Button",
-            "Check",
-            "Input",
-            "Pencil",
-            "Play",
-            "Plus",
-            "Power",
-            "RefreshCw",
-            "SettingsGroup",
-            "SettingsRow",
-            "SettingsStack",
-            "StatusBadge",
-            "Trash2",
-            "div",
-            "p",
-            "span"
-          ],
-          "archetype": "panel"
-        }
-      ],
-      "signature": "panel:badge+button+input",
-      "disposition": "shared-lifecycle-owner",
-      "rationale": "The cloud-panel-owned useCloudAgentManagement pattern owns list refresh, create, rename, suspend/resume, delete polling, wake-and-switch, persistence, and notices; AgentSection and CloudAgentsSection are distinct presentation adapters with explicit management-token providers.",
-      "memberComponentIds": [
-        "packages/ui/src/components/settings/cloud-panel/sections/AgentSection.tsx:AgentSection",
-        "packages/ui/src/components/settings/CloudAgentsSection.tsx:CloudAgentsSection"
-      ],
-      "semanticFingerprint": "sha256:f0e0a109e0fab258115f7e1cc83319bae2890d554c23083a69f95a6700db6757"
-    },
-    {
-      "archetype": "panel",
-      "atomicDependencies": [
         "button",
         "input"
       ],
@@ -1099,8 +1018,8 @@
     }
   ],
   "summary": {
-    "clusterCount": 12,
-    "clusteredComponents": 30,
+    "clusterCount": 11,
+    "clusteredComponents": 28,
     "largestCluster": 4
   }
 }

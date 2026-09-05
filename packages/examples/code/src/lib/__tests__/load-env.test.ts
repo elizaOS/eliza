@@ -1,12 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 
-const mocks = vi.hoisted(() => ({
-  existsSync: vi.fn(),
-  config: vi.fn(),
-}));
-
-vi.mock("node:fs", () => ({ existsSync: mocks.existsSync }));
-vi.mock("dotenv", () => ({ config: mocks.config }));
+const mocks = {
+  existsSync: mock((_path: string) => false),
+  config: mock(
+    (_options: { path?: string; override?: boolean; quiet: boolean }) =>
+      undefined,
+  ),
+};
 
 import { loadEnv } from "../load-env.ts";
 
@@ -18,7 +18,7 @@ describe("loadEnv", () => {
 
   it("loads cwd .env always, and root .env only when present", () => {
     mocks.existsSync.mockReturnValue(true);
-    loadEnv();
+    loadEnv(mocks);
     expect(mocks.config).toHaveBeenCalledTimes(2);
     // First call: default cwd behavior
     expect(mocks.config.mock.calls[0][0]).toMatchObject({ quiet: true });
@@ -32,7 +32,7 @@ describe("loadEnv", () => {
 
   it("skips the root .env when it does not exist", () => {
     mocks.existsSync.mockReturnValue(false);
-    loadEnv();
+    loadEnv(mocks);
     expect(mocks.config).toHaveBeenCalledTimes(1);
   });
 });

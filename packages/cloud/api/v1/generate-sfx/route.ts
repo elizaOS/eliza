@@ -28,6 +28,7 @@ import {
 } from "@/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@/lib/services/content-safety";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@/lib/services/generations";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
@@ -120,20 +121,34 @@ app.post("/", async (c) => {
   // Post-settle failures must not refund a settled charge (mirrors
   // generate-image / generate-video / generate-music).
   let chargeSettled = false;
+  let providerDispatchStarted = false;
+  let settlementContext:
+    | {
+        requestId: string;
+        organizationId: string;
+        userId: string;
+        model: string;
+        provider: string;
+        billingSource: string;
+      }
+    | undefined;
 
   try {
-    const { user, apiKeyId, admissionSnapshot } =
-      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
     const decodedRawBody = await decodeRequestJson(c.req);
+    let pendingResponse: Response | undefined;
+    let request: z.infer<typeof sfxRequestSchema> | undefined;
+    let definition: ReturnType<typeof getSupportedSfxModelDefinition>;
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is an explicit invalid request.
-      return c.json({ error: "Invalid JSON body" }, 400);
+      pendingResponse = c.json({ error: "Invalid JSON body" }, 400);
+    } else {
+      const parsed = sfxRequestSchema.safeParse(decodedRawBody.value);
+      if (parsed.success) request = parsed.data;
+      else pendingResponse = failureResponse(c, parsed.error);
     }
-    const rawBody = decodedRawBody.value;
-    const request = sfxRequestSchema.parse(rawBody);
-    const definition = getSupportedSfxModelDefinition(request.model);
-    if (!definition) {
-      return jsonError(
+    if (request) definition = getSupportedSfxModelDefinition(request.model);
+    if (request && !definition) {
+      pendingResponse = jsonError(
         c,
         400,
         `Unsupported SFX model: ${request.model}`,
@@ -142,25 +157,43 @@ app.post("/", async (c) => {
           supportedModels: SUPPORTED_SFX_MODEL_IDS,
         },
       );
-    }
-    if (
+    } else if (
+      request &&
+      definition &&
       request.durationSeconds !== undefined &&
       request.durationSeconds > definition.defaultParameters.maxDurationSeconds
     ) {
-      return jsonError(
+      pendingResponse = jsonError(
         c,
         400,
         `${request.model} supports at most ${definition.defaultParameters.maxDurationSeconds}s per clip`,
         "validation_error",
       );
-    }
-    if (!providerConfigured(c.env, definition.provider)) {
-      return jsonError(
+    } else if (
+      request &&
+      definition &&
+      !providerConfigured(c.env, definition.provider)
+    ) {
+      pendingResponse = jsonError(
         c,
         503,
         `${definition.provider} SFX generation is not configured`,
         "internal_error",
       );
+    }
+
+    const { user, apiKeyId, admissionSnapshot, credential } =
+      await requireGenerativeRouteCaller(c, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: pendingResponse === undefined,
+      });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
+    if (pendingResponse) return pendingResponse;
+    if (!request || !definition) {
+      throw new Error("Validated SFX request was not retained");
     }
 
     const durationSeconds =
@@ -186,6 +219,7 @@ app.post("/", async (c) => {
         cache: getGenerativePricingCacheOptions(c),
       }),
     ]);
+    const billingRequestId = `generate-sfx:${crypto.randomUUID()}`;
     const billingContext: BillingContext = {
       organizationId: user.organization_id,
       userId: user.id,
@@ -193,9 +227,17 @@ app.post("/", async (c) => {
       model: request.model,
       provider: definition.provider,
       billingSource: definition.billingSource,
-      requestId: `generate-sfx:${crypto.randomUUID()}`,
+      requestId: billingRequestId,
       affiliateCode: c.req.header("X-Affiliate-Code"),
       description: `SFX generation: ${request.model}`,
+    };
+    settlementContext = {
+      requestId: billingRequestId,
+      organizationId: user.organization_id,
+      userId: user.id,
+      model: request.model,
+      provider: definition.provider,
+      billingSource: definition.billingSource,
     };
 
     try {
@@ -205,6 +247,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost,
         admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
@@ -220,31 +263,31 @@ app.post("/", async (c) => {
       throw error;
     }
 
+    const audioProvider = getAudioProvider(definition.billingSource);
     await admission.markProviderDispatched?.();
-    const generated = await getAudioProvider(definition.billingSource).generate(
-      {
-        kind: "sfx",
-        model: request.model,
-        prompt: request.prompt,
-        durationSeconds: request.durationSeconds,
-        promptInfluence: request.promptInfluence,
-        seed: request.seed,
-        outputFormat: request.outputFormat,
-        extraInput: request.extraInput,
-        apiKeys: {
-          FAL_KEY: envString(c.env, "FAL_KEY"),
-          FAL_API_KEY: envString(c.env, "FAL_API_KEY"),
-          FAL_QUEUE_BASE_URL: envString(c.env, "FAL_QUEUE_BASE_URL"),
-          FAL_QUEUE_POLL_INTERVAL_MS: envString(
-            c.env,
-            "FAL_QUEUE_POLL_INTERVAL_MS",
-          ),
-          FAL_QUEUE_TIMEOUT_MS: envString(c.env, "FAL_QUEUE_TIMEOUT_MS"),
-          ELEVENLABS_API_KEY: envString(c.env, "ELEVENLABS_API_KEY"),
-          ELEVENLABS_BASE_URL: envString(c.env, "ELEVENLABS_BASE_URL"),
-        },
+    providerDispatchStarted = true;
+    const generated = await audioProvider.generate({
+      kind: "sfx",
+      model: request.model,
+      prompt: request.prompt,
+      durationSeconds: request.durationSeconds,
+      promptInfluence: request.promptInfluence,
+      seed: request.seed,
+      outputFormat: request.outputFormat,
+      extraInput: request.extraInput,
+      apiKeys: {
+        FAL_KEY: envString(c.env, "FAL_KEY"),
+        FAL_API_KEY: envString(c.env, "FAL_API_KEY"),
+        FAL_QUEUE_BASE_URL: envString(c.env, "FAL_QUEUE_BASE_URL"),
+        FAL_QUEUE_POLL_INTERVAL_MS: envString(
+          c.env,
+          "FAL_QUEUE_POLL_INTERVAL_MS",
+        ),
+        FAL_QUEUE_TIMEOUT_MS: envString(c.env, "FAL_QUEUE_TIMEOUT_MS"),
+        ELEVENLABS_API_KEY: envString(c.env, "ELEVENLABS_API_KEY"),
+        ELEVENLABS_BASE_URL: envString(c.env, "ELEVENLABS_BASE_URL"),
       },
-    );
+    });
 
     const audio = await storeGeneratedSfx(
       c.env,
@@ -260,53 +303,74 @@ app.post("/", async (c) => {
 
     const requestId = generated.requestId;
     const generationId = crypto.randomUUID();
-    let billingApplied = false;
-    const persistenceTask = (async () => {
-      await billFlatUsage(billingContext, cost, admission?.reservation);
-      billingApplied = true;
-      chargeSettled = true;
-      await generationsService.create({
-        id: generationId,
-        organization_id: user.organization_id,
-        user_id: user.id,
-        type: "sfx",
-        model: request.model,
-        provider: definition.provider,
-        prompt: request.prompt,
-        result: {
-          requestId,
-          billingSource: definition.billingSource,
-          raw: generated.raw,
-        },
-        status: "completed",
-        storage_url: audio.url,
-        thumbnail_url: null,
-        file_size: audio.file_size ? BigInt(audio.file_size) : undefined,
-        mime_type: audio.content_type ?? "audio/mpeg",
-        parameters: {
-          durationSeconds,
-          promptInfluence: request.promptInfluence,
-          outputFormat: request.outputFormat,
-        },
-        dimensions: {
-          duration: durationSeconds,
-        },
-        cost: String(cost.totalCost),
-        credits: String(cost.totalCost),
-        job_id: requestId,
-        completed_at: new Date(),
-      });
-    })().catch(async (error) => {
-      if (!billingApplied) await admission?.settleUnknown();
-      // error-policy:J7 billing and generation records persist after the audio
-      // response; conservative settlement remains observable on failure.
-      logger.error("[GenerateSfx] Background persistence failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+    await generationsService.create({
+      id: generationId,
+      organization_id: user.organization_id,
+      user_id: user.id,
+      type: "sfx",
+      model: request.model,
+      provider: definition.provider,
+      prompt: request.prompt,
+      result: {
+        requestId,
+        billingSource: definition.billingSource,
+        raw: generated.raw,
+      },
+      status: "completed",
+      storage_url: audio.url,
+      thumbnail_url: null,
+      file_size: audio.file_size ? BigInt(audio.file_size) : undefined,
+      mime_type: audio.content_type ?? "audio/mpeg",
+      parameters: {
+        durationSeconds,
+        promptInfluence: request.promptInfluence,
+        outputFormat: request.outputFormat,
+      },
+      dimensions: {
+        duration: durationSeconds,
+      },
+      cost: String(cost.totalCost),
+      credits: String(cost.totalCost),
+      job_id: requestId,
+      completed_at: new Date(),
     });
+
+    const settlementTask = billFlatUsage(
+      billingContext,
+      cost,
+      admission?.reservation,
+    )
+      .then(() => {
+        chargeSettled = true;
+      })
+      .catch(async (error) => {
+        // error-policy:J7 the durable completed receipt survives accounting
+        // outages; the admission lease remains the conservative backstop.
+        logger.error("[GenerateSfx] Background exact settlement failed", {
+          ...settlementContext,
+          providerDispatchStarted,
+          settlementMode: "unknown",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        try {
+          await admission?.settleUnknown();
+        } catch (settlementError) {
+          // error-policy:J7 reconciliation diagnostics must not reject the
+          // retained background task or hide the primary accounting failure.
+          logger.error("[GenerateSfx] Conservative settlement also failed", {
+            ...settlementContext,
+            providerDispatchStarted,
+            settlementMode: "unknown",
+            error:
+              settlementError instanceof Error
+                ? settlementError.message
+                : String(settlementError),
+          });
+        }
+      });
     const executionCtx = getGenerativeExecutionContext(c);
-    if (executionCtx) executionCtx.waitUntil(persistenceTask);
-    else void persistenceTask;
+    if (executionCtx) executionCtx.waitUntil(settlementTask);
+    else void settlementTask;
 
     return c.json({
       success: true,
@@ -316,11 +380,25 @@ app.post("/", async (c) => {
       cost,
     });
   } catch (error) {
+    // error-policy:J1 translate the route failure after reconciling the durable
+    // reservation according to whether provider dispatch actually began.
     if (admission && !chargeSettled) {
-      const release = admission.settle(0);
+      const settlementMode = providerDispatchStarted ? "unknown" : "release";
+      logger.error("[GenerateSfx] Generation failed after admission", {
+        ...settlementContext,
+        providerDispatchStarted,
+        settlementMode,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const release = providerDispatchStarted
+        ? admission.settleUnknown()
+        : admission.settle(0);
       const executionCtx = getGenerativeExecutionContext(c);
       const observed = release.catch((reconcileError) => {
-        logger.error("[GenerateSfx] Failed to refund reservation", {
+        logger.error("[GenerateSfx] Failed to reconcile reservation", {
+          ...settlementContext,
+          providerDispatchStarted,
+          settlementMode,
           error:
             reconcileError instanceof Error
               ? reconcileError.message

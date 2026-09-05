@@ -19,6 +19,7 @@ import {
   extractHostedPage,
   logHostedBrowserFailure,
 } from "@/lib/services/browser-tools";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -39,32 +40,47 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {
-    const caller = await requireGenerativeRouteCaller(c);
-    const { user } = caller;
     const decodedBody = await decodeRequestJson(c.req);
+    let pendingResponse: Response | undefined;
+    let body: z.infer<typeof extractRequestSchema> | undefined;
     if (!decodedBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ success: false, error: "Invalid JSON body" }, 400);
-    }
-    const body = decodedBody.value;
-    const bodyResult = extractRequestSchema.safeParse(body);
-
-    if (!bodyResult.success) {
-      return c.json(
-        {
-          error: "Invalid extract request",
-          details: bodyResult.error.flatten(),
-        },
+      pendingResponse = c.json(
+        { success: false, error: "Invalid JSON body" },
         400,
       );
+    } else {
+      const bodyResult = extractRequestSchema.safeParse(decodedBody.value);
+      if (bodyResult.success) body = bodyResult.data;
+      else {
+        pendingResponse = c.json(
+          {
+            error: "Invalid extract request",
+            details: bodyResult.error.flatten(),
+          },
+          400,
+        );
+      }
     }
+    const caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: pendingResponse === undefined,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    if (pendingResponse) return pendingResponse;
+    if (!body) throw new Error("Validated extract request was not retained");
+    const { user } = caller;
 
-    const result = await extractHostedPage(bodyResult.data, {
+    const result = await extractHostedPage(body, {
       apiKeyId: caller.apiKeyId,
       organizationId: user.organization_id,
       requestSource: "api",
       userId: user.id,
-      operationContext: getGenerativeOperationContext(c, caller),
+      operationContext: getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
     });
 
     return c.json(result);

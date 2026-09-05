@@ -8,6 +8,7 @@
 // fetch (the result callback transport) are doubled.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { rememberCsrfTokenForUrl } from "../api/auth/csrf-cookie";
 import { setBootConfig } from "../config/boot-config";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { addAgentProfile } from "./agent-profiles";
@@ -270,8 +271,7 @@ describe("bindReadyPhase shell:manage-runtime handler", () => {
     executeRuntimeManagementCommand.mockClear();
     setActionNotice.mockClear();
     setBootConfig({ branding: {}, apiToken: "runtime-owner-token" });
-    // biome-ignore lint/suspicious/noDocumentCookie: jsdom has no Cookie Store API.
-    document.cookie = "eliza_csrf=runtime-csrf-token; path=/";
+    rememberCsrfTokenForUrl("http://127.0.0.1:31337", "runtime-csrf-token");
   });
 
   it("claims before executing and reports the exact result", async () => {

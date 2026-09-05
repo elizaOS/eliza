@@ -300,6 +300,8 @@ export type ScenarioTurn = {
   };
   method?: string;
   path?: string;
+  /** Optional request headers for API turns; values support scenario templates. */
+  headers?: Record<string, string>;
   body?: unknown;
   /**
    * For API turns, capture response-body fields for later templates.

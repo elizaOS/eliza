@@ -68,6 +68,7 @@ const baseAgent: NormalizedAgentDetailDto = {
   webUiUrl: null,
   activeJob: null,
   errorCount: 0,
+  meshAddressPresent: true,
   walletAddress: null,
   walletProvider: null,
   walletStatus: "none",

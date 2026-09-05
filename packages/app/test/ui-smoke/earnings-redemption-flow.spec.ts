@@ -4,7 +4,6 @@
  * HTTP boundary is intercepted, so no payout provider or wallet is contacted.
  */
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { expect, type Page, test } from "@playwright/test";
 import {
   hideChatOverlay,
@@ -12,6 +11,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { seedStewardSession } from "./helpers/test-auth";
 
 const EVM_ADDRESS = "0x0000000000000000000000000000000000000002";
 const UUID_PATTERN =
@@ -229,8 +229,8 @@ async function installRedemptionStubs(
 
 async function openEarnings(page: Page, mode: QuoteMode) {
   await hideChatOverlay(page);
+  await seedStewardSession(page, { token: STEWARD_TOKEN });
   await seedAppStorage(page, {
-    [STEWARD_TOKEN_KEY]: STEWARD_TOKEN,
     "eliza:developerMode": "1",
     // The focused HTTP contract must use browser fetch so Playwright owns the
     // transport boundary; native mode would route through CapacitorHttp.

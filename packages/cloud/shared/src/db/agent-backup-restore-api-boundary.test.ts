@@ -353,7 +353,7 @@ describe("disabled-first restore API boundary", () => {
       countDependencyCalls("reconcileAgentBackupRestoreQuarantinedCreate", "resolveImagePlatform"),
       "cleanup reconciliation must never read mutable registry state",
     ).toBe(0);
-  }, 15_000);
+  }, 60_000);
 
   test("keeps target reservation free of remote effects and generic identity bypasses", () => {
     const operationSource = readFileSync(

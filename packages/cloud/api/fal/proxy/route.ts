@@ -30,6 +30,7 @@ import {
 } from "@/lib/services/ai-pricing";
 import { getSupportedVideoModelDefinition } from "@/lib/services/ai-pricing-definitions";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -171,99 +172,180 @@ async function priceFalMutation(c: Context<AppEnv>): Promise<{
 
 const handle: Handler<AppEnv> = async (c) => {
   const isMutation = c.req.method === "POST" || c.req.method === "PUT";
+  const willAdmitMutation =
+    isMutation && Boolean(c.req.header(TARGET_URL_HEADER));
   let admission: Awaited<
     ReturnType<typeof admitFlatGenerativeOperation>
   > | null = null;
   let pricedMutation: Awaited<ReturnType<typeof priceFalMutation>> | null =
     null;
+  let pendingResponse: Response | undefined;
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
+  let providerDispatchStarted = false;
+  let settlementContext:
+    | {
+        requestId: string;
+        organizationId: string;
+        userId: string;
+        model: string;
+        provider: "fal";
+      }
+    | undefined;
 
-  try {
-    caller = await requireGenerativeRouteCaller(c, {
-      rateLimitEndpoint: "strict",
-    });
-  } catch (error) {
-    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
-  }
-
-  if (isMutation && c.req.header(TARGET_URL_HEADER)) {
+  if (willAdmitMutation) {
     try {
       pricedMutation = await priceFalMutation(c);
-      const billingContext: BillingContext = {
-        organizationId: caller.user.organization_id,
-        userId: caller.user.id,
-        apiKeyId: caller.apiKeyId,
-        model: pricedMutation.model,
-        provider: "fal",
-        billingSource: "fal",
-        requestId: `fal-proxy:${crypto.randomUUID()}`,
-        description: `fal.ai ${pricedMutation.model}`,
-      };
-      admission = await admitFlatGenerativeOperation({
-        c,
-        context: billingContext,
-        apiKeyId: caller.apiKeyId,
-        cost: pricedMutation.cost,
-        admissionSnapshot: caller.admissionSnapshot,
-      });
     } catch (error) {
-      if (error instanceof InsufficientCreditsError) {
-        return c.json(
-          {
-            error: "Insufficient credits",
-            required: error.required,
-            available: error.available,
-          },
-          402,
-        );
-      }
+      // error-policy:J1 translate pricing input and catalog failures at the
+      // route boundary before any credit admission or provider dispatch.
       if (error instanceof Error && error.message === "missing_target") {
-        return c.json({ error: "Invalid request" }, 400);
-      }
-      if (
+        pendingResponse = c.json({ error: "Invalid request" }, 400);
+      } else if (
         error instanceof Error &&
         error.message.startsWith("Unpriced fal endpoint")
       ) {
-        return c.json({ error: error.message }, 400);
+        pendingResponse = c.json({ error: error.message }, 400);
+      } else {
+        logger.error("[fal proxy] Failed to price mutation", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        pendingResponse = c.json({ error: "fal pricing unavailable" }, 503);
       }
-
-      logger.error("[fal proxy] Failed to price mutation", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return c.json({ error: "fal pricing unavailable" }, 503);
     }
   }
 
   try {
-    await admission?.markProviderDispatched?.();
-    const response = await invokeFalProxy(c);
+    try {
+      caller = await requireGenerativeRouteCaller(c, {
+        rateLimitEndpoint: "strict",
+        deferStrongCredentialCheck: Boolean(pricedMutation),
+      });
+    } catch (error) {
+      return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
+    }
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    if (pendingResponse) return pendingResponse;
 
-    if (admission && pricedMutation) {
-      await retainFalSettlement(
-        c,
-        admission.settle(response.ok ? pricedMutation.cost.totalCost : 0),
-        response.ok ? "settle" : "release",
-      );
+    if (pricedMutation) {
+      try {
+        const requestId = `fal-proxy:${crypto.randomUUID()}`;
+        const billingContext: BillingContext = {
+          organizationId: caller.user.organization_id,
+          userId: caller.user.id,
+          apiKeyId: caller.apiKeyId,
+          model: pricedMutation.model,
+          provider: "fal",
+          billingSource: "fal",
+          requestId,
+          description: `fal.ai ${pricedMutation.model}`,
+        };
+        settlementContext = {
+          requestId,
+          organizationId: caller.user.organization_id,
+          userId: caller.user.id,
+          model: pricedMutation.model,
+          provider: "fal",
+        };
+        admission = await admitFlatGenerativeOperation({
+          c,
+          context: billingContext,
+          apiKeyId: caller.apiKeyId,
+          cost: pricedMutation.cost,
+          admissionSnapshot: caller.admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
+        });
+      } catch (error) {
+        const admissionError = asGenerativeCacheApiError(error);
+        if (admissionError) return failureResponse(c, admissionError);
+        if (error instanceof InsufficientCreditsError) {
+          return c.json(
+            {
+              error: "Insufficient credits",
+              required: error.required,
+              available: error.available,
+            },
+            402,
+          );
+        }
+        throw error;
+      }
     }
 
-    return response;
+    try {
+      await admission?.markProviderDispatched?.();
+      providerDispatchStarted = true;
+      const response = await invokeFalProxy(c);
+
+      if (admission && pricedMutation) {
+        if (!response.ok) {
+          logger.error(
+            "[fal proxy] Provider returned an ambiguous post-dispatch failure",
+            {
+              ...settlementContext,
+              providerStatus: response.status,
+              settlementMode: "unknown",
+            },
+          );
+        }
+        await retainFalSettlement(
+          c,
+          response.ok
+            ? admission.settle(pricedMutation.cost.totalCost)
+            : admission.settleUnknown(),
+          response.ok ? "settle" : "settle_unknown",
+          settlementContext,
+        );
+      }
+
+      return response;
+    } catch (error) {
+      // error-policy:J1 translate the provider boundary only after preserving
+      // the admitted mutation's post-dispatch accounting outcome.
+      if (admission) {
+        const settlementMode = providerDispatchStarted ? "unknown" : "release";
+        logger.error("[fal proxy] Mutation failed after admission", {
+          ...settlementContext,
+          providerDispatchStarted,
+          settlementMode,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await retainFalSettlement(
+          c,
+          providerDispatchStarted
+            ? admission.settleUnknown()
+            : admission.settle(0),
+          providerDispatchStarted ? "settle_unknown" : "release",
+          settlementContext,
+        );
+      }
+      throw error;
+    }
   } catch (error) {
-    if (admission) {
-      await retainFalSettlement(c, admission.settle(0), "release");
-    }
-    throw error;
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 };
 
 async function retainFalSettlement(
   c: Context<AppEnv>,
   settlement: Promise<unknown>,
-  operation: "settle" | "release",
+  operation: "settle" | "settle_unknown" | "release",
+  context?: {
+    requestId: string;
+    organizationId: string;
+    userId: string;
+    model: string;
+    provider: "fal";
+  },
 ): Promise<void> {
   const observed = settlement.catch((error) => {
     // error-policy:J7 settlement diagnostics must not replace the provider
     // response; the durable reservation sweep remains the recovery boundary.
     logger.error(`[fal proxy] Failed to ${operation} inference admission`, {
+      ...context,
+      settlementMode: operation,
       error: error instanceof Error ? error.message : String(error),
     });
   });

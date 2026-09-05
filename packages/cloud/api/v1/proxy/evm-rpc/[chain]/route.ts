@@ -11,7 +11,7 @@
  */
 
 import { Hono } from "hono";
-import { executeWithBody } from "@/lib/services/proxy/engine";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 import {
   rpcConfigForChain,
   rpcHandlerForChain,
@@ -42,25 +42,6 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   const legacyChain = c.req.param("chain");
-  if (!legacyChain) {
-    return c.json({ error: "Missing chain parameter" }, 400);
-  }
-
-  const target = LEGACY_CHAIN_ALIASES[legacyChain] ?? { chain: legacyChain };
-  if (!SUPPORTED_RPC_CHAINS.has(target.chain)) {
-    return c.json(
-      {
-        error: `Unsupported chain: ${legacyChain}. Supported: ${[
-          ...Object.keys(LEGACY_CHAIN_ALIASES),
-          ...SUPPORTED_RPC_CHAINS,
-        ]
-          .filter((value, index, values) => values.indexOf(value) === index)
-          .join(", ")}`,
-      },
-      400,
-    );
-  }
-
   // Support auth via query param for clients that cannot set custom headers.
   const headers = new Headers(c.req.raw.headers);
   const queryApiKey = c.req.query("api_key");
@@ -71,29 +52,49 @@ app.post("/", async (c) => {
   ) {
     headers.set("authorization", `Bearer ${queryApiKey}`);
   }
-
-  let body: ProxyRequestBody;
-  try {
-    body = (await c.req.json()) as ProxyRequestBody;
-  } catch {
-    return c.json({ error: "Invalid JSON-RPC body" }, 400);
-  }
-
+  const target = legacyChain
+    ? (LEGACY_CHAIN_ALIASES[legacyChain] ?? { chain: legacyChain })
+    : undefined;
   const url = new URL(c.req.url);
-  if (target.network && !url.searchParams.has("network")) {
+  if (target?.network && !url.searchParams.has("network")) {
     url.searchParams.set("network", target.network);
   }
-
   const request = new Request(url, {
     method: "POST",
     headers,
   });
-
-  return executeWithBody(
-    rpcConfigForChain(target.chain),
-    rpcHandlerForChain(target.chain),
-    request,
-    body,
+  return executeGuardedPaidProxyWithPreflight(
+    c,
+    async () => {
+      if (!legacyChain || !target) {
+        return c.json({ error: "Missing chain parameter" }, 400);
+      }
+      if (!SUPPORTED_RPC_CHAINS.has(target.chain)) {
+        return c.json(
+          {
+            error: `Unsupported chain: ${legacyChain}. Supported: ${[
+              ...Object.keys(LEGACY_CHAIN_ALIASES),
+              ...SUPPORTED_RPC_CHAINS,
+            ]
+              .filter((value, index, values) => values.indexOf(value) === index)
+              .join(", ")}`,
+          },
+          400,
+        );
+      }
+      let body: ProxyRequestBody;
+      try {
+        body = (await c.req.json()) as ProxyRequestBody;
+      } catch {
+        return c.json({ error: "Invalid JSON-RPC body" }, 400);
+      }
+      return {
+        config: rpcConfigForChain(target.chain),
+        work: rpcHandlerForChain(target.chain),
+        body,
+      };
+    },
+    { request },
   );
 });
 

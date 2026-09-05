@@ -109,10 +109,7 @@ describe("chat-only inference application", () => {
       "max-age=63072000",
     );
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
-    // The 600/min global gate is the only native limiter left on the thin app:
-    // #17805 retired the 200/min per-route chat gate in favor of org-level
-    // limits carried by the IAC v2 admission snapshot.
-    expect(response.headers.get("x-ratelimit-limit")).toBe("600");
+    expect(response.headers.get("x-ratelimit-limit")).toBeNull();
     const body = (await response.json()) as AuthErrorBody;
     expect(body).toEqual({
       error: {
@@ -162,8 +159,8 @@ describe("chat-only inference application", () => {
     });
   });
 
-  test("uses only the global native limiter when Railway Redis is unavailable in production", async () => {
-    const globalKeys: string[] = [];
+  test("uses native ingress protection before route authentication", async () => {
+    let globalLimiterCalls = 0;
     const routeKeys: string[] = [];
     const response = await createChatInferenceApp().fetch(
       new Request("https://api.elizacloud.ai/api/v1/chat/completions", {
@@ -180,8 +177,8 @@ describe("chat-only inference application", () => {
         NODE_ENV: "production",
         REDIS_RATE_LIMITING: "true",
         GLOBAL_RATE_LIMITER: {
-          async limit({ key }: { key: string }) {
-            globalKeys.push(key);
+          async limit() {
+            globalLimiterCalls += 1;
             return { success: true };
           },
         },
@@ -196,7 +193,7 @@ describe("chat-only inference application", () => {
     );
 
     expect(response.status).toBe(401);
-    expect(globalKeys).toHaveLength(1);
+    expect(globalLimiterCalls).toBe(1);
     // #17805 retired the per-route native chat gate from the hot path; even a
     // bound limiter must never be consulted by the thin inference app.
     expect(routeKeys).toHaveLength(0);

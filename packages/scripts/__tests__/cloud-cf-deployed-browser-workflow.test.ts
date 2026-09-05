@@ -269,13 +269,19 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(browserStep.env?.ELIZAOS_CLOUD_API_KEY).toBe(
       "$" + "{{ secrets.ELIZAOS_CLOUD_API_KEY }}",
     );
+    expect(
+      browserStep.env?.ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION,
+    ).toBe("1");
+    expect(deployedJob.if).toContain(
+      "inputs.run_deployed_renderer_staging == true",
+    );
     expect(browserStep.run).toContain(
       "--config playwright.cloud-deployed.config.ts",
     );
     expect(browserStep.run).not.toContain("webServer");
   });
 
-  test("combines every strict observation before deriving receipt v3", () => {
+  test("combines every strict observation before deriving receipt v4", () => {
     for (const input of [
       '--authority "$AUTHORITY_PATH"',
       '--preflight "$PREFLIGHT_PATH"',

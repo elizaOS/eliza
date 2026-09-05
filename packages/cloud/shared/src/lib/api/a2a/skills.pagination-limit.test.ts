@@ -43,6 +43,10 @@ mock.module("../../services/memory", () => ({
   },
 }));
 mock.module("../../services/credits", () => ({
+  APP_CHAT_RESERVATION_SETTLEMENT_MARKER: "app_chat_reservation_v1",
+  COST_BUFFER: 1.5,
+  DEFAULT_OUTPUT_TOKENS: 500,
+  EPSILON: 0.0000001,
   creditsService: {
     reserve: async ({ amount }: { amount: number }) => {
       memoryReservations.push(amount);
@@ -53,7 +57,17 @@ mock.module("../../services/credits", () => ({
       };
     },
   },
+  MIN_RESERVATION: 0.000001,
+  RESERVATION_SETTLEMENT_MARKER: "credit_reservation_v1",
+  RESERVATION_SWEEP_GRACE_MS: 0,
+  CreditsService: class CreditsService {},
   InsufficientCreditsError: class extends Error {},
+  InvalidCreditAmountError: class extends Error {},
+  ReservationNotFoundError: class extends Error {},
+  assertCreditRefundWithinReservation: () => undefined,
+  assertValidCreditSettlementCosts: () => undefined,
+  runObservedPostDebitNotifications: async () => undefined,
+  triggerDurableAutoTopUpForBalanceDecrease: async () => undefined,
 }));
 
 const context = {

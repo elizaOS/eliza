@@ -9,13 +9,13 @@
  */
 
 import { Hono } from "hono";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import { creditTransactionsRepository } from "@/db/repositories/credit-transactions";
 import { domainPurchaseAttemptsRepository } from "@/db/repositories/domain-purchase-attempts";
 import type { CreditTransaction } from "@/db/schemas/credit-transactions";
 import type { DomainPurchaseIdempotency } from "@/db/schemas/domain-purchase-idempotency";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   moneyRateLimit,
   RateLimitPresets,
@@ -58,7 +58,9 @@ const domainBuyRateLimit = moneyRateLimit(RateLimitPresets.CRITICAL);
 
 app.post("/", domainBuyRateLimit, async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user } = await requirePaidRouteStanding(c, {
+      route: "apps.domains.buy",
+    });
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
 

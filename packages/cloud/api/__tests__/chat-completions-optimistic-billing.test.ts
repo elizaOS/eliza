@@ -117,7 +117,7 @@ const resolveInferenceAuthContext = mock(
     authResolveOptions.push(options);
     options.onTelemetry?.({
       v: 1,
-      traceId: "11111111-1111-4111-8111-111111111111",
+      traceId: "11111111111141118111111111111111",
       authSource: "x_api_key",
       controlledProbe: "off",
       cacheAvailability: "available",
@@ -348,7 +348,7 @@ function makeRequest(
     headers: {
       "content-type": "application/json",
       "x-request-id": CLIENT_REQUEST_ID,
-      "x-eliza-trace-id": "11111111-1111-4111-8111-111111111111",
+      "x-eliza-trace-id": "11111111111141118111111111111111",
       ...(affiliateCode ? { "X-Affiliate-Code": affiliateCode } : {}),
     },
     body: JSON.stringify({
@@ -438,7 +438,7 @@ describe("chat/completions cache-only organization admission", () => {
 
     expect(response.status).toBeGreaterThanOrEqual(400);
     expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
-      "11111111-1111-4111-8111-111111111111",
+      "11111111111141118111111111111111",
     );
     const preforward = response.headers.get("X-Eliza-Preforward-Ms");
     expect(preforward).toMatch(
@@ -683,6 +683,29 @@ describe("chat/completions cache-only organization admission", () => {
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "billing_cache_warming" },
+    });
+    expect(generateText).not.toHaveBeenCalled();
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
+  });
+
+  test("an admission transport timeout is distinct from cache warming and carries phase telemetry", async () => {
+    organizationAdmissionError =
+      new organizationAdmissionActual.InferenceAdmissionUnavailableError({
+        cause: new Error("admission gate timed out"),
+      });
+    const captured: Promise<unknown>[] = [];
+
+    const response = await driveWithCtx(captured);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("1");
+    expect(response.headers.get("server-timing")).toContain(
+      "gateway_reserve;dur=",
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "inference_admission_unavailable" },
     });
     expect(generateText).not.toHaveBeenCalled();
     expect(reserveCredits).not.toHaveBeenCalled();

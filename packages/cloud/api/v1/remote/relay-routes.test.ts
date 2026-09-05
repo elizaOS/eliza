@@ -34,6 +34,12 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: ownerId,
   organization_id: organizationId,
 }));
+const requirePaidRouteStanding = mock(async () => ({
+  user: await requireUserOrApiKeyWithOrg(),
+  apiKeyId: null,
+  authSource: "combined_cache",
+  appScopeId: null,
+}));
 const getCurrentUser = mock(async () => null);
 const createOwned = mock();
 const recoverHostCredential = mock();
@@ -82,6 +88,9 @@ const activationRateLimitConfigs: Array<{
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   getCurrentUser,
   requireUserOrApiKeyWithOrg,
+}));
+mock.module("@/api-app/lib/paid-route-standing", () => ({
+  requirePaidRouteStanding,
 }));
 mock.module("@/db/repositories/remote-hosts", () => ({
   remoteHostsRepository: {
@@ -291,6 +300,7 @@ function productionActivationRequest(
 }
 
 beforeEach(() => {
+  requirePaidRouteStanding.mockClear();
   for (const collaborator of [
     createOwned,
     recoverHostCredential,
@@ -445,6 +455,38 @@ describe("secure remote relay routes", () => {
     expect(createOwned.mock.calls[0]?.[0].host_token_hash).not.toBe(
       body.data.hostToken,
     );
+  });
+
+  test("standing denial creates no host credential or Headscale enrollment", async () => {
+    requirePaidRouteStanding.mockRejectedValueOnce(
+      new Error("Organization is inactive"),
+    );
+
+    const response = await request(
+      "/api/v1/remote/hosts",
+      {
+        deviceId: "mac-denied",
+        displayName: "Denied Mac",
+        platform: "macos",
+        connectionMode: "relay",
+        managedNetwork: true,
+        runtimeKeyId: targetKeyId,
+        signingPublicKeyJwk: publicJwk,
+        encryptionPublicKeyJwk: publicJwk,
+      },
+      {},
+      "POST",
+      {
+        HEADSCALE_API_URL: "https://headscale-staging.example",
+        HEADSCALE_PUBLIC_URL: "https://headscale-staging.example",
+        HEADSCALE_API_KEY: "headscale-api-secret",
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(requirePaidRouteStanding).toHaveBeenCalledTimes(1);
+    expect(createOwned).not.toHaveBeenCalled();
+    expect(createPreAuthKey).not.toHaveBeenCalled();
   });
 
   test("returns a one-use managed-network key without persisting it", async () => {

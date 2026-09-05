@@ -199,6 +199,8 @@
     "cloud:reconcile-steward-email-callback": "bun packages/cloud/scripts/reconcile-steward-email-callback-config.mjs",
     "cloud:chat-latency": "node packages/cloud/scripts/chat-latency.mjs",
     "test:chat-latency": "node --test packages/cloud/scripts/chat-latency.test.mjs",
+    "cloud:placement-ab": "node packages/cloud/scripts/cloud-placement-ab.mjs",
+    "test:placement-ab": "node --test packages/cloud/scripts/cloud-placement-ab.test.mjs",
     "cloud:inference-auth-latency": "node packages/cloud/scripts/inference-auth-latency.mjs",
     "test:inference-auth-latency": "node --test packages/cloud/scripts/inference-auth-latency.test.mjs",
     "cloud:group-room-sim": "bun packages/cloud/scripts/group-room-sim/run-room-sim.ts",

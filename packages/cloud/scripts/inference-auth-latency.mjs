@@ -5,7 +5,7 @@
  * placement, trace ids, and deployment provenance.
  */
 
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const AUTH_TRACE_HEADER = "x-eliza-auth-trace";
@@ -94,8 +94,7 @@ const TAIL_OUTCOMES = new Set([
   "unknown",
 ]);
 
-const OPAQUE_TRACE_ID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const TRACE_ID_PATTERN = /^[0-9a-f]{32}$/;
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -135,10 +134,10 @@ export function sanitizeInferenceAuthTelemetry(value) {
       "Worker auth log does not match the bounded telemetry schema",
     );
   }
-  if (!OPAQUE_TRACE_ID.test(value.traceId)) {
+  if (!TRACE_ID_PATTERN.test(value.traceId)) {
     throw new Error("Worker auth log has an invalid trace id");
   }
-  const telemetry = { v: 1, traceId: value.traceId.toLowerCase() };
+  const telemetry = { v: 1, traceId: value.traceId };
   for (const [name, allowed] of Object.entries(AUTH_TELEMETRY_ENUMS)) {
     if (!allowed.has(value[name])) {
       throw new Error(
@@ -182,7 +181,7 @@ function sanitizeInferenceAuthCacheWriteTelemetry(value) {
       "Worker auth cache-write log does not match the bounded telemetry schema",
     );
   }
-  if (!OPAQUE_TRACE_ID.test(value.traceId)) {
+  if (!TRACE_ID_PATTERN.test(value.traceId)) {
     throw new Error("Worker auth cache-write log has an invalid trace id");
   }
   if (!AUTH_ENUMS.backend.has(value.cacheBackend)) {
@@ -279,10 +278,13 @@ export function sanitizeInferenceAuthTail(
       const rawTraceId = isRecord(rawTelemetry)
         ? rawTelemetry.traceId
         : undefined;
-      if (typeof rawTraceId !== "string" || !OPAQUE_TRACE_ID.test(rawTraceId)) {
+      if (
+        typeof rawTraceId !== "string" ||
+        !TRACE_ID_PATTERN.test(rawTraceId)
+      ) {
         continue;
       }
-      const traceId = rawTraceId.toLowerCase();
+      const traceId = rawTraceId;
       // A Tail session can observe unrelated traffic on the isolated hostname.
       // Correlate on the one opaque field before validating or retaining any
       // other part of the raw object, then fail closed on the complete schema.
@@ -468,8 +470,15 @@ export function parseAuthServerTiming(value) {
   return timings;
 }
 
+const CLOUDFLARE_PLACEMENT_PATTERN = /^(?:local|remote)-[A-Z]{3}$/;
+
+/** Accepts the documented cf-placement mode and airport-code wire shape. */
+export function isCloudflarePlacement(value) {
+  return typeof value === "string" && CLOUDFLARE_PLACEMENT_PATTERN.test(value);
+}
+
 function boundedPlacement(value) {
-  return /^(?:local|remote-[A-Z]{3})$/.test(value ?? "") ? value : "unknown";
+  return isCloudflarePlacement(value) ? value : "unknown";
 }
 
 function boundedColo(value) {
@@ -537,7 +546,7 @@ export async function probeAuthSample({
   fetchImpl = fetch,
   now = performance.now.bind(performance),
 }) {
-  const traceId = randomUUID();
+  const traceId = randomBytes(16).toString("hex");
   const headers = {
     "Content-Type": "application/json",
     "User-Agent": "eliza-inference-auth-latency/1.0",
@@ -729,7 +738,7 @@ export async function probeAuthGuardSample({
   ) {
     throw new Error("Unknown auth guard probe");
   }
-  const traceId = randomUUID();
+  const traceId = randomBytes(16).toString("hex");
   const headers = {
     "Content-Type": "application/json",
     "User-Agent": "eliza-inference-auth-latency/1.0",

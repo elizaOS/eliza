@@ -2055,7 +2055,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     });
   }
 
-  test("conditional delete preserves the replacement-cleanup conflict", async () => {
+  test("conditional delete owns the row while preserving replacement cleanup for the daemon", async () => {
     const { orgId, userId } = await seedOwner();
     const createdAt = new Date("2026-07-13T08:17:00.000Z");
     const agentName = "managed-dedicated-canary-r30081355987a1";
@@ -2078,27 +2078,24 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       })
       .returning();
 
-    await expect(
-      provisioningJobService.enqueueAgentDeleteOnce({
-        agentId: sandbox.id,
-        organizationId: orgId,
-        userId,
-        expectedIdentity: {
-          agentName,
-          createdAt: createdAt.toISOString(),
-          executionTier: "dedicated-always",
-        },
-      }),
-    ).rejects.toMatchObject({
-      status: 409,
-      code: "session_not_ready",
+    const deletion = await provisioningJobService.enqueueAgentDeleteOnce({
+      agentId: sandbox.id,
+      organizationId: orgId,
+      userId,
+      expectedIdentity: {
+        agentName,
+        createdAt: createdAt.toISOString(),
+        executionTier: "dedicated-always",
+      },
     });
-    const [unchanged] = await dbWrite
+    const [owned] = await dbWrite
       .select()
       .from(agentSandboxes)
       .where(eq(agentSandboxes.id, sandbox.id));
-    expect(unchanged?.status).toBe("provisioning");
-    expect(await jobsOfType(sandbox.id, JOB_TYPES.AGENT_DELETE)).toHaveLength(0);
+    expect(owned?.status).toBe("deletion_pending");
+    expect(owned?.replacement_cleanup_sandbox_id).toBe("replacement-sandbox");
+    expect(deletion.created).toBe(true);
+    expect(await jobsOfType(sandbox.id, JOB_TYPES.AGENT_DELETE)).toHaveLength(1);
   });
 
   test("enqueue against a missing agent throws Agent not found", async () => {

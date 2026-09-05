@@ -1,20 +1,26 @@
 /**
  * Cache-gated admission for organization-funded inference.
  *
- * The warm Worker path reads only pricing, affiliate-policy, and balance
- * caches before acquiring a Durable Object lease. Post-provider accounting
- * replays one deterministic debit identity; the lease alarm is the durable
- * backstop when a response-side task disappears.
+ * Admission reads current subscription authority before refusal state so a
+ * newly funded subscriber cannot be trapped by a stale purchased-credit
+ * refusal or any optimistic purchased-credit-only lane. Non-subscribers then
+ * use pricing, affiliate-policy, and balance caches before acquiring a Durable
+ * Object lease. Post-provider accounting replays one deterministic debit
+ * identity; the lease alarm is the durable backstop when a response-side task
+ * disappears.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
+import { logger } from "../utils/logger";
 import type { AffiliateBillingAttribution } from "./affiliate-billing-attribution";
 import { AFFILIATE_PAYOUT_CONTRACT_VERSION } from "./affiliate-payout-outbox";
 import type { BillingContext, FlatBillingCost } from "./ai-billing";
 import {
   getAffiliatePayoutSourceId,
   InsufficientCreditsError,
+  isSubscriptionFundedOrganization,
   reserveCredits,
   reserveFlatUsageCredits,
 } from "./ai-billing";
@@ -60,7 +66,10 @@ import {
   createLedgerDebitSettler,
   resolveInferenceBillingLedger,
 } from "./inference-billing-ledger";
-import type { InferenceCredentialCheck } from "./inference-credential-revocation";
+import {
+  type InferenceCredentialCheck,
+  InferenceCredentialRevokedError,
+} from "./inference-credential-revocation";
 
 export type InferenceAdmissionMode =
   | "durable_object_debit"
@@ -138,15 +147,40 @@ export class InferenceAffiliateCacheUnavailableError extends InferenceBalanceCac
 }
 
 /** The request cannot safely defer its durable charge in this Worker. */
-export class InferenceAdmissionUnavailableError extends InferenceBalanceCacheWarmingError {
-  constructor() {
-    super();
-    this.name = "InferenceAdmissionUnavailableError";
+export class InferenceAdmissionUnavailableError extends ElizaError {
+  override readonly name = "InferenceAdmissionUnavailableError";
+  readonly statusCode = 503;
+
+  constructor(options?: { cause?: unknown; context?: Record<string, unknown> }) {
+    super("Inference admission transport is unavailable", {
+      code: "INFERENCE_ADMISSION_UNAVAILABLE",
+      cause: options?.cause,
+      context: options?.context,
+      severity: "ephemeral",
+    });
   }
+}
+
+function admissionUnavailable(
+  params: OrganizationInferenceAdmissionParams,
+  cause?: unknown,
+): InferenceAdmissionUnavailableError {
+  return new InferenceAdmissionUnavailableError({
+    cause,
+    context: {
+      organizationId: params.context.organizationId,
+      userId: params.context.userId,
+      requestId: params.context.requestId,
+      model: params.context.model,
+      provider: params.context.provider,
+      billingSource: params.context.billingSource,
+    },
+  });
 }
 
 async function reserveSynchronously(
   params: OrganizationInferenceAdmissionParams,
+  subscriptionFunded?: boolean,
 ): Promise<OrganizationInferenceAdmission> {
   const context = {
     ...params.context,
@@ -155,8 +189,11 @@ async function reserveSynchronously(
   const reservation = params.flatCost
     ? await reserveFlatUsageCredits(context, params.flatCost, {
         idempotencyKey: params.context.requestId,
+        subscriptionFunded,
       })
-    : await reserveCredits(context, params.estimatedInputTokens, params.estimatedOutputTokens);
+    : await reserveCredits(context, params.estimatedInputTokens, params.estimatedOutputTokens, {
+        subscriptionFunded,
+      });
   const settle = createCreditReservationSettler(reservation);
   return {
     mode: "synchronous_reservation",
@@ -243,27 +280,36 @@ export async function admitOrganizationInference(
   const executionCtx = params.executionCtx;
   const workerHotPath = typeof executionCtx?.waitUntil === "function";
   const affiliateMarked = Boolean(params.affiliateCode?.trim());
+  // Cache misses deliberately pay one authoritative entitlement read. This
+  // keeps the first request after a cache-version rollout from treating a
+  // subscriber as purchased-credit-only on the Worker hot path.
+  const subscriptionFunded =
+    params.admissionSnapshot?.subscriptionFunded ??
+    (await isSubscriptionFundedOrganization(params.context.organizationId));
+  if (subscriptionFunded) {
+    return await reserveSynchronously(params, true);
+  }
   if (workerHotPath && executionCtx && isOrgAdmissionRefused(params.context.organizationId)) {
     // A prior deferred write or fallback charge was refused. Its settler
     // invalidated the balance hint, so a later retry will hydrate authoritative
     // state under waitUntil; this request must not bypass the refusal with a
     // synchronous database reserve on the model hot path.
     scheduleOrgBalanceHintHydration(params.context.organizationId, executionCtx);
-    throw new InferenceAdmissionUnavailableError();
+    throw admissionUnavailable(params);
   }
   if (!workerHotPath && affiliateMarked) {
-    return await reserveSynchronously(params);
+    return await reserveSynchronously(params, false);
   }
   if (!isOptimisticBillingEnabled()) {
-    if (workerHotPath) throw new InferenceAdmissionUnavailableError();
-    return await reserveSynchronously(params);
+    if (workerHotPath) throw admissionUnavailable(params);
+    return await reserveSynchronously(params, false);
   }
 
   const thresholdUsd = resolveSafeBalanceThresholdUsd();
   const useDbLedger = resolveInferenceBillingLedger() === "db";
   const canDefer = isDeferredAdmissionEnabled() && workerHotPath;
   if (workerHotPath && !canDefer) {
-    throw new InferenceAdmissionUnavailableError();
+    throw admissionUnavailable(params);
   }
   // The legacy KV pending-charge lane cannot make an authoritative balance
   // decision before provider dispatch. A delayed post-debit projection write
@@ -354,7 +400,7 @@ export async function admitOrganizationInference(
       estimatedCostUsd,
     })
   ) {
-    return await reserveSynchronously(params);
+    return await reserveSynchronously(params, false);
   }
 
   let inferenceLease: InferenceAdmissionLease | undefined;
@@ -391,6 +437,20 @@ export async function admitOrganizationInference(
         executionCtx: params.executionCtx,
       });
     } catch (error) {
+      if (error instanceof InferenceCredentialRevokedError) {
+        // error-policy:J2 preserve the typed combined-gate refusal after
+        // attaching the full admission identity needed for diagnostics.
+        logger.warn(
+          "[OrganizationInferenceAdmission] blocked provider dispatch at combined credential and balance gate",
+          {
+            organizationId: params.context.organizationId,
+            userId: params.context.userId,
+            requestId: params.context.requestId,
+            credentialKind: params.credential?.kind ?? "unavailable",
+            reason: error.reason,
+          },
+        );
+      }
       if (error instanceof InferenceAdmissionLeaseRejectedError) {
         throw new InsufficientCreditsError(
           error.requiredUsd,
@@ -399,7 +459,9 @@ export async function admitOrganizationInference(
         );
       }
       if (error instanceof InferenceAdmissionGateUnavailableError) {
-        throw new InferenceAdmissionUnavailableError();
+        // error-policy:J2 preserve the gate transport failure for route-level
+        // classification and diagnostics.
+        throw admissionUnavailable(params, error);
       }
       throw error;
     }
@@ -425,7 +487,7 @@ export async function admitOrganizationInference(
 
   if (canDefer && params.executionCtx) {
     if (!inferenceLease) {
-      throw new InferenceAdmissionUnavailableError();
+      throw admissionUnavailable(params);
     }
     if (affiliateAttribution) {
       const affiliatePayoutSourceId = getAffiliatePayoutSourceId(params.context);
@@ -518,7 +580,7 @@ export async function admitOrganizationInference(
         settleUnknown: () => settle(estimatedCostUsd),
       };
     }
-    return await reserveSynchronously(params);
+    return await reserveSynchronously(params, false);
   }
 
   if (isOptimisticBackstopAvailable()) {
@@ -533,5 +595,5 @@ export async function admitOrganizationInference(
     }
   }
 
-  return await reserveSynchronously(params);
+  return await reserveSynchronously(params, false);
 }

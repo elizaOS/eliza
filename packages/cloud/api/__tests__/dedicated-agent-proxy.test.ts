@@ -55,6 +55,7 @@ const browserClaimCalls: Array<{
 const authRequests: Request[] = [];
 const authDbCacheContexts: boolean[] = [];
 const sandboxDbCacheContexts: boolean[] = [];
+const warnCalls: Array<{ message: string; context: unknown }> = [];
 
 mock.module("@/lib/runtime/cloud-bindings", () => ({
   ...cloudBindingsActual,
@@ -119,7 +120,9 @@ mock.module("@/lib/utils/logger", () => ({
   ...loggerActual,
   logger: {
     ...loggerActual.logger,
-    warn() {},
+    warn(message: string, context?: unknown) {
+      warnCalls.push({ message, context });
+    },
     error() {},
     info() {},
     debug() {},
@@ -254,6 +257,7 @@ beforeEach(() => {
   authRequests.length = 0;
   authDbCacheContexts.length = 0;
   sandboxDbCacheContexts.length = 0;
+  warnCalls.length = 0;
   rateLimitResult = { success: true };
   rateLimitError = null;
   rateLimitKeys.length = 0;
@@ -376,6 +380,203 @@ describe("dedicated-agent-proxy — scoped voice conversation transport", () => 
       code: "agent_unavailable",
     });
     expect(captured).toBeNull();
+  });
+});
+
+describe("dedicated-agent-proxy — trace ingress", () => {
+  test("echoes the trace and emits secret-free auth, ownership, routing, and dispatch timings", async () => {
+    authResult = {
+      user: { id: "private-user", organization_id: "private-org" },
+    };
+    sandboxResult = runningDedicated;
+    fetchImpl = async () =>
+      new Response("ok", {
+        status: 200,
+        headers: {
+          "Server-Timing": "gateway;dur=12",
+          "X-Eliza-Preforward-Ms": "total=8;auth=1;mid=2;reserve=3;setup=2",
+          "X-Eliza-Provider-Request-Id": "req_cerebras-123",
+        },
+      });
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const request = new Request(
+      makeRequest(
+        "private-cloud-token",
+        undefined,
+        { "X-Eliza-Trace-Id": traceId },
+        "/api/conversations/private/messages/stream",
+      ),
+      { method: "POST" },
+    );
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.headers.get("x-eliza-trace-id")).toBe(traceId);
+    expect(response.headers.get("x-eliza-preforward-ms")).toBe(
+      "total=8;auth=1;mid=2;reserve=3;setup=2",
+    );
+    expect(response.headers.get("x-eliza-provider-request-id")).toBe(
+      "req_cerebras-123",
+    );
+    const serverTiming = response.headers.get("server-timing") ?? "";
+    expect(serverTiming).toContain("gateway;dur=12");
+    for (const phase of ["auth", "ownership", "routing", "proxy_dispatch"]) {
+      expect(serverTiming).toMatch(
+        new RegExp(`dedicated_${phase};dur=\\d+(?:\\.\\d+)?`),
+      );
+    }
+    expect(serverTiming).toMatch(/dedicated_total;dur=\d+(?:\.\d+)?/);
+
+    const timingLog = warnCalls.find(
+      ({ message }) =>
+        message === "[dedicated-proxy] correlated chat phase timings",
+    );
+    expect(timingLog?.context).toEqual({
+      traceId,
+      status: 200,
+      phases: {
+        auth: expect.any(Number),
+        ownership: expect.any(Number),
+        routing: expect.any(Number),
+        proxy_dispatch: expect.any(Number),
+      },
+      totalMs: expect.any(Number),
+    });
+    expect(JSON.stringify(timingLog)).not.toMatch(
+      /private-cloud-token|agent-secret-token|private-user|private-org/,
+    );
+  });
+
+  test("forwards only a strict trace and no caller telemetry instrumentation", async () => {
+    const request = makeRequest("agent-local-token", undefined, {
+      "X-Eliza-Telemetry": "caller-controlled",
+      "X-ElizaOS-Turn-Correlation": "caller-controlled",
+      "X-ElizaOS-Turn-Attempt": "99",
+      "X-Eliza-Trace-Id": "0123456789abcdef0123456789abcdef",
+    });
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(200);
+    const upstream = requireCapturedRequest();
+    expect(upstream.headers.get("x-eliza-trace-id")).toBe(
+      "0123456789abcdef0123456789abcdef",
+    );
+    expect(upstream.headers.get("x-eliza-telemetry")).toBeNull();
+    expect(upstream.headers.get("x-elizaos-turn-correlation")).toBeNull();
+    expect(upstream.headers.get("x-elizaos-turn-attempt")).toBeNull();
+  });
+
+  test("drops an invalid trace before the agent mints its replacement", async () => {
+    const invalidTrace = "0123456789ABCDEF0123456789ABCDEF";
+    const request = makeRequest("agent-local-token", undefined, {
+      "X-Eliza-Trace-Id": invalidTrace,
+    });
+
+    await handleDedicatedAgentProxy(request, ENV, urlOf(request), AGENT);
+
+    expect(requireCapturedRequest().headers.get("x-eliza-trace-id")).toBeNull();
+    expect(JSON.stringify(warnCalls)).not.toContain(invalidTrace);
+  });
+
+  test("does not write the always-on timing log for a traced non-chat request", async () => {
+    const request = makeRequest("agent-local-token", undefined, {
+      "X-Eliza-Trace-Id": "0123456789abcdef0123456789abcdef",
+    });
+
+    await handleDedicatedAgentProxy(request, ENV, urlOf(request), AGENT);
+
+    expect(warnCalls).toEqual([]);
+  });
+
+  test("does not write the always-on timing log for unauthenticated traced chat requests", async () => {
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const tracedChat = (headers: HeadersInit) => {
+      const requestHeaders = new Headers(headers);
+      requestHeaders.set("X-Eliza-Trace-Id", traceId);
+      return new Request(
+        makeRequest(
+          undefined,
+          undefined,
+          requestHeaders,
+          "/api/conversations/private/messages/stream",
+        ),
+        { method: "POST" },
+      );
+    };
+
+    authResult = "throw";
+    let request = tracedChat({ authorization: "Bearer eliza_cloud_api_key" });
+    let response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(response.status).toBe(401);
+    expect(warnCalls).toEqual([]);
+
+    authResult = "forbidden";
+    request = tracedChat({ authorization: "Bearer rejected-cloud-token" });
+    response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(response.status).toBe(403);
+    expect(warnCalls).toEqual([]);
+  });
+
+  test("retains the always-on timing log for authenticated warming responses", async () => {
+    authResult = {
+      user: { id: "private-user", organization_id: "private-org" },
+    };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const request = new Request(
+      makeRequest(
+        "private-cloud-token",
+        undefined,
+        { "X-Eliza-Trace-Id": traceId },
+        "/api/conversations/private/messages/stream",
+      ),
+      { method: "POST" },
+    );
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(202);
+    expect(warnCalls).toEqual([
+      {
+        message: "[dedicated-proxy] correlated chat phase timings",
+        context: {
+          traceId,
+          status: 202,
+          phases: {
+            auth: expect.any(Number),
+            ownership: expect.any(Number),
+            routing: expect.any(Number),
+          },
+          totalMs: expect.any(Number),
+        },
+      },
+    ]);
   });
 });
 
@@ -1331,6 +1532,15 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "x-eliza-trace-id",
+    );
+    expect(res.headers.get("access-control-allow-headers")).not.toContain(
+      "x-eliza-telemetry",
+    );
+    expect(res.headers.get("access-control-expose-headers")).toContain(
+      "x-eliza-trace-id",
+    );
     expect(res.headers.get("access-control-max-age")).toBe("600");
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(captured).toBeNull(); // preflight is answered at the edge

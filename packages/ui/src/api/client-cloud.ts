@@ -5518,6 +5518,7 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
   // dedicated record we poll for readiness is a SEPARATE agent. Default to
   // `agentId` so the pre-shared-tier single-agent flow is unchanged.
   const readinessAgentId = dedicatedAgentId ?? agentId;
+  const sourceIsSharedAdapter = isDirectCloudSharedAgentBase(sharedApiBase);
 
   // Authed JSON fetch against a specific agent base (shared adapter OR the
   // dedicated container subdomain). Both accept the cloud session token —
@@ -5544,6 +5545,10 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
 
   const readiness: AgentReadinessProbe = {
     resolveReadyBase: async () => {
+      // A shared adapter never becomes a dedicated runtime in place. Without
+      // a separately provisioned target there is nowhere safe to switch, even
+      // if an older control-plane detail response omits `executionTier`.
+      if (!dedicatedAgentId && sourceIsSharedAdapter) return null;
       // Handoff already carries an explicit Cloud API base and credential.
       // Read the target through that canonical route instead of asking the
       // client to infer direct-vs-proxy mode from its ambient configuration.
@@ -5571,6 +5576,10 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
         agent = compatDetail?.success ? compatDetail.data : null;
       }
       if (!agent) return null;
+      // A shared control-plane row is never a migration target. Local stacks
+      // expose both shared and dedicated agents through the same UUID-scoped
+      // proxy shape, so URL classification alone cannot distinguish them.
+      if (agent.execution_tier === "shared") return null;
       const base = resolveCloudAgentApiBase({
         bridgeUrl: agent.bridge_url,
         webUiUrl: agent.web_ui_url ?? agent.webUiUrl,

@@ -149,11 +149,12 @@ function emptyResult(parent: ActionCatalogParent): ActionRetrievalResult {
 }
 
 function compareTieredParents(
-	left: Pick<TieredParentAction, "score" | "normalizedName">,
-	right: Pick<TieredParentAction, "score" | "normalizedName">,
+	left: Pick<TieredParentAction, "score" | "normalizedName" | "result">,
+	right: Pick<TieredParentAction, "score" | "normalizedName" | "result">,
 ): number {
 	return (
 		right.score - left.score ||
+		left.result.rank - right.result.rank ||
 		left.normalizedName.localeCompare(right.normalizedName)
 	);
 }

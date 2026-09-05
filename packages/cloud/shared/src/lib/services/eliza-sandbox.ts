@@ -138,7 +138,6 @@ import {
   SandboxReplacementCleanupUnresolvedError,
 } from "./sandbox-provider-types";
 import { purgeSharedConversationRooms } from "./shared-runtime/conversation-coordinator";
-import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
 import {
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
@@ -434,6 +433,12 @@ export type ProvisionResult =
       success: false;
       sandboxRecord?: AgentSandbox;
       error: string;
+      /**
+       * Internal typed failure retained for the provisioning queue's durable
+       * operator diagnostic. Callers must never serialize this field into a
+       * public result; `error` remains the owner-safe boundary value.
+       */
+      failureCause?: unknown;
       /**
        * True when the failure is a transient, retryable condition (e.g. the
        * readiness probe could not reach the container). The provision JOB
@@ -1203,9 +1208,85 @@ type ReconcilableSandbox = Pick<
 /** Outcome of a stale-tailnet-IP reconcile attempt (see reconcileStaleTailnetIp). */
 type TailnetIpReconcileResult =
   | { outcome: "repaired"; headscaleIp: string; bridgeUrl: string; healthUrl: string }
-  | { outcome: "container-dead" }
+  | { outcome: "container-dead"; failureKind: ContainerRuntimeFailureKind }
   | { outcome: "ip-unresolvable" }
   | { outcome: "unrepairable" };
+
+type ContainerRuntimeFailureKind =
+  | "healthy"
+  | "inspect_unavailable"
+  | "oom_killed"
+  | "module_resolution"
+  | "heap_oom"
+  | "startup_failed"
+  | "terminal_database"
+  | "memory_watchdog_restart"
+  | "port_conflict"
+  | "mesh_auth"
+  | "restarting"
+  | "exited_nonzero"
+  | "exited_zero"
+  | "unhealthy"
+  | "starting"
+  | "not_running"
+  | "unknown";
+
+type ContainerRuntimeHealthObservation = {
+  healthy: boolean;
+  failureKind: ContainerRuntimeFailureKind;
+};
+
+/** Reduces the closed Docker/log observation to one operator-safe liveness cause. */
+export function classifyContainerRuntimeHealthObservation(
+  output: string,
+): ContainerRuntimeHealthObservation {
+  const inspect = /^state=(\S+) health=(\S+) exit=(-?\d+) oom=(true|false) restarts=(\d+)$/m.exec(
+    output,
+  );
+  if (!inspect) return { healthy: false, failureKind: "inspect_unavailable" };
+  const state = inspect[1];
+  const health = inspect[2];
+  const exitCode = Number.parseInt(inspect[3]!, 10);
+  const oomKilled = inspect[4] === "true";
+  const signal = (name: string): boolean => new RegExp(`^${name}=true$`, "m").test(output);
+
+  if (state === "running" && health === "healthy") {
+    return { healthy: true, failureKind: "healthy" };
+  }
+  if (oomKilled) return { healthy: false, failureKind: "oom_killed" };
+  if (signal("module_resolution")) {
+    return { healthy: false, failureKind: "module_resolution" };
+  }
+  if (signal("heap_oom")) return { healthy: false, failureKind: "heap_oom" };
+  if (signal("startup_failed")) {
+    return { healthy: false, failureKind: "startup_failed" };
+  }
+  if (signal("terminal_database")) {
+    return { healthy: false, failureKind: "terminal_database" };
+  }
+  if (signal("memory_watchdog")) {
+    return { healthy: false, failureKind: "memory_watchdog_restart" };
+  }
+  if (signal("port_conflict")) {
+    return { healthy: false, failureKind: "port_conflict" };
+  }
+  if (signal("mesh_auth")) return { healthy: false, failureKind: "mesh_auth" };
+  if (state === "restarting") return { healthy: false, failureKind: "restarting" };
+  if (state === "exited" || state === "dead") {
+    return {
+      healthy: false,
+      failureKind: exitCode === 0 ? "exited_zero" : "exited_nonzero",
+    };
+  }
+  if (state === "running" && health === "unhealthy") {
+    return { healthy: false, failureKind: "unhealthy" };
+  }
+  if (state === "running" && health === "starting") {
+    return { healthy: false, failureKind: "starting" };
+  }
+  if (state !== "running") return { healthy: false, failureKind: "not_running" };
+  return { healthy: false, failureKind: "unknown" };
+}
 
 interface AdminCanaryImageExecutionPolicy {
   operation: "upgrade" | "rollback";
@@ -2595,7 +2676,7 @@ export class ElizaSandboxService {
     // refusal leaves a recoverable tombstone the next attempt retries.
     let captureWaiverAlreadyPersisted = false;
     let captureWaiverGeneration: {
-      bridgeUrl: string;
+      bridgeUrl: string | null;
       environmentRevision: number;
       sandboxId: string | null;
     } | null = null;
@@ -2653,15 +2734,36 @@ export class ElizaSandboxService {
       } else if (this.hasCurrentPreDeleteCaptureWaiver(snapshotSource)) {
         captureWaiverAlreadyPersisted = true;
       } else if (!snapshotSource.bridge_url) {
-        logger.error("[agent-sandbox] Delete refused: data-bearing container has no bridge", {
-          agentId,
-          status: snapshotSource.status,
-        });
-        return {
-          success: false,
-          error:
-            "Refusing to delete without a current backup: the agent's container has no reachable bridge to capture from",
-        };
+        if (options.stateLossAcknowledged) {
+          // A prior attempt can remove the workload before a later boundary
+          // (credential revocation or row-delete settlement) fails. The
+          // acknowledged job is the durable authority for the retry; bind its
+          // in-memory waiver to the exact absent-bridge generation under the
+          // lifecycle lock below. There is no URL to persist in the legacy
+          // row-level waiver shape, and every later attempt must re-present the
+          // acknowledged job authority.
+          preDeleteCaptureAuthority = snapshotSource;
+          captureWaiverGeneration = {
+            bridgeUrl: null,
+            environmentRevision: snapshotSource.environment_revision,
+            sandboxId: snapshotSource.sandbox_id,
+          };
+          logger.error(
+            "[agent-sandbox] Delete proceeding without pre-deletion capture: " +
+              "state loss acknowledged for an absent bridge",
+            { agentId, status: snapshotSource.status },
+          );
+        } else {
+          logger.error("[agent-sandbox] Delete refused: data-bearing container has no bridge", {
+            agentId,
+            status: snapshotSource.status,
+          });
+          return {
+            success: false,
+            error:
+              "Refusing to delete without a current backup: the agent's container has no reachable bridge to capture from",
+          };
+        }
       } else {
         preDeleteCaptureAuthority = snapshotSource;
         try {
@@ -3010,7 +3112,7 @@ export class ElizaSandboxService {
       } | null;
       captureAuthority: SnapshotAuthorityCapture | null;
       captureWaiverGeneration: {
-        bridgeUrl: string;
+        bridgeUrl: string | null;
         environmentRevision: number;
         sandboxId: string | null;
       } | null;
@@ -3110,7 +3212,17 @@ export class ElizaSandboxService {
                   "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
               };
             }
-            captureWaiverToPersist = waiver;
+            // The database waiver shape intentionally records a concrete
+            // bridge URL. An acknowledged retry whose bridge is already absent
+            // is authorized by the durable job tuple and revalidated here, but
+            // has no URL to persist.
+            if (waiver.bridgeUrl !== null) {
+              captureWaiverToPersist = {
+                bridgeUrl: waiver.bridgeUrl,
+                environmentRevision: waiver.environmentRevision,
+                sandboxId: waiver.sandboxId,
+              };
+            }
           } else {
             const snapshot = preDeleteCapture?.snapshot ?? null;
             // The capture must be OF THIS exact generation (shutdown's rule).
@@ -3599,6 +3711,25 @@ export class ElizaSandboxService {
     error?: string;
     retryable?: true;
   }> {
+    const cleanupSource = await this.getAgentForWrite(agentId, orgId);
+    if (cleanupSource && this.getReplacementCleanupLocator(cleanupSource)) {
+      try {
+        await this.retirePersistedReplacementCleanup(agentId, orgId);
+      } catch (error) {
+        // error-policy:J1 deletion execution boundary — the exact replacement
+        // locator remains durable and the queue retries without deleting the
+        // serving generation until remote absence is proven.
+        return {
+          success: false,
+          containerStopped: false,
+          rowDeleted: false,
+          retryable: true,
+          error: `Replacement cleanup is still pending: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        };
+      }
+    }
     const result = await this.deleteAgent(agentId, orgId, {
       authorization,
       stateLossAcknowledged,
@@ -3993,6 +4124,7 @@ export class ElizaSandboxService {
             retryable: true,
             sandboxRecord: await agentSandboxesRepository.findById(rec.id),
             error: msg,
+            failureCause: err,
           };
         }
         await this.markError(rec, `Sandbox creation failed: ${msg}`);
@@ -4461,7 +4593,7 @@ export class ElizaSandboxService {
             success: false,
             retryable: true,
             sandboxRecord: await agentSandboxesRepository.findById(rec.id),
-            error: `Replacement cleanup is still pending: ${
+            error: `${msg}; replacement cleanup remains pending: ${
               stopErr instanceof Error ? stopErr.message : String(stopErr)
             }`,
           };
@@ -5523,7 +5655,9 @@ export class ElizaSandboxService {
    * Resolve the effective character (name/system/bio/model) for a shared-runtime
    * agent — the SAME `SharedAgentCharacter` the bridge `message.send` turn uses,
    * so the REST `GET .../api/character` adapter returns exactly what the agent
-   * answers as. Returns `null` when no running shared sandbox matches the org.
+   * answers as. Returns `null` when no running shared sandbox matches the org;
+   * a pending Dedicated agent must wait for its container and cannot borrow the
+   * Shared runtime.
    */
   async getSharedRuntimeCharacter(
     agentId: string,
@@ -5532,13 +5666,6 @@ export class ElizaSandboxService {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (rec && rec.execution_tier === "shared") {
       return this.buildSharedRuntimeCharacter(rec);
-    }
-    // Bootstrap window: a freshly-created dedicated agent (not yet "running", so
-    // findRunningSandbox misses it) is served by the in-Worker shared runtime
-    // until its container boots — return the same character the shared turn uses.
-    const bootstrap = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (bootstrap && isDedicatedBootstrapWindow(bootstrap)) {
-      return this.buildSharedRuntimeCharacter(bootstrap);
     }
     return null;
   }
@@ -6387,15 +6514,6 @@ export class ElizaSandboxService {
   ): Promise<BridgeResponse> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec) {
-      // Bootstrap window: a freshly-created dedicated agent whose container is
-      // still provisioning is served by the in-Worker shared runtime so the user
-      // can chat immediately; the client hands off to the dedicated subdomain
-      // once it reports running. (findRunningSandbox misses it since it is not
-      // yet "running", so re-resolve by id+org.)
-      const bootstrap = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-      if (bootstrap && isDedicatedBootstrapWindow(bootstrap)) {
-        return this.bridgeSharedBootstrap(bootstrap, rpc, executionCtx);
-      }
       logger.warn("[agent-sandbox] Bridge call to non-running sandbox", {
         agentId,
         method: rpc.method,
@@ -6449,44 +6567,6 @@ export class ElizaSandboxService {
     } catch {
       logger.warn("[agent-sandbox] Bridge request failed", {
         agentId,
-        method: rpc.method,
-        failureClass: "sandbox_bridge_failed",
-      });
-      return {
-        jsonrpc: "2.0",
-        id: rpc.id,
-        error: { code: -32000, message: "Sandbox bridge is unreachable" },
-      };
-    }
-  }
-
-  /**
-   * Bridge dispatch for a DEDICATED agent still in its first-provision bootstrap
-   * window (no container yet). Mirrors the shared-tier branch: the in-Worker
-   * shared runtime answers status/heartbeat and message.send (billing + KV turn
-   * history keyed by the agent id) so the user chats immediately; the client
-   * hands off to the dedicated subdomain once the container reports running.
-   */
-  private async bridgeSharedBootstrap(
-    rec: AgentSandbox,
-    rpc: BridgeRequest,
-    executionCtx?: BridgeExecutionContext,
-  ): Promise<BridgeResponse> {
-    try {
-      if (rpc.method === "status.get" || rpc.method === "heartbeat") {
-        return await this.bridgeSharedStatus(rec, rpc);
-      }
-      if (rpc.method === "message.send") {
-        return await this.bridgeSharedMessageSend(rec, rpc, executionCtx);
-      }
-      return {
-        jsonrpc: "2.0",
-        id: rpc.id,
-        error: { code: -32601, message: `Method not found: ${rpc.method}` },
-      };
-    } catch {
-      logger.warn("[agent-sandbox] Bootstrap bridge request failed", {
-        agentId: rec.id,
         method: rpc.method,
         failureClass: "sandbox_bridge_failed",
       });
@@ -8651,6 +8731,9 @@ export class ElizaSandboxService {
         downForMs,
         reason: probe.reason,
         reconcileOutcome: reconcile.outcome,
+        ...(reconcile.outcome === "container-dead"
+          ? { containerRuntimeFailureKind: reconcile.failureKind }
+          : {}),
       });
       await this.updateObservedRunningGeneration(rec, {
         status: "disconnected",
@@ -8881,26 +8964,40 @@ export class ElizaSandboxService {
    * from a live one whose stored tailnet IP went stale (must be repaired, not
    * destroyed).
    */
-  private async isContainerDockerHealthy(rec: ReconcilableSandbox): Promise<boolean> {
-    if (!rec.container_name) return false;
+  private async inspectContainerDockerHealth(
+    rec: ReconcilableSandbox,
+  ): Promise<ContainerRuntimeHealthObservation> {
+    if (!rec.container_name) {
+      return { healthy: false, failureKind: "inspect_unavailable" };
+    }
     const ssh = await this.getNodeSshForAgent(rec);
-    if (!ssh) return false;
+    if (!ssh) return { healthy: false, failureKind: "inspect_unavailable" };
     // error-policy:J4 best-effort probe — an exec failure yields "not proven
     // healthy" (falls through to the existing disconnect self-heal), never a throw.
     try {
-      const status = (
-        await ssh.exec(
-          `docker inspect --format '{{.State.Health.Status}}' ${shellQuote(rec.container_name)}`,
-          RECONCILE_SSH_CMD_TIMEOUT_MS,
-        )
-      ).trim();
-      return status === "healthy";
+      const container = shellQuote(rec.container_name);
+      const output = await ssh.exec(
+        [
+          `docker inspect --format 'state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} restarts={{.RestartCount}}' ${container} 2>/dev/null || true`,
+          `logs="$(docker logs --tail 200 ${container} 2>&1 || true)"`,
+          `printf 'module_resolution=%s\\n' "$(printf '%s' "$logs" | grep -Eqi 'ERR_MODULE_NOT_FOUND|Cannot find package|Cannot find module' && echo true || echo false)"`,
+          `printf 'heap_oom=%s\\n' "$(printf '%s' "$logs" | grep -Eqi 'heap out of memory|allocation failed.*javascript heap' && echo true || echo false)"`,
+          `printf 'startup_failed=%s\\n' "$(printf '%s' "$logs" | grep -Fqi '[eliza-autonomous] Failed to start:' && echo true || echo false)"`,
+          `printf 'terminal_database=%s\\n' "$(printf '%s' "$logs" | grep -Eqi 'PGlite is closed|Database is shutting down' && echo true || echo false)"`,
+          `printf 'memory_watchdog=%s\\n' "$(printf '%s' "$logs" | grep -Eqi '\\[MemoryWatchdog\\].*requesting clean restart' && echo true || echo false)"`,
+          `printf 'port_conflict=%s\\n' "$(printf '%s' "$logs" | grep -Fqi 'EADDRINUSE' && echo true || echo false)"`,
+          `printf 'mesh_auth=%s\\n' "$(printf '%s' "$logs" | grep -Eqi 'headscale auth key expired/rejected|tailscale requires interactive authorization' && echo true || echo false)"`,
+          "unset logs",
+        ].join("; "),
+        RECONCILE_SSH_CMD_TIMEOUT_MS,
+      );
+      return classifyContainerRuntimeHealthObservation(output);
     } catch (error) {
       logger.debug("[agent-sandbox] Docker health inspect failed during reconcile", {
         agentId: rec.id,
         error: error instanceof Error ? error.message : String(error),
       });
-      return false;
+      return { healthy: false, failureKind: "inspect_unavailable" };
     }
   }
 
@@ -8951,7 +9048,13 @@ export class ElizaSandboxService {
   private async reconcileStaleTailnetIp(
     rec: ReconcilableSandbox,
   ): Promise<TailnetIpReconcileResult> {
-    if (!(await this.isContainerDockerHealthy(rec))) return { outcome: "container-dead" };
+    const containerHealth = await this.inspectContainerDockerHealth(rec);
+    if (!containerHealth.healthy) {
+      return {
+        outcome: "container-dead",
+        failureKind: containerHealth.failureKind,
+      };
+    }
     const currentIp = await this.resolveCurrentAgentTailnetIp(rec);
     if (!currentIp) return { outcome: "ip-unresolvable" };
     // Same IP as stored = nothing to repair: the miss is genuine

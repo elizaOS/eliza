@@ -16,7 +16,6 @@ import { apiKeysService } from "./api-keys";
 import { type CreditReconciliationResult, creditsService } from "./credits";
 import { clearOrgAdmissionRefused, markOrgAdmissionRefused } from "./inference-admission-refusal";
 import {
-  INFERENCE_AUTH_CONTEXT_VERSION,
   invalidateOrgBalanceHint,
   readOrgBalanceHint,
   writeOrgBalanceHint,
@@ -30,9 +29,12 @@ import { republishOrgBalanceHintAfterDebit } from "./inference-balance-republish
  */
 export { republishOrgBalanceHintAfterDebit };
 
+/** Persisted schema version for pending charges, independent of auth-cache changes. */
+export const PENDING_INFERENCE_CHARGE_VERSION = 2 as const;
+
 /** A durable record of an in-flight optimistic charge (the backstop). */
 export interface PendingInferenceCharge {
-  v: typeof INFERENCE_AUTH_CONTEXT_VERSION;
+  v: typeof PENDING_INFERENCE_CHARGE_VERSION;
   requestId: string;
   organizationId: string;
   userId: string;
@@ -82,7 +84,7 @@ export function isPendingInferenceCharge(value: unknown): value is PendingInfere
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   return (
-    v.v === INFERENCE_AUTH_CONTEXT_VERSION &&
+    v.v === PENDING_INFERENCE_CHARGE_VERSION &&
     typeof v.requestId === "string" &&
     typeof v.organizationId === "string" &&
     typeof v.userId === "string" &&
@@ -263,7 +265,7 @@ export async function writePendingInferenceCharge(
   now: number,
 ): Promise<boolean> {
   const record: PendingInferenceCharge = {
-    v: INFERENCE_AUTH_CONTEXT_VERSION,
+    v: PENDING_INFERENCE_CHARGE_VERSION,
     enqueuedAt: now,
     ...charge,
   };

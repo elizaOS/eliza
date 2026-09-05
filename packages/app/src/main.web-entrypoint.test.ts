@@ -109,7 +109,7 @@ describe("renderer web composition", () => {
       "https://cloud-staging.eliza.app",
     );
     expect(getBootConfig()).toMatchObject({
-      preferSharedCloudTier: true,
+      preferSharedCloudTier: false,
       autoUpgradeSharedToDedicated: true,
     });
     expect(window.localStorage.getItem(STEWARD_ACTIVE_SCOPE_KEY)).toBe(

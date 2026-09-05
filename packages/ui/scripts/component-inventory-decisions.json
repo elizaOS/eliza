@@ -99,11 +99,6 @@
     "canonicalOwner": "packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx",
     "note": "Compatibility adapter around the shared conversation rename composition."
   },
-  "packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:CloudInputRow": {
-    "disposition": "molecular",
-    "canonicalOwner": "packages/ui/src/components/ui/input.tsx",
-    "note": "Settings row composition; its internal raw input remains a separate migration target."
-  },
   "packages/ui/src/cloud-ui/components/monetization/milestone-progress.tsx:MilestoneProgress": {
     "disposition": "molecular",
     "canonicalOwner": "packages/ui/src/components/ui/progress.tsx",

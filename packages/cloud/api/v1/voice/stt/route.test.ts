@@ -111,8 +111,9 @@ const textToSpeech = mock(
       },
     }),
 );
+const getElevenLabsService = mock(() => ({ speechToText, textToSpeech }));
 mock.module("@/lib/services/elevenlabs", () => ({
-  getElevenLabsService: mock(() => ({ speechToText, textToSpeech })),
+  getElevenLabsService,
 }));
 const usageCreate = mock(async (_record: Record<string, unknown>) => ({}));
 mock.module("@/lib/services/usage", () => ({
@@ -579,6 +580,11 @@ beforeEach(() => {
         },
       }),
   );
+  getElevenLabsService.mockReset();
+  getElevenLabsService.mockImplementation(() => ({
+    speechToText,
+    textToSpeech,
+  }));
   upstreamReply = () => Response.json({ text: "" });
   deepgramReply = () => Response.json(DEEPGRAM_SHAPE);
   cartesiaReply = () => Response.json(CARTESIA_SHAPE);
@@ -1226,7 +1232,7 @@ describe("POST /api/v1/voice/stt — Deepgram prerecorded lane", () => {
     ]);
   });
 
-  test("a malformed 200 fails closed and does not fall back to Whisper", async () => {
+  test("a malformed 200 fails closed and conservatively settles without falling back", async () => {
     upstreamReply = () => Response.json({ text: "whisper fallback" });
     deepgramReply = () =>
       Response.json({
@@ -1244,10 +1250,11 @@ describe("POST /api/v1/voice/stt — Deepgram prerecorded lane", () => {
     expect(res.status).toBe(502);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
     expect(captured.fileName).toBeNull();
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.0012);
+    expect(allLoggedContent()).toContain('"settlement":"unknown"');
   });
 
-  test("an unparseable Deepgram 200 refunds the reservation", async () => {
+  test("an unparseable Deepgram 200 conservatively settles the reservation", async () => {
     deepgramReply = () =>
       new Response("<html>proxy error</html>", {
         status: 200,
@@ -1257,7 +1264,7 @@ describe("POST /api/v1/voice/stt — Deepgram prerecorded lane", () => {
 
     expect(res.status).toBe(502);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.0012);
     expect(billFlatUsage).not.toHaveBeenCalled();
   });
 
@@ -1275,7 +1282,7 @@ describe("POST /api/v1/voice/stt — Deepgram prerecorded lane", () => {
     expect(res.status).toBe(502);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
     expect(captured.fileName).toBeNull();
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.0012);
     const logs = allLoggedContent();
     expect(logs).not.toContain("secret transcript");
     expect(logs).not.toContain("dg-secret");
@@ -1296,7 +1303,7 @@ describe("POST /api/v1/voice/stt — Deepgram prerecorded lane", () => {
     expect(res.status).toBe(502);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
     expect(captured.fileName).toBeNull();
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.0012);
     const logs = allLoggedContent();
     expect(logs).not.toContain("secret provider socket failure");
     expect(logs).toContain('"errorType":"TypeError"');
@@ -1551,7 +1558,7 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (opt-in)", () => {
     expect("words" in body).toBe(false);
   });
 
-  test("a malformed Cartesia 200 fails closed, refunds, and never falls back to Whisper", async () => {
+  test("a malformed Cartesia 200 fails closed, settles unknown, and never falls back", async () => {
     upstreamReply = () => Response.json({ text: "whisper fallback" });
     cartesiaReply = () => Response.json({ type: "transcript" });
     const res = await app.request(
@@ -1563,7 +1570,8 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (opt-in)", () => {
     expect(res.status).toBe(502);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
     expect(captured.fileName).toBeNull();
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.00003);
+    expect(allLoggedContent()).toContain('"settlement":"unknown"');
     expect(billFlatUsage).not.toHaveBeenCalled();
   });
 
@@ -1581,7 +1589,7 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (opt-in)", () => {
 
     expect(res.status).toBe(502);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.00003);
   });
 
   test("an upstream Cartesia error is a 502 without logging provider body or key", async () => {
@@ -1598,14 +1606,14 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (opt-in)", () => {
     expect(res.status).toBe(502);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
     expect(captured.fileName).toBeNull();
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.00003);
     const logs = allLoggedContent();
     expect(logs).not.toContain("secret transcript");
     expect(logs).not.toContain("car-secret");
     expect(logs).toContain('"status":503');
   });
 
-  test("a transport failure refunds and is a 502 logged as its type only", async () => {
+  test("a transport failure settles unknown and is logged as its type only", async () => {
     cartesiaReply = () => {
       throw new TypeError("secret provider socket failure");
     };
@@ -1618,7 +1626,7 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (opt-in)", () => {
     expect(res.status).toBe(502);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
     expect(captured.fileName).toBeNull();
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.00003);
     const logs = allLoggedContent();
     expect(logs).not.toContain("secret provider socket failure");
     expect(logs).toContain('"errorType":"TypeError"');
@@ -1650,7 +1658,7 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (opt-in)", () => {
     expect(reserve).not.toHaveBeenCalled();
   });
 
-  test("a Cartesia timeout refunds the reservation and returns a typed 504", async () => {
+  test("a Cartesia timeout settles unknown and returns a typed 504", async () => {
     cartesiaReply = (init) =>
       new Promise<Response>((_resolve, reject) => {
         const signal = init?.signal;
@@ -1666,11 +1674,11 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (opt-in)", () => {
 
     expect(res.status).toBe(504);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text timed out" });
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.00003);
     expect(billFlatUsage).not.toHaveBeenCalled();
   });
 
-  test("a stalled Cartesia response body refunds and returns a typed 504", async () => {
+  test("a stalled Cartesia response body settles unknown and returns a typed 504", async () => {
     cartesiaReply = (init) =>
       new Response(
         new ReadableStream<Uint8Array>({
@@ -1695,7 +1703,7 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (opt-in)", () => {
 
     expect(res.status).toBe(504);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text timed out" });
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.00003);
     expect(billFlatUsage).not.toHaveBeenCalled();
   });
 
@@ -1705,7 +1713,7 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (opt-in)", () => {
     const res = await app.request(sttRequest(), undefined, cartesiaEnv);
 
     expect(res.status).toBe(502);
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.00003);
     expect(billFlatUsage).not.toHaveBeenCalled();
   });
 });
@@ -1766,7 +1774,19 @@ describe("POST /api/v1/voice/stt — billed ElevenLabs lane", () => {
     expect(speechToText).not.toHaveBeenCalled();
   });
 
-  test("a provider rate-limit failure is a 429 and refunds the reservation", async () => {
+  test("releases a reservation when local ElevenLabs service setup fails", async () => {
+    getElevenLabsService.mockImplementationOnce(() => {
+      throw new Error("ELEVENLABS_API_KEY is not set");
+    });
+    const res = await app.request(sttRequest(), undefined, elevenLabsEnv);
+
+    expect(res.status).toBe(500);
+    expect(speechToText).not.toHaveBeenCalled();
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0);
+  });
+
+  test("a provider rate-limit failure is a 429 and settles unknown", async () => {
     speechToText.mockRejectedValue(new Error("Rate limit exceeded"));
     const res = await app.request(sttRequest(), undefined, elevenLabsEnv);
 
@@ -1774,7 +1794,7 @@ describe("POST /api/v1/voice/stt — billed ElevenLabs lane", () => {
     expect(await readJson(res)).toEqual({
       error: "Rate limit exceeded. Please try again in a moment.",
     });
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.0012);
   });
 
   test("a provider error embedding request content is logged as its type only", async () => {
@@ -1822,7 +1842,7 @@ describe("POST /api/v1/voice/stt — billed ElevenLabs lane", () => {
       type: "service_unavailable",
       retryAfter: "5 minutes",
     });
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.0012);
   });
 
   test("a missing provider key maps to a 500 'Service not configured'", async () => {
@@ -1833,7 +1853,7 @@ describe("POST /api/v1/voice/stt — billed ElevenLabs lane", () => {
     expect(await readJson(res)).toEqual({ error: "Service not configured" });
   });
 
-  test("an unrecognized provider failure is a generic 500, refunded", async () => {
+  test("an unrecognized provider failure is a generic 500, settled unknown", async () => {
     speechToText.mockRejectedValue(new Error("socket hang up"));
     const res = await app.request(sttRequest(), undefined, elevenLabsEnv);
 
@@ -1841,7 +1861,7 @@ describe("POST /api/v1/voice/stt — billed ElevenLabs lane", () => {
     expect(await readJson(res)).toEqual({
       error: "Failed to transcribe audio. Please try again.",
     });
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile).toHaveBeenCalledWith(0.0012);
   });
 });
 

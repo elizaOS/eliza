@@ -77,10 +77,21 @@ const ui = vi.hoisted(() => {
 });
 
 vi.mock("@elizaos/ui/api", () => ({
+  Button: ({ children, ...rest }: Record<string, unknown>) =>
+    React.createElement(
+      "button",
+      { type: "button", ...rest },
+      children as React.ReactNode,
+    ),
+  Card: ({ children, ...rest }: Record<string, unknown>) =>
+    React.createElement("div", rest, children as React.ReactNode),
+  Input: (props: Record<string, unknown>) =>
+    React.createElement("input", props),
   client: ui.client,
 }));
 
-vi.mock("@elizaos/ui/components/ui/button", () => ({
+vi.mock("@elizaos/ui", () => ({
+  client: ui.client,
   Button: (props: Record<string, unknown>) => {
     const {
       children,
@@ -94,6 +105,19 @@ vi.mock("@elizaos/ui/components/ui/button", () => ({
       { type: "button", ...rest },
       children as React.ReactNode,
     );
+  },
+  Card: (props: Record<string, unknown>) => {
+    const { children, variant: _variant, ...rest } = props;
+    return React.createElement("div", rest, children as React.ReactNode);
+  },
+  Input: (props: Record<string, unknown>) => {
+    const {
+      variant: _variant,
+      density: _density,
+      adornment: _adornment,
+      ...rest
+    } = props;
+    return React.createElement("input", rest);
   },
 }));
 

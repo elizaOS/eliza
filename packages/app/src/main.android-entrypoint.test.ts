@@ -173,7 +173,7 @@ describe("renderer Android local composition", () => {
     expect(main.isAndroid).toBe(true);
     expect(main.isNative).toBe(true);
     expect(getBootConfig()).toMatchObject({
-      preferSharedCloudTier: true,
+      preferSharedCloudTier: false,
       autoUpgradeSharedToDedicated: true,
     });
     expect(androidBoot.installAndroidFetch).toHaveBeenCalledOnce();

@@ -1,4 +1,8 @@
-/** Activates a pending managed host only after exact Headscale node discovery. */
+/**
+ * Activates a pending managed host only after exact Headscale node discovery.
+ * The host presents its one-use signed delegated enrollment credential, so the
+ * route must not add a second account-cache read after owner-side admission.
+ */
 
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";

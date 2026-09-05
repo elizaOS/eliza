@@ -13,7 +13,7 @@ import {
   seedAppStorage,
   UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
-import { navigateHomeLauncher } from "./helpers/launcher-navigation";
+import { launcherGrid } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 // #9143 — the home launcher mounts <WidgetHost slot="home"> and ranks the
@@ -454,6 +454,7 @@ async function seedHomeWidgetStorage(page: Page): Promise<void> {
 
 async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    const secureStore = new Map<string, string>();
     type Bridge = {
       request?: Record<string, (params?: unknown) => Promise<unknown>>;
       onMessage?: (
@@ -522,6 +523,24 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
         desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
         desktopRegisterShortcut: async () => ({ success: true }),
         desktopSetTrayMenu: async () => undefined,
+        secureStoreGet: async ({ kind }: { kind: string }) =>
+          secureStore.has(kind)
+            ? { ok: true, value: secureStore.get(kind) }
+            : { ok: false, reason: "not_found" },
+        secureStoreSet: async ({
+          kind,
+          value,
+        }: {
+          kind: string;
+          value: string;
+        }) => {
+          secureStore.set(kind, value);
+          return { ok: true };
+        },
+        secureStoreDelete: async ({ kind }: { kind: string }) => ({
+          ok: true,
+          deleted: secureStore.delete(kind),
+        }),
         getAgentStatus: async () => readyStatus,
         launchProgress: async () => readyLaunch,
         bootProgress: async () => readyBoot,
@@ -744,10 +763,20 @@ test.describe("home widget priority (#9143)", () => {
     });
     await screenshot(page, "mobile");
 
-    // Home and Launcher are paired rail pages. Exercise the real rail before
-    // capturing the launcher half at the mobile viewport.
-    const grid = await navigateHomeLauncher(page, "launcher", {
-      input: "mouse",
+    // This spec owns widget ranking rather than gesture recognition. Exercise
+    // the rail through its real desktop control, then return to the mobile
+    // viewport for the launcher capture; dedicated pager specs own swipes.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.getByTestId("rail-pager-edge-next").click();
+    await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
+      "data-page",
+      "launcher",
+      { timeout: 10_000 },
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    const grid = launcherGrid(page);
+    await expect(grid).toBeVisible({
+      timeout: 15_000,
     });
     await expect(grid.getByTestId("launcher-tile-settings")).toBeVisible({
       timeout: 15_000,

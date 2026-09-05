@@ -12,7 +12,17 @@ import { withRateLimit } from "../../middleware/rate-limit";
 import { logger } from "../../utils/logger";
 import { creditsService, InsufficientCreditsError } from "../credits";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
-import { admitOrganizationInference } from "../organization-inference-admission";
+import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
+import {
+  type InferenceCredentialCheck,
+  InferenceCredentialRevocationUnavailableError,
+  InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
+} from "../inference-credential-revocation";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+} from "../organization-inference-admission";
 import { usageService } from "../usage";
 import { PricingNotFoundError } from "./pricing";
 import type {
@@ -31,15 +41,31 @@ type CachedProxyResponse = {
   ttl?: number;
 };
 
-export interface ProxyCombinedAdmission {
+interface ProxyResolvedAuth {
   auth: {
     user: { id: string; organization_id: string };
     apiKey?: { id: string };
   };
-  admissionSnapshot?: InferenceAdmissionSnapshot;
-  executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   requestId: string;
 }
+
+/**
+ * Carries the route boundary's single caller-standing decision into the proxy
+ * engine. Worker requests use the combined snapshot and durable admission;
+ * local compatibility callers remain explicitly pre-resolved and therefore
+ * never trigger a second authentication read inside the engine.
+ */
+export type ProxyCombinedAdmission =
+  | (ProxyResolvedAuth & {
+      mode: "combined";
+      admissionSnapshot: InferenceAdmissionSnapshot;
+      executionCtx: { waitUntil(promise: Promise<unknown>): void };
+      credential?: InferenceCredentialCheck;
+      credentialForAdmission?: () => InferenceCredentialCheck | undefined;
+    })
+  | (ProxyResolvedAuth & {
+      mode: "compatibility";
+    });
 
 interface ProxySettlement {
   settle(actualCostUsd: number): Promise<unknown>;
@@ -229,10 +255,7 @@ export function createHandler(
       const cost = await config.getCost(body, searchParams);
 
       let settlement: ProxySettlement;
-      if (combinedAdmission?.executionCtx) {
-        if (!combinedAdmission.admissionSnapshot) {
-          throw new Error("Combined proxy admission snapshot is required");
-        }
+      if (combinedAdmission?.mode === "combined") {
         settlement = await admitOrganizationInference({
           context: {
             organizationId,
@@ -254,6 +277,12 @@ export function createHandler(
           },
           executionCtx: combinedAdmission.executionCtx,
           admissionSnapshot: combinedAdmission.admissionSnapshot,
+          ...(() => {
+            const credential = combinedAdmission.credentialForAdmission
+              ? combinedAdmission.credentialForAdmission()
+              : combinedAdmission.credential;
+            return credential ? { credential } : {};
+          })(),
         });
       } else {
         const reservation = await creditsService.reserve({
@@ -270,7 +299,7 @@ export function createHandler(
 
       const settle = async (actualCostUsd: number, operation: string) => {
         const pending = settlement.settle(actualCostUsd);
-        if (combinedAdmission?.executionCtx) {
+        if (combinedAdmission?.mode === "combined") {
           void retainProxySettlement(pending, combinedAdmission.executionCtx, {
             serviceId: config.id,
             operation,
@@ -366,10 +395,11 @@ export function createHandler(
       } catch (error) {
         // error-policy:J2 provider dispatch may have been accepted before the
         // transport threw, so conservatively settle the marked admission.
-        const pending = combinedAdmission?.executionCtx
-          ? settlement.settleUnknown()
-          : settlement.settle(0);
-        if (combinedAdmission?.executionCtx) {
+        const pending =
+          combinedAdmission?.mode === "combined"
+            ? settlement.settleUnknown()
+            : settlement.settle(0);
+        if (combinedAdmission?.mode === "combined") {
           void retainProxySettlement(pending, combinedAdmission.executionCtx, {
             serviceId: config.id,
             operation: "provider_error",
@@ -478,7 +508,58 @@ export function createHandler(
       }
 
       if (error instanceof ApiError) {
-        return Response.json({ error: error.message }, { status: error.status });
+        const headers = new Headers();
+        const retryAfterSeconds = error.details?.retryAfterSeconds;
+        if (typeof retryAfterSeconds === "number" && retryAfterSeconds > 0) {
+          headers.set("Retry-After", String(Math.ceil(retryAfterSeconds)));
+        }
+        return Response.json(error.toJSON(), { status: error.status, headers });
+      }
+
+      if (error instanceof InferenceCredentialRevokedError) {
+        const reason = inferenceCredentialRevocationReason(error.reason);
+        const status =
+          error.reason === "credential_revoked" ||
+          error.reason === "session_revoked" ||
+          error.reason === "session_binding_revoked"
+            ? 401
+            : 403;
+        logger.warn("[Proxy Engine] Strong credential admission denied", {
+          serviceId: config.id,
+          requestId: combinedAdmission?.requestId,
+          reason,
+          status,
+        });
+        return Response.json(
+          {
+            success: false,
+            error: status === 401 ? "Authentication required" : "Access denied",
+            code: status === 401 ? "authentication_required" : "access_denied",
+            details: { reason },
+          },
+          { status },
+        );
+      }
+
+      if (
+        error instanceof InferenceAdmissionUnavailableError ||
+        error instanceof InferenceBalanceCacheWarmingError ||
+        error instanceof InferenceCredentialRevocationUnavailableError
+      ) {
+        logger.warn("[Proxy Engine] Combined admission unavailable", {
+          serviceId: config.id,
+          requestId: combinedAdmission?.requestId,
+          error: error.name,
+        });
+        return Response.json(
+          {
+            success: false,
+            error: "Provider admission is unavailable; retry shortly",
+            code: "service_unavailable",
+            details: { retryable: true, retryAfterSeconds: 1 },
+          },
+          { status: 503, headers: { "Retry-After": "1" } },
+        );
       }
 
       if (error instanceof PricingNotFoundError) {
@@ -504,7 +585,7 @@ export function createHandler(
     }
   };
 
-  if (config.rateLimit && !combinedAdmission) {
+  if (config.rateLimit && combinedAdmission?.mode !== "combined") {
     return withRateLimit(handler, config.rateLimit);
   }
 
@@ -516,8 +597,9 @@ export async function executeWithBody(
   work: ServiceHandler,
   request: Request,
   body: ProxyRequestBody,
+  combinedAdmission?: ProxyCombinedAdmission,
 ): Promise<Response> {
-  const handler = createHandler(config, work);
+  const handler = createHandler(config, work, combinedAdmission);
   const mockRequest = new Request(request.url, {
     method: "POST",
     headers: request.headers,

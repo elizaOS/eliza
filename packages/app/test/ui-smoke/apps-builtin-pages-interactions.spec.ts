@@ -13,7 +13,7 @@ import {
 } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
 });
 
@@ -135,10 +135,13 @@ test("trajectories view loads and search re-queries", async ({ page }) => {
   await expect.poll(trajReqs).toBeGreaterThan(before);
 });
 
-test("relationships view loads the graph and platform filter re-queries", async ({
+test("relationships view loads the entity and relationship graph", async ({
   page,
 }) => {
-  const relReqs = countRequests(page, /\/api\/relationships\/(graph|people)/);
+  const relReqs = countRequests(
+    page,
+    /\/api\/lifeops\/(entities|relationships)(?:\?|$)/,
+  );
   await openAppPath(page, "/apps/relationships");
   await expect(page.getByTestId("relationships-view")).toBeVisible({
     timeout: 60_000,

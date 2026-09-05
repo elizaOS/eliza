@@ -183,15 +183,11 @@ test("settings connects a remote capability endpoint and opens its view", async 
     // combobox button — open it and click the option from the listbox.
     await page.getByLabel("Capability endpoint provider").click();
     await page.getByRole("option", { name: "Home machine" }).click();
+    await page.getByLabel("Endpoint URL", { exact: true }).fill(remote.baseUrl);
+    await page.getByLabel("Endpoint ID", { exact: true }).fill("live-product");
+    await page.getByLabel("Bearer token", { exact: true }).fill("product-token");
     await page
-      .getByLabel("Capability router endpoint URL")
-      .fill(remote.baseUrl);
-    await page.getByLabel("Capability router endpoint ID").fill("live-product");
-    await page
-      .getByLabel("Capability router endpoint token")
-      .fill("product-token");
-    await page
-      .getByLabel("Allowed remote module IDs")
+      .getByLabel("Allowed module IDs", { exact: true })
       .fill("remote-capability-live, remote-capability-live");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
 
@@ -275,23 +271,24 @@ test("settings provisions a cloud capability sandbox", async ({ page }) => {
 
   // Select through the control's public accessibility contract so the test
   // follows the same radiogroup semantics as keyboard and assistive-tech users.
-  await page.getByRole("radio", { name: "Cloud", exact: true }).click();
   await page
-    .getByLabel("Capability cloud API base URL")
+    .getByRole("radiogroup", { name: "Capability router connection mode" })
+    .getByRole("button", { name: "cloud", exact: true })
+    .click();
+  await page
+    .getByLabel("Cloud API base URL", { exact: true })
     .fill("https://api.elizacloud.ai");
-  await page.getByLabel("Capability cloud auth token").fill("cloud-auth");
+  await page.getByLabel("Cloud auth token", { exact: true }).fill("cloud-auth");
   await page
-    .getByLabel("Capability cloud sandbox name")
+    .getByLabel("Sandbox name", { exact: true })
     .fill("Cloud Remote Tools");
   await page
-    .getByLabel("Capability cloud sandbox bio")
+    .getByLabel("Sandbox bio", { exact: true })
     .fill("Builds remote plugins");
-  await page.getByLabel("Capability router endpoint ID").fill("cloud-product");
+  await page.getByLabel("Endpoint ID", { exact: true }).fill("cloud-product");
+  await page.getByLabel("Bearer token", { exact: true }).fill("endpoint-token");
   await page
-    .getByLabel("Capability router endpoint token")
-    .fill("endpoint-token");
-  await page
-    .getByLabel("Allowed remote module IDs")
+    .getByLabel("Allowed module IDs", { exact: true })
     .fill("cloud-capability, cloud-capability");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
 

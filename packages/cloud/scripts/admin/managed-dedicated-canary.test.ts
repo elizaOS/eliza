@@ -29,19 +29,24 @@ interface FixtureOptions {
   existingCanaryCount?: number;
   existingCanarySuffix?: string;
   staleCleanupFails?: boolean;
+  staleCleanupError?: string;
   staleDeleteThrows?: boolean;
   staleIdentityMismatch?: boolean;
   staleTier?: string;
   createStatus?: number;
   createdTier?: string;
   readyTier?: string;
+  terminalStatus?: string;
+  terminalErrorMessage?: string | null;
   mesh?: boolean;
+  meshAddressPresent?: boolean;
   bridgeUrl?: string;
   heartbeatAt?: string | null;
   bridgeReply?: "real" | "canned";
   cleanupFails?: boolean;
   postCommitsThenThrows?: boolean;
   provisionNeverCompletes?: boolean;
+  provisionFailsWithError?: string;
   provisionCompletesAfterPolls?: number;
   recoveryListFailures?: number;
   recoveryNeverFinds?: boolean;
@@ -155,6 +160,12 @@ function createFixture(options: FixtureOptions = {}) {
 
     if (url.pathname === `/api/v1/jobs/${PROVISION_JOB_ID}`) {
       provisionPolls += 1;
+      if (options.provisionFailsWithError) {
+        return response({
+          success: true,
+          data: { status: "failed", error: options.provisionFailsWithError },
+        });
+      }
       if (
         options.provisionNeverCompletes ||
         (options.provisionCompletesAfterPolls !== undefined &&
@@ -216,7 +227,10 @@ function createFixture(options: FixtureOptions = {}) {
       }
       if (options.staleCleanupFails) {
         return response(
-          { success: false, error: "provisioning is in progress" },
+          {
+            success: false,
+            error: options.staleCleanupError ?? "provisioning is in progress",
+          },
           409,
         );
       }
@@ -240,7 +254,10 @@ function createFixture(options: FixtureOptions = {}) {
         data: {
           id: AGENT_ID,
           agentName,
-          status: provisionCompleted ? "running" : "provisioning",
+          status: provisionCompleted
+            ? (options.terminalStatus ?? "running")
+            : "provisioning",
+          errorMessage: options.terminalErrorMessage ?? null,
           databaseStatus: "ready",
           executionTier:
             options.readyTier ?? options.createdTier ?? "dedicated-always",
@@ -254,6 +271,7 @@ function createFixture(options: FixtureOptions = {}) {
             (options.mesh === false
               ? "http://192.0.2.10:3000"
               : "http://100.64.0.21:3000"),
+          meshAddressPresent: options.meshAddressPresent,
           adminDetails: null,
         },
       });
@@ -434,6 +452,7 @@ describe("managed dedicated canary", () => {
       expectedAgentName: `managed-dedicated-canary-${SUFFIX}`,
       expectedCreatedAt: "2026-07-13T02:30:00.000Z",
       expectedExecutionTier: "dedicated-always",
+      stateLossAcknowledged: true,
     });
     expect(
       fixture.calls.filter(
@@ -658,6 +677,7 @@ describe("managed dedicated canary", () => {
       expectedAgentName: `managed-dedicated-canary-${STALE_SUFFIX}`,
       expectedCreatedAt: "2026-07-13T08:17:00.000Z",
       expectedExecutionTier: "dedicated-always",
+      stateLossAcknowledged: true,
     });
     expect(fixture.calls.filter((call) => call.method === "DELETE")).toEqual([
       {
@@ -705,6 +725,7 @@ describe("managed dedicated canary", () => {
       expectedAgentName: `managed-dedicated-canary-${STALE_SUFFIX}`,
       expectedCreatedAt: "2026-07-13T08:17:00.000Z",
       expectedExecutionTier: "dedicated-always",
+      stateLossAcknowledged: true,
       expectedDeployCommit: DEPLOYED_COMMIT,
     });
     expect(fixture.calls.filter((call) => call.method === "DELETE")).toEqual([
@@ -737,7 +758,10 @@ describe("managed dedicated canary", () => {
 
     // The precondition deliberately rides in the strict JSON body: an older
     // route rejects this unknown key before reaching its deletion service.
-    expect(legacyUnknownKeys).toEqual(["expectedDeployCommit"]);
+    expect(legacyUnknownKeys).toEqual([
+      "stateLossAcknowledged",
+      "expectedDeployCommit",
+    ]);
   });
 
   test("cleanup-only validation rejects full-canary work and contradictory evidence", async () => {
@@ -872,6 +896,28 @@ describe("managed dedicated canary", () => {
     ).toHaveLength(1);
   });
 
+  test("stale recovery classifies a non-quiescent lifecycle conflict without persisting identifiers", async () => {
+    const { fixture, evidence } = await runFixture(
+      {
+        existingCanary: true,
+        existingCanarySuffix: STALE_SUFFIX,
+        staleCleanupFails: true,
+        staleCleanupError:
+          "Agent private-agent-id has non-quiescent agent_provision job private-job-id",
+      },
+      { staleCanarySuffix: STALE_SUFFIX, cleanupOnly: true },
+    );
+
+    expect(evidence.failure).toEqual({
+      phase: "capacity_guard",
+      code: "non_quiescent_lifecycle_job",
+    });
+    expect(JSON.stringify(evidence)).not.toContain("private-agent-id");
+    expect(JSON.stringify(evidence)).not.toContain("private-job-id");
+    expect(fixture.created).toBe(false);
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+  });
+
   test("stale recovery records an ambiguous delete transport and never creates a second canary", async () => {
     const { fixture, evidence } = await runFixture(
       {
@@ -936,8 +982,8 @@ describe("managed dedicated canary", () => {
       createdTier: unsafeTier,
     });
     expect(evidence.failure).toEqual({
-      phase: "cleanup",
-      code: "identity_mismatch",
+      phase: "create",
+      code: "wrong_execution_tier",
     });
     expect(evidence.path.observedTier).toBe("other");
     expect(evidence.cleanup).toEqual({
@@ -964,6 +1010,34 @@ describe("managed dedicated canary", () => {
     expect(evidence.path.heartbeatFresh).toBe(false);
     expect(evidence.path.meshAddressPresent).toBe(false);
     expect(evidence.timingsMs.ready).toBe(30);
+    expect(evidence.cleanup.status).toBe("passed");
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+  });
+
+  test("accepts the owner-safe mesh-presence bit without exposing a private address", async () => {
+    const { evidence } = await runFixture({
+      bridgeUrl: "https://agent.example.test",
+      meshAddressPresent: true,
+    });
+
+    expect(evidence.verdict).toBe("pass");
+    expect(evidence.path.meshAddressPresent).toBe(true);
+    expect(validateManagedDedicatedCanaryEvidence(evidence)).toEqual([]);
+  });
+
+  test("terminal readiness classifies the agent error without retaining private diagnostics", async () => {
+    const privateDiagnostic =
+      "Headscale route failed for private-agent-id on private-node-id";
+    const { evidence } = await runFixture({
+      terminalStatus: "error",
+      terminalErrorMessage: privateDiagnostic,
+    });
+
+    expect(evidence.failure).toEqual({
+      phase: "ready",
+      code: "provisioning_ingress_failed",
+    });
+    expect(JSON.stringify(evidence)).not.toContain(privateDiagnostic);
     expect(evidence.cleanup.status).toBe("passed");
     expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
   });
@@ -1018,7 +1092,7 @@ describe("managed dedicated canary", () => {
     });
 
     expect(evidence.failure).toEqual({
-      phase: "cleanup_job",
+      phase: "provision",
       code: "job_timeout",
     });
     expect(evidence.cleanup).toEqual({
@@ -1033,6 +1107,24 @@ describe("managed dedicated canary", () => {
       ),
     ).toHaveLength(0);
     expect(fixture.freshDeleteBody).toBeNull();
+  });
+
+  test("preserves a privacy-safe provisioning category when cleanup sees the same failed job", async () => {
+    const { evidence } = await runFixture({
+      provisionFailsWithError:
+        "Docker image pull failed before container create",
+    });
+
+    expect(evidence.failure).toEqual({
+      phase: "provision",
+      code: "provisioning_image_failed",
+    });
+    expect(evidence.cleanup).toEqual({
+      status: "failed",
+      possibleOrphan: true,
+    });
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+    expect(JSON.stringify(evidence)).not.toContain("Docker image pull failed");
   });
 
   test("cleanup waits for the known provision job to quiesce before deleting", async () => {
@@ -1092,8 +1184,8 @@ describe("managed dedicated canary", () => {
     });
     expect(evidence.verdict).toBe("fail");
     expect(evidence.failure).toEqual({
-      phase: "cleanup",
-      code: "possible_orphan_after_ambiguous_create",
+      phase: "create",
+      code: "request_failed",
     });
     expect(evidence.cleanup).toEqual({
       status: "failed",

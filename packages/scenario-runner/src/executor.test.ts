@@ -841,6 +841,7 @@ describe("scenario executor api turn captures", () => {
               ok: true,
               scopeId: req.params?.scopeId,
               token: body.token,
+              authorization: req.headers?.authorization,
             });
           },
         },
@@ -869,6 +870,7 @@ describe("scenario executor api turn captures", () => {
             name: "redeem",
             method: "POST",
             path: "/redeem/{{capture:scopeId}}",
+            headers: { authorization: "Bearer {{capture:token}}" },
             body: { token: "{{capture:token}}" },
             expectedStatus: 200,
             assertResponse(status, body) {
@@ -882,6 +884,9 @@ describe("scenario executor api turn captures", () => {
               }
               if (record.token !== "token-abc") {
                 return `expected captured token, saw ${String(record.token)}`;
+              }
+              if (record.authorization !== "Bearer token-abc") {
+                return `expected captured authorization header, saw ${String(record.authorization)}`;
               }
               return undefined;
             },

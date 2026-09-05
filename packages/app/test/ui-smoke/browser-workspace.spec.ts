@@ -53,6 +53,32 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
+test("mobile browser actions close across the desktop breakpoint", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 600, height: 800 });
+  await resetBrowserWorkspaceTabs(request);
+  await openAppPath(page, "/browser");
+
+  const mobileMoreButton = page.getByTestId("browser-workspace-mobile-more");
+  await expect(mobileMoreButton).toBeVisible({ timeout: 60_000 });
+  await mobileMoreButton.click();
+
+  const newTabItem = page.getByRole("menuitem", {
+    name: "New tab",
+    exact: true,
+  });
+  await expect(newTabItem).toBeVisible();
+
+  // The menu content is portaled outside the responsive trigger wrapper, so
+  // it must carry its own desktop visibility guard when an open mobile menu is
+  // resized or rotated across the breakpoint.
+  await page.setViewportSize({ width: 900, height: 800 });
+  await expect(mobileMoreButton).toBeHidden();
+  await expect(newTabItem).toBeHidden();
+});
+
 test("browser workspace can create, navigate, switch, and close tabs", async ({
   page,
   request,
@@ -110,6 +136,23 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
     await expect(item).toBeVisible();
     return item;
   };
+  const clickMobileMenuItem = async (name: string) => {
+    const item = page.getByRole("menuitem", { name, exact: true });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        if (!(await item.isVisible())) {
+          await mobileMoreButton.click();
+          await expect(item).toBeVisible({ timeout: 5_000 });
+        }
+        await item.click({ timeout: 10_000 });
+        return;
+      } catch (error) {
+        if (attempt === 2) throw error;
+        await page.keyboard.press("Escape");
+        await expect(item).toBeHidden({ timeout: 5_000 });
+      }
+    }
+  };
   const expectCloseAllDisabled = async () => {
     if (!compactToolbar) {
       await expect(closeAllButton).toBeDisabled();
@@ -131,14 +174,14 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
       await newTabButton.click();
       return;
     }
-    await (await mobileMenuItem("New tab")).click();
+    await clickMobileMenuItem("New tab");
   };
   const closeAllTabs = async () => {
     if (!compactToolbar) {
       await closeAllButton.click();
       return;
     }
-    await (await mobileMenuItem("Close all tabs")).click();
+    await clickMobileMenuItem("Close all tabs");
   };
 
   // The folded tab switcher is the only multi-tab surface (no permanent strip).

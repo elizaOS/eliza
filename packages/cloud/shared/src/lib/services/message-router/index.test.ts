@@ -22,6 +22,10 @@ const loggerDebug = mock();
 const loggerWarn = mock();
 const loggerError = mock();
 const originalFetch = globalThis.fetch;
+const resolveOutboundMessageStanding = mock(async () => ({
+  allowed: true as const,
+  source: "cache" as const,
+}));
 
 const insertBuilder = {
   values: insertValues,
@@ -29,6 +33,7 @@ const insertBuilder = {
 };
 const selectBuilder = {
   from: mock(() => selectBuilder),
+  leftJoin: mock(() => selectBuilder),
   where: mock(() => selectBuilder),
   limit: selectLimit,
 };
@@ -125,6 +130,10 @@ mock.module("../../utils/logger", () => ({
   },
 }));
 
+mock.module("../outbound-message-standing", () => ({
+  resolveOutboundMessageStanding,
+}));
+
 const { messageRouterService } = await import("./index");
 
 describe("MessageRouterService contact recording", () => {
@@ -152,8 +161,47 @@ describe("MessageRouterService contact recording", () => {
     loggerDebug.mockClear();
     loggerWarn.mockClear();
     loggerError.mockClear();
+    resolveOutboundMessageStanding.mockReset();
+    resolveOutboundMessageStanding.mockResolvedValue({ allowed: true, source: "cache" });
     findHydratedById.mockClear();
     findHydratedById.mockResolvedValue(null);
+  });
+
+  test("denies bad standing before credential lookup or provider dispatch", async () => {
+    resolveOutboundMessageStanding.mockResolvedValueOnce({
+      allowed: false,
+      source: "cache",
+      reason: "moderation_blocked",
+    });
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "must not dispatch",
+      agentUserId: "blocked-user",
+    });
+
+    expect(delivery).toEqual({
+      status: "failed",
+      provider: "blooio",
+      code: "DELIVERY_ACCOUNT_STANDING_DENIED",
+      retryable: false,
+      standingReason: "moderation_blocked",
+    });
+    expect(resolveOutboundMessageStanding).toHaveBeenCalledTimes(1);
+    expect(secretsGet).not.toHaveBeenCalled();
+    expect(blooioApiRequest).not.toHaveBeenCalled();
+    expect(loggerError).toHaveBeenCalledWith(
+      "[MessageRouter] Account standing denied outbound message",
+      expect.objectContaining({
+        organizationId: "gateway-org",
+        userId: "blocked-user",
+        reason: "moderation_blocked",
+        providerDispatched: false,
+      }),
+    );
   });
 
   test("records a phone contact after a successful agent outbound message", async () => {
@@ -568,6 +616,7 @@ describe("MessageRouterService contact recording", () => {
         id: "phone-number-1",
         agent_id: "agent-1",
         organization_id: "organization-1",
+        user_id: "user-1",
       },
     ]);
     createPhoneMessage.mockRejectedValueOnce(storageFailure);
@@ -595,6 +644,7 @@ describe("MessageRouterService contact recording", () => {
         id: "phone-number-1",
         agent_id: "agent-1",
         organization_id: "organization-1",
+        user_id: "user-1",
       },
     ]);
     updateWhere.mockRejectedValueOnce(new Error(sentinelUpdateBody));
@@ -611,6 +661,7 @@ describe("MessageRouterService contact recording", () => {
       agentId: "agent-1",
       phoneNumberId: "phone-number-1",
       organizationId: "organization-1",
+      userId: "user-1",
     });
 
     expect(createPhoneMessage).toHaveBeenCalledTimes(1);

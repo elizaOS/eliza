@@ -30,13 +30,14 @@ function pairedRecord(index, overrides = {}) {
     transportOk: true,
     proofMatched: true,
     ci: { sha: SHA },
+    headers: index % 2 === 0 ? {} : { "cf-placement": "local-ORD" },
     ...overrides,
   };
 }
 
 function authTrace(index) {
   const suffix = index.toString(16).padStart(12, "0");
-  return `11111111-1111-4111-8111-${suffix}`;
+  return `11111111111141118111${suffix}`;
 }
 
 function authEvidence(runSuspended = false) {
@@ -234,6 +235,54 @@ test("paired certification requires exactly 44 balanced successful proofs", () =
     () => validatePairedEvidence(jsonl(records.slice(1)), SHA),
     /44 records/,
   );
+  assert.throws(
+    () =>
+      validatePairedEvidence(
+        jsonl(
+          records.map((record, index) =>
+            index === 1
+              ? { ...record, headers: { "cf-placement": "remote-FRA" } }
+              : record,
+          ),
+        ),
+        SHA,
+      ),
+    /remote Worker placement/,
+  );
+  assert.doesNotThrow(() =>
+    validatePairedEvidence(
+      jsonl(
+        records.map((record) =>
+          record.target === "gateway" ? { ...record, headers: {} } : record,
+        ),
+      ),
+      SHA,
+    ),
+  );
+  for (const placement of [
+    "REMOTE-FRA",
+    "remote",
+    "banana",
+    42,
+    null,
+    {},
+    [],
+  ]) {
+    assert.throws(
+      () =>
+        validatePairedEvidence(
+          jsonl(
+            records.map((record, index) =>
+              index === 1
+                ? { ...record, headers: { "cf-placement": placement } }
+                : record,
+            ),
+          ),
+          SHA,
+        ),
+      /invalid Worker placement/,
+    );
+  }
 });
 
 test("auth certification separates required guards from optional suspended standing", () => {

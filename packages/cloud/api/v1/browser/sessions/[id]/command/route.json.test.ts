@@ -50,6 +50,11 @@ describe("POST /api/v1/browser/sessions/:id/command malformed JSON", () => {
       error: "Invalid JSON body",
     });
     expect(executeHostedBrowserCommand).not.toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
   });
 
   test("canonical JSON still executes a command", async () => {
@@ -59,6 +64,11 @@ describe("POST /api/v1/browser/sessions/:id/command malformed JSON", () => {
       body: JSON.stringify({ subaction: "reload" }),
     });
     expect(response.status).toBe(200);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(2);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: true }),
+    );
     expect(executeHostedBrowserCommand).toHaveBeenCalled();
   });
 });

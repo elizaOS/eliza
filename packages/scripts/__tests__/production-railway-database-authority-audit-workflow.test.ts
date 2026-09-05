@@ -1,5 +1,6 @@
 /** Guards the protected, read-only production Railway database authority audit. */
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const workflowSource = readFileSync(
@@ -38,11 +39,8 @@ function step(name: string): WorkflowStep {
 }
 
 describe("production Railway database authority audit workflow", () => {
-  test("uses only the protected production environment and canonical develop source", () => {
+  test("uses only the protected production environment and canonical main source", () => {
     expect(job?.environment).toBe("production");
-    expect(step("Require canonical develop source").run).toContain(
-      '"refs/heads/develop"',
-    );
     const config = step("Validate protected audit configuration");
     expect(config.env?.HAS_DATABASE_URL).toContain("secrets.DATABASE_URL");
     expect(config.env?.HAS_RAILWAY_TOKEN).toContain("secrets.RAILWAY_TOKEN");
@@ -56,6 +54,25 @@ describe("production Railway database authority audit workflow", () => {
     expect(config.run).not.toContain(
       "RAILWAY_ENVIRONMENT_ID \\\n            RAILWAY_POSTGRES_SERVICE_ID; do",
     );
+  });
+
+  test.each([
+    ["refs/heads/main", 0],
+    ["refs/heads/develop", 1],
+    ["refs/heads/fix/deployment", 1],
+    ["refs/tags/main", 1],
+    ["", 1],
+  ])("admits production audit source %s with exit %i", (sourceRef, status) => {
+    const guard = step("Require canonical main source").run;
+    if (!guard) throw new Error("Missing production source guard");
+    const result = spawnSync("bash", ["-c", guard], {
+      env: { PATH: process.env.PATH, SOURCE_REF: sourceRef },
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(status);
+    if (status !== 0) {
+      expect(result.stdout).toContain("must run from refs/heads/main");
+    }
   });
 
   test("discovers one private Postgres target and never publishes its identity", () => {
@@ -92,7 +109,7 @@ describe("production Railway database authority audit workflow", () => {
     expect(audit.run).toContain(
       ["GITHUB_TOKEN='$", "{{ github.token }}'"].join(""),
     );
-    expect(audit.run).toContain("--canonical-ref refs/heads/develop");
+    expect(audit.run).toContain("--canonical-ref refs/heads/main");
     expect(audit.run).toContain("env -u GITHUB_STEP_SUMMARY");
     expect(audit.run?.indexOf("audit-production-railway")).toBeLessThan(
       audit.run?.indexOf("canonical-deploy-source-guard.mjs") ?? -1,

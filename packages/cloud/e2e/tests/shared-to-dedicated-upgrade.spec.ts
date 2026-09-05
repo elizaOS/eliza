@@ -49,12 +49,21 @@ import type {} from "@playwright/test";
 import { runSharedToDedicatedUpgradeHandoff } from "../../../ui/src/cloud/handoff/start-tier-upgrade";
 import { authedClient } from "../src/helpers/monetization";
 import { pollSandboxStatus } from "../src/helpers/provisioning";
+import { seedModelPricing } from "../src/helpers/seed-pricing";
 import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
 import { expect, test } from "../src/helpers/test-fixtures";
 
-// API-only (no browser). The transcript uses deterministic capability-wall
-// turns so this integration proof never needs a provider or a paid action.
-test.use({ stackOptions: { frontend: false } });
+// API-only (no browser). Route the configurable Shared default through the
+// context-echo mock so both successful turns create a real durable transcript
+// without relying on a paid provider.
+test.use({
+  stackOptions: {
+    frontend: false,
+    mockLlmEchoContext: true,
+    env: { ELIZAOS_CLOUD_SMALL_MODEL: "openai/gpt-4o-mini" },
+    mockLlmOpenRouter: true,
+  },
+});
 
 interface DedicatedQuote {
   action: "activate_dedicated";
@@ -85,6 +94,12 @@ test.describe("shared→dedicated tier upgrade", () => {
     await writeStoredStewardToken(authToken);
 
     try {
+      await seedModelPricing({
+        model: "openai/gpt-4o-mini",
+        billingSource: "bitrouter",
+        provider: "openai",
+      });
+
       // ── 1. The account-native Shared identity has no sandbox row. ──────
       const sharedAgentId = personalSharedAgentId({
         userId: seededUser.userId,
@@ -113,18 +128,29 @@ test.describe("shared→dedicated tier upgrade", () => {
       const SECOND = "set a reminder for Friday";
       const sendTurn = (text: string, clientMessageId: string) =>
         retrySharedRuntimeWarming(() =>
-          c("POST", convoUrl, { text, clientMessageId }),
+          c<{ text?: string; degraded?: boolean }>("POST", convoUrl, {
+            text,
+            clientMessageId,
+          }),
         );
       const firstTurn = await sendTurn(FIRST, "personal-upgrade-1");
       expect(
         firstTurn.status,
         `first shared turn: ${JSON.stringify(firstTurn.json)}`,
       ).toBe(200);
+      expect(
+        firstTurn.json.degraded,
+        `first shared turn must use the configured mock model: ${JSON.stringify(firstTurn.json)}`,
+      ).not.toBe(true);
       const secondTurn = await sendTurn(SECOND, "personal-upgrade-2");
       expect(
         secondTurn.status,
         `second shared turn: ${JSON.stringify(secondTurn.json)}`,
       ).toBe(200);
+      expect(
+        secondTurn.json.degraded,
+        `second shared turn must use the configured mock model: ${JSON.stringify(secondTurn.json)}`,
+      ).not.toBe(true);
       const sharedHistory = await retrySharedRuntimeWarming(() =>
         c<{ messages?: Array<{ role: string; text: string }> }>(
           "GET",

@@ -1539,6 +1539,8 @@ describe("FileMessageInteractionSessionStore", () => {
     });
     const reopenedCompleted = new FileMessageInteractionSessionStore({
       stateDirectory,
+      retentionMs: 0,
+      clock: () => now - 1,
     });
     expect(
       await reopenedCompleted.get(created.session.reference),

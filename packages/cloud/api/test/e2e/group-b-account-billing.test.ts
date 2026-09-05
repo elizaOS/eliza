@@ -498,7 +498,7 @@ describeE2E("POST /api/v1/user/wallets/rpc", () => {
     expect(body.success).toBe(false);
   });
 
-  test("happy path: signed wallet auth reaches ownership or RPC checks", async () => {
+  test("signed wallet auth rejects a mismatched clientAddress as forbidden", async () => {
     const rpcBody = {
       clientAddress: "0x0000000000000000000000000000000000000000",
       payload: { method: "personal_sign", params: ["hello"] },
@@ -510,9 +510,19 @@ describeE2E("POST /api/v1/user/wallets/rpc", () => {
       // The signed payload hash must commit to the exact bytes sent.
       headers: await signedWalletHeaders("/api/v1/user/wallets/rpc", rpcBody),
     });
-    // The signature verifies, but TEST_WALLET is not a provisioned wallet for
-    // any org → ownership check rejects with 401.
-    expect(res.status).toBe(401);
+    // The signature verifies, then the route rejects the body address because
+    // it does not match the authenticated signing wallet. This is an
+    // authenticated authorization failure, not a missing-authentication 401.
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as {
+      success?: boolean;
+      error?: string;
+    };
+    expect(body).toEqual({
+      success: false,
+      error:
+        "Unauthorized: clientAddress does not belong to the authenticated wallet",
+    });
   });
 });
 

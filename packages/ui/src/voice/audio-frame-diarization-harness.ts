@@ -33,7 +33,12 @@ const STATUS_PATH = "/api/voice/audio-frames/status";
 
 /** Diarization status GET is a short local-agent diagnostic hop. */
 const DIARIZATION_STATUS_TIMEOUT_MS = 15_000;
-const localAgentClient = new ElizaClient(MOBILE_LOCAL_AGENT_API_BASE);
+let localAgentClient: ElizaClient | null = null;
+
+function getLocalAgentClient(): ElizaClient {
+  localAgentClient ??= new ElizaClient(MOBILE_LOCAL_AGENT_API_BASE);
+  return localAgentClient;
+}
 
 export interface DiarizationPumpControl {
   start(): Promise<{
@@ -55,7 +60,7 @@ function getPump(): AudioFramePump {
 }
 
 async function fetchStatus(): Promise<unknown> {
-  return localAgentClient.fetch(
+  return getLocalAgentClient().fetch(
     STATUS_PATH,
     { method: "GET", headers: { accept: "application/json" } },
     { timeoutMs: DIARIZATION_STATUS_TIMEOUT_MS },

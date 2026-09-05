@@ -13,10 +13,18 @@
  * tab/view app directly.
  */
 
+import {
+  formatHourlyRate,
+  formatUSD,
+} from "@elizaos/cloud-sdk/browser-contracts";
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { client } from "../../api";
+import type {
+  DedicatedAdoptionConfirmationQuote,
+  DedicatedAdoptionConfirmationRequester,
+} from "../../api/client-cloud";
 import { Button } from "../../components/ui/button";
 import {
   savePersistedActiveServer,
@@ -39,9 +47,36 @@ import { useJoinSessionAuth } from "./lib/use-join-session";
 
 type JoinPhase = "connecting" | "ready" | "error" | "sign-out-error";
 
+interface DedicatedAdoptionReview {
+  quote: DedicatedAdoptionConfirmationQuote;
+  reason: "initial" | "quote_changed";
+}
+
+interface PendingDedicatedAdoptionDecision {
+  quoteId: string;
+  resolve: (
+    decision: {
+      action: "adopt_existing_dedicated";
+      quoteId: string;
+    } | null,
+  ) => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+}
+
 function describeJoinError(err: unknown): string {
+  if (
+    err instanceof Error &&
+    err.message === "Dedicated adoption was not confirmed."
+  ) {
+    return "Dedicated setup was not started. Your Shared Eliza is unchanged.";
+  }
   if (err instanceof Error && err.message.trim()) return err.message;
   return "Could not connect to your agent. Try again.";
+}
+
+function readableDedicatedStatus(status: string): string {
+  return status.replaceAll(/[_-]+/g, " ");
 }
 
 export default function JoinPage(): React.JSX.Element {
@@ -51,6 +86,10 @@ export default function JoinPage(): React.JSX.Element {
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [adoptionReview, setAdoptionReview] =
+    useState<DedicatedAdoptionReview | null>(null);
+  const pendingAdoptionDecisionRef =
+    useRef<PendingDedicatedAdoptionDecision | null>(null);
   const appHandoff =
     typeof window === "undefined"
       ? null
@@ -64,6 +103,53 @@ export default function JoinPage(): React.JSX.Element {
     promise: Promise<void>;
   } | null>(null);
 
+  const settleDedicatedAdoption = useCallback(
+    (
+      decision: {
+        action: "adopt_existing_dedicated";
+        quoteId: string;
+      } | null,
+    ) => {
+      const pending = pendingAdoptionDecisionRef.current;
+      if (!pending) return;
+      pendingAdoptionDecisionRef.current = null;
+      if (pending.signal && pending.onAbort) {
+        pending.signal.removeEventListener("abort", pending.onAbort);
+      }
+      setAdoptionReview(null);
+      pending.resolve(decision?.quoteId === pending.quoteId ? decision : null);
+    },
+    [],
+  );
+
+  const requestDedicatedAdoptionConfirmation =
+    useCallback<DedicatedAdoptionConfirmationRequester>(
+      (quote, context) => {
+        if (context.signal?.aborted) return Promise.resolve(null);
+        // A replacement request can only follow a settled quote, but fail
+        // closed if a future caller violates that ordering.
+        settleDedicatedAdoption(null);
+        return new Promise((resolve) => {
+          const pending: PendingDedicatedAdoptionDecision = {
+            quoteId: quote.quoteId,
+            resolve,
+            ...(context.signal ? { signal: context.signal } : {}),
+          };
+          const onAbort = () => {
+            if (pendingAdoptionDecisionRef.current !== pending) return;
+            settleDedicatedAdoption(null);
+          };
+          if (context.signal) {
+            pending.onAbort = onAbort;
+            context.signal.addEventListener("abort", onAbort, { once: true });
+          }
+          pendingAdoptionDecisionRef.current = pending;
+          setAdoptionReview({ quote, reason: context.reason });
+        });
+      },
+      [settleDedicatedAdoption],
+    );
+
   const start = useCallback(async () => {
     const authToken = resolveJoinAuthToken();
     if (!authToken) {
@@ -72,6 +158,7 @@ export default function JoinPage(): React.JSX.Element {
     }
     setPhase("connecting");
     setError(null);
+    settleDedicatedAdoption(null);
     activeAttemptRef.current?.controller.abort(
       new DOMException("Join attempt superseded", "AbortError"),
     );
@@ -87,6 +174,7 @@ export default function JoinPage(): React.JSX.Element {
           cloudApiBase: resolveJoinCloudApiBase(),
           authToken,
           signal: controller.signal,
+          requestDedicatedAdoptionConfirmation,
           onProgress: (_status, progressDetail) => {
             if (progressDetail) setDetail(progressDetail);
           },
@@ -108,7 +196,7 @@ export default function JoinPage(): React.JSX.Element {
     if (activeAttemptRef.current?.controller === controller) {
       activeAttemptRef.current = null;
     }
-  }, []);
+  }, [requestDedicatedAdoptionConfirmation, settleDedicatedAdoption]);
 
   useEffect(
     () => () => {
@@ -228,6 +316,135 @@ export default function JoinPage(): React.JSX.Element {
             <p className="text-sm text-white/70" role="alert">
               {error}
             </p>
+            {signOutButton}
+          </div>
+        ) : adoptionReview ? (
+          <div
+            className="flex w-full flex-col items-center gap-4"
+            data-testid="dedicated-adoption-review"
+          >
+            <h1 className="font-poppins text-lg font-semibold text-white">
+              {t("cloud.join.dedicatedAdoptionTitle", {
+                defaultValue: "Bring this Dedicated Eliza online?",
+              })}
+            </h1>
+            {adoptionReview.reason === "quote_changed" ? (
+              <p className="text-sm font-medium text-white" role="alert">
+                {t("cloud.join.dedicatedAdoptionQuoteChanged", {
+                  defaultValue:
+                    "The Dedicated terms changed. Review the current quote before continuing.",
+                })}
+              </p>
+            ) : null}
+            <div className="space-y-3 text-sm leading-relaxed text-white/72">
+              <p>
+                {t("cloud.join.dedicatedAdoptionExisting", {
+                  defaultValue:
+                    "We found an existing Dedicated Eliza for this account. Confirming reuses it — it does not create another one.",
+                })}
+              </p>
+              <p className="text-white">
+                {adoptionReview.quote.startsCompute
+                  ? t("cloud.join.dedicatedAdoptionStartsCompute", {
+                      defaultValue:
+                        "This starts Dedicated hosting at {{daily}}/day ({{hourly}}).",
+                      daily: formatUSD(adoptionReview.quote.dailyRateUsd),
+                      hourly: formatHourlyRate(
+                        adoptionReview.quote.hourlyRateUsd,
+                      ),
+                    })
+                  : t("cloud.join.dedicatedAdoptionKeepsCompute", {
+                      defaultValue:
+                        "Dedicated hosting is already active; confirming does not start another server.",
+                    })}
+              </p>
+              <p>
+                {t("cloud.join.dedicatedAdoptionBalance", {
+                  defaultValue:
+                    "Balance: {{balance}} · Required: {{minimum}} ({{days}} days of runway)",
+                  balance: formatUSD(adoptionReview.quote.balanceUsd),
+                  minimum: formatUSD(adoptionReview.quote.minimumBalanceUsd),
+                  days: String(adoptionReview.quote.minimumRunwayDays),
+                })}
+              </p>
+              <p>
+                {t("cloud.join.dedicatedAdoptionStatus", {
+                  defaultValue: "Current Dedicated status: {{status}}.",
+                  status: readableDedicatedStatus(adoptionReview.quote.status),
+                })}
+              </p>
+              {adoptionReview.quote.stateDisposition ===
+              "verified_backup_present" ? (
+                <p>
+                  {t("cloud.join.dedicatedAdoptionVerifiedBackup", {
+                    defaultValue:
+                      "Cloud will restore its reviewed backup before switching.",
+                  })}
+                </p>
+              ) : adoptionReview.quote.stateDisposition ===
+                "fresh_boot_no_verified_backup" ? (
+                <p>
+                  {t("cloud.join.dedicatedAdoptionFreshStart", {
+                    defaultValue:
+                      "No verified backup will be restored. This Dedicated Eliza starts fresh.",
+                  })}
+                </p>
+              ) : (
+                <p>
+                  {t("cloud.join.dedicatedAdoptionUnreviewedState", {
+                    defaultValue:
+                      "Cloud has not verified a restorable backup for this existing Dedicated Eliza.",
+                  })}
+                </p>
+              )}
+              {adoptionReview.quote.requiresCatalogRestore ? (
+                <p>
+                  {t("cloud.join.dedicatedAdoptionRestoreSetup", {
+                    defaultValue:
+                      "Cloud must repair its saved setup before it can start.",
+                  })}
+                </p>
+              ) : null}
+              <p>
+                {t("cloud.join.dedicatedAdoptionSafety", {
+                  defaultValue:
+                    "Your Shared Eliza keeps working until Dedicated is healthy. If setup fails or you cancel, nothing switches.",
+                })}
+              </p>
+            </div>
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:justify-center">
+              <Button
+                variant="ghostMuted"
+                size="wide"
+                type="button"
+                data-testid="dedicated-adoption-cancel"
+                onClick={() => settleDedicatedAdoption(null)}
+              >
+                {t("cloud.join.dedicatedAdoptionCancel", {
+                  defaultValue: "Cancel setup",
+                })}
+              </Button>
+              <Button
+                variant="surface"
+                size="wide"
+                type="button"
+                data-testid="dedicated-adoption-confirm"
+                onClick={() =>
+                  settleDedicatedAdoption({
+                    action: "adopt_existing_dedicated",
+                    quoteId: adoptionReview.quote.quoteId,
+                  })
+                }
+              >
+                {adoptionReview.quote.startsCompute
+                  ? t("cloud.join.dedicatedAdoptionConfirmStart", {
+                      defaultValue: "Start Dedicated",
+                    })
+                  : t("cloud.join.dedicatedAdoptionConfirmContinue", {
+                      defaultValue: "Continue Dedicated setup",
+                    })}
+              </Button>
+            </div>
             {signOutButton}
           </div>
         ) : phase === "error" ? (

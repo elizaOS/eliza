@@ -5,10 +5,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";
-import {
-  installDefaultAppRoutes,
-  UI_SMOKE_CPU_ONLY_HARDWARE,
-} from "./helpers";
+import { installDefaultAppRoutes, UI_SMOKE_CPU_ONLY_HARDWARE } from "./helpers";
 import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 import {
@@ -1146,11 +1143,11 @@ export async function expectCloudOnlySignInOnboarding(
 
 /** Post-completion contract shared by every cloud-only path: the real gate
  *  flipped at provisioning success (no tutorial/accent gate), the wrap-up turn
- *  is informational, the sheet settles to the half detent, and first-run
- *  persisted once. */
+ *  is informational, and first-run persisted once. */
 async function expectCloudOnlyCompletion(
   page: Page,
   state: OnboardingRouteState,
+  expectedDetent: "full" | "collapsed" = "full",
 ): Promise<{ surface: Locator }> {
   // Completion fires at provisioning success and returns the user to the home
   // surface. Cloud-only completion rides the SAME full→half falling-edge settle
@@ -1160,7 +1157,14 @@ async function expectCloudOnlyCompletion(
   // unlocked. The durable contract is asserted on that settle, the onboarded
   // home, the absent tutorial gate, and the exactly-once POST. The wrap-up copy
   // is covered by the conductor unit suite.
-  await expectOnboardingSettleToFull(page);
+  await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
+    "data-detent",
+    expectedDetent,
+    { timeout: 30_000 },
+  );
+  await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled({
+    timeout: 15_000,
+  });
   await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId(TUTORIAL_CHOICE("start"))).toHaveCount(0);
   await expect(page.getByTestId(TUTORIAL_CHOICE("skip"))).toHaveCount(0);
@@ -1223,7 +1227,7 @@ export async function completeCloudOnlySessionInjectionToHome(
   // The sign-in ask never rendered — silent entry seeds no runtime CTA.
   await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toHaveCount(0);
 
-  const result = await expectCloudOnlyCompletion(page, opts.state);
+  const result = await expectCloudOnlyCompletion(page, opts.state, "collapsed");
   // The picker never appeared at any point in the flow.
   await expect(
     page.getByTestId(CLOUD_AGENT_CHOICE(CLOUD_AGENT_ID)),

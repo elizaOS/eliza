@@ -378,6 +378,9 @@ export class HeadscaleClient {
    * @param opts.ephemeral  Node will be removed once it goes offline (default false)
    * @param opts.expiration ISO-8601 expiration timestamp (default: now + HEADSCALE_PREAUTH_TTL_MIN, 24h)
    * @param opts.aclTags    ACL tags to attach to the key (default: ["tag:agent"])
+   * @param opts.user       Personal-node owner. Headscale v0.28 tagged keys
+   *                        deliberately omit this field because tags and user
+   *                        ownership are mutually exclusive identities.
    */
   async createPreAuthKey(opts?: {
     reusable?: boolean;
@@ -396,18 +399,27 @@ export class HeadscaleClient {
       ensureUser = false,
     } = opts ?? {};
 
+    if (aclTags.length > 0 && (user !== undefined || ensureUser)) {
+      throw new Error("[headscale] tagged pre-auth keys cannot also carry user ownership on v0.28");
+    }
+
     // The key must stay valid long enough for the container to boot AND finish
     // VPN enrollment; 10 min was too tight on slow boots (key expired mid-
     // registration -> container re-auth loop). Default 24h, env-overridable
     // via HEADSCALE_PREAUTH_TTL_MIN (see resolvePreAuthTtlMs).
     const expirationTime = expiration ?? resolvePreAuthExpirationIso();
 
-    const userId = ensureUser ? await this.ensureUser(user) : await this.resolveUserId(user);
+    const userId =
+      aclTags.length === 0
+        ? ensureUser
+          ? await this.ensureUser(user)
+          : await this.resolveUserId(user)
+        : undefined;
 
     const data = await this.request<{
       preAuthKey?: HeadscalePreAuthKey;
     }>("POST", "/api/v1/preauthkey", {
-      user: userId,
+      ...(userId === undefined ? {} : { user: userId }),
       reusable,
       ephemeral,
       expiration: expirationTime,

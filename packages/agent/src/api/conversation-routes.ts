@@ -142,6 +142,10 @@ import {
   compareConversationsByRecency,
   compareMemoriesByCreatedAt,
 } from "./conversation-sort.ts";
+import {
+  ELIZA_TRACE_ID_HEADER,
+  resolveConversationTraceContext,
+} from "./conversation-trace.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
 import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
@@ -4060,6 +4064,9 @@ export async function handleConversationRoutes(
     method === "POST" &&
     /^\/api\/conversations\/[^/]+\/messages\/stream$/.test(pathname)
   ) {
+    const trace = resolveConversationTraceContext(req.headers);
+    res.setHeader(ELIZA_TRACE_ID_HEADER, trace.traceId);
+    res.setHeader("Access-Control-Expose-Headers", ELIZA_TRACE_ID_HEADER);
     const convId = decodePathComponent(
       pathname.split("/")[3],
       res,
@@ -4128,6 +4135,10 @@ export async function handleConversationRoutes(
       streamProtocol,
       clientMessageId,
     } = chatPayload;
+    logger.info(
+      { traceId: trace.traceId, traceSource: trace.source },
+      "[ConversationStream] accepted validated trace context",
+    );
     // Deps are the module-imported write fns so route tests that vi.mock
     // `writeChatTokenSse`/`writeSse` keep capturing frames on the legacy path.
     const tokenWriter = createChatTokenStreamWriter(
@@ -4609,6 +4620,7 @@ export async function handleConversationRoutes(
             routedUserMessage,
             state.agentName,
             {
+              traceId: trace.traceId,
               abortSignal: disconnectTracker.signal,
               roomHandlerLease: runtimeTurnLease,
               onStatus: (status) => {

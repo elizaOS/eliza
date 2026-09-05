@@ -140,7 +140,15 @@ export function shellQuote(value: string): string {
  */
 export function buildEnsureNetworkCmd(network: string): string {
   const net = shellQuote(network);
-  return `docker network inspect ${net} >/dev/null 2>&1 || docker network create --driver bridge ${net} >/dev/null 2>&1 || docker network inspect ${net} >/dev/null`;
+  return [
+    "set -eu",
+    `if docker network inspect ${net} >/dev/null 2>&1; then exit 0; fi`,
+    `if docker network create --driver bridge ${net} >/dev/null 2>&1; then exit 0; fi`,
+    `if docker network inspect ${net} >/dev/null 2>&1; then exit 0; fi`,
+    'if ! docker info >/dev/null 2>&1; then echo "[docker-network] daemon-unavailable" >&2; exit 70; fi',
+    'echo "[docker-network] ensure-failed" >&2',
+    "exit 71",
+  ].join("; ");
 }
 
 // ---------------------------------------------------------------------------

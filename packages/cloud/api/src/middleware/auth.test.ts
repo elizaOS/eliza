@@ -52,6 +52,7 @@ const {
   authMiddleware,
   isPublicPath,
   isRouteAuthenticatedInferencePath,
+  isRouteAuthenticatedPaidProxyPath,
   isRouteAuthenticatedRemoteHostRequest,
 } = await import("./auth");
 
@@ -386,6 +387,53 @@ describe("isRouteAuthenticatedInferencePath", () => {
     expect(
       isRouteAuthenticatedInferencePath("POST", "/api/v1/eliza/agents//stream"),
     ).toBe(false);
+  });
+});
+
+describe("isRouteAuthenticatedPaidProxyPath", () => {
+  test("delegates only the paid proxy method and path inventory", () => {
+    const routes = [
+      ["GET", "/api/v1/chain/nfts/ethereum/address"],
+      ["GET", "/api/v1/chain/tokens/ethereum/address"],
+      ["GET", "/api/v1/chain/transfers/ethereum/address"],
+      ["GET", "/api/v1/market/candles/ethereum/address"],
+      ["GET", "/api/v1/market/portfolio/ethereum/address"],
+      ["GET", "/api/v1/market/price/ethereum/address"],
+      ["GET", "/api/v1/market/token/ethereum/address"],
+      ["GET", "/api/v1/market/trades/ethereum/address"],
+      ["POST", "/api/v1/proxy/evm-rpc/ethereum"],
+      ["POST", "/api/v1/proxy/solana-rpc"],
+      ["POST", "/api/v1/rpc/ethereum"],
+      ["GET", "/api/v1/solana/assets/address"],
+      ["POST", "/api/v1/solana/rpc"],
+      ["GET", "/api/v1/solana/token-accounts/address"],
+      ["GET", "/api/v1/solana/transactions/address"],
+      ["GET", "/api/v1/apis/birdeye/defi/price"],
+    ] as const;
+
+    for (const [method, path] of routes) {
+      expect(isRouteAuthenticatedPaidProxyPath(method, path)).toBe(true);
+      expect(isRouteAuthenticatedPaidProxyPath("HEAD", path)).toBe(
+        method === "GET",
+      );
+      expect(isRouteAuthenticatedPaidProxyPath("OPTIONS", path)).toBe(true);
+    }
+  });
+
+  test("does not delegate public previews, reads, internal routes, or neighboring mutations", () => {
+    for (const [method, path] of [
+      ["GET", "/api/v1/market/preview"],
+      ["GET", "/api/v1/models"],
+      ["POST", "/api/internal/worker"],
+      ["POST", "/api/v1/market/price/ethereum/address"],
+      ["GET", "/api/v1/rpc/ethereum"],
+      ["HEAD", "/api/v1/rpc/ethereum"],
+      ["HEAD", "/api/v1/proxy/evm-rpc/ethereum"],
+      ["POST", "/api/v1/rpc/ethereum/extra"],
+      ["DELETE", "/api/v1/solana/assets/address"],
+    ] as const) {
+      expect(isRouteAuthenticatedPaidProxyPath(method, path)).toBe(false);
+    }
   });
 });
 

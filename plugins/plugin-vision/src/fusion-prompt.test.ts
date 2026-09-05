@@ -1,8 +1,8 @@
 /**
  * Prompt-fusion coverage for injecting detector output into VLM scene descriptions.
  *
- * OCR text, YOLO objects, and recognized faces are added as bounded context while
- * the detection-off path remains byte-for-byte unchanged.
+ * OCR text, YOLO objects, and recognized faces are added as complete context
+ * while the detection-off path remains byte-for-byte unchanged.
  */
 
 import { describe, expect, it } from "vitest";
@@ -86,7 +86,7 @@ describe("buildSceneDescriptionPrompt — detector fusion", () => {
     expect(JSON.parse(withoutDetectors).detectedText).toBe("ocr only");
   });
 
-  it("caps objects at top-20 by confidence (descending)", () => {
+  it("preserves every object ordered by confidence descending", () => {
     const objects: DetectedObject[] = Array.from({ length: 25 }, (_, i) =>
       makeObject(`o${i}`, `type-${i}`, i / 100),
     );
@@ -95,13 +95,12 @@ describe("buildSceneDescriptionPrompt — detector fusion", () => {
       buildSceneDescriptionPrompt(null, null, objects, []),
     ) as { detectedObjects: Array<{ type: string; confidence: number }> };
 
-    expect(payload.detectedObjects).toHaveLength(20);
-    // Highest confidence first; the 5 lowest are dropped.
+    expect(payload.detectedObjects).toHaveLength(25);
     expect(payload.detectedObjects[0].type).toBe("type-24");
-    expect(payload.detectedObjects.at(-1)?.type).toBe("type-5");
+    expect(payload.detectedObjects.at(-1)?.type).toBe("type-0");
   });
 
-  it("dedupes faces by label and caps at top-10", () => {
+  it("dedupes faces by label without dropping unique faces", () => {
     const faces: RecognizedFace[] = [
       { label: "Alice", bbox: bbox(0, 0) },
       { label: "Alice", bbox: bbox(1, 1) },
@@ -115,11 +114,12 @@ describe("buildSceneDescriptionPrompt — detector fusion", () => {
       buildSceneDescriptionPrompt(null, null, [], faces),
     ) as { recognizedFaces: Array<{ label: string }> };
 
-    expect(payload.recognizedFaces).toHaveLength(10);
+    expect(payload.recognizedFaces).toHaveLength(16);
     const labels = payload.recognizedFaces.map((f) => f.label);
     // First Alice kept, duplicate dropped.
     expect(labels.filter((l) => l === "Alice")).toHaveLength(1);
     expect(labels[0]).toBe("Alice");
+    expect(labels.at(-1)).toBe("Person-14");
   });
 
   it("skips blank face labels", () => {

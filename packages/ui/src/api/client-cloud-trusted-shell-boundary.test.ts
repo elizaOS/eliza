@@ -16,6 +16,19 @@ const platform = vi.hoisted(() => ({
   request: vi.fn(),
 }));
 
+vi.mock("../bridge/electrobun-rpc", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../bridge/electrobun-rpc")>()),
+  desktopSecureStoreGet: vi.fn(async () => ({
+    ok: false,
+    reason: "not_found",
+  })),
+  desktopSecureStoreSet: vi.fn(async () => ({ ok: true })),
+  desktopSecureStoreDelete: vi.fn(async () => {
+    localStorage.removeItem(STEWARD_TOKEN_KEY);
+    return { ok: true, deleted: true };
+  }),
+}));
+
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => platform.native },
   CapacitorHttp: {

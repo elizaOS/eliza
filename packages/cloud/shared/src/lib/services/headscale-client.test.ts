@@ -194,6 +194,83 @@ describe("HeadscaleClient upstream errors", () => {
   });
 });
 
+describe("HeadscaleClient v0.28 pre-auth identity", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("omits user ownership for a tagged key", async () => {
+    const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    globalThis.fetch = vi.fn(async (input, init) => {
+      requests.push({
+        url: String(input),
+        ...(typeof init?.body === "string"
+          ? { body: JSON.parse(init.body) as Record<string, unknown> }
+          : {}),
+      });
+      return Response.json({ preAuthKey: { key: "hskey-tagged" } });
+    }) as typeof fetch;
+
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "org-must-not-own-tagged-key",
+    });
+    await client.createPreAuthKey({
+      aclTags: ["tag:agent"],
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("https://headscale.example/api/v1/preauthkey");
+    expect(requests[0]?.body).not.toHaveProperty("user");
+    expect(requests[0]?.body?.aclTags).toEqual(["tag:agent"]);
+  });
+
+  it("rejects mixed tag and user ownership before network access", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "17",
+    });
+
+    await expect(
+      client.createPreAuthKey({
+        aclTags: ["tag:agent"],
+        user: "org-invalid-owner",
+        ensureUser: true,
+      }),
+    ).rejects.toThrow(/cannot also carry user ownership/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("retains a numeric user for an untagged personal key", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    globalThis.fetch = vi.fn(async (_input, init) => {
+      if (typeof init?.body === "string") {
+        bodies.push(JSON.parse(init.body) as Record<string, unknown>);
+      }
+      return Response.json({ preAuthKey: { key: "hskey-personal" } });
+    }) as typeof fetch;
+
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "17",
+    });
+    await client.createPreAuthKey({ aclTags: [] });
+
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]?.user).toBe(17);
+    expect(bodies[0]?.aclTags).toEqual([]);
+  });
+});
+
 describe("HeadscaleClient v0.28 pre-auth cleanup contract", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;

@@ -115,6 +115,10 @@ const providerOverrideKeys = new Set([
   "OPENROUTER_BASE_URL",
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
+  // Shared-runtime E2E can select the loopback provider explicitly. The
+  // launcher environment is not visible inside workerd unless this selector
+  // is written alongside the provider credentials.
+  "ELIZAOS_CLOUD_SMALL_MODEL",
   "ANTHROPIC_API_KEY",
   // Cerebras is the cloud's DEFAULT text provider — a shell-exported key must
   // reach the booted worker (e.g. the creator-monetization e2e real-LLM lane),
@@ -258,7 +262,12 @@ if (process.env.PLAYWRIGHT_TEST_AUTH === "true") {
 
   env.TEST_DATABASE_URL = testDatabaseUrl;
   env.DATABASE_URL = testDatabaseUrl;
-  env.CACHE_ENABLED = "false";
+  // Wallet-header authentication consumes an atomic replay nonce before it
+  // can reach route authorization. The local Worker therefore needs the
+  // explicit test-only memory backend; disabling cache makes every valid
+  // signed request fail closed as a misleading 401.
+  env.CACHE_ENABLED = "true";
+  env.CACHE_BACKEND = "memory";
   env.RATE_LIMIT_DISABLED = "true";
 }
 
