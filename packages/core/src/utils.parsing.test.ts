@@ -78,6 +78,42 @@ describe("parseToonKeyValue", () => {
 			parseToonKeyValue(`name${spacing}:${spacing}eliza\nitems[2]: ready`),
 		).toEqual({ name: "eliza", items: [undefined, undefined, "ready"] });
 	});
+
+	it("rejects prototype-pollution keys and does not mutate the result prototype", () => {
+		const proto = parseToonKeyValue("```__proto__: polluted```") as Record<
+			string,
+			unknown
+		> | null;
+		expect(proto).toBeNull();
+		const ctor = parseToonKeyValue("```constructor: evil```");
+		expect(ctor).toBeNull();
+		const protoPolluted = parseToonKeyValue(
+			'```__proto__: {"polluted": true}```',
+		) as Record<string, unknown> | null;
+		expect(protoPolluted).toBeNull();
+		expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+		expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+
+		const mixed = parseToonKeyValue(
+			"```name: ok\n__proto__: bad\nconstructor: bad2\nvalid: yes```",
+		) as Record<string, unknown> | null;
+		expect(mixed).toEqual({ name: "ok", valid: "yes" });
+	});
+
+	it("rejects out-of-range array indices to prevent sparse-array abuse", () => {
+		const huge = parseToonKeyValue("```items[99999]: boom```") as Record<
+			string,
+			unknown
+		> | null;
+		expect(huge).toBeNull();
+		const negative = parseToonKeyValue("```items[-1]: bad```");
+		expect(negative).toBeNull();
+		const valid = parseToonKeyValue("```items[2]: ok```") as Record<
+			string,
+			unknown
+		> | null;
+		expect(valid).toEqual({ items: [undefined, undefined, "ok"] });
+	});
 });
 
 describe("parseBooleanFromText", () => {
