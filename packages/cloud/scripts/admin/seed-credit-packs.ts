@@ -37,6 +37,8 @@
  * deliberate operator decision, not a side effect of rerunning this
  * script. Use --dry-run to print the plan without writing.
  */
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { and, eq } from "drizzle-orm";
 
 import { loadEnvFiles } from "./local-dev-helpers";
@@ -328,7 +330,7 @@ async function seedCreditPacks() {
   // configured must stop being sellable. The row is preserved (historical
   // receipts and checkout orders reference it by id) but deactivated and
   // stamped exactly once; reruns find it already stamped and change nothing.
-  for (const row of await db
+  const catalogueRows = await db
     .select({
       id: creditPacksTable.id,
       name: creditPacksTable.name,
@@ -336,7 +338,25 @@ async function seedCreditPacks() {
       is_active: creditPacksTable.is_active,
       metadata: creditPacksTable.metadata,
     })
-    .from(creditPacksTable)) {
+    .from(creditPacksTable);
+
+  // Test-only interleave hook (#26599 CAS-race proof): pause with the
+  // catalogue snapshot held, before any deactivation write, until the marker
+  // disappears. Never active unless the env var is set by the test harness.
+  if (process.env.ELIZA_TEST_CAS_PAUSE_DIR) {
+    const { writeFile: mark, unlink: unmark } = await import(
+      "node:fs/promises"
+    );
+    const marker = path.join(process.env.ELIZA_TEST_CAS_PAUSE_DIR, "paused");
+    await mark(marker, String(Date.now()));
+    for (let i = 0; i < 240; i++) {
+      if (!existsSync(marker)) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    await unmark(marker).catch(() => {});
+  }
+
+  for (const row of catalogueRows) {
     if (configuredPriceIds.has(row.stripe_price_id)) continue;
     const metadata = (row.metadata as Record<string, unknown> | null) ?? {};
     const stamps = Array.isArray(metadata.deprecation_stamps)
@@ -356,7 +376,9 @@ async function seedCreditPacks() {
     if (row.is_active && hasRepairStamp) {
       // Rare drift shape: the repair stamp exists but the row was reactivated
       // out-of-band. Repair only the activation — never append a second
-      // matching stamp (#22963).
+      // matching stamp (#22963). Compare-and-set on the observed state so a
+      // concurrent operator/reconciler change between read and write is never
+      // overwritten by this stale-snapshot metadata (#26599 review).
       if (dryRun) {
         deprecated.push(row.id);
         continue;
@@ -366,7 +388,7 @@ async function seedCreditPacks() {
         reason: "stripe_price_id_no_longer_configured",
         at: new Date().toISOString(),
       };
-      await db
+      const driftRows = await db
         .update(creditPacksTable)
         .set({
           is_active: false,
@@ -376,7 +398,24 @@ async function seedCreditPacks() {
           },
           updated_at: new Date(),
         })
-        .where(eq(creditPacksTable.id, row.id));
+        .where(
+          and(
+            eq(creditPacksTable.id, row.id),
+            eq(creditPacksTable.is_active, row.is_active),
+            eq(creditPacksTable.metadata, row.metadata),
+          ),
+        )
+        .returning({ id: creditPacksTable.id });
+      if (driftRows.length === 0) {
+        // Lost the race: the row changed after our snapshot — a concurrent
+        // operator change must survive, not be reverted as "deprecated".
+        if (!asJson) {
+          console.log(
+            `• ${row.name}: row changed concurrently — deactivation skipped`,
+          );
+        }
+        continue;
+      }
       deprecated.push(row.id);
       continue;
     }
@@ -394,7 +433,11 @@ async function seedCreditPacks() {
       reason: "stripe_price_id_no_longer_configured",
       at: new Date().toISOString(),
     };
-    await db
+    // Compare-and-set on the observed snapshot (activation + metadata), same
+    // shape as the reactivation path: a concurrent operator/reconciler change
+    // between the catalogue read and this update must survive — a zero-row
+    // update is a lost race, not a successful repair (#26599 review).
+    const deprecatedRows = await db
       .update(creditPacksTable)
       .set({
         is_active: false,
@@ -411,7 +454,24 @@ async function seedCreditPacks() {
         },
         updated_at: new Date(),
       })
-      .where(eq(creditPacksTable.id, row.id));
+      .where(
+        and(
+          eq(creditPacksTable.id, row.id),
+          eq(creditPacksTable.is_active, row.is_active),
+          eq(creditPacksTable.metadata, row.metadata),
+        ),
+      )
+      .returning({ id: creditPacksTable.id });
+    if (deprecatedRows.length === 0) {
+      // Lost the race: the row changed after our snapshot. Do not report the
+      // row as deprecated — the concurrent writer owns the row now.
+      if (!asJson) {
+        console.log(
+          `• ${row.name}: row changed concurrently — deactivation skipped`,
+        );
+      }
+      continue;
+    }
     deprecated.push(row.id);
     if (!asJson) {
       console.log(
