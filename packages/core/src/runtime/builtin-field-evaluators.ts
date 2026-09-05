@@ -252,15 +252,15 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
 	{
 		name: "replyEffectStatus",
 		description:
-			'Classify the work described by replyText, regardless of wording or language. "pending" means work is promised, in progress, or not yet completed, including current-information lookup and UI navigation even beside an answered memory question. "applied" means an external change already happened (save, send, schedule, payment, booking, device action, delegated task), including indirect claims such as "on the books" or "quedó listo"; this is not execution proof. "non_applied" means a terminal failed, unavailable, cancelled, declined, or preview-only outcome with no promised work remaining. "none" means an answer, explanation, question, or conditional offer without a work claim. A promise to look up a price or open Home is pending, not non_applied.',
+			'Classify new work claimed or promised by replyText for the current request, regardless of wording or language. Merely recalling earlier advice, quoting a past action, or reporting an existing fact is not a new effect. "pending" means current-request work is promised, in progress, or not yet completed, including current-information lookup and UI navigation even beside an answered memory question. "applied" means the reply claims a new external change has completed for this request (save, send, schedule, payment, booking, device action, delegated task), including indirect claims such as "on the books" or "quedó listo"; this is not execution proof. "non_applied" means current-request work has a terminal failed, unavailable, cancelled, declined, or preview-only outcome with no promised work remaining. "none" means an answer, explanation, question, or conditional offer without a new work claim, including repeating earlier advice or recalling a previously completed action. Recalling what to bring is none; claiming a newly saved reminder is applied; recalling what to bring while promising to open Home is pending, not none or non_applied.',
 		descriptionCompressed:
-			"Semantic work status in replyText: pending work (including lookup/navigation), applied change, terminal non_applied outcome, or none; wording and language do not determine routing.",
+			"Current-request work status in replyText: pending work (including lookup/navigation), claimed new applied change, terminal non_applied outcome, or none. Recall of earlier advice/actions alone is none; wording and language do not determine routing.",
 		priority: 25,
 		schema: {
 			type: "string",
 			enum: ["none", "applied", "non_applied", "pending"],
 			description:
-				"pending=promised unfinished work, including lookup/navigation beside an answer; applied=claimed completed change; non_applied=terminal failed/unavailable/cancelled/declined/preview outcome; none=answer, explanation, question, or conditional offer without a work claim.",
+				"Classify work for the current request: pending=promised unfinished work, including lookup/navigation beside an answer; applied=claimed newly completed external change, not execution proof; non_applied=terminal failed/unavailable/cancelled/declined/preview outcome with no work remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
 		},
 		parse: normalizeReplyEffectStatus,
 	};
