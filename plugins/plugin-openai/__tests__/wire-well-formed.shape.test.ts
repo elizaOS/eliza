@@ -12,7 +12,6 @@ import { createServer, type Server } from "node:http";
 import { type ElizaError, type IAgentRuntime, logger, MAX_WELL_FORMED_VISITS } from "@elizaos/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models";
-import { __INTERNAL_resetRateLimitCooldowns as resetRateLimitCooldowns } from "../models/text";
 
 /** JSON.stringify only escapes surrogate code units when they are lone; a
  * well-formed body therefore contains no \ud800-\udfff escape at all. */
@@ -115,9 +114,9 @@ beforeEach(() => {
   captured.length = 0;
   rateLimitRequestsRemaining = 0;
   rateLimitRetryAfterHeader = "0.001";
-  // The per-model rate-limit cooldown is process-wide state; a bucket 429 in
-  // one case must not hold the model for the next.
-  resetRateLimitCooldowns();
+  // The per-model rate-limit cooldown is scoped to the runtime instance, and
+  // buildRuntime() constructs a fresh runtime per call, so a bucket 429 in one
+  // case cannot hold the model for the next.
   vi.stubEnv("OPENAI_API_KEY", "test-key");
   vi.stubEnv("OPENAI_BASE_URL", baseUrl);
   vi.stubEnv("OPENAI_SMALL_MODEL", "test-model");
