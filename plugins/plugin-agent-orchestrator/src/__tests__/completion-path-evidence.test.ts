@@ -1,6 +1,12 @@
 /** Exercises ACP write-path capture and completion rendering with real files and temporary Git repositories. */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRuntime } from "@elizaos/core";
@@ -170,5 +176,36 @@ describe("complete path evidence", () => {
         }),
       );
     }
+  });
+
+  it("rejects persisted inventories that attribute a longer Git path to its suffix", async () => {
+    mkdirSync(join(dir, "nested b"));
+    for (const path of ["nested b/bar", "bar"])
+      writeFileSync(join(dir, path), "before\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "files");
+    writeFileSync(join(dir, "nested b/bar"), "NESTED_PATH_MARKER\n");
+    writeFileSync(join(dir, "bar"), "BASELINE_PATH_MARKER\n");
+    const captured = await captureChangeSet(dir);
+    if (!captured) throw new Error("Expected captured Git evidence");
+    const legacy = {
+      ...captured,
+      fileDiffs: undefined,
+      diff: git("diff", "HEAD"),
+    };
+    const retained = subtractChangeSetBaseline(legacy, ["bar"]);
+    expect(retained.diff).toContain("NESTED_PATH_MARKER");
+    expect(retained.diff).not.toContain("BASELINE_PATH_MARKER");
+    const saved = join(dir, "incomplete-capture.json");
+    writeFileSync(
+      saved,
+      JSON.stringify({ ...legacy, changedFiles: ["unrelated", "bar"] }),
+    );
+    const incomplete = JSON.parse(readFileSync(saved, "utf8"));
+    expect(() => subtractChangeSetBaseline(incomplete, ["bar"])).toThrow(
+      expect.objectContaining({
+        code: "WORKSPACE_CHANGESET_PATCH_OWNERSHIP_INVALID",
+      }),
+    );
   });
 });

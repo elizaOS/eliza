@@ -633,6 +633,39 @@ function quotedGitPath(path: string, quoteUnicode: boolean): string {
   return `"${Buffer.from(escaped, "latin1").toString("utf8")}"`;
 }
 
+function legacyPatchPaths(
+  diff: string,
+  changedFiles: readonly string[],
+): string[] {
+  const [header, ...lines] = diff.split("\n");
+  const movedTo = lines.find(
+    (line) => line.startsWith("rename to ") || line.startsWith("copy to "),
+  );
+  const encodings = (path: string) =>
+    [path, quotedGitPath(path, true), quotedGitPath(path, false)].filter(
+      (encoded) => !encoded.includes("\n"),
+    );
+  return changedFiles.filter((path) => {
+    const destinations = encodings(`b/${path}`);
+    if (movedTo !== undefined) {
+      return (
+        encodings(path).some(
+          (encoded) =>
+            movedTo === `rename to ${encoded}` ||
+            movedTo === `copy to ${encoded}`,
+        ) && destinations.some((encoded) => header?.endsWith(` ${encoded}`))
+      );
+    }
+    // A suffix alone can attribute "nested b/bar" to "bar" when the saved
+    // inventory is incomplete. Ordinary patches must match both full paths.
+    return encodings(`a/${path}`).some((source) =>
+      destinations.some(
+        (destination) => header === `diff --git ${source} ${destination}`,
+      ),
+    );
+  });
+}
+
 function readFileDiffs(
   changeSet: WorkspaceChangeSet,
 ): Array<{ path: string; diff: string }> {
@@ -667,19 +700,7 @@ function readFileDiffs(
   for (const diff of changeSet.diff
     .split(/^(?=diff --git )/m)
     .filter(Boolean)) {
-    const header = diff.split("\n", 1)[0];
-    const paths = changeSet.changedFiles.filter(
-      (path) =>
-        header?.startsWith("diff --git ") &&
-        [
-          `b/${path}`,
-          quotedGitPath(`b/${path}`, true),
-          quotedGitPath(`b/${path}`, false),
-        ].some(
-          (encoded) =>
-            !encoded.includes("\n") && header.endsWith(` ${encoded}`),
-        ),
-    );
+    const paths = legacyPatchPaths(diff, changeSet.changedFiles);
     if (paths.length !== 1) throw invalidPatchOwnership();
     const path = paths[0];
     if (path === undefined) throw invalidPatchOwnership();
