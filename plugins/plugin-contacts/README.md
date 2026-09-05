@@ -14,7 +14,7 @@ This plugin adds two capabilities to an Eliza agent running on Android:
    - Creating new contacts (display name, phone, email)
    - Importing contacts from a `.vcf` vCard file
 
-The plugin is **Android-only**. On other platforms the overlay app is not registered and the provider returns an empty result set.
+The plugin is **Android-only**. On other platforms the overlay app is not registered and the provider reports an explicit unavailable/error result from the unsupported native bridge.
 
 ## Capabilities added to an Eliza agent
 
