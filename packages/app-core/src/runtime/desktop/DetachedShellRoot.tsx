@@ -10,6 +10,7 @@
 
 import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import type { PageScope } from "@elizaos/ui/components/pages/page-scoped-conversations";
+import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import { ActionNoticeToast } from "@elizaos/ui/components/shell/ActionNoticeToast";
 import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
@@ -286,7 +287,9 @@ export function DetachedShellRoot({
         id="detached-main"
         className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       >
-        <DetachedShellContent route={route} />
+        <ShellRoleProvider>
+          <DetachedShellContent route={route} />
+        </ShellRoleProvider>
       </main>
       <ActionNoticeToast actionNotice={actionNotice} />
     </div>
