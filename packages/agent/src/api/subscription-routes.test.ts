@@ -6,6 +6,7 @@
  * teardown.
  */
 import type http from "node:http";
+import { emptyAccountPoolBrokerSnapshot } from "@elizaos/core";
 import type { AccountCredentialRecord } from "@elizaos/auth/account-storage";
 import type { AnthropicFlow } from "@elizaos/auth/anthropic";
 import type { OAuthFlowHandle } from "@elizaos/auth/oauth-flow";
@@ -168,7 +169,7 @@ describe("GET /api/subscription/status", () => {
       getDefaultAccountPool: () => ({
         list: () => linkedPoolAccounts,
       }),
-      getAccountPoolBrokerSnapshot: () => ({ accounts: [] }),
+      getAccountPoolBrokerSnapshot: emptyAccountPoolBrokerSnapshot,
       applyAccountPoolApiCredentials: () => undefined,
       startAccountPoolKeepAlive: () => undefined,
       getBuildVariant: () => "direct",
@@ -237,7 +238,11 @@ describe("POST /api/subscription/anthropic/start", () => {
     const fakeFlow: AnthropicFlow = {
       authUrl: "https://anthropic.test/oauth",
       submitCode: vi.fn(),
-      credentials: Promise.resolve({ access: "token", expires: 100_000 }),
+      credentials: Promise.resolve({
+        access: "token",
+        refresh: "refresh-token",
+        expires: 100_000,
+      }),
     };
     const { ctx, json, error } = createContext({
       method: "POST",
