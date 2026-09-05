@@ -42,10 +42,16 @@ import {
   attestHetznerCloudNode,
   type HetznerServerAuthority,
   isTypedHetznerCloudNode,
+  requireHetznerNodeAuthority,
   requireSafeHetznerServerId,
 } from "./hetzner-node-attestation";
 import { buildContainerNodeUserData, type NodeBootstrapInput } from "./node-bootstrap";
 import { withNodeProvisionAuthority } from "./node-provision-authority";
+import {
+  findRequestedNodeRetirements,
+  requestNodeRetirement,
+  withNodeRetirementAuthority,
+} from "./node-retirement-authority";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -540,63 +546,70 @@ export class NodeAutoscaler {
    * useful message.
    */
   async drainNode(nodeId: string, options: DrainOptions = {}): Promise<void> {
-    const node = await dockerNodesRepository.findByNodeId(nodeId);
-    if (!node) {
-      throw new HetznerCloudError("not_found", `node ${nodeId} not registered`);
-    }
-
-    if (node.enabled) {
+    if (options.deprovision !== true) {
+      const node = await dockerNodesRepository.findByNodeId(nodeId);
+      if (!node) throw new HetznerCloudError("not_found", `node ${nodeId} not registered`);
       await dockerNodesRepository.update(node.id, { enabled: false });
-      logger.info("[autoscaler] Disabled node for drain", { nodeId });
-    }
-
-    const retainedWorkloads = await countRetainedWorkloadsOnNode(nodeId);
-    if (retainedWorkloads > 0) {
-      logger.info("[autoscaler] Node still has retained workloads, leaving disabled until empty", {
-        nodeId,
-        remaining: retainedWorkloads,
-      });
       return;
     }
+    await requestNodeRetirement(nodeId);
+    await this.completeRequestedRetirement(nodeId);
+  }
 
-    if (options.deprovision !== true) return;
-
-    const hcloudServerId = getHcloudServerId(node);
-    if (!hcloudServerId) {
-      logger.warn("[autoscaler] Cannot deprovision: no hcloudServerId on node metadata", {
-        nodeId,
-      });
-      return;
-    }
-
-    if (!isHetznerCloudConfigured()) {
-      throw new HetznerCloudError(
-        "missing_token",
-        `Cannot attest or delete Hetzner server ${hcloudServerId} without HCLOUD_TOKEN`,
-      );
-    }
-
-    const client = this.computeProvider();
-    try {
-      const attested = await attestHetznerCloudNode(node, client);
-      await client.deleteServer(attested.serverId);
-    } catch (err) {
-      // error-policy:J6 idempotent teardown — a not_found means the server is
-      // already deprovisioned (the desired end state), so the DB row is safe to
-      // delete below. Every other outbound-API failure (auth/rate-limit/5xx)
-      // rethrows so a live server is never orphaned by a silently-dropped delete.
-      if (err instanceof HetznerCloudError && err.code === "not_found") {
-        logger.info("[autoscaler] Hetzner server already gone", {
-          nodeId,
-          hcloudServerId,
+  /** Retry committed retirements even when the scheduling pool needs no capacity change. */
+  async reconcileRetirements(): Promise<{ completed: number; retained: number; failed: number }> {
+    const summary = { completed: 0, retained: 0, failed: 0 };
+    for (const node of await findRequestedNodeRetirements()) {
+      try {
+        if (await this.completeRequestedRetirement(node.node_id)) summary.completed += 1;
+        else summary.retained += 1;
+      } catch (error) {
+        // error-policy:J6 failed teardown retains its committed request for the next cycle.
+        summary.failed += 1;
+        logger.warn("[autoscaler] Requested node retirement remains pending", {
+          nodeId: node.node_id,
+          error,
         });
-      } else {
-        throw err;
       }
     }
+    return summary;
+  }
 
-    await dockerNodesRepository.delete(node.id);
-    logger.info("[autoscaler] Deprovisioned node", { nodeId, hcloudServerId });
+  private async completeRequestedRetirement(nodeId: string): Promise<boolean> {
+    return withNodeRetirementAuthority(nodeId, async (node) => {
+      const retainedWorkloads = await countRetainedWorkloadsOnNode(nodeId);
+      if (retainedWorkloads > 0) {
+        logger.info("[autoscaler] Retirement waits for retained workloads", {
+          nodeId,
+          remaining: retainedWorkloads,
+        });
+        return false;
+      }
+      const serverId = getHcloudServerId(node);
+      if (!serverId || !isHetznerCloudConfigured()) {
+        throw new HetznerCloudError(
+          "missing_token",
+          "Node retirement requires provider identity and credentials",
+        );
+      }
+      const client = this.computeProvider();
+      const existing = await client.getServer(serverId);
+      if (existing) {
+        assertAuthoritativeHetznerServer(existing, requireHetznerNodeAuthority(node));
+        try {
+          await client.deleteServer(serverId);
+        } catch (error) {
+          // error-policy:J6 lost deletion acknowledgements settle only through a fresh absence read.
+          if (await client.getServer(serverId)) throw error;
+          return true;
+        }
+        if (await client.getServer(serverId)) {
+          throw new HetznerCloudError("server_error", "Node deletion is not yet confirmed absent");
+        }
+      }
+      logger.info("[autoscaler] Provider node absence confirmed", { nodeId, serverId });
+      return true;
+    });
   }
 
   /**

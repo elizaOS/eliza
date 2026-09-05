@@ -1,6 +1,7 @@
 /**
  * Persists Docker node records for cloud scheduling and control-plane health.
  */
+import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, sql } from "drizzle-orm";
 import {
   type DockerNodeAllocationRecount,
@@ -15,6 +16,7 @@ import {
   type DockerNodeStatus,
   dockerNodes,
   type NewDockerNode,
+  NODE_RETIREMENT_METADATA_KEY,
   PLACEABLE_NODE_STATE,
 } from "../schemas/docker-nodes";
 import {
@@ -290,9 +292,24 @@ export class DockerNodesRepository {
 
   async update(id: string, data: DockerNodeMutableUpdate): Promise<DockerNode | null> {
     rejectDockerNodeIdentityMutation(data);
+    // Generic metadata edits cannot create or erase retirement intent. Re-enabling
+    // explicitly cancels it, even when the caller echoes stale metadata.
+    const replacementMetadata =
+      data.metadata === undefined
+        ? dockerNodes.metadata
+        : sql`${JSON.stringify(data.metadata)}::jsonb`;
+    const metadata =
+      data.enabled === true
+        ? sql`(${replacementMetadata} - ${NODE_RETIREMENT_METADATA_KEY})`
+        : data.metadata === undefined
+          ? undefined
+          : sql`(${replacementMetadata} - ${NODE_RETIREMENT_METADATA_KEY}) || CASE
+            WHEN ${dockerNodes.metadata} ? ${NODE_RETIREMENT_METADATA_KEY}
+            THEN jsonb_build_object(${NODE_RETIREMENT_METADATA_KEY}::text, ${dockerNodes.metadata}->${NODE_RETIREMENT_METADATA_KEY})
+            ELSE '{}'::jsonb END`;
     const [r] = await dbWrite
       .update(dockerNodes)
-      .set({ ...data, updated_at: new Date() })
+      .set({ ...data, ...(metadata === undefined ? {} : { metadata }), updated_at: new Date() })
       .where(eq(dockerNodes.id, id))
       .returning();
     return r ?? null;
@@ -560,14 +577,31 @@ export class DockerNodesRepository {
       .where(eq(dockerNodes.node_id, nodeId));
   }
 
-  async incrementAllocated(nodeId: string): Promise<void> {
-    await dbWrite
+  async incrementAllocated(nodeId: string, nodeRecordId: string): Promise<void> {
+    const [reserved] = await dbWrite
       .update(dockerNodes)
       .set({
         allocated_count: sql`${dockerNodes.allocated_count} + 1`,
         updated_at: new Date(),
       })
-      .where(eq(dockerNodes.node_id, nodeId));
+      .where(
+        and(
+          eq(dockerNodes.id, nodeRecordId),
+          eq(dockerNodes.node_id, nodeId),
+          eq(dockerNodes.enabled, true),
+          eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
+          eq(dockerNodes.status, "healthy"),
+          sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
+        ),
+      )
+      .returning({ id: dockerNodes.id });
+    if (!reserved) {
+      throw new ElizaError("Selected Docker node no longer admits placement", {
+        code: "DOCKER_PLACEMENT_UNAVAILABLE",
+        context: { nodeId, nodeRecordId },
+        severity: "ephemeral",
+      });
+    }
   }
 
   async decrementAllocated(nodeId: string): Promise<void> {

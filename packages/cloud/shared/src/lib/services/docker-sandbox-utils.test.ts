@@ -813,7 +813,9 @@ describe("secret container environment transport (#22060)", () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
-  }, 10_000);
+    // This fixture starts many real shells; process startup on shared hosts is
+    // not the Docker timeout contract exercised by its assertions.
+  }, 60_000);
 
   test("derives exact cleanup paths from the canonical container name only", () => {
     const attemptId = "33333333-3333-4333-8333-333333333333";
