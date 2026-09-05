@@ -544,12 +544,6 @@ describe("restore-v3 candidate filesystem", () => {
         position?: number | null,
       ) => Promise<unknown>;
     };
-    const closeDescriptor = Object.getOwnPropertyDescriptor(
-      handlePrototype,
-      "close",
-    ) as PropertyDescriptor & {
-      value: (this: unknown) => Promise<unknown>;
-    };
     await probe.close();
     await fs.unlink(path.join(attemptRoot, "intrinsic-write-probe"));
 
@@ -559,6 +553,8 @@ describe("restore-v3 candidate filesystem", () => {
     const treeBuffers = new Set<Uint8Array>();
     const failedCanonicalReadBuffers = new Set<Uint8Array>();
     const failedCanonicalCloseBuffers = new Set<Uint8Array>();
+    const sensitiveByteArrays = new WeakSet<object>([payloadInput]);
+    const nativeIoByteArrays = new WeakSet<object>();
     let forceCanonicalReadFailure = false;
     let forcedCanonicalReadFailureSeen = false;
     let forceCanonicalCloseFailure = false;
@@ -603,16 +599,23 @@ describe("restore-v3 candidate filesystem", () => {
       ): Promise<unknown> {
         if (byteArrayIncludes(buffer, payloadPlaintext)) {
           payloadBuffers.add(buffer);
+          sensitiveByteArrays.add(buffer);
         }
         if (byteArrayIncludes(buffer, canonicalSecret)) {
           canonicalBuffers.add(buffer);
+          sensitiveByteArrays.add(buffer);
         }
-        return intrinsicReflectApply(writeDescriptor.value, this, [
-          buffer,
-          offset,
-          length,
-          position,
-        ]);
+        nativeIoByteArrays.add(buffer);
+        try {
+          return await intrinsicReflectApply(writeDescriptor.value, this, [
+            buffer,
+            offset,
+            length,
+            position,
+          ]);
+        } finally {
+          nativeIoByteArrays.delete(buffer);
+        }
       },
     });
     Object.defineProperty(handlePrototype, "read", {
@@ -624,14 +627,21 @@ describe("restore-v3 candidate filesystem", () => {
         length?: number,
         position?: number | null,
       ): Promise<unknown> {
-        const result = await intrinsicReflectApply(readDescriptor.value, this, [
-          buffer,
-          offset,
-          length,
-          position,
-        ]);
+        nativeIoByteArrays.add(buffer);
+        let result: unknown;
+        try {
+          result = await intrinsicReflectApply(readDescriptor.value, this, [
+            buffer,
+            offset,
+            length,
+            position,
+          ]);
+        } finally {
+          nativeIoByteArrays.delete(buffer);
+        }
         if (byteArrayIncludes(buffer, treePlaintext)) {
           treeBuffers.add(buffer);
+          sensitiveByteArrays.add(buffer);
         }
         if (
           forceCanonicalReadFailure &&
@@ -639,6 +649,7 @@ describe("restore-v3 candidate filesystem", () => {
         ) {
           forceCanonicalReadFailure = false;
           failedCanonicalReadBuffers.add(buffer);
+          sensitiveByteArrays.add(buffer);
           throw new Error("forced canonical read failure after fill");
         }
         if (
@@ -647,24 +658,47 @@ describe("restore-v3 candidate filesystem", () => {
         ) {
           canonicalCloseTarget = this;
           failedCanonicalCloseBuffers.add(buffer);
+          sensitiveByteArrays.add(buffer);
         }
         return result;
       },
     });
-    Object.defineProperty(handlePrototype, "close", {
-      ...closeDescriptor,
-      value: async function (this: unknown): Promise<unknown> {
-        const result = await intrinsicReflectApply(
-          closeDescriptor.value,
-          this,
-          [],
-        );
-        if (this === canonicalCloseTarget) {
-          canonicalCloseTarget = null;
-          forceCanonicalCloseFailure = false;
-          throw new Error("forced canonical close failure after fill");
-        }
-        return result;
+    const openDescriptor = Object.getOwnPropertyDescriptor(
+      fs,
+      "open",
+    ) as PropertyDescriptor & { value: typeof fs.open };
+    Object.defineProperty(fs, "open", {
+      ...openDescriptor,
+      value: async (...args: Parameters<typeof fs.open>) => {
+        const handle = (await intrinsicReflectApply(
+          openDescriptor.value,
+          fs,
+          args,
+        )) as Awaited<ReturnType<typeof fs.open>>;
+        const originalClose = handle.close;
+        intrinsicReflectApply(definePropertiesDescriptor.value, Object, [
+          handle,
+          {
+            close: {
+              configurable: true,
+              writable: true,
+              value: async function (this: unknown): Promise<unknown> {
+                const result = await intrinsicReflectApply(
+                  originalClose,
+                  this,
+                  [],
+                );
+                if (this === canonicalCloseTarget) {
+                  canonicalCloseTarget = null;
+                  forceCanonicalCloseFailure = false;
+                  throw new Error("forced canonical close failure after fill");
+                }
+                return result;
+              },
+            },
+          },
+        ]);
+        return handle;
       },
     });
 
@@ -720,11 +754,15 @@ describe("restore-v3 candidate filesystem", () => {
       key: PropertyKey,
       descriptor: PropertyDescriptor & { value: (...args: never[]) => unknown },
       trap: string,
+      shouldTrap: (
+        receiver: unknown,
+        args: readonly unknown[],
+      ) => boolean = () => true,
     ) => {
       Object.defineProperty(target, key, {
         ...descriptor,
         value: function (this: unknown, ...args: never[]) {
-          traps.push(trap);
+          if (shouldTrap(this, args)) traps.push(trap);
           return intrinsicReflectApply(descriptor.value, this, args);
         },
       });
@@ -739,6 +777,36 @@ describe("restore-v3 candidate filesystem", () => {
       } catch {
         return false;
       }
+    };
+    const isTrackedSensitiveBytes = (value: unknown): boolean =>
+      typeof value === "object" &&
+      value !== null &&
+      sensitiveByteArrays.has(value) &&
+      !nativeIoByteArrays.has(value);
+    const containsSensitiveDispatch = (
+      receiver: unknown,
+      args: readonly unknown[],
+    ): boolean => {
+      const isSensitiveValue = (value: unknown): boolean =>
+        value === ownerToken ||
+        value === payloadPlaintext ||
+        value === canonicalSecret ||
+        value === treePlaintext ||
+        containsSensitiveBytes(value);
+      if (isSensitiveValue(receiver)) return true;
+      for (let index = 0; index < args.length; index += 1) {
+        const value = args[index];
+        if (isSensitiveValue(value)) return true;
+        if (!Array.isArray(value)) continue;
+        for (
+          let nestedIndex = 0;
+          nestedIndex < value.length;
+          nestedIndex += 1
+        ) {
+          if (isSensitiveValue(value[nestedIndex])) return true;
+        }
+      }
+      return false;
     };
 
     try {
@@ -756,21 +824,21 @@ describe("restore-v3 candidate filesystem", () => {
         "byteLength",
         byteLengthDescriptor,
         "TypedArray.byteLength",
-        containsSensitiveBytes,
+        isTrackedSensitiveBytes,
       );
       poisonGetter(
         typedArrayPrototype,
         "buffer",
         bufferDescriptor,
         "TypedArray.buffer",
-        containsSensitiveBytes,
+        isTrackedSensitiveBytes,
       );
       poisonGetter(
         typedArrayPrototype,
         "byteOffset",
         byteOffsetDescriptor,
         "TypedArray.byteOffset",
-        containsSensitiveBytes,
+        isTrackedSensitiveBytes,
       );
       poisonMethod(
         typedArrayPrototype,
@@ -803,7 +871,13 @@ describe("restore-v3 candidate filesystem", () => {
         bufferByteLengthDescriptor,
         "Buffer.byteLength",
       );
-      poisonMethod(Reflect, "apply", reflectApplyDescriptor, "Reflect.apply");
+      poisonMethod(
+        Reflect,
+        "apply",
+        reflectApplyDescriptor,
+        "Reflect.apply",
+        containsSensitiveDispatch,
+      );
       poisonMethod(
         Object,
         "defineProperties",
@@ -948,9 +1022,9 @@ describe("restore-v3 candidate filesystem", () => {
       for (const [target, key, descriptor] of restorations.reverse()) {
         Object.defineProperty(target, key, descriptor);
       }
+      Object.defineProperty(fs, "open", openDescriptor);
       Object.defineProperty(handlePrototype, "write", writeDescriptor);
       Object.defineProperty(handlePrototype, "read", readDescriptor);
-      Object.defineProperty(handlePrototype, "close", closeDescriptor);
     }
 
     expect(traps).toEqual([]);
