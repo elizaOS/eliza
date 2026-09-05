@@ -132,4 +132,13 @@ describe("create command", () => {
     expect(renderTemplateTree).not.toHaveBeenCalled();
     expect(exit).toHaveBeenCalledWith(1);
   });
+  it("normalizes overlong project names with surrogate pairs without lone surrogates", async () => {
+    const longWithSurrogate = "valid-name-" + "a".repeat(240) + "🚀" + "tail";
+    await create(longWithSurrogate, {
+      skipUpstream: true,
+      template: "project",
+      yes: true,
+    });
+    expect(renderTemplateTree).toHaveBeenCalled();
+  });
 });
