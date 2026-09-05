@@ -654,7 +654,7 @@ describe("anti-larp test discovery", () => {
       forms(
         'test("Windows only", { skip: process.platform !== "win32" ? "Windows contract" : false }, () => {});',
       ),
-    ).toEqual(["conditional-option-skip"]);
+    ).toEqual(["conditional-options-skip"]);
     // Documented-but-unconditional skips pass the gate yet never bless a file.
     expect(
       forms('it.skip("[live] requires OPENAI_API_KEY", () => {});'),

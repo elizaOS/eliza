@@ -242,9 +242,6 @@ function compileRedactPattern(raw: string): RegExp | null {
       let flags = literal[2];
       if (!flags.includes("g")) flags += "g";
       if (!flags.includes("m")) flags += "m";
-      // Credential names are case-insensitive at this security boundary even
-      // when a legacy core pattern literal omitted the `i` flag.
-      if (!flags.includes("i")) flags += "i";
       return new RegExp(literal[1], flags);
     }
     return new RegExp(raw, "gim");
