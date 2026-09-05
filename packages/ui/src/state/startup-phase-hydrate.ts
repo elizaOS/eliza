@@ -61,6 +61,18 @@ import {
 import type { StartupEvent } from "./startup-coordinator";
 import { switchRuntimeNonDestructive } from "./switch-runtime";
 
+function byUpdatedAtDesc(left: Conversation, right: Conversation): number {
+  const leftTime = Date.parse(left.updatedAt);
+  const rightTime = Date.parse(right.updatedAt);
+  if (!Number.isFinite(leftTime)) {
+    return Number.isFinite(rightTime) ? 1 : 0;
+  }
+  if (!Number.isFinite(rightTime)) {
+    return -1;
+  }
+  return rightTime - leftTime;
+}
+
 export interface HydratingDeps {
   setStartupError: (v: null) => void;
   setFirstRunLoading: (v: boolean) => void;
@@ -917,10 +929,7 @@ export function bindReadyPhase(
         const u = prev.map((c) =>
           c.id === cid ? { ...c, updatedAt: new Date().toISOString() } : c,
         );
-        return u.sort(
-          (a, b) =>
-            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-        );
+        return u.sort(byUpdatedAtDesc);
       });
     },
   );
@@ -950,10 +959,7 @@ export function bindReadyPhase(
             }
             return conv;
           });
-          return u.sort(
-            (a, b) =>
-              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-          );
+          return u.sort(byUpdatedAtDesc);
         });
     },
   );
