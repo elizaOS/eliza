@@ -117,9 +117,8 @@ export const currentTimeProvider: Provider = {
 			timeZone,
 		);
 
-		const contextText =
-			userTimeZone
-				? `# Current Time
+		const contextText = userTimeZone
+			? `# Current Time
 - User local time: ${humanReadable}
 - Date: ${dateOnly}
 - Time: ${timeOnly} ${timeZone}
@@ -127,7 +126,7 @@ export const currentTimeProvider: Provider = {
 - User timezone: ${timeZone} (${origin === "device" ? "from the active device" : "the owner's configured timezone; use it unless the user states another"})
 - ISO (UTC): ${isoTimestamp}
 The local time above is already the user's wall-clock time. State it as-is; do not perform timezone arithmetic.`
-				: `# Current Time
+			: `# Current Time
 - User timezone: unknown (do not guess; ask when the user's local time matters)
 - ${origin === "agent-setting" ? "Agent reference" : "Server"} time: ${humanReadable}
 - ${origin === "agent-setting" ? "Agent" : "Server"} timezone: ${timeZone}

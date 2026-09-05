@@ -22,7 +22,6 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
-import type { ElizaError } from "../../errors";
 import { ElizaError } from "../../errors";
 import {
 	AgentRuntime,
