@@ -69,6 +69,7 @@ import {
 	type ModelProviderAttempt,
 	ModelType,
 	NoModelProviderConfiguredError,
+	timeInferenceSpan,
 } from "@elizaos/core";
 import { readEffectiveAssignments } from "./assignments";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
@@ -339,7 +340,11 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 		// when absent it falls back to the local-first default. ELIZA_LOCAL_ONLY
 		// is retained for back-compat only: it sets the *global default* to
 		// `local-only`, but an explicit per-slot policy always wins.
-		const prefs = await readRoutingPreferences();
+		const prefs = await timeInferenceSpan(
+			"router:preferences",
+			readRoutingPreferences,
+			{ slot },
+		);
 		const globalDefault: RoutingPolicy = readBooleanEnv("ELIZA_LOCAL_ONLY")
 			? "local-only"
 			: DEFAULT_ROUTING_POLICY;
@@ -352,11 +357,16 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 		// local/model-specific failure while cloud providers are available.
 		// Candidates (with live handlers) come straight from the runtime's model
 		// registry, excluding the router itself.
-		const candidates = await filterUnavailableLocalInference(
-			slot,
-			policy,
-			preferred,
-			getRuntimeModelCandidates(runtime, modelType),
+		const candidates = await timeInferenceSpan(
+			"router:availability",
+			() =>
+				filterUnavailableLocalInference(
+					slot,
+					policy,
+					preferred,
+					getRuntimeModelCandidates(runtime, modelType),
+				),
+			{ slot },
 		);
 
 		// Only the capability-aware policies need the hardware assessment + live
@@ -364,7 +374,11 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 		let deviceTier: DeviceTierAssessment | null = null;
 		let liveSignals: LiveDeviceSignals | null = null;
 		if (policy === "auto" || policy === "prefer-local") {
-			deviceTier = await resolveDeviceTier();
+			deviceTier = await timeInferenceSpan(
+				"router:device-tier",
+				resolveDeviceTier,
+				{ slot },
+			);
 		}
 		if (policy === "auto") {
 			liveSignals = readLiveDeviceSignals();
