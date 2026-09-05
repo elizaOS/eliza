@@ -11,7 +11,10 @@ import type {
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext } from "../types/contexts";
-import { normalizeTopics } from "./builtin-field-evaluators";
+import {
+	normalizeReplyEffectStatus,
+	normalizeTopics,
+} from "./builtin-field-evaluators";
 import { parseJsonObject, stripJsonStructuralJunkReply } from "./json-output";
 import {
 	looksLikeRawFieldTranscript,
@@ -97,6 +100,13 @@ export function parseMessageHandlerOutput(
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
 		reply: replyRaw,
+		...(parsed.replyEffectStatus !== undefined
+			? {
+					replyEffectStatus: normalizeReplyEffectStatus(
+						parsed.replyEffectStatus,
+					),
+				}
+			: {}),
 	};
 	if (candidateActions.length > 0) {
 		normalizedPlan.candidateActions = candidateActions;
@@ -162,6 +172,13 @@ function parseMessageHandlerFieldTranscript(
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
 		reply: replyRaw,
+		...(fields.replyEffectStatus !== undefined
+			? {
+					replyEffectStatus: normalizeReplyEffectStatus(
+						fields.replyEffectStatus,
+					),
+				}
+			: {}),
 	};
 	if (candidateActions.length > 0) {
 		normalizedPlan.candidateActions = candidateActions;

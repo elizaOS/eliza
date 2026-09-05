@@ -49,6 +49,7 @@ export const RESPONSE_HANDLER_FIELD_NAMES = [
 	"intents",
 	"candidateActionNames",
 	"replyText",
+	"replyEffectStatus",
 	"facts",
 	"relationships",
 	"addressedTo",

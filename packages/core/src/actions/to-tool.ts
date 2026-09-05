@@ -74,9 +74,9 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 		},
 		replyEffectStatus: {
 			type: "string",
-			enum: ["none", "applied", "non_applied"],
+			enum: ["none", "applied", "non_applied", "pending"],
 			description:
-				"Whether replyText semantically claims an external change already happened, says it did not, or makes no effect claim.",
+				"pending=promised unfinished work, including lookup/navigation beside an answer; applied=claimed completed change; non_applied=terminal failed/unavailable/cancelled/declined/preview outcome; none=answer, explanation, question, or conditional offer without a work claim.",
 		},
 		candidateActionNames: {
 			type: "array",

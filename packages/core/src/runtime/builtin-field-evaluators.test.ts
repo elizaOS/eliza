@@ -219,17 +219,18 @@ describe("replyTextFieldEvaluator", () => {
 });
 
 describe("replyEffectStatusFieldEvaluator", () => {
-	it("normalizes the two applied states case-insensitively", () => {
+	it("normalizes pending and terminal effect states case-insensitively", () => {
 		expect(replyEffectStatusFieldEvaluator.parse("APPLIED")).toBe("applied");
 		expect(replyEffectStatusFieldEvaluator.parse(" Non_Applied ")).toBe(
 			"non_applied",
 		);
 		expect(replyEffectStatusFieldEvaluator.parse("none")).toBe("none");
+		expect(replyEffectStatusFieldEvaluator.parse(" PENDING ")).toBe("pending");
 	});
 
 	it("maps everything unrecognized — including 'NONE' — to none", () => {
 		expect(replyEffectStatusFieldEvaluator.parse("NONE")).toBe("none");
-		expect(replyEffectStatusFieldEvaluator.parse("pending")).toBe("none");
+		expect(replyEffectStatusFieldEvaluator.parse("unrecognized")).toBe("none");
 		expect(replyEffectStatusFieldEvaluator.parse("")).toBe("none");
 		expect(replyEffectStatusFieldEvaluator.parse(null)).toBe("none");
 		expect(replyEffectStatusFieldEvaluator.parse(7)).toBe("none");

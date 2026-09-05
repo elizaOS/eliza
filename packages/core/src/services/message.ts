@@ -86,7 +86,10 @@ import {
 	messageAddressedToOtherParticipant,
 	messageVocativelyAddressesOtherParticipant,
 } from "../runtime/addressed-to";
-import { normalizeTopics } from "../runtime/builtin-field-evaluators";
+import {
+	normalizeReplyEffectStatus,
+	normalizeTopics,
+} from "../runtime/builtin-field-evaluators";
 import {
 	type CandidateActionBackstopRule,
 	getCandidateActionBackstopRules,
@@ -5276,13 +5279,16 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 			description:
 				"Blocks simple-path replies that promise in-progress work no tool performed and no handoff will deliver; reroutes the turn to the planner.",
 			priority: 30,
-			shouldRun: ({ messageHandler }) => {
+			shouldRun: ({ message, messageHandler }) => {
 				if (messageHandler.processMessage !== "RESPOND") return false;
 				if (messageHandler.plan.requiresTool === true) return false;
 				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
 					(context) => context !== SIMPLE_CONTEXT_ID,
 				);
 				if (nonSimpleContexts.length > 0) return false;
+				if (messageHandler.plan.replyEffectStatus === "pending") {
+					return !isSubAgentCompletionArtifact(message);
+				}
 				const reply =
 					typeof messageHandler.plan.reply === "string"
 						? messageHandler.plan.reply
@@ -5290,6 +5296,13 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				return replyClaimsInProgressWork(reply);
 			},
 			evaluate: ({ messageHandler, runtime }) => {
+				if (messageHandler.plan.replyEffectStatus === "pending") {
+					return {
+						requiresTool: true,
+						addContexts: ["general"],
+						clearReply: true,
+					};
+				}
 				const reply =
 					typeof messageHandler.plan.reply === "string"
 						? messageHandler.plan.reply
@@ -6225,6 +6238,12 @@ function normalizeRawParsedForFieldRegistry(
 	if (normalized.replyText === undefined) {
 		normalized.replyText = typeof plan?.reply === "string" ? plan.reply : "";
 	}
+	if (
+		normalized.replyEffectStatus === undefined &&
+		plan?.replyEffectStatus !== undefined
+	) {
+		normalized.replyEffectStatus = plan.replyEffectStatus;
+	}
 	if (normalized.contexts === undefined) {
 		normalized.contexts = Array.isArray(plan?.contexts) ? plan.contexts : [];
 	}
@@ -6362,11 +6381,9 @@ export function messageHandlerFromFieldResult(
 	const replyTextRaw = stripJsonStructuralJunkReply(
 		typeof result.replyText === "string" ? result.replyText : "",
 	);
-	const replyEffectStatus =
-		result.replyEffectStatus === "applied" ||
-		result.replyEffectStatus === "non_applied"
-			? result.replyEffectStatus
-			: "none";
+	const replyEffectStatus = normalizeReplyEffectStatus(
+		result.replyEffectStatus,
+	);
 	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
 		candidateActions,
 		runtimeContext,
@@ -6513,6 +6530,11 @@ export function messageHandlerFromFieldResult(
 		(context) => context !== SIMPLE_CONTEXT_ID,
 	);
 	const declaredIntents = stringArrayProperty(result.intents);
+	const pendingDeclaredWork =
+		processMessage === "RESPOND" &&
+		!preemptDirect &&
+		!subAgentCompletionRelay &&
+		replyEffectStatus === "pending";
 	// A model-declared actionable outcome must not disappear just because the
 	// same payload says "simple" and omits an action name. The real planner owns
 	// action selection; do not infer an intent or fabricate a tool call here.
@@ -6524,6 +6546,7 @@ export function messageHandlerFromFieldResult(
 		validCandidateCount === 0 &&
 		replyEffectStatus !== "non_applied";
 	const requestedPlanning =
+		pendingDeclaredWork ||
 		initialPlanningContexts.length > 0 ||
 		validCandidateCount > 0 ||
 		unservedDeclaredIntent;
@@ -6623,6 +6646,7 @@ export function messageHandlerFromFieldResult(
 		});
 	const preferCompleteDirectReply =
 		!preemptDirect &&
+		!pendingDeclaredWork &&
 		requestedPlanning &&
 		!unservedDeclaredIntent &&
 		!modelCommittedToDelegation &&
@@ -6635,6 +6659,7 @@ export function messageHandlerFromFieldResult(
 		});
 	const preferInlineCodeSnippetDirectReply =
 		!preemptDirect &&
+		!pendingDeclaredWork &&
 		requestedPlanning &&
 		!unservedDeclaredIntent &&
 		shouldPreferInlineCodeSnippetDirectReply({
@@ -6660,7 +6685,8 @@ export function messageHandlerFromFieldResult(
 						]),
 					)
 				: routedContexts;
-	const replyText = unservedDeclaredIntent ? "" : replyTextRaw;
+	const replyText =
+		unservedDeclaredIntent || pendingDeclaredWork ? "" : replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		intents: declaredIntents,
@@ -7326,23 +7352,6 @@ function viewOverlapRequiredToolMissBudget(args: {
 		return undefined;
 	}
 	return 0;
-}
-
-const LIVE_LOOKUP_UNAVAILABLE_REPLY =
-	"I don't have a live web search action available here, so I can't look up current information in this chat.";
-
-function shouldReplaceUnavailableLiveLookupAck(args: {
-	message: Memory;
-	actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
-	reply: string;
-}): boolean {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	return (
-		text.length > 0 &&
-		looksLikeWebSearchRequest(text) &&
-		!findWebLookupActionName(args.actions) &&
-		looksLikeProgressOnlyReply(args.reply)
-	);
 }
 
 function uniqueActionNames(names: readonly string[]): string[] {
@@ -9714,6 +9723,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			nonDisclosureRejectedExplicitCandidates: [] as string[],
 		};
 		const prePatchStageOneReply =
+			messageHandler.plan.replyEffectStatus !== "pending" &&
 			typeof messageHandler.plan.reply === "string" &&
 			messageHandler.plan.reply.trim().length > 0
 				? messageHandler.plan.reply
@@ -9898,16 +9908,6 @@ export async function runV5MessageRuntimeStage1(args: {
 				})
 			) {
 				reply = "I'm not sure how to answer that.";
-				replyIsModelVoice = false;
-			}
-			if (
-				shouldReplaceUnavailableLiveLookupAck({
-					message: args.message,
-					actions: args.runtime.actions ?? [],
-					reply,
-				})
-			) {
-				reply = LIVE_LOOKUP_UNAVAILABLE_REPLY;
 				replyIsModelVoice = false;
 			}
 			const directReplyEgressDecision = evaluatePlannedReplyEgress({
@@ -10198,45 +10198,6 @@ export async function runV5MessageRuntimeStage1(args: {
 				}),
 			};
 		}
-		// Live-lookup unavailability short-circuit. The progress-ack promotion
-		// (routeMessageHandlerOutput, #20249) now routes "On it."-shaped turns
-		// into planning, which bypassed the direct-reply egress replacement that
-		// used to convert a live-lookup ask with NO registered web action into
-		// the honest decline. A planner round cannot conjure the missing
-		// capability — its best case is a model-authored decline and its worst
-		// case is a shell fallback — so decline deterministically here, exactly
-		// like the egress-side replacement. Scope: only turns whose planning
-		// round exists purely because of the promotion (stage-1's own plan
-		// selected no non-simple context). When stage-1 genuinely routed to a
-		// context, or a named candidate survived collection, the planner may
-		// hold a registered domain action that serves the ask without web
-		// search — those turns still plan.
-		const stageOneOwnNonSimpleContexts = (
-			messageHandler.plan.contexts ?? []
-		).filter((context) => {
-			const normalized = String(context).trim().toLowerCase();
-			return normalized.length > 0 && normalized !== SIMPLE_CONTEXT_ID;
-		});
-		if (
-			stageOneOwnNonSimpleContexts.length === 0 &&
-			!anyNamedStageOneCandidateSurvived &&
-			shouldReplaceUnavailableLiveLookupAck({
-				message: args.message,
-				actions: args.runtime.actions ?? [],
-				reply: prePatchStageOneReply ?? "",
-			})
-		) {
-			return {
-				kind: "direct_reply",
-				messageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: LIVE_LOOKUP_UNAVAILABLE_REPLY,
-					thought: messageHandler.thought,
-					agentVoiced: false,
-				}),
-			};
-		}
 		const localizedExamplesProvider = getLocalizedExamplesProvider(
 			args.runtime,
 		);
@@ -10339,6 +10300,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				processMessage: messageHandler.processMessage,
 				plan: {
 					contexts: messageHandler.plan.contexts,
+					replyEffectStatus: messageHandler.plan.replyEffectStatus ?? "none",
 					intents: messageHandler.plan.intents ?? [],
 					...(messageHandler.plan.requiresTool !== undefined
 						? { requiresTool: messageHandler.plan.requiresTool }
