@@ -72,6 +72,16 @@ export class ScreenCaptureWeb extends WebPlugin {
   private recordedChunks: Blob[] = [];
   private isRecording = false;
   private isPaused = false;
+  /**
+   * Synchronous re-entrancy latch covering the async setup window before
+   * `isRecording` flips true. `isRecording` is only set after the first
+   * `await getDisplayMedia(...)`, so without this latch two concurrent (or
+   * double-click) startRecording() calls both clear the `isRecording` guard,
+   * both open the OS picker, and the second overwrites `mediaStream` — leaking
+   * the first display stream and corrupting the shared chunk buffer. Set before
+   * any await and cleared in a finally that also covers the J2 rollback path.
+   */
+  private starting = false;
   private recordingStartTime = 0;
   private pausedDuration = 0;
   private pauseStartTime = 0;
@@ -185,143 +195,158 @@ export class ScreenCaptureWeb extends WebPlugin {
   }
 
   async startRecording(options?: ScreenRecordingOptions): Promise<void> {
-    if (this.isRecording) throw new Error("Recording already in progress");
-    if (options?.fps !== undefined) {
-      assertPositiveFiniteNumber(options.fps, "fps");
+    // Latch synchronously before the first await so a concurrent second call
+    // cannot slip past the guard while getDisplayMedia is still resolving.
+    if (this.isRecording || this.starting) {
+      throw new Error("Recording already in progress");
     }
-    if (options?.bitrate !== undefined) {
-      assertPositiveFiniteNumber(options.bitrate, "bitrate");
-    }
-    if (options?.maxDuration !== undefined) {
-      assertPositiveFiniteNumber(options.maxDuration, "maxDuration");
-    }
-    if (options?.maxFileSize !== undefined) {
-      assertPositiveFiniteNumber(options.maxFileSize, "maxFileSize");
-    }
-
-    const videoConstraints: MediaTrackConstraints = {
-      displaySurface: "monitor",
-    };
-    if (options?.fps) videoConstraints.frameRate = { ideal: options.fps };
-
-    this.mediaStream = await getDisplayMedia({
-      video: videoConstraints,
-      audio: options?.captureSystemAudio !== false,
-    });
-
-    // Once the display stream is live the OS "sharing your screen" indicator is
-    // on. Treat the remaining setup as one transaction: any failure must
-    // release every acquired track and restore the idle state before the error
-    // reaches the caller.
-    let microphoneStream: MediaStream | null = null;
+    this.starting = true;
     try {
-      if (options?.captureMicrophone) {
-        microphoneStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        microphoneStream.getAudioTracks().forEach((t) => {
-          this.mediaStream?.addTrack(t);
-        });
+      if (options?.fps !== undefined) {
+        assertPositiveFiniteNumber(options.fps, "fps");
+      }
+      if (options?.bitrate !== undefined) {
+        assertPositiveFiniteNumber(options.bitrate, "bitrate");
+      }
+      if (options?.maxDuration !== undefined) {
+        assertPositiveFiniteNumber(options.maxDuration, "maxDuration");
+      }
+      if (options?.maxFileSize !== undefined) {
+        assertPositiveFiniteNumber(options.maxFileSize, "maxFileSize");
       }
 
-      const mimeType = getSupportedMimeType();
-      if (!mimeType) {
-        throw new Error("No supported video mime type found");
-      }
+      const videoConstraints: MediaTrackConstraints = {
+        displaySurface: "monitor",
+      };
+      if (options?.fps) videoConstraints.frameRate = { ideal: options.fps };
 
-      const recorderOptions: MediaRecorderOptions = { mimeType };
-      if (options?.bitrate)
-        recorderOptions.videoBitsPerSecond = options.bitrate;
+      this.mediaStream = await getDisplayMedia({
+        video: videoConstraints,
+        audio: options?.captureSystemAudio !== false,
+      });
 
-      this.recordedChunks = [];
-      this.mediaRecorder = new MediaRecorder(this.mediaStream, recorderOptions);
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.recordedChunks.push(event.data);
+      // Once the display stream is live the OS "sharing your screen" indicator is
+      // on. Treat the remaining setup as one transaction: any failure must
+      // release every acquired track and restore the idle state before the error
+      // reaches the caller.
+      let microphoneStream: MediaStream | null = null;
+      try {
+        if (options?.captureMicrophone) {
+          microphoneStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          microphoneStream.getAudioTracks().forEach((t) => {
+            this.mediaStream?.addTrack(t);
+          });
         }
-      };
 
-      this.mediaRecorder.onerror = (event) => {
-        this.notifyListeners("error", {
-          code: "RECORDING_ERROR",
-          message: `Recording error: ${(event as ErrorEvent).message || "Unknown error"}`,
+        const mimeType = getSupportedMimeType();
+        if (!mimeType) {
+          throw new Error("No supported video mime type found");
+        }
+
+        const recorderOptions: MediaRecorderOptions = { mimeType };
+        if (options?.bitrate)
+          recorderOptions.videoBitsPerSecond = options.bitrate;
+
+        this.recordedChunks = [];
+        this.mediaRecorder = new MediaRecorder(
+          this.mediaStream,
+          recorderOptions,
+        );
+        this.mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            this.recordedChunks.push(event.data);
+          }
+        };
+
+        this.mediaRecorder.onerror = (event) => {
+          this.notifyListeners("error", {
+            code: "RECORDING_ERROR",
+            message: `Recording error: ${(event as ErrorEvent).message || "Unknown error"}`,
+          });
+        };
+
+        const videoTrack = this.mediaStream.getVideoTracks()[0];
+        if (!videoTrack) {
+          throw new Error("Display capture produced no video track");
+        }
+        videoTrack.addEventListener("ended", () => {
+          if (this.isRecording) {
+            this.stopRecording().catch((err: unknown) => {
+              // error-policy:J1 surface the auto-stop failure to listeners as a structured error event
+              this.notifyListeners("error", {
+                code: "AUTO_STOP_FAILED",
+                message: `Auto-stop on track end failed: ${err instanceof Error ? err.message : String(err)}`,
+              });
+            });
+          }
         });
-      };
 
-      const videoTrack = this.mediaStream.getVideoTracks()[0];
-      if (!videoTrack) {
-        throw new Error("Display capture produced no video track");
+        this.recordingStartTime = Date.now();
+        this.pausedDuration = 0;
+        this.mediaRecorder.start(1000);
+        this.isRecording = true;
+        this.isPaused = false;
+      } catch (err) {
+        // error-policy:J2 release acquired media, restore idle state, and rethrow
+        // the original setup failure to the caller.
+        microphoneStream?.getTracks().forEach((track) => {
+          track.stop();
+        });
+        this.releaseMediaStream();
+        this.mediaRecorder = null;
+        this.recordedChunks = [];
+        this.isRecording = false;
+        this.isPaused = false;
+        this.recordingStartTime = 0;
+        this.pausedDuration = 0;
+        throw err;
       }
-      videoTrack.addEventListener("ended", () => {
-        if (this.isRecording) {
+
+      this.notifyListeners("recordingState", {
+        isRecording: true,
+        duration: 0,
+        fileSize: 0,
+      });
+
+      let autoStopping = false;
+      this.recordingStateInterval = setInterval(() => {
+        if (!this.isRecording || this.isPaused || autoStopping) return;
+
+        const duration = this.elapsedSeconds();
+        const fileSize = this.recordedChunks.reduce(
+          (acc, chunk) => acc + chunk.size,
+          0,
+        );
+
+        this.notifyListeners("recordingState", {
+          isRecording: true,
+          duration,
+          fileSize,
+        });
+
+        const overLimit =
+          (options?.maxDuration && duration >= options.maxDuration) ||
+          (options?.maxFileSize && fileSize >= options.maxFileSize);
+
+        if (overLimit) {
+          autoStopping = true;
           this.stopRecording().catch((err: unknown) => {
             // error-policy:J1 surface the auto-stop failure to listeners as a structured error event
             this.notifyListeners("error", {
               code: "AUTO_STOP_FAILED",
-              message: `Auto-stop on track end failed: ${err instanceof Error ? err.message : String(err)}`,
+              message: `Auto-stop recording failed: ${err instanceof Error ? err.message : String(err)}`,
             });
           });
         }
-      });
-
-      this.recordingStartTime = Date.now();
-      this.pausedDuration = 0;
-      this.mediaRecorder.start(1000);
-      this.isRecording = true;
-      this.isPaused = false;
-    } catch (err) {
-      // error-policy:J2 release acquired media, restore idle state, and rethrow
-      // the original setup failure to the caller.
-      microphoneStream?.getTracks().forEach((track) => {
-        track.stop();
-      });
-      this.releaseMediaStream();
-      this.mediaRecorder = null;
-      this.recordedChunks = [];
-      this.isRecording = false;
-      this.isPaused = false;
-      this.recordingStartTime = 0;
-      this.pausedDuration = 0;
-      throw err;
+      }, 500);
+    } finally {
+      // Release the in-flight latch on every exit: success (isRecording is now
+      // true and keeps guarding), option-validation throw, or the J2 rollback
+      // rethrow above (isRecording is back to false).
+      this.starting = false;
     }
-
-    this.notifyListeners("recordingState", {
-      isRecording: true,
-      duration: 0,
-      fileSize: 0,
-    });
-
-    let autoStopping = false;
-    this.recordingStateInterval = setInterval(() => {
-      if (!this.isRecording || this.isPaused || autoStopping) return;
-
-      const duration = this.elapsedSeconds();
-      const fileSize = this.recordedChunks.reduce(
-        (acc, chunk) => acc + chunk.size,
-        0,
-      );
-
-      this.notifyListeners("recordingState", {
-        isRecording: true,
-        duration,
-        fileSize,
-      });
-
-      const overLimit =
-        (options?.maxDuration && duration >= options.maxDuration) ||
-        (options?.maxFileSize && fileSize >= options.maxFileSize);
-
-      if (overLimit) {
-        autoStopping = true;
-        this.stopRecording().catch((err: unknown) => {
-          // error-policy:J1 surface the auto-stop failure to listeners as a structured error event
-          this.notifyListeners("error", {
-            code: "AUTO_STOP_FAILED",
-            message: `Auto-stop recording failed: ${err instanceof Error ? err.message : String(err)}`,
-          });
-        });
-      }
-    }, 500);
   }
 
   async stopRecording(): Promise<ScreenRecordingResult> {
