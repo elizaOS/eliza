@@ -272,6 +272,7 @@ async function __hono_POST(
   request: Request,
   env: AppEnv["Bindings"],
   { params }: { params: Promise<{ agentId: string }> },
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void },
 ) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
@@ -402,9 +403,35 @@ async function __hono_POST(
     }
 
     if (result.jobCreated) {
-      void provisioningJobService.triggerImmediate(env).catch(() => {
-        // error-policy:J5 the durable job remains observable by the worker poll.
-      });
+      if (typeof executionCtx?.waitUntil === "function") {
+        const trigger = provisioningJobService
+          .triggerImmediate(env)
+          .catch((error) => {
+            // error-policy:J7 the durable job remains observable by the daemon;
+            // retain the failed nudge as a structured operational diagnostic.
+            logger.warn(
+              "[agent-tier-adoption] Immediate provisioning nudge failed",
+              {
+                sourceAgentId,
+                dedicatedAgentId: result.agent.id,
+                orgId: user.organization_id,
+                jobId: result.job?.id ?? null,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+          });
+        executionCtx.waitUntil(trigger);
+      } else {
+        logger.warn(
+          "[agent-tier-adoption] Immediate provisioning nudge unavailable; daemon polling retained",
+          {
+            sourceAgentId,
+            dedicatedAgentId: result.agent.id,
+            orgId: user.organization_id,
+            jobId: result.job?.id ?? null,
+          },
+        );
+      }
     }
 
     logger.info("[agent-tier-adoption] Existing Dedicated target adopted", {
@@ -453,10 +480,23 @@ app.get("/", async (c) =>
     params: Promise.resolve({ agentId: c.req.param("agentId")! }),
   }),
 );
-app.post("/", async (c) =>
-  __hono_POST(c.req.raw, c.env, {
-    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
-  }),
-);
+app.post("/", async (c) => {
+  let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
+  try {
+    executionCtx = c.executionCtx;
+  } catch {
+    // Hono test and non-Worker adapters may not expose an execution context.
+    // The durable daemon poll remains authoritative in that case.
+    executionCtx = undefined;
+  }
+  return __hono_POST(
+    c.req.raw,
+    c.env,
+    {
+      params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+    },
+    executionCtx,
+  );
+});
 
 export default app;

@@ -344,8 +344,10 @@ describe("ensurePersonalDedicatedEliza", () => {
   it("creates one fresh Dedicated target without entering adoption and completes cutover", async () => {
     const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
     const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const jobId = "10000000-0000-4000-8000-000000000020";
     const dedicatedBase = `https://${dedicatedAgentId}.cloud.eliza.app`;
     let cutoverAttempts = 0;
+    const events: string[] = [];
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -372,20 +374,34 @@ describe("ensurePersonalDedicatedEliza", () => {
           });
         }
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+          events.push("activation");
           expect(JSON.parse(String(init.body))).toEqual({
             action: "activate_dedicated",
             quoteId: "a".repeat(64),
           });
           return jsonResponse(202, {
             success: true,
-            data: { dedicatedAgentId },
+            data: { dedicatedAgentId, jobId },
+          });
+        }
+        if (url.endsWith(`/api/v1/jobs/${jobId}`)) {
+          events.push("job");
+          return jsonResponse(200, {
+            success: true,
+            data: { id: jobId, status: "completed" },
           });
         }
         if (url.endsWith("/upgrade-tier/cutover")) {
+          events.push("cutover");
           cutoverAttempts += 1;
           if (cutoverAttempts <= 3) {
             return jsonResponse([409, 423, 503][cutoverAttempts - 1] ?? 409, {
               success: false,
+              code: [
+                "dedicated_not_healthy",
+                "personal_reminder_cutover_in_progress",
+                "dedicated_history_import_failed",
+              ][cutoverAttempts - 1],
               error: "Dedicated is still provisioning",
             });
           }
@@ -423,6 +439,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       runtime: "dedicated",
     });
     expect(cutoverAttempts).toBe(4);
+    expect(events.slice(0, 3)).toEqual(["activation", "job", "cutover"]);
     expect(
       fetchMock.mock.calls.filter(([url]) =>
         String(url).endsWith("/upgrade-tier/adopt-existing"),
@@ -436,6 +453,133 @@ describe("ensurePersonalDedicatedEliza", () => {
       "ready",
       "Connected to your Dedicated agent",
     );
+  });
+
+  it.each([undefined, "", { invalid: true }])(
+    "rejects an accepted activation with invalid job identity %j before cutover",
+    async (jobId) => {
+      const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
+      const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+      const unexpectedRequests: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.endsWith("/api/v1/eliza/personal")) {
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                identity: {
+                  id: personalElizaId,
+                  displayName: "Eliza",
+                  runtime: "shared",
+                },
+              },
+            });
+          }
+          if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                quoteId: "a".repeat(64),
+                canActivate: true,
+                activation: { state: "available" },
+              },
+            });
+          }
+          if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+            return jsonResponse(202, {
+              success: true,
+              data: { dedicatedAgentId, jobId },
+            });
+          }
+          unexpectedRequests.push(url);
+          return jsonResponse(500, {
+            error: "unexpected request after invalid activation",
+          });
+        }),
+      );
+      await expect(
+        new ElizaClient().ensurePersonalDedicatedEliza({
+          cloudApiBase: "https://api.eliza.app",
+          authToken: "steward-token",
+          timeoutMs: 1_000,
+        }),
+      ).rejects.toMatchObject({
+        code: "CLOUD_DEDICATED_PROVISION_JOB_INVALID",
+        context: { phase: "activation", field: "jobId" },
+      });
+      expect(unexpectedRequests).toEqual([]);
+    },
+  );
+
+  it("does not retry cutover from HTTP status alone without a retryable response code", async () => {
+    const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const jobId = "10000000-0000-4000-8000-000000000020";
+    let cutoverAttempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/eliza/personal")) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              identity: {
+                id: personalElizaId,
+                displayName: "Eliza",
+                runtime: "shared",
+              },
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              quoteId: "a".repeat(64),
+              canActivate: true,
+              activation: { state: "available" },
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+          return jsonResponse(202, {
+            success: true,
+            data: { dedicatedAgentId, jobId },
+          });
+        }
+        if (url.endsWith(`/api/v1/jobs/${jobId}`)) {
+          return jsonResponse(200, {
+            success: true,
+            data: { id: jobId, status: "completed" },
+          });
+        }
+        if (url.endsWith("/upgrade-tier/cutover")) {
+          cutoverAttempts += 1;
+          return jsonResponse(409, {
+            success: false,
+            code: "dedicated_history_receipt_invalid",
+            error: "Dedicated history receipt is invalid.",
+          });
+        }
+        return jsonResponse(500, { error: `Unexpected URL ${url}` });
+      }),
+    );
+
+    await expect(
+      new ElizaClient().ensurePersonalDedicatedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+        pollIntervalMs: 0,
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      data: { code: "dedicated_history_receipt_invalid" },
+    });
+    expect(cutoverAttempts).toBe(1);
   });
 
   it("adopts the selected existing Dedicated row after the create contract redirects it", async () => {
@@ -581,6 +725,239 @@ describe("ensurePersonalDedicatedEliza", () => {
       { url: "<personal>/upgrade-tier/adopt-existing", method: "POST" },
       { url: "<personal>/upgrade-tier/cutover", method: "POST" },
     ]);
+  });
+
+  it("polls an adopted target's provisioning job to completion before cutover", async () => {
+    const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const jobId = "10000000-0000-4000-8000-000000000020";
+    const events: string[] = [];
+    let jobReads = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/eliza/personal")) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              identity: {
+                id: personalElizaId,
+                displayName: "Eliza",
+                runtime: "shared",
+              },
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              quoteId: "a".repeat(64),
+              canActivate: true,
+              activation: { state: "available" },
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+          return jsonResponse(409, {
+            success: false,
+            code: "dedicated_adoption_selection_required",
+          });
+        }
+        if (
+          url.endsWith("/upgrade-tier/adopt-existing") &&
+          init?.method === "GET"
+        ) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              quoteId: "b".repeat(64),
+              dedicatedAgentId,
+              adoptionState: "available",
+              status: "error",
+              startsCompute: true,
+              hourlyRateUsd: 0.01,
+              dailyRateUsd: 0.24,
+              minimumBalanceUsd: 0.72,
+              minimumRunwayDays: 3,
+              balanceUsd: 115.54,
+              deficitUsd: 0,
+              stateDisposition: "verified_backup_present",
+              canAdopt: true,
+              requiresCatalogRestore: false,
+              requiresConfirmation: true,
+              action: "adopt_existing_dedicated",
+            },
+          });
+        }
+        if (
+          url.endsWith("/upgrade-tier/adopt-existing") &&
+          init?.method === "POST"
+        ) {
+          events.push("adoption");
+          return jsonResponse(202, {
+            success: true,
+            data: {
+              dedicatedAgentId,
+              jobId,
+              status: "pending",
+              runtime: "dedicated_pending_cutover",
+            },
+          });
+        }
+        if (url.endsWith(`/api/v1/jobs/${jobId}`)) {
+          jobReads += 1;
+          events.push(`job:${jobReads}`);
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              id: jobId,
+              status: jobReads === 1 ? "pending" : "completed",
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier/cutover")) {
+          events.push("cutover");
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              personalElizaId,
+              activeAgentId: dedicatedAgentId,
+              runtime: "dedicated",
+              apiBase: `https://${dedicatedAgentId}.cloud.eliza.app`,
+              importedMessages: 0,
+            },
+          });
+        }
+        return jsonResponse(500, { error: `Unexpected URL ${url}` });
+      }),
+    );
+
+    await expect(
+      new ElizaClient().ensurePersonalDedicatedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+        pollIntervalMs: 0,
+        timeoutMs: 1_000,
+        requestDedicatedAdoptionConfirmation: async (quote) => ({
+          action: "adopt_existing_dedicated",
+          quoteId: quote.quoteId,
+        }),
+      }),
+    ).resolves.toMatchObject({ activeAgentId: dedicatedAgentId });
+    expect(events).toEqual(["adoption", "job:1", "job:2", "cutover"]);
+  });
+
+  it("surfaces an adopted target's terminal provisioning error without cutover", async () => {
+    const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const jobId = "10000000-0000-4000-8000-000000000020";
+    let cutoverPosts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/eliza/personal")) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              identity: {
+                id: personalElizaId,
+                displayName: "Eliza",
+                runtime: "shared",
+              },
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              quoteId: "a".repeat(64),
+              canActivate: true,
+              activation: { state: "available" },
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+          return jsonResponse(409, {
+            success: false,
+            code: "dedicated_adoption_selection_required",
+          });
+        }
+        if (
+          url.endsWith("/upgrade-tier/adopt-existing") &&
+          init?.method === "GET"
+        ) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              quoteId: "b".repeat(64),
+              dedicatedAgentId,
+              adoptionState: "available",
+              status: "error",
+              startsCompute: true,
+              hourlyRateUsd: 0.01,
+              dailyRateUsd: 0.24,
+              minimumBalanceUsd: 0.72,
+              minimumRunwayDays: 3,
+              balanceUsd: 115.54,
+              deficitUsd: 0,
+              stateDisposition: "verified_backup_present",
+              canAdopt: true,
+              requiresCatalogRestore: false,
+              requiresConfirmation: true,
+              action: "adopt_existing_dedicated",
+            },
+          });
+        }
+        if (
+          url.endsWith("/upgrade-tier/adopt-existing") &&
+          init?.method === "POST"
+        ) {
+          return jsonResponse(202, {
+            success: true,
+            data: {
+              dedicatedAgentId,
+              jobId,
+              status: "pending",
+              runtime: "dedicated_pending_cutover",
+            },
+          });
+        }
+        if (url.endsWith(`/api/v1/jobs/${jobId}`)) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              id: jobId,
+              status: "failed",
+              error: "No healthy capacity is available.",
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier/cutover")) cutoverPosts += 1;
+        return jsonResponse(500, { error: `Unexpected URL ${url}` });
+      }),
+    );
+
+    await expect(
+      new ElizaClient().ensurePersonalDedicatedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+        pollIntervalMs: 0,
+        timeoutMs: 1_000,
+        requestDedicatedAdoptionConfirmation: async (quote) => ({
+          action: "adopt_existing_dedicated",
+          quoteId: quote.quoteId,
+        }),
+      }),
+    ).rejects.toMatchObject({
+      code: "CLOUD_DEDICATED_PROVISION_JOB_FAILED",
+      message:
+        "Your Dedicated agent failed to start: No healthy capacity is available.",
+    });
+    expect(cutoverPosts).toBe(0);
   });
 
   it("returns the current adoption quote without POSTing when visible confirmation is unavailable", async () => {
@@ -853,8 +1230,20 @@ describe("ensurePersonalDedicatedEliza", () => {
               created: false,
               data: {
                 dedicatedAgentId,
+                jobId: "10000000-0000-4000-8000-000000000020",
                 runtime: "dedicated_pending_cutover",
                 status: "queued",
+              },
+            });
+          }
+          if (
+            url.endsWith("/api/v1/jobs/10000000-0000-4000-8000-000000000020")
+          ) {
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                id: "10000000-0000-4000-8000-000000000020",
+                status: "completed",
               },
             });
           }
@@ -992,8 +1381,20 @@ describe("ensurePersonalDedicatedEliza", () => {
               created: false,
               data: {
                 dedicatedAgentId,
+                jobId: "10000000-0000-4000-8000-000000000020",
                 runtime: "dedicated_pending_cutover",
                 status: "queued",
+              },
+            });
+          }
+          if (
+            url.endsWith("/api/v1/jobs/10000000-0000-4000-8000-000000000020")
+          ) {
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                id: "10000000-0000-4000-8000-000000000020",
+                status: "completed",
               },
             });
           }
@@ -1183,14 +1584,14 @@ describe("ensurePersonalDedicatedEliza", () => {
                 [409, 423, 503][cutoverAttempts - 1] ?? 409,
                 {
                   success: false,
+                  code: [
+                    "dedicated_not_healthy",
+                    "personal_reminder_cutover_in_progress",
+                    "dedicated_history_import_failed",
+                  ][cutoverAttempts - 1],
                   error: "Dedicated is still provisioning",
                 },
               );
-              if (cutoverAttempts === 1) {
-                vi.spyOn(response, "text").mockRejectedValue(
-                  new Error("409 response body unavailable"),
-                );
-              }
               return response;
             }
             return jsonResponse(200, {
@@ -1235,6 +1636,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     async (targetStatus) => {
       const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
       const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+      const jobId = "10000000-0000-4000-8000-000000000020";
       let activationPosts = 0;
       const fetchMock = vi.fn(
         async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1269,7 +1671,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             activationPosts += 1;
             return jsonResponse(202, {
               success: true,
-              data: { dedicatedAgentId },
+              data: { dedicatedAgentId, jobId },
             });
           }
           if (
@@ -1280,6 +1682,12 @@ describe("ensurePersonalDedicatedEliza", () => {
               success: false,
               code: "dedicated_adoption_unavailable",
               error: "Agent not found",
+            });
+          }
+          if (url.endsWith(`/api/v1/jobs/${jobId}`)) {
+            return jsonResponse(200, {
+              success: true,
+              data: { id: jobId, status: "completed" },
             });
           }
           if (url.endsWith("/upgrade-tier/cutover")) {
@@ -1464,6 +1872,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           cutoverPosts += 1;
           const headersOnly = jsonResponse(409, {
             success: false,
+            code: "dedicated_not_healthy",
             error: "Dedicated is still provisioning",
           });
           vi.spyOn(headersOnly, "text").mockImplementation(
@@ -1502,14 +1911,21 @@ describe("ensurePersonalDedicatedEliza", () => {
     expect(cutoverPosts).toBe(1);
   });
 
-  it.each(["request", "body"] as const)(
-    "aborts a hung boundary cutover %s at exactly 360000ms without late work",
-    async (stalledPhase) => {
+  it.each([
+    ["cutover", "request"],
+    ["cutover", "body"],
+    ["job", "request"],
+    ["job", "body"],
+  ] as const)(
+    "aborts a hung boundary %s %s at exactly 720000ms without late work",
+    async (stalledBoundary, stalledPhase) => {
       vi.useFakeTimers();
       vi.setSystemTime(0);
       const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
       const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+      const jobId = "10000000-0000-4000-8000-000000000020";
       let cutoverPosts = 0;
+      let boundaryRequests = 0;
       let releaseLateRequest: ((response: Response) => void) | undefined;
       let releaseLateBody: ((body: string) => void) | undefined;
       const onProgress = vi.fn();
@@ -1535,29 +1951,49 @@ describe("ensurePersonalDedicatedEliza", () => {
               data: {
                 quoteId: "3".repeat(64),
                 canActivate: true,
-                activation: {
-                  state: "in_progress",
-                  dedicatedAgentId,
-                  status: "provisioning",
-                },
+                activation:
+                  stalledBoundary === "job"
+                    ? { state: "available" }
+                    : {
+                        state: "in_progress",
+                        dedicatedAgentId,
+                        status: "provisioning",
+                      },
               },
             });
           }
           if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+            if (stalledBoundary === "job") {
+              return jsonResponse(202, {
+                success: true,
+                data: { dedicatedAgentId, jobId },
+              });
+            }
             throw new Error("activation POST must not replay");
           }
-          if (url.endsWith("/upgrade-tier/cutover")) {
-            cutoverPosts += 1;
-            if (cutoverPosts === 2) {
+          if (url.endsWith("/upgrade-tier/cutover")) cutoverPosts += 1;
+          if (
+            url.endsWith("/upgrade-tier/cutover") ||
+            url.endsWith(`/api/v1/jobs/${jobId}`)
+          ) {
+            boundaryRequests += 1;
+            if (boundaryRequests === 2) {
               if (stalledPhase === "request") {
                 return await new Promise<Response>((resolve) => {
                   releaseLateRequest = resolve;
                 });
               }
-              const headersOnly = jsonResponse(409, {
-                success: false,
-                error: "Dedicated is still provisioning",
-              });
+              const headersOnly =
+                stalledBoundary === "job"
+                  ? jsonResponse(200, {
+                      success: true,
+                      data: { id: jobId, status: "in_progress" },
+                    })
+                  : jsonResponse(409, {
+                      success: false,
+                      code: "dedicated_not_healthy",
+                      error: "Dedicated is still provisioning",
+                    });
               vi.spyOn(headersOnly, "text").mockImplementation(
                 async () =>
                   await new Promise<string>((resolve) => {
@@ -1566,10 +2002,16 @@ describe("ensurePersonalDedicatedEliza", () => {
               );
               return headersOnly;
             }
-            return jsonResponse(409, {
-              success: false,
-              error: "Dedicated is still provisioning",
-            });
+            return stalledBoundary === "job"
+              ? jsonResponse(200, {
+                  success: true,
+                  data: { id: jobId, status: "in_progress" },
+                })
+              : jsonResponse(409, {
+                  success: false,
+                  code: "dedicated_not_healthy",
+                  error: "Dedicated is still provisioning",
+                });
           }
           return jsonResponse(500, { error: "unexpected route" });
         }),
@@ -1581,7 +2023,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
           onProgress,
-          pollIntervalMs: 359_999,
+          pollIntervalMs: 719_999,
         })
         .then(() => {
           outcome = "resolved";
@@ -1590,9 +2032,10 @@ describe("ensurePersonalDedicatedEliza", () => {
           outcome = error instanceof Error ? error : new Error(String(error));
         });
 
-      await vi.advanceTimersByTimeAsync(359_999);
+      await vi.advanceTimersByTimeAsync(719_999);
       expect(outcome).toBeUndefined();
-      expect(cutoverPosts).toBe(2);
+      expect(boundaryRequests).toBe(2);
+      expect(cutoverPosts).toBe(stalledBoundary === "cutover" ? 2 : 0);
       const progressCountAtBoundaryRequest = onProgress.mock.calls.length;
 
       await vi.advanceTimersByTimeAsync(1);
@@ -1605,20 +2048,27 @@ describe("ensurePersonalDedicatedEliza", () => {
         message: "The startup deadline elapsed",
         name: "TimeoutError",
       });
-      expect(Date.now()).toBe(360_000);
-      expect(cutoverPosts).toBe(2);
+      expect(Date.now()).toBe(720_000);
+      expect(boundaryRequests).toBe(2);
       expect(onProgress).toHaveBeenCalledTimes(progressCountAtBoundaryRequest);
 
-      const lateResponse = jsonResponse(409, {
-        success: false,
-        error: "late Dedicated response",
-      });
+      const lateResponse =
+        stalledBoundary === "job"
+          ? jsonResponse(200, {
+              success: true,
+              data: { id: jobId, status: "completed" },
+            })
+          : jsonResponse(409, {
+              success: false,
+              error: "late Dedicated response",
+            });
       releaseLateRequest?.(lateResponse);
       releaseLateBody?.(await lateResponse.text());
       await Promise.resolve();
       await Promise.resolve();
       await vi.advanceTimersByTimeAsync(30_000);
-      expect(cutoverPosts).toBe(2);
+      expect(boundaryRequests).toBe(2);
+      expect(cutoverPosts).toBe(stalledBoundary === "cutover" ? 2 : 0);
       expect(onProgress).toHaveBeenCalledTimes(progressCountAtBoundaryRequest);
       expect(vi.getTimerCount()).toBe(0);
     },
@@ -1633,8 +2083,8 @@ describe("ensurePersonalDedicatedEliza", () => {
     vi.spyOn(Date, "now").mockImplementation(() => {
       nowReadCount += 1;
       if (nowReadCount === 1) return 0;
-      if (nowReadCount <= 11) return 359_999;
-      return 360_000;
+      if (nowReadCount <= 11) return 719_999;
+      return 720_000;
     });
     vi.stubGlobal(
       "fetch",
@@ -1673,6 +2123,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           cutoverPosts += 1;
           return jsonResponse(409, {
             success: false,
+            code: "dedicated_not_healthy",
             error: "Dedicated is still provisioning",
           });
         }
@@ -1701,6 +2152,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     vi.setSystemTime(0);
     const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
     const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const jobId = "10000000-0000-4000-8000-000000000020";
     const onProgress = vi.fn();
     let activationPosts = 0;
     let cutoverPosts = 0;
@@ -1750,7 +2202,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             1_000,
             jsonResponse(202, {
               success: true,
-              data: { dedicatedAgentId },
+              data: { dedicatedAgentId, jobId },
             }),
           );
         }
@@ -1763,10 +2215,20 @@ describe("ensurePersonalDedicatedEliza", () => {
             code: "dedicated_adoption_unavailable",
           });
         }
+        if (url.endsWith(`/api/v1/jobs/${jobId}`)) {
+          return await delayResponse(
+            1_000,
+            jsonResponse(200, {
+              success: true,
+              data: { id: jobId, status: "completed" },
+            }),
+          );
+        }
         if (url.endsWith("/upgrade-tier/cutover")) {
           cutoverPosts += 1;
           return jsonResponse(409, {
             success: false,
+            code: "dedicated_not_healthy",
             error: "Dedicated is still provisioning",
           });
         }
@@ -1789,7 +2251,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         outcome = error instanceof Error ? error : new Error(String(error));
       });
 
-    await vi.advanceTimersByTimeAsync(359_999);
+    await vi.advanceTimersByTimeAsync(719_999);
     expect(outcome).toBeUndefined();
     expect(activationPosts).toBe(1);
     expect(cutoverPosts).toBeGreaterThan(0);
@@ -1798,7 +2260,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await vi.advanceTimersByTimeAsync(1);
     await attempt;
-    expect(Date.now()).toBe(360_000);
+    expect(Date.now()).toBe(720_000);
     expect(outcome).toBeInstanceOf(Error);
     expect((outcome as Error).message).toContain(
       "did not become ready before the signed-in startup deadline",
@@ -1823,8 +2285,8 @@ describe("ensurePersonalDedicatedEliza", () => {
     vi.spyOn(Date, "now").mockImplementation(() => {
       nowReadCount += 1;
       if (nowReadCount === 1) return 0;
-      if (nowReadCount <= 11) return 359_999;
-      return 360_000;
+      if (nowReadCount <= 11) return 719_999;
+      return 720_000;
     });
     capacitorHttpRequestMock.mockImplementation(
       async ({ method, url }: { method: string; url: string }) => {
@@ -1894,9 +2356,9 @@ describe("ensurePersonalDedicatedEliza", () => {
       if (nowReadCount === 1) return 0;
       if (nowReadCount === 2) {
         controller.abort(abortReason);
-        return 359_999;
+        return 719_999;
       }
-      return 360_000;
+      return 720_000;
     });
     vi.stubGlobal(
       "fetch",

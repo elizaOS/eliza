@@ -97,6 +97,8 @@ export interface CloudLiveNetworkAuditSnapshot {
   uninspectableDedicatedActivationResponseBodyCount: number;
   dedicatedActivationResponseStatus: number | null;
   dedicatedActivationResponseCode: string | null;
+  dedicatedCutoverResponseStatus: number | null;
+  dedicatedCutoverResponseCode: string | null;
   dedicatedCutoverPostRequestCount: number;
   successfulDedicatedCutoverPostResponseCount: number;
   clientErrorDedicatedCutoverPostResponseCount: number;
@@ -1437,10 +1439,12 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
         const counters = dedicatedControlPlane[dedicatedRequest];
         const sourceAgentId = dedicatedRequestSourceAgentId(rawUrl);
         const lifecycleRequest =
-          dedicatedRequest === "activation" && sourceAgentId
+          (dedicatedRequest === "activation" ||
+            dedicatedRequest === "cutover") &&
+          sourceAgentId
             ? dedicatedLifecycleRequests.find(
                 (request) =>
-                  request.phase === "activation" &&
+                  request.phase === dedicatedRequest &&
                   request.sourceAgentId === sourceAgentId &&
                   request.responseStatus === null,
               )
@@ -1584,6 +1588,13 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
           (request) =>
             request.phase === "activation" && request.responseStatus !== null,
         );
+      const latestDedicatedCutoverResponse = dedicatedLifecycleRequests
+        .slice()
+        .reverse()
+        .find(
+          (request) =>
+            request.phase === "cutover" && request.responseStatus !== null,
+        );
       const approvedTargetId =
         dedicatedApprovalBinding?.dedicatedAgentId ??
         (dedicatedApprovalBinding?.confirmationKind === "activation"
@@ -1714,6 +1725,10 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
           latestDedicatedActivationResponse?.responseStatus ?? null,
         dedicatedActivationResponseCode:
           latestDedicatedActivationResponse?.responseCode ?? null,
+        dedicatedCutoverResponseStatus:
+          latestDedicatedCutoverResponse?.responseStatus ?? null,
+        dedicatedCutoverResponseCode:
+          latestDedicatedCutoverResponse?.responseCode ?? null,
         dedicatedCutoverPostRequestCount: dedicatedControlPlane.cutover.request,
         successfulDedicatedCutoverPostResponseCount:
           dedicatedControlPlane.cutover.success,
