@@ -7,7 +7,6 @@
 import type { LinkedAccountProviderId } from "@elizaos/shared";
 import { Mic } from "lucide-react";
 import { useCallback, useMemo } from "react";
-import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import {
   FIRST_RUN_PROVIDER_CATALOG,
   getDirectAccountProviderForFirstRunProvider,
@@ -15,6 +14,8 @@ import {
 } from "../../providers";
 import { useAppSelectorShallow } from "../../state";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
+import { VOICE_PROVIDERS } from "../../voice/types";
+import { useVoiceConfig } from "../../voice/useVoiceConfig";
 import { AccountManagementPanel } from "../accounts/AccountManagementPanel";
 import { ProvidersList } from "../local-inference/ProvidersList";
 import { RoutingMatrix } from "../local-inference/RoutingMatrix";
@@ -55,6 +56,7 @@ interface ProviderSwitcherProps {
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const app = useAppSelectorShallow((s) => ({
     t: s.t,
+    uiLanguage: s.uiLanguage,
     elizaCloudConnected: s.elizaCloudConnected,
     plugins: s.plugins,
     pluginSaving: s.pluginSaving,
@@ -65,8 +67,10 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     setActionNotice: s.setActionNotice,
   }));
   const t = app.t;
-  // Warm the runtime-mode default voice/ASR cache for the Voice section.
-  useDefaultProviderPresets();
+  const { voiceConfig } = useVoiceConfig(app.uiLanguage);
+  const voiceProvider = VOICE_PROVIDERS.find(
+    (provider) => provider.id === voiceConfig.provider,
+  );
   const elizaCloudConnected =
     props.elizaCloudConnected ?? Boolean(app.elizaCloudConnected);
   const plugins = Array.isArray(props.plugins)
@@ -379,40 +383,27 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         </SettingsGroup>
       ) : null}
 
-      {/* Voice folds into this section for MVP (the standalone Voice tab is
-          developer-only): speech is pinned to the bundled Kokoro TTS, so a
-          read-only status row is the whole story. */}
       <SettingsGroup
         title={t("providerswitcher.voiceGroupTitle", { defaultValue: "Voice" })}
         bare
       >
         <SettingsRow
-          label={
-            <span className="flex items-center gap-2">
-              <Mic className="size-[18px] shrink-0 text-accent" aria-hidden />
-              {selection.cloudRuntimeLocked
-                ? t("providerswitcher.cloudVoiceRowLabel", {
-                    defaultValue: "Eliza Cloud voice",
-                  })
-                : t("providerswitcher.voiceRowLabel", {
-                    defaultValue: "Kokoro (on-device)",
-                  })}
-            </span>
-          }
-          description={
-            selection.cloudRuntimeLocked
-              ? t("providerswitcher.cloudVoiceRowDescription", {
-                  defaultValue:
-                    "Speech recognition and playback use your signed-in Eliza Cloud service. This app does not download a local voice model.",
-                })
-              : t("providerswitcher.voiceRowDescription", {
-                  defaultValue:
-                    "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
-                })
-          }
+          icon={Mic}
+          label={t("providerswitcher.speechPlaybackLabel", {
+            defaultValue: "Speech playback",
+          })}
+          description={t("providerswitcher.speechPlaybackDescription", {
+            defaultValue: "Provider used for spoken replies.",
+          })}
           control={
-            <span className="text-xs text-accent">
-              {t("providerswitcher.activeProvider", { defaultValue: "Active" })}
+            <span className="text-xs text-txt-strong">
+              {voiceProvider
+                ? t(voiceProvider.labelKey, {
+                    defaultValue: voiceProvider.label,
+                  })
+                : t("providerswitcher.servingInferenceUnconfirmed", {
+                    defaultValue: "Unconfirmed",
+                  })}
             </span>
           }
         />
