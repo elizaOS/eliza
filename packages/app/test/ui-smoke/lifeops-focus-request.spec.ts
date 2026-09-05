@@ -76,6 +76,10 @@ for (const viewport of [
             ? page.getByRole("button", { name: "Add todo", exact: true })
             : page.getByRole("combobox").first();
       await expect(control).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByTestId("chat-pill")).toBeVisible();
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+      });
       await page.screenshot({
         path: testInfo.outputPath(`${viewport.name}-${view}-rest.jpg`),
         fullPage: true,
@@ -92,6 +96,10 @@ for (const viewport of [
       exact: true,
     });
     await expect(start).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId("chat-pill")).toBeVisible();
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+    });
     await page.screenshot({
       path: testInfo.outputPath(`${viewport.name}-focus-rest.jpg`),
       fullPage: true,
