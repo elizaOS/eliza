@@ -320,21 +320,26 @@ export function BackgroundSettingsControls({
         )?.id ?? null)
       : null;
 
-  // Keep the current wallpaper visible when General opens and after a choice.
-  // `auto` avoids an unsolicited motion sequence while still honoring the
-  // native-picker expectation that the selected option is immediately clear.
+  // Reveal the selected wallpaper within its strip. scrollIntoView also moves
+  // overflow-hidden ancestors and can scroll the native Settings sidebar offscreen.
   useEffect(() => {
     if (!isFilmstrip || !activeCatalogId) return;
-    const selectedTile = filmstripRef.current?.querySelector<HTMLButtonElement>(
+    const strip = filmstripRef.current;
+    const selectedTile = strip?.querySelector<HTMLButtonElement>(
       'button[aria-pressed="true"]',
     );
-    const inline =
-      (filmstripRef.current?.clientWidth ?? 0) >= 560 ? "nearest" : "center";
-    selectedTile?.scrollIntoView?.({
-      behavior: "auto",
-      block: "nearest",
-      inline,
-    });
+    if (!strip || !selectedTile || strip.clientWidth === 0) return;
+    const tileBounds = selectedTile.getBoundingClientRect();
+    const left =
+      tileBounds.left - strip.getBoundingClientRect().left - strip.clientLeft;
+    const right = left + tileBounds.width;
+    const delta =
+      strip.clientWidth < 560
+        ? left - (strip.clientWidth - tileBounds.width) / 2
+        : left < 0
+          ? left
+          : Math.max(0, right - strip.clientWidth);
+    strip.scrollLeft += delta;
   }, [activeCatalogId, isFilmstrip]);
 
   const onUploadClick = useCallback(() => {

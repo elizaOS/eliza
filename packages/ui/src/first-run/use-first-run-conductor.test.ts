@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FIRST_RUN_SIGN_IN_PROMPT } from "./first-run-greeting";
 
 const mocks = vi.hoisted(() => ({
+  openDesktopSettingsWindow: vi.fn(async () => undefined),
   client: {
     listLocalAgentBackups: vi.fn(
       async (): Promise<LocalAgentBackupMetadata[]> => [],
@@ -88,6 +89,11 @@ const mocks = vi.hoisted(() => ({
 Object.assign(mocks.client, {
   ensurePersonalDedicatedEliza: mocks.client.getPersonalSharedEliza,
 });
+
+vi.mock("../utils/desktop-workspace", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/desktop-workspace")>()),
+  openDesktopSettingsWindow: mocks.openDesktopSettingsWindow,
+}));
 
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
@@ -357,6 +363,7 @@ async function waitForTurn(
 beforeEach(() => {
   ensureLocalStorage().clear();
   vi.clearAllMocks();
+  mocks.openDesktopSettingsWindow.mockResolvedValue(undefined);
   // jsdom's window.open is unimplemented and logs a console error the setup
   // gate would flag; the flow launchers claim a real popup on every runtime /
   // provider pick, so default it to the popup-blocked (null) signal. Tests
@@ -1016,6 +1023,42 @@ describe("useFirstRunConductor", () => {
     );
     await waitForTurn(turn, "first-run:tutorial");
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("keeps native Settings recovery retryable until the window opens, then returns the overlay to chat", async () => {
+    windowWithElectrobun.__electrobunWindowId = 1;
+    mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
+      new Error("Couldn't reach Eliza Cloud"),
+    );
+    const spies = seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    tryHandleFirstRunAction("__first_run__:runtime:cloud");
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) => m.id.startsWith("first-run:error:")),
+      ).toBe(true);
+    });
+    mocks.openDesktopSettingsWindow.mockRejectedValueOnce(
+      new Error("Window unavailable"),
+    );
+    tryHandleFirstRunAction("__first_run__:error:settings");
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) =>
+          m.text.includes("Settings could not open"),
+        ),
+      ).toBe(true);
+    });
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(spies.setTab).not.toHaveBeenCalledWith("settings");
+    tryHandleFirstRunAction("__first_run__:error:settings");
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+    );
+    expect(mocks.openDesktopSettingsWindow).toHaveBeenCalledTimes(2);
+    expect(spies.setTab).not.toHaveBeenCalledWith("settings");
     unmount();
   });
 
