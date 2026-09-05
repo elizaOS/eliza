@@ -26,6 +26,18 @@ function nextPopState(): Promise<void> {
 }
 
 describe("parseSettingsHash", () => {
+  it.each(["shortcuts", "hotkeys", "keyboard"])(
+    "preserves bookmarked %s routes after desktop consolidation",
+    (alias) => {
+      window.history.replaceState(null, "", `/settings#${alias}`);
+      const route = parseSettingsHash(window.location.hash);
+      expect(route).toEqual({
+        kind: "section",
+        sectionId: "desktop-integration",
+      });
+      expect(settingsRouteToHash(route)).toBe("#desktop-integration");
+    },
+  );
   it("parses hub, flat section, and connectors detail", () => {
     expect(parseSettingsHash("")).toEqual({ kind: "hub" });
     expect(parseSettingsHash("#")).toEqual({ kind: "hub" });
