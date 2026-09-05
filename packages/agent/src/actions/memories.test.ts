@@ -233,7 +233,7 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
     });
 
     const result = await runCreate(runtime, message, {
-      text: "User prefers oat milk in their coffee.",
+      text: "User prefers oat milk in coffee.",
       kind: "preference",
     });
 
@@ -244,7 +244,7 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
     });
     expect(rows).toHaveLength(1);
     expect(rows[0].memory.content.text).toBe(
-      "User prefers oat milk in their coffee.",
+      "User prefers oat milk in coffee.",
     );
     expect(rows[0].memory.metadata).toMatchObject({
       kind: "durable",
@@ -276,13 +276,13 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
     expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
   });
 
-  it("keeps a paraphrase that adds a content word as a separate row", async () => {
+  it("keeps a paraphrase that adds a word as a separate row", async () => {
     const { runtime, rows } = makeRuntime();
     const message = makeMessage();
     seedStageFact(rows, {
-      text: "prefers oat milk",
+      text: "prefers oat milk in coffee",
       messageId: message.id as UUID,
-      keywords: ["prefers", "oat", "milk"],
+      keywords: ["prefers", "oat", "milk", "coffee"],
     });
 
     const result = await runCreate(runtime, message, {
@@ -292,7 +292,7 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
 
     expect(result.success).toBe(true);
     expect(rows).toHaveLength(2);
-    expect(rows[0].memory.content.text).toBe("prefers oat milk");
+    expect(rows[0].memory.content.text).toBe("prefers oat milk in coffee");
     expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
   });
 

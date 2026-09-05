@@ -1741,13 +1741,16 @@ export const calendarAction: Action & {
     {
       name: "title",
       description:
-        "Event title for create_event. TOP-LEVEL flat. " +
+        "Event title for create_event; for update_event/delete_event the exact title of the target event when no eventId is known. TOP-LEVEL flat. " +
         "NEVER inside `details`. " +
         "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`.",
       descriptionCompressed:
-        "title TOP-LEVEL; NOT details. create_event needs title + details.start/end",
+        "title TOP-LEVEL; NOT details. create_event needs title + details.start/end; delete/update: target title",
       required: false,
-      subactions: ["create_event", "update_event"],
+      // Live 2026-09-05 23:32: the promoted CALENDAR_DELETE_EVENT child rejected
+      // a top-level title ("Unexpected argument 'title'") that the parent
+      // accepts, so a valid structured delete failed before any lookup.
+      subactions: ["create_event", "update_event", "delete_event"],
       schema: { type: "string" as const },
     },
     {

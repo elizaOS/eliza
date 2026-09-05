@@ -216,25 +216,40 @@ export function factPolarityDiffers(left: string, right: string): boolean {
 	);
 }
 
+const LEADING_SUBJECT_PATTERN = /^(?:the )?user\s+/;
+
+/**
+ * Cosmetic normalization only: case, punctuation, whitespace, curly quotes,
+ * and a leading "user"/"the user" subject reference (the subject is fixed by
+ * the row's entity binding, not by this word). Every other word, including
+ * stopwords and prepositions, is kept in order.
+ */
+function normalizeClaimText(text: string): string {
+	return text
+		.toLowerCase()
+		.replace(/[\u2018\u2019]/g, "'")
+		.replace(/[^a-z0-9'\s-]/g, " ")
+		.replace(/\s+/g, " ")
+		.trim()
+		.replace(LEADING_SUBJECT_PATTERN, "");
+}
+
 /**
  * Conservative "same claim" test for destructive convergence (one row absorbs
- * another): the two texts must have the identical set of content keywords
- * (case, punctuation, stopwords and word order ignored) and the same
- * polarity. "prefers oat milk in coffee" and "User prefers oat milk in their
- * coffee." are the same claim; "previously liked oat milk" and "nowadays
- * likes oat milk", or any paraphrase that adds or drops a content word, are
- * not, and stay as separate rows. Keyword similarity scores remain retrieval
- * ranking only, never proof of equivalence.
+ * another): after cosmetic normalization the two texts must be identical, word
+ * for word and in order, with the same polarity. "prefers oat milk in coffee"
+ * and "User prefers oat milk in coffee." are the same claim; "prefers tea over
+ * coffee" / "prefers coffee over tea" (reversed), "prefers oat milk in coffee"
+ * / "prefers oat milk in their coffee" (a modifier), and "previously liked oat
+ * milk" / "nowadays likes oat milk" are not, and stay as separate rows —
+ * a duplicate row is recoverable, a suppressed distinct fact is not. Keyword
+ * similarity remains retrieval ranking only, never proof of equivalence.
  */
 export function factClaimsEquivalent(left: string, right: string): boolean {
 	if (factPolarityDiffers(left, right)) return false;
-	const leftTerms = new Set(extractFactKeywords([left]));
-	const rightTerms = new Set(extractFactKeywords([right]));
-	if (leftTerms.size === 0 || leftTerms.size !== rightTerms.size) return false;
-	for (const term of leftTerms) {
-		if (!rightTerms.has(term)) return false;
-	}
-	return true;
+	const normalizedLeft = normalizeClaimText(left);
+	const normalizedRight = normalizeClaimText(right);
+	return normalizedLeft.length > 0 && normalizedLeft === normalizedRight;
 }
 
 export function factLexicalSimilarity(

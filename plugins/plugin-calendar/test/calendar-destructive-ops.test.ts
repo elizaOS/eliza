@@ -284,6 +284,24 @@ describe("CALENDAR delete_event disambiguation", () => {
     );
   });
 
+  it("the user's stated day outranks a wrong planner date detail", async () => {
+    // Live 2026-09-05 23:33: "delete the haircut on sunday" came with
+    // details.date for the Monday, so the lookup missed the Sunday event.
+    const result = await runHandler({
+      service,
+      text: "delete lunch with grandma on 2026-07-08",
+      parameters: {
+        subaction: "delete_event",
+        query: "grandma",
+        details: { date: "2026-07-09", timeZone: "UTC" },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+    );
+  });
+
   it("typed delete_event + title (no query) → reads the feed and targets that event", async () => {
     // ROOT trace step-1788648925553-vzj6rq (2026-09-05): the planner sent
     // subaction=delete_event with the exact title and a date; the handler

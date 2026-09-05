@@ -2317,12 +2317,14 @@ function resolveStatedCreateDate(args: {
 }
 
 /**
- * Texts consulted, in order, for the stated day of an update/delete target: an
- * explicit `date` detail first; then the user's message when it names a single
- * day; when it names several (one message, several targets — live 2026-09-05
- * 22:44 "the yoga class on thursday, the pottery class on saturday and the
- * haircut on sunday" constrained every target to Thursday), the planner's
- * per-target intent decides ahead of the message.
+ * Texts consulted, in order, for the stated day of an update/delete target:
+ * the user's message when it names a single day; when it names several (one
+ * message, several targets — live 2026-09-05 22:44 "the yoga class on
+ * thursday, the pottery class on saturday and the haircut on sunday"
+ * constrained every target to Thursday), the planner's per-target intent
+ * ahead of the message; the planner's explicit `date` detail only as the
+ * fallback when the prose names no day — planner weekday arithmetic is not
+ * trusted over the user's words (live 23:33: "sunday" was sent as the 7th).
  */
 function mutationTargetTexts(args: {
   details: Record<string, unknown> | undefined;
@@ -2334,8 +2336,8 @@ function mutationTargetTexts(args: {
   const messageNamesSeveralDays =
     distinctStatedLocalDates(args.currentMessage, args.timeZone).length >= 2;
   return messageNamesSeveralDays
-    ? [explicitDate, args.intent, args.currentMessage]
-    : [explicitDate, args.currentMessage, args.intent];
+    ? [args.intent, args.currentMessage, explicitDate]
+    : [args.currentMessage, args.intent, explicitDate];
 }
 
 const PAST_START_GRACE_MS = 5 * 60 * 1000;

@@ -17,17 +17,21 @@ import {
 
 describe("factClaimsEquivalent", () => {
 	it.each([
-		["prefers oat milk in coffee", "User prefers oat milk in their coffee."],
+		["prefers oat milk in coffee", "User prefers oat milk in coffee."],
 		["prefers morning check-ins", "the user prefers morning check-ins"],
 		[
 			"Prefers sparkling water over still water",
-			"prefers sparkling water over still water",
+			"prefers  sparkling water over still water",
 		],
+		["doesn’t like oat milk", "doesn't like oat milk"],
 	])("accepts %j and %j as the identical claim", (left, right) => {
 		expect(factClaimsEquivalent(left, right)).toBe(true);
 	});
 
 	it.each([
+		["prefers oat milk in coffee", "User prefers oat milk in their coffee."],
+		["prefers tea over coffee", "prefers coffee over tea"],
+		["reports to Alice, manages Bob", "reports to Bob, manages Alice"],
 		["previously liked oat milk", "nowadays likes oat milk"],
 		["used to hate oat milk", "does not hate oat milk"],
 		["prefers oat milk in coffee", "loves oat milk in coffee"],

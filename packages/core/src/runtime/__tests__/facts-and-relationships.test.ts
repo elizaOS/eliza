@@ -351,7 +351,7 @@ describe("runFactsAndRelationshipsStage", () => {
 				agentId: runtime.agentId,
 				roomId: message.roomId,
 				content: {
-					text: "User prefers oat milk in their coffee.",
+					text: "User prefers oat milk in coffee.",
 					source: "MEMORY",
 				},
 				metadata: {
