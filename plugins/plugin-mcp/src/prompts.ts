@@ -162,6 +162,9 @@ Original user request: "{{{userMessage}}}"
 Tool response:
 {{{toolOutput}}}
 
+{{#if toolErrored}}
+IMPORTANT: The tool reported an ERROR — the call did NOT succeed. The "Tool response" above is the error detail, not requested data. Tell the user plainly that the operation failed, explain what went wrong when the error text is actionable, and do not present the error content as if it were a successful result.
+{{/if}}
 {{#if hasAttachments}}
 The tool also returned images or other media that will be shared with the user.
 {{/if}}
