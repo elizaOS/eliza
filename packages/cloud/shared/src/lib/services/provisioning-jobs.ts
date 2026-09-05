@@ -2359,9 +2359,10 @@ export class ProvisioningJobService {
             ...(isDeletionContinuation(sandbox)
               ? {}
               : { deletion_allocation_counted: holdsCountedNodeSlot(sandbox) }),
-            billing_status: "suspended" as const,
-            scheduled_shutdown_at: null,
-            shutdown_warning_sent_at: null,
+            // Provider ownership is not provider absence. Keep the existing
+            // billing clock live until executeAgentDelete proves the workload
+            // is gone and removes this row. Failure and timeout writebacks
+            // retain the row, so they also retain the charge authority.
             ...(isRecoveryReEnqueue ? {} : { error_count: 0 }),
             updated_at: new Date(),
           })
@@ -2408,8 +2409,9 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     authorization: "user_request" | "billing_request";
-    webhookUrl?: string;
     expectedLifecycleRevision?: number;
+    requireUserOwnedBillingAuthority?: boolean;
+    webhookUrl?: string;
   }): Promise<EnqueueAgentSuspendResult> {
     return this.enqueueLifecycleJob<AgentSuspendJobData>(this.agentSuspendLifecycleOptions(params));
   }
@@ -2456,12 +2458,26 @@ export class ProvisioningJobService {
     authorization: "user_request" | "billing_request";
     webhookUrl?: string;
     expectedLifecycleRevision?: number;
+    requireUserOwnedBillingAuthority?: boolean;
   }): LifecycleJobOptions<AgentSuspendJobData> {
     let intentIdToBind: string | undefined;
     const expectedLifecycleRevision = params.expectedLifecycleRevision;
     const validateTarget = (sandbox: LifecycleSandboxRow): void => {
       if (sandbox.pool_status !== null || sandbox.deleted_at !== null) {
         throw new ApiError(404, "resource_not_found", "Agent not found");
+      }
+      if (
+        params.requireUserOwnedBillingAuthority &&
+        (!isContainerBackedExecutionTier(sandbox.execution_tier) ||
+          sandbox.deletion_attempt_id !== null)
+      ) {
+        throw new ApiError(
+          409,
+          "session_not_ready",
+          sandbox.deletion_attempt_id
+            ? "Managed agent deletion is in progress"
+            : "Managed agent billing authority changed",
+        );
       }
       if (
         expectedLifecycleRevision !== undefined &&

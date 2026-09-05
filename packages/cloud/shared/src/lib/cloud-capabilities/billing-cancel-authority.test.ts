@@ -8,12 +8,14 @@ import type { AppContext } from "../../types/cloud-worker-env";
 import { checkCookieMutationGuard } from "../auth/cookie-mutation-guard";
 
 const requireCurrentBillingManagerSession = mock();
+const requireUserOrApiKeyWithOrg = mock();
+const requireAdmin = mock();
 const originalFetch = globalThis.fetch;
 
 mock.module("../auth/workers-hono-auth", () => ({
-  requireAdmin: mock(),
+  requireAdmin,
   requireCurrentBillingManagerSession,
-  requireUserOrApiKeyWithOrg: mock(),
+  requireUserOrApiKeyWithOrg,
 }));
 
 const { executeCloudCapabilityRest } = await import("./executor");
@@ -45,6 +47,8 @@ function cookieContext(): AppContext {
 
 beforeEach(() => {
   requireCurrentBillingManagerSession.mockReset();
+  requireUserOrApiKeyWithOrg.mockReset();
+  requireAdmin.mockReset();
 });
 
 afterEach(() => {
@@ -61,6 +65,17 @@ describe("billing cancellation capability authority", () => {
       getCloudProtocolCoverage().find((capability) => capability.id === "billing.cancel_resource")
         ?.organizationRoles,
     ).toEqual(["owner", "admin"]);
+  });
+
+  test("mixed-mode platform capabilities use member authority, not admin exclusivity", async () => {
+    requireUserOrApiKeyWithOrg.mockResolvedValue({ organization_id: "org-current" });
+    globalThis.fetch = mock(async () => Response.json({ success: true })) as typeof fetch;
+
+    await expect(executeCloudCapabilityRest(context, "a2a.platform", {})).resolves.toMatchObject({
+      response: { ok: true },
+    });
+    expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
+    expect(requireAdmin).not.toHaveBeenCalled();
   });
 
   test("generic capability execution denies before forwarding any request", async () => {
