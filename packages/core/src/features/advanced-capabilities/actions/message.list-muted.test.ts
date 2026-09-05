@@ -66,14 +66,29 @@ function mockRuntime(
 	const worlds = new Map<string, World>(
 		(seed?.worlds ?? []).map((world) => [world.id, world]),
 	);
+	// #25284: the umbrella resolves the caller's principal role before
+	// dispatching. These op-logic tests are not about the role floor, so the
+	// harness grants the harness sender ADMIN via a fallback world whenever
+	// the seed does not provide one (seeds that DO provide worlds keep their
+	// own world set untouched).
+	const fallbackWorld = {
+		id: "00000000-0000-0000-0000-0000000000dd",
+		agentId: AGENT_ID,
+		metadata: { roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" } },
+	} as World;
+	const fallbackRoom = {
+		id: "00000000-0000-0000-0000-0000000000bb",
+		worldId: "00000000-0000-0000-0000-0000000000dd",
+		source: "discord",
+	} as Room;
 	return {
 		agentId: AGENT_ID,
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
 		getMessageConnectors: () => connectors,
 		getParticipantUserState: async (roomId: UUID, entityId: UUID) =>
 			states.get(`${roomId}:${entityId}`) ?? null,
-		getRoom: async (roomId: UUID) => rooms.get(roomId) ?? null,
-		getWorld: async (worldId: UUID) => worlds.get(worldId) ?? null,
+		getRoom: async (roomId: UUID) => rooms.get(roomId) ?? fallbackRoom,
+		getWorld: async (worldId: UUID) => worlds.get(worldId) ?? fallbackWorld,
 	} as unknown as IAgentRuntime;
 }
 
@@ -152,12 +167,16 @@ describe("MESSAGE op=list_channels — muted flag", () => {
 			},
 		);
 		// The guild-id → worldId mapping is createUniqueUuid-based; answer for
-		// any id so the mapping stays the resolver's concern.
+		// any id so the mapping stays the resolver's concern. The granted role
+		// rides along (#25284) so the op-logic under test runs, not the floor.
 		(runtime as unknown as { getWorld: unknown }).getWorld = async () =>
 			({
 				id: MUTED_WORLD_ID,
 				agentId: AGENT_ID,
-				metadata: { agentMuteState: "MUTED" },
+				metadata: {
+					agentMuteState: "MUTED",
+					roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" },
+				},
 			}) as World;
 		const result = await runOp(runtime, { action: "list_channels" });
 		const data = result.data as { channels: { muted: boolean }[] };

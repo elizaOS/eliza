@@ -48,7 +48,9 @@ function runtimeWithGoogleService(service: Record<string, unknown>): IAgentRunti
     ...service,
   };
   return {
-    agentId: "agent-1",
+    // Matches actionMessage.entityId so the agent-self OWNER path applies
+    // (the harness has no room/world surface for role resolution).
+    agentId: "00000000-0000-0000-0000-000000000001",
     getService: vi.fn((serviceType: string) => (serviceType === "google" ? googleService : null)),
     emitEvent: vi.fn(async () => undefined),
     reportError: vi.fn(),
@@ -227,6 +229,48 @@ describe("GoogleGmailAdapter", () => {
         domainEventId: "gmail_reply:acct_google_1:sent_1",
       })
     );
+  });
+
+  it("captures the reply envelope at create time; a later cache refresh cannot change what is sent (#25284)", async () => {
+    let currentMessage = gmailMessage();
+    const listGmailTriageMessages = vi.fn(async () => [currentMessage]);
+    const sendGmailReply = vi.fn(async () => ({ messageId: "sent_immutable" }));
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages,
+      sendGmailReply,
+    });
+    const adapter = new GoogleGmailAdapter();
+    await adapter.listMessages(runtime, { worldIds: ["acct_google_1"] });
+
+    const draft = await adapter.createDraft(runtime, {
+      inReplyToId: "gmail:msg_1",
+      body: "Original plan.",
+    });
+
+    // The provider's view of the message CHANGES after the preview was
+    // armed: different sender, subject, and threading headers. The send
+    // must use the create-time envelope, not this refreshed state.
+    currentMessage = gmailMessage({
+      from: { identifier: "attacker@example.com", displayName: "Attacker" },
+      subject: "You won a prize",
+      metadata: {
+        messageIdHeader: "<fake@example.com>",
+        references: "<fake-root@example.com>",
+      },
+    });
+    await adapter.listMessages(runtime, { worldIds: ["acct_google_1"] });
+
+    await adapter.sendDraft(runtime, draft.draftId);
+
+    expect(sendGmailReply).toHaveBeenCalledTimes(1);
+    expect(sendGmailReply).toHaveBeenCalledWith({
+      accountId: "acct_google_1",
+      to: ["guest@example.com"],
+      subject: "Planning call",
+      bodyText: "Original plan.",
+      inReplyTo: "<msg_1@example.com>",
+      references: "<root@example.com>",
+    });
   });
 
   it("sends a real-client mapped reply to Reply-To instead of From", async () => {
@@ -427,10 +471,14 @@ describe("GoogleGmailAdapter", () => {
   });
 });
 
+// The caller is the agent itself (OWNER): these rows exercise the Gmail
+// adapter's read path, not principal admission — the harness runtime has no
+// room/world surface, so any non-agent caller would fail role resolution and
+// be denied by the per-op gate before reaching the adapter (#25284).
 const actionMessage = {
   id: "00000000-0000-0000-0000-0000000000aa",
   roomId: "00000000-0000-0000-0000-0000000000bb",
-  entityId: "00000000-0000-0000-0000-0000000000cc",
+  entityId: "00000000-0000-0000-0000-000000000001",
   agentId: "00000000-0000-0000-0000-000000000001",
   content: { text: "read the email", source: "client_chat" },
   createdAt: 1,

@@ -4,18 +4,22 @@
  * supplied it extracts the target platform, recipient, and body from the user's
  * request (via `outboundDraftOptionsFromMessage`, which is model-driven so it
  * works in any language) and persists a draft; when a draft id is supplied it
- * sends that draft. If the TriageService adapter cannot create a draft it falls
+ * sends that draft — but only after a real user turn confirmed the previewed
+ * draft (#25284). If the TriageService adapter cannot create a draft it falls
  * back to a locally stored draft so the confirmation flow still works.
  *
- * Two independent gates guard every send. The user-confirmation gate refuses to
- * send without an explicit `confirmed: true`, returning a preview instead; the
- * owner SendPolicy gate (when a policy is registered) can defer any send for
- * owner approval, enqueuing the sendDraft executor for later replay.
+ * Two independent gates guard every send. The user-consent gate
+ * (`gateSendDraftConsent`) refuses to send until a subsequent user turn — never
+ * a planner-authored parameter — answers the preview with an unqualified
+ * affirmative for the exact same draft snapshot, actor, and room; the owner
+ * SendPolicy gate (when a policy is registered) can defer any send for owner
+ * approval, enqueuing the sendDraft executor for later replay.
  *
  * `outboundDraftOptionsFromMessage` is exported for the unit tests in
  * `sendDraft.test.ts`.
  */
 import crypto from "node:crypto";
+import { ElizaError } from "../../../../errors.ts";
 import { logger } from "../../../../logger.ts";
 import type {
 	Action,
@@ -44,6 +48,12 @@ import {
 	parseSendDraftParams,
 	validateMessageAction,
 } from "./_shared.ts";
+import {
+	draftConsentDigest,
+	gateSendDraftConsent,
+	PRINCIPAL_RANK_USER,
+	resolveMessagePrincipalRole,
+} from "./send-consent.ts";
 
 const OUTBOUND_DRAFT_PARAMETERS: ActionParameter[] = [
 	{
@@ -237,18 +247,23 @@ function saveLocalOutboundDraft(args: {
 }
 
 /**
- * SAFETY INVARIANT: MESSAGE must never send without an explicit
- * `confirmed: true` parameter. When confirmation is missing the handler
- * returns the preview and asks the user to confirm.
+ * SAFETY INVARIANT: MESSAGE must never send on planner-authored arguments. The
+ * `confirmed` boolean is gone from the parameter surface; a send is authorized
+ * only by `gateSendDraftConsent`, which requires a real subsequent user turn
+ * (#25284).
  */
 export const sendDraftAction: Action = {
 	name: "MESSAGE",
 	contexts: ["messaging", "email", "contacts"],
-	roleGate: { minRole: "ADMIN" },
+	// USER+ per #25284: owned/delegated delivery is a user capability; GUEST is
+	// denied. This leaf is only reachable through the umbrella MESSAGE action,
+	// which keeps its own exposure gate; this floor is the send-specific
+	// admission the umbrella cannot express per-op.
+	roleGate: { minRole: "USER" },
 	description:
-		"Create or send an owner-scoped outbound message draft. Use this for first-turn requests like 'send a Telegram message to Jane saying I am late', 'DM Bob on Discord', 'email Alice the notes', and 'text Sam that I am outside'. Without confirmed=true it only creates or previews the draft and asks for confirmation; it never sends directly.",
+		"Create or send an owner-scoped outbound message draft. Use this for first-turn requests like 'send a Telegram message to Jane saying I am late', 'DM Bob on Discord', 'email Alice the notes', and 'text Sam that I am outside'. It creates or previews the draft and asks for confirmation; a later user reply that confirms the preview is the only thing that sends it.",
 	descriptionCompressed:
-		"outbound draft/send Telegram|Discord|email|SMS|iMessage|WhatsApp|DM; requires confirmed=true",
+		"outbound draft/send Telegram|Discord|email|SMS|iMessage|WhatsApp|DM; send requires a confirming user turn",
 	similes: [
 		"DISPATCH_DRAFT",
 		"CONFIRM_AND_SEND",
@@ -257,12 +272,6 @@ export const sendDraftAction: Action = {
 	],
 	parameters: [
 		{ ...draftIdParameter, required: false },
-		{
-			name: "confirmed",
-			description: "Whether the user explicitly confirmed sending the draft.",
-			required: false,
-			schema: { type: "boolean" as const, default: false },
-		},
 		...OUTBOUND_DRAFT_PARAMETERS,
 	],
 	examples: [
@@ -354,6 +363,18 @@ export const sendDraftAction: Action = {
 			logger.info(
 				`[SendDraft] created outbound draft draftId=${record.draftId} source=${record.source}`,
 			);
+			// Arm the consent gate at creation (#25284 review round 2): the
+			// preview this turn shows is the one the next user turn answers,
+			// instead of leaving the draft un-armed and demanding a second
+			// confirm cycle.
+			const armed = await gateSendDraftConsent({
+				runtime,
+				message: _message,
+				draft: record,
+			});
+			logger.info(
+				`[SendDraft] consent armed at creation: status=${armed.status} draftId=${record.draftId}`,
+			);
 			if (callback) {
 				await callback({ text, action: "MESSAGE" });
 			}
@@ -378,16 +399,62 @@ export const sendDraftAction: Action = {
 			return { success: false, text: msg, error: msg };
 		}
 
-		if (!parsed.confirmed) {
-			// The confirm prompt is the designed ask the user must answer:
-			// verified + turnComplete make it the sole delivery, worded like a
-			// person asking; the draftId stays planner-facing in data.
-			const text = `Here's what I'm about to send: ${existing.preview} — want me to send it?`;
-			logger.info(`[SendDraft] confirmation gate: draftId=${parsed.draftId}`);
+		// Per-op principal admission (#25284): the umbrella MESSAGE gate covers
+		// exposure, but send_draft specifically admits USER+ (owned/delegated
+		// delivery) and denies GUEST. Fail closed when the sender's role cannot
+		// be resolved.
+		const admission = await resolveMessagePrincipalRole(runtime, _message);
+		if (admission.rank < PRINCIPAL_RANK_USER) {
+			const text = `Sending drafts requires at least user access; the current caller is ${admission.role}.`;
+			logger.warn(
+				`[SendDraft] role denied: role=${admission.role} draftId=${parsed.draftId}`,
+			);
+			return {
+				success: false,
+				text,
+				error: "SEND_PRINCIPAL_ROLE_DENIED",
+				data: {
+					actionName: "MESSAGE",
+					error: "SEND_PRINCIPAL_ROLE_DENIED",
+					callerRole: admission.role,
+				},
+			};
+		}
+
+		const consent = await gateSendDraftConsent({
+			runtime,
+			message: _message,
+			draft: existing,
+		});
+		if (consent.status !== "confirmed") {
+			const text =
+				consent.status === "cancelled"
+					? "Cancelled — I won't send that draft."
+					: `Here's what I'm about to send: ${existing.preview} — want me to send it?`;
+			const data =
+				consent.status === "cancelled"
+					? {
+							requiresConfirmation: false,
+							cancelled: true,
+							draftId: existing.draftId,
+							source: existing.source,
+						}
+					: {
+							requiresConfirmation: true,
+							preview: existing.preview,
+							draftId: existing.draftId,
+							source: existing.source,
+							to: existing.to,
+						};
+			logger.info(
+				`[SendDraft] consent gate: status=${consent.status} draftId=${parsed.draftId}`,
+			);
 			if (callback) {
 				await callback({ text, action: "MESSAGE" });
 			}
 			return {
+				// A pending preview ask completes the turn; a refusal completes it
+				// too. Both are the designed ask/answer, not failures.
 				success: true,
 				text,
 				userFacingText: text,
@@ -395,18 +462,17 @@ export const sendDraftAction: Action = {
 				turnComplete: true,
 				continueChain: false,
 				data: {
-					requiresConfirmation: true,
-					preview: existing.preview,
-					draftId: existing.draftId,
-					source: existing.source,
+					...data,
+					consentStatus: consent.status,
 				},
 			};
 		}
 
-		// Owner-policy gate (separate from the user-confirmation gate above):
+		// Owner-policy gate (separate from the user-consent gate above):
 		// hosts can register a SendPolicy that defers any outbound send until
 		// owner approval. When the policy enqueues, we report pending and
 		// hand the executor (sendDraft) over for later replay.
+		const consentedDigest = draftConsentDigest(existing);
 		const policy = getSendPolicy(runtime);
 		if (policy) {
 			const draftReq: DraftRequest = {
@@ -423,9 +489,15 @@ export const sendDraftAction: Action = {
 			const required = await policy.shouldRequireApproval(runtime, draftReq);
 			if (required) {
 				const enq = await policy.enqueueApproval(runtime, draftReq, () =>
-					service.sendDraft(runtime, parsed.draftId).then((rec) => ({
-						externalId: rec.sentExternalId ?? `pending:${rec.draftId}`,
-					})),
+					// Bind the replay to the consented snapshot too (#25284): if
+					// the draft mutates between consent and owner-approved
+					// replay, the send fails closed instead of delivering
+					// unconsented bytes.
+					service
+						.sendDraft(runtime, parsed.draftId, consentedDigest)
+						.then((rec) => ({
+							externalId: rec.sentExternalId ?? `pending:${rec.draftId}`,
+						})),
 				);
 				// The pending-approval notice is the complete answer to this turn:
 				// verified + turnComplete make it the sole delivery, human-worded;
@@ -457,7 +529,76 @@ export const sendDraftAction: Action = {
 			}
 		}
 
-		const sent = await service.sendDraft(runtime, parsed.draftId);
+		const sent = await service
+			.sendDraft(runtime, parsed.draftId, consentedDigest)
+			.catch((error: unknown) => {
+				// error-policy:J1 boundary translation — the consented snapshot no
+				// longer matches the stored draft (mutated between the gate and
+				// the provider call). Fail closed: nothing went out; re-preview so
+				// the next user turn consents the bytes that exist now (#25284).
+				if (
+					error instanceof ElizaError &&
+					error.code === "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH"
+				) {
+					logger.warn(
+						`[SendDraft] consented snapshot mismatch: draftId=${parsed.draftId} — re-previewing`,
+					);
+					return null;
+				}
+				throw error;
+			});
+		if (!sent) {
+			const fresh = service.getStore().getDraft(parsed.draftId);
+			// Arm the consent for the preview we are about to show (#25284
+			// r3): the mismatch preview must be confirmable by the NEXT user
+			// turn, not just re-displayed. If arming fails, the recovery is
+			// a visibly DEGRADED state — an explicit retry hint, never a
+			// confirmation prompt that was not actually armed (the next bare
+			// yes would only re-ask, misrepresenting the gate).
+			let armed = false;
+			if (fresh) {
+				const gate = await gateSendDraftConsent({
+					runtime,
+					message: _message,
+					draft: fresh,
+				}).catch(() => {
+					/* error-policy:J4 arming failure degrades to an explicit retry ask below */
+					return null;
+				});
+				armed = gate?.status === "pending" || gate?.status === "stale";
+			}
+			const text = !fresh
+				? "That draft is no longer available."
+				: armed
+					? `That draft changed after you approved it — here's the current version: ${fresh.preview} — still want me to send it?`
+					: "That draft changed after you approved it, and I couldn't stage a new confirmation right now — please ask me to send it again in a moment.";
+			const data = fresh
+				? {
+						requiresConfirmation: true,
+						preview: armed ? fresh.preview : "",
+						draftId: parsed.draftId,
+						source: fresh.source,
+						consentArmed: armed,
+					}
+				: {
+						requiresConfirmation: false,
+						draftId: parsed.draftId,
+						source: existing.source,
+						consentArmed: false,
+					};
+			if (callback) {
+				await callback({ text, action: "MESSAGE" });
+			}
+			return {
+				success: true,
+				text,
+				userFacingText: text,
+				verifiedUserFacing: true,
+				turnComplete: true,
+				continueChain: false,
+				data,
+			};
+		}
 		// The sent confirmation is the complete answer to a single-operation
 		// turn: verified + turnComplete make it the sole delivery; the draftId
 		// stays planner-facing in data.

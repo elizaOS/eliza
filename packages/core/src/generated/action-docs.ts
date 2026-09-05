@@ -534,17 +534,6 @@ export const coreActionsSpec = {
 						"Draft identifier for action=send_draft or action=schedule_draft_send.",
 				},
 				{
-					name: "confirmed",
-					description:
-						"Whether the user explicitly confirmed sending for action=send_draft.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"Whether the user explicitly confirmed sending for action=send_draft.",
-				},
-				{
 					name: "sendAt",
 					description: "Scheduled send time for action=schedule_draft_send.",
 					required: false,
@@ -2262,17 +2251,6 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed:
 						"Draft identifier for action=send_draft or action=schedule_draft_send.",
-				},
-				{
-					name: "confirmed",
-					description:
-						"Whether the user explicitly confirmed sending for action=send_draft.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"Whether the user explicitly confirmed sending for action=send_draft.",
 				},
 				{
 					name: "sendAt",

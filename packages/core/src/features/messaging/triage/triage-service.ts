@@ -13,6 +13,7 @@
 import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import type { IAgentRuntime } from "../../../types/index.ts";
+import { draftConsentDigest } from "./actions/send-consent.ts";
 import { filterInMemory } from "./adapters/base.ts";
 import { getDeferredMessageScheduler } from "./deferred-send-scheduler.ts";
 import {
@@ -66,6 +67,8 @@ export interface MessageSearchResult {
 export class TriageService {
 	private adapters = new Map<MessageSource, MessageAdapter>();
 	private sendsInFlight = new Map<string, Promise<DraftRecord>>();
+	/** Consent digest each in-flight send was armed with, for digest-bound joins. */
+	private sendsInFlightDigests = new Map<string, string>();
 	private persistedSendsInFlight = new Map<string, Promise<DraftRecord>>();
 	private schedulesInFlight = new Map<
 		string,
@@ -478,7 +481,26 @@ export class TriageService {
 	async sendDraft(
 		runtime: IAgentRuntime,
 		draftId: string,
+		consentDigest: string,
 	): Promise<DraftRecord> {
+		// Fail closed at the boundary (#25284 review r4): the digest is the
+		// only proof a send route intends the exact stored snapshot. An
+		// absent or blank digest — possible only from untyped callers, since
+		// the signature requires it — is a route that skipped consent
+		// binding entirely, so it must never fall back to sending ungated.
+		if (
+			typeof consentDigest !== "string" ||
+			consentDigest.trim().length === 0
+		) {
+			throw new ElizaError(
+				`Sending draft ${draftId} requires a consent digest binding the exact snapshot; route the digest of the record you intend to deliver.`,
+				{
+					code: "MESSAGE_DRAFT_CONSENT_DIGEST_REQUIRED",
+					context: { draftId },
+					severity: "fatal",
+				},
+			);
+		}
 		const record = this.store.getDraft(draftId);
 		if (!record) {
 			throw new ElizaError(`No draft found for id ${draftId}`, {
@@ -487,18 +509,54 @@ export class TriageService {
 				severity: "ephemeral",
 			});
 		}
+		// Snapshot binding (#25284 RP review): the digest that authorized the
+		// route must match the bytes that actually go out — for the send_draft
+		// action it is the preview the user confirmed; for one-turn and
+		// deferred routes it is the snapshot their originating action
+		// produced. A draft mutated between that authorization and the
+		// provider call (TOCTOU) fails closed here — never deliver content
+		// the authorizing turn never saw — and surfaces as a fresh preview
+		// ask at the action boundary.
+		if (draftConsentDigest(record) !== consentDigest) {
+			throw new ElizaError(
+				`The draft changed after it was confirmed; re-preview before sending (draftId=${draftId}).`,
+				{
+					code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
+					context: { draftId },
+					severity: "ephemeral",
+				},
+			);
+		}
 		if (record.sent) return record;
 		const sendKey = `${String(runtime.agentId)}:${record.source}:${draftId}`;
 		const pending = this.sendsInFlight.get(sendKey);
-		if (pending) return pending;
+		const pendingDigest = this.sendsInFlightDigests.get(sendKey);
+		if (pending) {
+			// Digest-bound join (#25284 r3): a caller must never piggyback on an
+			// in-flight send armed with a different binding — join only when the
+			// digests match.
+			if (pendingDigest !== consentDigest) {
+				throw new ElizaError(
+					`A different send of this draft is already in flight; re-preview before sending (draftId=${draftId}).`,
+					{
+						code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
+						context: { draftId },
+						severity: "ephemeral",
+					},
+				);
+			}
+			return pending;
+		}
 
-		const send = this.sendDraftOnce(runtime, record);
+		const send = this.sendDraftOnce(runtime, record, consentDigest);
 		this.sendsInFlight.set(sendKey, send);
+		this.sendsInFlightDigests.set(sendKey, consentDigest);
 		try {
 			return await send;
 		} finally {
 			if (this.sendsInFlight.get(sendKey) === send) {
 				this.sendsInFlight.delete(sendKey);
+				this.sendsInFlightDigests.delete(sendKey);
 			}
 		}
 	}
@@ -506,6 +564,7 @@ export class TriageService {
 	private async sendDraftOnce(
 		runtime: IAgentRuntime,
 		record: DraftRecord,
+		consentDigest: string,
 	): Promise<DraftRecord> {
 		const adapter = this.adapters.get(record.source);
 		if (!adapter?.isAvailable(runtime)) {
@@ -514,6 +573,24 @@ export class TriageService {
 				{
 					code: "MESSAGE_ADAPTER_UNAVAILABLE",
 					context: { draftId: record.draftId, source: record.source },
+					severity: "ephemeral",
+				},
+			);
+		}
+		// Revalidate on the freshest store state immediately before the
+		// adapter call (#25284 r2): isAvailable and in-flight setup can await,
+		// and every await is another mutation window. The adapter contract is
+		// that sendDraft delivers the create-time snapshot for the id it is
+		// handed (adapters keep their own write-once cache); this check pins
+		// the service-side record to the consented digest at the last instant
+		// we still control.
+		const latest = this.store.getDraft(record.draftId);
+		if (!latest || draftConsentDigest(latest) !== consentDigest) {
+			throw new ElizaError(
+				`The draft changed after it was confirmed; re-preview before sending (draftId=${record.draftId}).`,
+				{
+					code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
+					context: { draftId: record.draftId },
 					severity: "ephemeral",
 				},
 			);
@@ -618,7 +695,14 @@ export class TriageService {
 			sent: false,
 		};
 		this.store.saveDraft(hydrated);
-		const sent = await this.sendDraft(runtime, hydrated.draftId);
+		// Bind the send to the rehydrated snapshot (#25284 review r4): the
+		// replay must carry the same snapshot-intent proof every other send
+		// route does, closing the rehydrate→send mutation window.
+		const sent = await this.sendDraft(
+			runtime,
+			hydrated.draftId,
+			draftConsentDigest(hydrated),
+		);
 		if (hydrated.draftId === snapshot.draftId) return sent;
 		if (!sent.sentExternalId) {
 			throw new ElizaError(
