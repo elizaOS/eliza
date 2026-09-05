@@ -64,11 +64,11 @@ const STATUS_LABELS: Record<GoalStatus, string> = {
   satisfied: "Achieved",
 };
 
-const REVIEW_GLYPH: Record<GoalReviewState, string> = {
-  idle: "○",
-  on_track: "●",
-  at_risk: "●",
-  needs_attention: "●",
+const REVIEW_LABEL: Record<GoalReviewState, string> = {
+  idle: "Not reviewed",
+  on_track: "On track",
+  at_risk: "At risk",
+  needs_attention: "Needs attention",
 };
 
 const REVIEW_TONE: Record<GoalReviewState, "muted" | "success" | "danger"> = {
@@ -258,12 +258,12 @@ function GoalRow({ goal }: { goal: GoalItem }) {
 
   return (
     <HStack gap={2} align="center">
-      <Text tone={REVIEW_TONE[goal.reviewState]} wrap={false} shrink={0}>
-        {REVIEW_GLYPH[goal.reviewState]}
-      </Text>
       <VStack gap={0} grow={1}>
         <Text bold wrap={false}>
           {goal.title}
+        </Text>
+        <Text style="caption" tone={REVIEW_TONE[goal.reviewState]}>
+          {REVIEW_LABEL[goal.reviewState]}
         </Text>
         <Text style="caption" tone="muted" wrap={false}>
           {meta.join(" · ")}

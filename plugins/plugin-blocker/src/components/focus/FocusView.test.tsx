@@ -7,6 +7,7 @@
  */
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -17,7 +18,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SelfControlStatus } from "../../services/website-blocker/index.js";
 
-const sendChatMessage = vi.hoisted(() => vi.fn());
+const sendChatRest = vi.hoisted(() => vi.fn());
 
 // `@elizaos/ui` is the giant renderer barrel; the wrapper only touches
 // `client.getBaseUrl()` / `client.stopWebsiteBlock()` on its default fetcher
@@ -25,7 +26,7 @@ const sendChatMessage = vi.hoisted(() => vi.fn());
 vi.mock("@elizaos/ui", () => ({
   client: {
     getBaseUrl: () => "http://test.local",
-    sendChatMessage,
+    sendChatRest,
     stopWebsiteBlock: vi.fn(async () => ({ success: true, removed: true })),
   },
 }));
@@ -33,7 +34,7 @@ vi.mock("@elizaos/ui", () => ({
 vi.mock("@elizaos/ui/api", () => ({
   client: {
     getBaseUrl: () => "http://test.local",
-    sendChatMessage,
+    sendChatRest,
     stopWebsiteBlock: vi.fn(async () => ({ success: true, removed: true })),
   },
 }));
@@ -146,15 +147,55 @@ describe("FocusView — phases", () => {
 });
 
 describe("FocusView — actions", () => {
-  it("routes a new focus session through the assistant", async () => {
+  it("shows the assistant reply without claiming a block started", async () => {
+    sendChatRest.mockResolvedValueOnce({
+      text: "Which websites should I block?",
+      agentName: "Eliza",
+    });
     render(<FocusView fetchStatus={async () => EMPTY_STATUS} />);
 
     await screen.findByText("No focus session active");
     fireEvent.click(agent("start"));
 
-    expect(sendChatMessage).toHaveBeenCalledWith(
-      "Start a focus session for me.",
+    await screen.findByText("Which websites should I block?");
+    expect(screen.getByText("No focus session active")).toBeTruthy();
+  });
+
+  it("prevents duplicate focus requests while the assistant is responding", async () => {
+    let finish!: (response: { text: string; agentName: string }) => void;
+    sendChatRest.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
     );
+    render(<FocusView fetchStatus={async () => EMPTY_STATUS} />);
+    await screen.findByText("No focus session active");
+    fireEvent.click(agent("start"));
+    const pending = screen.getByRole("button", { name: "Asking Eliza…" });
+    expect((pending as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(pending);
+    expect(sendChatRest).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      finish({ text: "Which websites should I block?", agentName: "Eliza" }),
+    );
+    await screen.findByText("Which websites should I block?");
+    expect((agent("start") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("shows a failed assistant request and permits retry", async () => {
+    sendChatRest.mockRejectedValueOnce(new Error("Agent is unavailable"));
+    render(<FocusView fetchStatus={async () => EMPTY_STATUS} />);
+    await screen.findByText("No focus session active");
+    fireEvent.click(agent("start"));
+    await screen.findByText("Agent is unavailable");
+    sendChatRest.mockResolvedValueOnce({
+      text: "Which websites should I block?",
+      agentName: "Eliza",
+    });
+    fireEvent.click(agent("start"));
+    await screen.findByText("Which websites should I block?");
+    expect(screen.queryByText("Agent is unavailable")).toBeNull();
   });
 
   it("Retry refetches after an error", async () => {

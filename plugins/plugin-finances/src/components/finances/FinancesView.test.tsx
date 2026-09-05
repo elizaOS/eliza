@@ -457,6 +457,24 @@ describe("FinancesView — filters", () => {
     expect(screen.getByText("Transactions (0 of 2)")).toBeTruthy();
   });
 
+  it("clears the period while retaining the selected transaction category", async () => {
+    render(
+      <FinancesView
+        fetchers={makeFetchers({ fetchTransactions: twoTransactions })}
+      />,
+    );
+    await screen.findByText("Latte");
+    await selectFilter("finance-category-filter", "shopping");
+    await selectFilter("finance-period-filter", "7d");
+    expect(screen.getByText("No transactions match the filter")).toBeTruthy();
+    await selectFilter("finance-period-filter", "All");
+    expect(screen.getByText("Old purchase")).toBeTruthy();
+    expect(screen.queryByText("Latte")).toBeNull();
+    expect(screen.getByText("Transactions (1 of 2)")).toBeTruthy();
+    await selectFilter("finance-category-filter", "All categories");
+    expect(screen.getByText("Latte")).toBeTruthy();
+  });
+
   it("honors the filtered-view handoff seam (initialFilters)", async () => {
     render(
       <FinancesView

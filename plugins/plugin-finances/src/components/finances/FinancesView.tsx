@@ -402,9 +402,9 @@ function buildFilterChips(
 ): FinanceFilterChip[] {
   const chips: FinanceFilterChip[] = [
     {
-      action: "filter-clear",
+      action: "filter-window-all",
       label: "All",
-      active: filters.windowDays === null && filters.category === null,
+      active: filters.windowDays === null,
     },
   ];
   for (const days of FILTER_WINDOWS_DAYS) {
@@ -583,6 +583,10 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
       }
       if (action === "filter-category-all") {
         setFilters((current) => ({ ...current, category: null }));
+        return;
+      }
+      if (action === "filter-window-all") {
+        setFilters((current) => ({ ...current, windowDays: null }));
         return;
       }
       if (action.startsWith("filter-window-")) {
