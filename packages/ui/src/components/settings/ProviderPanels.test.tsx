@@ -118,7 +118,7 @@ describe("ProviderPanels", () => {
     expect(screen.queryByText(/cloud controls/)).toBeNull();
     expect(
       screen.getByText(
-        "Eliza Cloud isn't signed in. Chat replies are using Local.",
+        "Sign in to use Eliza Cloud services.",
       ),
     ).toBeTruthy();
     fireEvent.click(
