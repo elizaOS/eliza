@@ -10,6 +10,14 @@ import {
   useRenderGuard,
 } from "./useRenderGuard";
 
+vi.mock("@elizaos/logger", () => ({
+  logger: {
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
+
 function Probe({ name }: { name: string }) {
   useRenderGuard(name);
   return null;
@@ -38,6 +46,7 @@ describe("useRenderGuard", () => {
         __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
       }
     ).__ELIZA_RENDER_TELEMETRY_ENABLED__;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -111,6 +120,15 @@ describe("useRenderGuard", () => {
         __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
       }
     ).__ELIZA_RENDER_TELEMETRY_ENABLED__ = true;
+
+    expect(isRenderTelemetryEnabled()).toBe(true);
+  });
+
+  it("enables telemetry for Vite's boolean DEV flag", () => {
+    vi.stubEnv("VITE_ELIZA_RENDER_TELEMETRY", undefined);
+    vi.stubEnv("MODE", "production");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DEV", true);
 
     expect(isRenderTelemetryEnabled()).toBe(true);
   });
