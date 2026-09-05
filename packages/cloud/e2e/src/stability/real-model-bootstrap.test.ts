@@ -126,7 +126,9 @@ test("waits for EOF and rejects a truncated bootstrap without downstream startup
   try {
     running.bootstrapPipe.write(`{"version":1,"credentialValue":"${secret}`);
     await new Promise((resolve) => setTimeout(resolve, 250));
-    expect(running.child.exitCode).toBeNull();
+    const prematureExitDiagnostic =
+      running.child.exitCode === null ? undefined : await running.stderr;
+    expect(running.child.exitCode, prematureExitDiagnostic).toBeNull();
     expect(existsSync(running.downstreamMarker)).toBe(false);
     running.bootstrapPipe.end();
     const [exit, stdout, stderr] = await Promise.all([
