@@ -2281,3 +2281,84 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     expect(row?.unrecoveredShortfallCredits).toBe(0);
   });
 });
+
+describe("listPaymentStates — lossless traversal beyond the former route depth cap (#26752 P1)", () => {
+  test("a 10,051-row history walks every page past the former 10,000 boundary exactly once", async () => {
+    // The list route formerly rejected every offset above 10,000, so a card
+    // that had appended 10,050 rows received hasMore=true and then a
+    // permanent 400 on ?offset=10050 — the tail row was unreachable and the
+    // retry loop could not step past the boundary. The service contract is
+    // lossless: this test walks the FULL history at the route's default page
+    // size across the former boundary and asserts every row is visited
+    // exactly once (no skips, no duplicates), the boundary page itself is a
+    // normal page, and the final partial page ends traversal cleanly.
+    const seeds: Array<Promise<unknown>> = [];
+    // 10,050 payment requests + 1 checkout order = 10,051 authorities. The
+    // single order is created FIRST so it lands at the very BACK of the
+    // (created_at DESC) merged ordering — the exact row the former cap
+    // stranded.
+    seeds.push(
+      insertCheckoutOrder({
+        organizationId,
+        userId,
+        amountCents: 300,
+        status: "quoted",
+        // Pinned old creation time: 10k bulk inserts race on now(), so
+        // insertion order alone cannot guarantee this row is the oldest
+        // authority. An explicit 2020 timestamp makes it deterministically
+        // the very BACK of the (created_at DESC) merged ordering — the exact
+        // row the former cap stranded.
+        createdAt: new Date("2020-01-01T00:00:00.000Z"),
+      }),
+    );
+    for (let i = 0; i < 10_050; i++) {
+      seeds.push(
+        insertStripePaymentRequest({
+          organizationId,
+          amountCents: 100,
+          status: "pending",
+          settlementTxRef: `pi_deep_${i}`,
+        }),
+      );
+    }
+    await Promise.all(seeds);
+
+    const total = await paymentHistoryService.countPaymentStates(organizationId);
+    expect(total).toBe(10_051);
+
+    // Full walk at the route's default page size (50): 201 pages, the last
+    // one partial. Every id seen exactly once across the former 10,000
+    // boundary (pages 201..202 overlap offsets 10,000 and 10,050).
+    const seen = new Set<string>();
+    let pages = 0;
+    let lastPageSize = -1;
+    for (let offset = 0; offset < total; offset += 50) {
+      const page = await paymentHistoryService.listPaymentStates(organizationId, 50, offset);
+      expect(page.length).toBeGreaterThan(0);
+      expect(page.length).toBeLessThanOrEqual(50);
+      for (const row of page) {
+        expect(seen.has(row.id)).toBe(false);
+        seen.add(row.id);
+      }
+      lastPageSize = page.length;
+      pages++;
+    }
+    expect(pages).toBe(202); // 201 full pages + 1 partial page of 1 row
+    expect(lastPageSize).toBe(1);
+    expect(seen.size).toBe(10_051);
+
+    // The stranded-tail row is the oldest authority (the checkout order
+    // created first) and is on the FINAL page, reachable past the boundary.
+    const finalPage = await paymentHistoryService.listPaymentStates(organizationId, 50, 10_050);
+    expect(finalPage).toHaveLength(1);
+    expect(finalPage[0]?.amountCents).toBe(300);
+    expect(seen.has(finalPage[0]?.id as string)).toBe(true);
+    // ...and its stable-id detail lookup resolves the same row the list walk
+    // delivered (discoverability and detail agree past the boundary).
+    const detail = await paymentHistoryService.findPaymentStateById(
+      organizationId,
+      finalPage[0]?.id as string,
+    );
+    expect(detail?.amountCents).toBe(300);
+  }, 120_000);
+});

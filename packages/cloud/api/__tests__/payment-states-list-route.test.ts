@@ -140,14 +140,33 @@ describe("GET /api/v1/billing/payment-states (lossless pagination)", () => {
     expect(listPaymentStates).not.toHaveBeenCalled();
   });
 
-  test("rejects offsets beyond the bounded traversal limit", async () => {
-    const res = await list("?offset=10001");
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("at most 10000");
-    expect(listPaymentStates).not.toHaveBeenCalled();
-    // The boundary itself is accepted.
-    const ok = await list("?offset=10000");
-    expect(ok.status).toBe(200);
+  test("traversal is lossless: offsets beyond the former 10,000 bound are served, not rejected (#26752 P1)", async () => {
+    // The former depth cap stranded the history tail: a card holding 10,050
+    // rows received hasMore=true, its next request (?offset=10050) hit a
+    // permanent 400, and the retry loop could never step past it. The cap is
+    // removed — any non-negative integer offset is a valid page request.
+    const res = await list("?offset=10050");
+    expect(res.status).toBe(200);
+    expect(listPaymentStates).toHaveBeenCalledWith(
+      expect.anything(),
+      50,
+      10050,
+    );
+    const body = (await res.json()) as { success: boolean; offset: number };
+    expect(body.success).toBe(true);
+    expect(body.offset).toBe(10050);
+    // The former boundary itself still works, and far-beyond offsets (an
+    // org with very deep history) return an empty page, hasMore=false —
+    // a clean end of traversal, never a 400.
+    const boundary = await list("?offset=10000");
+    expect(boundary.status).toBe(200);
+    const past = await list("?offset=20000");
+    expect(past.status).toBe(200);
+    const pastBody = (await past.json()) as {
+      states: unknown[];
+      hasMore: boolean;
+    };
+    expect(pastBody.states).toEqual([]);
+    expect(pastBody.hasMore).toBe(false);
   });
 });
