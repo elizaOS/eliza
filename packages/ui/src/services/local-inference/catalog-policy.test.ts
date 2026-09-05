@@ -184,7 +184,7 @@ describe("catalog-policy", () => {
   });
 
   describe("filterSettingsDefaultLocalModels", () => {
-    it("filters catalog to only eligible visible published models with preserved ordering", () => {
+    it("filters catalog to only eligible visible models with preserved ordering", () => {
       const catalog: CatalogModel[] = [
         createMockCatalogModel("eliza-1-2b", { hiddenFromCatalog: false }),
         createMockCatalogModel("eliza-1-4b", { hiddenFromCatalog: true }),
@@ -194,28 +194,11 @@ describe("catalog-policy", () => {
       ];
 
       const filtered = filterSettingsDefaultLocalModels(catalog);
-      expect(filtered.map((m) => m.id)).toEqual(["eliza-1-2b"]);
-    });
-
-    it("includes tiers when publishStatus is explicitly marked published", () => {
-      const catalog: CatalogModel[] = [
-        createMockCatalogModel("eliza-1-2b", { hiddenFromCatalog: false }),
-        createMockCatalogModel("eliza-1-9b", {
-          hiddenFromCatalog: false,
-          publishStatus: "published",
-        }),
-      ];
-
-      const filtered = filterSettingsDefaultLocalModels(catalog);
-      expect(filtered.map((m) => m.id)).toEqual(["eliza-1-2b", "eliza-1-9b"]);
-    });
-
-    it("returns empty array when all eligible models are pending publication", () => {
-      const catalog: CatalogModel[] = [
-        createMockCatalogModel("eliza-1-9b", { hiddenFromCatalog: false }),
-        createMockCatalogModel("eliza-1-27b", { hiddenFromCatalog: false }),
-      ];
-      expect(filterSettingsDefaultLocalModels(catalog)).toEqual([]);
+      expect(filtered.map((m) => m.id)).toEqual([
+        "eliza-1-2b",
+        "eliza-1-9b",
+        "eliza-1-27b",
+      ]);
     });
 
     it("returns empty array when no catalog models meet eligibility", () => {

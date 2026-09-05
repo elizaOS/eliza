@@ -27,11 +27,7 @@ export function isPublishedLocalModel(model: CatalogModel): boolean {
 }
 
 export function isSettingsDefaultLocalModel(model: CatalogModel): boolean {
-  return (
-    !model.hiddenFromCatalog &&
-    isDefaultLocalModelFamily(model) &&
-    isPublishedLocalModel(model)
-  );
+  return !model.hiddenFromCatalog && isDefaultLocalModelFamily(model);
 }
 
 export function isVerifiedCuratedEliza1Download(

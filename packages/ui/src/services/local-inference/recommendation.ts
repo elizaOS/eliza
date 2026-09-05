@@ -4,13 +4,11 @@
  */
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
+  type Eliza1TierId,
   FIRST_RUN_DEFAULT_MODEL_ID,
   MODEL_CATALOG,
 } from "./catalog";
-import {
-  isPublishedLocalModel,
-  type LocalModelCatalogEntry,
-} from "./catalog-policy";
+import { isPublishedLocalModel } from "./catalog-policy";
 import { assessFit } from "./hardware";
 import type {
   CatalogModel,
@@ -224,7 +222,7 @@ function isLongContextModel(model: CatalogModel): boolean {
 }
 
 function isPublishedCatalogTier(model: CatalogModel): boolean {
-  return isPublishedLocalModel(model as unknown as LocalModelCatalogEntry);
+  return isPublishedLocalModel(model);
 }
 
 function fallbackCandidates(
