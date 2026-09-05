@@ -2662,7 +2662,12 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "GET" && pathname.startsWith("/api/lifeops/screen-time/")) {
+  if (
+    method === "GET" &&
+    (pathname === "/api/lifeops/screen-time/summary" ||
+      pathname === "/api/lifeops/screen-time/breakdown" ||
+      pathname === "/api/lifeops/screen-time/history")
+  ) {
     return runRoute(ctx, async (service) => {
       try {
         const result = await handleScreenTimeReadRoute({

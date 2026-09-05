@@ -15,8 +15,12 @@ export class ScreenTimeRouteError extends ElizaError {
 }
 
 function positiveInteger(value: string | null, field: string, max: number) {
-  if (!value) return undefined;
-  const parsed = Number(value);
+  const normalized = value?.trim();
+  if (!normalized) return undefined;
+  if (!/^\d+$/.test(normalized)) {
+    throw new ScreenTimeRouteError(`${field} must be a positive integer`);
+  }
+  const parsed = Number(normalized);
   if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > max) {
     throw new ScreenTimeRouteError(
       `${field} must be an integer from 1 to ${max}`,
@@ -28,9 +32,12 @@ function positiveInteger(value: string | null, field: string, max: number) {
 function boundedWindow(url: URL) {
   const since = url.searchParams.get("since")?.trim();
   const until = url.searchParams.get("until")?.trim();
+  const isoInstant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
   if (
     !since ||
     !until ||
+    !isoInstant.test(since) ||
+    !isoInstant.test(until) ||
     !Number.isFinite(Date.parse(since)) ||
     !Number.isFinite(Date.parse(until)) ||
     Date.parse(until) <= Date.parse(since)
@@ -38,6 +45,9 @@ function boundedWindow(url: URL) {
     throw new ScreenTimeRouteError(
       "since and until must be valid ISO strings with until > since",
     );
+  }
+  if (Date.parse(until) - Date.parse(since) > 31 * 24 * 60 * 60 * 1000) {
+    throw new ScreenTimeRouteError("window must be 31 days or less");
   }
   return { since, until };
 }
