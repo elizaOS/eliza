@@ -59,7 +59,7 @@ export interface ServingAxesInput {
   mobileRuntimeMode: MobileRuntimeMode | null;
   /**
    * The authoritative serving source. Account/config booleans below only
-   * qualify it (an unsigned Cloud route falls back to local); they never
+   * qualify Cloud availability; they never
    * substitute for it, because "Cloud is selected" is configuration and
    * "Cloud answered" is fact.
    */
@@ -126,9 +126,8 @@ export function resolveServingRuntime({
 
 /**
  * Where chat tokens are computed, taken from the server's `activeChat` rather
- * than recomputed from account/config state. The only local qualification is
- * the unsigned cloud-proxy case: the server names Eliza Cloud while the
- * account cannot actually serve, so replies fall back on-device.
+ * than recomputed from account/config state. A disabled or unsigned Cloud
+ * route does not prove that a local model is installed or able to answer.
  *
  * Absent `activeChat` is `unknown`, never `local` — a direct Cerebras/OpenAI/
  * Anthropic route would otherwise be reported as running on this device.
@@ -150,11 +149,11 @@ export function resolveServingInference({
   // explicitly routed direct provider local. Trust the server's serving fact
   // before applying that Cloud-only qualification.
   if (activeChat && activeChat.family !== "ELIZAOS_CLOUD") return "external";
-  if (cloudCallsDisabled) return "local";
-  if (!activeChat) return "local";
+  if (cloudCallsDisabled) return "unknown";
+  if (!activeChat) return "unknown";
   if (activeChat.family === "ELIZAOS_CLOUD") {
-    // Configured for Cloud but the account cannot serve — replies are local.
-    return elizaCloudConnected ? "cloud" : "local";
+    // An unavailable Cloud route does not prove a local model can answer.
+    return elizaCloudConnected ? "cloud" : "unknown";
   }
   return "external";
 }
@@ -208,13 +207,13 @@ export function servingAxesHeadline(axes: ServingAxes): string {
         ? `Inference on ${axes.activeChatProvider}`
         : "External inference";
     case "inference-unknown":
-      return "Checking what answers chat";
+      return "Chat provider unconfirmed";
   }
 }
 
 export function servingAxesDescription(axes: ServingAxes): string {
   const fallback = axes.inferenceFallback
-    ? " Eliza Cloud is not signed in, so models fall back to Local."
+    ? " Eliza Cloud is not signed in."
     : "";
   switch (axes.combination) {
     case "all-local":
@@ -234,6 +233,6 @@ export function servingAxesDescription(axes: ServingAxes): string {
         ? `The agent runs on this device. Chat replies are computed by ${axes.activeChatProvider}.`
         : "The agent runs on this device. Chat replies are computed by an external provider.";
     case "inference-unknown":
-      return "Waiting for the agent to report which provider is answering chat.";
+      return `The agent has not confirmed a serving chat provider.${fallback}`;
   }
 }

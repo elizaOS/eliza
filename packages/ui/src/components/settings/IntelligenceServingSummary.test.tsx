@@ -67,11 +67,11 @@ function inferenceValue(): string | null {
 describe("IntelligenceServingSummary", () => {
   afterEach(cleanup);
 
-  it("names both axes as local when the agent and models run on device", () => {
+  it("does not claim local inference from the runtime location alone", () => {
     renderAxes({ deploymentRuntime: "local" });
 
     expect(runtimeValue()).toBe("This device");
-    expect(inferenceValue()).toBe("This device");
+    expect(inferenceValue()).toBe("Unconfirmed");
   });
 
   it("separates a local agent on Cloud models from a hosted agent", () => {
@@ -87,11 +87,11 @@ describe("IntelligenceServingSummary", () => {
     expect(inferenceValue()).toBe("Eliza Cloud");
   });
 
-  it("names Cloud runtime with local inference", () => {
+  it("names Cloud runtime without inventing local inference", () => {
     renderAxes({ deploymentRuntime: "cloud", cloudCallsDisabled: true });
 
     expect(runtimeValue()).toBe("Eliza Cloud");
-    expect(inferenceValue()).toBe("This device");
+    expect(inferenceValue()).toBe("Unconfirmed");
     expect(
       screen.getByText(
         "The agent process is hosted on Eliza Cloud and stays online when this device sleeps.",
@@ -111,17 +111,17 @@ describe("IntelligenceServingSummary", () => {
     expect(inferenceValue()).toBe("Eliza Cloud");
   });
 
-  it("reports local inference with the sign-in reason when cloud-proxy is unsigned", () => {
+  it("reports the sign-in requirement without inventing a local fallback", () => {
     renderAxes({
       deploymentRuntime: "local",
       isCloudSelected: true,
       activeChat: CLOUD,
     });
 
-    expect(inferenceValue()).toBe("This device");
+    expect(inferenceValue()).toBe("Unconfirmed");
     expect(
       screen.getByText(
-        "Eliza Cloud is selected but not signed in, so chat replies are computed locally until you sign in.",
+        "Sign in to Eliza Cloud to use the selected chat provider. A local fallback has not been confirmed.",
       ),
     ).toBeTruthy();
   });
@@ -139,10 +139,10 @@ describe("IntelligenceServingSummary", () => {
     ).toBeTruthy();
   });
 
-  it("says it is still checking before the server names a provider", () => {
+  it("does not claim a serving provider before the server reports one", () => {
     renderAxes({ deploymentRuntime: "local", activeChatResolved: false });
 
-    expect(inferenceValue()).toBe("Checking…");
+    expect(inferenceValue()).toBe("Unconfirmed");
     expect(inferenceValue()).not.toBe("This device");
   });
 
