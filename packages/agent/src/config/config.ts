@@ -12,7 +12,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
@@ -21,10 +21,11 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import JSON5 from "json5";
-import { readConfigEnvSync } from "../api/config-env.ts";
+import { readConfigEnvSync, resolveConfigEnvPath } from "../api/config-env.ts";
 import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
 import {
+  captureDevCloudEnvAuthority,
   createDevCloudConfigAuthorityView,
   isDevCloudConfigAuthorityView,
   isDevCloudEnvOwnedKey,
@@ -80,9 +81,14 @@ function migrateConfig(config: ElizaConfig): void {
   migrateRetiredPluginConfig(config);
 }
 
-function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {
+function resolveConfigWritePath(
+  env: NodeJS.ProcessEnv = process.env,
+  canonicalConfigPath?: string,
+): string {
   const persistPath = env.ELIZA_PERSIST_CONFIG_PATH?.trim();
-  return persistPath ? resolveUserPath(persistPath) : resolveConfigPath();
+  return persistPath
+    ? resolveUserPath(persistPath)
+    : (canonicalConfigPath ?? resolveConfigPath());
 }
 
 function resolveBindMountOverlayPath(
@@ -93,6 +99,19 @@ function resolveBindMountOverlayPath(
     `${getElizaNamespace(env)}.config-overlay.json`,
   );
 }
+
+function resolveConfigLoadPaths() {
+  const stateDir = resolveStateDir();
+  const configPath = resolveConfigPath(process.env, stateDir);
+  return {
+    configPath,
+    persistPath: resolveConfigWritePath(process.env, configPath),
+    bindMountOverlayPath: resolveBindMountOverlayPath(),
+    stateDir,
+  };
+}
+
+type ConfigReadObserver = (filePath: string) => void;
 
 function applyConfigEnvToProcessEnv(entries: Record<string, string>): void {
   const devCloudAuthority = resolveDevCloudEnvAuthority();
@@ -148,8 +167,12 @@ function mergeConfigRecords(base: unknown, overlay: unknown): unknown {
   return overlay;
 }
 
-function readConfigFile(configPath: string): ElizaConfig | null {
+function readConfigFile(
+  configPath: string,
+  onReadFile?: ConfigReadObserver,
+): ElizaConfig | null {
   let raw: string;
+  onReadFile?.(configPath);
   try {
     raw = fs.readFileSync(configPath, "utf-8");
   } catch (err) {
@@ -160,20 +183,24 @@ function readConfigFile(configPath: string): ElizaConfig | null {
   }
 
   const parsed = JSON5.parse(raw) as Record<string, unknown>;
-  return resolveConfigIncludes(parsed, configPath) as ElizaConfig;
+  return resolveConfigIncludes(
+    parsed,
+    configPath,
+    undefined,
+    onReadFile,
+  ) as ElizaConfig;
 }
 
-export function loadElizaConfig(): ElizaConfig {
-  const configPath = resolveConfigPath();
-  const persistPath = resolveConfigWritePath();
-  const bindMountOverlayPath = resolveBindMountOverlayPath();
+export function loadElizaConfig(onReadFile?: ConfigReadObserver): ElizaConfig {
+  const { configPath, persistPath, bindMountOverlayPath, stateDir } =
+    resolveConfigLoadPaths();
 
-  const baseConfig = readConfigFile(configPath);
+  const baseConfig = readConfigFile(configPath, onReadFile);
   const persistedConfig =
-    persistPath !== configPath ? readConfigFile(persistPath) : null;
+    persistPath !== configPath ? readConfigFile(persistPath, onReadFile) : null;
   const bindMountOverlay =
     persistPath === configPath && bindMountOverlayPath !== configPath
-      ? readConfigFile(bindMountOverlayPath)
+      ? readConfigFile(bindMountOverlayPath, onReadFile)
       : null;
   // The automatic bind-mount overlay extends only the canonical file. An
   // explicitly configured persistence path disables it entirely, preventing
@@ -188,7 +215,7 @@ export function loadElizaConfig(): ElizaConfig {
   migrateConfig(resolved);
   normalizeModelMetadataInConfig(resolved);
 
-  const skillsJsonPath = path.join(resolveStateDir(), "skills.json");
+  const skillsJsonPath = path.join(stateDir, "skills.json");
 
   if (!fs.existsSync(skillsJsonPath)) {
     try {
@@ -208,6 +235,7 @@ export function loadElizaConfig(): ElizaConfig {
     }
   }
 
+  onReadFile?.(skillsJsonPath);
   if (fs.existsSync(skillsJsonPath)) {
     try {
       const skillsRaw = fs.readFileSync(skillsJsonPath, "utf-8");
@@ -244,7 +272,8 @@ export function loadElizaConfig(): ElizaConfig {
     resolved.logging.level = "error";
   }
 
-  const persistedConfigEnv = readConfigEnvSync(resolveStateDir());
+  onReadFile?.(resolveConfigEnvPath(stateDir));
+  const persistedConfigEnv = readConfigEnvSync(stateDir);
   // SECURITY: Do NOT merge persistedConfigEnv into resolved.env — config.env
   // is the designated escape hatch for secrets that must NOT be serialized to
   // eliza.json (e.g. ELIZA_CLOUD_CLIENT_ADDRESS_KEY, WALLET_SOURCE_*).
@@ -304,6 +333,77 @@ export function loadElizaConfig(): ElizaConfig {
  */
 export function loadEffectiveElizaConfig(): ElizaConfig {
   return createDevCloudConfigAuthorityView(loadElizaConfig());
+}
+
+/** Metadata only: never retain file contents or credentials in a revision. */
+function configFileRevision(filePath: string): string | null {
+  try {
+    const stat = fs.statSync(filePath, { bigint: true });
+    return [
+      stat.dev,
+      stat.ino,
+      stat.mode,
+      stat.size,
+      stat.mtimeNs,
+      stat.ctimeNs,
+    ].join(":");
+  } catch (error) {
+    // error-policy:J4 only genuine absence is an empty dependency revision.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function effectiveConfigIdentity(): string {
+  return JSON.stringify(resolveConfigLoadPaths());
+}
+
+export interface EffectiveElizaConfigSnapshot {
+  config: ElizaConfig;
+  /** Identity is always checked; callers may throttle file metadata checks. */
+  isCurrent(options?: { checkFiles?: boolean }): boolean;
+}
+
+/**
+ * Load once through the canonical loader and record its actual dependency
+ * graph, including absent top-level sources. Unchanged checks only stat those
+ * paths; they never parse config or walk a second implementation of $include.
+ * The process-lifetime development authority is part of snapshot identity.
+ */
+export function loadEffectiveElizaConfigSnapshot(): EffectiveElizaConfigSnapshot {
+  const identity = effectiveConfigIdentity();
+  const authority = captureDevCloudEnvAuthority();
+  const revisions = new Map<string, string | null>();
+  const config = createDevCloudConfigAuthorityView(
+    loadElizaConfig((filePath) => {
+      if (!revisions.has(filePath)) {
+        revisions.set(filePath, configFileRevision(filePath));
+      }
+    }),
+  );
+  const snapshot: EffectiveElizaConfigSnapshot = {
+    config,
+    isCurrent({ checkFiles = true } = {}) {
+      if (
+        effectiveConfigIdentity() !== identity ||
+        captureDevCloudEnvAuthority() !== authority
+      ) {
+        return false;
+      }
+      return (
+        !checkFiles ||
+        [...revisions].every(
+          ([filePath, revision]) => configFileRevision(filePath) === revision,
+        )
+      );
+    },
+  };
+  if (!snapshot.isCurrent()) {
+    throw new ElizaError("Config changed while its snapshot was loading", {
+      code: "CONFIG_SNAPSHOT_CHANGED_DURING_READ",
+    });
+  }
+  return snapshot;
 }
 
 function syncDirectory(dir: string): void {
