@@ -118,7 +118,10 @@ export function isMaintainedSource(file) {
     /^(packages|plugins)\//.test(rel) &&
     /\.[jt]sx?$/.test(rel) &&
     !/(^|\/)\.eliza(\/|$)/.test(rel) &&
-    !/(^|\/)(node_modules|dist|build|coverage|generated)(\/|$)/.test(rel) &&
+    !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile-[^/]+)(\/|$)/.test(
+      rel,
+    ) &&
+    !/(^|\/)packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) &&
     !/\.(stories|test|spec)\.[jt]sx?$/.test(rel) &&
     !/(^|\/)(test|__tests__|__e2e__|__fixtures__|fixtures|stubs|templates)(\/|$)/.test(
       rel,
@@ -139,11 +142,27 @@ export function isMaintainedSource(file) {
 function* walk(directory) {
   if (!fs.existsSync(directory)) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (["node_modules", "dist", "build", ".git"].includes(entry.name))
+    if (
+      [
+        "node_modules",
+        "dist",
+        "build",
+        "coverage",
+        "generated",
+        ".git",
+      ].includes(entry.name) ||
+      entry.name.startsWith("dist-mobile-") ||
+      entry.name.startsWith(".playwright-artifacts-")
+    )
       continue;
     const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) yield* walk(full);
-    else if (isMaintainedSource(full)) yield full;
+    if (entry.isDirectory()) {
+      const rel = relative(full);
+      if (/^packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel)) {
+        continue;
+      }
+      yield* walk(full);
+    } else if (isMaintainedSource(full)) yield full;
   }
 }
 

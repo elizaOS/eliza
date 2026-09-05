@@ -424,12 +424,15 @@ const OFF_TOKEN_COLOR =
 const relative = (file) =>
   path.relative(repoRoot, file).replaceAll(path.sep, "/");
 
-function isGovernedSource(file) {
+export function isGovernedSource(file) {
   const rel = relative(file);
   return (
     /^(packages|plugins)\//.test(rel) &&
     /\.[jt]sx?$/.test(rel) &&
-    !/(^|\/)(node_modules|dist|build|coverage|generated)(\/|$)/.test(rel) &&
+    !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile-[^/]+)(\/|$)/.test(
+      rel,
+    ) &&
+    !/(^|\/)packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) &&
     !/\.(test|spec)\.[jt]sx$/.test(rel) &&
     !/(^|\/)(test|__tests__|__e2e__|__fixtures__|fixtures|stubs|templates)(\/|$)/.test(
       rel,
@@ -450,12 +453,18 @@ function* walk(directory) {
         "test-results",
         ".git",
       ].includes(entry.name) ||
-      entry.name.startsWith(".playwright-artifacts-")
+      entry.name.startsWith(".playwright-artifacts-") ||
+      entry.name.startsWith("dist-mobile-")
     )
       continue;
     const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) yield* walk(full);
-    else if (isGovernedSource(full)) {
+    if (entry.isDirectory()) {
+      const rel = relative(full);
+      if (/^packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel)) {
+        continue;
+      }
+      yield* walk(full);
+    } else if (isGovernedSource(full)) {
       if (/\.[jt]sx$/.test(full)) {
         yield full;
         continue;
@@ -498,12 +507,18 @@ function* walkStylesheets(directory) {
         "__tests__",
         "__e2e__",
       ].includes(entry.name) ||
-      entry.name.startsWith(".playwright-artifacts-")
+      entry.name.startsWith(".playwright-artifacts-") ||
+      entry.name.startsWith("dist-mobile-")
     )
       continue;
     const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) yield* walkStylesheets(full);
-    else if (entry.name.endsWith(".css")) yield full;
+    if (entry.isDirectory()) {
+      const rel = relative(full);
+      if (/^packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel)) {
+        continue;
+      }
+      yield* walkStylesheets(full);
+    } else if (entry.name.endsWith(".css")) yield full;
   }
 }
 
