@@ -24,7 +24,10 @@ import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { TurnControllerRegistry } from "../runtime/turn-controller";
+import {
+	TurnAbortedError,
+	TurnControllerRegistry,
+} from "../runtime/turn-controller";
 import { getStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
 import type { Room } from "../types/environment";
@@ -375,116 +378,177 @@ describe("planner failure after a promoted stage-1 answer", () => {
 	const SUBSTANTIVE =
 		"The top 3 contributors are lalalune, shakkernerd, and odilitime.";
 
-	it("surfaces the preserved stage-0 answer instead of the canned failure", async () => {
-		// Stage 1 answers the question, a response-handler evaluator promotes the
-		// turn to planning while overwriting the reply with a progress ack, and
-		// the planner model then dies with a rate limit. The turn already HAS the
-		// answer — it must reach the user, not a transient-failure apology.
-		const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
-		for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
-			responseHandlerFieldRegistry.register(evaluator);
-		}
-		const modelCallTypes: string[] = [];
-		let stage1Served = false;
-		const runtime = createMockRuntime({
-			agentId: AGENT,
-			character: { name: "Remilio", bio: "test agent" },
-			logger: {
-				debug: vi.fn(),
-				info: vi.fn(),
-				warn: vi.fn(),
-				error: vi.fn(),
-				trace: vi.fn(),
-			} as unknown as IAgentRuntime["logger"],
-			getSetting: vi.fn(() => undefined),
-			getService: vi.fn(() => null),
-			getModel: vi.fn(() => async () => {
-				throw RATE_LIMIT_ERROR;
-			}),
-			// Stage 1 succeeds with the substantive answer; every later model call
-			// (the planner) hits the provider rate limit.
-			useModel: vi.fn(async (modelType: unknown) => {
-				modelCallTypes.push(String(modelType));
-				if (String(modelType) === "RESPONSE_HANDLER" && !stage1Served) {
-					stage1Served = true;
-					return {
-						text: "",
-						toolCalls: [
-							{
-								id: "handle-response-1",
-								name: "HANDLE_RESPONSE",
-								arguments: {
-									shouldRespond: "RESPOND",
-									thought: "",
-									contexts: ["general"],
-									intents: [],
-									candidateActionNames: [],
-									replyText: SUBSTANTIVE,
-									facts: [],
-									relationships: [],
-									addressedTo: [],
+	it.each([
+		"provider outage",
+		"caller cancellation",
+		"turn cancellation",
+		"registered turn cancellation",
+		"coded cancellation",
+	])(
+		"handles %s after a promoted stage-1 answer without claiming a cancelled action completed",
+		async (failure) => {
+			// Stage 1 answers the question, a response-handler evaluator promotes the
+			// turn to planning while overwriting the reply with a progress ack, and
+			// the planner then fails. A provider outage can preserve an existing
+			// answer, but cancellation cannot turn a pre-action draft into success.
+			const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+			for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+				responseHandlerFieldRegistry.register(evaluator);
+			}
+			const modelCallTypes: string[] = [];
+			let stage1Served = false;
+			const controller = new AbortController();
+			const cancelled = failure !== "provider outage";
+			const abortReason = new TurnAbortedError("ui-chat-abort");
+			let plannerEntered: (() => void) | undefined;
+			let rejectPlanner: ((error: Error) => void) | undefined;
+			const pendingPlanner = new Promise<void>((resolve) => {
+				plannerEntered = resolve;
+			});
+			const runtime = createMockRuntime({
+				agentId: AGENT,
+				character: { name: "Remilio", bio: "test agent" },
+				logger: {
+					debug: vi.fn(),
+					info: vi.fn(),
+					warn: vi.fn(),
+					error: vi.fn(),
+					trace: vi.fn(),
+				} as unknown as IAgentRuntime["logger"],
+				getSetting: vi.fn(() => undefined),
+				getService: vi.fn(() => null),
+				getModel: vi.fn(() => async () => {
+					throw RATE_LIMIT_ERROR;
+				}),
+				// Stage 1 succeeds; the planner exercises the selected failure mode.
+				useModel: vi.fn(async (modelType: unknown) => {
+					modelCallTypes.push(String(modelType));
+					if (String(modelType) === "TEXT_EMBEDDING") return [0.1, 0.2, 0.3];
+					if (String(modelType) === "RESPONSE_HANDLER" && !stage1Served) {
+						stage1Served = true;
+						return {
+							text: "",
+							toolCalls: [
+								{
+									id: "handle-response-1",
+									name: "HANDLE_RESPONSE",
+									arguments: {
+										shouldRespond: "RESPOND",
+										thought: "",
+										contexts: ["general"],
+										intents: [],
+										candidateActionNames: [],
+										replyText: cancelled ? "Back home." : SUBSTANTIVE,
+										replyEffectStatus: "non_applied",
+										facts: [],
+										relationships: [],
+										addressedTo: [],
+									},
 								},
-							},
-						],
-					};
-				}
-				throw RATE_LIMIT_ERROR;
-			}),
-			composeState: vi.fn(async () => makeState()),
-			runActionsByMode: vi.fn(async () => undefined),
-			applyPipelineHooks: vi.fn(async () => undefined),
-			emitEvent: vi.fn(async () => undefined),
-			reportError: vi.fn(),
-			startRun: vi.fn(() => RUN_ID),
-			getCurrentRunId: vi.fn(() => RUN_ID),
-			endRun: vi.fn(),
-			getMemoryById: vi.fn(async () => null),
-			createMemory: vi.fn(async () => asUUID(v4())),
-			updateMemory: vi.fn(async () => true),
-			queueEmbeddingGeneration: vi.fn(async () => undefined),
-			getParticipantUserState: vi.fn(async () => null),
-			getRoom: vi.fn(async () => makeRoom(ChannelType.DM)),
-			getRoomsByIds: vi.fn(async () => [makeRoom(ChannelType.DM)]),
-			getMemories: vi.fn(async () => []),
-			isCheckShouldRespondEnabled: vi.fn(() => true),
-			turnControllers: new TurnControllerRegistry(),
-			responseHandlerFieldRegistry,
-			responseHandlerFieldEvaluators: [
-				...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
-			],
-			responseHandlerEvaluators: [
-				{
-					name: "test-clobber-to-ack",
-					priority: 100,
-					shouldRun: () => true,
-					evaluate: () => ({ reply: "On it.", requiresTool: true }),
+							],
+						};
+					}
+					if (failure === "caller cancellation") {
+						controller.abort(abortReason);
+						// A transport may reject generically after the caller cancels.
+						// The signal remains authoritative over answer rescue.
+						throw new Error("request interrupted");
+					}
+					if (failure === "turn cancellation") throw abortReason;
+					if (
+						failure === "registered turn cancellation" &&
+						String(modelType) === "ACTION_PLANNER"
+					) {
+						return await new Promise<never>((_resolve, reject) => {
+							rejectPlanner = reject;
+							plannerEntered?.();
+						});
+					}
+					if (failure === "coded cancellation") {
+						throw { code: "TURN_ABORTED", reason: "ui-chat-abort" };
+					}
+					throw RATE_LIMIT_ERROR;
+				}),
+				composeState: vi.fn(async () => makeState()),
+				runActionsByMode: vi.fn(async () => undefined),
+				applyPipelineHooks: vi.fn(async () => undefined),
+				emitEvent: vi.fn(async () => undefined),
+				reportError: vi.fn(),
+				startRun: vi.fn(() => RUN_ID),
+				getCurrentRunId: vi.fn(() => RUN_ID),
+				endRun: vi.fn(),
+				getMemoryById: vi.fn(async () => null),
+				createMemory: vi.fn(async () => asUUID(v4())),
+				updateMemory: vi.fn(async () => true),
+				queueEmbeddingGeneration: vi.fn(async () => undefined),
+				getParticipantUserState: vi.fn(async () => null),
+				getRoom: vi.fn(async () => makeRoom(ChannelType.DM)),
+				getRoomsByIds: vi.fn(async () => [makeRoom(ChannelType.DM)]),
+				getMemories: vi.fn(async () => []),
+				isCheckShouldRespondEnabled: vi.fn(() => true),
+				turnControllers: new TurnControllerRegistry(),
+				responseHandlerFieldRegistry,
+				responseHandlerFieldEvaluators: [
+					...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+				],
+				responseHandlerEvaluators: [
+					{
+						name: "test-clobber-to-ack",
+						priority: 100,
+						shouldRun: () => true,
+						evaluate: () => ({ reply: "On it.", requiresTool: true }),
+					},
+				],
+			} as never);
+
+			const service = new DefaultMessageService();
+			const deliveries: Content[] = [];
+			const turn = service.handleMessage(
+				runtime,
+				makeMessage({ channelType: ChannelType.DM }),
+				async (content) => {
+					deliveries.push(content);
+					return [];
 				},
-			],
-		} as never);
+				{ abortSignal: controller.signal },
+			);
+			if (failure === "registered turn cancellation") {
+				await pendingPlanner;
+				// Cancel externally, as the UI route does. The registry deliberately
+				// excludes the current turn when an action itself requests an abort.
+				expect(runtime.turnControllers.abortTurn(ROOM, "ui-chat-abort")).toBe(
+					true,
+				);
+				rejectPlanner?.(new Error("request interrupted"));
+			}
+			if (cancelled) {
+				await expect(turn).rejects.toMatchObject({
+					code: "TURN_ABORTED",
+					reason: "ui-chat-abort",
+				});
+				expect(deliveries).toEqual([]);
+				expect(
+					modelCallTypes.filter((modelType) => modelType !== "TEXT_EMBEDDING"),
+				).toEqual(["RESPONSE_HANDLER", "ACTION_PLANNER"]);
+				return;
+			}
+			const result = await turn;
 
-		const service = new DefaultMessageService();
-		const deliveries: Content[] = [];
-		const result = await service.handleMessage(
-			runtime,
-			makeMessage({ channelType: ChannelType.DM }),
-			async (content) => {
-				deliveries.push(content);
-				return [];
-			},
-		);
+			const visibleTexts = deliveries
+				.map((content) =>
+					typeof content.text === "string" ? content.text : "",
+				)
+				.filter((text) => text.trim().length > 0);
 
-		const visibleTexts = deliveries
-			.map((content) => (typeof content.text === "string" ? content.text : ""))
-			.filter((text) => text.trim().length > 0);
-
-		expect(result.didRespond).toBe(true);
-		// The preserved stage-0 answer reaches the user; the canned rate-limit
-		// apology does not replace an answer the turn already produced.
-		expect(visibleTexts.join("\n"), modelCallTypes.join(",")).toContain(
-			"lalalune",
-		);
-		expect(visibleTexts.join("\n").toLowerCase()).not.toContain("rate-limit");
-	});
+			expect(result.didRespond).toBe(true);
+			// The preserved stage-0 answer reaches the user; the canned rate-limit
+			// apology does not replace an answer the turn already produced.
+			expect(visibleTexts.join("\n"), modelCallTypes.join(",")).toContain(
+				"lalalune",
+			);
+			expect(visibleTexts.join("\n").toLowerCase()).not.toContain("rate-limit");
+		},
+	);
 
 	it("delivers the failure reply on an unaddressed group turn once stage-1 committed to respond", async () => {
 		// Stage 1 commits to RESPOND on a bare group message but produces no

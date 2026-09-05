@@ -331,15 +331,20 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       dispatchAppEvent(active ? APP_RESUME_EVENT : APP_PAUSE_EVENT);
     };
 
-    void Promise.resolve(
-      CapacitorApp.addListener("appStateChange", ({ isActive }) => {
-        setAppActive(isActive);
-      }),
-      // error-policy:J4 App plugin unavailable — the visibilitychange fallback
-      // still drives pause/resume on native and installed-PWA surfaces.
-    ).catch((error) => {
-      logNativePluginUnavailable("App", error);
-    });
+    // AppWeb also turns document visibility into appStateChange. Apply the
+    // same suspend policy to that bridge so hiding a desktop browser tab does
+    // not cancel its chat through the native lifecycle listener.
+    if (shouldBridgeVisibilityLifecycle(ctx)) {
+      void Promise.resolve(
+        CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+          setAppActive(isActive);
+        }),
+        // error-policy:J4 App plugin unavailable — the visibilitychange fallback
+        // still drives pause/resume on native and installed-PWA surfaces.
+      ).catch((error) => {
+        logNativePluginUnavailable("App", error);
+      });
+    }
 
     if (activeVisibilityHandler) {
       document.removeEventListener("visibilitychange", activeVisibilityHandler);

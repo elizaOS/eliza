@@ -1012,6 +1012,122 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
     ]);
   });
 
+  it.each([false, true])(
+    "reconciles a persisted user after pre-done abort and scheduled delivery (earlier identical turn: %s)",
+    async (earlierIdenticalTurn) => {
+      const text = "Go home. Which website did we read earlier?";
+      const startedAt = Date.now();
+      const previousUser: ConversationMessage = {
+        id: "previous-user",
+        role: "user",
+        text: earlierIdenticalTurn ? text : "Read Example Domain",
+        timestamp: startedAt - 2_000,
+      };
+      const previousAssistant: ConversationMessage = {
+        id: "previous-assistant",
+        role: "assistant",
+        text: "We read Example Domain.",
+        timestamp: startedAt - 1_000,
+      };
+      const serverMessages = [previousUser, previousAssistant];
+      mocks.client.getConversationMessages.mockImplementation(async () => ({
+        messages: [...serverMessages],
+      }));
+      mocks.client.sendConversationMessageStream.mockImplementation(
+        (...args: unknown[]) => {
+          serverMessages.push({
+            id: "persisted-interrupted-user",
+            role: "user",
+            text: args[1] as string,
+            timestamp: Date.now(),
+          });
+          const signal = args[4] as AbortSignal;
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => reject(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        },
+      );
+      const harness = makeHarness();
+      harness.activeConversationIdRef.current = "conv-a";
+      const hook = mountComposed(harness);
+      let send: Promise<void> | undefined;
+      try {
+        await act(async () => {
+          await hook.result.current.loaders.loadConversationMessages("conv-a");
+        });
+        act(() => {
+          send = hook.result.current.send.sendChatText(text, {
+            conversationId: "conv-a",
+            clientMessageId: "interrupted-user",
+          });
+        });
+        await flushPendingWork();
+        expect(
+          mocks.client.sendConversationMessageStream,
+        ).toHaveBeenCalledTimes(1);
+        expect(
+          serverMessages.filter(
+            (message) => message.id === "persisted-interrupted-user",
+          ),
+        ).toHaveLength(1);
+        const controller = harness.sendDepsBase.chatAbortRef.current;
+        expect(controller).not.toBeNull();
+        await act(async () => {
+          controller?.abort();
+          await send;
+        });
+        expect(mocks.client.abortConversationTurn).toHaveBeenCalledWith(
+          "conv-a",
+          "ui-chat-abort",
+        );
+
+        const scheduled: ConversationMessage = {
+          id: "independent-scheduled-assistant",
+          role: "assistant",
+          text: "Your independently scheduled brief is ready.",
+          timestamp: Date.now() + 1,
+          source: "lifeops-scheduled-task",
+        };
+        serverMessages.push(scheduled);
+        // The ready-phase proactive-message consumer appends this independent
+        // durable row; it does not rekey or otherwise settle the chat user row.
+        act(() => {
+          harness.setConversationMessages((previous) => [
+            ...previous,
+            scheduled,
+          ]);
+        });
+        // First resume: cached old history plus the interrupted overlay, then
+        // canonical newest history. Repeat to exercise the newly warmed cache.
+        for (let reload = 0; reload < 2; reload += 1) {
+          await act(async () => {
+            await hook.result.current.loaders.loadConversationMessages(
+              "conv-a",
+            );
+          });
+          expect(
+            harness.conversationMessagesRef.current.map(
+              (message) => message.id,
+            ),
+          ).toEqual([
+            "previous-user",
+            "previous-assistant",
+            "persisted-interrupted-user",
+            "independent-scheduled-assistant",
+          ]);
+        }
+      } finally {
+        harness.sendDepsBase.chatAbortRef.current?.abort();
+        await send;
+        hook.unmount();
+      }
+    },
+  );
+
   it("keeps an async local command valid across a same-id reload", async () => {
     let resolveCommands: ((value: never[]) => void) | undefined;
     mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
