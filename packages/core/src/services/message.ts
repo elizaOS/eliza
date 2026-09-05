@@ -9116,11 +9116,11 @@ export async function runV5MessageRuntimeStage1(args: {
 		// no recall signal: a provider that declares `relevanceKeywords` names
 		// the requests its eager form exists to answer directly ("what did we
 		// discuss…", "remember when…"). Every other turn pays only the
-		// manifest (live 2026-09-05: the eager cross-room history was 22.7K of a
-		// 44K-token Stage-1 prompt on a calendar read), and the planner keeps
-		// its own eager/manifest decision below. Providers without keywords
-		// keep the eager form: their relevance cannot be judged here.
+		// manifest. Carry that representation into the planner after provider
+		// recomposition, rather than re-expanding the same corpus. Providers
+		// without keywords keep the eager form: relevance is unknown here.
 		context = overflowContext;
+		useProviderOverflow = true;
 	}
 	const stage1PreprocessStartedAt = performance.now();
 
@@ -10161,8 +10161,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// Once Stage 1 has explicitly selected the memory domain, the planner owns
 		// retrieval through its complete search tools. Repeating an eager corpus in
 		// every tool iteration adds no recall capability and can turn a technically
-		// admissible prompt into an operational timeout. Ordinary chat still keeps
-		// eager context; this branch is driven by the typed routing decision.
+		// admissible prompt into an operational timeout. Also preserve the manifest
+		// already selected for Stage 1. Providers without an explicit retrieval form
+		// and the current room's structured dialogue remain unchanged.
 		const retrievalContextSelected = selectedContexts.includes("memory");
 		const capacityAdjustedPlannerState =
 			useProviderOverflow || retrievalContextSelected

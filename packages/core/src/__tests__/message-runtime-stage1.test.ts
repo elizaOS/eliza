@@ -2019,6 +2019,94 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(wire).toContain("CURRENT_ROOM_TURN");
 		});
 
+		it.each([
+			{
+				name: "preserves the text manifest in the planner",
+				text: "Open Notes.",
+				contexts: ["general"],
+				keywords: true,
+				stage1Manifest: true,
+				plannerManifest: true,
+			},
+			{
+				name: "retains eager recall outside a retrieval context",
+				text: "What did we discuss yesterday?",
+				contexts: ["general"],
+				keywords: true,
+				stage1Manifest: false,
+				plannerManifest: false,
+			},
+			{
+				name: "lets model-selected memory use its retrieval manifest",
+				text: "What did we discuss yesterday?",
+				contexts: ["memory"],
+				keywords: true,
+				stage1Manifest: false,
+				plannerManifest: true,
+			},
+			{
+				name: "retains eager history without declared relevance keywords",
+				text: "Open Notes.",
+				contexts: ["general"],
+				keywords: false,
+				stage1Manifest: false,
+				plannerManifest: false,
+			},
+		])("$name", async (scenario) => {
+			const runtime = runtimeWithHistoryProvider();
+			if (!scenario.keywords) runtime.providers = [];
+			runtime.useModel = vi
+				.fn()
+				.mockResolvedValueOnce(
+					stage1Response({
+						contexts: scenario.contexts,
+						extra: { requiresTool: true },
+					}),
+				)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply-1",
+							name: "REPLY",
+							arguments: { text: "Planner response." },
+						},
+					],
+				});
+			const state = historyState();
+			runtime.composeState = vi.fn(async () => state);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: scenario.text }),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("planned_reply");
+			const calls = useModelCalls(runtime);
+			expect(calls).toHaveLength(2);
+			expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+			for (const [index, manifest] of [
+				scenario.stage1Manifest,
+				scenario.plannerManifest,
+			].entries()) {
+				const call = calls[index];
+				if (!call) throw new Error(`Expected model call ${index}`);
+				const wire = JSON.stringify(
+					(call[1] as { messages: unknown }).messages,
+				);
+				expect(wire).toContain(
+					manifest ? "LOSSLESS_HISTORY_MANIFEST" : "EAGER_CROSS_ROOM_HISTORY",
+				);
+				expect(wire).not.toContain(
+					manifest ? "EAGER_CROSS_ROOM_HISTORY" : "LOSSLESS_HISTORY_MANIFEST",
+				);
+				expect(wire).toContain("CURRENT_ROOM_TURN");
+			}
+			// Selecting a wire representation must not mutate the shared cache.
+			expect(state).toEqual(historyState());
+		});
+
 		it("keeps the eager history when the message matches the provider's recall keywords", async () => {
 			const runtime = runtimeWithHistoryProvider();
 			await runV5MessageRuntimeStage1({
