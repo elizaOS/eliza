@@ -110,6 +110,25 @@ const CALENDAR_DETAIL_RECURRENCE_KEYS = [
 ] as const;
 
 const stringSchema: ActionParameterSchema = { type: "string" };
+// Planner-facing guidance for the timestamp leaves. Live 2026-09-05 the
+// planner rendered "tuesday at 7am" as "2026-09-08T07:00:00Z" (a fabricated
+// UTC instant) and day bounds as "2026-09-08T00:00:00Z".."23:59:59Z" for a
+// Pacific owner; the runtime applies the owner's zone to offset-less values.
+const LOCAL_WALL_TIME_FORMAT =
+  "the user's local wall-clock time formatted YYYY-MM-DDTHH:mm:ss with NO trailing Z and NO UTC offset (the runtime applies the user's timezone); never convert to UTC";
+const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
+  Record<(typeof CALENDAR_DETAIL_STRING_KEYS)[number], string>
+> = {
+  startAt: `Event start as ${LOCAL_WALL_TIME_FORMAT}.`,
+  start: `Event start as ${LOCAL_WALL_TIME_FORMAT}.`,
+  endAt:
+    "Event end in the same local wall-clock format as startAt; omit it to use durationMinutes.",
+  end: "Event end in the same local wall-clock format as start; omit it to use durationMinutes.",
+  timeMin: `Window start as ${LOCAL_WALL_TIME_FORMAT}, or RFC 3339 with an explicit numeric offset.`,
+  timeMax: "Window end (exclusive) in the same format as timeMin.",
+  timeZone:
+    "IANA timezone only when the user names one (e.g. America/New_York); otherwise omit it so the user's configured timezone applies.",
+};
 const numberSchema: ActionParameterSchema = { type: "number" };
 const booleanSchema: ActionParameterSchema = { type: "boolean" };
 // The runtime normalizer (internal/recurrence.ts) accepts a single RRULE
@@ -124,7 +143,13 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
   type: "object",
   properties: {
     ...Object.fromEntries(
-      CALENDAR_DETAIL_STRING_KEYS.map((key) => [key, stringSchema]),
+      CALENDAR_DETAIL_STRING_KEYS.map((key) => {
+        const description = CALENDAR_DETAIL_STRING_DESCRIPTIONS[key];
+        return [
+          key,
+          description ? { ...stringSchema, description } : stringSchema,
+        ];
+      }),
     ),
     ...Object.fromEntries(
       CALENDAR_DETAIL_NUMBER_KEYS.map((key) => [key, numberSchema]),

@@ -45,6 +45,7 @@ import {
 } from "@elizaos/shared";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
 import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "../calendar-action-schema.js";
+import { normalizeCalendarDateTimeInTimeZone } from "../internal/calendar-normalize.js";
 import {
   CALENDAR_TIME_ZONE_ALIASES,
   isValidTimeZone,
@@ -1772,21 +1773,27 @@ export function parseExplicitLocalDate(
   return null;
 }
 
+/**
+ * A planner-supplied zone only when it names a real IANA zone (aliases such
+ * as "pst" accepted). Planner junk ("user's timezone", "[REDACTED]") resolves
+ * to undefined so callers fall back instead of letting CalendarService reject
+ * the whole request with a 400.
+ */
+function plannerRequestedTimeZone(
+  details: Record<string, unknown> | undefined,
+): string | undefined {
+  const requested = detailString(details, "timeZone");
+  if (!requested) return undefined;
+  const normalized =
+    CALENDAR_TIME_ZONE_ALIASES[requested.toLowerCase()] ?? requested;
+  return isValidTimeZone(normalized) ? normalized : undefined;
+}
+
 function resolveCalendarTimeZone(
   details: Record<string, unknown> | undefined,
   fallbackTimeZone: string = resolveDefaultTimeZone(),
 ): string {
-  const requested = detailString(details, "timeZone");
-  if (requested) {
-    const normalized =
-      CALENDAR_TIME_ZONE_ALIASES[requested.toLowerCase()] ?? requested;
-    if (isValidTimeZone(normalized)) {
-      return normalized;
-    }
-  }
-  // Planner junk (e.g. "user's timezone") falls back to the configured zone
-  // instead of letting CalendarService reject the whole read with a 400.
-  return fallbackTimeZone;
+  return plannerRequestedTimeZone(details) ?? fallbackTimeZone;
 }
 
 /**
@@ -1797,7 +1804,7 @@ function resolveCalendarTimeZone(
  * at 7am" was extracted, stored and rendered in UTC and one intent produced a
  * 7 AM and a 2 PM event.
  */
-function resolveConfiguredCalendarTimeZone(runtime: IAgentRuntime): string {
+function configuredCalendarTimeZone(runtime: IAgentRuntime): string | null {
   const configured =
     typeof runtime.getSetting === "function"
       ? runtime.getSetting("TIMEZONE")
@@ -1806,7 +1813,11 @@ function resolveConfiguredCalendarTimeZone(runtime: IAgentRuntime): string {
     configured.trim().length > 0 &&
     isValidTimeZone(configured.trim())
     ? configured.trim()
-    : resolveDefaultTimeZone();
+    : null;
+}
+
+function resolveConfiguredCalendarTimeZone(runtime: IAgentRuntime): string {
+  return configuredCalendarTimeZone(runtime) ?? resolveDefaultTimeZone();
 }
 
 type LocalDateOnly = Pick<
@@ -2065,10 +2076,18 @@ function resolveCreateEventCalendarTimeZone(
   details: Record<string, unknown> | undefined,
   feed: LifeOpsCalendarFeed | null | undefined,
   fallbackTimeZone: string,
+  configuredTimeZone: string | null = null,
 ): string {
-  const explicitTimeZone = detailString(details, "timeZone");
+  const explicitTimeZone = plannerRequestedTimeZone(details);
   if (explicitTimeZone) {
     return explicitTimeZone;
+  }
+  // The agent's configured zone is the owner's zone and outranks the
+  // event-majority vote below. Live 2026-09-05 the built-in calendar held
+  // only UTC-stamped events from earlier host-zone creates, so the vote kept
+  // re-electing UTC for every new event even after TIMEZONE was configured.
+  if (configuredTimeZone) {
+    return configuredTimeZone;
   }
 
   const counts = new Map<string, number>();
@@ -2291,6 +2310,136 @@ function applyStatedDateToCreateRequest(args: {
   };
 }
 
+/**
+ * Pin the create zone on the request and express every planner timestamp as
+ * an instant in that zone: offset-less values are the owner's wall time,
+ * values with a "Z" or numeric offset already name an instant. The service
+ * stores this zone on the event, so later reads render in it too. An end
+ * that does not follow the start is dropped so the default duration applies
+ * instead of a hard 400 (live: the planner echoed the start as the end).
+ */
+function anchorCreateRequestToTimeZone(
+  request: CreateLifeOpsCalendarEventRequest,
+  timeZone: string,
+): void {
+  request.timeZone = timeZone;
+  if (request.startAt) {
+    request.startAt = normalizeCalendarDateTimeInTimeZone(
+      request.startAt,
+      "startAt",
+      timeZone,
+    );
+  }
+  if (request.endAt) {
+    request.endAt = normalizeCalendarDateTimeInTimeZone(
+      request.endAt,
+      "endAt",
+      timeZone,
+    );
+  }
+  if (
+    request.startAt &&
+    request.endAt &&
+    Date.parse(request.endAt) <= Date.parse(request.startAt)
+  ) {
+    delete request.endAt;
+  }
+}
+
+const CLOCK_TIME_PATTERN =
+  /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])|\b(noon|midnight)\b/g;
+
+type ClockTime = { hour: number; minute: number };
+
+/**
+ * Clock times the user wrote themselves ("7am", "7:30 pm", "noon"). Bare
+ * hours and 24-hour digits are ambiguous and deliberately not parsed.
+ */
+export function parseExplicitClockTimes(value: string): ClockTime[] {
+  const times: ClockTime[] = [];
+  for (const match of normalizeText(value).matchAll(CLOCK_TIME_PATTERN)) {
+    if (match[4]) {
+      times.push(
+        match[4] === "noon" ? { hour: 12, minute: 0 } : { hour: 0, minute: 0 },
+      );
+      continue;
+    }
+    const rawHour = Number(match[1]);
+    const minute = Number(match[2] ?? "0");
+    if (rawHour < 1 || rawHour > 12 || minute > 59) continue;
+    const pm = (match[3] ?? "").startsWith("p");
+    const hour = rawHour === 12 ? (pm ? 12 : 0) : pm ? rawHour + 12 : rawHour;
+    times.push({ hour, minute });
+  }
+  return times;
+}
+
+function soleClockTime(value: string): ClockTime | null {
+  const distinct = new Map<string, ClockTime>();
+  for (const time of parseExplicitClockTimes(value)) {
+    distinct.set(`${time.hour}:${time.minute}`, time);
+  }
+  if (distinct.size !== 1) return null;
+  return [...distinct.values()][0] ?? null;
+}
+
+/**
+ * The one clock time the user stated wins over the planner's rendering of it.
+ * Live 2026-09-05: "tuesday at 7am" arrived as "2026-09-09T07:00:00Z" and
+ * "2026-09-08T07:00:00.000Z" — the right digits under a fabricated "Z" — and
+ * was stored at midnight Pacific. A message naming two different times is
+ * left to the planner; the Stage-1 intent is consulted only when the message
+ * itself names none.
+ */
+function applyStatedClockTimeToCreateRequest(args: {
+  request: CreateLifeOpsCalendarEventRequest;
+  currentMessage: string;
+  intent: string;
+  timeZone: string;
+}): { corrected: boolean; fromLocalTime?: string; toLocalTime?: string } {
+  const startAtIso = args.request.startAt;
+  if (!startAtIso) {
+    return { corrected: false };
+  }
+  const startDate = new Date(startAtIso);
+  if (Number.isNaN(startDate.getTime())) {
+    return { corrected: false };
+  }
+  const stated =
+    parseExplicitClockTimes(args.currentMessage).length > 0
+      ? soleClockTime(args.currentMessage)
+      : soleClockTime(args.intent);
+  if (!stated) {
+    return { corrected: false };
+  }
+  const startParts = getZonedDateParts(startDate, args.timeZone);
+  if (startParts.hour === stated.hour && startParts.minute === stated.minute) {
+    return { corrected: false };
+  }
+  const shifted = buildUtcDateFromLocalParts(args.timeZone, {
+    year: startParts.year,
+    month: startParts.month,
+    day: startParts.day,
+    hour: stated.hour,
+    minute: stated.minute,
+    second: 0,
+  });
+  const deltaMs = shifted.getTime() - startDate.getTime();
+  args.request.startAt = shifted.toISOString();
+  if (typeof args.request.endAt === "string") {
+    const endDate = new Date(args.request.endAt);
+    if (!Number.isNaN(endDate.getTime())) {
+      args.request.endAt = new Date(endDate.getTime() + deltaMs).toISOString();
+    }
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    corrected: true,
+    fromLocalTime: `${pad(startParts.hour)}:${pad(startParts.minute)}`,
+    toLocalTime: `${pad(stated.hour)}:${pad(stated.minute)}`,
+  };
+}
+
 function suggestCreateEventStartAt(args: {
   currentMessage: string;
   intent: string;
@@ -2344,6 +2493,7 @@ async function loadCreateEventCalendarContext(
   details: Record<string, unknown> | undefined,
   hasCalendarRead: boolean,
   fallbackTimeZone: string = resolveDefaultTimeZone(),
+  configuredTimeZone: string | null = null,
 ): Promise<CreateEventCalendarContext | null> {
   if (!hasCalendarRead) {
     return null;
@@ -2370,6 +2520,7 @@ async function loadCreateEventCalendarContext(
       details,
       feed,
       requestTimeZone,
+      configuredTimeZone,
     ),
     feed,
   };
@@ -4399,6 +4550,7 @@ const calendarAction: CalendarHandlerAction = {
           details,
           true,
           planningTimeZone,
+          configuredCalendarTimeZone(runtime),
         );
         if (!calendarContext) {
           throw new CalendarServiceError(
@@ -4449,14 +4601,25 @@ const calendarAction: CalendarHandlerAction = {
         });
         const { title, resolvedStartAt, resolvedWindowPreset, request } =
           createEventBuild;
+        // Planner timestamps arrive in every shape (offset-less wall time, a
+        // fabricated "Z", a real offset). Anchor them to the create zone so
+        // the stored event and every rendering share the owner's zone, then
+        // let the user's own words correct the day and the clock time.
+        const createTimeZone =
+          plannerRequestedTimeZone({ timeZone: request.timeZone }) ??
+          calendarContext.calendarTimeZone;
+        anchorCreateRequestToTimeZone(request, createTimeZone);
         applyStatedDateToCreateRequest({
           request,
           currentMessage: messageText(message).trim(),
           intent,
-          timeZone:
-            request.timeZone ??
-            calendarContext.calendarTimeZone ??
-            planningTimeZone,
+          timeZone: createTimeZone,
+        });
+        applyStatedClockTimeToCreateRequest({
+          request,
+          currentMessage: messageText(message).trim(),
+          intent,
+          timeZone: createTimeZone,
         });
         const travelIntent = createEventBuild.travelIntent;
         if (!title) {
