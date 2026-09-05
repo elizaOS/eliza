@@ -25,13 +25,7 @@ import {
   CardTitle as UiCardTitle,
 } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
+import { NativeSelect } from "../components/ui/native-select";
 import { Separator as UiSeparator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import { useSpatialContext } from "./context.ts";
@@ -58,7 +52,6 @@ import { resolvePadding } from "./ir.ts";
 
 /** Brand key carried on a primitive's component function. */
 export const SPATIAL_KIND = Symbol.for("elizaos.spatial.kind");
-const EMPTY_SPATIAL_SELECT_VALUE = "__eliza_spatial_empty__";
 
 export type SpatialKind =
   | "box"
@@ -253,6 +246,7 @@ export function buildButtonSpec(
 }
 
 export function buildFieldSpec(props: FieldProps): SpatialFieldNode {
+  const agent = normalizeAgent(props.agent);
   return {
     type: "field",
     label: props.label,
@@ -266,15 +260,15 @@ export function buildFieldSpec(props: FieldProps): SpatialFieldNode {
     width: props.width,
     height: props.height,
     agent:
-      normalizeAgent(props.agent) ??
-      (props.label
+      agent || props.label
         ? {
-            id: `field:${props.label}`,
-            role: "text-input",
+            id: agent?.id ?? `field:${props.label}`,
+            role: props.kind === "select" ? "select" : "text-input",
             label: props.label,
             value: props.value ?? "",
+            ...agent,
           }
-        : undefined),
+        : undefined,
   };
 }
 
@@ -665,35 +659,21 @@ export const Field = brand<FieldProps>("field", function Field(props) {
           {...agentDataProps(spec.agent)}
         />
       ) : spec.kind === "select" ? (
-        <Select
-          defaultValue={
-            spec.value === "" ? EMPTY_SPATIAL_SELECT_VALUE : spec.value
-          }
+        <NativeSelect
+          id={fieldId}
+          aria-label={spec.label ?? spec.agent?.label}
+          style={fieldTextStyle}
+          defaultValue={spec.value}
           disabled={spec.disabled}
-          onValueChange={(value) =>
-            props.onChange?.(value === EMPTY_SPATIAL_SELECT_VALUE ? "" : value)
-          }
+          onChange={(e) => props.onChange?.(e.target.value)}
+          {...agentDataProps(spec.agent)}
         >
-          <SelectTrigger
-            variant="default"
-            id={fieldId}
-            aria-label={spec.label ?? spec.agent?.label}
-            style={fieldTextStyle}
-            {...agentDataProps(spec.agent)}
-          >
-            <SelectValue placeholder={spec.placeholder ?? ""} />
-          </SelectTrigger>
-          <SelectContent>
-            {(spec.options ?? []).map((opt) => (
-              <SelectItem
-                key={opt}
-                value={opt === "" ? EMPTY_SPATIAL_SELECT_VALUE : opt}
-              >
-                {opt}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          {(spec.options ?? []).map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </NativeSelect>
       ) : (
         <Input
           variant="default"

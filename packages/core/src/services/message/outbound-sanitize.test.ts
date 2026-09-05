@@ -57,20 +57,45 @@ describe("sanitizeOutboundText — reasoning tags (Discord characterization)", (
 		const small = buildRun(1_600);
 		const large = buildRun(16_000);
 
-		const timeOf = (fn: () => void): number => {
+		const batchTime = (input: string, repetitions: number): number => {
 			const start = performance.now();
-			fn();
-			return performance.now() - start;
+			for (let i = 0; i < repetitions; i++) {
+				sanitizeOutboundText(input);
+				if (performance.now() - start > repetitions * 500) {
+					throw new Error(
+						"Sanitizer batch exceeded the per-call timing ceiling",
+					);
+				}
+			}
+			return (performance.now() - start) / repetitions;
+		};
+		const median = (samples: number[]): number => {
+			const value = samples.sort((a, b) => a - b)[
+				Math.floor(samples.length / 2)
+			];
+			if (value === undefined)
+				throw new Error("Missing sanitizer timing samples");
+			return value;
 		};
 
-		timeOf(() => sanitizeOutboundText(small)); // JIT warm-up, excluded from the measurement
-		timeOf(() => sanitizeOutboundText(large));
-
-		const smallMs = Math.max(
-			timeOf(() => sanitizeOutboundText(small)),
-			0.05,
-		);
-		const largeMs = timeOf(() => sanitizeOutboundText(large));
+		batchTime(small, 100);
+		batchTime(large, 10);
+		const smallSamples: number[] = [];
+		const largeSamples: number[] = [];
+		// Equal input volume per batch gives a linear scan comparable scheduling
+		// exposure at both sizes. Normalize per call, then use the median to
+		// prevent one GC pause from masquerading as quadratic growth.
+		for (let sample = 0; sample < 5; sample++) {
+			if (sample % 2 === 0) {
+				smallSamples.push(batchTime(small, 100));
+				largeSamples.push(batchTime(large, 10));
+			} else {
+				largeSamples.push(batchTime(large, 10));
+				smallSamples.push(batchTime(small, 100));
+			}
+		}
+		const smallMs = Math.max(median(smallSamples), 0.05);
+		const largeMs = median(largeSamples);
 
 		// Input grew 10x; quadratic cost would grow ~100x. 25x leaves slack for
 		// scheduler/GC noise without masking a real regression.
