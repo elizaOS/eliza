@@ -21,7 +21,7 @@ const OBJECT_PATH = "uploads/blob.bin";
 const OBJECT_SHA256 = "a".repeat(64);
 
 const requireUserOrApiKeyWithOrg = mock();
-const getServiceMethodCost = mock();
+const requireServiceMethodCost = mock();
 const deductCredits = mock();
 const executeNativeStoragePut = mock();
 const executeNativeStorageDelete = mock();
@@ -40,6 +40,15 @@ class TestStorageQuotaExceededError extends Error {}
 class TestInsufficientCreditsError extends Error {}
 class TestNativeStoragePutError extends Error {}
 class TestNativeStorageReadError extends Error {}
+class TestPricingNotFoundError extends Error {
+  constructor(
+    public readonly serviceId: string,
+    public readonly method: string,
+  ) {
+    super(`Pricing not found for service ${serviceId}, method ${method}`);
+    this.name = "PricingNotFoundError";
+  }
+}
 
 mock.module("@/db/repositories", () => ({
   StoragePutConflictError: TestStoragePutConflictError,
@@ -82,7 +91,8 @@ mock.module("@/lib/services/storage/native-storage-read", () => ({
 }));
 
 mock.module("@/lib/services/proxy/pricing", () => ({
-  getServiceMethodCost,
+  requireServiceMethodCost,
+  PricingNotFoundError: TestPricingNotFoundError,
 }));
 
 mock.module("@/lib/utils/logger", () => ({
@@ -195,7 +205,7 @@ async function flushMicrotasks(): Promise<void> {
 
 beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
-  getServiceMethodCost.mockReset();
+  requireServiceMethodCost.mockReset();
   deductCredits.mockReset();
   executeNativeStoragePut.mockReset();
   loggerError.mockReset();
@@ -206,7 +216,7 @@ beforeEach(() => {
     organization_id: ORGANIZATION_ID,
     id: "00000000-0000-4000-8000-000000021046",
   });
-  getServiceMethodCost.mockResolvedValue(0.01);
+  requireServiceMethodCost.mockResolvedValue(0.01);
   executeNativeStoragePut.mockResolvedValue({
     key: OBJECT_PATH,
     size: 1,
@@ -236,7 +246,7 @@ describe("storage PUT declared-length trust (production route)", () => {
     expect(source.pulls()).toBe(0);
     expect(source.cancelled()).toBe(true);
     expect(executeNativeStoragePut).not.toHaveBeenCalled();
-    expect(getServiceMethodCost).not.toHaveBeenCalled();
+    expect(requireServiceMethodCost).not.toHaveBeenCalled();
   });
 
   test("refuses hex and signed X-Content-Length forms unread", async () => {
@@ -283,7 +293,9 @@ describe("storage PUT declared-length trust (production route)", () => {
 
   test("forwards a tiny-chunk body as a stream without pulling it", async () => {
     const source = chunkedBody(1, 64);
-    getServiceMethodCost.mockResolvedValueOnce(0.25).mockResolvedValueOnce(0);
+    requireServiceMethodCost
+      .mockResolvedValueOnce(0.25)
+      .mockResolvedValueOnce(0);
     executeNativeStoragePut.mockResolvedValue({
       key: OBJECT_PATH,
       size: 8,
@@ -330,6 +342,71 @@ describe("storage PUT declared-length trust (production route)", () => {
       error: "Request body is required",
     });
     expect(executeNativeStoragePut).not.toHaveBeenCalled();
+  });
+
+  test("fail-closed pricing: a PricingNotFoundError PUT is refused 503 before any provider put or debit", async () => {
+    const source = chunkedBody(1, 64);
+    requireServiceMethodCost.mockReset();
+    requireServiceMethodCost.mockRejectedValueOnce(
+      new TestPricingNotFoundError("storage", "put"),
+    );
+
+    const response = await app.request(
+      putRequest({
+        body: source.body,
+        xContentLength: "8",
+        sha256: OBJECT_SHA256,
+      }),
+      undefined,
+      { BLOB: bucket() },
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("30");
+    expect(await jsonBody(response)).toEqual({
+      error:
+        "Storage pricing is unavailable; the operation was not billed or executed",
+      code: "pricing_unavailable",
+    });
+    // No provider put and no debit may happen for a refused pricing lookup.
+    expect(executeNativeStoragePut).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(loggerError).toHaveBeenCalledWith(
+      "[storage objects] pricing catalogue unavailable",
+      expect.objectContaining({ serviceId: "storage", method: "put" }),
+    );
+  });
+
+  test("fail-closed pricing: a partial catalogue refusing only put_per_byte never bills a flat-only price", async () => {
+    const source = chunkedBody(1, 64);
+    requireServiceMethodCost.mockReset();
+    // Flat leg resolves, per-byte leg is missing: the old path would have
+    // billed $0.001 (flat fallback) + $0.001 × bytes (per-byte fallback) —
+    // the #22956 wrong-unit overcharge. Fail-closed must refuse instead.
+    requireServiceMethodCost
+      .mockResolvedValueOnce(0.0001)
+      .mockRejectedValueOnce(
+        new TestPricingNotFoundError("storage", "put_per_byte"),
+      );
+
+    const response = await app.request(
+      putRequest({
+        body: source.body,
+        xContentLength: "8",
+        sha256: OBJECT_SHA256,
+      }),
+      undefined,
+      { BLOB: bucket() },
+    );
+
+    expect(response.status).toBe(503);
+    expect(await jsonBody(response)).toEqual({
+      error:
+        "Storage pricing is unavailable; the operation was not billed or executed",
+      code: "pricing_unavailable",
+    });
+    expect(executeNativeStoragePut).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
   });
 
   test("a never-settling cancel still answers 411", async () => {
