@@ -1075,6 +1075,20 @@ export async function resolveInferenceAuthContext(
     }
     trace.authoritative = "authorized";
     trace.result = "authorized_origin";
+    const hydrationOnly =
+      (
+        options as ResolveInferenceAuthOptions & {
+          [SKIP_CACHE_PROJECTION_WRITE]?: true;
+        }
+      )[SKIP_CACHE_PROJECTION_WRITE] === true;
+    // Internal hydration is not a consumed authorization. Its caller records
+    // usage only if it consumes the result; direct requests own their update here.
+    if (!hydrationOnly) {
+      observeInferenceApiKeyUsage(
+        { kind: "authorized", ctx, source: "origin" },
+        options.executionCtx,
+      );
+    }
     const cacheWriteStartedAt = performance.now();
     if (!authCacheEnabled) {
       return {
@@ -1092,13 +1106,7 @@ export async function resolveInferenceAuthContext(
           : {}),
       };
     }
-    if (
-      (
-        options as ResolveInferenceAuthOptions & {
-          [SKIP_CACHE_PROJECTION_WRITE]?: true;
-        }
-      )[SKIP_CACHE_PROJECTION_WRITE]
-    ) {
+    if (hydrationOnly) {
       trace.cacheWrite = "deferred";
       return {
         kind: "authorized",
