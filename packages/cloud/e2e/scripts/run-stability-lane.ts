@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { ScenarioStabilitySubprocessAdapter } from "@elizaos/scenario-runner";
+import { ScenarioStabilitySubprocessAdapter } from "@elizaos/scenario-runner/stability-subprocess-adapter";
 import { SyntheticControlClient } from "@elizaos/shared/synthetic-control";
 import cloudStabilityScenario from "../scenarios/cloud-stability-agent.scenario.ts";
 import { authorityChildEnvironment } from "../src/stability/cloud-stability-environment.ts";

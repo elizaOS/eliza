@@ -11,7 +11,6 @@ import path from "node:path";
 import {
   assertScenarioStabilityBoundedJson,
   assertScenarioStabilityExecutedCellCoherence,
-  createScenarioStabilityPlan,
   deriveScenarioStabilityExecutionAttemptIdentities,
   deriveScenarioStabilityFailureClusters,
   deriveScenarioStabilityFocusList,
@@ -21,10 +20,13 @@ import {
   type ScenarioStabilityExecutionBudgets,
   type ScenarioStabilityExecutionReport,
   type ScenarioStabilityExecutionTarget,
+  scenarioStabilityExecutionPlanFingerprint,
+} from "@elizaos/scenario-runner/stability-executor";
+import {
+  createScenarioStabilityPlan,
   type ScenarioStabilityFailureClassification,
   type ScenarioStabilityTier,
-  scenarioStabilityExecutionPlanFingerprint,
-} from "@elizaos/scenario-runner";
+} from "@elizaos/scenario-runner/stability";
 import { canonicalJsonString } from "@elizaos/shared/canonical-json";
 
 export type CloudStabilityMode = "deterministic-mock" | "real-llm";

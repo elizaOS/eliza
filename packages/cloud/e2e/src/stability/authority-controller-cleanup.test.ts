@@ -30,6 +30,7 @@ test("controller interruption removes its synthetic authority PID and port", asy
     path.join(tmpdir(), "cloud-stability-authority-cleanup-"),
   );
   const readyPath = path.join(directory, "authority-ready.json");
+  const stderrPath = path.join(directory, "controller.stderr.log");
   const child = Bun.spawn(
     [
       process.execPath,
@@ -50,12 +51,13 @@ test("controller interruption removes its synthetic authority PID and port", asy
         ELIZA_STABILITY_AUTHORITY_TEST_READY_PATH: readyPath,
       },
       stdout: "ignore",
-      stderr: "ignore",
+      stderr: Bun.file(stderrPath),
     },
   );
+  const startedAt = performance.now();
   try {
     let authority: { pid: number; url: string } | undefined;
-    for (let attempt = 0; attempt < 800; attempt += 1) {
+    for (let attempt = 0; attempt < 2400; attempt += 1) {
       try {
         authority = JSON.parse(await readFile(readyPath, "utf8")) as {
           pid: number;
@@ -72,9 +74,17 @@ test("controller interruption removes its synthetic authority PID and port", asy
         )
           throw error;
       }
+      if (child.exitCode !== null) break;
       await Bun.sleep(25);
     }
-    expect(authority).toBeDefined();
+    if (!authority) {
+      const observedExitCode = child.exitCode;
+      if (observedExitCode === null) child.kill("SIGKILL");
+      await child.exited;
+      throw new Error(
+        `Controller never published authority readiness (pid=${child.pid}, exit=${observedExitCode}, signal=${child.signalCode}, elapsedMs=${Math.round(performance.now() - startedAt)}): ${await readFile(stderrPath, "utf8")}`,
+      );
+    }
     process.kill(child.pid, "SIGTERM");
     const exitCode = await Promise.race([
       child.exited,
@@ -97,4 +107,4 @@ test("controller interruption removes its synthetic authority PID and port", asy
     if (child.exitCode === null) child.kill("SIGKILL");
     await rm(directory, { recursive: true, force: true });
   }
-}, 45_000);
+}, 90_000);

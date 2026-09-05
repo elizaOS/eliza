@@ -12,7 +12,7 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
-import { ownerRemindersAction } from "@elizaos/plugin-personal-assistant";
+import { ownerRemindersAction } from "@elizaos/plugin-personal-assistant/actions/owner-surfaces";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 

@@ -280,10 +280,7 @@
       "outputs": []
     },
     "@elizaos/plugin-calendar#typecheck": {
-      "dependsOn": [
-        "@elizaos/ui#build",
-        "@elizaos/plugin-scheduling#build"
-      ],
+      "dependsOn": ["@elizaos/ui#build", "@elizaos/plugin-scheduling#build"],
       "outputs": []
     },
     "@elizaos/plugin-personal-assistant#typecheck": {
@@ -313,6 +310,10 @@
     },
     "@elizaos/plugin-capacitor-bridge#typecheck": {
       "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/cloud-e2e#typecheck": {
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "@elizaos/scenario-runner#typecheck": {
