@@ -29,6 +29,39 @@ describe("readAgentBackupRestoreCoordinatorConfig", () => {
     ).toThrow("explicit restore only");
   });
 
+  // Both refusals above are written with "1". Every value that is NOT "1" used
+  // to read as unset, so both of them vanished for a flag that plainly means
+  // ON — the operator asked for failover and got a silently-off coordinator.
+  test('refuses a flag value that means on but is not "1"', () => {
+    for (const value of ["true", "TRUE", "yes", "on", "2", " 1"]) {
+      expect(() =>
+        readAgentBackupRestoreCoordinatorConfig({
+          AGENT_BACKUP_RESTORE_FAILOVER_ENABLED: value,
+        }),
+      ).toThrow('AGENT_BACKUP_RESTORE_FAILOVER_ENABLED must be "1" or "0"');
+      expect(() =>
+        readAgentBackupRestoreCoordinatorConfig({
+          AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED: value,
+          AGENT_BACKUP_RESTORE_WORKER_ID: "worker-a",
+        }),
+      ).toThrow('AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED must be "1" or "0"');
+    }
+  });
+
+  // The refusal must not swallow an unambiguous "off": rejecting "0" would
+  // turn a deployment that means disabled into a boot failure.
+  test('accepts "0" and empty as off without reading a tunable', () => {
+    for (const value of ["0", ""]) {
+      expect(
+        readAgentBackupRestoreCoordinatorConfig({
+          AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED: value,
+          AGENT_BACKUP_RESTORE_FAILOVER_ENABLED: value,
+          AGENT_BACKUP_RESTORE_CLAIM_MS: "not-a-number",
+        }),
+      ).toEqual({ enabled: false });
+    }
+  });
+
   test("requires an exact worker id once enabled", () => {
     for (const workerId of [undefined, "", " worker-a", "worker-a "]) {
       expect(() =>
