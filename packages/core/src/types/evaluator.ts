@@ -27,6 +27,13 @@ export interface EvaluatorRunOptions {
 	 * later turns passes a wrapper that re-acquires the room lease around them.
 	 */
 	applyWrites?: <T>(run: () => Promise<T>) => Promise<T>;
+	/**
+	 * Instant the turn's foreground work ended. A write phase that runs after
+	 * later turns were admitted stamps its rows with it and leaves alone any
+	 * fact a later turn already rewrote (see fact-write-guard.ts). Absent when
+	 * the write phase runs inside the turn's own room lane.
+	 */
+	writeBaselineMs?: number;
 }
 
 export interface EvaluatorRunContext {

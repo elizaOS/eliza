@@ -65,6 +65,12 @@ import {
 	VERBOSITY_VALUES,
 } from "../personality/types.ts";
 import {
+	type FactWriteClock,
+	factWriteNowIso,
+	factWriteNowMs,
+	loadFactForWrite,
+} from "./fact-write-guard.ts";
+import {
 	type AddDirectiveOp,
 	type AddPreferenceFactOp,
 	type PreferenceExtractorOutput,
@@ -139,10 +145,6 @@ export interface PreferencePrepared {
 	/** Null when the PersonalityStore service is not registered. */
 	slot: PersonalitySlot | null;
 	knownPreferenceFacts: Memory[];
-}
-
-function nowIso(): string {
-	return new Date().toISOString();
 }
 
 function clamp01(value: number): number {
@@ -322,6 +324,7 @@ async function applyAddPreferenceFact(
 	message: Memory,
 	candidates: FactCandidate[],
 	op: AddPreferenceFactOp,
+	clock: FactWriteClock,
 ): Promise<{ added: boolean; strengthened: boolean }> {
 	const keywords = buildFactKeywordsForStorage(
 		op.keywords ?? [],
@@ -342,12 +345,23 @@ async function applyAddPreferenceFact(
 		}
 	}
 	if (best?.memory.id) {
+		// A later turn may have rewritten or retracted this preference while
+		// this deferred phase waited; the guard re-reads it and refuses to
+		// reinforce state that is newer than this turn.
+		const current = await loadFactForWrite(
+			runtime,
+			best.memory,
+			clock,
+			"preference:strengthen",
+		);
+		if (!current) return { added: false, strengthened: false };
 		// Update-not-duplicate: a re-stated preference reinforces the existing
 		// row instead of creating a near-copy the provider would rank twice.
 		const nextMeta: CustomMetadata = {
-			...preserveFactMetadata(best.memory),
-			confidence: clamp01(pickFactConfidence(best.memory) + STRENGTHEN_DELTA),
-			lastConfirmedAt: nowIso(),
+			...preserveFactMetadata(current),
+			confidence: clamp01(pickFactConfidence(current) + STRENGTHEN_DELTA),
+			lastConfirmedAt: factWriteNowIso(clock),
+			updatedAt: factWriteNowIso(clock),
 		};
 		await runtime.updateMemory({ id: best.memory.id, metadata: nextMeta });
 		return { added: false, strengthened: true };
@@ -358,7 +372,7 @@ async function applyAddPreferenceFact(
 		// The model's own confidence when it gave one (the schema advertises
 		// it); the shared default only backfills its absence.
 		confidence: clamp01(op.confidence ?? NEW_FACT_CONFIDENCE),
-		lastConfirmedAt: nowIso(),
+		lastConfirmedAt: factWriteNowIso(clock),
 		kind: "durable",
 		category: "preference",
 		structuredFields: {},
@@ -372,7 +386,7 @@ async function applyAddPreferenceFact(
 		roomId: message.roomId,
 		content: { text: op.claim },
 		metadata,
-		createdAt: Date.now(),
+		createdAt: factWriteNowMs(clock),
 	};
 	const persistedId = await runtime.createMemory(memory, "facts", true);
 	if (persistedId) {
@@ -443,7 +457,7 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 	processors: [
 		{
 			name: "applyPreferenceOps",
-			async process({ runtime, message, prepared, output }) {
+			async process({ runtime, message, prepared, output, options }) {
 				const store = getPersonalityStore(runtime);
 				const userId = message.entityId;
 				// Pre-run snapshot for trait gates — see applySetTrait.
@@ -484,6 +498,7 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 							message,
 							candidates,
 							op,
+							{ baselineMs: options.writeBaselineMs },
 						);
 						if (result.added) factsAdded += 1;
 						if (result.strengthened) factsStrengthened += 1;

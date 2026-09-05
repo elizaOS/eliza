@@ -62,6 +62,12 @@ import {
 } from "../fact-keywords.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";
 import {
+	type FactWriteClock,
+	factWriteNowIso,
+	factWriteNowMs,
+	loadFactForWrite,
+} from "./fact-write-guard.ts";
+import {
 	type AddCurrentOp,
 	type AddDurableOp,
 	type ContradictOp,
@@ -310,10 +316,6 @@ interface FactCandidate {
 	searchText: string;
 }
 
-function nowIso(): string {
-	return new Date().toISOString();
-}
-
 function toJsonObject(value: Record<string, unknown>): {
 	[key: string]: JsonValue;
 } {
@@ -553,6 +555,7 @@ interface ApplyContext {
 	candidatePool: FactCandidate[];
 	candidatesById: Map<string, Memory>;
 	insertedThisRun: FactCandidate[];
+	clock: FactWriteClock;
 }
 
 async function insertFact(
@@ -574,7 +577,7 @@ async function insertFact(
 		type: MemoryType.CUSTOM,
 		source: "fact_extractor",
 		confidence: NEW_FACT_CONFIDENCE,
-		lastConfirmedAt: nowIso(),
+		lastConfirmedAt: factWriteNowIso(ctx.clock),
 		kind: args.kind,
 		category: args.category,
 		structuredFields: toJsonObject(args.structuredFields),
@@ -589,7 +592,7 @@ async function insertFact(
 		roomId: ctx.message.roomId,
 		content: { text: args.claim },
 		metadata,
-		createdAt: Date.now(),
+		createdAt: factWriteNowMs(ctx.clock),
 	};
 	const persistedId = await ctx.runtime.createMemory(memory, "facts", true);
 	return persistedId;
@@ -630,15 +633,26 @@ export function preserveFactMetadata(fact: Memory): CustomMetadata {
 async function applyStrengthenForMemory(
 	ctx: ApplyContext,
 	fact: Memory,
-): Promise<void> {
-	if (!fact.id) return;
-	const nextConfidence = clamp01(pickFactConfidence(fact) + STRENGTHEN_DELTA);
+): Promise<boolean> {
+	if (!fact.id) return false;
+	const current = await loadFactForWrite(
+		ctx.runtime,
+		fact,
+		ctx.clock,
+		"reflection:strengthen",
+	);
+	if (!current) return false;
+	const nextConfidence = clamp01(
+		pickFactConfidence(current) + STRENGTHEN_DELTA,
+	);
 	const nextMeta: CustomMetadata = {
-		...preserveFactMetadata(fact),
+		...preserveFactMetadata(current),
 		confidence: nextConfidence,
-		lastConfirmedAt: nowIso(),
+		lastConfirmedAt: factWriteNowIso(ctx.clock),
+		updatedAt: factWriteNowIso(ctx.clock),
 	};
 	await ctx.runtime.updateMemory({ id: fact.id, metadata: nextMeta });
+	return true;
 }
 
 async function applyAddDurable(
@@ -659,8 +673,11 @@ async function applyAddDurable(
 		op.category,
 	);
 	if (dedupTarget) {
-		await applyStrengthenForMemory(ctx, dedupTarget.memory);
-		return { added: false, strengthened: true };
+		const strengthened = await applyStrengthenForMemory(
+			ctx,
+			dedupTarget.memory,
+		);
+		return { added: false, strengthened };
 	}
 	const factId = await insertFact(ctx, {
 		claim: op.claim,
@@ -702,13 +719,16 @@ async function applyAddCurrent(
 		op.category,
 	);
 	if (dedupTarget) {
-		await applyStrengthenForMemory(ctx, dedupTarget.memory);
-		return { added: false, strengthened: true };
+		const strengthened = await applyStrengthenForMemory(
+			ctx,
+			dedupTarget.memory,
+		);
+		return { added: false, strengthened };
 	}
 	const validAt =
 		typeof op.valid_at === "string" && op.valid_at.length > 0
 			? op.valid_at
-			: nowIso();
+			: factWriteNowIso(ctx.clock);
 	const factId = await insertFact(ctx, {
 		claim: op.claim,
 		kind: "current",
@@ -737,21 +757,28 @@ async function applyStrengthen(
 ): Promise<boolean> {
 	const fact = ctx.candidatesById.get(op.factId);
 	if (!fact?.id) return false;
-	await applyStrengthenForMemory(ctx, fact);
-	return true;
+	return await applyStrengthenForMemory(ctx, fact);
 }
 
 async function applyDecay(ctx: ApplyContext, op: DecayOp): Promise<boolean> {
 	const fact = ctx.candidatesById.get(op.factId);
 	if (!fact?.id) return false;
-	const nextConfidence = clamp01(pickFactConfidence(fact) - DECAY_DELTA);
+	const current = await loadFactForWrite(
+		ctx.runtime,
+		fact,
+		ctx.clock,
+		"reflection:decay",
+	);
+	if (!current) return false;
+	const nextConfidence = clamp01(pickFactConfidence(current) - DECAY_DELTA);
 	if (nextConfidence < FACT_DECAY_FLOOR) {
 		await ctx.runtime.deleteMemory(fact.id);
 		return true;
 	}
 	const nextMeta: CustomMetadata = {
-		...preserveFactMetadata(fact),
+		...preserveFactMetadata(current),
 		confidence: nextConfidence,
+		updatedAt: factWriteNowIso(ctx.clock),
 	};
 	await ctx.runtime.updateMemory({ id: fact.id, metadata: nextMeta });
 	return true;
@@ -1005,7 +1032,7 @@ ${formatKnownLines(current, "current")}`;
 	processors: [
 		{
 			name: "applyFactOps",
-			async process({ runtime, message, prepared, output }) {
+			async process({ runtime, message, prepared, output, options }) {
 				const candidatePool: FactCandidate[] = prepared.knownFacts.map(
 					(memory) => ({
 						memory,
@@ -1022,6 +1049,7 @@ ${formatKnownLines(current, "current")}`;
 					candidatePool,
 					candidatesById,
 					insertedThisRun: [],
+					clock: { baselineMs: options.writeBaselineMs },
 				};
 				let added = 0;
 				let strengthened = 0;

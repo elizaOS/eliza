@@ -724,4 +724,108 @@ describe("DefaultMessageService run-terminal owner", () => {
 		expect(writes).toEqual(["I like tea", "actually I like coffee"]);
 		expect(terminalPayloads).toHaveLength(2);
 	});
+
+	it("releases the write slot when the evaluator throws so the next turn's writes still land", async () => {
+		const gates = new Map<string, ReturnType<typeof deferred>>();
+		const writes: string[] = [];
+		const { runtime } = makeRuntime({});
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		(
+			runtime as unknown as { roomHandlerQueue: RoomHandlerQueue }
+		).roomHandlerQueue = queue;
+		(
+			runtime as unknown as { getServiceLoadPromise: unknown }
+		).getServiceLoadPromise = vi.fn(async () => ({
+			run: async (
+				message: Memory,
+				_state: unknown,
+				options: { applyWrites?: <T>(run: () => Promise<T>) => Promise<T> },
+			) => {
+				const text = message.content.text ?? "";
+				const gate = deferred();
+				gates.set(text, gate);
+				await gate.promise;
+				if (text === "I like tea") throw new Error("evaluator exploded");
+				const apply = options.applyWrites ?? ((run) => run());
+				await apply(async () => {
+					writes.push(text);
+				});
+				return {
+					skipped: false,
+					activeEvaluators: ["facts"],
+					processedEvaluators: ["facts"],
+					results: [],
+					errors: [],
+				};
+			},
+		}));
+		const service = new DefaultMessageService();
+		const turn = async (text: string) => {
+			const lease = await queue.acquire(ROOM_ID);
+			await queue.runInLease(ROOM_ID, lease, () =>
+				service.handleMessage(runtime, inputMessage(text), async () => [], {
+					roomHandlerLease: lease,
+				}),
+			);
+			await drainRoomPostDeliveryTasks(runtime, ROOM_ID);
+			await lease.release();
+		};
+		await turn("I like tea");
+		await turn("actually I like coffee");
+		await vi.waitFor(() => {
+			expect(gates.size).toBe(2);
+		});
+		gates.get("actually I like coffee")?.release();
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(writes).toEqual([]);
+		gates.get("I like tea")?.release();
+		await drainPostDeliveryTasks(runtime);
+		expect(writes).toEqual(["actually I like coffee"]);
+	});
+
+	it("hands the deferred write phase the turn's baseline instant", async () => {
+		const seen: number[] = [];
+		const { runtime } = makeRuntime({});
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		(
+			runtime as unknown as { roomHandlerQueue: RoomHandlerQueue }
+		).roomHandlerQueue = queue;
+		(
+			runtime as unknown as { getServiceLoadPromise: unknown }
+		).getServiceLoadPromise = vi.fn(async () => ({
+			run: async (
+				_message: Memory,
+				_state: unknown,
+				options: { writeBaselineMs?: number },
+			) => {
+				if (typeof options.writeBaselineMs === "number") {
+					seen.push(options.writeBaselineMs);
+				}
+				return {
+					skipped: false,
+					activeEvaluators: [],
+					processedEvaluators: [],
+					results: [],
+					errors: [],
+				};
+			},
+		}));
+		const service = new DefaultMessageService();
+		const before = Date.now();
+		const lease = await queue.acquire(ROOM_ID);
+		await queue.runInLease(ROOM_ID, lease, () =>
+			service.handleMessage(
+				runtime,
+				inputMessage("I like jasmine tea"),
+				async () => [],
+				{ roomHandlerLease: lease },
+			),
+		);
+		await drainRoomPostDeliveryTasks(runtime, ROOM_ID);
+		await lease.release();
+		await drainPostDeliveryTasks(runtime);
+		expect(seen).toHaveLength(1);
+		expect(seen[0]).toBeGreaterThanOrEqual(before);
+		expect(seen[0]).toBeLessThanOrEqual(Date.now());
+	});
 });

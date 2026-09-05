@@ -16397,6 +16397,7 @@ export class DefaultMessageService implements IMessageService {
 								responses: responseMessages,
 								semanticSignal,
 								applyWrites: orderedRoomWrite,
+								writeBaselineMs: deferredWriteSlot?.reservedAt,
 							}),
 						);
 					} finally {

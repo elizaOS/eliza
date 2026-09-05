@@ -528,3 +528,125 @@ describe("reflection context preserves the complete room entity set", () => {
 		expect(runtime.getMemories).toHaveBeenCalledTimes(3);
 	});
 });
+
+describe("factMemoryEvaluator deferred write revision guard", () => {
+	// Review gate (Discussion #30659): a delayed turn-A extraction must not
+	// overwrite a fact a newer turn B already rewrote in the foreground.
+	const baselineMs = Date.parse("2026-09-05T18:00:00.000Z");
+	const factId = "00000000-0000-0000-0000-0000000000f1" as UUID;
+
+	function knownFact(lastConfirmedAt: string): Memory {
+		return {
+			id: factId,
+			entityId: message().entityId,
+			agentId,
+			roomId: message().roomId,
+			content: { text: "prefers tea" },
+			metadata: {
+				type: "custom",
+				source: "fact_extractor",
+				confidence: 0.6,
+				lastConfirmedAt,
+				kind: "durable",
+				category: "preference",
+				structuredFields: {},
+				keywords: ["tea"],
+			},
+			createdAt: Date.parse("2026-09-05T17:00:00.000Z"),
+		} as Memory;
+	}
+
+	function processWithBaseline(
+		runtime: ReturnType<typeof makeRuntime>,
+		knownFacts: Memory[],
+		output: unknown,
+	) {
+		const processor = factMemoryEvaluator.processors?.[0];
+		if (!processor) throw new Error("missing fact processor");
+		return processor.process({
+			runtime,
+			message: message(),
+			state: { values: {}, data: {}, text: "" },
+			options: { writeBaselineMs: baselineMs },
+			evaluatorName: "factMemory",
+			prepared: {
+				recentMessages: [],
+				existingRelationships: [],
+				entities: [],
+				knownFacts,
+			},
+			output,
+		} as EvaluatorProcessorContext);
+	}
+
+	it("does not strengthen a fact a later turn already rewrote", async () => {
+		const runtime = makeRuntime();
+		const snapshot = knownFact("2026-09-05T17:30:00.000Z");
+		runtime.getMemoryById.mockResolvedValue(
+			knownFact("2026-09-05T18:00:05.000Z"),
+		);
+		const result = await processWithBaseline(runtime, [snapshot], {
+			ops: [{ op: "strengthen", factId }],
+		});
+		expect(runtime.updateMemory).not.toHaveBeenCalled();
+		expect(result?.values).toMatchObject({ strengthened: 0 });
+	});
+
+	it("strengthens from the re-read fact and stamps the turn baseline", async () => {
+		const runtime = makeRuntime();
+		const snapshot = knownFact("2026-09-05T17:30:00.000Z");
+		runtime.getMemoryById.mockResolvedValue(
+			knownFact("2026-09-05T17:45:00.000Z"),
+		);
+		const result = await processWithBaseline(runtime, [snapshot], {
+			ops: [{ op: "strengthen", factId }],
+		});
+		expect(result?.values).toMatchObject({ strengthened: 1 });
+		const updateArg = runtime.updateMemory.mock.calls[0]?.[0] as {
+			id: UUID;
+			metadata: Record<string, unknown>;
+		};
+		expect(updateArg.id).toBe(factId);
+		expect(updateArg.metadata).toMatchObject({
+			lastConfirmedAt: "2026-09-05T18:00:00.000Z",
+			updatedAt: "2026-09-05T18:00:00.000Z",
+		});
+	});
+
+	it("does not decay or delete a fact a later turn already rewrote", async () => {
+		const runtime = makeRuntime();
+		const snapshot = knownFact("2026-09-05T17:30:00.000Z");
+		runtime.getMemoryById.mockResolvedValue(
+			knownFact("2026-09-05T18:00:05.000Z"),
+		);
+		const result = await processWithBaseline(runtime, [snapshot], {
+			ops: [{ op: "decay", factId }],
+		});
+		expect(runtime.updateMemory).not.toHaveBeenCalled();
+		expect(
+			(runtime as unknown as { deleteMemory: ReturnType<typeof vi.fn> })
+				.deleteMemory,
+		).not.toHaveBeenCalled();
+		expect(result?.values).toMatchObject({ decayed: 0 });
+	});
+
+	it("stamps inserted facts with the turn baseline so recency follows turn order", async () => {
+		const runtime = makeRuntime();
+		await processWithBaseline(runtime, [], {
+			ops: [
+				{
+					op: "add_durable",
+					claim: "lives in Berlin",
+					category: "identity",
+					structured_fields: { city: "Berlin" },
+					keywords: ["berlin"],
+				},
+			],
+		});
+		const created = runtime.createMemory.mock.calls[0]?.[0] as Memory;
+		expect(created.createdAt).toBe(baselineMs);
+		expect(created.metadata).toMatchObject({
+			lastConfirmedAt: "2026-09-05T18:00:00.000Z",
+		});
+	});
+});

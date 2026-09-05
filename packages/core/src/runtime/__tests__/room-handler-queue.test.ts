@@ -467,3 +467,75 @@ describe("RoomHandlerQueue", () => {
 		});
 	});
 });
+
+describe("RoomHandlerQueue ordered write slots", () => {
+	const ROOM = "room-slots";
+	const settleMs = (ms: number) =>
+		new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+	it("applies slots in reservation order even when a later slot is ready first", async () => {
+		const queue = new RoomHandlerQueue();
+		const writes: string[] = [];
+		const a = queue.reserveOrderedWrite(ROOM);
+		const b = queue.reserveOrderedWrite(ROOM);
+		const bDone = b.apply(async () => {
+			writes.push("b");
+		});
+		await settleMs(20);
+		expect(writes).toEqual([]);
+		await a.apply(async () => {
+			writes.push("a");
+		});
+		a.release();
+		await bDone;
+		b.release();
+		expect(writes).toEqual(["a", "b"]);
+	});
+
+	it("a released slot that never applied does not block later slots", async () => {
+		const queue = new RoomHandlerQueue();
+		const a = queue.reserveOrderedWrite(ROOM);
+		const b = queue.reserveOrderedWrite(ROOM);
+		a.release();
+		expect(await b.apply(async () => "b")).toBe("b");
+		b.release();
+	});
+
+	it("a slot whose apply throws still lets later slots proceed once released", async () => {
+		const queue = new RoomHandlerQueue();
+		const a = queue.reserveOrderedWrite(ROOM);
+		const b = queue.reserveOrderedWrite(ROOM);
+		await expect(
+			a.apply(async () => {
+				throw new Error("evaluator exploded");
+			}),
+		).rejects.toThrow("evaluator exploded");
+		a.release();
+		expect(await b.apply(async () => "b")).toBe("b");
+		b.release();
+	});
+
+	it("rejects an apply after admissions close instead of stalling later slots", async () => {
+		const queue = new RoomHandlerQueue();
+		const a = queue.reserveOrderedWrite(ROOM);
+		const b = queue.reserveOrderedWrite(ROOM);
+		queue.closeAdmissions("test shutdown");
+		await expect(a.apply(async () => "a")).rejects.toBeInstanceOf(Error);
+		a.release();
+		await expect(b.apply(async () => "b")).rejects.toBeInstanceOf(Error);
+		b.release();
+	});
+
+	it("records the reservation instant and keeps it monotonic per room", async () => {
+		const queue = new RoomHandlerQueue();
+		const before = Date.now();
+		const a = queue.reserveOrderedWrite(ROOM);
+		await settleMs(5);
+		const b = queue.reserveOrderedWrite(ROOM);
+		expect(a.reservedAt).toBeGreaterThanOrEqual(before);
+		expect(b.reservedAt).toBeGreaterThanOrEqual(a.reservedAt);
+		expect(b.reservedAt).toBeLessThanOrEqual(Date.now());
+		a.release();
+		b.release();
+	});
+});

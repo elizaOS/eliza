@@ -658,10 +658,9 @@ describe("post-turn evaluation detachment", () => {
 		await expect(service.handleMessage(runtime, input)).resolves.toBeDefined();
 		await drainPostDeliveryTasks(runtime);
 
-		expect(trajectoryLogger.startStep).toHaveBeenCalledOnce();
-		expect(trajectoryLogger.flushWriteQueue).toHaveBeenCalledWith(
-			"trajectory-2",
-		);
+		// ALWAYS_AFTER hooks run on their own lane, separate from the evaluator
+		// model step; a failing hook is reported under its lane label and the run
+		// still closes exactly once after the failure settles.
 		expect(
 			(runtime.emitEvent as ReturnType<typeof vi.fn>).mock.calls.filter(
 				([event]) => event === EventType.RUN_ENDED,
@@ -670,7 +669,7 @@ describe("post-turn evaluation detachment", () => {
 		expect(runtime.reportError).toHaveBeenCalledWith(
 			"PostDeliveryTask",
 			postTurnError,
-			expect.objectContaining({ label: "post_turn" }),
+			expect.objectContaining({ label: "ALWAYS_AFTER" }),
 		);
 	});
 

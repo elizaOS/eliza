@@ -229,6 +229,8 @@ class RoomQueue {
  * turn's deferred work settles (with or without writes).
  */
 export interface RoomOrderedWriteSlot {
+	/** Instant the slot was reserved: the turn's write baseline. */
+	reservedAt: number;
 	apply<T>(fn: () => Promise<T>): Promise<T>;
 	release(): void;
 }
@@ -588,6 +590,7 @@ export class RoomHandlerQueue {
 			}
 		});
 		return {
+			reservedAt: Date.now(),
 			apply: async <T>(fn: () => Promise<T>): Promise<T> => {
 				await predecessor;
 				return await this.withLease(roomId, () => fn());
