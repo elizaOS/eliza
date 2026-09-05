@@ -227,9 +227,18 @@ export function getAttachmentFileName(media: Media): string {
 	let extension = "";
 	try {
 		const urlPath = new URL(media.url).pathname;
-		const urlExtension = urlPath.substring(urlPath.lastIndexOf("."));
-		if (urlExtension && urlExtension.length > 1 && urlExtension.length <= 5) {
-			extension = urlExtension;
+		const lastDot = urlPath.lastIndexOf(".");
+		const lastSlash = urlPath.lastIndexOf("/");
+		if (lastDot !== -1 && lastDot > lastSlash) {
+			const urlExtension = urlPath.substring(lastDot);
+			if (
+				urlExtension &&
+				urlExtension.length > 1 &&
+				urlExtension.length <= 5 &&
+				!urlExtension.includes("/")
+			) {
+				extension = urlExtension;
+			}
 		}
 	} catch {
 		const lastDot = media.url.lastIndexOf(".");
@@ -239,7 +248,12 @@ export function getAttachmentFileName(media: Media): string {
 				lastDot,
 				queryStart > -1 ? queryStart : undefined,
 			);
-			if (potentialExt.length > 1 && potentialExt.length <= 5) {
+			if (
+				potentialExt.length > 1 &&
+				potentialExt.length <= 5 &&
+				!potentialExt.includes("/") &&
+				!potentialExt.includes("?")
+			) {
 				extension = potentialExt;
 			}
 		}
