@@ -880,7 +880,7 @@ describe("DynamicViewLoader", () => {
   it("filters a spatial view through the real agent-fill bridge", async () => {
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
       default: function StatusPanel() {
-        const [status, setStatus] = useState("All goals");
+        const [status, setStatus] = useState<string>();
         return (
           <section>
             <Field
@@ -906,6 +906,25 @@ describe("DynamicViewLoader", () => {
     );
     await screen.findByText("Learn conversational Spanish");
     const { dispatchViewInteract } = await import("./view-interact-registry");
+    await dispatchViewInteract(
+      "status.view",
+      "gui",
+      "list-elements",
+      undefined,
+      "req-status-unselected",
+    );
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-status-unselected",
+      success: true,
+      result: expect.arrayContaining([
+        expect.objectContaining({
+          id: "goal-status-filter",
+          value: "",
+          fillable: true,
+        }),
+      ]),
+    });
     await act(async () => {
       await dispatchViewInteract(
         "status.view",
