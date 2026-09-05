@@ -26,6 +26,13 @@ function requestWithBody(body: Buffer): http.IncomingMessage {
   return stream as unknown as http.IncomingMessage;
 }
 
+/** Test double matching the generic readJsonBody route-helper signature. */
+function mockReadJsonBody<T extends object>(
+  body: T,
+): AgentTransferRouteContext["readJsonBody"] {
+  return async <U extends object>() => body as unknown as U | null;
+}
+
 function createFakeResponse(): http.ServerResponse & {
   body: unknown;
   headers: Record<string, string | number>;
@@ -175,10 +182,10 @@ describe("POST /api/agent/export", () => {
       method: "POST",
       pathname: "/api/agent/export",
       state: { runtime: fakeRuntime },
-      readJsonBody: vi.fn(async () => ({
+      readJsonBody: mockReadJsonBody({
         password: "long-secure-password-123",
         includeLogs: true,
-      })),
+      }),
       json: vi.fn(),
       error: vi.fn(),
       exportAgent,
@@ -224,9 +231,9 @@ describe("POST /api/agent/export", () => {
       method: "POST",
       pathname: "/api/agent/export",
       state: { runtime: fakeRuntime },
-      readJsonBody: vi.fn(async () => ({
+      readJsonBody: mockReadJsonBody({
         password: "long-secure-password-123",
-      })),
+      }),
       json: vi.fn(),
       error,
       exportAgent: vi
@@ -247,9 +254,9 @@ describe("POST /api/agent/export", () => {
       method: "POST",
       pathname: "/api/agent/export",
       state: { runtime: fakeRuntime },
-      readJsonBody: vi.fn(async () => ({
+      readJsonBody: mockReadJsonBody({
         password: "long-secure-password-123",
-      })),
+      }),
       json: vi.fn(),
       error,
       exportAgent: vi.fn().mockRejectedValue(new Error("Disk failure")),
