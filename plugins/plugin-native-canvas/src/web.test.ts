@@ -307,7 +307,11 @@ describe("CanvasWeb eval message source", () => {
     postMessageSpy.mockClear();
     const evalPromise = canvas.eval({ script: "document.title" });
     expect(postMessageSpy).toHaveBeenCalledWith(
-      { type: "eliza:eval", script: "document.title" },
+      expect.objectContaining({
+        type: "eliza:eval",
+        script: "document.title",
+        messageId: expect.any(String),
+      }),
       "https://canvas.eliza.how",
     );
     expect(postMessageSpy).not.toHaveBeenCalledWith(expect.anything(), "*");
@@ -424,4 +428,127 @@ describe("CanvasWeb eval message source", () => {
       expect(document.querySelector("iframe")).toBe(originalFrame);
     },
   );
+
+  // Reads the `messageId` the plugin attached to each outgoing `eliza:eval`
+  // post, in dispatch order, so a test can echo the correct id back per call.
+  const sentEvalIds = (spy: ReturnType<typeof vi.spyOn>): string[] =>
+    (spy.mock.calls as unknown[][])
+      .map((args) => args[0] as { type?: string; messageId?: string })
+      .filter((payload) => payload.type === "eliza:eval")
+      .map((payload) => String(payload.messageId));
+
+  it("resolves concurrent evals to their own result via FIFO when replies omit messageId", async () => {
+    // Exact reproduction of #29216: two evals in flight, two id-less replies
+    // delivered in dispatch order. Before the fix both promises resolved to
+    // RESULT_A because the first-registered handler swallowed every reply.
+    const canvas = new CanvasWeb();
+    await canvas.navigate({ url: "https://canvas.eliza.how/view" });
+    const webView = document.querySelector("iframe")?.contentWindow;
+    expect(webView).toBeTruthy();
+
+    const pA = canvas.eval({ script: "SCRIPT_A" });
+    const pB = canvas.eval({ script: "SCRIPT_B" });
+
+    for (const result of ["RESULT_A", "RESULT_B"]) {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { type: "eliza:evalResult", result },
+          origin: "https://canvas.eliza.how",
+          source: webView,
+        }),
+      );
+    }
+
+    await expect(pA).resolves.toEqual({ result: "RESULT_A" });
+    await expect(pB).resolves.toEqual({ result: "RESULT_B" });
+  });
+
+  it("correlates concurrent evals by messageId even when replies arrive out of order", async () => {
+    const canvas = new CanvasWeb();
+    await canvas.navigate({ url: "https://canvas.eliza.how/view" });
+    const webView = document.querySelector("iframe")?.contentWindow;
+    expect(webView).toBeTruthy();
+    if (!webView) throw new Error("Missing webView contentWindow");
+    const postMessageSpy = vi.spyOn(webView, "postMessage");
+
+    const pA = canvas.eval({ script: "SCRIPT_A" });
+    const pB = canvas.eval({ script: "SCRIPT_B" });
+
+    const [idA, idB] = sentEvalIds(postMessageSpy);
+    expect(idA).toBeTruthy();
+    expect(idB).toBeTruthy();
+    expect(idA).not.toEqual(idB);
+
+    // Reply for B arrives first; the messageId must still route it to pB and
+    // leave pA pending until its own id-tagged reply arrives.
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "eliza:evalResult", result: "RESULT_B", messageId: idB },
+        origin: "https://canvas.eliza.how",
+        source: webView,
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "eliza:evalResult", result: "RESULT_A", messageId: idA },
+        origin: "https://canvas.eliza.how",
+        source: webView,
+      }),
+    );
+
+    await expect(pA).resolves.toEqual({ result: "RESULT_A" });
+    await expect(pB).resolves.toEqual({ result: "RESULT_B" });
+  });
+
+  it("resolves a single eval when the responder echoes no messageId", async () => {
+    const canvas = new CanvasWeb();
+    await canvas.navigate({ url: "https://canvas.eliza.how/view" });
+    const webView = document.querySelector("iframe")?.contentWindow;
+    expect(webView).toBeTruthy();
+
+    const pending = canvas.eval({ script: "document.title" });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "eliza:evalResult", result: "Canvas App" },
+        origin: "https://canvas.eliza.how",
+        source: webView,
+      }),
+    );
+
+    await expect(pending).resolves.toEqual({ result: "Canvas App" });
+  });
+
+  it("ignores a foreign-source evalResult even when it carries a valid messageId", async () => {
+    const canvas = new CanvasWeb();
+    await canvas.navigate({ url: "https://canvas.eliza.how/view" });
+    const webView = document.querySelector("iframe")?.contentWindow;
+    expect(webView).toBeTruthy();
+    if (!webView) throw new Error("Missing webView contentWindow");
+    const postMessageSpy = vi.spyOn(webView, "postMessage");
+
+    const pending = canvas.eval({ script: "document.title" });
+    const [id] = sentEvalIds(postMessageSpy);
+    expect(id).toBeTruthy();
+
+    // Same-page attacker replays the real messageId, but the message source is
+    // the main window rather than the web view WindowProxy, so it must not
+    // resolve the pending eval.
+    window.postMessage(
+      { type: "eliza:evalResult", result: "pwned", messageId: id },
+      "*",
+    );
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "eliza:evalResult", result: "Canvas App", messageId: id },
+        origin: "https://canvas.eliza.how",
+        source: webView,
+      }),
+    );
+
+    await expect(pending).resolves.toEqual({ result: "Canvas App" });
+  });
 });
