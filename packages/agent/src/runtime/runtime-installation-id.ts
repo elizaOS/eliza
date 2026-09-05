@@ -133,9 +133,7 @@ function isSameOrDescendant(candidate: string, directory: string): boolean {
   );
 }
 
-function resolveAndroidStateBoundary(
-  stateDirectory: string,
-): AndroidStateBoundary | undefined {
+function resolveAndroidStateBoundary(): AndroidStateBoundary | undefined {
   if (readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase() !== "android") {
     return undefined;
   }
@@ -146,12 +144,32 @@ function resolveAndroidStateBoundary(
     );
   }
   const appDataDirectory = path.resolve(configured);
-  if (!isSameOrDescendant(path.resolve(stateDirectory), appDataDirectory)) {
-    throw new Error(
-      "Android runtime state directory must remain inside ELIZA_ANDROID_APP_DATA_DIR.",
-    );
-  }
   return { appDataDirectory };
+}
+
+/** Match Android bind-mount aliases by directory identity, never path spelling. */
+async function resolveRequestedAndroidBoundary(
+  requestedParent: string,
+  boundary: AndroidStateBoundary,
+): Promise<AndroidStateBoundary> {
+  if (isSameOrDescendant(requestedParent, boundary.appDataDirectory)) {
+    return boundary;
+  }
+  const configuredStat = await fs.lstat(boundary.appDataDirectory);
+  assertTrustedParentDirectoryStat(configuredStat);
+  for (const candidate of ancestorPaths(requestedParent).reverse()) {
+    const stat = await fs.lstat(candidate);
+    if (
+      stat.isDirectory() &&
+      !stat.isSymbolicLink() &&
+      sameIdentity(stat, configuredStat)
+    ) {
+      return { appDataDirectory: candidate };
+    }
+  }
+  throw new Error(
+    "Android runtime state directory must remain inside ELIZA_ANDROID_APP_DATA_DIR.",
+  );
 }
 
 function isAndroidPlatformAncestor(
@@ -610,15 +628,32 @@ async function loadOrCreateRuntimeInstallationIdImpl(
   stateDirectory: string,
 ): Promise<UUID> {
   const requestedStateDirectory = path.resolve(stateDirectory);
-  const androidBoundary = resolveAndroidStateBoundary(requestedStateDirectory);
+  const configuredAndroidBoundary = resolveAndroidStateBoundary();
   const requestedParent = path.dirname(requestedStateDirectory);
-  const lexicalAncestors = await openTrustedLexicalChain(
-    requestedParent,
-    androidBoundary,
-  );
+  const lexicalAncestors: TrustedLexicalEntry[] = [];
   let trustedDirectory: TrustedDirectory;
   let resolvedStateDirectory: string;
   try {
+    // Both Android mount spellings must stay bound to the captured app inode.
+    // Retain the configured chain even when the requested path uses another
+    // mount alias, so replacing either name is detected before publication.
+    if (configuredAndroidBoundary) {
+      lexicalAncestors.push(
+        ...(await openTrustedLexicalChain(
+          configuredAndroidBoundary.appDataDirectory,
+          configuredAndroidBoundary,
+        )),
+      );
+    }
+    const androidBoundary = configuredAndroidBoundary
+      ? await resolveRequestedAndroidBoundary(
+          requestedParent,
+          configuredAndroidBoundary,
+        )
+      : undefined;
+    lexicalAncestors.push(
+      ...(await openTrustedLexicalChain(requestedParent, androidBoundary)),
+    );
     // Android may expose the app through the platform-owned /data/user/0
     // symlink. Containment must compare both paths in the same namespace;
     // the captured lexical chain continues to detect alias replacement.

@@ -68,6 +68,18 @@ describe("runtime installation identity", () => {
     process.env.ELIZA_ANDROID_APP_DATA_DIR = appDataDirectory;
     const id = await loadOrCreateRuntimeInstallationId(stateDirectory);
     expect(await loadOrCreateRuntimeInstallationId(stateDirectory)).toBe(id);
+    const physicalState = path.join(
+      physicalData,
+      "ai.elizaos.app",
+      "files",
+      "agent-state",
+    );
+    expect(await loadOrCreateRuntimeInstallationId(physicalState)).toBe(id);
+    process.env.ELIZA_ANDROID_APP_DATA_DIR = path.join(
+      physicalData,
+      "ai.elizaos.app",
+    );
+    expect(await loadOrCreateRuntimeInstallationId(stateDirectory)).toBe(id);
     expect(
       await fs.readFile(
         path.join(
