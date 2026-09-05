@@ -180,6 +180,13 @@ interface ApiKeyHydration {
 }
 
 const apiKeyHydrations = new Map<string, ApiKeyHydration>();
+/**
+ * Monotonic per-key hydration generation. A late projection may only write if
+ * no newer hydration has started for the same key; the cache write is an
+ * unconditional set, so ordering has to be enforced here. One small integer
+ * per key hash, over the same key space as `apiKeyHydrations`.
+ */
+const apiKeyHydrationGenerations = new Map<string, number>();
 const SKIP_CACHE_PROJECTION_WRITE = Symbol("skip-cache-projection-write");
 // A cold request owns the canonical denial log after consuming its nested
 // authoritative continuation; the hydration phase still emits its trace.
@@ -405,6 +412,8 @@ function getOrCreateApiKeyHydration(
       authoritativeRejectionReason = reason;
     },
   };
+  const generation = (apiKeyHydrationGenerations.get(keyHash) ?? 0) + 1;
+  apiKeyHydrationGenerations.set(keyHash, generation);
   const attempt = resolveInferenceAuthContext(req, hydrationOptions)
     .then((result): InferenceAuthResolution => {
       apiKeyHydrationFailures.delete(keyHash);
@@ -450,42 +459,81 @@ function getOrCreateApiKeyHydration(
     }),
   ]);
 
-  const projection = decision
-    .then(async (result) => {
-      if (!result) return;
-      if (result.kind === "authorized" && "keyHash" in result.ctx) {
-        await assertInferenceCredentialActive(result.ctx.orgId, {
-          kind: "api_key",
-          credentialId: result.ctx.apiKeyId,
-          userId: result.ctx.userId,
-        });
-        const startedAt = performance.now();
-        const write = await writeInferenceAuthContext(result.ctx);
-        const telemetry = freezeCacheWriteTrace(options.traceId, write, startedAt);
-        logger.info("[InferenceAuth] trace", telemetry);
-        options.onCacheWriteTelemetry?.(telemetry);
-        if (write.kind !== "written") {
-          logger.warn("[InferenceAuth] positive decision cache write failed", {
-            traceId: boundedTraceId(options.traceId),
-            cacheWrite: write.kind,
-          });
-        }
-        return;
-      }
-      if (result.kind !== "suspended" && result.kind !== "rejected") return;
-      const status = result.kind === "suspended" ? 403 : result.status;
-      const decision = result.kind === "suspended" ? "suspended" : "rejected";
-      const reason =
-        result.reason ??
-        (result.kind === "suspended" ? "moderation_blocked" : "credential_invalid");
-      const write = await writeInferenceApiKeyAuthRejection(keyHash, decision, status, reason);
+  /**
+   * Projects one authoritative resolution into the decision cache. `isCurrent`
+   * is re-evaluated immediately before each write rather than once up front:
+   * the awaits below (the strong-credential gate in particular) are exactly
+   * where a newer hydration can overtake this one.
+   */
+  const projectResolution = async (
+    result: InferenceAuthResolution,
+    isCurrent?: () => boolean,
+  ): Promise<void> => {
+    if (result.kind === "authorized" && "keyHash" in result.ctx) {
+      await assertInferenceCredentialActive(result.ctx.orgId, {
+        kind: "api_key",
+        credentialId: result.ctx.apiKeyId,
+        userId: result.ctx.userId,
+      });
+      if (isCurrent && !isCurrent()) return;
+      const startedAt = performance.now();
+      const write = await writeInferenceAuthContext(result.ctx);
+      const telemetry = freezeCacheWriteTrace(options.traceId, write, startedAt);
+      logger.info("[InferenceAuth] trace", telemetry);
+      options.onCacheWriteTelemetry?.(telemetry);
       if (write.kind !== "written") {
-        logger.warn("[InferenceAuth] negative decision cache write failed", {
+        logger.warn("[InferenceAuth] positive decision cache write failed", {
           traceId: boundedTraceId(options.traceId),
-          status,
           cacheWrite: write.kind,
         });
       }
+      return;
+    }
+    if (result.kind !== "suspended" && result.kind !== "rejected") return;
+    const status = result.kind === "suspended" ? 403 : result.status;
+    const decision = result.kind === "suspended" ? "suspended" : "rejected";
+    const reason =
+      result.reason ?? (result.kind === "suspended" ? "moderation_blocked" : "credential_invalid");
+    if (isCurrent && !isCurrent()) return;
+    const write = await writeInferenceApiKeyAuthRejection(keyHash, decision, status, reason);
+    if (write.kind !== "written") {
+      logger.warn("[InferenceAuth] negative decision cache write failed", {
+        traceId: boundedTraceId(options.traceId),
+        status,
+        cacheWrite: write.kind,
+      });
+    }
+  };
+
+  const projection = decision
+    .then(async (result) => {
+      if (!result) {
+        // The deadline won the race, which frees the single-flight slot for a
+        // fresh attempt. The attempt itself may still succeed, so project that
+        // late result without holding this promise: a never-settling attempt
+        // must not keep waitUntil open.
+        const isCurrentGeneration = () => apiKeyHydrationGenerations.get(keyHash) === generation;
+        void attempt
+          .then((late) => {
+            // A newer hydration already owns this key: it is strictly closer to
+            // the authoritative state, so drop this late result rather than
+            // overwrite the cache behind it. Re-checked inside the projection,
+            // after its awaits, because this one can go stale in between.
+            if (!late || !isCurrentGeneration()) return;
+            return projectResolution(late, isCurrentGeneration);
+          })
+          .catch((error) => {
+            // error-policy:J7 the authoritative decision is independently
+            // observed; a failed late projection remains fail-closed and must
+            // not surface as an unhandled rejection.
+            logger.warn("[InferenceAuth] late cache projection failed", {
+              traceId: boundedTraceId(options.traceId),
+              errorName: error instanceof Error ? error.name : "UnknownError",
+            });
+          });
+        return;
+      }
+      return await projectResolution(result);
     })
     .catch((error) => {
       // error-policy:J7 the authoritative decision is independently observed;

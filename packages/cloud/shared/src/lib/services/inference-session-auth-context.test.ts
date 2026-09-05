@@ -434,6 +434,25 @@ describe("resolveInferenceSessionAuthContext", () => {
     });
   });
 
+  test("a session failing its strong boundary is not projected into the decision cache", async () => {
+    // The projection gate exists so a session that fails the strong boundary
+    // never lands in the cache as authorized; without it, a revoked binding
+    // would be served from cache on the next request.
+    assertSessionActive = async () => {
+      const { InferenceCredentialRevokedError } = await import("./inference-credential-revocation");
+      throw new InferenceCredentialRevokedError("session_binding_revoked");
+    };
+    const waited: Promise<unknown>[] = [];
+    await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: false,
+      useAuthCache: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    }).catch(() => undefined);
+    await Promise.all(waited);
+
+    await expect(readInferenceSessionAuthDecision("steward-1")).resolves.toBeNull();
+  });
+
   test("a rejected deferred session write is structured and does not reject waitUntil", async () => {
     const writeSpy = spyOn(cache, "setWithOutcome").mockRejectedValue(
       new TypeError("sensitive session backend detail"),

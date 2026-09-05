@@ -1180,4 +1180,168 @@ describe("hydration escape (#18246 — warming must not loop forever)", () => {
     expect(escaped.kind).toBe("authorized");
     release?.();
   });
+
+  test("a late projection re-checks freshness after its strong-credential await", async () => {
+    // The generation check is check-then-act: gen-1 can pass it, then block in
+    // assertInferenceCredentialActive while gen-2 starts and writes. The stale
+    // write must not land behind the newer one.
+    let releaseCredential: (() => void) | undefined;
+    let credentialCalls = 0;
+    assertCredentialActive = async () => {
+      credentialCalls++;
+      if (credentialCalls === 1) {
+        await new Promise<void>((resolve) => {
+          releaseCredential = resolve;
+        });
+      }
+    };
+    authImpl = () =>
+      new Promise((resolve) => {
+        setTimeout(
+          () =>
+            resolve({
+              user: { id: "user-1", organization_id: "org-1" },
+              apiKey: { id: "key-1" },
+            }),
+          150,
+        );
+      });
+    const first: Promise<unknown>[] = [];
+    expect(
+      (
+        await resolveInferenceAuthContext(reqWithApiKey(), {
+          cacheOnly: true,
+          inlineContinuationDeadlineMs: 0,
+          executionCtx: workerCtx(first),
+        })
+      ).kind,
+    ).toBe("warming");
+    await Promise.all(first.splice(0));
+    // gen-1's late result is now parked inside the strong-credential await.
+    await new Promise((r) => setTimeout(r, 250));
+
+    // gen-2 runs to completion and owns the cache.
+    authImpl = async () => ({
+      user: { id: "user-2", organization_id: "org-2" },
+      apiKey: { id: "key-1" },
+    });
+    const second: Promise<unknown>[] = [];
+    await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+      inlineContinuationDeadlineMs: 0,
+      executionCtx: workerCtx(second),
+    });
+    await Promise.all(second.splice(0));
+    expect((await readInferenceAuthContext(hashApiKey(KEY)))?.userId).toBe("user-2");
+
+    // Now let gen-1's parked projection proceed. It must observe that it is no
+    // longer current and leave gen-2's entry alone.
+    releaseCredential?.();
+    await new Promise((r) => setTimeout(r, 200));
+    expect((await readInferenceAuthContext(hashApiKey(KEY)))?.userId).toBe("user-2");
+  });
+
+  test("a definitive rejection arriving after the deadline is still cached fail-closed", async () => {
+    // The late stage must project a negative decision as well as a positive
+    // one: a rejection that lands after the deadline is still authoritative.
+    authImpl = () =>
+      new Promise((_resolve, reject) => {
+        setTimeout(() => {
+          const error = new Error("Invalid or expired API key");
+          error.name = "AuthenticationError";
+          reject(error);
+        }, 150);
+      });
+    const hydrations: Promise<unknown>[] = [];
+    expect(
+      (
+        await resolveInferenceAuthContext(reqWithApiKey(), {
+          cacheOnly: true,
+          inlineContinuationDeadlineMs: 0,
+          executionCtx: workerCtx(hydrations),
+        })
+      ).kind,
+    ).toBe("warming");
+    await Promise.all(hydrations.splice(0));
+    await new Promise((r) => setTimeout(r, 400));
+
+    const errorSpy = spyOn(logger, "error").mockImplementation(() => undefined);
+    expect(
+      await resolveInferenceAuthContext(reqWithApiKey(), {
+        cacheOnly: true,
+        executionCtx: workerCtx(hydrations),
+      }),
+    ).toEqual({ kind: "rejected", status: 401, reason: "credential_invalid" });
+    errorSpy.mockRestore();
+  });
+
+  test("a late projection defers to a newer in-flight hydration", async () => {
+    // A resolves after its deadline; by then a newer hydration owns the key.
+    // The late result must not be written behind that newer hydration.
+    authImpl = () =>
+      new Promise((resolve) => {
+        setTimeout(
+          () =>
+            resolve({
+              user: { id: "user-1", organization_id: "org-1" },
+              apiKey: { id: "key-1" },
+            }),
+          150,
+        );
+      });
+    const first: Promise<unknown>[] = [];
+    expect(
+      (
+        await resolveInferenceAuthContext(reqWithApiKey(), {
+          cacheOnly: true,
+          inlineContinuationDeadlineMs: 0,
+          executionCtx: workerCtx(first),
+        })
+      ).kind,
+    ).toBe("warming");
+    await Promise.all(first.splice(0));
+
+    // The deadline freed the slot; a newer hydration takes it and stays pending.
+    authImpl = () => new Promise(() => {});
+    const second: Promise<unknown>[] = [];
+    expect(
+      (
+        await resolveInferenceAuthContext(reqWithApiKey(), {
+          cacheOnly: true,
+          inlineContinuationDeadlineMs: 0,
+          executionCtx: workerCtx(second),
+        })
+      ).kind,
+    ).toBe("warming");
+
+    await new Promise((r) => setTimeout(r, 400));
+    expect(await readInferenceAuthContext(hashApiKey(KEY))).toBeNull();
+  });
+
+  test("a slow but successful hydration still projects to cache after the deadline", async () => {
+    // The deadline frees the single-flight slot, but the attempt can still
+    // succeed. Its result must reach the cache, or a key whose authoritative
+    // lookup routinely exceeds the deadline never populates and warms forever.
+    authImpl = () =>
+      new Promise((resolve) => {
+        setTimeout(
+          () =>
+            resolve({
+              user: { id: "user-1", organization_id: "org-1" },
+              apiKey: { id: "key-1" },
+            }),
+          150,
+        );
+      });
+    const hydrations: Promise<unknown>[] = [];
+    const res = await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+      inlineContinuationDeadlineMs: 0,
+      executionCtx: workerCtx(hydrations),
+    });
+    expect(res.kind).toBe("warming");
+    await Promise.all(hydrations.splice(0));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(await readInferenceAuthContext(hashApiKey(KEY))).not.toBeNull();
+  });
 });
