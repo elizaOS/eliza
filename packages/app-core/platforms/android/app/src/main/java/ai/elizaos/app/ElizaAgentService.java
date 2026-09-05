@@ -1061,6 +1061,13 @@ public class ElizaAgentService extends Service {
      */
     private void extractAssetsIfNeeded(String abi) throws IOException {
         File filesDir = getFilesDir();
+        // Android creates files/ with mode 0771. Runtime identity requires every
+        // app-owned ancestor to exclude replacement by another Unix user.
+        try {
+            android.system.Os.chmod(filesDir.getAbsolutePath(), 0700);
+        } catch (android.system.ErrnoException error) {
+            throw new IOException("Could not secure runtime files directory", error);
+        }
         File root = agentRoot();
         File stateDir = agentStateDir();
         File staging = new File(filesDir, AGENT_STAGING_DIR_NAME);
@@ -2078,7 +2085,9 @@ public class ElizaAgentService extends Service {
             // service dials (see LOCAL_AGENT_SOCKET_NAME). Both sides read the
             // same env var so the name stays in sync.
             agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET", LOCAL_AGENT_SOCKET_NAME);
-            agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
+            // Context can expose files/ via /data/data while getDataDir() uses
+            // /data/user/0. Export both identity paths in the same namespace.
+            agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getCanonicalPath());
             agentEnv.put("ELIZA_PLATFORM", "android");
             // Android SELinux permits the app to stat platform-owned ancestors
             // such as / and /data, but deliberately denies opening directory
@@ -2088,7 +2097,7 @@ public class ElizaAgentService extends Service {
             // forbidden platform ancestor opens.
             agentEnv.put(
                 "ELIZA_ANDROID_APP_DATA_DIR",
-                getDataDir().getAbsolutePath()
+                getDataDir().getCanonicalPath()
             );
             agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
             agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());

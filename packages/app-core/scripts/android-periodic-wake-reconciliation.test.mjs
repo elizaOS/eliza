@@ -176,13 +176,13 @@ describe("Android periodic wake reconciliation (#17874)", () => {
 
     expect(environmentBody).toBeDefined();
     expect(environmentBody).toContain(
-      'agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath())',
+      'agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getCanonicalPath())',
     );
     expect(environmentBody).toContain(
       'agentEnv.put("ELIZA_PLATFORM", "android")',
     );
     expect(environmentBody).toMatch(
-      /agentEnv\.put\(\s*"ELIZA_ANDROID_APP_DATA_DIR",\s*getDataDir\(\)\.getAbsolutePath\(\)\s*\)/,
+      /agentEnv\.put\(\s*"ELIZA_ANDROID_APP_DATA_DIR",\s*getDataDir\(\)\.getCanonicalPath\(\)\s*\)/,
     );
   });
 
