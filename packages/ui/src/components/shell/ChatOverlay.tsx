@@ -2,6 +2,7 @@
  * Renders the chat overlay that keeps the composer and transcript
  * available across views.
  */
+
 import { logger } from "@elizaos/logger";
 import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
@@ -33,6 +34,10 @@ import {
 } from "motion/react";
 import * as React from "react";
 import { type OrbState, ThinkingOrb } from "thinking-orbs";
+import {
+  highlightSearchMatches,
+  highlightSearchMessage,
+} from "./search-match-highlight";
 
 type ChatSheetMotionStyle = MotionStyle & {
   "--chat-composer-background"?: string | MotionValue<string>;
@@ -2301,11 +2306,13 @@ export function ChatOverlay({
   React.useEffect(() => {
     if (!sheetOpen) setSearchOpen(false);
   }, [sheetOpen]);
+  const completedSearchQueryRef = React.useRef("");
   const runMessageSearch = React.useCallback(
     async (query: string, signal: AbortSignal) => {
       const { results } = await client.searchConversationMessages(query, {
         signal,
       });
+      if (!signal.aborted) completedSearchQueryRef.current = query.trim();
       return results;
     },
     [],
@@ -2341,10 +2348,10 @@ export function ChatOverlay({
     element: HTMLElement;
     fadeTimer: number;
     cleanupTimer: number;
+    clearMatches: () => void;
+    backgroundColor: string;
     boxShadow: string;
-    filter: string;
     borderRadius: string;
-    textShadow: string;
     transition: string;
   } | null>(null);
   const clearSearchHighlight = React.useCallback(() => {
@@ -2352,10 +2359,10 @@ export function ChatOverlay({
     if (!active) return;
     window.clearTimeout(active.fadeTimer);
     window.clearTimeout(active.cleanupTimer);
+    active.clearMatches();
+    active.element.style.backgroundColor = active.backgroundColor;
     active.element.style.boxShadow = active.boxShadow;
-    active.element.style.filter = active.filter;
     active.element.style.borderRadius = active.borderRadius;
-    active.element.style.textShadow = active.textShadow;
     active.element.style.transition = active.transition;
     active.element.removeAttribute("data-chat-search-highlight");
     activeSearchHighlightRef.current = null;
@@ -2364,63 +2371,62 @@ export function ChatOverlay({
   const searchScrollToMessageRef =
     React.useRef<ScrollToTranscriptMessage | null>(null);
   const scrollAndFlashSearchAnchor = React.useCallback(
-    (el: HTMLElement, messageId: string) => {
+    (el: HTMLElement, messageId: string, query: string, isUser: boolean) => {
       clearSearchHighlight();
+      const reducedMotion = reduce;
       const scrolled = searchScrollToMessageRef.current?.(messageId, {
         align: "center",
         behavior: "auto",
       });
       if (!scrolled) {
-        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        el.scrollIntoView({
+          block: "center",
+          behavior: reducedMotion ? "auto" : "smooth",
+        });
       }
-      // Paint inside the actual bubble so the scroller's paint containment
-      // cannot clip the transient neutral highlight.
       const bubble =
         el.querySelector<HTMLElement>('[data-chat-message-bubble="true"]') ??
         el;
-      // The assistant bubble spans the transcript width by design. Paint on
-      // its selectable text layer so the halo follows the message rather than
-      // inheriting the row's straight edges.
       const paintTarget =
         bubble.querySelector<HTMLElement>('[data-chat-selectable="true"]') ??
         bubble;
+      const clearTextMatches = highlightSearchMatches(paintTarget, query);
+      const glow = highlightSearchMessage(bubble, paintTarget, isUser);
+      const clearMatches = () => {
+        clearTextMatches();
+        glow.clear();
+      };
       const previous = {
+        backgroundColor: paintTarget.style.backgroundColor,
         boxShadow: paintTarget.style.boxShadow,
-        filter: paintTarget.style.filter,
         borderRadius: paintTarget.style.borderRadius,
-        textShadow: paintTarget.style.textShadow,
         transition: paintTarget.style.transition,
       };
+      // Extend the white tint beyond the text without shifting the transcript.
+      // A soft outer glow keeps the destination distinct from exact matches.
       paintTarget.setAttribute("data-chat-search-highlight", "true");
-      // A drop shadow follows the painted bubble/text silhouette. An outline
-      // follows the full assistant row, which reads as a rectangular box.
-      paintTarget.style.borderRadius = "0.75rem";
-      paintTarget.style.boxShadow =
-        "0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 16px rgba(255, 255, 255, 0.28)";
-      paintTarget.style.filter =
-        "drop-shadow(0 0 7px rgba(255, 255, 255, 0.62))";
-      paintTarget.style.textShadow =
-        "0 0 4px rgba(255, 255, 255, 0.72), 0 0 12px rgba(255, 255, 255, 0.38)";
-      paintTarget.style.transition =
-        "box-shadow 650ms cubic-bezier(0.22, 1, 0.36, 1), filter 650ms cubic-bezier(0.22, 1, 0.36, 1), text-shadow 650ms cubic-bezier(0.22, 1, 0.36, 1)";
       const fadeTimer = window.setTimeout(() => {
-        paintTarget.style.boxShadow = "none";
-        paintTarget.style.filter = "drop-shadow(0 0 0 rgba(255, 255, 255, 0))";
-        paintTarget.style.textShadow = "0 0 0 rgba(255, 255, 255, 0)";
+        clearTextMatches();
+        glow.fade();
       }, 1050);
-      const cleanupTimer = window.setTimeout(clearSearchHighlight, 1750);
+      const cleanupTimer = window.setTimeout(
+        clearSearchHighlight,
+        reducedMotion ? 1050 : 1550,
+      );
       activeSearchHighlightRef.current = {
         element: paintTarget,
+        clearMatches,
         fadeTimer,
         cleanupTimer,
         ...previous,
       };
     },
-    [clearSearchHighlight],
+    [clearSearchHighlight, reduce],
   );
   const handleSearchJump = React.useCallback(
     (result: ConversationMessageSearchResult) => {
       const anchorId = getChatMessageAnchorId(result.messageId);
+      const query = completedSearchQueryRef.current;
       void (async () => {
         // Select the hit's conversation and let its recent window load first, so
         // the in-window case (the common one) scrolls without a second fetch.
@@ -2442,7 +2448,13 @@ export function ChatOverlay({
             el = await waitForSearchAnchor(anchorId, 20);
           }
         }
-        if (el) scrollAndFlashSearchAnchor(el, result.messageId);
+        if (el)
+          scrollAndFlashSearchAnchor(
+            el,
+            result.messageId,
+            query,
+            result.role === "user",
+          );
       })();
     },
     [
@@ -6304,7 +6316,7 @@ export function ChatOverlay({
                           keyboardLiftActive ? "true" : undefined
                         }
                         // The sheet already owns the glass surface. Search reuses
-                        // that single layer while the transcript beneath is hidden
+                        // that single layer while the transcript beneath is dimmed
                         // and inert, avoiding the opaque double-blur slab that a
                         // second backdrop produced. Only the inner results list
                         // scrolls, keeping the input pinned above the keyboard.
@@ -6333,7 +6345,10 @@ export function ChatOverlay({
                           inert={searchOpen || undefined}
                           className="flex size-full min-h-0 flex-col"
                           style={{
-                            opacity: searchOpen ? 0 : threadContentOpacity,
+                            // Keep the transcript visible beneath search without letting
+                            // its animated opacity overpower the result surfaces.
+                            opacity: threadContentOpacity,
+                            filter: searchOpen ? "opacity(0.4)" : undefined,
                           }}
                         >
                           <MessageScrollerViewport

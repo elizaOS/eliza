@@ -17,6 +17,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mutations are optimistic writes through the API client - mock the transport,
@@ -2130,6 +2131,36 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(empty.style.opacity).toBe("1");
     expect(onOpenRequestHandled).toHaveBeenLastCalledWith(2);
     expect(onOpenRequestHandled).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves the shade for pager-consumed clicks and other pages", () => {
+    seedTriage();
+    const homeRef = createRef<HTMLDivElement>();
+    render(
+      <>
+        <div ref={homeRef}>
+          <NotificationsHomeCenter emptyGestureTargetRef={homeRef} />
+          <button
+            type="button"
+            onClickCapture={(event) => event.stopPropagation()}
+          >
+            Swipe release
+          </button>
+          <button type="button">Home background</button>
+        </div>
+        <button type="button">Views</button>
+      </>,
+    );
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.click(screen.getByText("Swipe release"));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    fireEvent.click(screen.getByText("Views"));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    fireEvent.click(screen.getByText("Home background"));
+    finishShadeCollapse();
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    fireEvent.click(screen.getByText("Views"));
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
   });
 
   it("ignores a chat pull release over the notification area", () => {

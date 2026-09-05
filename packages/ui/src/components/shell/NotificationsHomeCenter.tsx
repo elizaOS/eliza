@@ -1510,14 +1510,17 @@ export function NotificationsHomeCenter({
       ) {
         return;
       }
+      // Navigation and clicks on other pages preserve Home's shade state.
+      const home = emptyGestureTargetRef?.current;
+      if (home && target instanceof Node && !home.contains(target)) return;
       const center = centerRef.current;
       if (target instanceof Node && center && !center.contains(target)) {
         requestShadeCollapse();
       }
     };
-    document.addEventListener("click", collapseOnOutsideClick, true);
-    return () =>
-      document.removeEventListener("click", collapseOnOutsideClick, true);
+    // The pager must consume its synthesized swipe click before this listener.
+    document.addEventListener("click", collapseOnOutsideClick);
+    return () => document.removeEventListener("click", collapseOnOutsideClick);
   }, [emptyGestureTargetRef, requestShadeCollapse, shadeExpanded]);
 
   const commitPull = useCallback(() => {

@@ -135,6 +135,11 @@ import {
 beforeAll(() => {
   // jsdom has no scrollIntoView; the overlay calls it when the thread grows.
   Element.prototype.scrollIntoView = vi.fn();
+  // jsdom has no text layout; range geometry is verified in the real browser.
+  Object.defineProperty(Range.prototype, "getClientRects", {
+    configurable: true,
+    value: () => [],
+  });
   // The realtime status orb is a real Canvas component. The component still
   // mounts and exposes its semantic state in jsdom; pixel drawing belongs to
   // the browser evidence lane rather than a synthetic Canvas implementation.
@@ -4363,18 +4368,6 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
         ),
       ).toBeTruthy(),
     );
-    const highlight = bubble?.querySelector<HTMLElement>(
-      '[data-chat-selectable="true"][data-chat-search-highlight="true"]',
-    );
-    expect(bubble?.style.outline).toBe("");
-    expect(bubble?.style.boxShadow).toBe("");
-    expect(highlight?.style.display).toBe("");
-    expect(highlight?.style.maxWidth).toBe("");
-    expect(highlight?.style.width).toBe("");
-    expect(highlight?.style.borderRadius).toBe("0.75rem");
-    expect(highlight?.style.boxShadow).toContain("rgba(255, 255, 255, 0.28)");
-    expect(highlight?.style.filter).toContain("drop-shadow");
-    expect(highlight?.style.textShadow).toContain("rgba(255, 255, 255, 0.72)");
     expect(aroundSpy).not.toHaveBeenCalled();
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
     await waitFor(() =>

@@ -135,7 +135,9 @@ export function MessageSearchPanel({
       // In the keyboard-anchored layout the input is the flex item pinned at
       // the panel bottom (right above the soft keyboard); it must never shrink
       // away when the results list above it is long.
-      className={keyboardAnchored ? "shrink-0" : undefined}
+      className={
+        keyboardAnchored ? "shrink-0 rounded-[1rem] bg-card" : "rounded-[1rem]"
+      }
     />
   );
 
@@ -182,8 +184,8 @@ export function MessageSearchPanel({
         data-testid="message-search-results"
         className={
           keyboardAnchored
-            ? "mt-auto flex flex-col gap-1"
-            : "flex flex-col gap-1"
+            ? "mt-auto flex flex-col gap-2"
+            : "flex flex-col gap-2"
         }
       >
         {results.map((result) => (
@@ -194,10 +196,10 @@ export function MessageSearchPanel({
               variant={keyboardAnchored ? "surface" : "ghostMuted"}
               size="card"
               align="start"
-              className="w-full"
+              className="w-full rounded-[1rem] hover:bg-[color-mix(in_srgb,var(--card)_92%,var(--text-strong))]"
             >
               <span className="text-xs-tight uppercase tracking-wider text-muted-foreground">
-                {result.role === "assistant" ? "Agent" : "You"} ·{" "}
+                {result.role === "assistant" ? "Eliza" : "You"} ·{" "}
                 {formatTimestamp(result.createdAt)}
               </span>
               <span className="line-clamp-2 text-sm text-foreground">
@@ -234,7 +236,7 @@ export function MessageSearchPanel({
         >
           {resultsListEl}
         </div>
-        <div className="flex shrink-0 flex-col gap-1">
+        <div className="flex shrink-0 flex-col gap-1 rounded-[1rem] bg-card">
           {statusEl}
           {inputEl}
         </div>
@@ -263,9 +265,11 @@ export function MessageSearchPanel({
 function formatTimestamp(createdAt: number): string {
   if (!createdAt) return "";
   try {
-    return new Date(createdAt).toLocaleDateString(undefined, {
+    return new Date(createdAt).toLocaleString(undefined, {
       month: "short",
       day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     });
   } catch {
     // error-policy:J3 invalid stored timestamp — a date label is decoration;

@@ -67,7 +67,7 @@ describe("MessageSearchPanel", () => {
       expect(screen.getAllByTestId("message-search-result")).toHaveLength(2),
     );
     expect(screen.getByText("…webxr one…")).toBeTruthy();
-    expect(screen.getByText(/Agent ·/)).toBeTruthy();
+    expect(screen.getByText(/Eliza ·/)).toBeTruthy();
   });
 
   it("owns scrolling for long keyboard-anchored result lists", async () => {
