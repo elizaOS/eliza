@@ -582,4 +582,81 @@ describe("DefaultMessageService run-terminal owner", () => {
 		expect(terminalPayloads).toHaveLength(1);
 		await (await nextTurn).release();
 	});
+
+	it("admits the room's next turn during the post-turn evaluator model call while its writes stay lease-ordered", async () => {
+		// Live 2026-09-05: a one-call follow-up waited 9.8 s behind the previous
+		// turn's post-turn evaluator when that call held the room lane.
+		const modelGate = deferred();
+		const modelStarted = deferred();
+		const writes: string[] = [];
+		const { runtime, terminalPayloads } = makeRuntime({});
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		(
+			runtime as unknown as { roomHandlerQueue: RoomHandlerQueue }
+		).roomHandlerQueue = queue;
+		(
+			runtime as unknown as { getServiceLoadPromise: unknown }
+		).getServiceLoadPromise = vi.fn(async () => ({
+			run: async (
+				_message: Memory,
+				_state: unknown,
+				options: { applyWrites?: <T>(run: () => Promise<T>) => Promise<T> },
+			) => {
+				modelStarted.release();
+				await modelGate.promise;
+				const apply = options.applyWrites ?? ((run) => run());
+				await apply(async () => {
+					writes.push("facts");
+				});
+				return {
+					skipped: false,
+					activeEvaluators: ["facts"],
+					processedEvaluators: ["facts"],
+					results: [],
+					errors: [],
+				};
+			},
+		}));
+		const service = new DefaultMessageService();
+		const lease = await queue.acquire(ROOM_ID);
+
+		const result = await queue.runInLease(ROOM_ID, lease, () =>
+			service.handleMessage(
+				runtime,
+				inputMessage("I like jasmine tea"),
+				async () => [],
+				{ roomHandlerLease: lease },
+			),
+		);
+		expect(result.trajectoryTerminalOwner).toBe("run");
+		await modelStarted.promise;
+
+		const settledBefore = <T>(work: Promise<T>) =>
+			Promise.race([
+				work.then(() => "settled" as const),
+				new Promise<"blocked">((resolve) =>
+					setTimeout(() => resolve("blocked"), 250),
+				),
+			]);
+		// The evaluator model call is in flight; room-state work is done, so the
+		// room drains, the lease releases and the next turn is admitted.
+		expect(
+			await settledBefore(drainRoomPostDeliveryTasks(runtime, ROOM_ID)),
+		).toBe("settled");
+		expect(await settledBefore(lease.release())).toBe("settled");
+		const nextTurn = queue.acquire(ROOM_ID);
+		expect(await settledBefore(nextTurn)).toBe("settled");
+		expect(writes).toEqual([]);
+		expect(terminalPayloads).toEqual([]);
+
+		// The write phase re-acquires the room lease: it waits for the next turn
+		// to finish, then commits, then the run closes.
+		modelGate.release();
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(writes).toEqual([]);
+		await (await nextTurn).release();
+		await drainPostDeliveryTasks(runtime);
+		expect(writes).toEqual(["facts"]);
+		expect(terminalPayloads).toHaveLength(1);
+	});
 });

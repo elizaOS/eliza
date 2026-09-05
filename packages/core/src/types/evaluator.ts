@@ -21,6 +21,12 @@ export interface EvaluatorRunOptions {
 	 * plugin evaluators such as link extraction retain their own gates.
 	 */
 	semanticSignal?: boolean;
+	/**
+	 * Wraps the write phase (processors) of a run. The model phase can run off
+	 * the room lease; a host that must keep room-state writes ordered against
+	 * later turns passes a wrapper that re-acquires the room lease around them.
+	 */
+	applyWrites?: <T>(run: () => Promise<T>) => Promise<T>;
 }
 
 export interface EvaluatorRunContext {

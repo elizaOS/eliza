@@ -861,14 +861,20 @@ export class EvaluatorService extends BaseService {
 			});
 		}
 
-		const { processedEvaluators, results } = await this.processPreparedEntries({
-			preparedEntries,
-			output,
-			message,
-			state: composedState,
-			options,
-			errors,
-		});
+		// The model phase above ran wherever the host scheduled it; the write
+		// phase runs inside the host's ordering wrapper so fact/relationship/
+		// preference commits stay serialized against later room turns.
+		const applyWrites = options.applyWrites ?? ((run) => run());
+		const { processedEvaluators, results } = await applyWrites(() =>
+			this.processPreparedEntries({
+				preparedEntries,
+				output,
+				message,
+				state: composedState,
+				options,
+				errors,
+			}),
+		);
 
 		await this.emitEvaluatorCompleted(evaluatorId, true);
 
