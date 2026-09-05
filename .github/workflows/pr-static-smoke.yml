@@ -379,7 +379,9 @@ jobs:
           trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
           docker run --rm --detach --name "$container" \
             --env POSTGRES_HOST_AUTH_METHOD=trust --publish 5432:5432 postgres:16-alpine
-          until docker exec "$container" pg_isready -U postgres >/dev/null 2>&1; do
+          # The image's temporary initialization server accepts Unix sockets
+          # before restarting. Wait for TCP, which the test uses.
+          until docker exec "$container" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; do
             sleep 1
           done
           bun test --config=/dev/null --isolate \
