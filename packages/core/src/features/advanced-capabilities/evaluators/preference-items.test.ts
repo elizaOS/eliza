@@ -569,6 +569,45 @@ describe("applyPreferenceOps preference facts", () => {
 		expect(result?.data).toMatchObject({ factsAdded: 0, factsStrengthened: 1 });
 	});
 
+	it("never promotes or strengthens a row with the opposite polarity", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const negated: Memory = {
+			id: "00000000-0000-4000-8000-0000000000c3" as UUID,
+			entityId: USER,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "dislikes morning check-ins", type: "fact" },
+			metadata: {
+				type: "custom",
+				source: "facts_and_relationships_stage",
+				messageId: makeMessage().id,
+				kind: "current",
+				category: "uncategorized",
+				keywords: ["dislikes", "morning", "check", "ins"],
+			},
+			createdAt: Date.now() - 1_000,
+		};
+		fake.memories.set("facts", [negated]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "prefers morning check-ins",
+						keywords: ["morning", "check-ins"],
+					},
+				],
+			}),
+			{ knownPreferenceFacts: [] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows).toHaveLength(2);
+		expect(rows[0].content.text).toBe("dislikes morning check-ins");
+		expect(rows[0].metadata).toMatchObject({ kind: "current" });
+		expect(result?.data).toMatchObject({ factsAdded: 1, factsStrengthened: 0 });
+	});
+
 	it("leaves a Stage-1 observation from another message alone and stores the preference separately", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
 		const olderStageFact: Memory = {

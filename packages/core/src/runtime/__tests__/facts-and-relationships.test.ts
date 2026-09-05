@@ -380,6 +380,80 @@ describe("runFactsAndRelationshipsStage", () => {
 		expect(runtime.createMemory).not.toHaveBeenCalled();
 	});
 
+	it("still persists a Stage-1 fact when the same-message durable row has the opposite polarity", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["likes oat milk"],
+				relationships: [],
+				thought: "new fact",
+			}),
+		);
+		const message = makeMessage();
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-00000000bbb3" as UUID,
+				entityId: message.entityId,
+				agentId: runtime.agentId,
+				roomId: message.roomId,
+				content: { text: "User does not like oat milk." },
+				metadata: {
+					type: "custom",
+					source: "MEMORY",
+					kind: "durable",
+					messageId: message.id,
+				},
+				createdAt: 2,
+			} as Memory,
+		]);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message,
+			state: makeState(),
+			extract: { facts: ["likes oat milk"] },
+		});
+
+		expect(result.written.facts).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+	});
+
+	it("ignores a same-message durable row authored by another participant", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["prefers oat milk in coffee"],
+				relationships: [],
+				thought: "new fact",
+			}),
+		);
+		const message = makeMessage();
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-00000000bbb4" as UUID,
+				entityId: "00000000-0000-0000-0000-0000000000b2" as UUID,
+				agentId: runtime.agentId,
+				roomId: message.roomId,
+				content: { text: "User prefers oat milk in their coffee." },
+				metadata: {
+					type: "custom",
+					source: "MEMORY",
+					kind: "durable",
+					messageId: message.id,
+				},
+				createdAt: 2,
+			} as Memory,
+		]);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message,
+			state: makeState(),
+			extract: { facts: ["prefers oat milk in coffee"] },
+		});
+
+		expect(result.written.facts).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+	});
+
 	it("still persists a Stage-1 fact when the durable row belongs to another message", async () => {
 		const runtime = makeRuntime(
 			JSON.stringify({

@@ -185,6 +185,22 @@ export function scoreFactKeywordRelevance(
 	}));
 }
 
+const NEGATION_PATTERN =
+	/\b(?:not|no|never|none|neither|nor|without|cannot|can't|cant|won't|wont|don't|dont|doesn't|doesnt|didn't|didnt|isn't|isnt|aren't|arent|wasn't|wasnt|hasn't|hasnt|haven't|havent|wouldn't|wouldnt|shouldn't|shouldnt|couldn't|couldnt|dislikes?|disliked|hates?|hated|avoids?|avoided|stopped|quit|refuses?|refused)\b/i;
+
+/**
+ * True when exactly one side carries a negation, so a lexical match must not
+ * be treated as the same claim ("likes oat milk" vs "does not like oat milk").
+ * Keyword similarity drops stopwords such as "not" and cannot see this.
+ */
+export function factPolarityDiffers(left: string, right: string): boolean {
+	const normalize = (text: string) => text.replace(/[\u2018\u2019]/g, "'");
+	return (
+		NEGATION_PATTERN.test(normalize(left)) !==
+		NEGATION_PATTERN.test(normalize(right))
+	);
+}
+
 export function factLexicalSimilarity(
 	leftValues: unknown[],
 	rightValues: unknown[],

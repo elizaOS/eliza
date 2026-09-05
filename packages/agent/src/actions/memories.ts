@@ -21,6 +21,7 @@ import {
   MemoryType as CoreMemoryType,
   ElizaError,
   factLexicalSimilarity,
+  factPolarityDiffers,
   getRelatedEntityIds,
   logger,
   ModelType,
@@ -214,8 +215,9 @@ const EXPLICIT_MEMORY_CONFIDENCE = 0.95;
  * explicit MEMORY create, the two writes race and the FACTS provider renders
  * one claim twice. A Stage-1 row extracted from THIS message (its
  * `metadata.messageId`) that lexically covers the explicit text is upgraded in
- * place instead of getting a durable twin. Rows from other messages are never
- * merged: lexical overlap alone cannot tell a restatement from a changed value.
+ * place instead of getting a durable twin. Rows from other messages, other
+ * authors, other rooms, or with the opposite polarity are never merged:
+ * lexical overlap alone cannot tell a restatement from a changed value.
  */
 const STAGE_FACT_SOURCE = "facts_and_relationships_stage";
 const SAME_MESSAGE_UPGRADE_SIMILARITY = 0.42;
@@ -246,12 +248,17 @@ async function findSameMessageStageFact(
     const meta = metadataRecord(row);
     if (
       !row.id ||
+      row.entityId !== message.entityId ||
+      row.roomId !== message.roomId ||
       meta.source !== STAGE_FACT_SOURCE ||
       meta.kind !== "current" ||
       meta.messageId !== message.id
     ) {
       continue;
     }
+    const rowText =
+      typeof row.content.text === "string" ? row.content.text : "";
+    if (factPolarityDiffers(text, rowText)) continue;
     const similarity = factLexicalSimilarity(
       [text, keywords],
       [buildFactSearchText(row), readStoredFactKeywords(row)],

@@ -63,6 +63,7 @@ function makeRuntime(options?: {
       tableName: string;
       roomId?: UUID;
       entityId?: UUID;
+      authorEntityIds?: UUID[];
       limit?: number;
       cursor?: { createdAt: number; id: UUID };
     }) => {
@@ -73,6 +74,11 @@ function makeRuntime(options?: {
         .filter((row) => !params.roomId || row.memory.roomId === params.roomId)
         .filter(
           (row) => !params.entityId || row.memory.entityId === params.entityId,
+        )
+        .filter(
+          (row) =>
+            !params.authorEntityIds ||
+            params.authorEntityIds.includes(row.memory.entityId as UUID),
         )
         .map((row) => row.memory)
         .sort(
@@ -180,13 +186,18 @@ async function runCreate(
 describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
   function seedStageFact(
     rows: StoredRow[],
-    fields: { text: string; messageId: UUID; keywords: string[] },
+    fields: {
+      text: string;
+      messageId: UUID;
+      keywords: string[];
+      entityId?: UUID;
+    },
   ): UUID {
     const id = crypto.randomUUID() as UUID;
     rows.push({
       memory: {
         id,
-        entityId: USER_ID,
+        entityId: fields.entityId ?? USER_ID,
         agentId: AGENT_ID,
         roomId: ROOM_ID,
         content: { text: fields.text, type: "fact" },
@@ -239,6 +250,48 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
       previousText: "prefers oat milk in coffee",
       messageId: message.id,
     });
+  });
+
+  it("never merges a same-message Stage-1 fact with the opposite polarity", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "does not like oat milk",
+      messageId: message.id as UUID,
+      keywords: ["oat", "milk"],
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User likes oat milk.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.content.text).toBe("does not like oat milk");
+    expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
+  });
+
+  it("never merges a same-message Stage-1 fact authored by another participant", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "prefers oat milk in coffee",
+      messageId: message.id as UUID,
+      keywords: ["prefers", "oat", "milk", "coffee"],
+      entityId: OTHER_USER_ID,
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in their coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.entityId).toBe(OTHER_USER_ID);
+    expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
+    expect(rows[1].memory.entityId).toBe(USER_ID);
   });
 
   it("never merges a Stage-1 fact extracted from a different message", async () => {

@@ -51,6 +51,7 @@ import {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
 	factLexicalSimilarity,
+	factPolarityDiffers,
 	readStoredFactKeywords,
 } from "../fact-keywords.ts";
 import {
@@ -170,16 +171,15 @@ function isDurablePreferenceFact(memory: Memory): boolean {
  * rather than shadowed by a durable twin. Other messages' rows are never
  * merged: lexical overlap cannot tell a restatement from a changed value.
  */
-function isSameMessageStageFact(
-	memory: Memory,
-	messageId: UUID | undefined,
-): boolean {
-	if (!messageId) return false;
+function isSameMessageStageFact(memory: Memory, message: Memory): boolean {
+	if (!message.id) return false;
 	const meta = memory.metadata as Record<string, unknown> | undefined;
 	return (
+		memory.entityId === message.entityId &&
+		memory.roomId === message.roomId &&
 		meta?.source === "facts_and_relationships_stage" &&
 		meta.kind === "current" &&
-		meta.messageId === messageId
+		meta.messageId === message.id
 	);
 }
 
@@ -352,6 +352,12 @@ async function applyAddPreferenceFact(
 	const targetValues = [op.claim, "preference", keywords];
 	let best: { memory: Memory; similarity: number } | null = null;
 	for (const candidate of candidates) {
+		const candidateText =
+			typeof candidate.memory.content.text === "string"
+				? candidate.memory.content.text
+				: "";
+		// A negated candidate is a different claim however many words it shares.
+		if (factPolarityDiffers(op.claim, candidateText)) continue;
 		const similarity = factLexicalSimilarity(targetValues, [
 			candidate.searchText,
 			readStoredFactKeywords(candidate.memory),
@@ -368,7 +374,7 @@ async function applyAddPreferenceFact(
 		// same-message Stage-1 observation is promoted to the durable preference.
 		const nextMeta: CustomMetadata = isSameMessageStageFact(
 			best.memory,
-			message.id,
+			message,
 		)
 			? {
 					...preserveFactMetadata(best.memory),
@@ -507,7 +513,7 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 						).filter(
 							(memory) =>
 								isDurablePreferenceFact(memory) ||
-								isSameMessageStageFact(memory, message.id),
+								isSameMessageStageFact(memory, message),
 						)
 					: prepared.knownPreferenceFacts;
 				const candidates: FactCandidate[] = freshFacts.map((memory) => ({

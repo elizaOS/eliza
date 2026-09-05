@@ -24,6 +24,7 @@ import {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
 	factLexicalSimilarity,
+	factPolarityDiffers,
 	readStoredFactKeywords,
 	scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
@@ -659,7 +660,12 @@ async function readSameMessageDurableFacts(
 	});
 	return rows.filter((row) => {
 		const meta = row.metadata as Record<string, unknown> | undefined;
-		return meta?.messageId === message.id && meta?.kind !== "current";
+		return (
+			row.entityId === message.entityId &&
+			row.roomId === message.roomId &&
+			meta?.messageId === message.id &&
+			meta?.kind !== "current"
+		);
 	});
 }
 
@@ -668,13 +674,17 @@ function coveredBySameMessageDurableFact(
 	keywords: string[],
 	durableFacts: readonly Memory[],
 ): boolean {
-	return durableFacts.some(
-		(row) =>
+	return durableFacts.some((row) => {
+		const rowText =
+			typeof row.content.text === "string" ? row.content.text : "";
+		if (factPolarityDiffers(fact, rowText)) return false;
+		return (
 			factLexicalSimilarity(
 				[fact, keywords],
 				[buildFactSearchText(row), readStoredFactKeywords(row)],
-			) >= SAME_MESSAGE_COVERAGE_SIMILARITY,
-	);
+			) >= SAME_MESSAGE_COVERAGE_SIMILARITY
+		);
+	});
 }
 
 async function persistFactsAndRelationships(

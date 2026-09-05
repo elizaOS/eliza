@@ -2066,12 +2066,21 @@ async function runPlannerLoopIterations(
 				params,
 				groundedReceipt,
 			);
-			if (rendered) {
+			if (rendered && !rendered.complete) {
+				// The receipt proves one action; the render judged that it does not
+				// cover the whole request. The full evaluator decides whether to
+				// continue the remaining work instead of this gate declaring FINISH.
+				params.runtime.logger?.debug?.(
+					{ src: "planner-loop", partialReply: rendered.message },
+					"Grounded receipt render reports partial completion; running the full evaluator",
+				);
+			}
+			if (rendered?.complete) {
 				const gated: EvaluatorOutput = {
 					success: true,
 					decision: "FINISH",
 					thought: GROUNDED_RECEIPT_GATED_EVALUATOR_THOUGHT,
-					messageToUser: rendered,
+					messageToUser: rendered.message,
 					// Egress binds completion claims to committed receipt ids AND the
 					// model's own prose (raw.messageToUser); both travel with the
 					// synthesized verdict so delivery never rewrites the reply.
@@ -2079,7 +2088,7 @@ async function runPlannerLoopIterations(
 						? { effectReceiptIds: groundedReceipt.committedReceiptIds }
 						: {}),
 					raw: {
-						messageToUser: rendered,
+						messageToUser: rendered.message,
 						source: "grounded_receipt_render",
 					},
 				};
@@ -7276,22 +7285,66 @@ function latestUserRequestText(context: ContextObject): string {
 	return "";
 }
 
+interface GroundedReceiptRender {
+	message: string;
+	/** The render model's verdict that the facts cover everything the user asked for. */
+	complete: boolean;
+}
+
+/**
+ * Parses the render model's `{"complete": boolean, "message": string}` object.
+ * Anything else is an explicit "no render" so the full evaluator runs.
+ */
+function parseGroundedReceiptRender(raw: string): GroundedReceiptRender | null {
+	let candidate = raw.trim();
+	const fence = candidate.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	if (fence) candidate = fence[1].trim();
+	const start = candidate.indexOf("{");
+	const end = candidate.lastIndexOf("}");
+	if (start === -1 || end <= start) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(candidate.slice(start, end + 1));
+	} catch {
+		// error-policy:J3 A malformed render is an explicit non-result; the
+		// caller falls back to the full evaluator rather than guessing a reply.
+		return null;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return null;
+	}
+	const record = parsed as Record<string, unknown>;
+	if (
+		typeof record.complete !== "boolean" ||
+		typeof record.message !== "string"
+	) {
+		return null;
+	}
+	const message = record.message.trim();
+	if (!message) return null;
+	return { message, complete: record.complete };
+}
+
 /**
  * Compact TEXT_SMALL render of an action's receipt facts against the user's
- * actual request. Null on any failure or unsafe output so the caller falls
- * back to the full evaluator.
+ * actual request, with the model's own verdict on whether those facts cover
+ * everything the request asked for. Null on any failure, malformed output, or
+ * unsafe text so the caller falls back to the full evaluator; a render that
+ * reports partial completion is returned so the caller can decline the gate
+ * and let the evaluator continue the remaining work.
  */
 async function renderGroundedReceiptReply(
 	params: PlannerLoopParams,
 	reply: GroundedReceiptReply,
-): Promise<string | null> {
+): Promise<GroundedReceiptRender | null> {
 	const agentName =
 		(
 			params.runtime as { character?: { name?: string } }
 		).character?.name?.trim() || "the assistant";
 	const system = [
-		`You are ${agentName}. A ${reply.domain} operation the user asked for has just completed. Write the reply the user will read.`,
-		"Rules: plain everyday words in one or two short sentences; keep every date, time, name and number exactly as given; if the facts say something was not found, not changed, or needs the user's input, say that plainly instead of claiming it was done; if the facts cover only part of what the user asked, say what was done and name what was not; never expose ids, field names, JSON, tool names, or receipt metadata; add no offers or follow-up questions the facts do not ask for.",
+		`You are ${agentName}. A ${reply.domain} operation the user asked for has just completed. Write the reply the user will read and judge whether the request is fully done.`,
+		"Rules for the reply: plain everyday words in one or two short sentences; keep every date, time, name and number exactly as given; if the facts say something was not found, not changed, or needs the user's input, say that plainly instead of claiming it was done; if the facts cover only part of what the user asked, say what was done and name what was not; never expose ids, field names, JSON, tool names, or receipt metadata; add no offers or follow-up questions the facts do not ask for.",
+		'Output exactly one JSON object and nothing else: {"complete": true or false, "message": "<the reply>"}. Set "complete" to true only when the facts show that everything the user\'s message asked for has been done. If any requested item, change, or detail is missing, not found, or still pending, set it to false.',
 	].join("\n");
 	const user = [
 		reply.userRequest ? `User's message: ${reply.userRequest}` : "",
@@ -7311,7 +7364,7 @@ async function renderGroundedReceiptReply(
 				{ role: "system", content: system },
 				{ role: "user", content: user },
 			],
-			maxTokens: 240,
+			maxTokens: 320,
 		});
 		const text = (
 			typeof raw === "string"
@@ -7320,8 +7373,10 @@ async function renderGroundedReceiptReply(
 					? (raw as { text: string }).text
 					: ""
 		).trim();
-		if (!text || isUnsafeUserVisibleText(text)) return null;
-		return text;
+		if (!text) return null;
+		const render = parseGroundedReceiptRender(text);
+		if (!render || isUnsafeUserVisibleText(render.message)) return null;
+		return render;
 	} catch (error) {
 		// error-policy:J4 a failed render is not a failed turn: the full evaluator
 		// owns the reply and its own provider-failure handling.

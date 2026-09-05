@@ -20,6 +20,16 @@ function call(name: string, scope?: "more_work_pending" | "final") {
 	};
 }
 
+/** The grounded receipt render's `{complete, message}` object as the model returns it. */
+function render(message: string, complete = true) {
+	return JSON.stringify({ complete, message });
+}
+
+/** An evaluator verdict that the recorded results do not yet satisfy the request. */
+function continueWork(thought: string) {
+	return JSON.stringify({ thought, success: false, decision: "CONTINUE" });
+}
+
 function finish(messageToUser: string, success = true) {
 	return JSON.stringify({
 		thought: "Judge the complete recorded results.",
@@ -36,6 +46,7 @@ function harness(args: {
 	intents?: string[];
 	/** TEXT_SMALL responses for the grounded receipt render. */
 	renders?: string[];
+	userMessage?: string;
 }) {
 	let plannerIndex = 0;
 	let evaluatorIndex = 0;
@@ -49,7 +60,13 @@ function harness(args: {
 				: type === ModelType.TEXT_SMALL
 					? args.renders?.[renderIndex++]
 					: args.evaluations[evaluatorIndex++];
-		if (response === undefined) throw new Error("Unexpected model call");
+		if (response === undefined) {
+			throw new Error(
+				`Unexpected model call ${String(type)} after ${useModel.mock.calls
+					.map(([calledType]) => String(calledType))
+					.join(",")}`,
+			);
+		}
 		return response;
 	});
 	const executeToolCall = vi.fn(async (tool: { name: string }) => {
@@ -75,7 +92,8 @@ function harness(args: {
 						createdAt: 1,
 						message: {
 							role: "user",
-							content: "add gym session tuesday at 7am please",
+							content:
+								args.userMessage ?? "add gym session tuesday at 7am please",
 						},
 					},
 					{
@@ -687,7 +705,7 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [],
-			renders: ["Added your gym session for Tuesday at 7:00 AM."],
+			renders: [render("Added your gym session for Tuesday at 7:00 AM.")],
 			results: [internalCalendarResult()],
 			intents: ["add gym session to calendar"],
 		});
@@ -720,7 +738,7 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [],
-			renders: ["You have a gym session on Tuesday at 7:00 AM."],
+			renders: [render("You have a gym session on Tuesday at 7:00 AM.")],
 			results: [
 				internalCalendarResult([readNoopReceipt], {
 					data: {
@@ -746,7 +764,7 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [finish("Added your gym session for Tuesday at 7am.")],
-			renders: ["should not be used"],
+			renders: [render("should not be used")],
 			results: [
 				internalCalendarResult([appliedReceipt], { turnComplete: false }),
 			],
@@ -761,7 +779,7 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [finish("I couldn't find that event.", false)],
-			renders: ["should not be used"],
+			renders: [render("should not be used")],
 			results: [internalCalendarResult([mutationNoopReceipt])],
 			intents: ["delete the gym session"],
 		});
@@ -774,7 +792,7 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [finish("The event was rolled back.", false)],
-			renders: ["should not be used"],
+			renders: [render("should not be used")],
 			results: [internalCalendarResult([appliedReceipt, rolledBackReceipt])],
 			intents: ["add gym session to calendar"],
 		});
@@ -789,7 +807,7 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 			evaluations: [
 				finish("Added the gym session; the note is still pending.", false),
 			],
-			renders: ["should not be used"],
+			renders: [render("should not be used")],
 			results: [internalCalendarResult()],
 		});
 		await h.run();
@@ -815,7 +833,7 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [finish("The calendar rejected the event.", false)],
-			renders: ["should not be used"],
+			renders: [render("should not be used")],
 			results: [internalCalendarResult([failed])],
 			intents: ["add gym session to calendar"],
 		});
@@ -831,7 +849,7 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 				{ text: "", toolCalls: [call("NOTES", "final")] },
 			],
 			evaluations: [finish("Added it."), finish("Added it and noted it.")],
-			renders: ["should not be used"],
+			renders: [render("should not be used")],
 			results: [
 				internalCalendarResult(),
 				{
@@ -846,6 +864,106 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		expect(h.executed).toEqual(["CALENDAR", "NOTES"]);
 		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
 		expect(result.finalMessage).toBe("Added it and noted it.");
+	});
+
+	it("declines the gate and lets the full evaluator continue when the render reports partial completion (two appointments, one created)", async () => {
+		// Review 2026-09-05: one verified receipt plus one declared intent proves
+		// one action, not the whole request. When the render judges the facts
+		// cover only part of the message, the evaluator — not this gate — decides,
+		// and here it continues the remaining create instead of finishing.
+		const dentistReceipt: EffectReceipt = {
+			...appliedReceipt,
+			receiptId: "calendar-receipt-2",
+			resource: { ...appliedReceipt.resource, id: "evt-2" },
+			commit: { ...appliedReceipt.commit, id: "evt-2" },
+		};
+		const h = harness({
+			userMessage:
+				"add gym tuesday at 7am and a dentist visit wednesday at 3pm",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("CALENDAR", "final"),
+							id: "calendar-gym",
+							arguments: { eliza_turn_scope: "final", title: "Gym" },
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("CALENDAR", "final"),
+							id: "calendar-dentist",
+							arguments: { eliza_turn_scope: "final", title: "Dentist visit" },
+						},
+					],
+				},
+			],
+			evaluations: [
+				continueWork(
+					"Only the gym session exists; the dentist visit is still missing.",
+				),
+				finish(
+					"Added the gym session for Tuesday at 7am and the dentist visit for Wednesday at 3pm.",
+				),
+			],
+			renders: [
+				render(
+					"Added your gym session for Tuesday at 7:00 AM. The dentist visit was not added.",
+					false,
+				),
+			],
+			results: [
+				internalCalendarResult(),
+				internalCalendarResult([dentistReceipt], {
+					data: {
+						replyContext: {
+							domain: "calendar",
+							intent: "add dentist visit wednesday at 3pm",
+							scenario: "create_event_completed",
+							facts: "Created “Dentist visit” for Sep 9, 3:00 PM PDT.",
+						},
+					},
+				}),
+			],
+			intents: ["add the requested calendar events"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+		expect(result.evaluator).toMatchObject({
+			decision: "FINISH",
+			success: true,
+		});
+		expect(result.evaluator?.raw?.source).toBeUndefined();
+		expect(result.finalMessage).toBe(
+			"Added the gym session for Tuesday at 7am and the dentist visit for Wednesday at 3pm.",
+		);
+		const renderPrompt = renderPromptOf(h);
+		expect(renderPrompt).toContain(
+			"User's message: add gym tuesday at 7am and a dentist visit wednesday at 3pm",
+		);
+		expect(renderPrompt).toContain('"complete": true or false');
+	});
+
+	it("falls back to the evaluator when the render is not the {complete, message} contract", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [finish("Added your gym session for Tuesday at 7am.")],
+			renders: ["Added your gym session for Tuesday at 7:00 AM."],
+			results: [internalCalendarResult()],
+			intents: ["add gym session to calendar"],
+		});
+		const result = await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		expect(result.finalMessage).toBe(
+			"Added your gym session for Tuesday at 7am.",
+		);
 	});
 
 	it("falls back to the evaluator when the render is empty", async () => {

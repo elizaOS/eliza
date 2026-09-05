@@ -123,6 +123,7 @@ export {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
 	factLexicalSimilarity,
+	factPolarityDiffers,
 	readStoredFactKeywords,
 } from "./features/advanced-capabilities/fact-keywords";
 export * from "./features/advanced-memory";
