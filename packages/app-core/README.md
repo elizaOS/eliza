@@ -40,3 +40,20 @@ bun run --cwd packages/app-core lint         # Biome
 ```
 
 This package is consumed by `@elizaos/agent`, `@elizaos/ui`, `@elizaos/shared`, the `packages/app` shell, and most `plugins/*` app plugins. It targets Node `>=24`, with `react`/`react-dom`/`three` as peer dependencies and the `@elizaos/capacitor-*` mobile bridges as optional dependencies.
+
+## Native inference setup
+
+A normal root `bun install` initializes the pinned fused inference submodule,
+ensures the host library and its companion libraries are current, and provisions
+the hash-verified default embedding model. Setup then loads the native library
+and computes a local embedding before reporting readiness. The runtime discovers these artifacts
+under the same state directory without additional environment configuration.
+Relative `ELIZA_STATE_DIR` paths resolve from the current working directory;
+`~` expands to the user's home directory.
+
+Reuse checks cover every staged native library, host architecture, and native
+source changes. Missing or altered companions trigger a rebuild on install;
+setup failures fail the install instead of reporting inference as ready.
+`ELIZA_SKIP_FUSED_INFERENCE_SETUP=1` is an explicit escape hatch and does not
+establish runtime readiness. Android and iOS packaging use their platform build
+lanes to produce the corresponding NDK or Apple artifacts.

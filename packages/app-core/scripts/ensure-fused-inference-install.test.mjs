@@ -75,7 +75,7 @@ test("CI is not an implicit escape hatch", async () => {
   });
 
   assert.equal(result.status, "ready");
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
 });
 
 test("missing Linux prerequisites are provisioned before the native build", async () => {
@@ -98,6 +98,7 @@ test("missing Linux prerequisites are provisioned before the native build", asyn
   assert.deepEqual(events, [
     ["run", "git"],
     ["provision", "cmake", "build-essential"],
+    ["run", "/bun"],
     ["run", "/bun"],
   ]);
 });
@@ -237,5 +238,25 @@ test("a corrupt download is rejected without replacing the existing artifact", a
     assert.equal(readFileSync(target, "utf8"), "stale");
   } finally {
     rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("relative state directories stage embedding bytes where the runtime resolves them", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "fused-relative-state-"));
+  const relativeState = path.relative(process.cwd(), root);
+  const bytes = Buffer.from("runtime-visible embedding fixture");
+  try {
+    const result = await ensureEmbeddingArtifact({
+      env: { ELIZA_STATE_DIR: relativeState },
+      artifact: fixtureArtifact(bytes),
+      fetchImpl: async () => fixtureResponse(bytes),
+    });
+    assert.deepEqual(
+      readFileSync(path.join(root, "models", "gte-small_fp16.gguf")),
+      bytes,
+    );
+    assert.equal(result.path, path.join(root, "models", "gte-small_fp16.gguf"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
