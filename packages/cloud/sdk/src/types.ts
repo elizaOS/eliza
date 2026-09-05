@@ -38,6 +38,9 @@ export type HttpMethod =
   | "OPTIONS"
   | "HEAD";
 
+/** Parsed data, or `undefined` for successful HEAD, 204, and 205 responses. */
+export type CloudResponse<T> = T | undefined;
+
 export type QueryValue = boolean | number | string | null | undefined;
 export type QueryParams =
   | URLSearchParams

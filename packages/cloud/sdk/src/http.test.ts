@@ -306,7 +306,7 @@ describe("ElizaCloudHttpClient errors", () => {
     ).rejects.toMatchObject({ name: "CloudApiError", statusCode: 500 });
   });
 
-  it("rejects a 2xx text/plain body when a parsed response was requested", async () => {
+  it("rejects a 2xx text/plain body instead of fabricating JSON success", async () => {
     const client = new ElizaCloudHttpClient({
       baseUrl: "https://cloud.test",
       fetchImpl: asFetch(
@@ -320,7 +320,11 @@ describe("ElizaCloudHttpClient errors", () => {
 
     await expect(client.request("GET", "/api/ping")).rejects.toMatchObject({
       name: "CloudApiError",
-      errorBody: { code: "unexpected_response_content_type" },
+      statusCode: 200,
+      errorBody: {
+        success: false,
+        code: "unexpected_response_content_type",
+      },
     });
   });
 });

@@ -17,7 +17,7 @@ export function initializeOpenAI(
         return;
       }
       try {
-        await createCloudApiClient(runtime).get("/models");
+        await createCloudApiClient(runtime).requestData("GET", "/models");
         logger.log("ElizaOS Cloud API key validated successfully");
       } catch (fetchError) {
         const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
