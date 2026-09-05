@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRuntime } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import { renderChangeSetBody } from "../services/completion-evidence.js";
 import {
@@ -275,4 +275,32 @@ describe("complete path evidence", () => {
       expect(scoped?.diffStat).not.toContain("baseline.txt");
     },
   );
+
+  it("owns literal path selection even when the parent enables incompatible Git pathspec modes", async () => {
+    for (const path of ["[ab].txt", "a.txt"])
+      writeFileSync(join(dir, path), "REMOVED_MARKER\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "files");
+    writeFileSync(join(dir, "[ab].txt"), "ADDED_MARKER\n");
+    writeFileSync(join(dir, "a.txt"), "BASELINE_NEIGHBOR_MARKER\n");
+    for (const name of [
+      "GIT_LITERAL_PATHSPECS",
+      "GIT_GLOB_PATHSPECS",
+      "GIT_NOGLOB_PATHSPECS",
+      "GIT_ICASE_PATHSPECS",
+    ])
+      vi.stubEnv(name, "1");
+    try {
+      const captured = await captureChangeSet(dir);
+      if (!captured)
+        throw new Error("Expected literal capture under inherited Git modes");
+      const retained = subtractChangeSetBaseline(captured, ["a.txt"]);
+      expect(retained.diff).toContain("-REMOVED_MARKER");
+      expect(retained.diff).toContain("+ADDED_MARKER");
+      expect(retained.diff).not.toContain("BASELINE_NEIGHBOR_MARKER");
+      expect(retained.diff).not.toContain("new file mode");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });

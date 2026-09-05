@@ -60,12 +60,19 @@ interface GitResult {
 }
 
 async function gitResult(workdir: string, args: string[]): Promise<GitResult> {
+  const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: "C" };
+  // Capture owns selector semantics; inherited Git modes must not reinterpret
+  // literal names or disable the explicit exclusion of descendant paths.
+  delete env.GIT_LITERAL_PATHSPECS;
+  delete env.GIT_GLOB_PATHSPECS;
+  delete env.GIT_NOGLOB_PATHSPECS;
+  delete env.GIT_ICASE_PATHSPECS;
   return new Promise((resolveResult, reject) => {
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     const child = spawn("git", args, {
       cwd: workdir,
-      env: { ...process.env, LC_ALL: "C" },
+      env,
       timeout: GIT_TIMEOUT_MS,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
