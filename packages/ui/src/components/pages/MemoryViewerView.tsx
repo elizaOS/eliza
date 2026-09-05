@@ -1447,7 +1447,7 @@ function MemoryViewerViewForAuthority({
             >
               <div
                 data-testid="memory-content-scroll-region"
-                className="settings-canvas min-h-0 flex-1 overflow-y-auto"
+                className="settings-canvas eliza-chat-scroll min-h-0 flex-1 overflow-y-auto"
               >
                 <PagePanel.ContentRail
                   width="standard"

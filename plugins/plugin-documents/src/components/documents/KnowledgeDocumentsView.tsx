@@ -1411,7 +1411,7 @@ function KnowledgeDocumentsViewForAuthority({
         />
       ) : null}
       {hiddenFileInput}
-      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto pb-4">
+      <div className="custom-scrollbar eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4">
         <SettingsGroup
           title={
             hasSearchQuery

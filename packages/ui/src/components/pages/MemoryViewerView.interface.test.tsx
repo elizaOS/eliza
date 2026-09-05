@@ -114,7 +114,7 @@ afterEach(() => {
 });
 
 describe("MemoryViewerView interface contract", () => {
-  it("leaves persistent chat clearance to the shared shell", async () => {
+  it("applies shared composer clearance inside the scrolling view", async () => {
     render(<MemoryViewerView />);
 
     await screen.findByTestId("memory-card-mem-1");
@@ -127,7 +127,7 @@ describe("MemoryViewerView interface contract", () => {
     expect(workspaceMain?.className).not.toContain("overflow-y-auto");
     expect(workspaceMain?.querySelectorAll(".overflow-y-auto")).toHaveLength(1);
     expect(workspaceMain?.querySelector(".overflow-y-auto")).toBe(scroller);
-    expect(scroller.className).not.toContain("eliza-chat-scroll");
+    expect(scroller.className).toContain("eliza-chat-scroll");
     expect(scroller.className).not.toContain("--eliza-chat-clearance");
     expect(scroller.className).not.toContain("--eliza-chat-side-clearance");
   });

@@ -15,6 +15,8 @@ import { ScrollArea } from "../ui/scroll-area";
 import { AppWorkspaceChrome } from "./AppWorkspaceChrome";
 
 const CHAT_CLEARANCE_CLASS = "pb-[var(--eliza-chat-clearance,5.25rem)]";
+const VIEW_SCROLL_CLEARANCE_CLASS =
+  "[&_.eliza-chat-scroll]:pb-[var(--eliza-chat-clearance,5.25rem)] [&_[data-slot=scroll-area-viewport]]:pb-[var(--eliza-chat-clearance,5.25rem)]";
 
 export type AppWorkspaceContentLayout = "contained" | "scroll";
 
@@ -57,8 +59,13 @@ export function AppWorkspaceContent({
   surface = "transparent",
   className,
 }: AppWorkspaceContentProps): React.JSX.Element {
+  const viewOwnsScroll = pageLayout
+    ? pageLayout.scroll === "view"
+    : layout === "contained";
   const clearanceClass = reserveChatClearance
-    ? CHAT_CLEARANCE_CLASS
+    ? viewOwnsScroll
+      ? VIEW_SCROLL_CLEARANCE_CLASS
+      : CHAT_CLEARANCE_CLASS
     : undefined;
 
   const framedChildren = pageLayout ? (
