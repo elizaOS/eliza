@@ -1742,6 +1742,15 @@ export class AgentSandboxesRepository {
             isNull(agentSandboxes.replacement_cleanup_sandbox_id),
             isNull(agentSandboxes.replacement_cleanup_attempt_id),
             isNull(agentSandboxes.replacement_cleanup_container_id),
+            // Transport-unresolved retries may have moved their handle into
+            // the primary row before restore. Prior state still requires the
+            // provisioning path; a health probe cannot prove it was applied.
+            isNull(agentSandboxes.last_heartbeat_at),
+            isNull(agentSandboxes.last_backup_at),
+            sql`NOT EXISTS (
+              SELECT 1 FROM ${agentSandboxBackups}
+              WHERE ${agentSandboxBackups.sandbox_record_id} = ${agentSandboxes.id}
+            )`,
             hasNoProvisioningStatusOwnerJob(),
           ),
         )
