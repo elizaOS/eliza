@@ -5,11 +5,14 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  ADMIN_CANARY_MAX_TARGETS,
   type AdminCanaryImageJobData,
   assertAdminCanaryImageJobData,
   assertAdminCanaryRolloutInput,
+  assertDemoSourceImage,
   fingerprintAdminCanaryPlan,
   hashAdminCanaryRequest,
+  isAdminCanaryImageJobData,
   parseAdminCanaryDemoImage,
 } from "./admin-canary-image";
 
@@ -338,5 +341,155 @@ describe("admin canary image contract", () => {
     });
     expect(fingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(reorderedFingerprint).toBe(fingerprint);
+  });
+});
+
+/**
+ * The block above covers the happy path, the upper target bound, duplicate
+ * agents and the plan fingerprint. These pin the edges beside them.
+ *
+ * All of it guards a super-admin seam that swaps the image under a running
+ * agent, and `isAdminCanaryImageJobData` runs on a persisted job row
+ * (`provisioning-jobs.ts:991`, `db/repositories/jobs.ts:173`) — so its inputs
+ * are whatever survived a round trip through the database, not values a caller
+ * just constructed.
+ */
+describe("admin canary image contract — boundaries", () => {
+  const target = {
+    agentId: AGENT,
+    organizationId: ORG,
+    expectedSourceImage: SOURCE_IMAGE,
+    expectedSourceDigest: SOURCE_DIGEST,
+  };
+
+  function rollout(over: Record<string, unknown> = {}) {
+    return {
+      operation: "upgrade" as const,
+      requestId: REQUEST,
+      dryRun: true as const,
+      targetImage: TARGET_IMAGE,
+      targets: [target],
+      ...over,
+    };
+  }
+
+  function jobData(over: Record<string, unknown> = {}): AdminCanaryImageJobData {
+    return {
+      operation: "upgrade",
+      rolloutId: ROLLOUT,
+      actorUserId: USER,
+      agentId: AGENT,
+      organizationId: ORG,
+      targetOwnerUserId: USER,
+      userId: USER,
+      sourceImage: SOURCE_IMAGE,
+      sourceDigest: SOURCE_DIGEST,
+      targetImage: TARGET_IMAGE,
+      targetDigest: TARGET_DIGEST,
+      decisionAt: new Date(1_750_000_000_000).toISOString(),
+      ...over,
+    } as AdminCanaryImageJobData;
+  }
+
+  // The bound is "between 1 and MAX". The upper half is covered; an empty list
+  // is the half that reads as a no-op rollout rather than an error.
+  test("refuses an empty target list, not just an oversized one", () => {
+    expect(() => assertAdminCanaryRolloutInput(rollout({ targets: [] }))).toThrow(/between 1 and/);
+    expect(() =>
+      assertAdminCanaryRolloutInput(
+        rollout({
+          targets: Array.from({ length: ADMIN_CANARY_MAX_TARGETS }, (_unused, index) => ({
+            ...target,
+            agentId: `1111111${index}-1111-4111-8111-111111111111`,
+          })),
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  // The duplicate key is `organizationId:agentId`, not the agent id alone. The
+  // same agent id under two organizations is two distinct targets; keying on
+  // the agent id would reject a legitimate pair.
+  test("scopes the duplicate-target check to the organization", () => {
+    const otherOrg = "55555555-5555-4555-8555-555555555555";
+    expect(() =>
+      assertAdminCanaryRolloutInput(
+        rollout({ targets: [target, { ...target, organizationId: otherOrg }] }),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertAdminCanaryRolloutInput(rollout({ targets: [target, { ...target }] })),
+    ).toThrow(/duplicate agent/);
+  });
+
+  // Both patterns are end-anchored. Without the `$`, a digest or id carrying
+  // trailing bytes validates on its prefix — the classic way a fail-closed
+  // syntax check stops being one.
+  test.each([
+    ["digest with trailing bytes", { sourceDigest: `${SOURCE_DIGEST}-extra` }, /sourceDigest/],
+    ["digest with a trailing newline", { sourceDigest: `${SOURCE_DIGEST}\n` }, /sourceDigest/],
+    ["uuid with trailing bytes", { agentId: `${AGENT}-extra` }, /agentId/],
+    ["uuid with a trailing newline", { agentId: `${AGENT}\n` }, /agentId/],
+  ] as const)("rejects a %s", (_label, over, expected) => {
+    expect(() => assertAdminCanaryImageJobData(jobData(over))).toThrow(expected);
+  });
+
+  test.each([
+    ["not a timestamp at all", "not-a-timestamp"],
+    ["an empty string", ""],
+  ] as const)("rejects a decisionAt that is %s", (_label, decisionAt) => {
+    expect(() => assertAdminCanaryImageJobData(jobData({ decisionAt }))).toThrow(
+      /decisionAt must be an ISO timestamp/,
+    );
+  });
+
+  // `isAdminCanaryImageJobData` is the gate in front of the asserts: a row it
+  // admits is then trusted enough to dispatch. Nothing exercised it.
+  test("admits a well-formed persisted job row", () => {
+    expect(isAdminCanaryImageJobData(jobData())).toBe(true);
+    expect(isAdminCanaryImageJobData(jobData({ operation: "rollback" }))).toBe(true);
+  });
+
+  test.each([
+    ["null", null],
+    ["a string", "upgrade"],
+    ["an array", []],
+  ] as const)("rejects a persisted row that is %s", (_label, value) => {
+    expect(isAdminCanaryImageJobData(value)).toBe(false);
+  });
+
+  test.each([
+    ["an unknown operation", { operation: "sideways" }],
+    ["a missing operation", { operation: undefined }],
+    ["a numeric agentId", { agentId: 7 }],
+    ["a missing sourceDigest", { sourceDigest: undefined }],
+    ["a null targetImage", { targetImage: null }],
+  ] as const)("rejects a persisted row with %s", (_label, over) => {
+    expect(isAdminCanaryImageJobData({ ...jobData(), ...over })).toBe(false);
+  });
+
+  // At its only call site (`eliza-sandbox.ts:11417`) `assertDemoSourceImage` is
+  // immediately followed by `parseAdminCanaryDemoImage` on the same value, and
+  // parse is the stricter of the two: it demands the exact `repo@sha256:…`
+  // form, while the assert compares only the repository and so accepts a
+  // TAGGED demo reference. The pair below is what makes that ordering
+  // load-bearing rather than incidental — the assert is worth keeping as
+  // defence in depth on a super-admin seam, but the tagged form must be the
+  // parse's job to refuse.
+  test("the demo repository check is weaker than the exact-digest parse it precedes", () => {
+    const tagged = `ghcr.io/elizaos/eliza-demo:v1@${TARGET_DIGEST}`;
+    expect(() => assertDemoSourceImage(tagged, "sourceImage")).not.toThrow();
+    expect(() => parseAdminCanaryDemoImage(tagged, "sourceImage")).toThrow(
+      /exact repository@sha256 digest reference|allowlisted/,
+    );
+
+    for (const rejected of [
+      `ghcr.io/elizaos/eliza@${TARGET_DIGEST}`,
+      `ghcr.io/evil/eliza-demo@${TARGET_DIGEST}`,
+      `ghcr.io/elizaos/eliza-demo-evil@${TARGET_DIGEST}`,
+    ]) {
+      expect(() => assertDemoSourceImage(rejected, "sourceImage")).toThrow(/eliza-demo/);
+      expect(() => parseAdminCanaryDemoImage(rejected, "sourceImage")).toThrow(/allowlisted/);
+    }
   });
 });
