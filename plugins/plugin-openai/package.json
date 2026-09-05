@@ -53,6 +53,9 @@
   "elizaos": {
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
+      "workspaceSource": {
+        ".": "./index.node.ts"
+      },
       "capabilities": [
         "text-large",
         "text-small",
