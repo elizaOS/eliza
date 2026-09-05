@@ -399,6 +399,9 @@ console.log(JSON.stringify({
         child.once("close", resolve);
       });
       await rm(sentinelDirectory, { recursive: true, force: true });
+      if (code !== 0) {
+        process.stderr.write(`sandbox kernel probe exit=${code}: ${stderr}\n`);
+      }
       expect(stderr).toBe("");
       expect(code).toBe(0);
       const result = JSON.parse(stdout.trim()) as Record<string, unknown>;
@@ -606,7 +609,7 @@ test.skipIf(!hostedLinux)(
       expect(Number.isSafeInteger(sandboxUid)).toBe(true);
       expect(stdout).toBe("");
       expect(stderr).not.toContain("unbound variable");
-      expect(code).toBe(91);
+      expect(code, stderr).toBe(91);
       expect(existsSync(environmentPath)).toBe(false);
       expect(
         spawnSync("pgrep", ["-u", String(sandboxUid)], {
@@ -696,11 +699,16 @@ setInterval(() => {}, 1000);
         stdio: ["ignore", "pipe", "pipe"],
       });
       if (!child.pid) throw new Error("sandbox teardown probe omitted PGID");
+      let stderr = "";
+      child.stderr?.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString("utf8");
+      });
       let ready:
         | { uid: number; hostUid: number; pid: number; descendantPid: number }
         | undefined;
       const readyDeadline = Date.now() + 15_000;
       while (!ready && Date.now() < readyDeadline) {
+        if (child.exitCode !== null || child.signalCode !== null) break;
         try {
           ready = JSON.parse(await readFile(readyPath, "utf8")) as typeof ready;
         } catch (error) {
@@ -716,8 +724,14 @@ setInterval(() => {}, 1000);
           await Bun.sleep(25);
         }
       }
-      if (!ready)
-        throw new Error("sandbox teardown probe did not become ready");
+      if (!ready) {
+        process.stderr.write(
+          `sandbox teardown readiness failed: exit=${child.exitCode} signal=${child.signalCode} stderr=${stderr}\n`,
+        );
+        throw new Error(
+          `sandbox teardown probe did not become ready: exit=${child.exitCode} signal=${child.signalCode} stderr=${stderr}`,
+        );
+      }
       expect(ready.uid).toBe(0);
       expect(ready.hostUid).not.toBe(process.getuid?.());
       expect(

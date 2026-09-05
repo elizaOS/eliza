@@ -142,7 +142,10 @@ sandbox_cleanup() {
       SANDBOX_CLEANUP_STATUS=1
     fi
     if [ "$SANDBOX_OUTPUT_ACL_CAPTURED" -eq 1 ]; then
-      if ! /usr/bin/printf '%s\n' "$SANDBOX_OUTPUT_ACL_SNAPSHOT" | /usr/bin/setfacl --set-file=- "$SANDBOX_OUTPUT_DIR"; then
+      # set-file replaces only ACL classes present in its input. A snapshot
+      # without defaults must also remove the defaults introduced for children.
+      if ! /usr/bin/setfacl --remove-default "$SANDBOX_OUTPUT_DIR" ||
+        ! /usr/bin/printf '%s\n' "$SANDBOX_OUTPUT_ACL_SNAPSHOT" | /usr/bin/setfacl --set-file=- "$SANDBOX_OUTPUT_DIR"; then
         SANDBOX_CLEANUP_STATUS=1
       elif ! acl_state="$(/usr/bin/getfacl -cpn "$SANDBOX_OUTPUT_DIR" 2>/dev/null)" || [ "$acl_state" != "$SANDBOX_OUTPUT_ACL_SNAPSHOT" ]; then
         SANDBOX_CLEANUP_STATUS=1
