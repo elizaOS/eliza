@@ -1075,6 +1075,35 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("agent_provision retains a non-retryable provider cause in the durable error", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
+    const providerCause = new Error("Docker provider readiness operation timed out");
+    stub("provision", {
+      success: false,
+      error: "Sandbox health check timed out",
+      failureCause: providerCause,
+      sandboxRecord: {
+        id: AGENT,
+        organization_id: ORG,
+        user_id: USER,
+        status: "error",
+      },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION);
+      expect(res).toMatchObject({ retried: 0, failed: 1 });
+      expect(res.errors[0]?.error).toContain("Sandbox health check timed out");
+      expect(res.errors[0]?.error).toContain("Docker provider readiness operation timed out");
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("agent_provision cleanup-only retry preserves the first startup failure", async () => {
     const service = new ProvisioningJobService({
       acquireProviderAdmission: async () => true,

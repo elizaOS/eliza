@@ -140,7 +140,25 @@ let generateTextResult: {
 let authResolution:
   | {
       kind: "authorized";
-      ctx: { userId: string; orgId: string; apiKeyId: string };
+      ctx: {
+        userId: string;
+        orgId: string;
+        apiKeyId: string;
+        admission: {
+          subscriptionFunded: boolean;
+          balance: {
+            balanceUsd: number;
+            balanceAt: number;
+            balanceRevision: string;
+          };
+          rateLimits: {
+            completionsRpm: number;
+            embeddingsRpm: number;
+            standardRpm: number;
+            strictRpm: number;
+          };
+        };
+      };
     }
   | { kind: "suspended" }
   | { kind: "miss" };
@@ -347,7 +365,6 @@ mock.module("@/lib/services/inference-billing-deferred", () => ({
   ...inferenceBillingDeferredActual,
   createDeferredAdmissionSettler: () => async () => null,
   isDeferredAdmissionEnabled: () => false,
-  isOrgAdmissionRefused: () => false,
 }));
 
 mock.module("@/lib/services/inference-passthrough", () => ({
@@ -404,7 +421,25 @@ beforeEach(() => {
   catalogSupportedParameters = ["max_tokens", "reasoning"];
   authResolution = {
     kind: "authorized",
-    ctx: { userId: USER, orgId: ORG, apiKeyId: API_KEY_ID },
+    ctx: {
+      userId: USER,
+      orgId: ORG,
+      apiKeyId: API_KEY_ID,
+      admission: {
+        subscriptionFunded: false,
+        balance: {
+          balanceUsd: 100,
+          balanceAt: Date.now(),
+          balanceRevision: "1",
+        },
+        rateLimits: {
+          completionsRpm: 60,
+          embeddingsRpm: 60,
+          standardRpm: 60,
+          strictRpm: 60,
+        },
+      },
+    },
   };
   providerConfigured = true;
   shouldBlockUser = false;

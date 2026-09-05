@@ -394,7 +394,6 @@ describe("chat/completions cache-only organization admission", () => {
     organizationAdmissionError = null;
     strongRevocationEnabled = true;
     callOrder.length = 0;
-    billingDeferredActual.__clearDeferredAdmissionState();
     writePendingInferenceCharge.mockClear();
     reserveCredits.mockClear();
     createOptimisticDebitSettler.mockClear();

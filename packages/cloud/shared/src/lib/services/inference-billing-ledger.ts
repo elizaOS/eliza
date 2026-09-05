@@ -46,7 +46,6 @@ import { invalidateOrganizationCache } from "../cache/organizations-cache";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { type CreditReconciliationResult, creditsService } from "./credits";
-import { markOrgAdmissionRefused } from "./inference-admission-refusal";
 import { invalidateOrgBalanceHint } from "./inference-auth-cache";
 import { republishOrgBalanceHintAfterDebit } from "./inference-balance-republish";
 
@@ -347,15 +346,13 @@ async function settleLedgerCharge(
         outcome.balanceRevision,
       );
     } catch (cause) {
-      // error-policy:J4 the debit is already committed; convert the post-commit
-      // cache failure into an explicit admission refusal instead of presenting
-      // a healthy fast path (KV rethrows for task replay; ledger does not).
-      markOrgAdmissionRefused(ctx.organizationId);
+      // error-policy:J4 the debit is already committed; invalidate the failed
+      // projection instead of presenting stale cache state as a healthy path.
       await invalidateOrgBalanceHint(ctx.organizationId).catch(
         reportInvalidationFailure(ctx.organizationId, "balance-hint"),
       );
       logger.error(
-        "[InferenceLedger] post-debit balance-hint republish failed; org forced off fast path",
+        "[InferenceLedger] post-debit balance-hint republish failed; projection invalidated",
         {
           organizationId: ctx.organizationId,
           requestId: ctx.requestId,

@@ -118,9 +118,6 @@ const { logger } = await import("../utils/logger");
 const { invalidateOrgBalanceHint, readOrgBalanceHint, writeOrgBalanceHint } = await import(
   "./inference-auth-cache"
 );
-const { isOrgAdmissionRefused, markOrgAdmissionRefused } = await import(
-  "./inference-billing-deferred"
-);
 
 // Mirror of the module-private sweep-lock key (kept as a literal so a rename is
 // caught loudly by the lock test below).
@@ -304,7 +301,6 @@ describe("getGateBalanceUsd", () => {
   test("cache-only miss fails closed and hydrates under waitUntil", async () => {
     const org = uid("org");
     freshBalanceUsd = 27;
-    markOrgAdmissionRefused(org);
     const background: Promise<unknown>[] = [];
     await expect(
       getGateBalanceUsd(org, {
@@ -316,7 +312,6 @@ describe("getGateBalanceUsd", () => {
     await background[0];
     expect(freshBalanceCalls).toBe(1);
     expect((await readOrgBalanceHint(org))?.balanceUsd).toBe(27);
-    expect(isOrgAdmissionRefused(org)).toBe(false);
   });
 
   test("stale hint returns immediately and revalidates off path", async () => {

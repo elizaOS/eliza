@@ -6551,7 +6551,10 @@ export class ProvisioningJobService {
               },
         );
       }
-      throw new Error(provisionError);
+      throw new Error(
+        provisionError,
+        provResult.failureCause === undefined ? undefined : { cause: provResult.failureCause },
+      );
     }
 
     const jobResult: AgentProvisionJobResult = {

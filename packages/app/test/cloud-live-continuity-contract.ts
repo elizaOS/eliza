@@ -124,6 +124,24 @@ export interface CloudLiveNetworkAuditSnapshot {
   decodedUnavailableDedicatedAdoptionQuoteCount: number;
   uninspectableDedicatedAdoptionQuoteResponseBodyCount: number;
   dedicatedAdoptionConfirmationPostRequestCount: number;
+  dedicatedAdoptionConfirmationPostResponseCount: number;
+  failedDedicatedAdoptionConfirmationPostRequestCount: number;
+  pendingDedicatedAdoptionConfirmationPostRequestCount: number;
+  dedicatedAdoptionConfirmationResponseStatus: number | null;
+  dedicatedAdoptionConfirmationResponseCode: string | null;
+  dedicatedAdoptionConfirmationElapsedMs: number | null;
+  dedicatedProvisionJobGetRequestCount: number;
+  dedicatedProvisionJobGetResponseCount: number;
+  failedDedicatedProvisionJobGetRequestCount: number;
+  pendingDedicatedProvisionJobGetRequestCount: number;
+  dedicatedProvisionJobResponseStatus: number | null;
+  dedicatedProvisionJobResponseCode: string | null;
+  dedicatedProvisionJobStatus:
+    | "pending"
+    | "in_progress"
+    | "completed"
+    | "failed"
+    | null;
   dedicatedApprovalBindingPresent: boolean;
   dedicatedLifecycleBindingMismatchCount: number;
   historyGetRequestCount: number;
@@ -471,6 +489,20 @@ function dedicatedAdoptionRequest(
   return verb === "POST" ? "confirmation" : null;
 }
 
+function dedicatedProvisionJobId(
+  method: string,
+  rawUrl: string,
+): string | null {
+  if (method.trim().toUpperCase() !== "GET") return null;
+  const match = requestPath(rawUrl).match(
+    /^\/api\/(?:cloud\/)?v1\/jobs\/([a-f0-9-]+)$/,
+  );
+  const jobId = match?.[1] ?? null;
+  return jobId && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(jobId)
+    ? jobId
+    : null;
+}
+
 type DedicatedLifecycleRequest = "adoption" | "activation" | "cutover";
 
 interface DedicatedLifecycleRequestBinding {
@@ -480,6 +512,10 @@ interface DedicatedLifecycleRequestBinding {
   dedicatedAgentId: string | null;
   responseStatus: number | null;
   responseCode: string | null;
+  provisionJobId: string | null;
+  requestStartedAtMs: number;
+  terminalElapsedMs: number | null;
+  requestFailed: boolean;
 }
 
 function dedicatedRequestSourceAgentId(rawUrl: string): string {
@@ -515,6 +551,7 @@ function dedicatedLifecycleRequestBinding(
   method: string,
   rawUrl: string,
   postData: string | null | undefined,
+  nowMs: number,
 ): DedicatedLifecycleRequestBinding | null {
   if (method.trim().toUpperCase() !== "POST") return null;
   const sourceAgentId = dedicatedRequestSourceAgentId(rawUrl);
@@ -528,6 +565,10 @@ function dedicatedLifecycleRequestBinding(
       dedicatedAgentId: null,
       responseStatus: null,
       responseCode: null,
+      provisionJobId: null,
+      requestStartedAtMs: nowMs,
+      terminalElapsedMs: null,
+      requestFailed: false,
     };
   }
   const controlPlane = dedicatedControlPlaneRequest(method, rawUrl);
@@ -539,6 +580,10 @@ function dedicatedLifecycleRequestBinding(
       dedicatedAgentId: null,
       responseStatus: null,
       responseCode: null,
+      provisionJobId: null,
+      requestStartedAtMs: nowMs,
+      terminalElapsedMs: null,
+      requestFailed: false,
     };
   }
   if (controlPlane === "cutover") {
@@ -552,9 +597,21 @@ function dedicatedLifecycleRequestBinding(
           : null,
       responseStatus: null,
       responseCode: null,
+      provisionJobId: null,
+      requestStartedAtMs: nowMs,
+      terminalElapsedMs: null,
+      requestFailed: false,
     };
   }
   return null;
+}
+
+interface DedicatedProvisionJobRequestBinding {
+  jobId: string;
+  responseStatus: number | null;
+  responseCode: string | null;
+  jobStatus: "pending" | "in_progress" | "completed" | "failed" | null;
+  requestFailed: boolean;
 }
 
 function chatClientMessageId(postData: string | null | undefined): string {
@@ -841,6 +898,89 @@ async function inspectDedicatedControlPlaneResponse(
       dedicatedAgentId: null,
       code: null,
     };
+  }
+}
+
+async function inspectDedicatedAdoptionResponse(
+  responseBody: CloudLiveBoundedResponseBody,
+): Promise<{ code: string | null; provisionJobId: string | null }> {
+  if (!isJsonContentType(responseBody.contentType)) {
+    return { code: null, provisionJobId: null };
+  }
+  const bytes = await readCloudLiveBoundedResponseBody(
+    responseBody,
+    MAX_WARMING_RESPONSE_BYTES,
+  );
+  if (!bytes) return { code: null, provisionJobId: null };
+  try {
+    const parsed = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    ) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { code: null, provisionJobId: null };
+    }
+    const root = parsed as Record<string, unknown>;
+    const data =
+      root.data && typeof root.data === "object" && !Array.isArray(root.data)
+        ? (root.data as Record<string, unknown>)
+        : null;
+    const jobId = data?.jobId;
+    return {
+      code: boundedDedicatedResponseCode(root.code),
+      provisionJobId:
+        typeof jobId === "string" &&
+        /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(jobId)
+          ? jobId
+          : null,
+    };
+  } catch {
+    // error-policy:J3 malformed, oversized, or non-UTF-8 bodies retain no
+    // content; the HTTP status remains the closed terminal classification.
+    return { code: null, provisionJobId: null };
+  }
+}
+
+async function inspectDedicatedProvisionJobResponse(
+  responseBody: CloudLiveBoundedResponseBody,
+): Promise<{
+  code: string | null;
+  status: "pending" | "in_progress" | "completed" | "failed" | null;
+}> {
+  if (!isJsonContentType(responseBody.contentType)) {
+    return { code: null, status: null };
+  }
+  const bytes = await readCloudLiveBoundedResponseBody(
+    responseBody,
+    MAX_WARMING_RESPONSE_BYTES,
+  );
+  if (!bytes) return { code: null, status: null };
+  try {
+    const parsed = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    ) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { code: null, status: null };
+    }
+    const root = parsed as Record<string, unknown>;
+    const data =
+      root.data && typeof root.data === "object" && !Array.isArray(root.data)
+        ? (root.data as Record<string, unknown>)
+        : null;
+    const status = data?.status;
+    return {
+      code: boundedDedicatedResponseCode(root.code),
+      status:
+        status === "pending" ||
+        status === "in_progress" ||
+        status === "completed" ||
+        status === "failed"
+          ? status
+          : null,
+    };
+  } catch {
+    // error-policy:J3 job error text and malformed bodies are never retained;
+    // only the closed HTTP classification remains available to the receipt.
+    return { code: null, status: null };
   }
 }
 
@@ -1180,7 +1320,9 @@ export interface CloudLiveNetworkAudit {
   snapshot(): Promise<CloudLiveNetworkAuditSnapshot>;
 }
 
-export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
+export function createCloudLiveNetworkAudit(
+  now: () => number = Date.now,
+): CloudLiveNetworkAudit {
   let forbiddenAgentMutationCount = 0;
   let chatSendAttemptCount = 0;
   let unidentifiedChatSendAttemptCount = 0;
@@ -1213,6 +1355,8 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
   let decodedUnavailableDedicatedAdoptionQuoteCount = 0;
   let uninspectableDedicatedAdoptionQuoteResponseBodyCount = 0;
   let dedicatedAdoptionConfirmationPostRequestCount = 0;
+  const dedicatedProvisionJobRequests: DedicatedProvisionJobRequestBinding[] =
+    [];
   let dedicatedApprovalBinding: CloudLiveDedicatedApprovalBinding | null = null;
   let latestActivationQuoteBinding: CloudLiveDedicatedApprovalBinding | null =
     null;
@@ -1346,10 +1490,21 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
       } else if (adoptionRequest === "confirmation") {
         dedicatedAdoptionConfirmationPostRequestCount += 1;
       }
+      const provisionJobId = dedicatedProvisionJobId(method, rawUrl);
+      if (provisionJobId) {
+        dedicatedProvisionJobRequests.push({
+          jobId: provisionJobId,
+          responseStatus: null,
+          responseCode: null,
+          jobStatus: null,
+          requestFailed: false,
+        });
+      }
       const lifecycleBinding = dedicatedLifecycleRequestBinding(
         method,
         rawUrl,
         postData,
+        now(),
       );
       if (lifecycleBinding) dedicatedLifecycleRequests.push(lifecycleBinding);
     },
@@ -1498,6 +1653,31 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
           });
         } else counters.uninspectableBody += 1;
       }
+      if (dedicatedAdoptionRequest(method, rawUrl) === "confirmation") {
+        const sourceAgentId = dedicatedRequestSourceAgentId(rawUrl);
+        const lifecycleRequest = dedicatedLifecycleRequests.find(
+          (candidate) =>
+            candidate.phase === "adoption" &&
+            candidate.sourceAgentId === sourceAgentId &&
+            candidate.responseStatus === null &&
+            !candidate.requestFailed,
+        );
+        if (lifecycleRequest) {
+          lifecycleRequest.responseStatus = status;
+          lifecycleRequest.terminalElapsedMs = Math.max(
+            0,
+            now() - lifecycleRequest.requestStartedAtMs,
+          );
+          if (responseBody) {
+            trackResponseHandler(async () => {
+              const inspection =
+                await inspectDedicatedAdoptionResponse(responseBody);
+              lifecycleRequest.responseCode = inspection.code;
+              lifecycleRequest.provisionJobId = inspection.provisionJobId;
+            });
+          }
+        }
+      }
       if (dedicatedAdoptionRequest(method, rawUrl) === "quote") {
         if (status >= 200 && status < 300) {
           successfulDedicatedAdoptionQuoteGetResponseCount += 1;
@@ -1531,6 +1711,26 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
           uninspectableDedicatedAdoptionQuoteResponseBodyCount += 1;
         }
       }
+      const provisionJobId = dedicatedProvisionJobId(method, rawUrl);
+      if (provisionJobId) {
+        const jobRequest = dedicatedProvisionJobRequests.find(
+          (candidate) =>
+            candidate.jobId === provisionJobId &&
+            candidate.responseStatus === null &&
+            !candidate.requestFailed,
+        );
+        if (jobRequest) {
+          jobRequest.responseStatus = status;
+        }
+        if (responseBody && jobRequest) {
+          trackResponseHandler(async () => {
+            const inspection =
+              await inspectDedicatedProvisionJobResponse(responseBody);
+            jobRequest.responseCode = inspection.code;
+            jobRequest.jobStatus = inspection.status;
+          });
+        }
+      }
     },
     observeRequestFailure(method, rawUrl, errorText = "") {
       if (isPersonalIdentityGet(method, rawUrl)) {
@@ -1540,6 +1740,32 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
       if (dedicatedRequest) dedicatedControlPlane[dedicatedRequest].failed += 1;
       if (dedicatedAdoptionRequest(method, rawUrl) === "quote") {
         failedDedicatedAdoptionQuoteGetRequestCount += 1;
+      } else if (dedicatedAdoptionRequest(method, rawUrl) === "confirmation") {
+        const sourceAgentId = dedicatedRequestSourceAgentId(rawUrl);
+        const lifecycleRequest = dedicatedLifecycleRequests.find(
+          (candidate) =>
+            candidate.phase === "adoption" &&
+            candidate.sourceAgentId === sourceAgentId &&
+            candidate.responseStatus === null &&
+            !candidate.requestFailed,
+        );
+        if (lifecycleRequest) {
+          lifecycleRequest.requestFailed = true;
+          lifecycleRequest.terminalElapsedMs = Math.max(
+            0,
+            now() - lifecycleRequest.requestStartedAtMs,
+          );
+        }
+      }
+      const provisionJobId = dedicatedProvisionJobId(method, rawUrl);
+      if (provisionJobId) {
+        const jobRequest = dedicatedProvisionJobRequests.find(
+          (candidate) =>
+            candidate.jobId === provisionJobId &&
+            candidate.responseStatus === null &&
+            !candidate.requestFailed,
+        );
+        if (jobRequest) jobRequest.requestFailed = true;
       }
       if (!isHistoryGet(method, rawUrl)) return;
       failedHistoryGetRequestCount += 1;
@@ -1595,6 +1821,38 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
           (request) =>
             request.phase === "cutover" && request.responseStatus !== null,
         );
+      const latestDedicatedAdoption = dedicatedLifecycleRequests
+        .slice()
+        .reverse()
+        .find((request) => request.phase === "adoption");
+      const dedicatedAdoptionConfirmationPostResponseCount =
+        dedicatedLifecycleRequests.filter(
+          (request) =>
+            request.phase === "adoption" && request.responseStatus !== null,
+        ).length;
+      const failedDedicatedAdoptionConfirmationPostRequestCount =
+        dedicatedLifecycleRequests.filter(
+          (request) => request.phase === "adoption" && request.requestFailed,
+        ).length;
+      const adoptionProvisionJobId =
+        latestDedicatedAdoption?.provisionJobId ?? null;
+      const adoptionProvisionJobRequests = adoptionProvisionJobId
+        ? dedicatedProvisionJobRequests.filter(
+            (request) => request.jobId === adoptionProvisionJobId,
+          )
+        : [];
+      const latestAdoptionProvisionJobRequest =
+        adoptionProvisionJobRequests.at(-1);
+      const dedicatedProvisionJobGetRequestCount =
+        adoptionProvisionJobRequests.length;
+      const dedicatedProvisionJobGetResponseCount =
+        adoptionProvisionJobRequests.filter(
+          (request) => request.responseStatus !== null,
+        ).length;
+      const failedDedicatedProvisionJobGetRequestCount =
+        adoptionProvisionJobRequests.filter(
+          (request) => request.requestFailed,
+        ).length;
       const approvedTargetId =
         dedicatedApprovalBinding?.dedicatedAgentId ??
         (dedicatedApprovalBinding?.confirmationKind === "activation"
@@ -1773,6 +2031,37 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
         decodedUnavailableDedicatedAdoptionQuoteCount,
         uninspectableDedicatedAdoptionQuoteResponseBodyCount,
         dedicatedAdoptionConfirmationPostRequestCount,
+        dedicatedAdoptionConfirmationPostResponseCount,
+        failedDedicatedAdoptionConfirmationPostRequestCount,
+        pendingDedicatedAdoptionConfirmationPostRequestCount: Math.max(
+          0,
+          dedicatedAdoptionConfirmationPostRequestCount -
+            dedicatedAdoptionConfirmationPostResponseCount -
+            failedDedicatedAdoptionConfirmationPostRequestCount,
+        ),
+        dedicatedAdoptionConfirmationResponseStatus:
+          latestDedicatedAdoption?.responseStatus ?? null,
+        dedicatedAdoptionConfirmationResponseCode:
+          latestDedicatedAdoption?.responseCode ?? null,
+        dedicatedAdoptionConfirmationElapsedMs: latestDedicatedAdoption
+          ? (latestDedicatedAdoption.terminalElapsedMs ??
+            Math.max(0, now() - latestDedicatedAdoption.requestStartedAtMs))
+          : null,
+        dedicatedProvisionJobGetRequestCount,
+        dedicatedProvisionJobGetResponseCount,
+        failedDedicatedProvisionJobGetRequestCount,
+        pendingDedicatedProvisionJobGetRequestCount: Math.max(
+          0,
+          dedicatedProvisionJobGetRequestCount -
+            dedicatedProvisionJobGetResponseCount -
+            failedDedicatedProvisionJobGetRequestCount,
+        ),
+        dedicatedProvisionJobResponseStatus:
+          latestAdoptionProvisionJobRequest?.responseStatus ?? null,
+        dedicatedProvisionJobResponseCode:
+          latestAdoptionProvisionJobRequest?.responseCode ?? null,
+        dedicatedProvisionJobStatus:
+          latestAdoptionProvisionJobRequest?.jobStatus ?? null,
         dedicatedApprovalBindingPresent: dedicatedApprovalBinding !== null,
         dedicatedLifecycleBindingMismatchCount,
         historyGetRequestCount,
