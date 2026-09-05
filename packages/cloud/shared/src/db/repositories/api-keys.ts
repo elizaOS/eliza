@@ -1,4 +1,4 @@
-// Persists api keys records for cloud services through the shared DB boundary.
+/** Persists API-key records and primary-consistent authorization reads for cloud services. */
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
