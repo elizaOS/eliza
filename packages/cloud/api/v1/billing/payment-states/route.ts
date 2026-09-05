@@ -35,21 +35,15 @@ app.get("/", async (c) => {
     if (!offsetResult.ok) {
       return c.json({ success: false, error: offsetResult.error }, 400);
     }
-    // Bound the traversal: each page re-reads its prefix windows on both
-    // authority surfaces, so an unbounded offset would let one request
-    // project the tenant's entire history. The bound is finite and generous
-    // (200 pages at the default limit); deeper history stays reachable
-    // through the detail endpoint's direct stable-id lookup.
-    const MAX_LIST_OFFSET = 10_000;
-    if (offsetResult.value > MAX_LIST_OFFSET) {
-      return c.json(
-        {
-          success: false,
-          error: `Invalid offset ${JSON.stringify(c.req.query("offset"))}: must be at most ${MAX_LIST_OFFSET}`,
-        },
-        400,
-      );
-    }
+    // Traversal is lossless by design (#26752 review P1): the service's page
+    // window is one SQL UNION ranked by the authority rows' own keys and
+    // hydrates ONLY the page's rows, so page cost does not grow with offset
+    // and an org's full persisted history must stay reachable from the list
+    // surface. A depth cap would strand the tail behind a permanent 400 the
+    // card cannot step past (its next offset is rows-already-shown), and the
+    // detail route cannot repair discoverability because the client has no
+    // id for rows it cannot list. Per-request work stays bounded by `limit`
+    // (≤ PAYMENT_STATES_MAX_PAGE) and the route's rate limit.
     const [states, total] = await Promise.all([
       paymentHistoryService.listPaymentStates(
         user.organization_id,
