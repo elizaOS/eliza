@@ -1534,6 +1534,7 @@ export async function stageAndroidAgentRuntime({
     "pglite.data",
     "vector.tar.gz",
     "fuzzystrmatch.tar.gz",
+    "pg_trgm.tar.gz",
     "plugins-manifest.json",
   ];
   for (const name of pgliteAssets) {

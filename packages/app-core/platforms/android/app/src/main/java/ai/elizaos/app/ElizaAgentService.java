@@ -1500,12 +1500,17 @@ public class ElizaAgentService extends Service {
         // (raw tar → `Z_DATA_ERROR: incorrect header check` → PGlite crashloop).
         File vector = new File(filesDir, "vector.tar.gz");
         File fuzzy = new File(filesDir, "fuzzystrmatch.tar.gz");
+        File trigram = new File(filesDir, "pg_trgm.tar.gz");
         if (forceRefreshTarballs) {
             if (vector.exists() && !vector.delete()) Log.w(TAG, "Could not delete stale vector.tar.gz");
             if (fuzzy.exists() && !fuzzy.delete()) Log.w(TAG, "Could not delete stale fuzzystrmatch.tar.gz");
         }
         copyAssetIfPresentAsGzipped(assets, "agent/vector.tar", vector);
         copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar", fuzzy);
+        if (forceRefreshTarballs && trigram.exists() && !trigram.delete()) {
+            throw new IOException("Could not refresh pg_trgm.tar.gz");
+        }
+        copyAssetIfPresentAsGzipped(assets, "agent/pg_trgm.tar", trigram);
 
         // Bundled default models (chat + embedding GGUF, staged by
         // scripts/elizaos/stage-default-models.mjs at AOSP build time). Land
@@ -1580,6 +1585,14 @@ public class ElizaAgentService extends Service {
 
     private File nativeLibraryDir() {
         return new File(getApplicationInfo().nativeLibraryDir);
+    }
+
+    private boolean hasPackagedNativeLibrary(String name) {
+        // Preinstalled AOSP apps load uncompressed JNI entries directly from
+        // their read-only APK; nativeLibraryDir need not contain loose files.
+        ClassLoader loader = getClassLoader();
+        return loader instanceof dalvik.system.BaseDexClassLoader
+            && ((dalvik.system.BaseDexClassLoader) loader).findLibrary(name) != null;
     }
 
     private String packagedMuslLoaderName(String abi) {
@@ -1757,7 +1770,7 @@ public class ElizaAgentService extends Service {
             return;
         }
         File fusedLib = new File(nativeLibraryDir(), "libelizainference.so");
-        if (!fusedLib.isFile()) {
+        if (!fusedLib.isFile() && !hasPackagedNativeLibrary("elizainference")) {
             return;
         }
         File kokoroVoice = new File(getFilesDir(), "eliza-1/bundle/tts/kokoro");
@@ -2236,7 +2249,8 @@ public class ElizaAgentService extends Service {
                 resolveBundledNativeLib(abiDir, "libeliza-llama-shim.so");
             File abiGgmlVulkan =
                 resolveBundledNativeLib(abiDir, "libggml-vulkan.so");
-            boolean fusedInferenceBundled = abiFusedInference.isFile();
+            boolean fusedInferenceBundled = abiFusedInference.isFile()
+                || hasPackagedNativeLibrary("elizainference");
             boolean legacyLibllamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
             boolean nativeLlamaBundled = fusedInferenceBundled || legacyLibllamaBundled;
             boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
@@ -2259,7 +2273,8 @@ public class ElizaAgentService extends Service {
             // bionic-host)" against a socket that never binds, and every turn
             // would fail with a cryptic "bionic socket error: connect ENOENT".
             boolean bionicJniBridgeBundled =
-                resolveBundledNativeLib(abiDir, "libelizavoicejni.so").isFile();
+                resolveBundledNativeLib(abiDir, "libelizavoicejni.so").isFile()
+                || hasPackagedNativeLibrary("elizavoicejni");
             boolean delegateToBionicHost = shouldDelegateToBionicHost(
                 fusedInferenceBundled,
                 bionicJniBridgeBundled);

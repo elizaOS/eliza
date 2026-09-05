@@ -2141,24 +2141,27 @@ export function injectNoCompressTarGz(content) {
  * exist on disk under nativeLibraryDir for ProcessBuilder to execute them.
  */
 export function injectNativeLibLegacyPackaging(content) {
-  if (/useLegacyPackaging\s*=\s*true/.test(content)) return content;
+  const assignment = "useLegacyPackaging = project.findProperty('elizaAospBuild') != 'true'";
+  if (/useLegacyPackaging\s*=/.test(content)) {
+    return content.replace(/useLegacyPackaging\s*=[^\n]*/, assignment);
+  }
   if (/jniLibs\s*\{/.test(content)) {
     return content.replace(
       /jniLibs\s*\{/,
-      "jniLibs {\n            useLegacyPackaging = true",
+      "jniLibs {\n            useLegacyPackaging = project.findProperty('elizaAospBuild') != 'true'",
     );
   }
   if (/packaging\s*\{/.test(content)) {
     return content.replace(
       /packaging\s*\{/,
-      "packaging {\n        jniLibs {\n            useLegacyPackaging = true\n        }",
+      "packaging {\n        jniLibs {\n            useLegacyPackaging = project.findProperty('elizaAospBuild') != 'true'\n        }",
     );
   }
 
   const block =
     `\n    packaging {\n` +
     `        jniLibs {\n` +
-    `            useLegacyPackaging = true\n` +
+    `            useLegacyPackaging = project.findProperty('elizaAospBuild') != 'true'\n` +
     `        }\n` +
     `    }\n`;
   const androidOpen = content.search(/\n\s*android\s*\{/);

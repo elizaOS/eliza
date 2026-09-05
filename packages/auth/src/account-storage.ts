@@ -153,7 +153,7 @@ function resolvePhysicalPath(target: string): string {
   }
 
   return path.resolve(
-    fs.realpathSync.native(existingAncestor),
+    fs.realpathSync(existingAncestor),
     ...missingSegments,
   );
 }
