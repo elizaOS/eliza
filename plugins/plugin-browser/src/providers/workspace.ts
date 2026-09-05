@@ -9,6 +9,10 @@
 
 import type { Provider } from "@elizaos/core";
 import {
+  BROWSER_SERVICE_TYPE,
+  type BrowserService,
+} from "../browser-service.js";
+import {
   getBrowserWorkspaceMode,
   listBrowserWorkspaceTabs,
 } from "../workspace/browser-workspace.js";
@@ -28,13 +32,20 @@ export const browserWorkspaceProvider: Provider = {
   // context (#12094 item 3: gate travels with the provider so a rename can't
   // silently drop it).
   roleGate: { minRole: "OWNER" },
-  get: async () => {
+  get: async (runtime) => {
     try {
       const mode = getBrowserWorkspaceMode();
       const tabs = await listBrowserWorkspaceTabs();
+      const service = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
+      const targets = service ? await service.resolveTargets() : [];
       const text = JSON.stringify(
         {
           [PROVIDER_NAME]: {
+            target: "workspace",
+            availableTargets: targets.map((target) => ({
+              id: target.id,
+              description: target.description,
+            })),
             mode,
             tabCount: tabs.length,
             tabs: tabs.map((tab) => ({
@@ -52,6 +63,7 @@ export const browserWorkspaceProvider: Provider = {
         text,
         data: {
           available: true,
+          availableTargetIds: targets.map((target) => target.id),
           mode,
           tabs,
         },

@@ -7,6 +7,7 @@ import {
   CloudLiveOptionalActionDeadlineError,
   CloudLivePersonalIdentityDeadlineError,
   CloudLivePersonalIdentityRecoveryError,
+  CloudLiveRequiredActionUnavailableError,
   clickCloudLiveOptionalAction,
   createCloudLiveDedicatedConsentGate,
   prepareCloudLivePersonalIdentity,
@@ -15,6 +16,42 @@ import {
 
 test.describe("Cloud live optional action boundary", () => {
   test.use({ serviceWorkers: "block" });
+
+  test("fails closed when the required Cloud runtime choice is absent", async ({
+    page,
+  }) => {
+    await page.setContent(`<main data-testid="chat-overlay"></main>`);
+
+    const startedAt = Date.now();
+    const result = await clickCloudLiveOptionalAction(
+      page.getByTestId("runtime-cloud"),
+      {
+        phase: "pre-identity-runtime-choice",
+        action: "runtime-cloud",
+        offerTimeoutMs: 100,
+        actionTimeoutMs: 100,
+        required: true,
+      },
+    ).then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok)
+      throw new Error("absent required action unexpectedly passed");
+    expect(result.error).toBeInstanceOf(
+      CloudLiveRequiredActionUnavailableError,
+    );
+    expect(result.error).toMatchObject({
+      name: "CloudLiveRequiredActionUnavailableError",
+      code: "CLOUD_LIVE_REQUIRED_ACTION_UNAVAILABLE",
+      phase: "pre-identity-runtime-choice",
+      action: "runtime-cloud",
+    });
+    expect(String(result.error)).not.toMatch(/data-testid|locator|selector/);
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+  });
 
   test("keeps Dedicated activation and adoption confirmation fail-closed by default", async ({
     page,

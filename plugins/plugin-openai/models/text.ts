@@ -45,6 +45,7 @@ import {
   type LanguageModelUsage,
   type ModelMessage,
   Output,
+  RetryError,
   streamText,
   type ToolChoice,
   type ToolSet,
@@ -310,8 +311,8 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
  *
  * In Cerebras mode the field defaults to `"low"` when unset only for the exact
  * models whose current provider contract exposes reasoning controls:
- * `gpt-oss-120b` and `zai-glm-4.7`. Both can spend a capped output budget on
- * hidden reasoning and return empty visible content when left unbounded.
+ * `gpt-oss-120b` and `zai-glm-4.7`. Qwen 3.8 defaults to `"none"` for
+ * interactive latency; explicit reasoning settings remain authoritative.
  * Family-name lookalikes and models without the knob must not receive the
  * field because compatible endpoints reject unsupported request properties.
  * An explicit valid `OPENAI_REASONING_EFFORT` always wins.
@@ -379,6 +380,7 @@ function resolveThinkingOffReasoningEffort(
     if (cerebrasId === "gpt-oss-120b") return "low";
     if (cerebrasId === "zai-glm-4.7") return "none";
     if (cerebrasId === "gemma-4-31b") return "none";
+    if (cerebrasId === "qwen-3.8-27b") return "none";
   }
 
   const exactModelId = modelName.trim().toLowerCase();
@@ -400,6 +402,9 @@ function resolveCerebrasDefaultReasoningEffort(
   if (!modelName) return undefined;
   const id = normalizeCerebrasModelId(modelName);
   if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
+  // Cerebras defaults Qwen to high reasoning. Keep ordinary interactive
+  // calls non-reasoning unless the caller explicitly requests otherwise.
+  if (id === "qwen-3.8-27b") return "none";
   return undefined;
 }
 
@@ -410,6 +415,13 @@ function resolveReasoningEffort(
   const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (normalized) {
+    if (
+      normalized === "none" &&
+      isCerebrasMode(runtime) &&
+      modelName &&
+      normalizeCerebrasModelId(modelName) === "qwen-3.8-27b"
+    )
+      return "none";
     if ((VALID_REASONING_EFFORTS as readonly string[]).includes(normalized)) {
       return normalized as ReasoningEffort;
     }
@@ -2059,6 +2071,10 @@ function isSpuriousToolPairingRejection(error: unknown): boolean {
 }
 
 function isTransientProviderError(error: unknown): boolean {
+  // The SDK already owns HTTP retries. Re-entering it after exhaustion
+  // multiplies its budget (up to 18 requests for one streamed model call).
+  // Keep this outer lane for provider failures the SDK does not retry.
+  if (RetryError.isInstance(error)) return false;
   const e = error as
     | { statusCode?: number; status?: number; message?: string; data?: unknown }
     | undefined;
@@ -2319,6 +2335,9 @@ async function consumeStreamWithTransientRetry(
         onChunk?.(chunk);
         text += chunk;
       }
+      // Read the transport failure before lazy companion getters can replace
+      // it with NoOutputGeneratedError and hide the provider's real cause.
+      if (capturedError) throw capturedError;
       const toolCalls = await result.toolCalls;
       const usage = await result.usage;
       const finishReason = (await result.finishReason) as string | undefined;
@@ -2429,8 +2448,9 @@ async function generateTextByModelType(
         : { prompt: promptText };
   // AI SDK v6 derives the provider-level response format from its `output`
   // contract; a similarly named top-level setting is ignored by generateText.
-  // Cerebras accepts JSON mode but not the SDK's JSON Schema wire payload, so
-  // its unstructured JSON output deliberately carries no schema.
+  // The Cerebras compatibility lane uses JSON mode with caller-side schema
+  // validation. A responseSchema alone must enable that mode; silently dropping
+  // it lets evaluator calls return tool markup instead of a decision envelope.
   const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown })
     .responseFormat;
   const responseFormatType =
@@ -2453,7 +2473,10 @@ async function generateTextByModelType(
       ? buildStructuredOutput(sanitizedResponseSchema, modelType)
       : undefined;
   const requestedOutput: NativeOutput | undefined =
-    preparedOutput?.output ?? (responseFormatType === "json_object" ? Output.json() : undefined);
+    preparedOutput?.output ??
+    (responseFormatType === "json_object" || (cerebrasMode && sanitizedResponseSchema)
+      ? Output.json()
+      : undefined);
   const restoreResponseText = (text: string): string =>
     preparedOutput?.transform?.restoreText(text) ?? text;
 

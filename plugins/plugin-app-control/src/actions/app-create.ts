@@ -15,13 +15,19 @@ import type {
 	Memory,
 	UUID,
 } from "@elizaos/core";
-import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
+import {
+	hasOwnerAccess,
+	logger,
+	ModelType,
+	spawnWithTrajectoryLink,
+} from "@elizaos/core";
 import {
 	type AppControlClient,
 	createAppControlClient,
 } from "../client/api.js";
 import {
 	describeTargetReference,
+	normalizeActionOptions,
 	readOptionalRefOption,
 	readStringOption,
 	userRequestMessageText,
@@ -600,30 +606,40 @@ function buildEditPrompt(
 async function findExistingIntentTask(
 	runtime: IAgentRuntime,
 	roomId: string,
-): Promise<{ taskId: string; metadata: IntentTaskMetadata } | null> {
+	requestedTaskId?: string,
+	entityId?: Memory["entityId"],
+): Promise<
+	| { taskId: string; metadata: IntentTaskMetadata }
+	| { ambiguousTaskIds: string[] }
+	| null
+> {
 	const tasks = await runtime.getTasks({
 		agentIds: [runtime.agentId],
 		tags: [APP_CREATE_INTENT_TAG],
 	});
-	const matching = tasks
-		.filter((t) => {
-			const meta = t.metadata as Record<string, unknown> | undefined;
-			return meta?.roomId === roomId;
-		})
-		.sort((a, b) => {
-			const aMeta = a.metadata as Record<string, unknown> | undefined;
-			const bMeta = b.metadata as Record<string, unknown> | undefined;
-			const aAt =
-				typeof aMeta?.intentCreatedAt === "string"
-					? Date.parse(aMeta.intentCreatedAt)
-					: 0;
-			const bAt =
-				typeof bMeta?.intentCreatedAt === "string"
-					? Date.parse(bMeta.intentCreatedAt)
-					: 0;
-			return bAt - aAt;
-		});
-	const top = matching[0];
+	// Revalidate adapter results. Legacy rows bind the room in metadata only;
+	// an explicit top-level room or actor binding must never be overridden.
+	const matching = tasks.filter(
+		(task) =>
+			task.id &&
+			task.agentId === runtime.agentId &&
+			task.tags?.includes(APP_CREATE_INTENT_TAG) &&
+			(task.roomId ?? task.metadata?.roomId) === roomId &&
+			(task.metadata?.roomId === undefined ||
+				task.metadata.roomId === roomId) &&
+			(!entityId || !task.entityId || task.entityId === entityId) &&
+			(!task.status ||
+				task.status === "PENDING" ||
+				task.status === "UNSPECIFIED"),
+	);
+	if (!requestedTaskId && matching.length > 1) {
+		return {
+			ambiguousTaskIds: matching.flatMap((task) => (task.id ? [task.id] : [])),
+		};
+	}
+	const top = requestedTaskId
+		? matching.find((task) => task.id === requestedTaskId)
+		: matching[0];
 	if (!top?.id) return null;
 	const meta = top.metadata as Record<string, unknown> | undefined;
 	if (!meta || typeof meta.intent !== "string") return null;
@@ -658,22 +674,22 @@ async function findExistingIntentTask(
 async function persistIntentTask(
 	runtime: IAgentRuntime,
 	metadata: IntentTaskMetadata,
+	entityId: Memory["entityId"],
 ): Promise<void> {
 	// TaskMetadata's index signature is `JsonValue | object | undefined`, so
 	// the choices array goes through cleanly; we serialize the IntentTaskMetadata
 	// directly into metadata fields without mutating the structure.
 	//
-	// The task also joins the core AWAITING_CHOICE convention (tag +
-	// `metadata.options` + `metadata.choiceActionName`): the CHOICE provider
-	// then surfaces the pending picker to the model, and the threadOps abort
-	// guard recognizes a bare option value ("cancel") as a widget pick to route
-	// back into APP rather than a turn retraction (#16939).
+	// Preserve the core choice convention and the domain intent record. The
+	// owner-scoped app-control provider delivers the complete pending choice
+	// before model action selection, without interpreting the user's words.
 	await runtime.createTask({
+		entityId,
 		name: "APP_CREATE intent",
 		description: `Awaiting user choice for: ${metadata.intent}`,
 		tags: [APP_CREATE_INTENT_TAG, "AWAITING_CHOICE"],
 		// Top-level roomId is what the room-scoped AWAITING_CHOICE queries (core
-		// CHOICE provider, threadOps pick guard) filter on; metadata.roomId is
+		// CHOICE provider) filter on; metadata.roomId is
 		// kept for the existing findExistingIntentTask lookup.
 		roomId: metadata.roomId as UUID,
 		metadata: {
@@ -971,14 +987,69 @@ export async function runCreate({
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 	const userText = userRequestMessageText(message).trim();
 	const explicitChoice = readStringOption(options, "choice");
+	const requestedTaskId = readStringOption(options, "taskId");
+	const taskIdSupplied = Object.hasOwn(
+		normalizeActionOptions(options) ?? {},
+		"taskId",
+	);
 	const explicitEditTarget = readOptionalRefOption(options, "editTarget");
 	const explicitIntent = readStringOption(options, "intent");
 
 	const appClient = client ?? createAppControlClient();
-	const existing = await findExistingIntentTask(runtime, roomId);
-
 	const choiceText = explicitChoice ?? userText;
 	const normalizedChoice = choiceText.toLowerCase().trim();
+	const choiceRequested =
+		taskIdSupplied || explicitChoice !== null || isChoiceReply(choiceText);
+	const unresolvedChoice = (
+		error: string,
+		taskIds?: string[],
+	): ActionResult => ({
+		success: false,
+		text: "The pending app creation choice was not applied. Resolve the reported task binding before proceeding.",
+		transcriptVisibility: "internal",
+		turnComplete: false,
+		data: {
+			error,
+			action: "APP",
+			taskId: requestedTaskId ?? null,
+			choice: normalizedChoice,
+			...(taskIds ? { taskIds } : {}),
+		},
+	});
+	if (
+		choiceRequested &&
+		(!runtime.agentId ||
+			!message.entityId ||
+			!message.roomId ||
+			!(await hasOwnerAccess(runtime, message)))
+	) {
+		return unresolvedChoice("CREATE_CHOICE_OWNER_REQUIRED");
+	}
+	if (taskIdSupplied && !requestedTaskId) {
+		return unresolvedChoice("CREATE_CHOICE_TASK_INVALID");
+	}
+	const pending = await findExistingIntentTask(
+		runtime,
+		roomId,
+		requestedTaskId ?? undefined,
+		message.entityId,
+	);
+	if (choiceRequested && pending && "ambiguousTaskIds" in pending) {
+		return unresolvedChoice(
+			"CREATE_CHOICE_AMBIGUOUS",
+			pending.ambiguousTaskIds,
+		);
+	}
+	const existing = pending && "taskId" in pending ? pending : null;
+	if (requestedTaskId && !existing) {
+		return unresolvedChoice("CREATE_CHOICE_TASK_NOT_FOUND");
+	}
+	if (choiceRequested && !isChoiceReply(choiceText)) {
+		return unresolvedChoice("CREATE_CHOICE_INVALID");
+	}
+	if (!existing && isChoiceReply(choiceText) && normalizedChoice !== "cancel") {
+		return unresolvedChoice("CREATE_CHOICE_TASK_NOT_FOUND");
+	}
 	if (!existing && normalizedChoice === "cancel") {
 		const text = "Canceled. No app changes made.";
 		await callback?.({ text });
@@ -991,9 +1062,13 @@ export async function runCreate({
 
 	// Follow-up turn: user picked from a previously-shown choice block.
 	if (existing && isChoiceReply(choiceText)) {
-		await deleteIntentTask(runtime, existing.taskId);
+		const choice = existing.metadata.choices.find(
+			(entry) => entry.key === normalizedChoice,
+		);
+		if (!choice) return unresolvedChoice("CREATE_CHOICE_INVALID");
 
 		if (normalizedChoice === "cancel") {
+			await deleteIntentTask(runtime, existing.taskId);
 			const text = "Canceled. No app changes made.";
 			await callback?.({ text });
 			return {
@@ -1004,6 +1079,7 @@ export async function runCreate({
 		}
 
 		if (normalizedChoice === "new") {
+			await deleteIntentTask(runtime, existing.taskId);
 			return createNewApp({
 				runtime,
 				intent: existing.metadata.intent,
@@ -1014,23 +1090,15 @@ export async function runCreate({
 		}
 
 		// edit-N path
-		const idxMatch = normalizedChoice.match(/^edit-(\d+)$/);
-		const idx = idxMatch ? Number(idxMatch[1]) - 1 : -1;
-		const choice = existing.metadata.choices.filter((c) =>
-			c.key.startsWith("edit-"),
-		)[idx];
 		if (!choice?.appName) {
-			const text = `I lost track of the edit target "${normalizedChoice}". Please re-state your request.`;
-			await callback?.({ text });
-			return { success: false, text };
+			return unresolvedChoice("CREATE_CHOICE_TARGET_INVALID");
 		}
 		const installedAll = await appClient.listInstalledApps();
 		const target = installedAll.find((a) => a.name === choice.appName);
 		if (!target) {
-			const text = `App "${choice.appName}" is no longer installed.`;
-			await callback?.({ text });
-			return { success: false, text };
+			return unresolvedChoice("CREATE_CHOICE_TARGET_NOT_FOUND");
 		}
+		await deleteIntentTask(runtime, existing.taskId);
 		return editExistingApp({
 			runtime,
 			intent: existing.metadata.intent,
@@ -1130,12 +1198,16 @@ export async function runCreate({
 		{ key: "cancel", label: "Cancel" },
 	];
 
-	await persistIntentTask(runtime, {
-		roomId,
-		intent,
-		choices,
-		intentCreatedAt: new Date().toISOString(),
-	});
+	await persistIntentTask(
+		runtime,
+		{
+			roomId,
+			intent,
+			choices,
+			intentCreatedAt: new Date().toISOString(),
+		},
+		message.entityId,
+	);
 
 	const text = renderChoiceBlock(choiceId, matches);
 	await callback?.({ text });

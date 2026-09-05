@@ -6,6 +6,7 @@
  * action/provider surface that the message loop dispatches against.
  */
 import type { ActionFailureProvenance } from "./action-failure";
+import type { ActionReplyFailure } from "./action-reply";
 import type { ConnectorAccountPolicy } from "./connector-account-policy";
 import type {
 	AgentContext,
@@ -162,6 +163,9 @@ export interface ActionExample {
 
 export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
 
+/** Model-declared status of work described by the reply, not execution proof. */
+export type ReplyEffectStatus = "none" | "applied" | "non_applied" | "pending";
+
 export interface MessageHandlerDeterministicToolCall {
 	name: string;
 	params?: Record<string, JsonValue>;
@@ -170,6 +174,7 @@ export interface MessageHandlerDeterministicToolCall {
 export interface MessageHandlerPlan {
 	contexts: AgentContext[];
 	reply?: string;
+	replyEffectStatus?: ReplyEffectStatus;
 	/**
 	 * When true, Stage 1 marks this turn as requiring a tool call. The router
 	 * upgrades empty / simple-only plans to planning against `general` and the
@@ -995,6 +1000,9 @@ export interface ActionResult {
 	 * throws. It must be absent on successful results.
 	 */
 	failureProvenance?: ActionFailureProvenance;
+
+	/** Reply generation failed; success and effect receipts still describe the action. */
+	replyFailure?: ActionReplyFailure;
 
 	/** Values to merge into the state */
 	values?: Record<string, ProviderValue>;

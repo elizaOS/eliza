@@ -16,21 +16,21 @@ const MATCH_CONTEXT = {
 } as const;
 
 describe("viewNavigationShortcuts (#8791)", () => {
-	it("registers exact view commands ahead of the model without enabling follow-up routing", () => {
+	it("leaves first-party command and persisted-choice routing to the model", () => {
 		expect(appControlPlugin.shortcuts ?? []).toEqual([]);
 		expect(
 			appControlPlugin.responseHandlerEvaluators?.map(
 				(evaluator) => evaluator.name,
-			),
-		).toEqual([
-			"app-control.view-command-shortcut",
-			"app-control.create-choice-shortcut",
-		]);
-		expect(
-			appControlPlugin.responseHandlerEvaluators?.map(
-				(evaluator) => evaluator.name,
-			),
-		).not.toContain("app-control.view-followup-routing");
+			) ?? [],
+		).toEqual([]);
+	});
+
+	it("lets a model-selected VIEWS action open the Browser surface without advertising VIEWS for browser retrieval", () => {
+		const views = appControlPlugin.actions?.find(
+			(action) => action.name === "VIEWS",
+		);
+		expect(views?.contexts).not.toContain("browser");
+		expect(views?.contextGate?.anyOf).toContain("browser");
 	});
 
 	it("resolves explicit typed and ASR-normalized view navigation to VIEWS", () => {

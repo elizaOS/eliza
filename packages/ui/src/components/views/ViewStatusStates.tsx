@@ -226,13 +226,14 @@ export function ViewUnavailableState({
     >
       <span>
         {t("dynamicviewloader.unavailable.body", {
-          defaultValue: "This view is not available in the current runtime.",
+          defaultValue:
+            "This app is unavailable here. Install or enable it, then try again.",
         })}
       </span>
       <span className="mt-1 block">
-        {t("dynamicviewloader.viewId", {
+        {t("dynamicviewloader.unavailable.appLabel", {
           viewId,
-          defaultValue: "View ID: {{viewId}}",
+          defaultValue: "App: {{viewId}}",
         })}
       </span>
     </ViewStatusFrame>

@@ -265,6 +265,30 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("catalog load states", () => {
+  it("reserves the ready panel geometry while the catalog loads", async () => {
+    const catalog = deferred<unknown>();
+    const config = deferred<ModelsConfigResponse>();
+    clientMock.getModelsCatalog.mockReset().mockReturnValue(catalog.promise);
+    clientMock.getModelsConfig.mockReset().mockReturnValue(config.promise);
+
+    render(<ModelConfigurationPanel />);
+
+    expect(
+      screen.getByRole("status", { name: "Loading model catalog…" }),
+    ).toBeTruthy();
+    expect(
+      document.querySelectorAll('[data-slot="settings-row"]'),
+    ).toHaveLength(12);
+
+    await act(async () => {
+      catalog.resolve({ providers: {}, catalog: fixtureCatalog() });
+      config.resolve(fixtureConfig());
+    });
+    await waitFor(() =>
+      expect(agentElements.has("models-small-provider")).toBe(true),
+    );
+  });
+
   it("reaches ready after the StrictMode effect lifecycle replay", async () => {
     render(
       <StrictMode>
@@ -276,6 +300,18 @@ describe("catalog load states", () => {
       expect(agentElements.has("models-small-provider")).toBe(true),
     );
     expect(screen.queryByText("Loading model catalog…")).toBeNull();
+    const firstCatalogSignal = clientMock.getModelsCatalog.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const currentCatalogSignal = clientMock.getModelsCatalog.mock.calls[1]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const firstConfigSignal = clientMock.getModelsConfig.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const currentConfigSignal = clientMock.getModelsConfig.mock.calls[1]?.[0]
+      ?.signal as AbortSignal | undefined;
+    expect(firstCatalogSignal?.aborted).toBe(true);
+    expect(firstConfigSignal?.aborted).toBe(true);
+    expect(currentCatalogSignal?.aborted).toBe(false);
+    expect(currentConfigSignal?.aborted).toBe(false);
   });
 
   it("keeps the current StrictMode load when the stale load succeeds later", async () => {
@@ -368,9 +404,15 @@ describe("catalog load states", () => {
     clientMock.getModelsCatalog.mockReset().mockReturnValue(catalog.promise);
     clientMock.getModelsConfig.mockReset().mockReturnValue(config.promise);
     const view = render(<ModelConfigurationPanel />);
+    const catalogSignal = clientMock.getModelsCatalog.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const configSignal = clientMock.getModelsConfig.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
     expect(screen.getByText("Loading model catalog…")).toBeTruthy();
 
     view.unmount();
+    expect(catalogSignal?.aborted).toBe(true);
+    expect(configSignal?.aborted).toBe(true);
     await act(async () => {
       catalog.resolve({ providers: {}, catalog: fixtureCatalog() });
       config.resolve(fixtureConfig());
@@ -407,6 +449,95 @@ describe("catalog load states", () => {
       expect(agentElements.has("models-small-provider")).toBe(true),
     );
   });
+
+  it.each([
+    ["catalog", "retry"],
+    ["config", "retry"],
+    ["catalog", "unmount"],
+    ["config", "unmount"],
+  ] as const)(
+    "cancels the pending sibling after %s fails and preserves %s ownership",
+    async (failedRequest, completion) => {
+      const catalog = deferred<unknown>();
+      const config = deferred<ModelsConfigResponse>();
+      const retryCatalog = deferred<unknown>();
+      const retryConfig = deferred<ModelsConfigResponse>();
+      clientMock.getModelsCatalog
+        .mockReset()
+        .mockReturnValueOnce(catalog.promise)
+        .mockReturnValueOnce(retryCatalog.promise);
+      clientMock.getModelsConfig
+        .mockReset()
+        .mockReturnValueOnce(config.promise)
+        .mockReturnValueOnce(retryConfig.promise);
+
+      const view = render(<ModelConfigurationPanel />);
+      const catalogSignal = clientMock.getModelsCatalog.mock.calls[0]?.[0]
+        ?.signal as AbortSignal;
+      const configSignal = clientMock.getModelsConfig.mock.calls[0]?.[0]
+        ?.signal as AbortSignal;
+      expect(catalogSignal.aborted).toBe(false);
+      expect(configSignal).toBe(catalogSignal);
+
+      await act(async () => {
+        const failed = failedRequest === "catalog" ? catalog : config;
+        failed.reject(new Error(`${failedRequest} unreachable`));
+      });
+      expect((await screen.findByRole("alert")).textContent).toContain(
+        `${failedRequest} unreachable`,
+      );
+      expect(catalogSignal.aborted).toBe(true);
+      expect(configSignal.aborted).toBe(true);
+
+      act(() => agentButton("models-retry").click());
+      const retryCatalogSignal = clientMock.getModelsCatalog.mock.calls[1]?.[0]
+        ?.signal as AbortSignal;
+      const retryConfigSignal = clientMock.getModelsConfig.mock.calls[1]?.[0]
+        ?.signal as AbortSignal;
+      expect(retryCatalogSignal).not.toBe(catalogSignal);
+      expect(retryConfigSignal).toBe(retryCatalogSignal);
+      expect(retryCatalogSignal.aborted).toBe(false);
+
+      // A transport may settle its abort rejection after the retry starts.
+      // That old sibling must not replace the retry's loading/error state.
+      await act(async () => {
+        const sibling = failedRequest === "catalog" ? config : catalog;
+        sibling.reject(new DOMException("Aborted", "AbortError"));
+      });
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByText("Loading model catalog…")).toBeTruthy();
+      expect(retryCatalogSignal.aborted).toBe(false);
+
+      if (completion === "unmount") {
+        view.unmount();
+        expect(retryCatalogSignal.aborted).toBe(true);
+        expect(retryConfigSignal.aborted).toBe(true);
+        await act(async () => {
+          retryCatalog.reject(new DOMException("Aborted", "AbortError"));
+          retryConfig.reject(new DOMException("Aborted", "AbortError"));
+        });
+        expect(view.container.childElementCount).toBe(0);
+      } else {
+        await act(async () => {
+          retryCatalog.resolve({
+            providers: {},
+            catalog: fixtureCatalogWithSmallModel("retry-small"),
+          });
+          retryConfig.resolve(fixtureConfigWithSmallModel("retry-small"));
+        });
+        await waitFor(() =>
+          expect(agentElements.get("models-small-model")?.getValue?.()).toBe(
+            "retry-small",
+          ),
+        );
+        expect(screen.queryByRole("alert")).toBeNull();
+        expect(screen.queryByText("Loading model catalog…")).toBeNull();
+        expect(retryCatalogSignal.aborted).toBe(false);
+      }
+      expect(clientMock.getModelsCatalog).toHaveBeenCalledTimes(2);
+      expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it.each(["success", "error"] as const)(
     "keeps the newer overlapping Retry result when the older load settles with %s",

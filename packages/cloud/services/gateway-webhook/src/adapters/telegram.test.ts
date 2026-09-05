@@ -424,9 +424,9 @@ describe("telegramAdapter.extractEvent", () => {
 
     expect(fetches).toBe(0);
     // "01ABCDEF" contains 0 and 1, which Crockford base32 excludes
-    // (TELEGRAM_GROUP_LINK_COMMAND uses [2-9A-HJ-NP-Z]{8}), so this is not a
-    // link command and remains an ordinary slash-command turn without a group
-    // authority lookup.
+    // (TELEGRAM_GROUP_LINK_COMMAND uses [2-9A-HJ-NP-Z]{8}), so the generic
+    // slash-command classifier may retain it as a command but the link path
+    // must not perform a membership lookup or attach linking authority.
     expect(event).toMatchObject({
       text: "/eliza_link 01ABCDEF",
       groupInvocation: "command",

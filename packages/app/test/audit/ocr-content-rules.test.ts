@@ -375,6 +375,10 @@ ph eg`,
       "< Logs\nAll levels\nAll sources\nAll tags\nINFO\nsmoke\nsmoke API ready",
     ],
     [
+      "builtin-character",
+      "< Character\npersonality Relationships skills Experience\nv al v\nsear\nch\n+ PQ\nple.",
+    ],
+    [
       "builtin-skills",
       "< skills\nA) on (0)\norr (0)\n— —\nSear\nch\nsls. gap\nar Op",
     ],

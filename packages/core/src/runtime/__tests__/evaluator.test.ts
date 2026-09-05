@@ -1181,6 +1181,61 @@ describe("malformed envelope recovery (#18240 class — the 2026-08-10 leak)", (
 		expect(result.messageToUser).toBeUndefined();
 	});
 
+	it("preserves a CONTINUE decision after a natural-language preamble instead of finishing on the preamble", async () => {
+		const raw = `The first operation completed, but another requested action remains.\n\n${JSON.stringify(
+			{
+				thought:
+					"The note changed, but the requested navigation is still pending.",
+				success: false,
+				decision: "CONTINUE",
+			},
+		)}`;
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.success).toBe(false);
+		expect(result.thought).toContain("navigation is still pending");
+		expect(result.messageToUser).toBeUndefined();
+	});
+
+	it("does not equate structured outcome count with required tool-call count", async () => {
+		const params = harness(
+			JSON.stringify({
+				thought:
+					"The body was updated and its title preserved by the same operation.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: "Your note is updated.",
+			}),
+		);
+		const result = await runEvaluator({
+			...params,
+			context: {
+				...params.context,
+				events: [
+					{
+						id: "routing",
+						type: "message_handler",
+						metadata: {
+							plan: { intents: ["update note body", "preserve title"] },
+						},
+					},
+				],
+			},
+			trajectory: {
+				...params.trajectory,
+				steps: [
+					{
+						iteration: 0,
+						toolCall: { name: "NOTES", params: { action: "update" } },
+						result: { success: true, text: "Note updated." },
+					},
+				],
+			},
+		});
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe("Your note is updated.");
+	});
+
 	it("replans instead of shipping debris when a terminal envelope has no answer", async () => {
 		const raw = `None${JSON.stringify({
 			success: false,

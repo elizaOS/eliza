@@ -63,7 +63,7 @@ export type {
 	ServiceTransport,
 };
 
-export const DEFAULT_CEREBRAS_TEXT_MODEL = "gemma-4-31b";
+export const DEFAULT_CEREBRAS_TEXT_MODEL = "qwen-3.8-27b";
 export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 // Managed Dedicated agents deliberately use one Cerebras-native model for both
 // text tiers so planner/reasoning cannot fall through to a different provider.

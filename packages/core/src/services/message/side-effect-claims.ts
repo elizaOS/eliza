@@ -729,3 +729,34 @@ export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
 	}
 	return false;
 }
+// ── Progress-promise detection ──────────────────────────────────────────────
+// A short reply whose ENTIRE content is a promise to do work ("On it.",
+// "Checking your list now.") asserts that background work is underway. On a
+// simple-path turn that ran no tool and routed no async handoff, that promise
+// is fabricated: nothing will ever deliver. Detection is deliberately
+// whole-reply and length-bounded so substantive replies that merely contain a
+// forward-looking clause ("I'll be honest…", "I'll need the event title —
+// what is it?") never fire; questions are exempt like every detector here.
+const PROGRESS_PROMISE_REPLY_PATTERN = new RegExp(
+	String.raw`^[\s"'…–—-]*(?:` +
+		String.raw`on it|got it|will do|sure thing|you got it|no problem|right away|` +
+		String.raw`one (?:sec|second|moment|min(?:ute)?)|just a (?:sec|second|moment|min(?:ute)?)|hold on|hang (?:on|tight)|gimme a (?:sec|second|minute)|` +
+		String.raw`(?:i(?:['’]m|\s+am)\s+)?(?:checking|looking into|pulling up|grabbing|fetching|getting|working) (?:it|that|this|on it|[\w\s]{0,24}?)(?:\s+now)?|` +
+		String.raw`i(?:['’]ll|\s+will) (?:check|look into|pull(?: that| it)? up|grab|fetch|get|handle|take care of)(?:\s[\w\s]{0,24})?|` +
+		String.raw`let me (?:check|look into|pull(?: that| it)? up|grab|fetch|get)(?:\s[\w\s]{0,24})?` +
+		String.raw`)[\s.!…✅👍🫡–—-]*$`,
+	"iu",
+);
+const PROGRESS_PROMISE_MAX_LENGTH = 64;
+
+/**
+ * True when the whole reply is a bare promise of in-progress or imminent work
+ * with no substantive content. Callers gate on turn state (no tool executed,
+ * no async handoff routed) — the detector only classifies the text.
+ */
+export function replyClaimsInProgressWork(reply: string): boolean {
+	const text = reply.trim();
+	if (!text || text.length > PROGRESS_PROMISE_MAX_LENGTH) return false;
+	if (text.includes("?")) return false;
+	return PROGRESS_PROMISE_REPLY_PATTERN.test(text);
+}

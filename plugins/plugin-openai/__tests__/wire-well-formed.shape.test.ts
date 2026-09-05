@@ -9,7 +9,7 @@
  * raw request bytes; the assertions replay a strict parser's view of the body.
  */
 import { createServer, type Server } from "node:http";
-import { type ElizaError, type IAgentRuntime, MAX_WELL_FORMED_VISITS } from "@elizaos/core";
+import { type ElizaError, type IAgentRuntime, logger, MAX_WELL_FORMED_VISITS } from "@elizaos/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models";
 
@@ -25,6 +25,7 @@ interface CapturedRequest {
 const captured: CapturedRequest[] = [];
 let server: Server;
 let baseUrl: string;
+let rateLimitRequestsRemaining = 0;
 
 function startCaptureServer(): Promise<string> {
   server = createServer((request, response) => {
@@ -33,6 +34,14 @@ function startCaptureServer(): Promise<string> {
     request.on("end", () => {
       const raw = Buffer.concat(chunks).toString("utf8");
       captured.push({ url: request.url ?? "", bytes: Buffer.from(raw, "utf8") });
+      if (rateLimitRequestsRemaining > 0) {
+        rateLimitRequestsRemaining--;
+        response.writeHead(429, { "content-type": "application/json", "retry-after": "0.001" });
+        response.end(
+          JSON.stringify({ error: { message: "test rate limit", type: "rate_limit_error" } })
+        );
+        return;
+      }
       response.writeHead(200, { "content-type": "application/json" });
       // When the request includes response_format (structured output), the AI
       // SDK parses the response content as JSON; return valid JSON for those.
@@ -99,6 +108,7 @@ afterAll(() => {
 
 beforeEach(() => {
   captured.length = 0;
+  rateLimitRequestsRemaining = 0;
   vi.stubEnv("OPENAI_API_KEY", "test-key");
   vi.stubEnv("OPENAI_BASE_URL", baseUrl);
   vi.stubEnv("OPENAI_SMALL_MODEL", "test-model");
@@ -108,8 +118,78 @@ beforeEach(() => {
 });
 
 describe("#18025: request bodies are well-formed strict JSON", () => {
+  it("observes SDK-internal rate-limit retries without logging prompts or credentials", async () => {
+    const warn = vi.spyOn(logger, "warn");
+    const debug = vi.spyOn(logger, "debug");
+    rateLimitRequestsRemaining = 1;
+    try {
+      const result = await handleTextSmall(buildRuntime(), {
+        prompt: "private-prompt-marker",
+      } as never);
+      expect(result).toBe("ok");
+      expect(captured).toHaveLength(2);
+      const messages = [...warn.mock.calls, ...debug.mock.calls]
+        .flat()
+        .filter((value) => typeof value === "string" && value.startsWith("[OpenAI] HTTP"));
+      expect(
+        messages.some((message) => /status=429 headersMs=\d+ retryAfterSeconds=0.001/.test(message))
+      ).toBe(true);
+      expect(messages.some((message) => /status=200 headersMs=\d+/.test(message))).toBe(true);
+      expect(messages.join("\n")).not.toContain("private-prompt-marker");
+      expect(messages.join("\n")).not.toContain("test-key");
+    } finally {
+      warn.mockRestore();
+      debug.mockRestore();
+    }
+  });
+
+  it.each(["generate", "live-stream", "buffered-stream"])(
+    "%s preserves the SDK's exhausted HTTP retry budget",
+    async (lane) => {
+      rateLimitRequestsRemaining = Number.POSITIVE_INFINITY;
+      vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", lane === "buffered-stream" ? "1" : "0");
+      const request = async () => {
+        const result = await handleTextSmall(buildRuntime(), {
+          prompt: "retry budget probe",
+          stream: lane !== "generate",
+        });
+        if (typeof result !== "string" && "textStream" in result) {
+          for await (const _chunk of result.textStream) {
+            // Consume the real SDK stream so transport failure reaches its caller.
+          }
+        }
+      };
+      await expect(request()).rejects.toMatchObject({
+        name: "AI_RetryError",
+        reason: "maxRetriesExceeded",
+      });
+      expect(captured).toHaveLength(3);
+    },
+    20_000
+  );
+
+  it("sends JSON mode for Cerebras evaluator schemas without requiring a duplicate format flag", async () => {
+    vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+    vi.stubEnv("OPENAI_SMALL_MODEL", "qwen-3.8-27b");
+    const result = await handleTextSmall(buildRuntime(), {
+      messages: [{ role: "user", content: "Return a JSON object with goodField set to value." }],
+      responseSchema: {
+        type: "object",
+        properties: { goodField: { type: "string" } },
+        required: ["goodField"],
+        additionalProperties: false,
+      },
+    } as never);
+    expect(captured).toHaveLength(1);
+    expect(assertStrictParseable(captured[0].bytes).response_format).toEqual({
+      type: "json_object",
+    });
+    expect(result).toMatchObject({ text: '{"goodField":"value"}' });
+  });
+
   it.each([
     ["gemma-4-31b", undefined],
+    ["qwen-3.8-27b", "none"],
     ["gpt-oss-120b", "low"],
     ["zai-glm-4.7", "low"],
   ] as const)(

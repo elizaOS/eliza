@@ -2,11 +2,15 @@
  * Covers local-inference client policy helpers: deterministic device-tier
  * classification and the real fetch boundary for atomic text routing.
  */
+import { ElizaError } from "@elizaos/core/errors";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { HardwareProbe } from "../services/local-inference/types";
 import { ElizaClient } from "./client-base";
-import { classifyDeviceTierFromProbe } from "./client-local-inference";
+import {
+  classifyDeviceTierFromProbe,
+  LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE,
+} from "./client-local-inference";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -101,6 +105,215 @@ describe("classifyDeviceTierFromProbe", () => {
     );
     expect(result.tier).toBe("POOR");
     expect(result.mobile).toBe(true);
+  });
+});
+
+describe("getLocalInferenceHub", () => {
+  it("rejects malformed hardware before UI state can render it", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          catalog: [],
+          installed: [],
+          active: { modelId: null, loadedAt: null, status: "idle" },
+          downloads: [],
+          hardware: { status: "unsupported" },
+          assignments: {},
+          textReadiness: { updatedAt: new Date(0).toISOString(), slots: {} },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    let thrown: unknown;
+    try {
+      await client.getLocalInferenceHub();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ElizaError);
+    expect(thrown).toMatchObject({
+      code: LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE,
+      context: {
+        path: "response.hardware.totalRamGb",
+        expected: "a finite non-negative number",
+      },
+    });
+    expect((thrown as Error).message).toContain(
+      "Hardware details are unavailable",
+    );
+  });
+
+  it.each([
+    {
+      label: "negative RAM",
+      override: { totalRamGb: -1 },
+      path: "response.hardware.totalRamGb",
+    },
+    {
+      label: "fractional CPU core count",
+      override: { cpuCores: 2.5 },
+      path: "response.hardware.cpuCores",
+    },
+    {
+      label: "empty platform",
+      override: { platform: "" },
+      path: "response.hardware.platform",
+    },
+    {
+      label: "non-boolean Apple Silicon flag",
+      override: { appleSilicon: "true" },
+      path: "response.hardware.appleSilicon",
+    },
+    {
+      label: "missing GPU field",
+      override: { gpu: undefined },
+      path: "response.hardware.gpu",
+    },
+    {
+      label: "unsupported model bucket string",
+      override: { recommendedBucket: "tiny" },
+      path: "response.hardware.recommendedBucket",
+    },
+    {
+      label: "array model bucket",
+      override: { recommendedBucket: ["small"] },
+      path: "response.hardware.recommendedBucket",
+    },
+    {
+      label: "array probe source",
+      override: { source: ["os-fallback"] },
+      path: "response.hardware.source",
+    },
+    {
+      label: "array GPU backend",
+      override: {
+        gpu: {
+          backend: ["vulkan"],
+          totalVramGb: 8,
+          freeVramGb: 6,
+        },
+      },
+      path: "response.hardware.gpu.backend",
+    },
+  ])("rejects a $label instead of coercing it", async ({ override, path }) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          catalog: [],
+          installed: [],
+          active: { modelId: null, loadedAt: null, status: "idle" },
+          downloads: [],
+          hardware: { ...probe({}), ...override },
+          assignments: {},
+          textReadiness: { updatedAt: new Date(0).toISOString(), slots: {} },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHub()).rejects.toMatchObject({
+      code: LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE,
+      context: { path },
+    });
+  });
+
+  it("accepts the canonical iOS zero-core fallback", async () => {
+    const snapshot = {
+      catalog: [],
+      installed: [],
+      active: { modelId: null, loadedAt: null, status: "idle" },
+      downloads: [],
+      hardware: probe({
+        cpuCores: 0,
+        platform: "darwin",
+        arch: "arm64",
+        appleSilicon: true,
+        mobile: { platform: "ios" },
+      }),
+      assignments: {},
+      textReadiness: { updatedAt: new Date(0).toISOString(), slots: {} },
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(snapshot), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHub()).resolves.toEqual(snapshot);
+  });
+
+  it("accepts the canonical hardware probe contract", async () => {
+    const snapshot = {
+      catalog: [],
+      installed: [],
+      active: { modelId: null, loadedAt: null, status: "idle" },
+      downloads: [],
+      hardware: probe({
+        gpu: { backend: "vulkan", totalVramGb: 8, freeVramGb: 6 },
+      }),
+      assignments: {},
+      textReadiness: { updatedAt: new Date(0).toISOString(), slots: {} },
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(snapshot), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHub()).resolves.toEqual(snapshot);
+  });
+});
+
+describe("getLocalInferenceHardware", () => {
+  it("rejects malformed direct hardware before device-tier classification", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ status: "unsupported" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHardware()).rejects.toMatchObject({
+      code: LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE,
+      context: {
+        path: "response.hardware.totalRamGb",
+        expected: "a finite non-negative number",
+      },
+    });
+  });
+
+  it("accepts the canonical direct iOS zero-core fallback", async () => {
+    const hardware = probe({
+      cpuCores: 0,
+      platform: "darwin",
+      arch: "arm64",
+      appleSilicon: true,
+      mobile: { platform: "ios" },
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(hardware), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHardware()).resolves.toEqual(hardware);
   });
 });
 

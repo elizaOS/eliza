@@ -1,7 +1,7 @@
 :root {
   /* --brand-blue retained as a legacy token but remapped to neutral so
      stragglers that still reference it don't render blue. The Eliza Cloud
-     palette is black + white + orange accent only. */
+     palette is black + white, with color reserved for semantic status. */
   --brand-blue: rgba(0, 0, 0, 0.6);
   --brand-orange: #ff6a1f;
   --brand-black: #000000;
@@ -28,19 +28,19 @@
   /* Modal/drawer scrim: a NEUTRAL dark dim (not the warm brand-black
      rgb(20,12,7), which cast a brown tint over every scrimmed surface). */
   --scrim: rgba(0, 0, 0, 0.7);
-  --accent: var(--brand-orange);
-  --accent-rgb: 255, 106, 31;
-  --accent-foreground: var(--brand-black);
-  --accent-subtle: rgba(255, 106, 31, 0.14);
-  --destructive: var(--brand-orange);
-  --destructive-foreground: var(--brand-black);
-  --destructive-subtle: rgba(255, 106, 31, 0.12);
+  --accent: var(--brand-black);
+  --accent-rgb: 0, 0, 0;
+  --accent-foreground: var(--brand-white);
+  --accent-subtle: rgba(0, 0, 0, 0.08);
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --destructive-subtle: rgba(220, 38, 38, 0.1);
   --status-success: #22c55e;
   --status-success-bg: rgba(34, 197, 94, 0.12);
-  --status-danger: var(--brand-orange);
-  --status-danger-bg: rgba(255, 106, 31, 0.12);
-  --status-warning: var(--brand-orange);
-  --status-warning-bg: rgba(255, 106, 31, 0.14);
+  --status-danger: #dc2626;
+  --status-danger-bg: rgba(220, 38, 38, 0.1);
+  --status-warning: #a16207;
+  --status-warning-bg: rgba(161, 98, 7, 0.1);
   --status-info: rgba(0, 0, 0, 0.7);
   --status-info-bg: rgba(0, 0, 0, 0.06);
   /* `--info` (base.css) maps to brand-blue; neutralize it here too so any
@@ -80,19 +80,19 @@
   /* Modal/drawer scrim: neutral black at a fixed dim so an open sheet reads as
      a genuine backdrop (warm rgb(20,12,7) cast a brown tint — owner-reverted). */
   --scrim: rgba(0, 0, 0, 0.72);
-  --accent: var(--brand-orange);
-  --accent-rgb: 255, 106, 31;
+  --accent: var(--brand-white);
+  --accent-rgb: 253, 250, 247;
   --accent-foreground: var(--brand-black);
-  --accent-subtle: rgba(255, 106, 31, 0.14);
-  --destructive: var(--brand-orange);
-  --destructive-foreground: var(--brand-black);
-  --destructive-subtle: rgba(255, 106, 31, 0.12);
+  --accent-subtle: rgba(255, 255, 255, 0.12);
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --destructive-subtle: rgba(239, 68, 68, 0.12);
   --status-success: #4ade80;
   --status-success-bg: rgba(74, 222, 128, 0.16);
-  --status-danger: var(--brand-orange);
-  --status-danger-bg: rgba(255, 106, 31, 0.12);
-  --status-warning: var(--brand-orange);
-  --status-warning-bg: rgba(255, 106, 31, 0.12);
+  --status-danger: #ef4444;
+  --status-danger-bg: rgba(239, 68, 68, 0.12);
+  --status-warning: #eab308;
+  --status-warning-bg: rgba(234, 179, 8, 0.1);
   --status-info: rgba(255, 255, 255, 0.7);
   --status-info-bg: rgba(255, 255, 255, 0.06);
   --info: rgba(255, 255, 255, 0.7);

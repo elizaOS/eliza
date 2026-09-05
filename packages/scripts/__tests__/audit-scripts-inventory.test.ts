@@ -114,6 +114,11 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     expect(inv.scriptTests.discoveredCount).toBeGreaterThan(90);
     expect(inv.scriptTests.excluded).toEqual([
       {
+        file: "packages/cloud/scripts/admin/run-integration-tests.test.mjs",
+        reason:
+          "the root test:cloud:integration command owns this Node node:sqlite lifecycle suite",
+      },
+      {
         file: "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
         reason:
           "the release-candidate workflow owns this slow real-registry transport test",

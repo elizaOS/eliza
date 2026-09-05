@@ -176,6 +176,28 @@ function statusCopy(status: SensitiveRequestStatus | "success"): {
   }
 }
 
+/**
+ * Remove the URL-carried request credential from browser history without
+ * notifying the router. The current router location retains the captured query
+ * for this load/submit lifecycle, while copied links and history keep only
+ * non-secret context.
+ */
+function stripSensitiveRequestTokenFromAddressBar(
+  requestId: string | undefined,
+  requestSearch: string,
+): void {
+  if (typeof window === "undefined") return;
+  if (!requestId || !new URLSearchParams(requestSearch).has("token")) return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("token")) return;
+  url.searchParams.delete("token");
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+}
+
 export default function SensitiveRequestPage() {
   const { requestId } = useParams<{ requestId: string }>();
   const location = useLocation();
@@ -203,6 +225,10 @@ export default function SensitiveRequestPage() {
       requestBasePath ? `${requestBasePath}/submit${location.search}` : null,
     [requestBasePath, location.search],
   );
+
+  useEffect(() => {
+    stripSensitiveRequestTokenFromAddressBar(requestId, location.search);
+  }, [requestId, location.search]);
 
   const loadRequest = useCallback(async () => {
     if (!requestPath) {

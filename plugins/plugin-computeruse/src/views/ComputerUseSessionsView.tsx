@@ -691,12 +691,12 @@ export function ComputerUseSessionsView({
                     }`}
                     key={session.id}
                   >
-                    <div className="flex min-h-11 items-start justify-between gap-2">
+                    <div className="flex min-h-11 flex-wrap items-start justify-between gap-2">
                       <Button
                         variant="selection"
                         size="row"
                         align="start"
-                        className="min-w-0 flex-1"
+                        className="min-w-36 flex-1"
                         data-agent-id={`computer-session-select-${session.id}`}
                         onClick={() => setSelectedId(session.id)}
                         type="button"

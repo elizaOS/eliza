@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
+import { resolveGnuBash } from "../lib/gnu-shell.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
 const workflowPath = new URL(
@@ -20,6 +21,8 @@ const workflowPath = new URL(
   repoRoot,
 );
 const source = readFileSync(workflowPath, "utf8");
+const GNU_BASH = resolveGnuBash();
+const executedTest = GNU_BASH ? test : test.skip;
 const railwayManifest = readFileSync(
   new URL("packages/cloud/services/gateway-webhook/railway.toml", repoRoot),
   "utf8",
@@ -237,7 +240,7 @@ exit 98
     const verification = step(
       "Verify canonical Railway variables and sensitive names",
     );
-    return Bun.spawnSync(["bash", "-c", verification.run ?? ""], {
+    return Bun.spawnSync([GNU_BASH ?? "bash", "-c", verification.run ?? ""], {
       env: {
         ...process.env,
         EXPECTED_AGENT_BASE_DOMAIN: canonical.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
@@ -501,106 +504,116 @@ describe("protected gateway-webhook deployment workflow", () => {
     expect(source).not.toContain('echo "$RAILWAY_TOKEN"');
   });
 
-  test("requires the complete protected-environment Blooio set", () => {
-    for (const target of ["staging", "production"] as const) {
-      const complete = verifyRailwayVariableInventory(target);
-      expect(complete.exitCode).toBe(0);
-      expect(complete.stdout.toString()).toContain(
-        "required sensitive variable names are present",
-      );
-      const completeOutput = `${complete.stdout.toString()}${complete.stderr.toString()}`;
-      for (const value of Object.values(blooioValues)) {
-        expect(completeOutput).not.toContain(value);
-      }
+  executedTest(
+    "requires the complete protected-environment Blooio set",
+    () => {
+      for (const target of ["staging", "production"] as const) {
+        const complete = verifyRailwayVariableInventory(target);
+        expect(complete.exitCode).toBe(0);
+        expect(complete.stdout.toString()).toContain(
+          "required sensitive variable names are present",
+        );
+        const completeOutput = `${complete.stdout.toString()}${complete.stderr.toString()}`;
+        for (const value of Object.values(blooioValues)) {
+          expect(completeOutput).not.toContain(value);
+        }
 
-      for (const name of blooioNames) {
-        for (const missingValue of [undefined, "", " \t "]) {
-          const missing = verifyRailwayVariableInventory(target, {
-            [name]: missingValue,
-          });
-          expect(missing.exitCode).toBe(1);
-          const output = `${missing.stdout.toString()}${missing.stderr.toString()}`;
-          expect(output).toContain(
-            `Required protected ${target} Blooio Railway variable name is absent or blank: ${name}`,
-          );
-          for (const value of Object.values(blooioValues)) {
-            expect(output).not.toContain(value);
+        for (const name of blooioNames) {
+          for (const missingValue of [undefined, "", " \t "]) {
+            const missing = verifyRailwayVariableInventory(target, {
+              [name]: missingValue,
+            });
+            expect(missing.exitCode).toBe(1);
+            const output = `${missing.stdout.toString()}${missing.stderr.toString()}`;
+            expect(output).toContain(
+              `Required protected ${target} Blooio Railway variable name is absent or blank: ${name}`,
+            );
+            for (const value of Object.values(blooioValues)) {
+              expect(output).not.toContain(value);
+            }
           }
         }
       }
-    }
-  }, 60_000);
+    },
+    60_000,
+  );
 
-  test("requires protected Worker and Railway Blooio values to actually match", () => {
-    const variables = step(
-      "Verify canonical Railway variables and sensitive names",
-    );
-    for (const name of blooioNames) {
-      expect(variables.env?.[`WORKER_${name}`]).toBe(
-        githubExpression(`secrets.${name}`),
+  executedTest(
+    "requires protected Worker and Railway Blooio values to actually match",
+    () => {
+      const variables = step(
+        "Verify canonical Railway variables and sensitive names",
       );
-    }
-    // Equality is proven by digest; the values themselves must never be
-    // compared, echoed, or written in the clear.
-    expect(variables.run).toContain("openssl rand -hex 32");
-    expect(variables.run).toContain(
-      'openssl dgst -sha256 -hmac "$protected_match_salt" -r',
-    );
-    expect(variables.run).not.toContain('"$worker_value" != "$railway_value"');
-    expect(variables.run).not.toContain('echo "$worker_value"');
-
-    const workerValues = {
-      ELIZA_APP_BLOOIO_API_KEY: "worker-api-key-private-canary",
-      ELIZA_APP_BLOOIO_PHONE_NUMBER: "+15555550999",
-      ELIZA_APP_BLOOIO_WEBHOOK_SECRET: "worker-webhook-private-canary",
-    } as const;
-    const allSecretValues = [
-      ...Object.values(blooioValues),
-      ...Object.values(workerValues),
-    ];
-
-    for (const target of ["staging", "production"] as const) {
-      const matched = verifyRailwayVariableInventory(target);
-      expect(matched.exitCode).toBe(0);
-      expect(matched.stdout.toString()).toContain(
-        `protected ${target} Blooio Worker/Railway value matches by salted digest`,
-      );
-
       for (const name of blooioNames) {
-        // A divergent-but-nonblank Worker secret is precisely the case a
-        // names-only inventory accepts and a live webhook then rejects with 401.
-        const divergent = verifyRailwayVariableInventory(
-          target,
-          {},
-          { [name]: workerValues[name] },
+        expect(variables.env?.[`WORKER_${name}`]).toBe(
+          githubExpression(`secrets.${name}`),
         );
-        expect(divergent.exitCode).toBe(1);
-        const divergentOutput = `${divergent.stdout.toString()}${divergent.stderr.toString()}`;
-        expect(divergentOutput).toContain(
-          `Protected ${target} Blooio value differs between the Cloudflare Worker GitHub environment secret and the Railway variable: ${name}`,
-        );
-        for (const value of allSecretValues) {
-          expect(divergentOutput).not.toContain(value);
-        }
+      }
+      // Equality is proven by digest; the values themselves must never be
+      // compared, echoed, or written in the clear.
+      expect(variables.run).toContain("openssl rand -hex 32");
+      expect(variables.run).toContain(
+        'openssl dgst -sha256 -hmac "$protected_match_salt" -r',
+      );
+      expect(variables.run).not.toContain(
+        '"$worker_value" != "$railway_value"',
+      );
+      expect(variables.run).not.toContain('echo "$worker_value"');
 
-        for (const absentWorkerValue of [undefined, "", " \t "]) {
-          const absent = verifyRailwayVariableInventory(
+      const workerValues = {
+        ELIZA_APP_BLOOIO_API_KEY: "worker-api-key-private-canary",
+        ELIZA_APP_BLOOIO_PHONE_NUMBER: "+15555550999",
+        ELIZA_APP_BLOOIO_WEBHOOK_SECRET: "worker-webhook-private-canary",
+      } as const;
+      const allSecretValues = [
+        ...Object.values(blooioValues),
+        ...Object.values(workerValues),
+      ];
+
+      for (const target of ["staging", "production"] as const) {
+        const matched = verifyRailwayVariableInventory(target);
+        expect(matched.exitCode).toBe(0);
+        expect(matched.stdout.toString()).toContain(
+          `protected ${target} Blooio Worker/Railway value matches by salted digest`,
+        );
+
+        for (const name of blooioNames) {
+          // A divergent-but-nonblank Worker secret is precisely the case a
+          // names-only inventory accepts and a live webhook then rejects with 401.
+          const divergent = verifyRailwayVariableInventory(
             target,
             {},
-            { [name]: absentWorkerValue },
+            { [name]: workerValues[name] },
           );
-          expect(absent.exitCode).toBe(1);
-          const absentOutput = `${absent.stdout.toString()}${absent.stderr.toString()}`;
-          expect(absentOutput).toContain(
-            `Required protected ${target} Blooio GitHub environment secret is absent or blank: ${name}`,
+          expect(divergent.exitCode).toBe(1);
+          const divergentOutput = `${divergent.stdout.toString()}${divergent.stderr.toString()}`;
+          expect(divergentOutput).toContain(
+            `Protected ${target} Blooio value differs between the Cloudflare Worker GitHub environment secret and the Railway variable: ${name}`,
           );
           for (const value of allSecretValues) {
-            expect(absentOutput).not.toContain(value);
+            expect(divergentOutput).not.toContain(value);
+          }
+
+          for (const absentWorkerValue of [undefined, "", " \t "]) {
+            const absent = verifyRailwayVariableInventory(
+              target,
+              {},
+              { [name]: absentWorkerValue },
+            );
+            expect(absent.exitCode).toBe(1);
+            const absentOutput = `${absent.stdout.toString()}${absent.stderr.toString()}`;
+            expect(absentOutput).toContain(
+              `Required protected ${target} Blooio GitHub environment secret is absent or blank: ${name}`,
+            );
+            for (const value of allSecretValues) {
+              expect(absentOutput).not.toContain(value);
+            }
           }
         }
       }
-    }
-  }, 60_000);
+    },
+    60_000,
+  );
 
   test("binds the exact root source and manifest to its new deployment id", () => {
     const exactSource = step("Deploy exact gateway-webhook source");

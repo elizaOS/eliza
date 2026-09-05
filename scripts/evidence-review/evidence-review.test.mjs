@@ -282,7 +282,7 @@ test("bundle review never silently truncates a verified manifest", {
 
 test("rejects reviewer output that could mutate the verified bundle", async () => {
   const tmpDir = await mkdtemp(
-    path.join(os.tmpdir(), "evidence-bundle-overlap-"),
+    path.join(os.tmpdir(), "evidence-overlap-paths-"),
   );
   try {
     const bundle = path.join(tmpDir, "bundle");
@@ -295,11 +295,11 @@ test("rejects reviewer output that could mutate the verified bundle", async () =
       /must not overlap/,
     );
     assert.throws(
-      () => assertSafeOutputDir(tmpDir, bundle),
+      () => assertSafeOutputDir(path.dirname(bundle), bundle),
       /must not overlap/,
     );
     assert.doesNotThrow(() =>
-      assertSafeOutputDir(path.join(tmpDir, "review"), bundle),
+      assertSafeOutputDir(path.join(tmpDir, "separate-review"), bundle),
     );
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
@@ -308,7 +308,7 @@ test("rejects reviewer output that could mutate the verified bundle", async () =
 
 test("rejects reviewer output that overlaps an explicit compatibility source", async () => {
   const tmpDir = await mkdtemp(
-    path.join(os.tmpdir(), "evidence-source-overlap-"),
+    path.join(os.tmpdir(), "evidence-source-paths-"),
   );
   try {
     const source = path.join(tmpDir, "source");
@@ -321,7 +321,7 @@ test("rejects reviewer output that overlaps an explicit compatibility source", a
       /evidence source directories must not overlap/,
     );
     assert.throws(
-      () => assertSafeOutputDir(tmpDir, null, [source]),
+      () => assertSafeOutputDir(path.dirname(source), null, [source]),
       /evidence source directories must not overlap/,
     );
   } finally {

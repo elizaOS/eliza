@@ -14,7 +14,6 @@ import type {
 import {
 	assertModelOutputComplete,
   buildCanonicalSystemPrompt,
-  DEFAULT_CEREBRAS_TEXT_MODEL,
   ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
   ElizaError,
   logger,
@@ -395,7 +394,7 @@ function resolveCerebrasThinkingOffReasoningEffort(
   if (id === "gpt-oss-120b") {
     return "low";
   }
-  if (id === DEFAULT_CEREBRAS_TEXT_MODEL || id === "zai-glm-4.7") {
+  if (id === "qwen-3.8-27b" || id === "gemma-4-31b" || id === "zai-glm-4.7") {
     return "none";
   }
   return undefined;
@@ -424,6 +423,9 @@ function resolveUserReasoningEffort(
   const raw = runtime?.getSetting("ELIZAOS_CLOUD_REASONING_EFFORT");
   if (typeof raw !== "string" || !raw.trim()) return undefined;
   const effort = raw.trim().toLowerCase();
+  if (effort === "none" && normalizeCerebrasModelId(modelName) === "qwen-3.8-27b") {
+    return "none";
+  }
   if (!VALID_USER_REASONING_EFFORTS.has(effort)) {
     logger.warn(
       `[ELIZAOS_CLOUD] ELIZAOS_CLOUD_REASONING_EFFORT=${raw} is not a valid reasoning effort; ignoring. Expected one of: ${[...VALID_USER_REASONING_EFFORTS].join(", ")}.`
@@ -1033,6 +1035,10 @@ function buildNativeRequestBody(
   const userReasoningEffort = resolveUserReasoningEffort(runtime, modelName);
   if (userReasoningEffort) {
     requestBody.reasoning_effort = userReasoningEffort;
+  } else if (normalizeCerebrasModelId(modelName) === "qwen-3.8-27b") {
+    // Qwen defaults to high reasoning upstream; interactive Cloud calls use
+    // the same non-reasoning default as direct Cerebras calls unless pinned.
+    requestBody.reasoning_effort = "none";
   }
   // The runtime signals "don't reason" via providerOptions.eliza.thinking="off"
   // (e.g. the Stage-1 RESPONSE_HANDLER formatting call), but

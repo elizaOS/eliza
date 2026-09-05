@@ -398,6 +398,7 @@ import {
 } from "../services/agent-export.ts";
 import { registerClientChatSendHandler } from "../services/client-chat-sender.ts";
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
+import type { ConnectorSetupServiceInstance } from "../services/connector-setup-service.ts";
 import {
   type CoreManagerLike,
   isCoreManagerLike,
@@ -4121,6 +4122,26 @@ export async function startApiServer(opts?: {
       detachRuntimeStreams();
       detachRuntimeStreams = null;
     }
+    let active = true;
+    const unsubscribe: Array<() => void> = [];
+    detachRuntimeStreams = () => {
+      active = false;
+      for (const detach of unsubscribe) detach();
+    };
+
+    // Registration is lazy: a synchronous lookup can miss the service at
+    // startup. Bind each runtime once it loads, and detach on swap or close.
+    if (runtime?.hasService("connector-setup")) {
+      void runtime
+        .getServiceLoadPromise("connector-setup")
+        .then((service) => {
+          if (!active) return;
+          const setup = service as ConnectorSetupServiceInstance;
+          setup.setBroadcastWs(broadcastWs);
+          unsubscribe.push(() => setup.setBroadcastWs(null));
+        })
+        .catch((error) => runtime.reportError("api.connectorBroadcast", error));
+    }
     const svc = getAgentEventSvc(runtime);
     if (!svc) {
       if (runtime) {
@@ -4159,10 +4180,7 @@ export async function startApiServer(opts?: {
       });
     });
 
-    detachRuntimeStreams = () => {
-      unsubAgentEvents();
-      unsubHeartbeat();
-    };
+    unsubscribe.push(unsubAgentEvents, unsubHeartbeat);
   };
 
   // ── Deferred startup work (non-blocking) ────────────────────────────────
@@ -5013,20 +5031,6 @@ export async function startApiServer(opts?: {
 
   state.broadcastWsToConversation = (conversationId: string, data: object) =>
     eventHub.sendToConversation(conversationId, data);
-  // Wire up ConnectorSetupService broadcastWs so connector plugins
-  // Pairing connectors such as WhatsApp can broadcast events via the service.
-  if (state.runtime) {
-    try {
-      const setupSvc = state.runtime.getService("connector-setup") as {
-        setBroadcastWs?: (
-          fn: ((data: Record<string, unknown>) => void) | null,
-        ) => void;
-      } | null;
-      setupSvc?.setBroadcastWs?.(state.broadcastWs);
-    } catch {
-      // non-fatal — service may not be registered yet
-    }
-  }
 
   // Broadcast status every 5 seconds
   const statusInterval = setInterval(broadcastStatus, 5000);

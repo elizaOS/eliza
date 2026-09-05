@@ -250,17 +250,50 @@ describe("DevicesRuntimesSection", () => {
     });
 
     view.rerender(
-      <DevicesRuntimesSection {...props({ sshInspection: changed })} />,
+      <DevicesRuntimesSection
+        {...props({ sshInspection: changed, onInspectSsh })}
+      />,
     );
     expect(
       screen.getByText("Host key changed: connection blocked"),
     ).toBeTruthy();
     expect(
+      screen.getByText(
+        /Remove the saved runtime from Devices & Runtimes, then re-enroll it/,
+      ),
+    ).toBeTruthy();
+    expect(
       (
         screen.getByRole("button", {
-          name: "Fingerprint verified, connect",
+          name: "Host key changed",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+
+    const targetInput = screen.getByLabelText("SSH target");
+    await user.clear(targetInput);
+    await user.type(targetInput, "eliza@replacement.example");
+    const inspectReplacement = screen.getByRole("button", {
+      name: "Inspect fingerprint",
+    }) as HTMLButtonElement;
+    expect(inspectReplacement.disabled).toBe(false);
+    await user.click(inspectReplacement);
+    expect(onInspectSsh).toHaveBeenLastCalledWith({
+      target: "eliza@replacement.example",
+      sshPort: 22,
+    });
+
+    await user.clear(screen.getByLabelText("SSH target"));
+    await user.type(screen.getByLabelText("SSH target"), "eliza@vps.example");
+    const portInput = screen.getByLabelText("SSH port");
+    await user.clear(portInput);
+    await user.type(portInput, "2222");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Inspect fingerprint",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 });

@@ -309,7 +309,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     }
   });
 
-  it("reserves the measured resting chat footprint without duplicating the workspace safe-area floor", async () => {
+  it("reserves the resting chat footprint without reapplying bottom insets", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
 
@@ -433,6 +433,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(await screen.findByText("No page open")).not.toBeNull();
 
     const trigger = screen.getByTestId("browser-workspace-tab-fold-control");
+    expect(trigger.className).toContain("min-w-11");
     trigger.focus();
     fireEvent.click(trigger);
 

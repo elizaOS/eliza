@@ -74,9 +74,9 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 		},
 		replyEffectStatus: {
 			type: "string",
-			enum: ["none", "applied", "non_applied"],
+			enum: ["none", "applied", "non_applied", "pending"],
 			description:
-				"Whether replyText semantically claims an external change already happened, says it did not, or makes no effect claim.",
+				"pending=promised unfinished work, including lookup/navigation beside an answer; applied=claimed completed change; non_applied=terminal failed/unavailable/cancelled/declined/preview outcome; none=answer, explanation, question, or conditional offer without a work claim.",
 		},
 		candidateActionNames: {
 			type: "array",
@@ -363,6 +363,13 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 	tierAChildrenByParent?:
 		| ReadonlyMap<string, readonly string[]>
 		| Readonly<Record<string, readonly string[]>>;
+	/**
+	 * Expand registered child actions into first-class native tools. Defaults to
+	 * true. A caller may disable expansion only when it still exposes every
+	 * authorized umbrella parent and keeps explicit turn candidates direct; the
+	 * parent schema remains the lossless dispatch surface for its children.
+	 */
+	expandSubActions?: boolean;
 }
 
 /**
@@ -515,6 +522,9 @@ export function buildPlannerToolsFromTieredActions(
 
 	for (const action of actions) {
 		emit(action);
+		if (options.expandSubActions === false) {
+			continue;
+		}
 		for (const subAction of action.subActions ?? []) {
 			let child: PlannerToolActionShape | undefined;
 			let subActionName = "";

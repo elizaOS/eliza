@@ -55,7 +55,6 @@ import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
   parseSlashDraft,
   resolveClientShortcutExecution,
-  resolveOptimisticNavigationExecution,
   runSlashExecution,
   type SlashExecution,
 } from "../../chat/slash-menu";
@@ -192,7 +191,7 @@ import {
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
 import { setChatComposerAccessoryBarHidden } from "./ios-chat-accessory-bar";
-import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
+import { liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
@@ -407,7 +406,12 @@ function detentHaptic(): void {
       }
     ).Capacitor;
     if (cap?.isNativePlatform?.()) {
-      void cap.Plugins?.Haptics?.impact?.({ style: "LIGHT" });
+      void Promise.resolve(
+        cap.Plugins?.Haptics?.impact?.({ style: "LIGHT" }),
+      ).catch(() => {
+        // Thin native clients intentionally omit optional haptics. Capacitor
+        // exposes the proxy anyway, then rejects when the plugin is absent.
+      });
     }
   } catch {
     // Haptics are a nicety — never let them throw into the gesture path.
@@ -865,12 +869,7 @@ function ComposerRealtimeVoiceActivity({
         ? "Connecting…"
         : REALTIME_COMPOSER_LABEL[status];
   const liveTranscript =
-    !error &&
-    !paused &&
-    !connecting &&
-    (status === "listening" || status === "transcribing")
-      ? transcript.trim()
-      : "";
+    !error && !paused && !connecting ? transcript.trim() : "";
   const visualPhase: RealtimeVoiceVisualPhase = error
     ? "error"
     : paused
@@ -2852,7 +2851,7 @@ export function ChatOverlay({
   }, []);
   const [viewport, setViewport] = React.useState(readViewport);
   const [bottomPad, setBottomPad] = React.useState(0);
-  // The real `env(safe-area-inset-top)` in px, so the full-bleed header reserves
+  // The resolved shared safe-area inset in px, so the full-bleed header reserves
   // the actual notch/Dynamic-Island inset instead of a fixed guess. Re-measured
   // on rotation (`resize`); it never changes between resizes, so it stays off the
   // high-rate vv `scroll`.
@@ -3398,9 +3397,6 @@ export function ChatOverlay({
     const percent = (clamp01(t) * 100).toFixed(3);
     return `color-mix(in srgb, var(--bg) ${percent}%, ${GLASS_SHEET_FILL})`;
   });
-  const surfaceEdgeShadow = useTransform(fullBleedT, (t: number) =>
-    liquidGlassEdgeShadow(1 - t),
-  );
   // Keep transformed transcript children one physical border-width inside the
   // inset glass. The rim is translucent, so clipping at its outer edge lets
   // compositor-promoted text show through the antialiased top curve even when
@@ -3416,7 +3412,7 @@ export function ChatOverlay({
   // Full-bleed extends the glass UP under the status bar; riding the shape
   // spring (instead of a discrete swap at commit) keeps the top edge from
   // popping a safe-area-height on notch devices. 0px at rest (t=0).
-  const glassTopExtension = useMotionTemplate`calc(${fullBleedT} * -1 * env(safe-area-inset-top, 0px))`;
+  const glassTopExtension = useMotionTemplate`calc(${fullBleedT} * -1 * var(--safe-area-top, 0px))`;
   // At full-bleed the composer floats as its OWN glass capsule — the exact
   // chrome of the resting input bar (frosted fill, hairline border, capsule
   // radius) — instead of dissolving into the edge-to-edge panel. All of it
@@ -4065,24 +4061,21 @@ export function ChatOverlay({
   }, [collapse]);
 
   // View navigation changes the canvas underneath this persistent composer; it
-  // is not a chat dismissal. Preserve an actively focused input through the
-  // route commit even when a plugin view maps its view id onto the generic
-  // `views` tab. Explicit close/open-window actions retain their own focus
-  // ownership instead.
+  // is not a chat dismissal. Preserve an actively focused input through every
+  // in-shell route commit, including Home, even when a plugin view maps its view
+  // id onto the generic `views` tab. Explicit close/open-window actions retain
+  // their own focus ownership instead.
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const preserveFocusedComposer = (event: Event) => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       const action = detail?.action;
-      const targetsHome =
-        detail?.viewId === "chat" || detail?.viewPath === "/chat";
       const staysInShell =
         action !== "close" &&
         action !== "close-all" &&
         action !== "open-window";
       const shouldPreserve =
         staysInShell &&
-        !targetsHome &&
         typeof document !== "undefined" &&
         document.activeElement === inputRef.current;
       preserveComposerFocusUntilRef.current = shouldPreserve
@@ -4110,14 +4103,20 @@ export function ChatOverlay({
   // change) is left untouched. Keyboard.hide() guarantees iOS dismisses the
   // accessory bar, not just the soft keyboard.
   React.useEffect(() => {
-    if (currentTab === "chat") {
-      preserveComposerFocusUntilRef.current = 0;
-      return;
-    }
+    const preserveUntil = preserveComposerFocusUntilRef.current;
     const preserveFocus =
-      preserveComposerFocusUntilRef.current >= performance.now();
+      preserveUntil > 0 && preserveUntil >= performance.now();
     preserveComposerFocusUntilRef.current = 0;
     const input = inputRef.current;
+    // A route can replace the textarea node while committing the new canvas.
+    // Restore focus onto the CURRENT node rather than requiring the old node to
+    // have survived the render; that requirement was why Home still needed a
+    // second click even though the navigation event had armed a focus lease.
+    if (preserveFocus) {
+      input?.focus({ preventScroll: true });
+      return;
+    }
+    if (currentTab === "chat") return;
     if (
       typeof document === "undefined" ||
       !input ||
@@ -4125,7 +4124,6 @@ export function ChatOverlay({
     ) {
       return;
     }
-    if (preserveFocus) return;
     input.blur();
     void import("@capacitor/keyboard")
       .then(({ Keyboard }) => Keyboard.hide())
@@ -4467,39 +4465,6 @@ export function ChatOverlay({
   );
 
   const submit = React.useCallback(() => {
-    const isExplicitSlashCommand = parseSlashDraft(draft).isSlash;
-    const optimisticNavigation =
-      slash.naturalShortcutsEnabled &&
-      !firstRunOpen &&
-      !isExplicitSlashCommand &&
-      pendingImages.length === 0
-        ? resolveOptimisticNavigationExecution(
-            slash.commands,
-            draft,
-            slash.resolveSection,
-            {
-              resolveChoices: slash.resolveChoices,
-              isAuthorized: slash.isAuthorized,
-              isElevated: slash.isElevated,
-            },
-          )
-        : null;
-    if (optimisticNavigation) {
-      runSlashExecution(optimisticNavigation, {
-        navigateTab: slash.navigateTab,
-        navigateSettings: slash.navigateSettings,
-        navigateView: slash.navigateView,
-        clearChat: () => {},
-        newConversation: () => {},
-        toggleFullscreen: () => {},
-        openCommandPalette: () => {},
-        showCommands: () => {},
-        toggleTranscription: () => {},
-        send: () => {},
-      });
-      submitText(draft, pendingImages);
-      return;
-    }
     const shortcut =
       !firstRunOpen && pendingImages.length === 0
         ? resolveClientShortcutExecution(
@@ -4507,10 +4472,12 @@ export function ChatOverlay({
             draft,
             slash.resolveSection,
             {
-              allowNatural: slash.naturalShortcutsEnabled,
+              // Natural language is always a real agent turn. Only explicit
+              // slash syntax may execute client-side without consulting Eliza.
+              allowNatural: false,
               resolveChoices: slash.resolveChoices,
-              // #12087 Item 20: re-apply the sender's real authority to the
-              // natural-language path so it matches the visible menu.
+              // #12087 Item 20: re-apply the sender's real authority so the
+              // explicit slash path matches the visible menu.
               isAuthorized: slash.isAuthorized,
               isElevated: slash.isElevated,
             },
@@ -4890,23 +4857,27 @@ export function ChatOverlay({
       window.removeEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
   }, [sheetOpen, pinnedOpen, collapse]);
 
-  // Agent-driven Home navigation targets the persistent `/chat` canvas. When
-  // the thread sheet is already open, changing the route alone is visually a
-  // no-op: the sheet keeps covering Home even though the server delivered and
-  // accepted the navigation. Match the manual Home gesture by returning the
-  // launcher rail to Home and collapsing the sheet in the same event.
+  // Agent-driven Home navigation targets the persistent `/chat` canvas. The
+  // chat is ambient app chrome, so returning Home must not dismiss it or drop a
+  // draft/keyboard session. Only change the canvas underneath the current chat
+  // detent; explicit user collapse gestures remain the sole dismissal owner.
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const onNavigateHome = (event: Event) => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
-      if (detail?.viewId !== "chat" && detail?.viewPath !== "/chat") return;
+      if (
+        detail?.viewId !== "chat" &&
+        detail?.viewId !== "home" &&
+        detail?.viewPath !== "/chat" &&
+        detail?.viewPath !== "/home"
+      )
+        return;
       goHome();
-      if (sheetOpen) collapse();
     };
     window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigateHome);
     return () =>
       window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigateHome);
-  }, [sheetOpen, collapse]);
+  }, []);
 
   // Auto-grow the composer with multi-line input: snap to the content height
   // (capped by `max-h` in CSS, which then scrolls). Runs on every draft change
@@ -6046,19 +6017,11 @@ export function ChatOverlay({
                     "--chat-sheet-backdrop-filter": cssSheetBackdropActive
                       ? GLASS_SHEET_BACKDROP_FILTER
                       : undefined,
-                    // Liquid-glass bevel: a bright top-left rim over a soft
-                    // bottom-right shade so the frosted edge catches light like a real
-                    // glass slab. Only on the inset sheet — full-bleed has no edge to
-                    // catch light. Depth here is the glass rim, not a drop shadow (the
-                    // flat system keeps all shadow tokens none).
-                    "--chat-sheet-shadow": surfaceEdgeShadow,
-                    // Specular sheen belongs to the inset glass slab, where there is
-                    // an edge to catch light. Fullscreen is a flat view surface; the
-                    // same image became a broad gray glow across its top edge.
-                    "--chat-sheet-image":
-                      firstRunOpen || fullBleed
-                        ? "none"
-                        : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
+                    // The strong perimeter and drag handle own the sheet edge. A
+                    // directional bevel, specular wash, or outer shadow stacks into
+                    // a distracting white arc above the conversation.
+                    "--chat-sheet-shadow": "none",
+                    "--chat-sheet-image": "none",
                   } satisfies ChatSheetMotionStyle),
                   // Full-bleed: extend the glass UP through the safe-area-top so the
                   // dark background reaches the true top of the screen. The panel
@@ -6167,18 +6130,6 @@ export function ChatOverlay({
                   }
                 }}
               >
-                {/* The top-edge sheen belongs only to the inset glass slab.
-                Fullscreen is a flat view surface; carrying this highlight into
-                full-bleed creates an unwanted gray glow across the viewport. */}
-                {!fullBleed ? (
-                  <Separator
-                    tone="subtle40"
-                    data-testid="chat-sheet-top-sheen"
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-0 top-0 z-0"
-                  />
-                ) : null}
-
                 {/* Top-bar pull-down-to-restore grab zone (#13531). Confined to the
                 safe-area + MAXIMIZE_RESTORE_ZONE_PX strip at the very top so the
                 transcript BELOW it stays freely scrollable (wheel + touch-drag)
@@ -6199,7 +6150,7 @@ export function ChatOverlay({
                   <div
                     className="pointer-events-auto absolute inset-x-0 top-0 z-[15]"
                     style={{
-                      height: `calc(env(safe-area-inset-top, 0px) + ${MAXIMIZE_RESTORE_ZONE_PX}px)`,
+                      height: `calc(var(--safe-area-top, 0px) + ${MAXIMIZE_RESTORE_ZONE_PX}px)`,
                     }}
                   >
                     <Button
@@ -6516,25 +6467,6 @@ export function ChatOverlay({
                         </AnimatePresence>
                       </MessageScroller>
                     </MessageScrollerProvider>
-                    {!firstRunOpen && !fullBleed ? (
-                      <motion.div
-                        data-testid="chat-thread-top-fade"
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-x-px top-px z-30 h-12"
-                        style={{
-                          opacity: threadContentOpacity,
-                          // A fixed compositor layer lets messages dissolve beneath
-                          // the floating grabber without masking the scrolling
-                          // subtree. WebKit re-rasterizes CSS-masked scrollers while
-                          // their flex basis changes, which makes the pull gesture
-                          // stutter. Hold the panel color through the grabber's
-                          // footprint before beginning the dissolve so no glyph can
-                          // ghost through the antialiased rim or the handle itself.
-                          backgroundImage:
-                            "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
-                        }}
-                      />
-                    ) : null}
                   </motion.div>
                 ) : null}
                 {/* Cloud-agent provisioning status — rendered IN the chat, just

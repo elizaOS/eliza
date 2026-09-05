@@ -18,7 +18,11 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type AgentRuntime, ModelType } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  ModelType,
+  NoModelProviderConfiguredError,
+} from "@elizaos/core";
 import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app-core/test/helpers/real-runtime.ts";
@@ -29,6 +33,48 @@ let runtime: AgentRuntime;
 let cleanup: () => Promise<void> = async () => {};
 let isolatedStateDir: string;
 let isolatedConfigPath: string;
+let groundedReplyModelInvocations = 0;
+
+const canonicalFallbackPrefix = "Canonical fallback: ";
+
+function parseCanonicalFallback(modelInput: unknown): string {
+  if (typeof modelInput !== "object" || modelInput === null) {
+    throw new Error("LIFE smoke model input must be an object");
+  }
+
+  const prompt = (modelInput as { prompt?: unknown }).prompt;
+  if (typeof prompt !== "string") {
+    throw new Error("LIFE smoke model prompt must be a string");
+  }
+
+  const lines = prompt.split("\n");
+  const fallbackLines = lines.filter((line) =>
+    line.startsWith(canonicalFallbackPrefix),
+  );
+  const fallbackLine = fallbackLines[0];
+  if (
+    fallbackLines.length !== 1 ||
+    fallbackLine === undefined ||
+    lines.at(-1) !== fallbackLine
+  ) {
+    throw new Error(
+      "LIFE smoke model prompt must end with exactly one canonical fallback",
+    );
+  }
+
+  let fallback: unknown;
+  try {
+    fallback = JSON.parse(fallbackLine.slice(canonicalFallbackPrefix.length));
+  } catch (error) {
+    throw new Error("LIFE smoke canonical fallback must be valid JSON", {
+      cause: error,
+    });
+  }
+  if (typeof fallback !== "string") {
+    throw new Error("LIFE smoke canonical fallback must decode to text");
+  }
+  return fallback;
+}
 
 const isolatedEnvKeys = [
   "ELIZA_STATE_DIR",
@@ -72,27 +118,6 @@ function restoreIsolatedLifeSmokeEnv(): void {
     }
     process.env[key] = value;
   }
-}
-
-async function renderCanonicalFallback(
-  _runtime: AgentRuntime,
-  params: Record<string, unknown>,
-): Promise<string> {
-  const prompt = params.prompt;
-  if (typeof prompt !== "string") {
-    throw new Error("life smoke text model requires a string prompt");
-  }
-  const marker = "\nCanonical fallback: ";
-  const markerIndex = prompt.lastIndexOf(marker);
-  if (markerIndex < 0) {
-    throw new Error("life smoke text model requires a canonical fallback");
-  }
-  const encodedFallback = prompt.slice(markerIndex + marker.length);
-  const fallback = JSON.parse(encodedFallback);
-  if (typeof fallback !== "string") {
-    throw new Error("life smoke canonical fallback must be text");
-  }
-  return fallback;
 }
 
 function send(params: Record<string, unknown>, messageText?: string) {
@@ -141,13 +166,22 @@ beforeAll(async () => {
   runtime = result.runtime;
   runtime.registerModel(
     ModelType.TEXT_SMALL,
-    renderCanonicalFallback,
-    "life-smoke-deterministic",
+    async (_runtime, modelInput) => {
+      groundedReplyModelInvocations += 1;
+      return parseCanonicalFallback(modelInput);
+    },
+    "life-smoke-canonical-fallback",
   );
+  // Registering the grounded-reply fixture makes the runtime aware of one
+  // text provider. Keep the unrelated TEXT_LARGE extractor path in its exact
+  // zero-key state so its existing typed fallback behavior does not turn into
+  // the generic "specific delegate missing" error.
   runtime.registerModel(
     ModelType.TEXT_LARGE,
-    async () => "{}",
-    "life-smoke-deterministic",
+    async () => {
+      throw new NoModelProviderConfiguredError();
+    },
+    "life-smoke-no-large-model",
   );
   cleanup = result.cleanup;
 }, 180_000);
@@ -161,9 +195,47 @@ afterAll(async () => {
 });
 
 describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
+  it("preserves the grounded canonical fallback through the deterministic model", () => {
+    const fallback = 'Exact fallback with "quotes" and a newline\nkept.';
+    expect(
+      parseCanonicalFallback({
+        prompt: [
+          "Grounded LIFE reply",
+          `${canonicalFallbackPrefix}${JSON.stringify(fallback)}`,
+        ].join("\n"),
+      }),
+    ).toBe(fallback);
+  });
+
+  it.each([
+    ["missing marker", "Grounded LIFE reply"],
+    ["malformed JSON", `${canonicalFallbackPrefix}{not-json}`],
+    ["non-string JSON", `${canonicalFallbackPrefix}${JSON.stringify(42)}`],
+    [
+      "marker before the final line",
+      `${canonicalFallbackPrefix}${JSON.stringify("fallback")}\ntrailing text`,
+    ],
+    [
+      "ambiguous duplicate markers",
+      [
+        `${canonicalFallbackPrefix}${JSON.stringify("first")}`,
+        `${canonicalFallbackPrefix}${JSON.stringify("second")}`,
+      ].join("\n"),
+    ],
+  ])("fails closed for %s", (_case, prompt) => {
+    expect(() => parseCanonicalFallback({ prompt })).toThrow();
+  });
+
+  it("preserves the typed zero-key fallback for unrelated text extraction", async () => {
+    await expect(
+      runtime.useModel(ModelType.TEXT_LARGE, { prompt: "extract LIFE fields" }),
+    ).rejects.toBeInstanceOf(NoModelProviderConfiguredError);
+  });
+
   // -- AC-1: "I need help brushing my teeth twice a day" --
 
   it("AC-1: creates a twice-daily brushing habit via action param", async () => {
+    const invocationsBefore = groundedReplyModelInvocations;
     const result = await send({
       action: "create",
       intent: "help me brush my teeth twice a day, morning and night",
@@ -193,6 +265,7 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
 
     expect(result).toMatchObject({ success: true });
     expect((result as { text: string }).text).toContain("Brush teeth");
+    expect(groundedReplyModelInvocations).toBeGreaterThan(invocationsBefore);
   }, 60_000);
 
   // -- Regression (task_611a9f0b): an unconfirmed RECURRING create from owner

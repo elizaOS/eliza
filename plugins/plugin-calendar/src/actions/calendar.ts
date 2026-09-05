@@ -5,7 +5,11 @@
  */
 import {
   assertActiveTrajectoryForLlmCall,
+  createUnavailableGroundedActionReply,
+  isModelProviderError,
+  modelProviderErrorDetail,
   ModelType,
+  NoModelProviderConfiguredError,
   parseJSONObjectFromText,
   parseJsonModelRecord,
   recentConversationTexts,
@@ -56,7 +60,12 @@ const standaloneCalendarDeps: CalendarActionDeps = {
   },
   recentConversationTexts: (args) => recentConversationTexts(args),
   async renderGroundedReply(args) {
-    if (typeof args.runtime.useModel !== "function") return args.fallback;
+    if (typeof args.runtime.useModel !== "function") {
+      return createUnavailableGroundedActionReply({
+        kind: "no_provider",
+        code: "GROUNDED_REPLY_NO_PROVIDER",
+      });
+    }
     const prompt = [
       "Write the assistant's user-facing reply for a calendar interaction.",
       "Be natural, brief, and grounded in the provided facts.",
@@ -75,19 +84,38 @@ const standaloneCalendarDeps: CalendarActionDeps = {
         prompt,
       });
       const raw = typeof result === "string" ? result.trim() : "";
-      if (!raw || parseJSONObjectFromText(raw)) return args.fallback;
-      return raw.replace(/^["'`]+|["'`]+$/g, "").trim() || args.fallback;
+      const text = raw.replace(/^["'`]+|["'`]+$/g, "").trim();
+      if (!text || parseJSONObjectFromText(raw)) {
+        return createUnavailableGroundedActionReply({
+          kind: "provider_issue",
+          code: "GROUNDED_REPLY_INVALID_RESPONSE",
+        });
+      }
+      return { kind: "model", text };
     } catch (error) {
-      // error-policy:J4 Reply synthesis is optional; the grounded action result
-      // remains explicit through the canonical fallback.
-      args.runtime.logger.warn(
-        {
-          src: "plugin:calendar:reply",
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Calendar reply synthesis failed",
-      );
-      return args.fallback;
+      // Reply synthesis is separate from the already-recorded calendar effect.
+      const noProvider = error instanceof NoModelProviderConfiguredError;
+      const detail = modelProviderErrorDetail(error);
+      if (!noProvider && !isModelProviderError(error)) {
+        args.runtime.reportError?.("calendar-reply", error, {
+          scenario: args.scenario,
+        });
+      } else {
+        args.runtime.logger.warn(
+          { src: "plugin:calendar:reply", ...detail },
+          "Calendar reply synthesis unavailable",
+        );
+      }
+      return createUnavailableGroundedActionReply({
+        kind: noProvider
+          ? "no_provider"
+          : detail?.status === 429
+            ? "rate_limited"
+            : "provider_issue",
+        code: noProvider
+          ? "GROUNDED_REPLY_NO_PROVIDER"
+          : "GROUNDED_REPLY_GENERATION_FAILED",
+      });
     }
   },
 };

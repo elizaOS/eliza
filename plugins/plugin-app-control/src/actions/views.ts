@@ -759,6 +759,7 @@ const CAPABILITY_PARAM_RESERVED_KEYS = new Set([
 	"intent",
 	"editTarget",
 	"choice",
+	"taskId",
 	"confirm",
 	"sha",
 	"pluginName",
@@ -2423,6 +2424,15 @@ function withViewsUserFacingText(result: ActionResult): ActionResult {
 	};
 }
 
+function ownerRequiredViewMutation(mode: "create" | "delete"): ActionResult {
+	return {
+		success: false,
+		text: `Owner authorization is required for the VIEWS ${mode} operation.`,
+		transcriptVisibility: "internal",
+		values: { error: "FORBIDDEN", mode },
+	};
+}
+
 function asViewInteractionDataValue(
 	value: unknown,
 ): object | string | number | boolean | null | undefined {
@@ -2440,6 +2450,7 @@ function asViewInteractionDataValue(
 
 const VIEWS_ROUTING_HINT = [
 	"UI view/window/panel/app navigation and layout -> VIEWS.",
+	"Eliza's home screen is the chat view: return home with action=show view=chat. The views-manager is the app list, not home. App navigation never requires turning the user's words into a website URL.",
 	"The UI Context capability list is informational: never invoke a capability merely because the user asks which view is open or what can be done there; answer that meta-question directly from UI Context.",
 	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
 	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and explicit capabilities that the selected view declares when no dedicated domain action owns the data.",
@@ -2461,7 +2472,11 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 	return {
 		name: "VIEWS",
 		contexts: [...VIEW_ACTION_CONTEXTS],
-		contextGate: { anyOf: [...VIEW_ACTION_CONTEXTS] },
+		// `browser` stays out of `contexts` so browser/web retrieval cannot make
+		// VIEWS hijack live-information turns. It is allowed at execution time,
+		// however, because the response handler can correctly select VIEWS for an
+		// explicit request to open the in-app Browser surface.
+		contextGate: { anyOf: [...VIEW_ACTION_CONTEXTS, "browser"] },
 		roleGate: { minRole: "USER" },
 		similes: [
 			"VIEW",
@@ -2613,9 +2628,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"torch",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke explicit capabilities that a view declares when no dedicated domain action owns the data, including native device controls. Notes records belong to NOTES and calendar events belong to CALENDAR; VIEWS opens those surfaces.",
+			"Manage and navigate Eliza UI views. Return to the home/main chat screen with action=show view=chat. List available views, report the current view, open or close a view, search views, show the view manager (app list, not home), arrange layouts, and invoke explicit capabilities that a view declares when no dedicated domain action owns the data, including native device controls. Notes records belong to NOTES and calendar events belong to CALENDAR; VIEWS opens those surfaces. action=interact invokes a capability without opening its view. An explicit open-and-edit request requires show/open navigation as well as the data operation.",
 		descriptionCompressed:
-			"navigate/close/arrange UI views; invoke explicit UI-only capabilities; Notes records use NOTES; Calendar records use CALENDAR",
+			"show/open navigates UI; interact invokes capabilities without navigation; Notes data uses NOTES, Calendar data uses CALENDAR; open-and-edit requires both operations",
 		routingHint: VIEWS_ROUTING_HINT,
 		allowAdditionalParameters: true,
 		toolSchemaStrict: false,
@@ -2647,7 +2662,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "view",
 				description:
-					"View name, label, or id (show / open / close / edit / delete).",
+					"View name, label, or id (show / open / close / edit / delete). The home/main chat screen is chat; views-manager is the app list.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -2851,6 +2866,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				schema: { type: "string" },
 			},
 			{
+				name: "taskId",
+				description:
+					"Exact pending VIEWS create-choice task ID from app_control_choices. Required when more than one view creation is pending; use with choice.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
 				name: "choice",
 				description:
 					"Override choice reply (`new` | `edit-N` | `cancel`) for create-mode follow-up turns.",
@@ -2888,7 +2910,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 			// Multi-turn create follow-up: choice reply matches a pending intent task.
 			if (isChoiceReply(text)) {
-				if (await hasPendingViewsCreateIntent(runtime, roomId)) return true;
+				if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+					return ownerCheck(runtime, message);
+				}
 			}
 
 			// Multi-turn delete follow-up: structured confirm boolean matches a
@@ -2939,7 +2963,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				// room; execution-time validate re-checks with the planner's options,
 				// so every mode-carrying call above still resolves normally.
 				if (!mode) {
-					if (await hasPendingViewsCreateIntent(runtime, roomId)) return true;
+					if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+						return ownerCheck(runtime, message);
+					}
 					if (await hasPendingDeleteConfirm(runtime, roomId)) {
 						return ownerCheck(runtime, message);
 					}
@@ -2970,6 +2996,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				// Multi-turn follow-up: choice reply for an in-progress create flow.
 				if (isChoiceReply(text)) {
 					if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("create");
+						}
 						const views = await client.listViews();
 						return runViewsCreate({
 							runtime,
@@ -2988,6 +3017,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					isDeleteCancellation(actionOptions)
 				) {
 					if (await hasPendingDeleteConfirm(runtime, roomId)) {
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("delete");
+						}
 						const views = await client.listViews();
 						return runViewsDelete({
 							runtime,
@@ -3462,6 +3494,11 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					}
 
 					case "create": {
+						// Planner-supplied choices can continue a pending task even when
+						// the user's words are not a literal new/edit-N/cancel token.
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("create");
+						}
 						const views = await client.listViews();
 						return runViewsCreate({
 							runtime,
@@ -3507,6 +3544,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 					case "delete":
 					case "remove": {
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("delete");
+						}
 						const views = await client.listViews();
 						return runViewsDelete({
 							runtime,

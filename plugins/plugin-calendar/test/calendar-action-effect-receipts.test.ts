@@ -6,6 +6,7 @@
 import {
   type Action,
   type Content,
+  createUnavailableGroundedActionReply,
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
@@ -129,6 +130,11 @@ function deps(overrides: Partial<CalendarActionDeps> = {}): CalendarActionDeps {
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async () => null),
     recentConversationTexts: vi.fn(async () => []),
+    // Deterministic presentation fixture, not evidence of a live model reply.
+    renderGroundedReply: async ({ fallback }) => ({
+      kind: "model",
+      text: fallback,
+    }),
     ...overrides,
   };
 }
@@ -197,6 +203,164 @@ function expectBoundDelivery(
 }
 
 describe("CALENDAR effect receipt settlement", () => {
+  it.each(["Unknown", "None", "n/a", "location_missing"])(
+    "searches for the literal detail query %s",
+    async (title) => {
+      const matchingEvent = { ...EVENT, title };
+      const action = createCalendarActionRunner(deps());
+      const delivered: Content[] = [];
+      const result = await execute({
+        action,
+        service: { getCalendarFeed: vi.fn(async () => feed([matchingEvent])) },
+        actor: message(`Find the event titled ${title}.`),
+        delivered,
+        parameters: {
+          subaction: "search_events",
+          details: {
+            query: title,
+            timeMin: "2026-07-27T00:00:00.000Z",
+            timeMax: "2026-08-03T00:00:00.000Z",
+          },
+        },
+      });
+      expect(result).toMatchObject({
+        success: true,
+        data: { events: [matchingEvent] },
+        effectReceipts: [{ operation: "calendar.event.search" }],
+      });
+      expectBoundDelivery(delivered, result);
+    },
+  );
+
+  it.each(["missing", "unavailable"] as const)(
+    "publishes no canonical fallback when the renderer is %s",
+    async (mode) => {
+      const action = createCalendarActionRunner(
+        deps({
+          renderGroundedReply:
+            mode === "missing"
+              ? undefined
+              : async () =>
+                  createUnavailableGroundedActionReply({
+                    kind: "no_provider",
+                    code: "GROUNDED_REPLY_NO_PROVIDER",
+                  }),
+        }),
+      );
+      const delivered: Content[] = [];
+      const result = await execute({
+        action,
+        service: { getCalendarFeed: vi.fn(async () => feed()) },
+        actor: message("Read this week’s calendar."),
+        delivered,
+        parameters: {
+          subaction: "feed",
+          details: {
+            timeMin: "2026-07-27T00:00:00.000Z",
+            timeMax: "2026-08-03T00:00:00.000Z",
+          },
+        },
+      });
+      expect(result).toMatchObject({
+        success: true,
+        replyFailure: { kind: "no_provider", transient: false },
+        effectReceipts: [{ operation: "calendar.feed.read", outcome: "noop" }],
+      });
+      expect(result).not.toHaveProperty("userFacingText");
+      expect(delivered).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["feed", "calendar.feed.read", "noop"],
+    ["create_event", "calendar.event.create", "applied"],
+    ["update_event", "calendar.event.update", "applied"],
+    ["delete_event", "calendar.event.delete", "applied"],
+  ] as const)(
+    "preserves %s settlement without publishing fallback prose when reply generation is rate limited",
+    async (subaction, operation, outcome) => {
+      const providerError = Object.assign(
+        new Error("reply provider unavailable"),
+        { statusCode: 429 },
+      );
+      const renderGroundedReply = vi.fn(async () => {
+        throw providerError;
+      });
+      const service = {
+        getCalendarFeed: vi.fn(async () => feed([ELIZA_EVENT])),
+        getConditionalCalendarMutationTarget: vi.fn(async () => ELIZA_EVENT),
+        prepareCalendarEventCreate: vi.fn(
+          async (_url: URL, request: Record<string, unknown>) => ({
+            ...request,
+            side: "owner",
+            grantId: "eliza-calendar",
+            calendarId: "primary",
+            startAt: ELIZA_EVENT.startAt,
+            endAt: ELIZA_EVENT.endAt,
+            timeZone: "UTC",
+          }),
+        ),
+        createCalendarEvent: vi.fn(async () => ELIZA_EVENT),
+        updateCalendarEvent: vi.fn(async () => ({
+          ...ELIZA_EVENT,
+          title: "Updated title",
+        })),
+        deleteCalendarEvent: vi.fn(async () => undefined),
+      };
+      const action = createCalendarActionRunner(deps({ renderGroundedReply }));
+      const delivered: Content[] = [];
+      const result = await execute({
+        action,
+        service,
+        actor: message("Use the requested calendar operation."),
+        delivered,
+        parameters: {
+          subaction,
+          title:
+            subaction === "update_event" ? "Updated title" : ELIZA_EVENT.title,
+          details:
+            subaction === "feed"
+              ? {
+                  timeMin: "2026-07-27T00:00:00.000Z",
+                  timeMax: "2026-08-03T00:00:00.000Z",
+                }
+              : subaction === "create_event"
+                ? {
+                    startAt: ELIZA_EVENT.startAt,
+                    endAt: ELIZA_EVENT.endAt,
+                    timeZone: "UTC",
+                  }
+                : {
+                    eventId: ELIZA_EVENT.externalId,
+                    calendarId: ELIZA_EVENT.calendarId,
+                  },
+        },
+      });
+
+      expect(result).toMatchObject({
+        success: true,
+        effectReceipts: [{ operation, outcome }],
+        replyFailure: { kind: "rate_limited", transient: false },
+        transcriptVisibility: "internal",
+        turnComplete: false,
+      });
+      expect(result.data).toBeDefined();
+      expect(result).not.toHaveProperty("userFacingText");
+      expect(result).not.toHaveProperty("verifiedUserFacing");
+      expect(delivered).toEqual([]);
+      expect(renderGroundedReply).toHaveBeenCalledOnce();
+      expect(service.createCalendarEvent).toHaveBeenCalledTimes(
+        subaction === "create_event" ? 1 : 0,
+      );
+      expect(service.updateCalendarEvent).toHaveBeenCalledTimes(
+        subaction === "update_event" ? 1 : 0,
+      );
+      expect(service.deleteCalendarEvent).toHaveBeenCalledTimes(
+        subaction === "delete_event" ? 1 : 0,
+      );
+    },
+  );
+
   it("opts the complete mixed read/write surface into strict settlement", () => {
     const action = createCalendarActionRunner(deps());
     expect(action.tags).toContain("effect:receipt-required");
@@ -402,6 +566,92 @@ describe("CALENDAR effect receipt settlement", () => {
     });
     expect(result.userFacingText).not.toMatch(/approve|reject|request id/i);
     expectBoundDelivery(delivered, result);
+  });
+
+  it("re-extracts a natural-language planner timestamp before creating an event", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-04T18:00:00.000Z"));
+    try {
+      const runJsonModel = vi.fn(async (args: { prompt: string }) => {
+        if (!args.prompt.includes("Extract calendar event creation fields")) {
+          return null;
+        }
+        return {
+          rawResponse: JSON.stringify({
+            title: "Full QA Event",
+            startAt: "2026-09-05T16:00:00-04:00",
+            durationMinutes: 30,
+            timeZone: "America/New_York",
+          }),
+          parsed: {
+            title: "Full QA Event",
+            startAt: "2026-09-05T16:00:00-04:00",
+            durationMinutes: 30,
+            timeZone: "America/New_York",
+          },
+        };
+      });
+      const createdEvent: LifeOpsCalendarEvent = {
+        ...ELIZA_EVENT,
+        title: "Full QA Event",
+        startAt: "2026-09-05T20:00:00.000Z",
+        endAt: "2026-09-05T20:30:00.000Z",
+        timezone: "America/New_York",
+      };
+      const createCalendarEvent = vi.fn(async () => createdEvent);
+      const prepareCalendarEventCreate = vi.fn(
+        async (_url: URL, request: Record<string, unknown>) => ({
+          ...request,
+          side: "owner" as const,
+          grantId: "eliza-calendar",
+          calendarId: "primary",
+          endAt: "2026-09-05T16:30:00-04:00",
+        }),
+      );
+      const service = {
+        getCalendarFeed: vi.fn(async () => feed([])),
+        prepareCalendarEventCreate,
+        createCalendarEvent,
+      };
+      const action = createCalendarActionRunner(deps({ runJsonModel }));
+      const delivered: Content[] = [];
+
+      const result = await execute({
+        action,
+        service,
+        actor: message(
+          "Create a calendar event titled Full QA Event tomorrow at 4 PM for 30 minutes.",
+        ),
+        parameters: {
+          subaction: "create_event",
+          title: "Full QA Event",
+          details: {
+            startAt: "tomorrow at 4 PM",
+            durationMinutes: 30,
+            timeZone: "America/New_York",
+          },
+        },
+        delivered,
+      });
+
+      expect(runJsonModel).toHaveBeenCalledOnce();
+      expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({
+          startAt: "2026-09-05T16:00:00-04:00",
+          durationMinutes: 30,
+          timeZone: "America/New_York",
+        }),
+      );
+      expect(createCalendarEvent).toHaveBeenCalledOnce();
+      expect(result).toMatchObject({
+        success: true,
+        data: { approvalRequired: false, event: createdEvent },
+      });
+      expectBoundDelivery(delivered, result);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("updates a built-in event directly with its optimistic version", async () => {

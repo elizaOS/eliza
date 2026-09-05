@@ -96,6 +96,7 @@ export function getProviderFromModel(model: string): string {
   }
 
   // Handle non-prefixed format: "gpt-5-mini"
+  if (model === "qwen-3.8-27b") return "cerebras";
   if (model === "gemma-4-31b") return "cerebras";
   if (model === "gpt-oss-120b") return "cerebras";
   // bge-* embeds on the platform-operated TEI sidecar
@@ -164,6 +165,7 @@ const REASONING_MODEL_PATTERNS: RegExp[] = [
   // otherwise a default/low max_tokens truncates mid-reasoning and returns empty
   // (but billed) output, intermittently per call.
   /^gemma-4-31b$/,
+  /^qwen-3\.8-27b$/,
   /^gpt-oss/,
 ];
 

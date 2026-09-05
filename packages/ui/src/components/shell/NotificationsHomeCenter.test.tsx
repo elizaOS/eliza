@@ -78,6 +78,7 @@ import {
   __resetNotificationStoreForTests,
   __setHydratedForTests,
   __setHydrationFailureForTests,
+  removeNotification,
 } from "../../state/notifications/notification-store";
 import {
   dampenPull,
@@ -729,6 +730,66 @@ describe("notificationPullRevealProgress", () => {
 });
 
 describe("NotificationsHomeCenter", () => {
+  it("observes late hydration and releases replaced groups and unmounted targets", async () => {
+    const observers: Set<Element>[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        targets = new Set<Element>();
+        constructor() {
+          observers.push(this.targets);
+        }
+        observe(target: Element) {
+          this.targets.add(target);
+        }
+        unobserve(target: Element) {
+          this.targets.delete(target);
+        }
+        disconnect() {
+          this.targets.clear();
+        }
+      },
+    );
+    const { unmount } = renderRestedNotifications();
+    expect(screen.queryByTestId("home-notification-list")).toBeNull();
+    const first = makeNotification({
+      source: "calendar",
+      title: "Calendar item",
+    });
+    try {
+      await act(async () => {
+        __setHydratedForTests(true);
+        __ingestNotificationForTests(first);
+        await Promise.resolve();
+      });
+      const list = screen.getByTestId("home-notification-list");
+      const observed = observers.find((targets) => targets.has(list));
+      const oldGroup = list.firstElementChild;
+      if (!observed || !oldGroup)
+        throw new Error("Notification group was not observed");
+      expect(observed.has(oldGroup)).toBe(true);
+
+      await act(async () => {
+        await removeNotification(first.id);
+        __ingestNotificationForTests(
+          makeNotification({ source: "browser", title: "Browser item" }),
+        );
+      });
+      expect(oldGroup.isConnected).toBe(false);
+      expect(observed.has(oldGroup)).toBe(false);
+      const newGroup = list.firstElementChild;
+      if (!newGroup)
+        throw new Error("Replacement notification group was not rendered");
+      expect(observed.has(newGroup)).toBe(true);
+      expect([...observed].every((target) => target.isConnected)).toBe(true);
+      unmount();
+      expect(observers.every((targets) => targets.size === 0)).toBe(true);
+    } finally {
+      unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders nothing while the empty inbox is still hydrating", () => {
     const { container } = renderRestedNotifications();
     expect(container.firstChild).toBeNull();

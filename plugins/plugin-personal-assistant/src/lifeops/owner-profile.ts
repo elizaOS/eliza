@@ -512,9 +512,15 @@ export function normalizeLifeOpsMeetingPreferencesPatch(
     out.travelBufferMinutes = Math.floor(patch.travelBufferMinutes);
   }
   if (Array.isArray(patch.blackoutWindows)) {
-    out.blackoutWindows = patch.blackoutWindows
+    const windows = patch.blackoutWindows
       .map(normalizeBlackoutWindow)
       .filter((w): w is LifeOpsMeetingPreferencesBlackout => w !== null);
+    // An empty array is an explicit clear. A non-empty array whose every entry
+    // is malformed carries no owner intent (planner-filled junk such as
+    // startLocal "00"), so it leaves the stored windows untouched.
+    if (windows.length > 0 || patch.blackoutWindows.length === 0) {
+      out.blackoutWindows = windows;
+    }
   }
   return out;
 }

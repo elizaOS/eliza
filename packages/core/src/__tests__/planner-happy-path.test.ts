@@ -13,7 +13,6 @@ import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
-	NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,
 } from "../services/message";
@@ -1257,6 +1256,13 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						messageToUser: "Credential tunnel completed.",
 					}),
 				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "The service returned no deliverable confirmation.",
+						toolCalls: [],
+					},
+				},
 			],
 		});
 
@@ -2246,6 +2252,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						thought: "The parent is deterministic.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						response: "The action did not return a confirmed result.",
+					}),
+				},
 			],
 		});
 		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
@@ -2389,6 +2401,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						thought: "Run the deterministic action.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						response: "The action did not return a confirmed result.",
+					}),
+				},
 			],
 		});
 		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
@@ -2447,6 +2465,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						contexts: ["general"],
 						candidateActionNames: ["CONNECTOR_ACTION"],
 						thought: "Run the deterministic connector action.",
+					}),
+				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						response: "The action did not return a confirmed result.",
 					}),
 				},
 			],
@@ -2555,7 +2579,16 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 								body: { text: options.postToolReply, toolCalls: [] },
 							},
 						]
-					: []),
+					: handlerResult.text || handlerResult.userFacingText
+						? []
+						: [
+								{
+									expectModelType: ModelType.TEXT_SMALL,
+									body: JSON.stringify({
+										response: "The action did not return a confirmed result.",
+									}),
+								},
+							]),
 			],
 		});
 		const result = await runV5MessageRuntimeStage1({
@@ -2568,7 +2601,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual(
 			options.postToolReply
 				? [ModelType.RESPONSE_HANDLER, ModelType.ACTION_PLANNER]
-				: [ModelType.RESPONSE_HANDLER],
+				: handlerResult.text || handlerResult.userFacingText
+					? [ModelType.RESPONSE_HANDLER]
+					: [ModelType.RESPONSE_HANDLER, ModelType.TEXT_SMALL],
 		);
 		return result.kind === "planned_reply"
 			? result.result.responseContent?.text
@@ -2632,6 +2667,28 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(text).toBe("Notes are open whenever you're ready.");
 	});
 
+	it("uses post-tool synthesis when the Stage 1 navigation reply omits the destination", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					viewId: "notes",
+					label: "Notes",
+					path: "/notes",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "On it.",
+				postToolReply: "Notes are open.",
+			},
+		);
+		expect(text).toBe("Notes are open.");
+	});
+
 	it("uses post-tool synthesis instead of releasing an unrelated mutation claim", async () => {
 		const text = await runDeterministicViewsTurn(
 			{
@@ -2654,9 +2711,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(text).toBe("Notes are open. I didn't change any of them.");
 	});
 
-	it("keeps the no-result fallback for a deterministic success with no receipt at all", async () => {
+	it("uses a model reply for a deterministic success without a reportable result", async () => {
 		const text = await runDeterministicViewsTurn({ success: true });
-		expect(text).toBe(NO_REPORTABLE_TOOL_OUTCOME_MESSAGE);
+		expect(text).toBe("The action did not return a confirmed result.");
 	});
 
 	it("lets the model write the final reply after a deterministic tool completes", async () => {
@@ -2959,6 +3016,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: stage1Response({ contexts: ["general"] }),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						response: "The action did not return a confirmed result.",
+					}),
+				},
 			],
 		});
 
@@ -2972,12 +3035,13 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(calls).toBe(0);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 		]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.actionResults).toMatchObject([{ success: false }]);
 			expect(result.result.responseContent?.text).toBe(
-				NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
+				"The action did not return a confirmed result.",
 			);
 			expect(result.result.responseContent?.text).not.toMatch(
 				/owner|role|permission/i,
@@ -3048,6 +3112,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						contexts: ["general"],
 						candidateActionNames: ["VIEWS"],
 						replyText: "on it.",
+					}),
+				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						response: "The action did not return a confirmed result.",
 					}),
 				},
 			],
@@ -3219,6 +3289,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: stage1Response({ contexts: ["general"] }),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						response: "The action did not return a confirmed result.",
+					}),
+				},
 			],
 		});
 
@@ -3232,12 +3308,13 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(calls).toBe(0);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 		]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.actionResults).toMatchObject([{ success: false }]);
 			expect(result.result.responseContent?.text).toBe(
-				NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
+				"The action did not return a confirmed result.",
 			);
 		}
 	});
@@ -3321,6 +3398,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: stage1Response({ contexts: ["general"] }),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						response: "The action did not return a confirmed result.",
+					}),
+				},
 			],
 		});
 
@@ -3333,12 +3416,13 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 		]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.actionResults).toMatchObject([{ success: false }]);
 			expect(result.result.responseContent?.text).toBe(
-				NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
+				"The action did not return a confirmed result.",
 			);
 			expect(result.result.responseContent?.text).not.toContain(
 				internalDiagnostic,

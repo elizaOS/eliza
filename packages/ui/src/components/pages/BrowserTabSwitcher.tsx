@@ -16,7 +16,7 @@
  * chrome and reserving its measured resting footprint (see
  * `BROWSER_WORKSPACE_TAB_MASK_SELECTORS`).
  */
-import { Plus, SquareStack, X } from "lucide-react";
+import { Copy, Plus, X } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import { Button } from "../ui/button";
 import {
@@ -152,7 +152,7 @@ export function BrowserTabFoldControl({
       data-testid="browser-workspace-tab-fold-control"
       className="relative min-w-11 shrink-0 px-0 md:px-4"
     >
-      <SquareStack
+      <Copy
         className="size-4 shrink-0 text-muted"
         data-testid="browser-workspace-tabs-icon"
         aria-hidden
@@ -215,6 +215,18 @@ function BrowserTabCard({
       onActivate: onClose,
     });
   const isAgent = section === "agent";
+  const originLabel = (() => {
+    const url = tab.description.split(" · ").at(-1)?.trim() ?? "";
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        return parsed.hostname.replace(/^www\./, "");
+      }
+      return parsed.protocol.replace(":", "") || undefined;
+    } catch {
+      return undefined;
+    }
+  })();
   return (
     <div className="group relative" data-testid={`browser-tab-card-${tab.id}`}>
       <Button
@@ -225,17 +237,21 @@ function BrowserTabCard({
         aria-current={active ? "page" : undefined}
         title={tab.description}
         onClick={onActivate}
-        variant={active ? "surface" : "outlineMuted"}
+        variant="outlineMuted"
         size="card"
         align="start"
-        className="group relative min-w-0 overflow-hidden"
+        className={`group relative h-40 min-w-0 gap-0 overflow-hidden rounded-xl p-0 ${
+          active
+            ? "border-border-strong bg-surface text-txt"
+            : "bg-card text-muted-strong"
+        }`}
       >
-        <span className="flex w-full min-w-0 items-center gap-2">
+        <span className="flex min-h-0 w-full flex-1 items-center justify-center bg-bg-muted/35">
           <span
-            className={`inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+            className={`inline-flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
               isAgent
                 ? "bg-bg-muted text-txt border border-border/70"
-                : "bg-card text-muted"
+                : "border border-border bg-card text-muted"
             }`}
           >
             {tab.hasSessionFocus ? (
@@ -247,12 +263,16 @@ function BrowserTabCard({
               tab.monogram
             )}
           </span>
-          <span className="min-w-0 flex-1 truncate text-sm font-medium leading-snug">
+        </span>
+        <span className="flex w-full min-w-0 flex-col px-3 py-2.5">
+          <span className="w-full truncate pr-7 text-sm font-medium leading-snug text-txt">
             {tab.label}
           </span>
-        </span>
-        <span className="block w-full truncate text-2xs leading-snug text-muted">
-          {tab.description}
+          {originLabel ? (
+            <span className="w-full truncate pr-7 text-2xs font-normal leading-snug text-muted">
+              {originLabel}
+            </span>
+          ) : null}
         </span>
       </Button>
       {tab.closable ? (
@@ -271,7 +291,7 @@ function BrowserTabCard({
             onClose();
           }}
           data-testid={`browser-tab-card-close-${tab.id}`}
-          className="absolute right-1 top-1"
+          className="absolute right-1 top-1 bg-bg/70"
         >
           <X className="size-4" />
         </Button>
@@ -281,8 +301,9 @@ function BrowserTabCard({
 }
 
 /**
- * The switcher overlay: a stacked, single-column grid of every tab card grouped
- * by section, plus a "new tab" affordance. Controlled by the view (`open` /
+ * The switcher overlay: a compact mobile-browser-style grid of every tab card,
+ * grouped only when multiple ownership sections are present, plus a "new tab"
+ * affordance. Controlled by the view (`open` /
  * `onOpenChange`); switching a tab also closes the overlay so the picked page is
  * immediately usable. This is view-owned browser chrome: it covers the native
  * page, but remains below the ambient chat sheet and fits in the viewport above
@@ -320,6 +341,7 @@ export function BrowserTabSwitcher({
   returnFocusRef?: React.RefObject<HTMLElement | null>;
   actionsDisabled?: boolean;
 }): React.JSX.Element {
+  const showSectionLabels = folded.sections.length > 1;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -343,7 +365,7 @@ export function BrowserTabSwitcher({
             if (returnTarget.isConnected) returnTarget.focus();
           }, 0);
         }}
-        className="z-[8810] grid-rows-[auto_minmax(0,1fr)] gap-4 rounded-2xl border-border bg-bg shadow-[0_24px_80px_rgba(16,10,5,.48)] max-sm:-translate-y-1/2 max-sm:rounded-2xl"
+        className="z-[8810] grid-rows-[auto_minmax(0,1fr)] gap-4 rounded-3xl border-border bg-bg shadow-[0_24px_80px_rgba(0,0,0,.48)] max-sm:-translate-y-1/2 max-sm:rounded-3xl"
         style={{
           top: "calc((100dvh - var(--eliza-chat-clearance, 5.25rem)) / 2)",
           bottom: "auto",
@@ -387,13 +409,19 @@ export function BrowserTabSwitcher({
             <div className="flex flex-col gap-4">
               {folded.sections.map((group) => (
                 <section key={group.key} aria-label={group.label}>
-                  <h3 className="px-1 pb-1.5 text-2xs font-semibold uppercase tracking-wide text-muted">
+                  <h3
+                    className={
+                      showSectionLabels
+                        ? "px-1 pb-2 text-xs font-medium text-muted"
+                        : "sr-only"
+                    }
+                  >
                     {group.label}
                   </h3>
                   <div
                     role="tablist"
                     aria-label={group.label}
-                    className="grid grid-cols-1 gap-2"
+                    className="grid grid-cols-2 gap-3 sm:grid-cols-3"
                   >
                     {group.tabs.map((tab) => (
                       <BrowserTabCard

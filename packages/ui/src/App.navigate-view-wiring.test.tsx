@@ -28,6 +28,7 @@ import { registerAppShellPage } from "./app-shell-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import { DEFAULT_BRANDING } from "./config/branding-base";
 import { BrandingContext } from "./config/branding-react.hooks";
+import type { AuthStatusState } from "./hooks/useAuthStatus";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { resetUiRegistryHostForTests } from "./registry-host";
 import { getActiveSurfaceRealmScope } from "./surface-realm-broker";
@@ -54,6 +55,28 @@ const authStatusMock = vi.hoisted(() => ({
   refetch: vi.fn(),
   use: vi.fn(),
 }));
+
+const authenticatedAuthStatus = vi.hoisted(
+  () =>
+    ({
+      phase: "authenticated",
+      identity: {
+        id: "test-user",
+        displayName: "Test User",
+        kind: "owner",
+      },
+      session: {
+        id: "test-session",
+        kind: "local",
+        expiresAt: null,
+      },
+      access: {
+        mode: "local",
+        passwordConfigured: true,
+        ownerConfigured: true,
+      },
+    }) satisfies AuthStatusState,
+);
 
 const cloudSessionState = vi.hoisted(() => ({
   authenticated: false,
@@ -313,12 +336,7 @@ vi.mock("./hooks/useAuthStatus", () => ({
     return {
       state:
         authStatusMock.phase === "authenticated"
-          ? {
-              phase: "authenticated",
-              identity: { id: "test-user" },
-              session: { id: "test-session" },
-              access: {},
-            }
+          ? authenticatedAuthStatus
           : { phase: authStatusMock.phase },
       refetch: authStatusMock.refetch,
     };
@@ -337,12 +355,7 @@ vi.mock("./hooks/useAuthStatus", () => ({
   // same static phase in AuthStatusState shape.
   getAuthStatusSnapshot: () =>
     authStatusMock.phase === "authenticated"
-      ? {
-          phase: "authenticated",
-          identity: { id: "test-user" },
-          session: { id: "test-session" },
-          access: {},
-        }
+      ? authenticatedAuthStatus
       : { phase: "unauthenticated" },
   subscribeAuthStatus: () => vi.fn(),
 }));

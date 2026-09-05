@@ -12,6 +12,7 @@
  */
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { useAppSelector } from "../../state";
+import { Skeleton } from "../ui/skeleton";
 import {
   SettingsActionButton,
   SettingsInputRow,
@@ -154,6 +155,55 @@ function SaveStatus({
     );
   }
   return null;
+}
+
+interface LoadingRowShape {
+  id: string;
+  description?: boolean;
+  controlWidth: string;
+}
+
+function ModelConfigurationLoadingGroup({
+  title,
+  description,
+  rows,
+  statusLabel,
+}: {
+  title: string;
+  description: string;
+  rows: LoadingRowShape[];
+  statusLabel?: string;
+}) {
+  return (
+    <SettingsGroup
+      title={title}
+      description={description}
+      bare
+      {...(statusLabel
+        ? {
+            role: "status",
+            "aria-label": statusLabel,
+            "data-testid": "model-config-loading",
+          }
+        : { "aria-hidden": true })}
+    >
+      {statusLabel ? <span className="sr-only">{statusLabel}</span> : null}
+      <div className="flex flex-col" aria-hidden>
+        {rows.map((row) => (
+          <SettingsRow
+            // The loading geometry mirrors the final settings rows so the
+            // async catalog/config swap does not push the visible page around.
+            key={row.id}
+            label={<Skeleton className="h-4 w-24" />}
+            description={
+              row.description ? <Skeleton className="mt-1 h-3 w-40" /> : null
+            }
+            control={<Skeleton className={`h-9 ${row.controlWidth}`} />}
+          />
+        ))}
+      </div>
+    </SettingsGroup>
+  );
 }
 
 function ChatModelGroup({
@@ -457,23 +507,55 @@ export function ModelConfigurationPanelView({
 }) {
   if (state.phase === "loading") {
     return (
-      <SettingsGroup
-        title={t("modelconfig.panelTitle", { defaultValue: "Models" })}
-        bare
-      >
-        <span
-          role="status"
-          className="inline-flex items-center gap-2 py-2 text-xs text-muted"
-          aria-label={t("modelconfig.loading", {
+      <>
+        <ModelConfigurationLoadingGroup
+          title={t("modelconfig.smallGroupTitle", {
+            defaultValue: "Small model",
+          })}
+          description={t("modelconfig.smallGroupDescription", {
+            defaultValue:
+              "Fast, cheap model for routing and lightweight replies.",
+          })}
+          statusLabel={t("modelconfig.loading", {
             defaultValue: "Loading model catalog…",
           })}
-        >
-          <Loader2 className="size-3.5 animate-spin" aria-hidden />
-          {t("modelconfig.loading", {
-            defaultValue: "Loading model catalog…",
+          rows={[
+            { id: "small-provider", description: true, controlWidth: "w-20" },
+            { id: "small-model", controlWidth: "w-40" },
+            { id: "small-apply", description: true, controlWidth: "w-16" },
+          ]}
+        />
+        <ModelConfigurationLoadingGroup
+          title={t("modelconfig.largeGroupTitle", {
+            defaultValue: "Large model",
           })}
-        </span>
-      </SettingsGroup>
+          description={t("modelconfig.largeGroupDescription", {
+            defaultValue: "Primary reasoning model for substantive replies.",
+          })}
+          rows={[
+            { id: "large-provider", description: true, controlWidth: "w-20" },
+            { id: "large-model", description: true, controlWidth: "w-40" },
+            { id: "large-effort", description: true, controlWidth: "w-24" },
+            { id: "large-apply", description: true, controlWidth: "w-16" },
+          ]}
+        />
+        <ModelConfigurationLoadingGroup
+          title={t("modelconfig.codingGroupTitle", {
+            defaultValue: "Coding sub-agent",
+          })}
+          description={t("modelconfig.codingGroupDescription", {
+            defaultValue:
+              "The model coding tasks are delegated to. Applies to the next coding task — no restart.",
+          })}
+          rows={[
+            { id: "coding-backend", controlWidth: "w-48" },
+            { id: "coding-model", description: true, controlWidth: "w-40" },
+            { id: "coding-effort", description: true, controlWidth: "w-24" },
+            { id: "coding-default", description: true, controlWidth: "w-10" },
+            { id: "coding-apply", description: true, controlWidth: "w-16" },
+          ]}
+        />
+      </>
     );
   }
   if (state.phase === "error") {

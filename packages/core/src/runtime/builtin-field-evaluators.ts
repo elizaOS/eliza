@@ -27,6 +27,7 @@
  */
 
 import { SHOULD_RESPOND_SCHEMA_DESCRIPTION } from "../actions/to-tool";
+import type { ReplyEffectStatus } from "../types/components";
 import type { JSONSchema } from "../types/model";
 import { trimEndCharacters } from "../utils/string-boundaries";
 import { stripJsonStructuralJunkReply } from "./json-output";
@@ -136,14 +137,15 @@ export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "intents",
 	description:
-		'Short verb phrases for this turn: ["schedule meeting", "draft email", "research X"]. Use 1-4. Helps action retrieval/routing. Empty for no actionable intent.',
+		'Short verb phrases covering every explicit outcome requiring runtime actions or external state in this turn. Keep navigation and data changes as separate intents: "open notes and update a note" requires both. Do not discard one clause because another is more substantive. Use [] for ordinary conversation, explanations, or answers fully supplied by replyText; a nonempty intent list requires the planner even if contexts says simple.',
 	descriptionCompressed:
-		"1-4 short verb phrases for this turn; empty when no actionable intent.",
+		"One verb phrase per requested runtime action, navigation separately from edits. Empty for text-only conversation; nonempty requires planning. Omit no actionable clause.",
 	priority: 15,
 	schema: {
 		type: "array",
 		items: { type: "string" },
-		description: "Verb-led intents. Lowercase. No punctuation. ~6 words max.",
+		description:
+			"Every requested outcome as a short verb-led intent, including navigation separately from data changes. Lowercase; no punctuation.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -176,15 +178,15 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "candidateActionNames",
 	description:
-		"Likely UPPER_SNAKE_CASE action names. Prefer available_actions; confident unlisted names ok. Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar-event reads/writes -> CALENDAR. Life-management (goals/todos/reminders/routines) -> the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER); hint, not a claim. Empty when no action likely.",
+		"Likely UPPER_SNAKE_CASE action names covering all requested intents. Prefer available_actions; confident unlisted names ok. Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar-event reads/writes -> CALENDAR. Opening a view and editing its data require both navigation and data actions, not just one. Life-management (goals/todos/reminders/routines) -> the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER); hint, not a claim. Empty when no action likely.",
 	descriptionCompressed:
-		"Likely UPPER_SNAKE_CASE action names. Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar events -> CALENDAR. Empty only when no action is needed.",
+		"Likely UPPER_SNAKE_CASE actions for every intent. Notes data -> NOTES; navigation/native device -> VIEWS; calendar data -> CALENDAR. Open-and-edit requires both navigation and data actions. Empty only when no action is needed.",
 	priority: 50,
 	schema: {
 		type: "array",
 		items: { type: "string" },
 		description:
-			"Action names. UPPER_SNAKE_CASE. Retrieval hints; high-precision hits expose planner actions.",
+			"UPPER_SNAKE_CASE retrieval hints covering all intents. Include navigation as well as data actions for open-and-edit requests.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -208,17 +210,21 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 // reply via REPLY action). Populate when contexts=["simple"].
 // ---------------------------------------------------------------------------
 
+const NAVIGATION_REPLY_RULE =
+	'For UI navigation, mention the requested destination in your own concise wording; never use a generic bare acknowledgement such as "On it." as the whole navigation reply. ';
+
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	name: "replyText",
 	description:
+		NAVIGATION_REPLY_RULE +
 		'User-facing reply. Populate when shouldRespond=RESPOND. contexts includes "simple" => whole answer. Planning/tool path => brief ack only ("On it.", "Spawning the sub-agent now.", "Looking into it."); planner sends grounded follow-up. IGNORE => empty. No thinking/reasoning.\n\nNEVER refuse in replyText on planning path. If `contexts` or `candidateActionNames` != "simple", planner handles work; ack only, no capability gatekeeping. Ban refusal openings: "I cannot...", "I am unable to...", "I don\'t have the ability to...", "Sorry, I can\'t...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, etc.). If no tool can attempt, use shouldRespond=RESPOND, `contexts: ["simple"]`, explain.',
 	descriptionCompressed:
-		'User-facing reply. simple=whole answer; tool/planning path=brief ack ("On it."), never a refusal; IGNORE=empty string.',
+		"User-facing reply. simple=whole answer; tool/planning path=brief ack, never a refusal; navigation must name its destination; IGNORE=empty string.",
 	priority: 20,
 	schema: {
 		type: "string",
 		description:
-			'User-facing reply. Simple=whole answer. Planning=brief ack ("On it.", "Working on it.", "Spawning a sub-agent now."). Never refuse on planning path. Plain text unless channel supports markdown.',
+			"User-facing reply. Simple=whole answer. Planning=brief ack. UI navigation must name the destination instead of using a generic bare acknowledgement. Never refuse on planning path. Plain text unless channel supports markdown.",
 	},
 	parse(value) {
 		if (typeof value !== "string") return "";
@@ -231,29 +237,33 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 // Semantic safety signal for indirect, vague, or non-English completion text.
 // ---------------------------------------------------------------------------
 
-export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<
-	"none" | "applied" | "non_applied"
-> = {
-	name: "replyEffectStatus",
-	description:
-		'Classify what replyText says about an external change (save, send, schedule, create, update, delete, payment, booking, device action, delegated task). "applied" when it says or clearly implies the change already happened, including vague/indirect/non-English wording such as "it is ready", "on the books", "you will get a nudge", or "quedó listo". "non_applied" when it explicitly says previewed, pending, failed, cancelled, unavailable, or not done. "none" when it makes no claim about an external change. A future promise or brief work-in-progress acknowledgement is non_applied.',
-	descriptionCompressed:
-		"Semantic status of external change claimed by replyText: applied, non_applied, or none; classify vague and non-English implications.",
-	priority: 25,
-	schema: {
-		type: "string",
-		enum: ["none", "applied", "non_applied"],
+/** Normalize the same effect contract in field-registry and fallback parsing. */
+export function normalizeReplyEffectStatus(value: unknown): ReplyEffectStatus {
+	const normalized =
+		typeof value === "string" ? value.trim().toLowerCase() : "";
+	return normalized === "applied" ||
+		normalized === "non_applied" ||
+		normalized === "pending"
+		? normalized
+		: "none";
+}
+
+export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<ReplyEffectStatus> =
+	{
+		name: "replyEffectStatus",
 		description:
-			"Whether replyText claims an external change already happened, explicitly says it did not, or makes no such claim.",
-	},
-	parse(value) {
-		const normalized =
-			typeof value === "string" ? value.trim().toLowerCase() : "";
-		return normalized === "applied" || normalized === "non_applied"
-			? normalized
-			: "none";
-	},
-};
+			'Classify the work described by replyText, regardless of wording or language. "pending" means work is promised, in progress, or not yet completed, including current-information lookup and UI navigation even beside an answered memory question. "applied" means an external change already happened (save, send, schedule, payment, booking, device action, delegated task), including indirect claims such as "on the books" or "quedó listo"; this is not execution proof. "non_applied" means a terminal failed, unavailable, cancelled, declined, or preview-only outcome with no promised work remaining. "none" means an answer, explanation, question, or conditional offer without a work claim. A promise to look up a price or open Home is pending, not non_applied.',
+		descriptionCompressed:
+			"Semantic work status in replyText: pending work (including lookup/navigation), applied change, terminal non_applied outcome, or none; wording and language do not determine routing.",
+		priority: 25,
+		schema: {
+			type: "string",
+			enum: ["none", "applied", "non_applied", "pending"],
+			description:
+				"pending=promised unfinished work, including lookup/navigation beside an answer; applied=claimed completed change; non_applied=terminal failed/unavailable/cancelled/declined/preview outcome; none=answer, explanation, question, or conditional offer without a work claim.",
+		},
+		parse: normalizeReplyEffectStatus,
+	};
 
 // ---------------------------------------------------------------------------
 // facts — priority 80. Memory pipeline.

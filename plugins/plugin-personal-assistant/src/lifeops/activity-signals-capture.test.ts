@@ -971,6 +971,41 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(h.captureLifeOpsActivitySignal).toHaveBeenCalled();
   });
 
+  it("backs off a 429 capture response without publishing an error storm", async () => {
+    vi.useFakeTimers();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.captureLifeOpsActivitySignal.mockRejectedValue({
+      kind: "http",
+      status: 429,
+      message: "Rate limit exceeded",
+    });
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal.mock.calls.length).toBeGreaterThan(0);
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+    expect(consoleError).not.toHaveBeenCalled();
+
+    h.captureLifeOpsActivitySignal.mockClear();
+    window.dispatchEvent(new Event("blur"));
+    await vi.advanceTimersByTimeAsync(55_000);
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
+
+    h.captureLifeOpsActivitySignal.mockResolvedValue({
+      signal: { id: "sig-after-rate-limit" },
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.captureLifeOpsActivitySignal.mock.calls.length).toBeGreaterThan(0);
+    consoleError.mockRestore();
+  });
+
   it("surfaces a persistent 5xx status-probe failure instead of reading it as not-ready forever", async () => {
     h.isApiError.mockImplementation(
       (error) => typeof error === "object" && error !== null && "kind" in error,

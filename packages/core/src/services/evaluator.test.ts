@@ -14,7 +14,8 @@ import {
 	type Memory,
 	ModelType,
 } from "../types";
-import { EvaluatorService } from "./evaluator";
+import { ChannelType } from "../types/primitives";
+import { EvaluatorService, runPostTurnEvaluators } from "./evaluator";
 
 const LARGE_PROMPT_SECTION_CHARS = 130_000;
 
@@ -62,6 +63,19 @@ function schema() {
 }
 
 describe("EvaluatorService", () => {
+	it.each([ChannelType.VOICE_DM, ChannelType.VOICE_GROUP])(
+		"does not serialize %s turns behind optional post-turn reflection",
+		async (channelType) => {
+			const runtime = makeRuntime();
+			const getServiceLoadPromise = vi.spyOn(runtime, "getServiceLoadPromise");
+			const message = makeMessage();
+			message.content.channelType = channelType;
+
+			await expect(runPostTurnEvaluators(runtime, message)).resolves.toBeNull();
+			expect(getServiceLoadPromise).not.toHaveBeenCalled();
+		},
+	);
+
 	it("merges active evaluator sections into one structured model call", async () => {
 		const runtime = makeRuntime();
 		const processed: string[] = [];

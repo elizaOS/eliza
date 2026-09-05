@@ -5,8 +5,10 @@
  * @vitest-environment jsdom
  */
 
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatActionResultSummary } from "./api/client-types-chat";
+import { createNavigateViewHandler } from "./app-navigate-view";
 import {
   dispatchViewActionHandoff,
   dispatchViewActionHandoffDirect,
@@ -104,6 +106,95 @@ describe("view action handoff", () => {
         },
       ]),
     ).toBeNull();
+  });
+
+  it("opens the Browser surface from a successful in-app browser command", () => {
+    expect(
+      findViewActionHandoff([
+        {
+          actionName: "BROWSER_NAVIGATE",
+          success: true,
+          values: {
+            mode: "web",
+            subaction: "navigate",
+            targetId: "workspace",
+            viewId: "browser",
+            viewPath: "/browser",
+            url: "https://example.com/path",
+          },
+        },
+      ]),
+    ).toEqual({
+      viewId: "browser",
+      viewPath: "/browser?browse=https%3A%2F%2Fexample.com%2Fpath",
+    });
+
+    expect(
+      findViewActionHandoff([
+        {
+          actionName: "BROWSER",
+          success: true,
+          values: {
+            mode: "desktop",
+            subaction: "navigate",
+            targetId: "bridge",
+            viewId: "browser",
+            viewPath: "/browser",
+          },
+        },
+      ]),
+    ).toBeNull();
+  });
+
+  it("delivers workspace navigation after a later page read without losing the destination", () => {
+    const actionResults: ChatActionResultSummary[] = [
+      {
+        actionName: "BROWSER_NAVIGATE",
+        success: true,
+        text: "Opened example.com.",
+        values: {
+          success: true,
+          mode: "web",
+          targetId: "workspace",
+          subaction: "navigate",
+          viewId: "browser",
+          viewPath: "/browser",
+          tabId: "btab_1",
+          url: "https://example.com/",
+        },
+      },
+      {
+        actionName: "BROWSER",
+        success: true,
+        text: "Browser get result (web):\nExample Domain",
+        values: {
+          success: true,
+          mode: "web",
+          targetId: "workspace",
+          subaction: "get",
+        },
+      },
+    ];
+    const priorPath = window.location.href;
+    const navigate = createNavigateViewHandler({
+      availableViewsForDesktopTabs: [],
+      invokeDesktopBridgeRequest: async () => null,
+      openDesktopTab: vi.fn(),
+      setActiveDesktopTabId: vi.fn(),
+      setTab: vi.fn(),
+    });
+    window.history.replaceState(null, "", "/notes");
+    window.addEventListener(NAVIGATE_VIEW_EVENT, navigate);
+    try {
+      expect(dispatchViewActionHandoffDirect(actionResults)).toBe(true);
+      expect(window.location.pathname).toBe("/browser");
+      expect(new URLSearchParams(window.location.search).get("browse")).toBe(
+        "https://example.com/",
+      );
+    } finally {
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, navigate);
+      window.history.replaceState(null, "", priorPath);
+    }
   });
 
   it("ignores inherited handoff fields and delivery confirmations", () => {

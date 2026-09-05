@@ -155,6 +155,28 @@ async function waitForViteClient(page: Page): Promise<void> {
   await page.waitForTimeout(2000);
 }
 
+function rejectUnexpectedPageOrigin(
+  page: Page,
+  expectedOrigin: string,
+): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    page.on("framenavigated", (frame) => {
+      if (frame !== page.mainFrame() || frame.url() === "about:blank") return;
+
+      try {
+        if (new URL(frame.url()).origin === expectedOrigin) return;
+      } catch {
+        // Report malformed destinations through the same explicit boundary.
+      }
+      reject(
+        new Error(
+          `HMR fixture left its local origin ${expectedOrigin}: ${frame.url()}`,
+        ),
+      );
+    });
+  });
+}
+
 // Most plugin GUI views are NOT reachable in the dev client's module graph from
 // the "/chat" route: they are served as standalone agent-built bundles loaded by
 // DynamicViewLoader (a separate module graph the app's Vite dev server never
@@ -184,11 +206,31 @@ function isNotInRootGraph(name: string): boolean {
 test.describe("HMR propagation across package dependency levels", () => {
   test.describe.configure({ mode: "serial" });
 
+  test("reports an unexpected main-frame origin immediately", async ({
+    page,
+    baseURL,
+  }) => {
+    if (!baseURL) throw new Error("HMR fixture requires a local baseURL");
+    const expectedOrigin = new URL(baseURL).origin;
+    const stayLocal = rejectUnexpectedPageOrigin(page, expectedOrigin);
+
+    await expect(
+      Promise.race([page.goto("data:text/html,hmr-origin-guard"), stayLocal]),
+    ).rejects.toThrow(
+      `HMR fixture left its local origin ${expectedOrigin}: data:text/html,hmr-origin-guard`,
+    );
+  });
+
   for (const level of LEVELS) {
     const defineTest = isNotInRootGraph(level.name) ? test.skip : test;
     defineTest(
       `edit at ${level.name} reaches the running dev client`,
-      async ({ page }) => {
+      async ({ page, baseURL }) => {
+        if (!baseURL) throw new Error("HMR fixture requires a local baseURL");
+        const stayLocal = rejectUnexpectedPageOrigin(
+          page,
+          new URL(baseURL).origin,
+        );
         const abs = path.join(repoRoot, level.file);
         expect(
           fs.existsSync(abs),
@@ -201,8 +243,8 @@ test.describe("HMR propagation across package dependency levels", () => {
         // The hosted root can select the lightweight marketing entry, which
         // intentionally excludes main.tsx and @elizaos/ui. Use a full-app route
         // so every asserted dependency is present in the live client graph.
-        await page.goto("/chat");
-        await waitForViteClient(page);
+        await Promise.race([page.goto("/chat"), stayLocal]);
+        await Promise.race([waitForViteClient(page), stayLocal]);
 
         // Clear the execution marker before editing. The changed module sets it
         // again when Vite propagates either an HMR update or a full reload.
@@ -219,25 +261,28 @@ test.describe("HMR propagation across package dependency levels", () => {
             abs,
             `${original}\n(globalThis as typeof globalThis & { __elizaHmrProbe?: string }).__elizaHmrProbe = ${JSON.stringify(marker)};\n`,
           );
-          await expect
-            .poll(
-              () =>
-                page
-                  .evaluate(
-                    () =>
-                      (
-                        globalThis as typeof globalThis & {
-                          __elizaHmrProbe?: string;
-                        }
-                      ).__elizaHmrProbe,
-                  )
-                  .catch(() => undefined),
-              {
-                timeout: 30_000,
-                message: `Expected the edited module ${level.file} to execute in the browser. Captured Vite events: ${JSON.stringify(events)}`,
-              },
-            )
-            .toBe(marker);
+          await Promise.race([
+            expect
+              .poll(
+                () =>
+                  page
+                    .evaluate(
+                      () =>
+                        (
+                          globalThis as typeof globalThis & {
+                            __elizaHmrProbe?: string;
+                          }
+                        ).__elizaHmrProbe,
+                    )
+                    .catch(() => undefined),
+                {
+                  timeout: 30_000,
+                  message: `Expected the edited module ${level.file} to execute in the browser. Captured Vite events: ${JSON.stringify(events)}`,
+                },
+              )
+              .toBe(marker),
+            stayLocal,
+          ]);
         } finally {
           fs.writeFileSync(abs, original);
         }

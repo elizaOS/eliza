@@ -502,6 +502,8 @@ export * from "./utils/inference-priority-gate";
 export {
 	assertModelOutputComplete,
 	isModelOutputLimitFinishReason,
+	isModelProviderError,
+	modelProviderErrorDetail,
 } from "./utils/model-errors";
 // Export Node-specific utilities
 export * from "./utils/project-memory-scope";

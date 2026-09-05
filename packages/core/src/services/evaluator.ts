@@ -29,6 +29,7 @@ import type {
 	State,
 } from "../types/index.ts";
 import { EventType, ModelType } from "../types/index.ts";
+import { ChannelType } from "../types/primitives.ts";
 import { Service as BaseService } from "../types/service.ts";
 import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 import {
@@ -859,12 +860,19 @@ export async function runPostTurnEvaluators(
 	state?: State,
 	options: EvaluatorRunOptions = {},
 ): Promise<EvaluatorRunResult | null> {
-	// On mobile (single on-device GPU context, single-threaded agent) the
-	// post-turn reflection pass is a 256-512 token generation that serializes on
-	// the SAME engine as the user reply and blocks the next inbound turn for
-	// ~30-64s. Skip it on android/ios — reflection's value at the 2B local tier
-	// is marginal and not worth the per-turn latency. Desktop/server keep it.
-	if (isMobilePlatform()) {
+	// Realtime voice and mobile local inference both require the room to admit the
+	// next utterance immediately after the visible reply. Post-turn reflection is
+	// optional model work, but the host deliberately drains room-state tasks before
+	// releasing that room. Running reflection here therefore serializes the next
+	// utterance behind another generation; a malformed provider response can keep
+	// the room occupied until the runtime watchdog fires. Voice still runs the
+	// complete response/action pipeline above, including ALWAYS_AFTER actions; only
+	// this post-delivery reflection call is skipped.
+	if (
+		isMobilePlatform() ||
+		message.content.channelType === ChannelType.VOICE_DM ||
+		message.content.channelType === ChannelType.VOICE_GROUP
+	) {
 		return null;
 	}
 	try {

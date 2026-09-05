@@ -234,8 +234,18 @@ async function resolveRestoredConversationWithMessages(
       candidateMessages = filterRenderableConversationMessages(
         (await api.getConversationMessages(candidate.id)).messages,
       );
-    } catch {
-      continue;
+    } catch (err) {
+      // error-policy:J4 an unreadable candidate may be the user's real history;
+      // keep selection unresolved instead of accepting a greeting-only draft.
+      logger.warn(
+        { err, conversationId: candidate.id },
+        "[useChatCallbacks] failed to resolve personal conversation history",
+      );
+      return {
+        conversation: restoredConversation,
+        messages: [],
+        messagesLoaded: false,
+      };
     }
     if (hasUserConversationMessage(candidateMessages)) {
       return {
@@ -283,12 +293,20 @@ export async function hydrateInitialConversation(
     uiLanguage,
     seedSyntheticGreeting,
   } = deps;
+  const previousConversationId = activeConversationIdRef.current;
+  loadedConversationIdRef.current = null;
   const hydrationEpoch = ++conversationHydrationEpochRef.current;
   const isCurrentHydration = () =>
     conversationHydrationEpochRef.current === hydrationEpoch;
 
   try {
     const { conversations: rawConversations } = await api.listConversations();
+    if (
+      !Array.isArray(rawConversations) ||
+      !rawConversations.every(isConversationRecord)
+    ) {
+      return null;
+    }
     const conversations = normalizeConversationList(rawConversations);
     traceGreeting("hydrate:listConversations", {
       count: conversations.length,
@@ -328,17 +346,23 @@ export async function hydrateInitialConversation(
           conversationId: restoredConversation.id,
         });
       }
+      if (!messagesLoaded) {
+        // A failed refresh does not erase the same conversation's visible
+        // history. Its loaded marker stays unknown so sends and draft cleanup
+        // cannot treat stale rows as a completed restore.
+        if (previousConversationId !== restoredConversation.id) {
+          greetingFiredRef.current = false;
+          conversationMessagesRef.current = [];
+          setConversationMessages([]);
+        }
+        return null;
+      }
       try {
         claimConversationMessagesOwnership(restoredConversation.id);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;
-        // A failed restore fetch yields a placeholder [] — leave the holder
-        // unknown so the empty-draft cleanup can never judge (and delete) the
-        // restored conversation from messages that were never actually loaded.
-        loadedConversationIdRef.current = messagesLoaded
-          ? restoredConversation.id
-          : null;
+        loadedConversationIdRef.current = restoredConversation.id;
         setConversationMessages(nextMessages);
         markConversationHistoryApplied(messagesLoaded);
         return messagesLoaded &&
@@ -443,26 +467,27 @@ export async function hydrateInitialConversation(
   }
 }
 
-const CONVERSATION_HYDRATION_SEND_WAIT_MS = 1_000;
+const CONVERSATION_HYDRATION_SEND_WAIT_MS = 10_000;
 
 /**
- * Gives an in-flight startup restore a short chance to choose the active
- * conversation before a user send claims it. A hung restore is invalidated so
- * it cannot overwrite the user's turn after the bounded wait expires.
+ * Waits for startup to choose the conversation before accepting a send. A
+ * timeout declines this send and leaves the restore authoritative: incomplete
+ * history is never evidence that a new conversation should be created.
  */
 export async function settleConversationHydrationForSend(
   hydrationTaskRef: MutableRefObject<Promise<string | null> | null>,
   conversationHydrationEpochRef: MutableRefObject<number>,
   timeoutMs = CONVERSATION_HYDRATION_SEND_WAIT_MS,
-): Promise<void> {
+): Promise<boolean> {
   const task = hydrationTaskRef.current;
-  if (!task) return;
+  if (!task) return true;
+  const hydrationEpoch = conversationHydrationEpochRef.current;
 
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const completed = await Promise.race([
     task.then(
       () => true,
-      () => true,
+      () => false,
     ),
     new Promise<boolean>((resolve) => {
       timeoutId = setTimeout(() => resolve(false), timeoutMs);
@@ -470,9 +495,11 @@ export async function settleConversationHydrationForSend(
   ]);
   if (timeoutId) clearTimeout(timeoutId);
 
-  if (hydrationTaskRef.current !== task) return;
-  if (!completed) conversationHydrationEpochRef.current += 1;
-  hydrationTaskRef.current = null;
+  if (!completed) return false;
+  if (hydrationTaskRef.current === task) {
+    hydrationTaskRef.current = null;
+  }
+  return conversationHydrationEpochRef.current === hydrationEpoch;
 }
 
 // ── Deps interface ──────────────────────────────────────────────────
@@ -926,9 +953,17 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   const conversationHydrationTaskRef = useRef<Promise<string | null> | null>(
     null,
   );
+  const conversationHydrationTaskEpochRef = useRef<number | null>(null);
   const hydrateInitialConversationState = useCallback((): Promise<
     string | null
   > => {
+    if (
+      conversationHydrationTaskRef.current &&
+      conversationHydrationTaskEpochRef.current ===
+        conversationHydrationEpochRef.current
+    ) {
+      return conversationHydrationTaskRef.current;
+    }
     const task = hydrateInitialConversation({
       client,
       conversationHydrationEpochRef,
@@ -944,6 +979,8 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       seedSyntheticGreeting,
     });
     conversationHydrationTaskRef.current = task;
+    conversationHydrationTaskEpochRef.current =
+      conversationHydrationEpochRef.current;
     const clearSettledTask = () => {
       if (conversationHydrationTaskRef.current === task) {
         conversationHydrationTaskRef.current = null;
@@ -964,18 +1001,51 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     setConversationMessages,
     setConversations,
   ]);
+  const ensureActiveConversation = useCallback(async (): Promise<
+    string | null
+  > => {
+    if (
+      !activeConversationIdRef.current ||
+      loadedConversationIdRef.current !== activeConversationIdRef.current
+    ) {
+      void hydrateInitialConversationState();
+    }
+    const restored = await settleConversationHydrationForSend(
+      conversationHydrationTaskRef,
+      conversationHydrationEpochRef,
+    );
+    if (
+      !restored ||
+      !activeConversationIdRef.current ||
+      loadedConversationIdRef.current !== activeConversationIdRef.current
+    ) {
+      setActionNotice(
+        "Your conversation is still unavailable. Please retry when the connection recovers.",
+        "error",
+        8_000,
+      );
+      return null;
+    }
+    return activeConversationIdRef.current;
+  }, [
+    activeConversationIdRef,
+    conversationHydrationEpochRef,
+    hydrateInitialConversationState,
+    loadedConversationIdRef,
+    setActionNotice,
+  ]);
   const settleActiveConversationHydrationForSend = useCallback(
-    () =>
-      settleConversationHydrationForSend(
-        conversationHydrationTaskRef,
-        conversationHydrationEpochRef,
-      ),
-    [conversationHydrationEpochRef],
+    async () => (await ensureActiveConversation()) !== null,
+    [ensureActiveConversation],
   );
 
   useEffect(() => {
     return subscribeRuntimeAuthoritySwitch((phase) => {
-      if (phase !== "after") return;
+      if (phase === "before") {
+        conversationHydrationEpochRef.current += 1;
+        conversationHydrationTaskRef.current = null;
+        return;
+      }
       // hydrateInitialConversation increments its navigation epoch before the
       // first await, so this synchronously invalidates any restore that still
       // belongs to the prior authority. The dedicated after phase fires once,
@@ -984,7 +1054,11 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         requestGreetingWhenRunning(greetId),
       );
     });
-  }, [hydrateInitialConversationState, requestGreetingWhenRunning]);
+  }, [
+    conversationHydrationEpochRef,
+    hydrateInitialConversationState,
+    requestGreetingWhenRunning,
+  ]);
 
   // Backfill the bootstrap greeting once the agent first becomes ready. The
   // initial post-hydrate `requestGreetingWhenRunning` is one-shot and bails when
@@ -1876,6 +1950,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     fetchGreeting,
     requestGreetingWhenRunning,
     hydrateInitialConversationState,
+    ensureActiveConversation,
     // Conversation management
     handleNewConversation,
     handleSelectConversation,

@@ -266,6 +266,7 @@ type StreamChatState = {
   doneAccountConnect: AccountConnectRequest | undefined;
   doneLocalInference: LocalInferenceChatMetadata | undefined;
   doneActionResults: ChatActionResultSummary[] | undefined;
+  replyReadyActionsDelivered: boolean;
   receivedDone: boolean;
 };
 
@@ -410,6 +411,33 @@ function applyStreamChatTokenEvent(
   return false;
 }
 
+function parseStreamActionResults(
+  value: unknown,
+): ChatActionResultSummary[] | undefined {
+  if (
+    !Array.isArray(value) ||
+    !value.every(
+      (result) =>
+        result !== null &&
+        typeof result === "object" &&
+        !Array.isArray(result) &&
+        typeof result.success === "boolean" &&
+        ["actionName", "text", "error"].every(
+          (key) => result[key] === undefined || typeof result[key] === "string",
+        ) &&
+        (result.values === undefined ||
+          (result.values !== null &&
+            typeof result.values === "object" &&
+            !Array.isArray(result.values))),
+    )
+  ) {
+    // error-policy:J3 malformed receipts are not authority to perform a client
+    // handoff. Reject the whole collection rather than applying a partial one.
+    return undefined;
+  }
+  return value;
+}
+
 function applyStreamChatDoneEvent(
   parsed: StreamChatEvent,
   state: StreamChatState,
@@ -450,9 +478,7 @@ function applyStreamChatDoneEvent(
   if (parsed.localInference && typeof parsed.localInference === "object") {
     state.doneLocalInference = parsed.localInference;
   }
-  if (Array.isArray(parsed.actionResults)) {
-    state.doneActionResults = parsed.actionResults;
-  }
+  state.doneActionResults = parseStreamActionResults(parsed.actionResults);
   if (parsed.usage) {
     state.doneUsage = {
       promptTokens: parsed.usage.promptTokens ?? 0,
@@ -475,11 +501,31 @@ function applyStreamChatDataLine(
   onStatus?: (status: ChatTurnStatus) => void,
   onToolEvent?: (event: ChatToolCallEvent) => void,
   eventName?: string,
+  onReplyReady?: (actionResults: ChatActionResultSummary[]) => void,
 ): boolean {
   const parsed = parseStreamChatDataLine(line, eventName);
   if (!parsed) return false;
   if (parsed.type === "token") {
     return applyStreamChatTokenEvent(parsed, state, onToken);
+  }
+  if (parsed.type === "reply_ready") {
+    // The agent has settled the authoritative user-visible reply, but may
+    // still be persisting receipts and message metadata before `done`. Render
+    // this snapshot immediately and keep the stream open for that terminal
+    // bookkeeping. Treat it exactly like a non-provisional text snapshot so
+    // it replaces any provisional action callback instead of appending or
+    // speaking both versions.
+    applyStreamChatTokenEvent(
+      { ...parsed, provisional: false },
+      state,
+      onToken,
+    );
+    const actionResults = parseStreamActionResults(parsed.actionResults);
+    if (actionResults?.length && !state.replyReadyActionsDelivered) {
+      state.replyReadyActionsDelivered = true;
+      onReplyReady?.(actionResults);
+    }
+    return false;
   }
   if (parsed.type === "status") {
     // Additive: a non-terminal status event. Surface it (when a consumer wants
@@ -2865,6 +2911,9 @@ export class ElizaClient {
      *  actually landed server-side is de-duped instead of double-delivered.
      *  Omit for a fresh send — a new id is generated. */
     clientMessageId?: string,
+    /** Settled action receipts, before terminal bookkeeping. This does not
+     *  complete the stream or release the caller's pending-turn ownership. */
+    onReplyReady?: (actionResults: ChatActionResultSummary[]) => void,
   ): Promise<{
     text: string;
     agentName: string;
@@ -2957,8 +3006,25 @@ export class ElizaClient {
       doneAccountConnect: undefined,
       doneLocalInference: undefined,
       doneActionResults: undefined,
+      replyReadyActionsDelivered: false,
       receivedDone: false,
     };
+
+    const notifyReplyReady = onReplyReady
+      ? (actionResults: ChatActionResultSummary[]) => {
+          // A buffered final frame may still be decoded after Stop. It can
+          // preserve transcript text, but must not initiate a client handoff.
+          if (signal?.aborted) return;
+          try {
+            onReplyReady(actionResults);
+          } catch (err) {
+            // error-policy:J4 an optional renderer handoff failed after the
+            // action settled; retain terminal receipts and close the stream
+            // normally instead of turning a successful effect into a retry.
+            logger.warn({ err }, "[ElizaClient] reply-ready consumer failed");
+          }
+        }
+      : undefined;
 
     // Contract: the API emits a terminal done/error frame and supports explicit
     // cancellation through the caller's AbortSignal. Do not infer failure from
@@ -3033,6 +3099,7 @@ export class ElizaClient {
               onStatus,
               onToolEvent,
               eventName,
+              notifyReplyReady,
             )
           ) {
             buffer = "";
@@ -3061,6 +3128,7 @@ export class ElizaClient {
             onStatus,
             onToolEvent,
             trailingEventName,
+            notifyReplyReady,
           );
         }
       }

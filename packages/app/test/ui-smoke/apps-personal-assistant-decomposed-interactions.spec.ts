@@ -245,10 +245,10 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
   // /relationships mounts the unified RelationshipsView. The helper mocks
   // GET /api/lifeops/entities + /api/lifeops/relationships with a populated
   // graph (Owner, Pat Doe, Acme Corp), so the view lands on its populated
-  // branch. Toggling the "Organizations" kind filter narrows the node list to
-  // the organization node only; "All" restores it.
+  // branch. Selecting "Organizations" from the kind dropdown narrows the node
+  // list to the organization node only; selecting "All" restores it.
   await openAppPath(page, "/relationships");
-  await expect(page.getByText("3 entities").first()).toBeVisible({
+  await expect(page.getByText("3 entities", { exact: true })).toBeVisible({
     timeout: 60_000,
   });
   await expect(page.getByText("Pat Doe").first()).toBeVisible({
@@ -278,11 +278,16 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
   const kindFilter = page.getByRole("button", {
     name: /^Filter relationship type/,
   });
+  await expectTopmostAtCenter(kindFilter, "Relationships kind filter");
   await kindFilter.click();
   await page
     .getByRole("menuitemradio", { name: "Organizations", exact: true })
     .click();
-  await expect(page.getByText("1 entity").first()).toBeVisible({
+  await expect(kindFilter).toHaveAttribute(
+    "aria-label",
+    "Filter relationship type, Organizations selected",
+  );
+  await expect(page.getByText("1 entity", { exact: true })).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("Pat Doe")).toHaveCount(0, { timeout: 15_000 });
@@ -290,13 +295,17 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     timeout: 15_000,
   });
 
-  // #11144 guard: the filter trigger must remain reachable above the graph.
-  // Drive the real restore path through the dropdown and assert every kind is
-  // visible again.
+  // #11144 guard: the kind control occupies the filter surface that used to
+  // sit under the removed global corner back button. Drive the restore path
+  // through the same topmost-checked control, then assert every kind is visible.
   await expectTopmostAtCenter(kindFilter, "Relationships kind filter");
   await kindFilter.click();
   await page.getByRole("menuitemradio", { name: "All", exact: true }).click();
-  await expect(page.getByText("3 entities").first()).toBeVisible({
+  await expect(kindFilter).toHaveAttribute(
+    "aria-label",
+    "Filter relationship type, All selected",
+  );
+  await expect(page.getByText("3 entities", { exact: true })).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("Pat Doe").first()).toBeVisible({

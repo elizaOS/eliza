@@ -597,8 +597,7 @@ export function SettingsView({
           {!isWideSettings ? (
             <div
               className={cn(
-                isNativeCompactSettings &&
-                  "pt-[max(calc(var(--safe-area-top,0px)-2rem),0.75rem)]",
+                isNativeCompactSettings && "pt-[var(--safe-area-top,0px)]",
               )}
             >
               <ViewHeader

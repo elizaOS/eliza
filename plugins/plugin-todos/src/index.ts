@@ -7,29 +7,12 @@
 import type { Plugin } from "@elizaos/core";
 import { todosRuntimePlugin } from "./plugin.js";
 
+// The dashboard view now lives on `todosRuntimePlugin` (the boot-imported
+// `./plugin` export) so it registers at agent boot; this barrel is the same
+// plugin plus the React view re-exports below. Keep it a plain spread so the
+// view descriptor has a single source of truth.
 export const todosPlugin: Plugin = {
   ...todosRuntimePlugin,
-  views: [
-    {
-      id: "todos",
-      label: "Todos",
-      description: "Three-lane todo board: Today / Upcoming / Someday",
-      icon: "ListChecks",
-      path: "/todos",
-      responseContext: { primaryContext: "todos" },
-      modalities: ["gui"],
-      bundlePath: "dist/views/bundle.js",
-      // First-party instrumented view (data-agent-id controls): grant the
-      // agent-surface capability so the view broker admits agent-driven
-      // fills/clicks (#13452 manifest gate).
-      surface: { capabilities: ["agent-surface"] },
-      componentExport: "TodosView",
-      tags: ["todos", "tasks", "productivity"],
-      relatedActions: ["OWNER_TODOS"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-  ],
 };
 
 export default todosPlugin;

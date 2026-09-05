@@ -81,7 +81,11 @@ import {
 	renderContextObject,
 	segmentBlock,
 } from "./context-renderer";
-import { runEvaluator } from "./evaluator";
+import {
+	declaredIntentsFromContext,
+	repairFinishWithProgressPromise,
+	runEvaluator,
+} from "./evaluator";
 import {
 	extractJsonObjects,
 	parseJsonObject,
@@ -321,7 +325,40 @@ export async function runPlannerLoop(
 		}
 	};
 	const trackedParams = { ...params, onModelUsage: observeModelUsage };
-	const result = await runPlannerLoopIterations(trackedParams);
+	let result: PlannerLoopResult;
+	try {
+		result = await runPlannerLoopIterations(trackedParams);
+	} catch (error) {
+		// A coding planner model call that blew its wall-clock deadline is a
+		// terminal boundary: return an honest fail-fast reply instead of letting
+		// the timeout propagate. message.ts bare-rethrows a coding-mode planner
+		// error (no preserved Stage-1 answer to degrade to), which would leave the
+		// user with silence after a 60s+ hang — the exact failure this guards.
+		if (
+			params.codingMode === true &&
+			error instanceof ElizaError &&
+			error.code === PLANNER_MODEL_CALL_TIMEOUT
+		) {
+			params.runtime.logger?.warn?.(
+				{ src: "planner-loop", ...(error.context ?? {}) },
+				"[planner-loop] coding planner turn timed out; returning honest fail-fast reply",
+			);
+			return {
+				status: "finished",
+				trajectory: {
+					context: normalizePlannerContext(params.context),
+					codingMode: true,
+					steps: [],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+				finalMessage: PLANNER_MODEL_CALL_TIMEOUT_MESSAGE,
+				modelUsage: usage,
+			};
+		}
+		throw error;
+	}
 	const honest = await ensureFailedTurnFinalMessage(trackedParams, result);
 	const final = await ensureToolTurnFinalMessage(trackedParams, honest);
 	return { ...final, modelUsage: usage };
@@ -331,6 +368,11 @@ async function runPlannerLoopIterations(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
 	const plannerContext = normalizePlannerContext(params.context);
+	// Tool success proves execution, not fulfillment of the user's intent.
+	// Evaluate even a single declared intent: a final-scope call can still
+	// target the wrong resource or surface.
+	const requiresIntentEvaluation =
+		declaredIntentsFromContext(plannerContext).length > 0;
 	// Diagnostic projection for every context/event copy of tool-call
 	// arguments: runtime-known secrets composed with the shared tool-shape
 	// patterns. The raw calls stay on `trajectory.plannedQueue` for execution.
@@ -612,27 +654,6 @@ async function runPlannerLoopIterations(
 		lastMissAnswerText = candidate;
 		return accepted;
 	};
-	// One-pass clarifying-question termination, shared by both required-tool
-	// miss branches. A user-directed terminal reply that is a user-safe
-	// CLARIFYING QUESTION is a terminal outcome by construction: the planner
-	// is asking the user for input it needs before any tool can act, so a
-	// corrective re-prompt cannot progress the turn — it only re-drafts the
-	// same question against the same context (observed live: "create a mew
-	// event for today" burned four planner passes, ~13.7s, each drafting the
-	// identical "What's the event for?" REPLY before the miss-budget hatch
-	// shipped it, tj-28a877e591e5f3). Deliver the question on the pass that
-	// produced it — the same request-for-input contract as the widget escape
-	// (#15230), one pass earlier because a prose question carries no widget
-	// identity worth a re-emission check. Coding builds keep the full
-	// corrective budget: their gate exists to convert narration into
-	// FILE/SHELL work, so a premature question there is still re-prompted.
-	// Callers must feed only user-directed sources (explicit messageToUser,
-	// REPLY tool-call text) — never the native free-text fallback, which can
-	// be a pre-tool thought.
-	const clarifyingQuestionTermination = (
-		candidate: string | undefined,
-	): string | undefined =>
-		codingMode ? undefined : userSafeClarificationReplyCandidate(candidate);
 
 	// Coding/full-surface mode (selected explicitly for this turn):
 	// when the model emits a batch of tool calls in a single response, execute
@@ -772,22 +793,20 @@ async function runPlannerLoopIterations(
 			lastPlannerExplicitCompleted = plannerOutput.completed;
 			if (synthesizingRequiredModelReply) {
 				pendingRequiredModelReply = false;
-				if (plannerOutput.toolCalls.length > 0) {
-					// Fail closed (#22609): the required-reply synthesis is a
-					// tool-free round. When a non-compliant provider returns BOTH
-					// prose and an unsolicited tool call, the response is invalid AS
-					// A WHOLE — its prose must NOT be accepted and the invented tool
-					// must NOT run. Route the already-completed sole action (it ran
-					// exactly once before this round was armed) through the normal
-					// evaluator/fallback path, exactly as if the model-reply request
-					// had never been made. This prevents an unsolicited tool call
-					// from smuggling its co-emitted prose past evaluator review.
+				const requiredModelReply = userSafeRescueReply(
+					userSafeCapturedAnswerCandidate(plannerOutput.messageToUser),
+					trajectory,
+				);
+				if (plannerOutput.toolCalls.length > 0 || !requiredModelReply) {
+					// Tool syntax can arrive as plain text with no parsed toolCalls.
+					// Neither shape is a closing reply. Reject the whole response and
+					// let the evaluator inspect the settled result; never invent success.
 					params.runtime.logger?.warn?.(
 						{
 							iteration,
 							inventedToolCalls: plannerOutput.toolCalls.length,
 						},
-						"[planner-loop] required-reply synthesis returned an unsolicited tool call; rejecting the whole response and routing the completed action through the evaluator",
+						"[planner-loop] required-reply synthesis returned no valid closing reply; routing the settled action through the evaluator",
 					);
 					let evaluator: EvaluatorOutput;
 					try {
@@ -868,37 +887,20 @@ async function runPlannerLoopIterations(
 							),
 						};
 					}
-					// The evaluator declined to FINISH, but this round has no tool
-					// catalog and the invented tool must never execute. Relay the
-					// completed action's own truthful result instead of replaying
-					// work or fabricating a save.
-					const relay = deterministicSuccessfulToolRelay(trajectory);
-					return {
-						status: "finished",
-						trajectory,
-						evaluator,
-						finalMessage: userSafeFinalMessage(
-							terminalMessageWithFailureAuthority(
-								trajectory,
-								relay ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE,
-							),
-							trajectory,
-						),
-					};
+					if (postToolReplySeed) {
+						throw new ElizaError(
+							"The settled action did not yield a verified final reply",
+							{ code: "POST_TOOL_REPLY_INCOMPLETE", context: { iteration } },
+						);
+					}
+					// Resume normal planning with the authorized catalog and existing
+					// result history. The rejected synthesis call is never executed.
+					lastPlannerExplicitMessageToUser = undefined;
+					lastPlannerExplicitCompleted = false;
+					continue;
 				}
-				const requiredModelReply = userSafeCapturedAnswerCandidate(
-					plannerOutput.messageToUser,
-				);
 				const finalMessage = userSafeFinalMessage(
-					terminalMessageWithFailureAuthority(
-						trajectory,
-						preferredFinalMessageFromToolOrModel(
-							trajectory,
-							requiredModelReply,
-							deterministicSuccessfulToolRelay(trajectory) ??
-								REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE,
-						),
-					),
+					terminalMessageWithFailureAuthority(trajectory, requiredModelReply),
 					trajectory,
 				);
 				trajectory.steps.push({
@@ -989,22 +991,6 @@ async function runPlannerLoopIterations(
 					lastMissWidgetText = widgetCandidate;
 					const captured = refusalCandidate ?? widgetCandidate;
 					if (captured) lastTerminalRefusalText = captured;
-					// A clarifying question ends the turn NOW (see
-					// clarifyingQuestionTermination). Explicit messageToUser only —
-					// the native free-text fallback can be a pre-tool thought. A
-					// widget-bearing reply keeps its own re-emission identity check.
-					const clarifyingQuestion =
-						widgetCandidate === undefined
-							? clarifyingQuestionTermination(lastPlannerExplicitMessageToUser)
-							: undefined;
-					if (clarifyingQuestion !== undefined) {
-						return finishWithCapturedRefusal({
-							trajectory,
-							iteration,
-							thought: plannerOutput.thought,
-							refusal: clarifyingQuestion,
-						});
-					}
 					// Only the EXPLICIT messageToUser is a safe answer source in
 					// this branch — the native free-text fallback can be a pre-tool
 					// thought (#9874 item 3), so it is never captured as an answer.
@@ -1270,25 +1256,6 @@ async function runPlannerLoopIterations(
 					lastMissWidgetText = widgetCandidate;
 					const captured = refusalCandidate ?? widgetCandidate;
 					if (captured) lastTerminalRefusalText = captured;
-					// A clarifying question ends the turn NOW (see
-					// clarifyingQuestionTermination). Source is the REPLY call's OWN
-					// params text — user-directed by construction — with no
-					// messageToUser fallback (same discipline as the answer capture
-					// below). A widget-bearing reply keeps its own identity check.
-					const clarifyingQuestion =
-						widgetCandidate === undefined
-							? clarifyingQuestionTermination(
-									terminalMessageFromToolCalls(plannerOutput.toolCalls),
-								)
-							: undefined;
-					if (clarifyingQuestion !== undefined) {
-						return finishWithCapturedRefusal({
-							trajectory,
-							iteration,
-							thought: plannerOutput.thought,
-							refusal: clarifyingQuestion,
-						});
-					}
 					// A REPLY tool call's OWN params text is user-directed by
 					// construction; a STOP/IGNORE-only terminal's free text is scratch
 					// reasoning (see the hasReplyCall comment below) and is never
@@ -1716,6 +1683,16 @@ async function runPlannerLoopIterations(
 		});
 
 		const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
+		if (latestResult?.replyFailure) {
+			// The action already settled. A failed presentation is not an action
+			// failure and must never trigger model rescue, tool replay, or another
+			// queued mutation. Preserve the queue as unexecuted trajectory evidence.
+			return {
+				status: "finished",
+				trajectory,
+				terminalFailure: latestResult.replyFailure,
+			};
+		}
 		if (latestResult?.continueChain === false) {
 			// `suppressPlannerReply` from terminal actions blanks finalMessage so a
 			// same-turn hallucinated `messageToUser` cannot leak past the transient
@@ -1780,6 +1757,7 @@ async function runPlannerLoopIterations(
 		if (
 			latestResult?.success === true &&
 			latestResult.modelReplyRequired === true &&
+			!requiresIntentEvaluation &&
 			trajectory.plannedQueue.length === 0 &&
 			failures.length === 0 &&
 			lastPlannerExplicitCompleted === true &&
@@ -1795,12 +1773,14 @@ async function runPlannerLoopIterations(
 		// action-owned completion. Falls through on any ambiguity. See
 		// `tryGateEvaluator` for the full contract.
 		const gateStartedAt = Date.now();
-		const gatedDecision = tryGateEvaluator({
-			trajectory,
-			failures,
-			lastPlannerExplicitMessageToUser,
-			lastPlannerExplicitCompleted,
-		});
+		const gatedDecision = requiresIntentEvaluation
+			? null
+			: tryGateEvaluator({
+					trajectory,
+					failures,
+					lastPlannerExplicitMessageToUser,
+					lastPlannerExplicitCompleted,
+				});
 		if (gatedDecision) {
 			const { output: gated, reason } = gatedDecision;
 			trajectory.evaluatorOutputs.push(
@@ -2140,6 +2120,54 @@ function renderPlannerModelInput(params: {
 	return { messages, promptSegments, cacheKeySegments };
 }
 
+/**
+ * Measure the first planner request before dispatch so the message service can
+ * choose a provider's declared lossless retrieval projection when the complete
+ * eager provider payload will not fit. Tool schemas remain complete and the
+ * planner loop's provider-rejection boundary remains the authoritative backstop
+ * for later iterations whose settled tool results grow after composition.
+ */
+export function buildInitialPlannerModelInputBudget(params: {
+	runtime: PlannerRuntime;
+	context: ContextObject;
+	config?: PlannerLoopParams["config"];
+	tools?: ToolDefinition[];
+	codingMode?: boolean;
+}) {
+	const config = mergeChainingLoopConfig(params.config);
+	const context = normalizePlannerContext(params.context);
+	const trajectory: PlannerTrajectory = {
+		context,
+		modelBaseContext: context,
+		codingMode: params.codingMode === true,
+		steps: [],
+		archivedSteps: [],
+		plannedQueue: [],
+		evaluatorOutputs: [],
+	};
+	const renderedInput = renderPlannerModelInput({
+		context,
+		trajectory,
+		template:
+			params.codingMode === true
+				? CODING_PLANNER_TEMPLATE
+				: resolveOptimizedPlannerTemplate(params.runtime),
+		codingMode: params.codingMode === true,
+		runtime: params.runtime,
+	});
+	return buildModelInputBudget({
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+		tools: params.tools,
+		modelName: config.contextWindowModelName,
+		...(config.contextWindowTokens
+			? { contextWindowTokens: config.contextWindowTokens }
+			: {}),
+		reserveTokens: compactionReserveForBudget(config),
+		estimationMode: "utf8-upper-bound",
+	});
+}
+
 function compactionReserveForBudget(
 	config: ChainingLoopConfig,
 ): number | undefined {
@@ -2315,6 +2343,91 @@ const TURN_SCOPE_ARG_SCHEMA: JSONSchema = {
 		"list/get/search call made to find an id or target for a later write " +
 		"(read-then-act). Stripped before the tool runs.",
 };
+
+/**
+ * Classification code for a coding planner model call that exceeded its
+ * wall-clock deadline. Mirrors {@link PROVIDER_CONTEXT_OVERFLOW} as a typed
+ * terminal boundary the loop converts into an honest fail-fast reply.
+ */
+export const PLANNER_MODEL_CALL_TIMEOUT = "PLANNER_MODEL_CALL_TIMEOUT";
+
+/**
+ * User-facing reply delivered when a coding planner model call is aborted for
+ * exceeding {@link resolveCodingPlannerCallTimeoutMs}. Honest and terminal: the
+ * turn did no verified work, so the reply says so rather than shipping silence.
+ */
+export const PLANNER_MODEL_CALL_TIMEOUT_MESSAGE =
+	"That step timed out before it finished, so nothing was changed. Please try again.";
+
+/**
+ * Coding-mode wall-clock ceiling for a single planner model call (default
+ * 90000ms). In coding mode the planner's first `useModel` is the sole large
+ * inference of the turn and receives no ambient timeout, so a stalled provider
+ * generation would hang the turn indefinitely with no stage recorded. This
+ * bounds that call: a legitimately slow large-context generation survives the
+ * generous default while the observed 63s silent hang trips it. Overridable via
+ * `ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS`; a set-but-malformed value throws.
+ */
+export function resolveCodingPlannerCallTimeoutMs(): number {
+	return resolvePositivePlannerInt(
+		"ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS",
+		process.env.ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS,
+		90_000,
+	);
+}
+
+/**
+ * Race a coding-mode planner model dispatch against a wall-clock deadline. On
+ * timeout the composed {@link AbortController} aborts — so an adapter that
+ * honors `signal` cancels its socket — and a typed
+ * {@link PLANNER_MODEL_CALL_TIMEOUT} {@link ElizaError} is thrown so the loop
+ * stops awaiting even when the underlying request keeps running. The ambient
+ * streaming-context signal is composed in so an upstream cancellation still
+ * propagates to the dispatch. Non-coding turns never call this and keep their
+ * exact prior behavior (no timeout added).
+ */
+async function dispatchWithCodingCallTimeout<T>(args: {
+	dispatch: (signal: AbortSignal) => Promise<T>;
+	ambientSignal?: AbortSignal;
+	timeoutMs: number;
+	iteration?: number;
+	logger?: PlannerRuntime["logger"];
+}): Promise<T> {
+	const { dispatch, ambientSignal, timeoutMs } = args;
+	const controller = new AbortController();
+	const onAmbientAbort = (): void => controller.abort(ambientSignal?.reason);
+	if (ambientSignal) {
+		if (ambientSignal.aborted) controller.abort(ambientSignal.reason);
+		else
+			ambientSignal.addEventListener("abort", onAmbientAbort, { once: true });
+	}
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_resolve, reject) => {
+		timer = setTimeout(() => {
+			const err = new ElizaError(
+				`The coding planner model call did not respond within ${timeoutMs}ms and was aborted.`,
+				{
+					code: PLANNER_MODEL_CALL_TIMEOUT,
+					context: { iteration: args.iteration, timeoutMs },
+				},
+			);
+			controller.abort(err);
+			args.logger?.warn?.(
+				{ src: "planner-loop", iteration: args.iteration, timeoutMs },
+				"[planner-loop] coding planner model call exceeded its wall-clock deadline; aborting",
+			);
+			reject(err);
+		}, timeoutMs);
+		(timer as { unref?: () => void }).unref?.();
+	});
+	try {
+		return await Promise.race([dispatch(controller.signal), timeout]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+		if (ambientSignal)
+			ambientSignal.removeEventListener("abort", onAmbientAbort);
+	}
+}
 
 /**
  * Expose the reserved turn-scope argument on every native tool schema so the
@@ -2655,6 +2768,7 @@ async function dispatchPlannerModelCall(params: {
 		grammar?: string;
 		spanSamplerPlan?: SpanSamplerPlan;
 		maxTokens?: number;
+		signal?: AbortSignal;
 	} = {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
@@ -2769,15 +2883,38 @@ async function dispatchPlannerModelCall(params: {
 		modelInputBudget,
 	);
 	const streamingContext = getStreamingContext();
-	const raw = await runWithStreamingContext(
-		streamingContext
-			? {
-					...streamingContext,
-					onStreamChunk: async () => undefined,
-				}
-			: undefined,
-		() => params.runtime.useModel(modelType, modelParams, params.provider),
-	);
+	const invokeUseModel = (
+		signal?: AbortSignal,
+	): Promise<string | GenerateTextResult> => {
+		// Thread the composed signal into the model params so an adapter that
+		// honors `signal` cancels its socket on timeout/upstream abort. The
+		// runtime otherwise fills this from the streaming context; setting it
+		// here is a no-op for adapters that ignore it.
+		if (signal) modelParams.signal = signal;
+		return runWithStreamingContext(
+			streamingContext
+				? {
+						...streamingContext,
+						onStreamChunk: async () => undefined,
+					}
+				: undefined,
+			() => params.runtime.useModel(modelType, modelParams, params.provider),
+		);
+	};
+	// Coding-mode planner calls are the sole large inference of the turn and
+	// receive no ambient timeout, so a stalled generation would hang silently
+	// (live: 63s, only the messageHandler stage recorded). Bound that single
+	// call; non-coding turns keep their exact prior behavior.
+	const raw =
+		params.trajectory.codingMode === true
+			? await dispatchWithCodingCallTimeout({
+					dispatch: invokeUseModel,
+					ambientSignal: streamingContext?.abortSignal,
+					timeoutMs: resolveCodingPlannerCallTimeoutMs(),
+					iteration: params.iteration,
+					logger: params.runtime.logger,
+				})
+			: await invokeUseModel();
 	const endedAt = Date.now();
 
 	const parsed = parsePlannerOutput(raw);
@@ -4877,7 +5014,8 @@ function handleRequiredToolPlannerMiss(params: {
 	// re-draft adds prompt tokens (+~100/pass observed live,
 	// tj-28a877e591e5f3) but zero information. When the immediately previous
 	// context event is a required-tool-retry carrying this same draft, count
-	// the miss (caller) and log (above) but leave the transcript unchanged.
+	// the miss (caller) and log (above) but leave the transcript and mirrored
+	// model history unchanged.
 	const draftIdentity = [
 		params.plannerOutput.messageToUser ?? "",
 		...params.plannerOutput.toolCalls.map(toolCallIdentity),
@@ -5474,9 +5612,10 @@ function hasSuccessfulNonTerminalToolStep(
 /**
  * Tool-turn reply guarantee (post-pass of {@link runPlannerLoop}). A finished
  * turn that executed at least one successful non-terminal tool but carries no
- * usable final message — undefined, blank, or the handled-step placeholder —
- * gets ONE forced no-tools synthesis call so the user receives a reply
- * grounded in the tool results instead of silence. Deliberate silence
+ * usable final message — undefined, blank, the handled-step placeholder, or
+ * only a progress acknowledgement — gets ONE forced
+ * no-tools synthesis call so the user receives a reply grounded in the tool
+ * results instead of silence or a generic progress acknowledgement. Deliberate silence
  * (`endedWithDeliberateSilence`) and coding mode (which owns its own
  * deterministic summary fallback) are exempt. Synthesis is best-effort: a
  * model failure here keeps the original result rather than discarding the
@@ -5487,13 +5626,43 @@ async function ensureToolTurnFinalMessage(
 	result: PlannerLoopResult,
 ): Promise<PlannerLoopResult> {
 	if (result.status !== "finished") return result;
+	if (result.terminalFailure) return result;
 	if (result.endedWithDeliberateSilence) return result;
 	if (params.codingMode === true) return result;
 	const message = result.finalMessage;
+	// A verified action-owned response may already have been delivered by its
+	// callback. Do not generate a duplicate merely because it sounds like an ack.
+	if (
+		message &&
+		message === singleVerifiedUserFacingToolResultText(result.trajectory)
+	) {
+		return result;
+	}
+	// The evaluator has already seen the tool receipts and authored the final
+	// reply. Do not apply the pre-tool/exhaustion acknowledgement heuristic to
+	// that answer: "Got it. I'll keep replies brief" is a complete preference
+	// acknowledgement, not unfinished work. Re-synthesizing it adds a redundant
+	// provider request (and potentially another rate-limit wait).
+	if (
+		message &&
+		message !== HANDLED_STEP_FALLBACK_MESSAGE &&
+		result.evaluator?.success === true &&
+		result.evaluator.decision === "FINISH" &&
+		message === sanitizePlannerMessage(result.evaluator.messageToUser) &&
+		repairFinishWithProgressPromise(result.evaluator, result.trajectory)
+			.decision === "FINISH" &&
+		!isUnsafeUserVisibleText(message)
+	) {
+		return result;
+	}
 	const unusable =
 		message === undefined ||
 		message.trim() === "" ||
-		message === HANDLED_STEP_FALLBACK_MESSAGE;
+		message === HANDLED_STEP_FALLBACK_MESSAGE ||
+		!userSafeCapturedAnswerCandidate(message);
+	// The evaluator verifies intent fulfillment against tool results. Requiring
+	// literal UI-label wording here would reject valid aliases and translations
+	// and pay for another model call without adding effect evidence.
 	if (!unusable) return result;
 	if (!hasSuccessfulNonTerminalToolStep(result.trajectory)) return result;
 	const iteration = result.trajectory.steps.length + 1;
@@ -5507,14 +5676,17 @@ async function ensureToolTurnFinalMessage(
 				"Tool work for this turn is complete but no user-facing reply was produced. " +
 				"Do not call any tool. Write the final answer to the user now from the tool " +
 				"results already in this trajectory; if they do not contain the answer, say " +
-				"plainly what you found and what was missing.",
+				"plainly what you found and what was missing. For completed UI navigation, " +
+				"name the destination shown in the accepted receipt in your own concise wording; " +
+				"do not answer with only a generic acknowledgement.",
 			onUsage: params.onModelUsage,
 		});
 		const finalMessage = synthesized.finalMessage;
 		const synthesizedUsable =
 			finalMessage !== undefined &&
 			finalMessage.trim() !== "" &&
-			finalMessage !== HANDLED_STEP_FALLBACK_MESSAGE;
+			finalMessage !== HANDLED_STEP_FALLBACK_MESSAGE &&
+			userSafeCapturedAnswerCandidate(finalMessage) !== undefined;
 		params.runtime.logger?.warn?.(
 			{ iteration, synthesizedUsable },
 			"[planner-loop] tool work finished without a usable reply; forced a no-tools synthesis pass",
@@ -5526,7 +5698,7 @@ async function ensureToolTurnFinalMessage(
 			params,
 			result.trajectory,
 		);
-		if (rescued) {
+		if (rescued && userSafeCapturedAnswerCandidate(rescued)) {
 			result.trajectory.steps.push({
 				iteration: iteration + 1,
 				thought: "rescue synthesis from successful tool results",
@@ -5565,6 +5737,7 @@ async function ensureFailedTurnFinalMessage(
 	result: PlannerLoopResult,
 ): Promise<PlannerLoopResult> {
 	if (result.status !== "finished") return result;
+	if (result.terminalFailure) return result;
 	// Coding/full-surface mode is exempt for the same reason as the tool-turn
 	// guarantee: its result feeds the orchestrator (which owns its own summary
 	// fallback), not a chat user, and an extra model call per failed build
@@ -6646,8 +6819,6 @@ export const GATED_EVALUATOR_THOUGHT =
 export const MODEL_REPLY_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: successful final-scope action received one safe model-authored reply; evaluator LLM call skipped.";
 
-const REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE = "The requested action completed.";
-
 export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";
 
@@ -7057,6 +7228,7 @@ export function actionResultToPlannerToolResult(
 		promptData: result.promptData,
 		error: result.error,
 		failureProvenance: result.failureProvenance,
+		replyFailure: result.replyFailure,
 		turnComplete: result.turnComplete,
 		modelReplyRequired: result.modelReplyRequired,
 		modelReplyFallback: result.modelReplyFallback,

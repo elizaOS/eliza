@@ -1,6 +1,6 @@
 /** Verifies Workerd APNs configuration, ES256 request shaping, and typed provider outcomes. */
 
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { CloudApnsProvider, ELIZA_IOS_BUNDLE_ID, resolveCloudApnsConfig } from "./apns-provider";
 
 async function fixture(production = false) {
@@ -28,6 +28,10 @@ async function fixture(production = false) {
 }
 
 describe("CloudApnsProvider", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   test("is absent only when every APNs binding is absent", () => {
     expect(resolveCloudApnsConfig({})).toBeNull();
     expect(() => resolveCloudApnsConfig({ ELIZA_APNS_KEY_ID: "partial" })).toThrow("incomplete");
@@ -57,6 +61,7 @@ describe("CloudApnsProvider", () => {
   });
 
   test("sends a sandbox alert with a verifiable provider token", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { config, publicKey } = await fixture();
     let captured: { url: string; init: RequestInit } | undefined;
     const provider = new CloudApnsProvider(config, async (url, init) => {
@@ -93,6 +98,7 @@ describe("CloudApnsProvider", () => {
   test.each(["Unregistered", "BadDeviceToken", "ExpiredToken"] as const)(
     "classifies %s as durable-token cleanup",
     async (reason) => {
+      vi.spyOn(console, "warn").mockImplementation(() => undefined);
       const { config } = await fixture(true);
       const provider = new CloudApnsProvider(config, async () =>
         Response.json({ reason }, { status: reason === "BadDeviceToken" ? 400 : 410 }),
@@ -105,6 +111,7 @@ describe("CloudApnsProvider", () => {
   );
 
   test("single-flights provider-token minting across concurrent sends", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { config } = await fixture();
     const authorizations: string[] = [];
     const provider = new CloudApnsProvider(config, async (_url, init) => {
@@ -123,6 +130,7 @@ describe("CloudApnsProvider", () => {
   });
 
   test("uses one bounded collapse id when an occurrence is replayed", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { config } = await fixture();
     const collapseIds: string[] = [];
     const provider = new CloudApnsProvider(config, async (_url, init) => {
@@ -144,6 +152,7 @@ describe("CloudApnsProvider", () => {
   });
 
   test("preserves non-token rejection status and reason", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { config } = await fixture();
     const provider = new CloudApnsProvider(config, async () =>
       Response.json({ reason: "TooManyRequests" }, { status: 429 }),
@@ -156,6 +165,7 @@ describe("CloudApnsProvider", () => {
   });
 
   test("rejects an oversized alert locally before APNs egress", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { config } = await fixture();
     let calls = 0;
     const provider = new CloudApnsProvider(config, async () => {
@@ -168,5 +178,84 @@ describe("CloudApnsProvider", () => {
       reason: "PayloadTooLarge",
     });
     expect(calls).toBe(0);
+  });
+
+  test("emits an accepted provider receipt without token or payload content", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { config } = await fixture();
+    const provider = new CloudApnsProvider(
+      config,
+      async () =>
+        new Response(null, {
+          status: 200,
+          headers: { "apns-id": "provider-receipt-id" },
+        }),
+    );
+
+    await provider.send("private-device-token", {
+      title: "private notification title",
+      body: "private notification body",
+      data: { deepLink: "eliza://private-destination" },
+    });
+
+    expect(warning).toHaveBeenCalledWith(
+      "[CloudApnsProvider] delivery receipt",
+      expect.objectContaining({
+        src: "cloud-apns",
+        environment: "sandbox",
+        topic: ELIZA_IOS_BUNDLE_ID,
+        outcome: "accepted",
+        apnsId: "provider-receipt-id",
+        payloadBytes: expect.any(Number),
+      }),
+    );
+    const logged = JSON.stringify(warning.mock.calls);
+    expect(logged).not.toContain("private-device-token");
+    expect(logged).not.toContain("private notification title");
+    expect(logged).not.toContain("private notification body");
+    expect(logged).not.toContain("eliza://private-destination");
+  });
+
+  test("emits typed terminal and retryable provider receipts", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { config } = await fixture(true);
+    const terminal = new CloudApnsProvider(config, async () =>
+      Response.json(
+        { reason: "Unregistered" },
+        { status: 410, headers: { "apns-id": "terminal-id" } },
+      ),
+    );
+    const retryable = new CloudApnsProvider(config, async () =>
+      Response.json(
+        { reason: "TooManyRequests" },
+        { status: 429, headers: { "apns-id": "retryable-id" } },
+      ),
+    );
+
+    await terminal.send("terminal-token", { title: "x" });
+    await retryable.send("retryable-token", { title: "x" });
+
+    expect(warning).toHaveBeenCalledWith(
+      "[CloudApnsProvider] delivery receipt",
+      expect.objectContaining({
+        environment: "production",
+        outcome: "unregistered",
+        reason: "Unregistered",
+        apnsId: "terminal-id",
+      }),
+    );
+    expect(warning).toHaveBeenCalledWith(
+      "[CloudApnsProvider] delivery receipt",
+      expect.objectContaining({
+        environment: "production",
+        outcome: "rejected",
+        status: 429,
+        reason: "TooManyRequests",
+        apnsId: "retryable-id",
+      }),
+    );
+    const logged = JSON.stringify(warning.mock.calls);
+    expect(logged).not.toContain("terminal-token");
+    expect(logged).not.toContain("retryable-token");
   });
 });

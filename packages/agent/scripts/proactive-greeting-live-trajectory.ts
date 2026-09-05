@@ -12,6 +12,7 @@
  *      bun packages/agent/scripts/proactive-greeting-live-trajectory.ts
  */
 import type { IAgentRuntime, ViewSwitchedPayload } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import { renderLiveStateForScope } from "../src/providers/page-scoped-live-state.ts";
 import {
   buildProactiveJudgePrompt,
@@ -23,7 +24,7 @@ const BASE_URL =
   process.env.CEREBRAS_BASE_URL ||
   "https://api.cerebras.ai/v1";
 const API_KEY = process.env.OPENAI_API_KEY || process.env.CEREBRAS_API_KEY;
-const MODEL = process.env.LIVE_MODEL || "gemma-4-31b";
+const MODEL = process.env.LIVE_MODEL || DEFAULT_CEREBRAS_TEXT_MODEL;
 
 if (!API_KEY) {
   console.error("No OPENAI_API_KEY / CEREBRAS_API_KEY set — cannot run live.");

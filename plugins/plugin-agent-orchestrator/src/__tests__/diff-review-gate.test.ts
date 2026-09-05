@@ -231,14 +231,112 @@ describe("reviewDiff — empty diff rejects", () => {
   });
 });
 
-describe("reviewDiff — secret matching parity with core", () => {
-  it("blocks a supported lowercase compound credential name", () => {
-    const diff = addedFileDiff("config.sh", [
-      "client_secret=hunter2hunter2hunter2",
-    ]);
-    const result = reviewDiff({ diff, changedFiles: ["config.sh"] });
+describe("reviewDiff — case-insensitive secret matching (parity with core)", () => {
+  it.each([
+    ["lowercase dotenv", "database_password=fixture-value-123456789"],
+    ["mixed-case dotenv", "serviceCredential=fixture-value-123456789"],
+    [
+      "nested quoted key",
+      'const config = { auth: { "clientSecret": "fixture-value-123456789" } };',
+    ],
+    [
+      "encoded-looking literal",
+      'const config = { accessToken: "Zml4dHVyZS12YWx1ZS0xMjM0NTY3ODk=" };',
+    ],
+  ])("blocks a %s credential assignment", (_case, addedLine) => {
+    const diff = addedFileDiff("config.ts", [addedLine]);
+    const result = reviewDiff({ diff, changedFiles: ["config.ts"] });
     expect(result.passed).toBe(false);
     expect(result.blocking.some((f) => f.check === "secret")).toBe(true);
+  });
+
+  it("allows authoritative non-secret env names and key lookalikes", () => {
+    const diff = addedFileDiff("config.sh", [
+      "MAX_TOKENS=8192",
+      "TOKEN_COUNT=42",
+      "TOKEN_ID=build-123",
+      "KEYBOARD_SHORTCUT=cmd-k",
+      "TURNKEY_MODE=enabled",
+    ]);
+    const result = reviewDiff({ diff, changedFiles: ["config.sh"] });
+    expect(result.passed).toBe(true);
+    expect(result.blocking).toHaveLength(0);
+  });
+
+  it("allows credential-handling expressions that do not introduce literal material", () => {
+    const diff = addedFileDiff("credential-service.ts", [
+      "const credential = await resolveCredential();",
+      "return credential;",
+    ]);
+    const result = reviewDiff({
+      diff,
+      changedFiles: ["credential-service.ts"],
+    });
+    expect(result.passed).toBe(true);
+    expect(result.blocking).toHaveLength(0);
+  });
+
+  it.each([
+    ["credential member assignment", "this.apiKey = config.apiKey;"],
+    [
+      "token budget member assignment",
+      "this.maxTokens = config.maxTokens ?? 1024;",
+    ],
+    ["token count member assignment", "this.tokenCount = tokens.length;"],
+    ["semicolon-free member assignment", "this.apiKey = config.apiKey"],
+    ["equality", "password == null"],
+    ["strict equality", "password === expected"],
+    ["arrow parameter", "secret => handler(secret)"],
+    ["inequality", "apiKey !== expected"],
+    ["compound assignment", "token += chunk"],
+    ["nullish assignment", "password ??= fallback"],
+    ["quoted token metadata", '  this.maxTokens = "2048";'],
+  ])("allows %s without a credential literal", (_case, addedLine) => {
+    const result = reviewDiff({
+      diff: addedFileDiff("src/credential-service.ts", [addedLine]),
+      changedFiles: ["src/credential-service.ts"],
+    });
+    expect(result.passed).toBe(true);
+    expect(result.findings).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "indented object field",
+      (value: string) => `  serviceCredential: "${value}",`,
+    ],
+    [
+      "tab-indented object field",
+      (value: string) => `\tclientSecret: '${value}',`,
+    ],
+    [
+      "indented member assignment",
+      (value: string) => `  this.apiKey = "${value}";`,
+    ],
+    [
+      "nested member assignment",
+      (value: string) => `  config.auth.accessToken = '${value}';`,
+    ],
+    [
+      "declared credential",
+      (value: string) => `const credential = "${value}";`,
+    ],
+    [
+      "exported dotenv scalar",
+      (value: string) => `export serviceCredential=${value}`,
+    ],
+  ])("blocks a %s and keeps the value out of findings", (_case, addedLine) => {
+    const value = ["fixture", "credential", "123456789"].join("-");
+    const result = reviewDiff({
+      diff: addedFileDiff("config.ts", [addedLine(value)]),
+      changedFiles: ["config.ts"],
+    });
+    expect(result.passed).toBe(false);
+    expect(result.blocking).toEqual([
+      expect.objectContaining({ check: "secret", severity: "block" }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain(value);
+    expect(summarizeDiffGate(result)).not.toContain(value);
   });
 
   it("blocks a lowercase `authorization: bearer …` header", () => {

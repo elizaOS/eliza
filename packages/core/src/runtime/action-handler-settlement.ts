@@ -23,6 +23,10 @@ import {
 	readActionFailureProvenance,
 } from "../types/action-failure";
 import {
+	applyGroundedActionReply,
+	normalizeActionReplyFailure,
+} from "../types/action-reply";
+import {
 	normalizeEffectReceipts,
 	normalizeUserFacingEffectReceiptIds,
 	resolveAppliedUserFacingEffectReceipts,
@@ -137,7 +141,7 @@ export function normalizeActionResult(
 		);
 	}
 
-	return {
+	const normalized: ActionResult = {
 		...rawResult,
 		success: "success" in rawResult ? rawResult.success : true,
 		...(effectReceipts !== undefined ? { effectReceipts } : {}),
@@ -152,6 +156,12 @@ export function normalizeActionResult(
 			actionName,
 		},
 	};
+	return rawResult.replyFailure === undefined
+		? normalized
+		: applyGroundedActionReply(normalized, {
+				kind: "unavailable",
+				failure: normalizeActionReplyFailure(rawResult.replyFailure),
+			});
 }
 
 /** Build a planner-visible failure while retaining the trusted action identity. */
@@ -299,7 +309,13 @@ export async function settleActionHandler(
 	const deliverSafely = async (
 		buffered: BufferedActionCallback,
 	): Promise<Memory[]> => {
-		if (!options.callback || !settledResult || phase !== "settled") return [];
+		if (
+			!options.callback ||
+			!settledResult ||
+			phase !== "settled" ||
+			settledResult.replyFailure
+		)
+			return [];
 		try {
 			return await deliverSettledCallback({
 				runtime: options.runtime,
@@ -439,6 +455,9 @@ export async function settleActionHandler(
 		);
 	}
 
+	// No action-owned prose is an acceptable substitute for unavailable model
+	// presentation. Keep the settled effect and let the turn emit system status.
+	if (settledResult.replyFailure) bufferedCallbacks.length = 0;
 	for (const buffered of bufferedCallbacks) {
 		await deliverWithoutModelStream(buffered);
 	}

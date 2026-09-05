@@ -66,6 +66,11 @@ function deps(
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async () => null),
     recentConversationTexts: vi.fn(async () => []),
+    // Deterministic presentation fixture, not a live-model response.
+    renderGroundedReply: async ({ fallback }) => ({
+      kind: "model",
+      text: fallback,
+    }),
     ...(gateway ? { mutationGateway: gateway } : {}),
   };
 }
@@ -164,7 +169,7 @@ describe("calendar conversational mutation gateway guardrails", () => {
 
     expect(result?.success).toBe(false);
     expect(result?.text).toContain("complete, fresh view");
-    expect(runJsonModel).toHaveBeenCalledTimes(1);
+    expect(runJsonModel).not.toHaveBeenCalled();
     expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
     expect(schedule).not.toHaveBeenCalled();
     expect(service.createCalendarEvent).not.toHaveBeenCalled();

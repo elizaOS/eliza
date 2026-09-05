@@ -27,6 +27,17 @@ afterEach(() => {
 });
 
 describe("navigation tabFromPath", () => {
+  it.each(["/home", "/HOME/"])(
+    "canonicalizes the Home alias %s to the chat canvas",
+    (path) => {
+      expect(tabFromPath(path)).toBe("chat");
+      expect(resolveLegacyBuiltinRoute(path)).toEqual({
+        tab: "chat",
+        canonicalPath: TAB_PATHS.chat,
+      });
+    },
+  );
+
   it.each(["/documents", "/knowledge", "/KNOWLEDGE/"])(
     "resolves the retired Knowledge route %s without falling into the views catalog",
     (path) => {

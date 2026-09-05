@@ -289,6 +289,83 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 	}
 });
 
+describe("matchViewCommand — possessive read-questions stay with the planner", () => {
+	// A possessive+noun substring inside a longer sentence is a read request
+	// ("what is on my calendar this week?"), not an explicit navigation
+	// command. Regression: the possessive leg used to match unanchored, so the
+	// shortcut evaluator hijacked these and the user only ever saw the ack.
+	const readQuestions = [
+		"what is on my calendar this week?",
+		"whats on my calendar this week?",
+		"do i have anything on my calendar today?",
+		"whats on my todo list",
+		"what do I have scheduled saturday?",
+		"can you check my notes for the recipe",
+		"whats in my calendar tomorrow",
+		"add a meeting to my calendar tomorrow at 3",
+		// a leading filler must not license a question form
+		"uh whats on my calendar this week",
+		"ok so what is on my calendar this week?",
+	] as const;
+
+	it.each(readQuestions)("%j stays in normal action planning", (text) => {
+		expect(matchViewCommand(text)).toBeNull();
+	});
+
+	// Whole-message possessive commands (with an optional courtesy tail) are
+	// still explicit navigation.
+	const stillNavigation: Array<[string, string]> = [
+		["my calendar", "calendar"],
+		["my calendar please", "calendar"],
+		["my settings now", "settings"],
+		["show me my calendar", "calendar"],
+		["open calendar", "calendar"],
+		["check my messages", "inbox"],
+		["revisa mi correo", "inbox"],
+		// anchoring must not reject common phrasings, tails, or trailing emoji
+		["my todo list", "todos"],
+		["my to-do list", "todos"],
+		["my todo list please", "todos"],
+		["todo list", "todos"],
+		["mon calendrier s’il vous plaît", "calendar"],
+		["my calendar 🙏", "calendar"],
+		["my calendar merci", "calendar"],
+		["my calendar gracias", "calendar"],
+		["my inbox rn", "inbox"],
+		// leading discourse fillers (voice-transcription artifacts), stackable
+		["ok my calendar", "calendar"],
+		["uh my calendar", "calendar"],
+		["hey my calendar", "calendar"],
+		["yo my todo list", "todos"],
+		["uh okay my calendar", "calendar"],
+		// bounded english tail vocabulary
+		["my calendar again", "calendar"],
+		["my calendar asap", "calendar"],
+		["my calendar real quick", "calendar"],
+		["my calendar when you can", "calendar"],
+		["my calendar thanks a lot", "calendar"],
+		["my calendar thank you so much", "calendar"],
+		["my calendar please and thank you", "calendar"],
+		// multilingual please/thanks tail symmetry
+		["mi calendario gracias", "calendar"],
+		["mi calendario muchas gracias", "calendar"],
+		["mon calendrier merci beaucoup", "calendar"],
+		["mein kalender danke", "calendar"],
+		["mein kalender vielen dank", "calendar"],
+		["meu calendário obrigado", "calendar"],
+		["minha agenda obrigada", "calendar"],
+		["我的日历吧", "calendar"],
+		["我的日历 谢谢", "calendar"],
+		["我的日历谢谢", "calendar"],
+		["내 캘린더 부탁해", "calendar"],
+		["내 설정 감사합니다", "settings"],
+	];
+
+	it.each(stillNavigation)("%j → %s", (text, view) => {
+		expect(matchViewCommand(text)).toBe(view);
+	});
+});
+
 describe("matchViewCommand — does not over-match very long text", () => {
 	it("a long sentence merely mentioning a noun is rejected", () => {
 		expect(

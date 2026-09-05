@@ -126,6 +126,7 @@ const AMBIENT_IMMERSIVE_LAYOUT: PageLayoutManifest = Object.freeze({
 export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   chat: {
     path: "/chat",
+    legacyPaths: ["/home"],
     layout: AMBIENT_IMMERSIVE_LAYOUT,
     surface: IMMERSIVE_WALLPAPER_SURFACE,
   },

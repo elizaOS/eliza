@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Measures the complete production chat path against Cerebras Gemma 4 31B.
+ * Measures the complete production chat path against the default Cerebras model.
  *
  * A real PGLite-backed AgentRuntime processes every turn through providers,
  * model routing, streaming, persistence, delivery, and lifecycle events. The
@@ -16,6 +16,7 @@ import {
   buildInferenceTimingDevPayload,
   ChannelType,
   createMessageMemory,
+  DEFAULT_CEREBRAS_TEXT_MODEL,
   drainPostDeliveryTasks,
   EventType,
   type InferenceFlowStage,
@@ -33,7 +34,7 @@ import {
 import { createTestRuntime } from "@elizaos/core/testing";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
 
-const DEFAULT_MODEL = "gemma-4-31b";
+const DEFAULT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 const DEFAULT_SAMPLES = 30;
 const DEFAULT_WARMUPS = 3;
 const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [

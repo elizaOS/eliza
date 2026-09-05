@@ -19,7 +19,8 @@ const aiMocks = vi.hoisted(() => ({
   streamText: vi.fn(),
 }));
 
-vi.mock("ai", () => ({
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("ai")>()),
   generateText: aiMocks.generateText,
   streamText: aiMocks.streamText,
   jsonSchema: (schema: unknown) => ({ jsonSchema: schema }),

@@ -750,6 +750,8 @@ export interface AppActions {
   handleChatClear: () => Promise<void>;
   handleStartDraftConversation: () => Promise<void>;
   handleNewConversation: (title?: string) => Promise<void>;
+  /** Restore the active personal conversation; null means recovery is unavailable. */
+  ensureActiveConversation: () => Promise<string | null>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
   handleSelectConversation: (id: string) => Promise<void>;
   /**

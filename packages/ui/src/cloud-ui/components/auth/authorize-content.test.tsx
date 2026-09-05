@@ -99,6 +99,7 @@ vi.mock("../../runtime/image", () => ({
 }));
 
 import { AuthorizeContent } from "./authorize-content";
+import { APP_AUTH_RETURN_TO_KEY } from "./authorize-return";
 
 function mockAppFetch() {
   vi.stubGlobal(
@@ -176,6 +177,9 @@ describe("AuthorizeContent", () => {
     });
     expect(authorizeButton.className).toContain("hover:bg-accent-hover");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    expect(window.localStorage.getItem(APP_AUTH_RETURN_TO_KEY)).toBe(
+      "http://localhost/",
+    );
   });
 
   it("retires explicit-sync proof before raw SDK sign-out when the token is unreadable", async () => {
@@ -247,6 +251,7 @@ describe("AuthorizeContent", () => {
     expect(
       screen.queryByRole("button", { name: "Authorize Demo App" }),
     ).toBeNull();
+    expect(window.localStorage.getItem(APP_AUTH_RETURN_TO_KEY)).toBeNull();
   });
 
   it("hands off to native-app custom scheme redirect URIs", async () => {

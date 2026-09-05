@@ -106,11 +106,42 @@ describe("fetchVoiceSession", () => {
       method: "POST",
     });
 
-    expect(fetchWithCsrf).toHaveBeenCalledWith(
-      "/api/v1/voice/session/consent",
-      { method: "POST" },
-    );
+    expect(fetchWithCsrf).toHaveBeenCalledOnce();
+    const [url, init] = fetchWithCsrf.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/voice/session/consent");
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).has("authorization")).toBe(false);
     expect(requestViaAgentTransport).not.toHaveBeenCalled();
+  });
+
+  it("authenticates self-hosted voice with the selected remote credential", async () => {
+    loadPersistedActiveServer.mockReturnValue({
+      kind: "remote",
+      accessToken: "  paired-runtime-token  ",
+    });
+
+    await fetchVoiceSession("/api/v1/voice/session/health");
+
+    const [, init] = fetchWithCsrf.mock.calls[0] as [string, RequestInit];
+    expect(new Headers(init.headers).get("authorization")).toBe(
+      "Bearer paired-runtime-token",
+    );
+  });
+
+  it("does not replace an explicit self-hosted Authorization header", async () => {
+    loadPersistedActiveServer.mockReturnValue({
+      kind: "remote",
+      accessToken: "paired-runtime-token",
+    });
+
+    await fetchVoiceSession("/api/v1/voice/session/health", {
+      headers: { Authorization: "Bearer explicit" },
+    });
+
+    const [, init] = fetchWithCsrf.mock.calls[0] as [string, RequestInit];
+    expect(new Headers(init.headers).get("authorization")).toBe(
+      "Bearer explicit",
+    );
   });
 
   it("rejects an absolute cloud target before attaching credentials", async () => {
@@ -121,5 +152,17 @@ describe("fetchVoiceSession", () => {
       fetchVoiceSession("https://attacker.example/voice", { method: "POST" }),
     ).rejects.toThrow("relative API path");
     expect(requestViaAgentTransport).not.toHaveBeenCalled();
+  });
+
+  it("rejects an absolute self-hosted target before attaching credentials", async () => {
+    loadPersistedActiveServer.mockReturnValue({
+      kind: "remote",
+      accessToken: "paired-runtime-token",
+    });
+
+    await expect(
+      fetchVoiceSession("https://attacker.example/voice"),
+    ).rejects.toThrow("relative API path");
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
   });
 });

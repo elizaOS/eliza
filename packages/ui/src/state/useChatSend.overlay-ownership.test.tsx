@@ -5,12 +5,15 @@ import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ChatActionResultSummary,
   ChatToolCallEvent,
   CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
 } from "../api";
+import { resetCompletedActionNavigationForTests } from "../completed-action-navigation";
+import { NAVIGATE_VIEW_EVENT } from "../events";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
 import { type UseChatSendDeps, useChatSend } from "./useChatSend";
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
@@ -216,6 +219,75 @@ beforeEach(() => {
 });
 
 describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
+  it.each(["main", "action"])(
+    "rejects a %s ready receipt after a real A to B to A ownership change",
+    async (kind) => {
+      const actionResults: ChatActionResultSummary[] = [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "calendar" },
+        },
+      ];
+      const terminal = { text: "Completed", completed: true, actionResults };
+      let finish: ((value: typeof terminal) => void) | undefined;
+      let ready: ((value: ChatActionResultSummary[]) => void) | undefined;
+      mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
+      mocks.client.sendConversationMessageStream.mockImplementation(
+        (...args: unknown[]) => {
+          ready = args[10] as typeof ready;
+          return new Promise((resolve) => {
+            finish = resolve;
+          });
+        },
+      );
+      const harness = makeHarness();
+      harness.activeConversationIdRef.current = "conv-a";
+      const hook = mountComposed(harness);
+      const navigate = vi.fn();
+      window.addEventListener(NAVIGATE_VIEW_EVENT, navigate);
+      let send: Promise<void> | undefined;
+      try {
+        act(() => {
+          hook.result.current.loaders.claimConversationMessagesOwnership(
+            "conv-a",
+          );
+          send =
+            kind === "action"
+              ? hook.result.current.send.sendActionMessage("Open Calendar")
+              : hook.result.current.send.sendChatText("Open Calendar");
+        });
+        await flushPendingWork();
+        expect(ready).toEqual(expect.any(Function));
+        act(() => {
+          hook.result.current.loaders.claimConversationMessagesOwnership(
+            "conv-b",
+          );
+          harness.activeConversationIdRef.current = "conv-b";
+          hook.result.current.loaders.claimConversationMessagesOwnership(
+            "conv-a",
+          );
+          harness.activeConversationIdRef.current = "conv-a";
+          ready?.(actionResults);
+        });
+        expect(navigate).not.toHaveBeenCalled();
+        await act(async () => {
+          finish?.(terminal);
+          await send;
+        });
+        expect(navigate).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => {
+          finish?.(terminal);
+          await send;
+        });
+        window.removeEventListener(NAVIGATE_VIEW_EVENT, navigate);
+        hook.unmount();
+        resetCompletedActionNavigationForTests();
+      }
+    },
+  );
+
   it("performs a true cold first-send handoff without assigning loadedConversationIdRef in the test", async () => {
     mocks.client.createConversation.mockResolvedValue({
       conversation: conversation("conv-a"),

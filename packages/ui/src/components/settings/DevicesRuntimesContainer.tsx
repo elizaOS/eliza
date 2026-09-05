@@ -371,7 +371,21 @@ function buildRuntimeTargets(
   sessions: ReadonlyMap<string, RemoteSessionSummary[]>,
   controller: RemoteControllerPublicIdentity | null,
 ): DeviceRuntimeTarget[] {
-  const profiles = registry.profiles.map((profile) =>
+  // The embedded runtime is one device-level target even if older startup
+  // paths left more than one local profile in browser storage. Prefer the
+  // active row; otherwise keep the newest saved local profile. This is a
+  // display-only repair so it never rewrites a user's persisted registry.
+  const localProfiles = registry.profiles.filter(
+    (profile) => profile.kind === "local",
+  );
+  const visibleLocalProfile =
+    localProfiles.find((profile) => profile.id === registry.activeProfileId) ??
+    localProfiles[localProfiles.length - 1];
+  const visibleProfiles = registry.profiles.filter(
+    (profile) =>
+      profile.kind !== "local" || profile.id === visibleLocalProfile?.id,
+  );
+  const profiles = visibleProfiles.map((profile) =>
     profileTarget(
       profile,
       registry.activeProfileId,
@@ -381,7 +395,7 @@ function buildRuntimeTargets(
     ),
   );
   const representedHostIds = new Set(
-    registry.profiles.flatMap((profile) =>
+    visibleProfiles.flatMap((profile) =>
       profile.remoteRelay ? [profile.remoteRelay.targetRuntimeId] : [],
     ),
   );

@@ -24,6 +24,7 @@ function stubDisplayMode(mode: "standalone" | "fullscreen" | "browser"): void {
 
 afterEach(() => {
   document.body.className = "";
+  document.documentElement.removeAttribute("style");
   delete (window as { matchMedia?: unknown }).matchMedia;
   delete (navigator as { standalone?: unknown }).standalone;
 });
@@ -78,11 +79,17 @@ describe("setupPlatformStyles", () => {
     expect(document.body.classList.contains("pwa-standalone")).toBe(false);
   });
 
-  it("publishes the top safe-area value for installed PWAs", () => {
-    stubDisplayMode("standalone");
+  it("leaves the CSS-owned inset aliases and native corrections intact", () => {
+    stubDisplayMode("browser");
+    document.documentElement.style.setProperty("--safe-area-inset-top", "48px");
     setupPlatformStyles();
-    const top =
-      document.documentElement.style.getPropertyValue("--safe-area-top");
-    expect(top).toContain("env(safe-area-inset-top");
+    for (const edge of ["top", "right", "bottom", "left"]) {
+      expect(
+        document.documentElement.style.getPropertyValue(`--safe-area-${edge}`),
+      ).toBe("");
+    }
+    expect(
+      document.documentElement.style.getPropertyValue("--safe-area-inset-top"),
+    ).toBe("48px");
   });
 });

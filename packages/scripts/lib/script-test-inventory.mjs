@@ -53,6 +53,10 @@ const SCRIPT_TEST_PATTERN = new RegExp(
 /** Exact exclusions only. Each entry must remain eligible and carry a reason. */
 export const SCRIPT_TEST_EXCLUSIONS = new Map([
   [
+    "packages/cloud/scripts/admin/run-integration-tests.test.mjs",
+    "the root test:cloud:integration command owns this Node node:sqlite lifecycle suite",
+  ],
+  [
     "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
     "the release-candidate workflow owns this slow real-registry transport test",
   ],

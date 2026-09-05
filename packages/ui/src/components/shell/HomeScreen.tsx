@@ -359,14 +359,10 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
         // the shell itself clipped avoids nested wheel/touch arbitration with
         // notification pull gestures.
         "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-hidden",
-        // The shell root already reserves the status-bar safe area (its
-        // paddingTop: var(--safe-area-top)); adding it again here double-padded
-        // the content and left a large empty band above the dashboard. Just a
-        // small gutter - the notch is already cleared by the root.
+        // The Home host owns the status-bar inset; retain only the dashboard's
+        // content gutter here so the inset is not applied twice.
         "px-4",
-        // Clear the residual tucked band the root deliberately shaves off the
-        // safe area (capped at 1.25rem), plus a small breathing gutter.
-        "pt-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+12px)]",
+        "pt-3",
         // Clear the floating chat composer at the bottom. Short landscape
         // screens use compact app icons and a smaller breathing gutter so the
         // first row keeps both icon and label in view without touching chat;

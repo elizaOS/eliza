@@ -2,7 +2,12 @@
  * Proves grounded replies preserve the complete model output byte-for-byte.
  * The harness exercises the real model call boundary with deterministic output.
  */
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  GroundedActionReply,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { renderGroundedActionReply } from "./grounded-action-reply.ts";
 
@@ -16,7 +21,7 @@ function runtimeReturning(modelOutput: string): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
-async function render(modelOutput: string): Promise<string> {
+async function render(modelOutput: string): Promise<GroundedActionReply> {
   return renderGroundedActionReply({
     runtime: runtimeReturning(modelOutput),
     message: { content: { text: "add milk" } } as unknown as Memory,
@@ -34,7 +39,10 @@ describe("renderGroundedActionReply output preservation", () => {
     "'Added milk.'",
     "  Added milk to your list.  ",
   ])("returns %j unchanged", async (modelOutput) => {
-    expect(await render(modelOutput)).toBe(modelOutput);
+    expect(await render(modelOutput)).toEqual({
+      kind: "model",
+      text: modelOutput,
+    });
   });
 
   it.each([
@@ -46,8 +54,9 @@ describe("renderGroundedActionReply output preservation", () => {
   ])(
     "rejects non-user-facing output %j without substituting fallback",
     async (modelOutput) => {
-      await expect(render(modelOutput)).rejects.toMatchObject({
-        code: "GROUNDED_REPLY_OUTPUT_INVALID",
+      await expect(render(modelOutput)).resolves.toMatchObject({
+        kind: "unavailable",
+        failure: { code: "GROUNDED_REPLY_OUTPUT_INVALID", transient: false },
       });
     },
   );

@@ -28,6 +28,7 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  applyGroundedActionReply,
   recentConversationTexts as collectRecentConversationTexts,
   ElizaError,
   ModelType,
@@ -498,7 +499,7 @@ function makeSchedulingRespond(args: {
 ) => Promise<ActionResult> {
   const intent = getMessageText(args.message).trim();
   return async (payload) => {
-    const text = await renderLifeOpsActionReply({
+    const reply = await renderLifeOpsActionReply({
       runtime: args.runtime,
       message: args.message,
       state: args.state,
@@ -507,17 +508,21 @@ function makeSchedulingRespond(args: {
       fallback: payload.fallback,
       context: payload.context,
     });
-    await args.callback?.({
-      text,
-      source: "action",
-      action: args.actionName,
-    });
-    return {
-      text,
-      success: payload.success,
-      ...(payload.values ? { values: payload.values } : {}),
-      ...(payload.data ? { data: payload.data } : {}),
-    };
+    if (reply.kind === "model") {
+      await args.callback?.({
+        text: reply.text,
+        source: "action",
+        action: args.actionName,
+      });
+    }
+    return applyGroundedActionReply(
+      {
+        success: payload.success,
+        ...(payload.values ? { values: payload.values } : {}),
+        ...(payload.data ? { data: payload.data } : {}),
+      },
+      reply,
+    );
   };
 }
 

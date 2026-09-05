@@ -2333,6 +2333,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       ).toBe(true);
     });
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(spies.handleInteractiveCloudLogin).not.toHaveBeenCalled();
 
     // No runaway: give any residual auto-resume loop a window, then prove the
     // provisioning was attempted a bounded number of times and does not keep

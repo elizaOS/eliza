@@ -91,6 +91,8 @@ interface RawEvaluatorOutput {
 interface ParsedEvaluatorObject {
 	object: RawEvaluatorOutput | null;
 	parseError?: string;
+	/** The unparseable response is a tool invocation, not a malformed verdict. */
+	toolInvocation?: true;
 }
 
 const EVALUATOR_ENVELOPE_KEYS = new Set([
@@ -818,6 +820,23 @@ export function parseEvaluatorOutput(
 ): EvaluatorOutput {
 	const parsedResult = getStructuredEvaluatorObject(raw);
 	if (parsedResult.parseError) {
+		if (parsedResult.toolInvocation) {
+			// The model tried to ACT instead of judging. In substance that is a
+			// CONTINUE verdict — the recorded work is not finished — so it must not
+			// be reported as a protocol failure: the loop answers a protocol
+			// failure by relaying the last successful tool text as the final
+			// message (live: a calendar delete ended after its lookup step with
+			// "Your matching calendar event is …" while the evaluator had emitted
+			// the delete_event call). A plain CONTINUE replans through real tool
+			// dispatch; the invocation itself is never executed from here.
+			return {
+				success: false,
+				decision: "CONTINUE",
+				thought: `Invalid evaluator output: ${parsedResult.parseError}; the response is a tool invocation, so the recorded work is not finished. Replanning from recorded tool results.`,
+				parseError: parsedResult.parseError,
+				raw: {},
+			};
+		}
 		return {
 			success: false,
 			decision: "CONTINUE",
@@ -1119,8 +1138,22 @@ const FINISH_PROGRESS_PROMISE_TAIL_RE =
  */
 const UNSERVED_INTENTS_THOUGHT_MARKER = "unserved declared intents";
 
-function declaredIntentsFromContext(context: ContextObject): string[] {
+export function declaredIntentsFromContext(context: ContextObject): string[] {
 	const events = Array.isArray(context.events) ? context.events : [];
+	const plan = [...events]
+		.reverse()
+		.find((event) => event.type === "message_handler")?.metadata?.plan;
+	if (
+		plan &&
+		typeof plan === "object" &&
+		!Array.isArray(plan) &&
+		Array.isArray(plan.intents)
+	) {
+		return plan.intents.filter(
+			(intent: unknown): intent is string =>
+				typeof intent === "string" && intent.trim().length > 0,
+		);
+	}
 	for (const event of events) {
 		if (
 			event &&
@@ -1145,6 +1178,14 @@ function repairFinishWithUnservedDeclaredIntents(
 	trajectory: PlannerTrajectory,
 ): EvaluatorOutput {
 	if (output.decision !== "FINISH") return output;
+	// The legacy instruction listed separate tool operations. Structured v5
+	// intents describe outcomes: one update may change a body AND preserve its
+	// title. Let the evaluator judge outcomes rather than demand one call each.
+	if (
+		!context.events?.some((event) => event.id === "stage1-declared-intents")
+	) {
+		return output;
+	}
 	const intents = declaredIntentsFromContext(context);
 	if (intents.length < 2) return output;
 	const priorCoercion = (trajectory.evaluatorOutputs ?? []).some((prior) =>
@@ -1165,7 +1206,7 @@ function repairFinishWithUnservedDeclaredIntents(
 	};
 }
 
-function repairFinishWithProgressPromise(
+export function repairFinishWithProgressPromise(
 	output: EvaluatorOutput,
 	trajectory: PlannerTrajectory,
 ): EvaluatorOutput {
@@ -1246,15 +1287,13 @@ function recoverEvaluatorTextOutput(
 
 	if (!hasSuccessfulToolResult(trajectory)) return output;
 
-	const envelopeMessage = trailingFinishEnvelopeMessage(text);
-	if (envelopeMessage) {
+	const envelope = trailingEvaluatorEnvelope(text);
+	if (envelope) {
 		return {
-			success: true,
-			decision: "FINISH",
-			thought:
-				"Recovered the terminal evaluator envelope's answer from surrounding debris.",
-			messageToUser: envelopeMessage,
-			raw: { recoverySource: "trailing_finish_envelope_message" },
+			...envelope,
+			messageToUser:
+				envelope.decision === "FINISH" ? envelope.messageToUser : undefined,
+			raw: { recoverySource: "trailing_evaluator_envelope" },
 		};
 	}
 	if (!looksLikeUserFacingAnswer(text)) return output;
@@ -1327,32 +1366,25 @@ function latestVerifiedToolUserFacingText(
 }
 
 /**
- * Recover the user-facing answer from a valid trailing terminal envelope.
+ * Recover control flow from a valid trailing evaluator envelope.
  * Nonterminal envelopes remain planner control flow and must never be promoted
  * into a finished user reply merely because noisy text preceded them.
  */
-function trailingFinishEnvelopeMessage(text: string): string | null {
+function trailingEvaluatorEnvelope(text: string): EvaluatorOutput | null {
 	const trimmed = text.trimEnd();
 	if (!trimmed.endsWith("}")) return null;
-	const candidate = extractJsonObjects(trimmed).at(-1);
+	const objects = extractJsonObjects(trimmed);
+	if (objects.length !== 1) return null;
+	const candidate = objects[0];
 	if (!candidate || !trimmed.endsWith(candidate)) return null;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(candidate);
-	} catch {
-		// error-policy:J3 malformed model output is not a recoverable envelope.
+	if (!isEvaluatorEnvelopeObject(tryParseJson(candidate))) return null;
+	const parsed = parseEvaluatorOutput(candidate);
+	if (parsed.parseError) return null;
+	// A terminal envelope without an answer still uses the existing safe prose
+	// recovery. Nonterminal decisions must never be replaced by that prose.
+	if (parsed.decision === "FINISH" && !parsed.messageToUser?.trim())
 		return null;
-	}
-	if (!isEvaluatorEnvelopeObject(parsed)) return null;
-	const record = parsed as Record<string, unknown>;
-	const decision = String(record.decision ?? record.route)
-		.trim()
-		.toUpperCase();
-	if (decision !== "FINISH") return null;
-	const message = record.messageToUser;
-	return typeof message === "string" && message.trim().length > 0
-		? message.trim()
-		: null;
+	return parsed;
 }
 
 /**
@@ -1618,6 +1650,24 @@ function isToolAttemptObject(value: unknown): boolean {
 	);
 }
 
+/**
+ * Model output that is a tool invocation rather than a verdict: native XML tool
+ * markup, a JSON tool-call shape, a bare ACTION_NAME followed by a JSON args
+ * object, or an invocation DSL. An evaluator model reaches this shape by
+ * continuing the planner transcript it was shown (live: Qwen answered a
+ * calendar delete's evaluation with `<tool_call><function=CALENDAR>` …
+ * `delete_event`). These are the same screens that gate user-facing prose in
+ * {@link looksLikeUserFacingAnswer}.
+ */
+function looksLikeToolInvocation(text: string): boolean {
+	return (
+		containsToolCallShapedMarkup(text) ||
+		/\{\s*"(?:action|tool|name|parameters|command)"\s*:/i.test(text) ||
+		/^\s*[A-Z][A-Z0-9_]{2,}\s*\n\s*\{/.test(text) ||
+		containsInvocationDsl(text)
+	);
+}
+
 function looksLikeUserFacingAnswer(text: string): boolean {
 	if (text.length < 8 || text.length > 4000) return false;
 	if (looksLikeRawToolTranscript(text)) return false;
@@ -1818,9 +1868,13 @@ function getStructuredEvaluatorObject(
 		// parse-error path so the loop sees a malformed evaluation and retries,
 		// instead of a silent default verdict.
 		if (!isEvaluatorShapedObject(raw.object)) {
+			const serialized = toWellFormedUnicode(JSON.stringify(raw.object));
 			return {
 				object: null,
-				parseError: `structured evaluator output is not evaluator-shaped: ${toWellFormedUnicode(JSON.stringify(raw.object))}`,
+				parseError: `structured evaluator output is not evaluator-shaped: ${serialized}`,
+				...(looksLikeToolInvocation(serialized)
+					? { toolInvocation: true }
+					: {}),
 			};
 		}
 		return { object: raw.object as RawEvaluatorOutput };
@@ -1888,6 +1942,7 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 			return {
 				object: null,
 				parseError: "JSON object is not evaluator-shaped",
+				...(looksLikeToolInvocation(candidate) ? { toolInvocation: true } : {}),
 			};
 		}
 		return { object: parsed };
@@ -1916,6 +1971,9 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 							object: null,
 							parseError:
 								"leading evaluator envelope followed by machine output (tool syntax), not a user-facing answer",
+							...(looksLikeToolInvocation(prose)
+								? { toolInvocation: true }
+								: {}),
 						};
 					}
 					record.messageToUser = prose;
@@ -1935,7 +1993,11 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 		if (labeled) {
 			return { object: labeled };
 		}
-		return { object: null, parseError: "response is not a single JSON object" };
+		return {
+			object: null,
+			parseError: "response is not a single JSON object",
+			...(looksLikeToolInvocation(candidate) ? { toolInvocation: true } : {}),
+		};
 	}
 }
 

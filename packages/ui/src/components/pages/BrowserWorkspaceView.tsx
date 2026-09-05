@@ -34,7 +34,11 @@ import {
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
-import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
+import {
+  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+  NAVIGATE_VIEW_EVENT,
+  type NavigateViewDetail,
+} from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
@@ -1484,6 +1488,44 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       workspace.mode,
     ],
   );
+
+  // Remote browser actions mutate the server workspace. Native mobile tabs are
+  // deliberately local, so mirror the completed action's verified deep-link
+  // URL into the currently mounted secure WebView instead of leaving it on the
+  // previous page. The same deep link handles the first navigation on mount;
+  // this listener covers subsequent actions while /browser is already active.
+  useEffect(() => {
+    if (!browserWorkspaceUsesLocalTabs) return;
+    const handleAgentBrowserNavigation = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      if (detail?.viewId !== "browser" || !detail.viewPath) return;
+      const query = detail.viewPath.split("?", 2)[1];
+      const rawUrl = query
+        ? new URLSearchParams(query).get("browse")?.trim()
+        : null;
+      if (!rawUrl) return;
+      void runBrowserWorkspaceAction(
+        "agent:navigate",
+        async () => {
+          await navigateSelectedBrowserWorkspaceTab(rawUrl);
+        },
+        t("browserworkspace.NavigationFailed", {
+          defaultValue: "Couldn’t open that page.",
+        }),
+      );
+    };
+    window.addEventListener(NAVIGATE_VIEW_EVENT, handleAgentBrowserNavigation);
+    return () =>
+      window.removeEventListener(
+        NAVIGATE_VIEW_EVENT,
+        handleAgentBrowserNavigation,
+      );
+  }, [
+    browserWorkspaceUsesLocalTabs,
+    navigateSelectedBrowserWorkspaceTab,
+    runBrowserWorkspaceAction,
+    t,
+  ]);
 
   const registerBrowserWorkspaceIframe = useCallback(
     (tabId: string, iframe: HTMLIFrameElement | null) => {
@@ -3284,7 +3326,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       data-chat-clearance-aware="true"
       aria-busy={loading || busyAction !== null}
       tabIndex={-1}
-      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-3 overflow-hidden bg-bg px-4 pt-[calc(0.75rem+var(--safe-area-top,0px))] pb-[calc(1rem+var(--eliza-chat-clearance,5.25rem))] lg:px-6 lg:pt-[calc(1.5rem+var(--safe-area-top,0px))] lg:pb-[calc(1.5rem+var(--eliza-chat-clearance,5.25rem))]"
+      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-3 overflow-hidden bg-bg px-4 pt-[calc(var(--safe-area-top,0px)+0.75rem)] pb-[calc(1rem+var(--eliza-chat-clearance,5.25rem))] lg:px-6 lg:pt-[calc(var(--safe-area-top,0px)+1.5rem)] lg:pb-[calc(1.5rem+var(--eliza-chat-clearance,5.25rem))]"
     >
       <div
         data-testid="browser-workspace-toolbar"

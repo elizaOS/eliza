@@ -6,6 +6,7 @@ import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildScreenTimeRecapRules,
+  type CreateScreenTimeActionRunnerOptions,
   createOwnerScreenTimeAction,
   createScreenTimeActionRunner,
   type ScreenTimeActionService,
@@ -48,13 +49,18 @@ function makeService(): ScreenTimeActionService {
   };
 }
 
-function makeRunner(service: ScreenTimeActionService) {
+function makeRunner(
+  service: ScreenTimeActionService,
+  renderReply: CreateScreenTimeActionRunnerOptions["renderReply"] = async ({
+    fallback,
+  }) => ({ kind: "model", text: fallback }),
+) {
   return createScreenTimeActionRunner({
     hasAccess: async () => true,
     createService: () => service,
     messageText: (input) =>
       typeof input.content.text === "string" ? input.content.text : "",
-    renderReply: async ({ fallback }) => fallback,
+    renderReply,
     resolveActionArgs: async <TSubaction extends string, TParams>(input: {
       defaultSubaction?: TSubaction;
       options?: {
@@ -81,6 +87,44 @@ function makeRunner(service: ScreenTimeActionService) {
 }
 
 describe("screen-time action runner", () => {
+  it("retains screen-time evidence without a callback when its reply is unavailable", async () => {
+    const service = makeService();
+    const failure = {
+      kind: "no_provider" as const,
+      code: "NO_REPLY_PROVIDER",
+      message: "No reply provider configured.",
+      transient: false as const,
+    };
+    const renderReply = vi.fn(async () => ({
+      kind: "unavailable" as const,
+      failure,
+    }));
+    const callback = vi.fn(async () => []);
+    const result = await makeRunner(service, renderReply)(
+      runtime,
+      message,
+      undefined,
+      { parameters: { subaction: "today" } },
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        subaction: "today",
+        daily: [{ id: "daily-1", totalSeconds: 3600 }],
+      },
+      replyFailure: failure,
+      transcriptVisibility: "internal",
+      turnComplete: false,
+    });
+    expect(result.text).toBeUndefined();
+    expect(result.userFacingText).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
+    expect(renderReply).toHaveBeenCalledOnce();
+    expect(service.getScreenTimeDaily).toHaveBeenCalledOnce();
+  });
+
   it("requests the complete screen-time summary when no pagination is supplied", async () => {
     const service = makeService();
     const runner = makeRunner(service);
@@ -159,7 +203,7 @@ describe("screen-time action runner", () => {
       createService: () => makeService(),
       messageText: (input) =>
         typeof input.content.text === "string" ? input.content.text : "",
-      renderReply: async ({ fallback }) => fallback,
+      renderReply: async ({ fallback }) => ({ kind: "model", text: fallback }),
       resolveActionArgs,
       isDarwin: () => false,
       getActivityReport: vi.fn(),
@@ -191,7 +235,7 @@ describe("screen-time action runner", () => {
       createService: () => makeService(),
       messageText: (input) =>
         typeof input.content.text === "string" ? input.content.text : "",
-      renderReply: async ({ fallback }) => fallback,
+      renderReply: async ({ fallback }) => ({ kind: "model", text: fallback }),
       resolveActionArgs: async () => ({
         ok: false as const,
         missing: ["appNameOrBundleId"],
@@ -227,7 +271,7 @@ describe("screen-time action runner", () => {
       createService: () => makeService(),
       messageText: (input) =>
         typeof input.content.text === "string" ? input.content.text : "",
-      renderReply: async ({ fallback }) => fallback,
+      renderReply: async ({ fallback }) => ({ kind: "model", text: fallback }),
       resolveActionArgs: async <TSubaction extends string, TParams>() => ({
         ok: true as const,
         subaction: "time_on_app" as TSubaction,
@@ -263,7 +307,7 @@ describe("screen-time action runner", () => {
       createService: () => makeService(),
       messageText: (input) =>
         typeof input.content.text === "string" ? input.content.text : "",
-      renderReply: async ({ fallback }) => fallback,
+      renderReply: async ({ fallback }) => ({ kind: "model", text: fallback }),
       resolveActionArgs: async <TSubaction extends string, TParams>() => ({
         ok: true as const,
         subaction: "time_on_site" as TSubaction,
@@ -302,7 +346,7 @@ describe("screen-time action runner", () => {
       createService: () => makeService(),
       messageText: (input) =>
         typeof input.content.text === "string" ? input.content.text : "",
-      renderReply: async ({ fallback }) => fallback,
+      renderReply: async ({ fallback }) => ({ kind: "model", text: fallback }),
       resolveActionArgs: async <TSubaction extends string, TParams>() => ({
         ok: true as const,
         subaction: "browser_activity" as TSubaction,
@@ -341,7 +385,10 @@ describe("screen-time action runner", () => {
       bundleId: `com.example.app-${index}`,
       totalMs: index + 1,
     }));
-    const renderReply = vi.fn(async ({ fallback }) => fallback);
+    const renderReply = vi.fn(async ({ fallback }) => ({
+      kind: "model" as const,
+      text: fallback,
+    }));
     const getActivityReport = vi.fn(async () => ({
       sinceMs: 1,
       untilMs: 2,

@@ -144,8 +144,17 @@ export function RoutingMatrix() {
   useEffect(() => {
     let active = true;
     void (async () => {
-      const result = await client.getLocalInferenceDeviceTier();
-      if (active) setDeviceTier(result);
+      try {
+        const result = await client.getLocalInferenceDeviceTier();
+        if (active) setDeviceTier(result);
+      } catch {
+        // error-policy:J4 A rejected supplemental hardware probe keeps the
+        // Auto resolution visibly absent while the routing controls stay usable.
+        // Device classification is supplemental to the routing controls. Keep
+        // Auto's resolution unavailable when the probe is invalid instead of
+        // leaking an unhandled rejection from the mount effect.
+        if (active) setDeviceTier(null);
+      }
     })();
     return () => {
       active = false;

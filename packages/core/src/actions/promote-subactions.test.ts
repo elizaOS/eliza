@@ -16,7 +16,10 @@ import {
 	promotedParentRoutingHint,
 	promoteSubactionsToActions,
 } from "./promote-subactions.js";
-import { buildPlannerToolsFromTieredActions } from "./to-tool.js";
+import {
+	buildPlannerToolsFromActions,
+	buildPlannerToolsFromTieredActions,
+} from "./to-tool.js";
 import { validateToolArgs } from "./validate-tool-args.js";
 
 function makeUmbrella(overrides: Partial<Action> = {}): Action {
@@ -97,6 +100,22 @@ describe("promote-subactions helper predicates", () => {
 });
 
 describe("promoteSubactionsToActions parameter slicing", () => {
+	it.each([false, true, undefined])(
+		"preserves parent schema strictness %s in promoted native tools",
+		(toolSchemaStrict) => {
+			const family = promoteSubactionsToActions(
+				makeUmbrella({ toolSchemaStrict }),
+			);
+			expect(family.length).toBeGreaterThan(1);
+			for (const action of family) {
+				expect(action.toolSchemaStrict).toBe(toolSchemaStrict);
+			}
+			for (const tool of buildPlannerToolsFromActions(family)) {
+				expect(tool.strict).toBe(toolSchemaStrict ?? true);
+			}
+		},
+	);
+
 	it("keeps parameters without a subactions list on every virtual", () => {
 		const [, ...virtuals] = promoteSubactionsToActions(makeUmbrella());
 		for (const virtual of virtuals) {

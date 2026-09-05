@@ -308,7 +308,17 @@ async function __hono_POST(c: AppContext) {
     settlementUserId = user.id;
     timings.authMs = Date.now() - requestStart;
     const admissionStart = Date.now();
-    if (pendingResponse) return pendingResponse;
+    if (pendingResponse) {
+      timings.admissionMs = Date.now() - admissionStart;
+      if (providerSelection && !providerSelection.ok) {
+        for (const [name, value] of Object.entries(
+          buildTtsObservabilityHeaders(providerSelection.provider, timings),
+        )) {
+          pendingResponse.headers.set(name, value);
+        }
+      }
+      return pendingResponse;
+    }
     if (!body || !providerSelection?.ok) {
       throw new Error("Validated TTS request was not retained");
     }

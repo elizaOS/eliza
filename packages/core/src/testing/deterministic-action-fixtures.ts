@@ -40,6 +40,12 @@ export function benignExternalMessageFixture(
 }
 const MESSAGE_USER_SUFFIX_BOUNDARY =
 	/\n\n(?:event:|provider:|current_turn_boundary:|The Stage 1 router)/;
+const MESSAGE_USER_BLOCK_MARKER = /(?:^|\n\n)message:user:\n/g;
+
+type JsonObjectKeyInspection = {
+	hasDuplicateRootKeys: boolean;
+	topLevelKeys: Set<string>;
+};
 
 export type RuntimeWithScenarioModelFixtures = {
 	scenarioModelFixtures?: {
@@ -68,57 +74,184 @@ export type StrictTerminalRouteFixture = {
 	contextIds?: readonly string[];
 };
 
+function extractExternalContent(value: string): string | null {
+	const envelopeStart = value.lastIndexOf(EXTERNAL_CONTENT_START);
+	const envelopeEnd = value.lastIndexOf(EXTERNAL_CONTENT_END);
+	if (envelopeStart === -1 || envelopeEnd <= envelopeStart) return null;
+	const envelopeText = value.slice(
+		envelopeStart + EXTERNAL_CONTENT_START.length,
+		envelopeEnd,
+	);
+	const separatorIndex = envelopeText.indexOf(EXTERNAL_CONTENT_SEPARATOR);
+	return (
+		separatorIndex === -1
+			? envelopeText
+			: envelopeText.slice(separatorIndex + EXTERNAL_CONTENT_SEPARATOR.length)
+	).trim();
+}
+
+/**
+ * Inspect root envelope keys before JSON.parse can collapse duplicate members.
+ * Decoding each string token also normalizes escaped spellings such as
+ * `"te\\u0078t"` to the same semantic key as `"text"`.
+ * Nested metadata is not an alternate envelope and cannot change its text.
+ */
+function inspectJsonObjectKeys(value: string): JsonObjectKeyInspection {
+	type Container = { kind: "array" } | { kind: "object"; topLevel: boolean };
+	const containers: Container[] = [];
+	const topLevelKeys = new Set<string>();
+	let hasDuplicateRootKeys = false;
+
+	for (let index = 0; index < value.length; index++) {
+		const character = value[index];
+		if (character === "{") {
+			containers.push({
+				kind: "object",
+				topLevel: containers.length === 0,
+			});
+			continue;
+		}
+		if (character === "[") {
+			containers.push({ kind: "array" });
+			continue;
+		}
+		if (character === "}" || character === "]") {
+			containers.pop();
+			continue;
+		}
+		if (character !== '"') continue;
+
+		let end = index + 1;
+		for (; end < value.length; end++) {
+			if (value[end] === "\\") {
+				end++;
+				continue;
+			}
+			if (value[end] === '"') break;
+		}
+		if (end >= value.length) break;
+
+		let afterString = end + 1;
+		while (/\s/.test(value[afterString] ?? "")) afterString++;
+		const container = containers.at(-1);
+		if (
+			value[afterString] === ":" &&
+			container?.kind === "object" &&
+			container.topLevel
+		) {
+			try {
+				const key = JSON.parse(value.slice(index, end + 1));
+				if (typeof key === "string") {
+					if (topLevelKeys.has(key)) hasDuplicateRootKeys = true;
+					topLevelKeys.add(key);
+				}
+			} catch {
+				// error-policy:J3 JSON.parse below validates the complete input;
+				// malformed string tokens cannot identify an envelope key.
+			}
+		}
+		index = end;
+	}
+
+	return { hasDuplicateRootKeys, topLevelKeys };
+}
+
+function decodeStage1JsonMessageEnvelope(value: string): string | null {
+	const trimmed = value.trim();
+	const first = trimmed[0];
+	if (first !== "{" && first !== "[" && first !== '"') {
+		return trimmed;
+	}
+
+	const keyInspection = inspectJsonObjectKeys(trimmed);
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(trimmed);
+	} catch {
+		// error-policy:J3 Stage-1 fixture input is an untrusted JSON boundary;
+		// reject malformed modern envelopes without reclassifying legacy JSON text.
+		return keyInspection.topLevelKeys.has("source") ||
+			keyInspection.topLevelKeys.has("channelType")
+			? null
+			: trimmed;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return trimmed;
+	}
+
+	const record = parsed as Record<string, unknown>;
+	const hasSource = Object.hasOwn(record, "source");
+	const hasChannelType = Object.hasOwn(record, "channelType");
+	if (!hasSource && !hasChannelType) return trimmed;
+	if (keyInspection.hasDuplicateRootKeys) return null;
+	if (
+		!hasSource ||
+		!hasChannelType ||
+		typeof record.source !== "string" ||
+		typeof record.channelType !== "string"
+	) {
+		return null;
+	}
+	if (!Object.hasOwn(record, "text") || typeof record.text !== "string") {
+		return null;
+	}
+	if (Object.hasOwn(record, "currentMessageText")) {
+		if (
+			typeof record.currentMessageText !== "string" ||
+			record.currentMessageText !== record.text
+		) {
+			return null;
+		}
+	}
+	if (Object.hasOwn(record, "content")) return null;
+	return extractExternalContent(record.text) ?? record.text.trim();
+}
+
+function latestMessageUserMarkerIndex(value: string): number {
+	let blockIndex = -1;
+	for (const match of value.matchAll(MESSAGE_USER_BLOCK_MARKER)) {
+		blockIndex =
+			(match.index ?? 0) + match[0].length - MESSAGE_USER_MARKER.length;
+	}
+	return blockIndex === -1
+		? value.lastIndexOf(MESSAGE_USER_MARKER)
+		: blockIndex;
+}
+
+function extractScenarioInput(value: string): string | null {
+	const markerIndex = latestMessageUserMarkerIndex(value);
+	const afterMarker =
+		markerIndex === -1
+			? value
+			: value.slice(markerIndex + MESSAGE_USER_MARKER.length);
+	const candidate =
+		afterMarker.split(MESSAGE_USER_SUFFIX_BOUNDARY, 1)[0]?.trim() ?? "";
+	if (
+		markerIndex !== -1 &&
+		(candidate[0] === "{" || candidate[0] === "[" || candidate[0] === '"')
+	) {
+		return decodeStage1JsonMessageEnvelope(candidate);
+	}
+	const externalContent = extractExternalContent(candidate);
+	if (externalContent !== null) return externalContent;
+	return candidate;
+}
+
 /**
  * Strip the prompt envelope (`message:user:`, the external-content wrapper, and
  * any trailing provider/event boundary) so a fixture matches the exact user
  * text regardless of the surrounding prompt scaffolding.
  */
 export function finalMessageUserText(value: string): string {
-	const markerIndex = value.lastIndexOf(MESSAGE_USER_MARKER);
-	let messageText =
-		markerIndex === -1
-			? value
-			: value.slice(markerIndex + MESSAGE_USER_MARKER.length);
-	const withoutSuffix =
-		messageText.split(MESSAGE_USER_SUFFIX_BOUNDARY, 1)[0]?.trim() ?? "";
-	try {
-		const structured = JSON.parse(withoutSuffix) as unknown;
-		if (
-			structured &&
-			typeof structured === "object" &&
-			"text" in structured &&
-			typeof structured.text === "string"
-		) {
-			messageText = structured.text;
-		} else {
-			messageText = withoutSuffix;
-		}
-	} catch {
-		// error-policy:J3 Plain message text is the valid non-JSON representation.
-		messageText = withoutSuffix;
-	}
-	const envelopeStart = messageText.lastIndexOf(EXTERNAL_CONTENT_START);
-	const envelopeEnd = messageText.lastIndexOf(EXTERNAL_CONTENT_END);
-	return (() => {
-		if (envelopeStart === -1 || envelopeEnd <= envelopeStart) {
-			return messageText.trim();
-		}
-		const envelopeText = messageText.slice(
-			envelopeStart + EXTERNAL_CONTENT_START.length,
-			envelopeEnd,
-		);
-		const separatorIndex = envelopeText.indexOf(EXTERNAL_CONTENT_SEPARATOR);
-		return (
-			separatorIndex === -1
-				? envelopeText
-				: envelopeText.slice(separatorIndex + EXTERNAL_CONTENT_SEPARATOR.length)
-		).trim();
-	})();
+	return extractScenarioInput(value) ?? "";
 }
 
 /** A text matcher that compares the normalized latest user text exactly. */
 export function matchesScenarioInput(expected: string) {
-	return (value: string) => finalMessageUserText(value) === expected;
+	return (value: string) => {
+		const actual = extractScenarioInput(value);
+		return actual !== null && actual === expected;
+	};
 }
 
 /** Slugify an action name for stable, unique fixture names. */

@@ -5,10 +5,20 @@
  * this boundary unchanged; invalid context fails explicitly instead of producing
  * a plausible reply from a partial prompt.
  */
-import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  ActionResult,
+  GroundedActionReply,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import {
+  createUnavailableGroundedActionReply,
   ElizaError,
+  isModelProviderError,
   ModelType,
+  modelProviderErrorDetail,
+  NoModelProviderConfiguredError,
   parseJSONObjectFromText,
   renderActionResultsForModel,
 } from "@elizaos/core";
@@ -157,11 +167,11 @@ function domainLabel(domain: GroundedReplyDomain): string {
   }
 }
 
-export async function renderGroundedActionReply(
+async function renderGroundedActionReplyText(
   args: RenderGroundedActionReplyArgs,
 ): Promise<string> {
   if (typeof args.runtime.useModel !== "function") {
-    return args.fallback;
+    throw new NoModelProviderConfiguredError();
   }
 
   const recentConversation = await recentConversationTexts({
@@ -205,7 +215,7 @@ export async function renderGroundedActionReply(
     `Canonical fallback: ${JSON.stringify(args.fallback)}`,
   ].join("\n");
 
-  const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+  const result: unknown = await args.runtime.useModel(ModelType.TEXT_SMALL, {
     prompt,
   });
   if (typeof result !== "string") {
@@ -224,5 +234,89 @@ export async function renderGroundedActionReply(
       },
     );
   }
+  if (invertsNegativeFallback(args.scenario, args.fallback, result)) {
+    throw new ElizaError(
+      "Grounded reply model output contradicts the negative canonical fallback",
+      {
+        code: "GROUNDED_REPLY_OUTPUT_INVALID",
+        context: { invalidShape: "negation-inverted", scenario: args.scenario },
+      },
+    );
+  }
   return result;
+}
+
+const FAILURE_SCENARIO_PATTERN =
+  /not_found|failed|failure|error|unavailable|denied|rejected|missing|no_match/i;
+const NEGATION_CUE_PATTERN =
+  /\b(?:couldn't|could not|can't|cannot|didn't|did not|wasn't|was not|isn't|is not|aren't|are not|won't|don't|doesn't|no|not|nothing|none|never|unable|failed|missing|without)\b/i;
+
+/**
+ * A failure scenario's canonical fallback states what did NOT happen. The model
+ * may rephrase it but may not drop the negation: live, "i couldn't find an event
+ * matching 'Gym session …'" (delete_event_not_found, receipt outcome noop) came
+ * back as "The Gym session Tuesday at 7 AM (Sep 8) is gone." — a false success
+ * claim about a mutation that never ran. Only failure-shaped scenarios are
+ * screened so a positive read ("nothing on Tuesday" → "Tuesday's clear") is
+ * never rejected.
+ */
+function invertsNegativeFallback(
+  scenario: string,
+  fallback: string,
+  reply: string,
+): boolean {
+  if (!FAILURE_SCENARIO_PATTERN.test(scenario)) return false;
+  const normalize = (value: string) => value.replace(/[\u2018\u2019]/g, "'");
+  if (!NEGATION_CUE_PATTERN.test(normalize(fallback))) return false;
+  return !NEGATION_CUE_PATTERN.test(normalize(reply));
+}
+
+/**
+ * Rendering is independent of action settlement. An unavailable reply carries
+ * no substitute prose; callers retain the actual effect and publish the typed
+ * system status without replaying the action or trying another synthesis call.
+ */
+export async function renderGroundedActionReply(
+  args: RenderGroundedActionReplyArgs,
+): Promise<GroundedActionReply> {
+  try {
+    return { kind: "model", text: await renderGroundedActionReplyText(args) };
+  } catch (error) {
+    // error-policy:J1 A presentation failure must not erase a committed effect.
+    // Unexpected context/output/programming failures remain loud diagnostics,
+    // but cross this boundary as unavailable presentation, never false action
+    // failure or a hand-authored assistant reply.
+    const noProvider = error instanceof NoModelProviderConfiguredError;
+    const detail = modelProviderErrorDetail(error);
+    const record = asRecord(error);
+    const code = noProvider
+      ? error.reason === "capability-disabled"
+        ? "GROUNDED_REPLY_CAPABILITY_DISABLED"
+        : "GROUNDED_REPLY_NO_PROVIDER"
+      : typeof record?.code === "string" && error instanceof ElizaError
+        ? record.code
+        : "GROUNDED_REPLY_GENERATION_FAILED";
+    const diagnostic = {
+      domain: args.domain,
+      scenario: args.scenario,
+      code,
+      ...detail,
+    };
+    if (!noProvider && !isModelProviderError(error)) {
+      args.runtime.reportError?.("grounded-action-reply", error, diagnostic);
+    } else {
+      args.runtime.logger?.warn(
+        { src: "grounded-action-reply", ...diagnostic },
+        "[GroundedActionReply] reply unavailable; preserving the action outcome",
+      );
+    }
+    return createUnavailableGroundedActionReply({
+      kind: noProvider
+        ? "no_provider"
+        : detail?.status === 429
+          ? "rate_limited"
+          : "provider_issue",
+      code,
+    });
+  }
 }

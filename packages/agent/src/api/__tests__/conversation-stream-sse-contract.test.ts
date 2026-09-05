@@ -30,12 +30,14 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  createUnavailableGroundedActionReply,
   getInferenceTimer,
   logger,
   type Memory,
   ModelType,
   RoomHandlerQueue,
   stringToUuid,
+  trackPostDeliveryTask,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -2075,6 +2077,139 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
   });
 
+  it.each(["legacy", "delta-v2"] as const)(
+    "publishes finalized action receipts before room bookkeeping and done (%s)",
+    async (protocol) => {
+      requestStreamProtocol = protocol === "delta-v2" ? protocol : undefined;
+      const provisionalDelivered = createDeferred();
+      const actionsFinished = createDeferred();
+      const bookkeepingGate = createDeferred();
+      const finalText = "Browser is open. The page heading is Example Domain.";
+      const finalReceipt = {
+        success: true,
+        text: finalText,
+        data: { actionName: "BROWSER_NAVIGATE" },
+        values: {
+          viewId: "browser",
+          viewType: "gui",
+          viewPath: "/apps/browser",
+          completedActionHandoffId: "final-browser-handoff",
+          browser: { url: "https://example.com/" },
+        },
+      };
+      const expectedReceipts = [
+        {
+          actionName: "BROWSER_NAVIGATE",
+          success: true,
+          text: finalText,
+          values: {
+            viewId: "browser",
+            viewType: "gui",
+            viewPath: "/apps/browser",
+            completedActionHandoffId: "final-browser-handoff",
+            browser: { url: "https://example.com/" },
+          },
+        },
+      ];
+      const messageService = createViewShortcutMessageService();
+      messageService.handleMessage = async (runtime, _message, callback) => {
+        await callback?.(
+          { text: "Opening Browser.", actionStatus: "running" },
+          "BROWSER_NAVIGATE",
+        );
+        provisionalDelivered.resolve();
+        await actionsFinished.promise;
+        void trackPostDeliveryTask(
+          runtime,
+          "receipt-bookkeeping-test",
+          async () => {
+            await bookkeepingGate.promise;
+            // Late room work can mutate its original result, but the final client
+            // projection must already be a detached, recursively copied snapshot.
+            finalReceipt.values.viewId = "settings";
+            finalReceipt.values.browser.url = "https://example.org/";
+          },
+        );
+        return {
+          didRespond: true,
+          responseContent: { text: finalText },
+          responseMessages: [],
+          actionResults: [finalReceipt],
+        };
+      };
+      const { ctx, record, useModel } = createCtx(messageService);
+      vi.mocked(persistAssistantConversationMemory).mockClear();
+      const turn = handleConversationRoutes(ctx);
+      try {
+        await provisionalDelivered.promise;
+        const provisionalPayloads = parseSsePayloads(record.writes);
+        expect(provisionalPayloads).toContainEqual(
+          expect.objectContaining({ type: "token", provisional: true }),
+        );
+        expect(
+          provisionalPayloads.some(
+            (payload) =>
+              payload.type === "reply_ready" || payload.type === "done",
+          ),
+        ).toBe(false);
+        expect(
+          provisionalPayloads.some((payload) => "actionResults" in payload),
+        ).toBe(false);
+
+        actionsFinished.resolve();
+        await vi.waitFor(() => {
+          expect(parseSsePayloads(record.writes)).toContainEqual({
+            type: "reply_ready",
+            fullText: finalText,
+            actionResults: expectedReceipts,
+          });
+        });
+        expect(record.ended).toBe(false);
+        expect(
+          parseSsePayloads(record.writes).some(
+            (payload) => payload.type === "done",
+          ),
+        ).toBe(false);
+        expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+      } finally {
+        actionsFinished.resolve();
+        bookkeepingGate.resolve();
+        await turn;
+      }
+
+      const payloads = parseSsePayloads(record.writes);
+      const ready = payloads.filter(
+        (payload) => payload.type === "reply_ready",
+      );
+      const done = payloads.find((payload) => payload.type === "done");
+      expect(ready).toHaveLength(1);
+      expect(done?.actionResults).toEqual(expectedReceipts);
+      expect(done?.actionResults).toEqual(ready[0]?.actionResults);
+      expect(
+        payloads.findIndex((payload) => payload.type === "reply_ready"),
+      ).toBeLessThan(payloads.findIndex((payload) => payload.type === "done"));
+      expect(finalReceipt.values.viewId).toBe("settings");
+      expect(finalReceipt.values.browser.url).toBe("https://example.org/");
+      expect(record.ended).toBe(true);
+      expect(useModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps legacy reply_ready text-only when there are no action receipts", async () => {
+    const { ctx, record } = createCtx();
+
+    await handleConversationRoutes(ctx);
+
+    const payloads = parseSsePayloads(record.writes);
+    expect(payloads.find((payload) => payload.type === "reply_ready")).toEqual({
+      type: "reply_ready",
+      fullText: FINAL_TEXT,
+    });
+    expect(
+      payloads.find((payload) => payload.type === "done"),
+    ).not.toHaveProperty("actionResults");
+  });
+
   it("carries a direct VIEWS shortcut result on the terminal done frame", async () => {
     const { ctx, record } = createCtx(createViewShortcutMessageService());
 
@@ -2716,6 +2851,117 @@ describe("conversation stream SSE contract (#10712)", () => {
           },
         },
       });
+    },
+  );
+
+  it.each([
+    ["provider_issue", undefined, false],
+    ["rate_limited", undefined, false],
+    ["no_provider", undefined, false],
+    ["provider_issue", "delta-v2", false],
+    ["rate_limited", "delta-v2", false],
+    ["no_provider", "delta-v2", false],
+    ["provider_issue", "delta-v2", true],
+  ] as const)(
+    "preserves a completed action with %s reply status (%s; interrupted=%s) and replays its stream without another mutation",
+    async (kind, protocol, interrupted) => {
+      requestStreamProtocol = protocol;
+      const unavailable = createUnavailableGroundedActionReply({
+        kind,
+        code: "GROUNDED_REPLY_GENERATION_FAILED",
+      });
+      const receipt = {
+        receiptId: "receipt-1",
+        operation: "lifeops.reminder.create",
+        resource: { kind: "lifeops.reminder", id: "reminder-1" },
+        artifacts: [],
+        idempotency: { key: "request-1", replayed: false },
+        observedAt: "2026-07-27T18:00:00.000Z",
+        outcome: "applied" as const,
+        commit: {
+          kind: "durable" as const,
+          id: "txn-1",
+          committedAt: "2026-07-27T18:00:00.000Z",
+        },
+      };
+      const actionResult = {
+        success: true,
+        text: "Internal action receipt.",
+        transcriptVisibility: "internal" as const,
+        data: { actionName: "SAVE" },
+        effectReceipts: [receipt],
+        replyFailure: unavailable.failure,
+      };
+      const messageService = createViewShortcutMessageService();
+      const handleMessage = vi.fn<
+        NonNullable<AgentRuntime["messageService"]>["handleMessage"]
+      >(async (_runtime, _message, _callback, options) => {
+        if (interrupted) {
+          options?.onSettledActionResult?.(actionResult);
+          throw new Error(
+            "Message processing interrupted after committed unavailable reply.",
+          );
+        }
+        return {
+          didRespond: false,
+          responseContent: null,
+          responseMessages: [],
+          mode: "none" as const,
+          terminalFailure: unavailable.failure,
+          actionResults: [actionResult],
+        };
+      });
+      messageService.handleMessage = handleMessage;
+      requestClientMessageId = crypto.randomUUID();
+      const { ctx, record, state, useModel } = createCtx(messageService);
+      const emitEvent = vi.mocked(
+        state.runtime?.emitEvent as NonNullable<AgentRuntime["emitEvent"]>,
+      );
+      await handleConversationRoutes(ctx);
+      const done = parseSsePayloads(record.writes).find(
+        (payload) => payload.type === "done",
+      );
+      expect(
+        parseSsePayloads(record.writes).filter(
+          (payload) =>
+            payload.type === "token" || payload.type === "reply_ready",
+        ),
+      ).toEqual([]);
+      expect(done).toMatchObject({
+        type: "done",
+        fullText: unavailable.failure.message,
+        failureKind: kind,
+        terminalFailure: unavailable.failure,
+        actionResults: [{ actionName: "SAVE", success: true }],
+      });
+      expect(record.writes.join("")).not.toContain("Canned success");
+      expect(actionResult.effectReceipts).toEqual([receipt]);
+      const emitted = emitEvent.mock.calls.find(
+        ([event]) => event === "MESSAGE_SENT",
+      );
+      expect(emitted?.[1]).toMatchObject({
+        message: {
+          content: {
+            text: unavailable.failure.message,
+            elizaSyntheticFailure: true,
+            agentVoiced: false,
+            replyFailure: unavailable.failure,
+            terminalFailure: unavailable.failure,
+          },
+        },
+      });
+      const replay = createFollowupCtx(ctx, state);
+      await handleConversationRoutes(replay.ctx);
+      expect(
+        parseSsePayloads(replay.record.writes).find(
+          (payload) => payload.type === "done",
+        ),
+      ).toMatchObject({
+        fullText: unavailable.failure.message,
+        terminalFailure: unavailable.failure,
+      });
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      expect(useModel).not.toHaveBeenCalled();
     },
   );
 

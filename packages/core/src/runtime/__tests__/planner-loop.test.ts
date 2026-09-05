@@ -5887,6 +5887,215 @@ describe("v5 planner loop — evaluator gate", () => {
 		).toBe("post_tool_model_reply");
 	});
 
+	it.each([
+		"You're back at the main chat.",
+		"Ya estás en la pantalla principal.",
+	])(
+		"preserves an evaluated navigation reply without requiring the literal UI label: %s",
+		async (reply) => {
+			const useModel = plannerNativeWith({
+				toolCalls: [
+					{
+						id: "home",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "chat",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			});
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought:
+					"The requested destination is confirmed by the current turn's receipt.",
+				messageToUser: reply,
+			}));
+			const result = await runPlannerLoop({
+				runtime: { useModel },
+				context: {
+					id: "home-intent",
+					events: [
+						{
+							id: "routing",
+							type: "message_handler",
+							metadata: { plan: { intents: ["return to home"] } },
+						},
+					],
+				},
+				tools: [{ name: "VIEWS", description: "Navigate Eliza views" }],
+				executeToolCall: vi.fn(async () => ({
+					success: true,
+					modelReplyRequired: true,
+					transcriptVisibility: "internal" as const,
+					text: JSON.stringify({
+						effect: "view_navigation",
+						status: "accepted",
+						viewId: "chat",
+						label: "Home",
+					}),
+				})),
+				evaluate,
+			});
+			expect(evaluate).toHaveBeenCalledTimes(1);
+			expect(useModel).toHaveBeenCalledTimes(1);
+			expect(result.finalMessage).toBe(reply);
+		},
+	);
+
+	it("checks a single declared intent even when the wrong action succeeds with final scope", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "wrong-page",
+						name: "BROWSER",
+						arguments: {
+							action: "navigate",
+							url: "https://go.home",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "home-view",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "chat",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE",
+				thought:
+					"The website navigation did not return to Eliza's home screen.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH",
+				thought: "The chat view is now open.",
+				messageToUser: "You're back home.",
+			});
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			modelReplyRequired: true,
+			text: "Navigation accepted.",
+		}));
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: {
+				id: "home-intent",
+				events: [
+					{
+						id: "routing",
+						type: "message_handler",
+						metadata: { plan: { intents: ["return to the home screen"] } },
+					},
+				],
+			},
+			tools: [
+				{ name: "BROWSER", description: "Visit a website" },
+				{ name: "VIEWS", description: "Navigate Eliza views" },
+			],
+			executeToolCall,
+			evaluate,
+		});
+		expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
+			"BROWSER",
+			"VIEWS",
+		]);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("You're back home.");
+	});
+
+	it("evaluates all model-authored intents instead of finishing after one final-scope action", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "note-1",
+						name: "NOTES",
+						arguments: { action: "update", [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "view-1",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "notes",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE",
+				thought: "The note changed, but Notes has not opened.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH",
+				thought: "Both requested outcomes are confirmed.",
+				messageToUser: "Notes is open and your note is updated.",
+			});
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			modelReplyRequired: true,
+			text: "Confirmed operation.",
+		}));
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: {
+				id: "compound",
+				events: [
+					{
+						id: "routing",
+						type: "message_handler",
+						metadata: { plan: { intents: ["update note", "open notes"] } },
+					},
+				],
+			},
+			tools: [
+				{ name: "NOTES", description: "Edit notes" },
+				{ name: "VIEWS", description: "Navigate" },
+			],
+			executeToolCall,
+			evaluate,
+		});
+		expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
+			"NOTES",
+			"VIEWS",
+		]);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("Notes is open and your note is updated.");
+	});
+
 	it("falls back to the settled action when post-tool synthesis has a provider outage", async () => {
 		const providerError = Object.assign(new Error("provider unavailable"), {
 			statusCode: 503,
@@ -5993,6 +6202,7 @@ describe("v5 planner loop — evaluator gate", () => {
 		'{"effect":"app_launch","status":"completed"}',
 		"The tool executed successfully.",
 		"Opening that now.",
+		"<tool_call>\n<function=VIEWS>\n<parameter=action>close</parameter>\n</function>\n</tool_call>",
 	])("rejects unsafe post-tool synthesis prose: %s", async (synthesisText) => {
 		const useModel = vi
 			.fn()
@@ -6018,10 +6228,87 @@ describe("v5 planner loop — evaluator gate", () => {
 				userFacingText: "The app launched successfully.",
 				modelReplyRequired: true,
 			})),
-			evaluate: vi.fn(),
+			evaluate: vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "The app launch receipt confirms it is open.",
+				messageToUser: "Your app is open and ready.",
+			})),
 		});
 
-		expect(result.finalMessage).toBe("The app launched successfully.");
+		expect(result.finalMessage).toBe("Your app is open and ready.");
+	});
+
+	it("resumes authorized planning when an unusable synthesis leaves the intent incomplete", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "wrong-page",
+						name: "BROWSER",
+						arguments: {
+							action: "navigate",
+							url: "https://go.home",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "<tool_call><function=VIEWS><parameter=action>close</parameter></function></tool_call>",
+				toolCalls: [],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "home-view",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "chat",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE",
+				thought: "Home has not opened.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH",
+				thought: "Home is now open.",
+				messageToUser: "You're back at the home screen.",
+			});
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			modelReplyRequired: true,
+			text: "Navigation accepted.",
+		}));
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "legacy-home" },
+			tools: [
+				{ name: "BROWSER", description: "Visit a website" },
+				{ name: "VIEWS", description: "Navigate Eliza views" },
+			],
+			executeToolCall,
+			evaluate,
+		});
+		expect(executeToolCall.mock.calls.map(([call]) => call.params)).toEqual([
+			{ action: "navigate", url: "https://go.home" },
+			{ action: "show", view: "chat" },
+		]);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(useModel).toHaveBeenCalledTimes(3);
+		expect(result.finalMessage).toBe("You're back at the home screen.");
 	});
 
 	it("fails closed on a required-reply synthesis that invents a tool call, routing the completed action through the evaluator (#22609)", async () => {
@@ -6874,6 +7161,49 @@ describe("tool-turn reply guarantee (#16935)", () => {
 		expect(result.finalMessage).toBe(
 			"You finished two things today: the receipts and Jordan's reply.",
 		);
+	});
+
+	it("synthesizes destination-specific prose after accepted UI navigation", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{ id: "call-1", name: "VIEWS", arguments: { view: "notes" } },
+					],
+				})
+				.mockResolvedValueOnce({ text: "Notes is open." }),
+			logger: { warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: JSON.stringify({
+				effect: "view_navigation",
+				status: "accepted",
+				viewId: "notes",
+				label: "Notes",
+				path: "/notes",
+			}),
+			transcriptVisibility: "internal" as const,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The view opened.",
+			messageToUser: "On it.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("Notes is open.");
 	});
 
 	it("does not synthesize after a deliberate IGNORE terminal", async () => {

@@ -5,6 +5,7 @@
  * raw `fetch` from UI code.
  */
 
+import { ElizaError } from "@elizaos/core/errors";
 import type { ProviderStatus } from "@elizaos/shared";
 import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
 import type { PublicRegistration } from "../services/local-inference/handler-registry";
@@ -27,6 +28,112 @@ import type { VerifyResult } from "../services/local-inference/verify";
 import { ElizaClient } from "./client-base";
 
 let localInferenceHubRequest: Promise<ModelHubSnapshot> | null = null;
+
+/** Stable classification for an invalid hardware section in the hub response. */
+export const LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE =
+  "LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID";
+
+const GPU_BACKENDS = new Set(["cuda", "metal", "vulkan"]);
+const MODEL_BUCKETS = new Set(["small", "mid", "large", "xl"]);
+const HARDWARE_PROBE_SOURCES = new Set(["capacitor-llama", "os-fallback"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function invalidHardware(path: string, expected: string): never {
+  throw new ElizaError(
+    "Hardware details are unavailable because the agent returned invalid data. Retry after the device check finishes.",
+    {
+      code: LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE,
+      context: { path, expected },
+    },
+  );
+}
+
+function assertFiniteNonNegativeNumber(
+  value: unknown,
+  path: string,
+): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    invalidHardware(path, "a finite non-negative number");
+  }
+}
+
+function assertSupportedString(
+  value: unknown,
+  supported: ReadonlySet<string>,
+  path: string,
+  expected: string,
+): asserts value is string {
+  if (typeof value !== "string" || !supported.has(value)) {
+    invalidHardware(path, expected);
+  }
+}
+
+function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
+  if (!isRecord(value)) invalidHardware("response.hardware", "an object");
+
+  assertFiniteNonNegativeNumber(
+    value.totalRamGb,
+    "response.hardware.totalRamGb",
+  );
+  assertFiniteNonNegativeNumber(value.freeRamGb, "response.hardware.freeRamGb");
+  assertFiniteNonNegativeNumber(value.cpuCores, "response.hardware.cpuCores");
+  if (!Number.isInteger(value.cpuCores)) {
+    invalidHardware("response.hardware.cpuCores", "a non-negative integer");
+  }
+  // Forward-compatible host identifiers stay strings because Node may add a
+  // platform or architecture before the bundled TypeScript unions catch up.
+  if (typeof value.platform !== "string" || value.platform.length === 0) {
+    invalidHardware("response.hardware.platform", "a non-empty string");
+  }
+  if (typeof value.arch !== "string" || value.arch.length === 0) {
+    invalidHardware("response.hardware.arch", "a non-empty string");
+  }
+  if (typeof value.appleSilicon !== "boolean") {
+    invalidHardware("response.hardware.appleSilicon", "a boolean");
+  }
+  assertSupportedString(
+    value.recommendedBucket,
+    MODEL_BUCKETS,
+    "response.hardware.recommendedBucket",
+    "a supported model bucket",
+  );
+  assertSupportedString(
+    value.source,
+    HARDWARE_PROBE_SOURCES,
+    "response.hardware.source",
+    "a supported hardware probe source",
+  );
+
+  if (value.gpu !== null) {
+    if (!isRecord(value.gpu)) {
+      invalidHardware("response.hardware.gpu", "an object or null");
+    }
+    assertSupportedString(
+      value.gpu.backend,
+      GPU_BACKENDS,
+      "response.hardware.gpu.backend",
+      "a supported GPU backend",
+    );
+    assertFiniteNonNegativeNumber(
+      value.gpu.totalVramGb,
+      "response.hardware.gpu.totalVramGb",
+    );
+    assertFiniteNonNegativeNumber(
+      value.gpu.freeVramGb,
+      "response.hardware.gpu.freeVramGb",
+    );
+  }
+}
+
+/** Validates the hardware subsection; other hub fields keep their own owners. */
+function parseModelHubSnapshotHardware(value: unknown): ModelHubSnapshot {
+  if (!isRecord(value)) invalidHardware("response", "an object");
+  assertHardwareProbe(value.hardware);
+  return value as unknown as ModelHubSnapshot;
+}
 
 export type {
   ActiveModelState,
@@ -189,20 +296,24 @@ declare module "./client-base" {
 ElizaClient.prototype.getLocalInferenceHub = async function (
   this: ElizaClient,
 ) {
-  localInferenceHubRequest ??= this.fetch<ModelHubSnapshot>(
+  localInferenceHubRequest ??= this.fetch<unknown>(
     "/api/local-inference/hub",
     undefined,
     { timeoutMs: 30_000 },
-  ).finally(() => {
-    localInferenceHubRequest = null;
-  });
+  )
+    .then(parseModelHubSnapshotHardware)
+    .finally(() => {
+      localInferenceHubRequest = null;
+    });
   return localInferenceHubRequest;
 };
 
 ElizaClient.prototype.getLocalInferenceHardware = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/local-inference/hardware");
+  const hardware = await this.fetch<unknown>("/api/local-inference/hardware");
+  assertHardwareProbe(hardware);
+  return hardware;
 };
 
 ElizaClient.prototype.getLocalInferenceDeviceTier = async function (

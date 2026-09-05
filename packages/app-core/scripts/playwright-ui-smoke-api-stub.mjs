@@ -15,6 +15,8 @@ import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
 } from "../../agent/src/api/dynamic-view-host-external.mjs";
+// Pure catalog data; keep the Node-run stub aligned without loading a runtime.
+import { VOICE_MODEL_VERSIONS } from "../../shared/src/local-inference/voice-models.ts";
 // The declarations + provenance decision live in one place so a removed plugin
 // cannot linger in the stub and a fabricated bundle can never masquerade as the
 // production one. Audit mode (ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES=1) turns a
@@ -83,6 +85,12 @@ const SMOKE_VOICE_TRANSCRIPT = "this is the voice smoke transcript";
 // The spoken reply the stub returns for that transcript — a clean sentence so
 // the overlay's TTS output is non-empty and the assistant bubble is assertable.
 const SMOKE_VOICE_REPLY = "Got it, this is the spoken reply.";
+const SMOKE_NETWORK_POLICY_PREFERENCES = {
+  autoUpdateOnWifi: true,
+  autoUpdateOnCellular: false,
+  autoUpdateOnMetered: false,
+  quietHours: [{ start: "22:00", end: "08:00" }],
+};
 
 // `smokeViewDeclarations` is imported from ./smoke-view-declarations.mjs so it
 // stays pinned to shipping plugins by `checkSmokeViewParity` (removed views such
@@ -3508,6 +3516,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // OWNER-only consumer-key administration is backed by an agent-host facade
+  // in production. The deterministic smoke fixture models a healthy host with
+  // no issued keys for the exact read-only collection route; writes and item
+  // routes deliberately continue to the catch-all 501 below so the fixture
+  // never fabricates key-management authority.
+  if (req.method === "GET" && url.pathname === "/api/accounts/consumer-keys") {
+    sendJson(req, res, 200, { keys: [] });
+    return;
+  }
+
   if (
     (req.method === "GET" || req.method === "PUT") &&
     url.pathname === "/api/secrets/manager/preferences"
@@ -3564,6 +3582,44 @@ const server = http.createServer(async (req, res) => {
     url.pathname === "/api/secrets/manager/install/methods"
   ) {
     sendJson(req, res, 200, { methods: {} });
+    return;
+  }
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/secrets/manager/protection"
+  ) {
+    // The smoke host has no platform secure-store backend. Preserve the real
+    // protection DTO while reporting that boundary as unavailable rather than
+    // claiming a device key exists.
+    sendJson(req, res, 200, {
+      ok: true,
+      protection: {
+        localVault: {
+          encryptedAtRest: true,
+          cipher: "AES-256-GCM",
+          masterKey: {
+            backend: "none",
+            available: false,
+            synchronized: false,
+            scope: "unavailable",
+            access: "unavailable",
+          },
+        },
+        nativeSessionState: {
+          policy: "platform-protected-store",
+          synchronized: false,
+          plaintextFallback: false,
+        },
+        connectorSessions: {
+          telegramPersonal: "vault-master-key-encrypted",
+        },
+        cloudTrustDomain: "separate-organization-kms",
+      },
+    });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/secrets/logins") {
+    sendJson(req, res, 200, { ok: true, logins: [], failures: [] });
     return;
   }
   if (req.method === "GET" && url.pathname === "/api/secrets/routing") {
@@ -4576,6 +4632,62 @@ const server = http.createServer(async (req, res) => {
   // The client mic capture + VAD end-of-turn are REAL (Chromium fake-audio
   // file); these endpoints stand in for the on-device ASR/TTS models so the
   // transcript-in / spoken-reply-out round trip stays deterministic.
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/device/stream"
+  ) {
+    const payload = {
+      type: "status",
+      status: {
+        connected: false,
+        devices: [],
+        primaryDeviceId: null,
+        pendingRequests: 0,
+        deviceId: null,
+        capabilities: null,
+        loadedPath: null,
+        connectedSince: null,
+      },
+    };
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "close",
+    });
+    res.end(`retry: 60000\ndata: ${JSON.stringify(payload)}\n\n`);
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/voice-models"
+  ) {
+    // Production lists known models even when no version is installed.
+    const installations = [
+      ...new Set(VOICE_MODEL_VERSIONS.map((version) => version.id)),
+    ]
+      .sort()
+      .map((id) => ({
+        id,
+        installedVersion: null,
+        pinned: false,
+        lastError: null,
+      }));
+    sendJson(req, res, 200, { installations });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/voice-models/preferences"
+  ) {
+    sendJson(req, res, 200, {
+      preferences: SMOKE_NETWORK_POLICY_PREFERENCES,
+      isOwner: true,
+    });
+    return;
+  }
+
   if (
     req.method === "GET" &&
     url.pathname === "/api/asr/local-inference/status"

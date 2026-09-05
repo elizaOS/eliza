@@ -14,11 +14,11 @@ routes:
 - CONTINUE: call the planner again because the queued plan is missing or stale
 
 rules:
-- judge latest action result against user goal
+- judge accumulated action results against every explicit part of the user goal, not only the latest successful operation. A data read or mutation does not prove that a view opened: interaction results describe data, while show/open results prove navigation. For an explicit open/navigate request, require a successful navigation result THIS turn; page/context metadata may predate the user's latest navigation, so do not infer that the requested view is already open. If another requested outcome remains and a tool can perform it, continue instead of FINISH.
 - success=true needs completed tool result evidence; planning/read/search alone do not satisfy write/send/save/create/update/delete/payment/transfer
 - confirmation/owner approval/missing input/MFA/human handoff => FINISH success=false; never bypass with lower-level tool
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
-- NEXT_RECOMMENDED only when exactly one queued grounded tool remains; else CONTINUE
+- NEXT_RECOMMENDED only when exactly one queued grounded tool remains; set recommendedToolCallId to that queued call's id (not nextToolCallId). Otherwise CONTINUE.
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
 - if answer needs unexecuted tool/action side effect to be true => CONTINUE; do not imagine result
 - messageToUser optional diagnosis/question/final — never a second process-status bubble after tools already finished
@@ -32,11 +32,11 @@ rules:
 - FINISH success=false after a failed step => messageToUser states plainly what was attempted and why it did not work, in everyday language grounded in the tool result; no file paths, internal ids, or raw logs; do not invent authentication or settings failures the tool did not report
 - no raw transcripts/banners/logs unless user asked raw output
 - copyToClipboard optional; requires title + content
-- thought internal, not shown
+- thought internal, not shown: briefly identify confirmed outcomes and any requested outcome still missing, then choose the decision that follows from that check. Do not emit a decision first and contradict it later.
 
 return:
 One JSON object only. No markdown/prose/XML/legacy/extra objects.
-Fields: success boolean; decision "FINISH"|"NEXT_RECOMMENDED"|"CONTINUE"; thought string. Use decision, not route.
+Fields in order: thought string; success boolean; decision "FINISH"|"NEXT_RECOMMENDED"|"CONTINUE". Use decision, not route. Any requested outcome still pending with an available tool means CONTINUE or NEXT_RECOMMENDED, not FINISH.
 
 context_object:
 {{contextObject}}
@@ -48,12 +48,16 @@ export const evaluatorSchema: JSONSchema = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
+		thought: {
+			type: "string",
+			description:
+				"Brief evidence check: what is confirmed and what requested outcome, if any, remains. Write this before deciding.",
+		},
 		success: { type: "boolean" },
 		decision: {
 			type: "string",
 			enum: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],
 		},
-		thought: { type: "string" },
 		messageToUser: { type: "string" },
 		copyToClipboard: {
 			type: "object",
@@ -70,5 +74,5 @@ export const evaluatorSchema: JSONSchema = {
 		},
 		recommendedToolCallId: { type: "string" },
 	},
-	required: ["success", "decision", "thought"],
+	required: ["thought", "success", "decision"],
 };

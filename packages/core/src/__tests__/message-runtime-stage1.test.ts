@@ -32,6 +32,10 @@ import {
 	runV5MessageRuntimeStage1,
 } from "../services/message";
 import { runWithTrajectoryContext } from "../trajectory-context";
+import {
+	applyGroundedActionReply,
+	createUnavailableGroundedActionReply,
+} from "../types/action-reply";
 import type { Action } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
@@ -309,6 +313,88 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it("preserves a committed action when its reply is unavailable without recovery models or context-after actions", async () => {
+		const unavailable = createUnavailableGroundedActionReply({
+			kind: "provider_issue",
+			code: "GROUNDED_REPLY_GENERATION_FAILED",
+		});
+		const receipt = {
+			receiptId: "saved-1",
+			operation: "lifeops.reminder.create",
+			resource: { kind: "lifeops.reminder", id: "reminder-1" },
+			artifacts: [],
+			idempotency: { key: "request-1", replayed: false },
+			observedAt: "2026-07-27T18:00:00.000Z",
+			outcome: "applied" as const,
+			commit: {
+				kind: "durable" as const,
+				id: "txn-1",
+				committedAt: "2026-07-27T18:00:00.000Z",
+			},
+		};
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				candidateActionNames: ["SAVE"],
+				replyText: "",
+				extra: { requiresTool: true },
+			}),
+			{ text: "", toolCalls: [{ id: "save-1", name: "SAVE", arguments: {} }] },
+		]);
+		const handler = vi.fn(async () =>
+			applyGroundedActionReply(
+				{
+					success: true,
+					text: "Internal save receipt.",
+					effectReceipts: [receipt],
+				},
+				unavailable,
+			),
+		);
+		runtime.actions = [
+			{
+				name: "SAVE",
+				description: "Save the requested reminder.",
+				contexts: ["general"],
+				tags: ["write"],
+				validate: async () => true,
+				handler,
+			},
+		];
+		const callback = vi.fn(async () => []);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Save the requested reminder." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			callback,
+		});
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply")
+			throw new Error("Expected a planned result");
+		expect(result.result).toMatchObject({
+			responseContent: null,
+			responseMessages: [],
+			terminalFailure: unavailable.failure,
+			actionResults: [
+				{
+					success: true,
+					effectReceipts: [receipt],
+					replyFailure: unavailable.failure,
+				},
+			],
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(callback).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(2);
+		expect(runtime.runActionsByMode).not.toHaveBeenCalledWith(
+			"CONTEXT_AFTER",
+			expect.anything(),
+			expect.anything(),
+			expect.anything(),
+		);
+	});
+
 	it("keeps the message pipeline from laundering missing planner inputs through empty fallbacks", async () => {
 		const source = await readFile(
 			join(__dirname, "../services/message.ts"),
@@ -1787,6 +1873,79 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent).toContain("### facts");
 	});
 
+	it("keeps live voice context bounded and losslessly searchable", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				shouldRespond: "IGNORE",
+				contexts: ["simple"],
+				replyText: "",
+			}),
+		]);
+		const recentMessages = Array.from(
+			{ length: 32 },
+			(_, index): Memory => ({
+				id: `00000000-0000-0000-0000-${String(index + 10).padStart(12, "0")}` as UUID,
+				entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+				agentId: "00000000-0000-0000-0000-000000000003" as UUID,
+				roomId: "00000000-0000-0000-0000-000000000004" as UUID,
+				createdAt: index + 10,
+				content: {
+					text:
+						index === 0
+							? "STALE_VOICE_ROOM_HISTORY"
+							: index === 31
+								? "RECENT_VOICE_ROOM_HISTORY"
+								: `voice room history ${index}`,
+					source: "test",
+				},
+			}),
+		);
+		const state: State = {
+			values: { availableContexts: "general" },
+			data: {
+				providerOrder: ["recent-conversations", "RECENT_MESSAGES"],
+				providers: {
+					"recent-conversations": {
+						text: "EAGER_CROSS_ROOM_HISTORY",
+						overflowText: "LOSSLESS_HISTORY_MANIFEST",
+						values: {},
+						data: {},
+					},
+					RECENT_MESSAGES: {
+						text: "EAGER_CURRENT_ROOM_HISTORY",
+						values: {},
+						data: { recentMessages },
+					},
+				},
+			},
+			text: "EAGER_CROSS_ROOM_HISTORY",
+		};
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.VOICE_DM,
+				text: "what did we discuss yesterday?",
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall).toBeDefined();
+		if (!firstCall) {
+			throw new Error("Expected the voice Stage-1 model call to be captured");
+		}
+		const messages = (
+			firstCall[1] as { messages?: Array<{ content?: unknown }> }
+		).messages;
+		const wireText = JSON.stringify(messages ?? []);
+		expect(wireText).toContain("LOSSLESS_HISTORY_MANIFEST");
+		expect(wireText).not.toContain("EAGER_CROSS_ROOM_HISTORY");
+		expect(wireText).toContain("RECENT_VOICE_ROOM_HISTORY");
+		expect(wireText).not.toContain("STALE_VOICE_ROOM_HISTORY");
+	});
+
 	it("keeps generic programming questions on the simple path even when stale attachments linger in state", async () => {
 		// Regression for the false-positive routing where a verb like "read"
 		// in a normal dev question ("read a large file line by line in node")
@@ -2828,7 +2987,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("declines live lookups when no web search action is registered instead of falling back to shell", async () => {
+	it("lets the planner decline a live lookup without falling back to shell", async () => {
+		const answer =
+			"I can't verify BTC's current price with the tools available here.";
 		const runtime = makeRuntime([
 			JSON.stringify({
 				processMessage: "RESPOND",
@@ -2846,6 +3007,16 @@ describe("runV5MessageRuntimeStage1", () => {
 					addressedTo: ["e2e"],
 				},
 			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "decline-live-lookup",
+						name: "REPLY",
+						arguments: { text: answer },
+					},
+				],
+			},
 		]);
 		const shellHandler = vi.fn(async () => ({
 			success: true,
@@ -2884,24 +3055,47 @@ describe("runV5MessageRuntimeStage1", () => {
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("direct_reply");
+		expect(result.kind).toBe("planned_reply");
 		expect(shellHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls).toHaveLength(1);
-		if (result.kind === "direct_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"I don't have a live web search action available here, so I can't look up current information in this chat.",
-			);
+		expect(calls.map(([model]) => model)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		const plannerParams = calls[1]?.[1] as {
+			tools?: Array<{ name: string }>;
+			messages?: Array<{ content?: string }>;
+		};
+		expect(plannerParams.tools?.map(({ name }) => name)).toEqual(
+			expect.arrayContaining(["SHELL", "REPLY"]),
+		);
+		expect(JSON.stringify(plannerParams.messages)).not.toContain(
+			"The Stage 1 router marked this current turn as requiring a tool.",
+		);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(answer);
 		}
 	});
 
 	it("does not resolve synthetic current-price Stage 1 candidates to shell", async () => {
+		const answer =
+			"I don't have a current quote to report, and I won't invent one.";
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: [],
 				candidateActionNames: ["GET_CRYPTO_PRICE"],
 				replyText: "On it.",
 			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "decline-synthetic-price",
+						name: "REPLY",
+						arguments: { text: answer },
+					},
+				],
+			},
 		]);
 		const shellHandler = vi.fn(async () => ({
 			success: true,
@@ -2953,15 +3147,29 @@ describe("runV5MessageRuntimeStage1", () => {
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("direct_reply");
+		expect(result.kind).toBe("planned_reply");
 		expect(shellHandler).not.toHaveBeenCalled();
 		expect(browserHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls).toHaveLength(1);
-		if (result.kind === "direct_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"I don't have a live web search action available here, so I can't look up current information in this chat.",
-			);
+		expect(calls.map(([model]) => model)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		const plannerParams = calls[1]?.[1] as {
+			tools?: Array<{ name: string }>;
+			messages?: Array<{ content?: string }>;
+		};
+		expect(plannerParams.tools?.map(({ name }) => name)).toEqual(
+			expect.arrayContaining(["SHELL", "BROWSER", "REPLY"]),
+		);
+		expect(JSON.stringify(plannerParams.messages)).toContain(
+			"GET_CRYPTO_PRICE",
+		);
+		expect(JSON.stringify(plannerParams.messages)).not.toContain(
+			"The Stage 1 router marked this current turn as requiring a tool.",
+		);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(answer);
 		}
 	});
 
@@ -3048,14 +3256,16 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("declines current-info acknowledgements when only a shell is registered (no web-lookup action)", async () => {
+	it("lets the planner decline a router-promoted current-info acknowledgement", async () => {
+		const answer =
+			"I can't confirm BTC's live price in this chat. Please check a current market quote.";
 		const runtime = makeRuntime([
 			JSON.stringify({
 				processMessage: "RESPOND",
 				thought: "",
 				plan: {
 					contexts: [],
-					reply: "On it.",
+					reply: "Looking up BTC.",
 					simple: false,
 					requiresTool: true,
 					candidateActions: [],
@@ -3066,6 +3276,16 @@ describe("runV5MessageRuntimeStage1", () => {
 					addressedTo: ["e2e"],
 				},
 			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "decline-router-promoted-lookup",
+						name: "REPLY",
+						arguments: { text: answer },
+					},
+				],
+			},
 		]);
 		const shellHandler = vi.fn(async () => ({
 			success: true,
@@ -3104,16 +3324,464 @@ describe("runV5MessageRuntimeStage1", () => {
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("direct_reply");
+		expect(result.kind).toBe("planned_reply");
 		expect(shellHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls).toHaveLength(1);
-		if (result.kind === "direct_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"I don't have a live web search action available here, so I can't look up current information in this chat.",
-			);
+		expect(calls.map(([model]) => model)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		const plannerParams = calls[1]?.[1] as {
+			tools?: Array<{ name: string }>;
+			messages?: Array<{ content?: string }>;
+		};
+		expect(plannerParams.tools?.map(({ name }) => name)).toEqual(
+			expect.arrayContaining(["SHELL", "REPLY"]),
+		);
+		expect(JSON.stringify(plannerParams.messages)).not.toContain(
+			"The Stage 1 router marked this current turn as requiring a tool.",
+		);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(answer);
 		}
 	});
+
+	it.each([
+		"Checking a quote from yesterday would not establish BTC's price now. I need a current source to verify it.",
+		"I'll be honest — I can't verify a current BTC price without a current source.",
+		"I'll need a current market source before I can verify the price.",
+		"I'll need the currency for that quote — which one do you want?",
+		"I'll look up BTC if you want.",
+		"I'll look up BTC’s current price now?",
+		'"I will look up BTC" is an example of a future-tense promise.',
+	])(
+		"preserves a complete model-authored current-info limitation on the direct path: %s",
+		async (answer) => {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: answer }),
+			]);
+			const message = makeMessage();
+			message.content.text = "what is btc at rn?";
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(answer);
+			}
+			expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
+	it.each([
+		"I'll look up BTC’s current price now.",
+		"I will look up the current price of Bitcoin in US dollars from a current market source now.",
+		"稍等，我会打开主页并查看最新行情。",
+		"Your favorite tea is jasmine. The home page is the destination I am taking you to next.",
+		"The amber door is the next destination, and the unfinished step is assigned to this turn.",
+	])(
+		"routes model-declared pending work to the planner regardless of wording: %s",
+		async (promise) => {
+			const answer =
+				"I can't verify the current BTC price with the available tools.";
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: promise,
+					extra: { replyEffectStatus: "pending" },
+				}),
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "decline-unserved-promise",
+							name: "REPLY",
+							arguments: { text: answer },
+						},
+					],
+				},
+			]);
+			const shellHandler = vi.fn(async () => ({
+				success: true,
+				text: "Unrelated shell result.",
+			}));
+			runtime.actions = [
+				{
+					name: "SHELL",
+					description: "Run a local shell command.",
+					validate: async () => true,
+					handler: shellHandler,
+				},
+			];
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "what is btc at rn?" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("planned_reply");
+			expect(result.messageHandler.plan.replyEffectStatus).toBe("pending");
+			expect(shellHandler).not.toHaveBeenCalled();
+			const calls = useModelCalls(runtime);
+			expect(calls.map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+			]);
+			const plannerParams = calls[1]?.[1] as {
+				tools?: Array<{ name: string }>;
+			};
+			expect(plannerParams.tools?.map(({ name }) => name)).toEqual(
+				expect.arrayContaining(["SHELL", "REPLY"]),
+			);
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text).toBe(answer);
+			}
+		},
+	);
+
+	it.each([
+		"That lookup is unavailable here; I cannot verify a current quote.",
+		"The attempt failed; there is no result to report.",
+		"The request was cancelled, so no lookup will run.",
+		"That request was declined; no work remains in progress.",
+	])(
+		"keeps a terminal non-applied outcome direct despite an unserved declared intent: %s",
+		async (answer) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					intents: ["verify current quote"],
+					replyText: answer,
+					extra: { replyEffectStatus: "non_applied" },
+				}),
+			]);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "what is btc at rn?" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			expect(useModelCalls(runtime)).toHaveLength(1);
+			if (result.kind === "direct_reply")
+				expect(result.result.responseContent?.text).toBe(answer);
+		},
+	);
+
+	it.each(["STOP", "IGNORE"] as const)(
+		"keeps %s terminal even when the model marks work pending",
+		async (shouldRespond) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					shouldRespond,
+					contexts: [],
+					replyText: "The next stage remains pending.",
+					extra: { replyEffectStatus: "pending" },
+				}),
+			]);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("terminal");
+			if (result.kind === "terminal") expect(result.action).toBe(shouldRespond);
+			expect(useModelCalls(runtime)).toHaveLength(1);
+		},
+	);
+
+	it("executes pending navigation beside an answered memory question through the real planner", async () => {
+		const priorPreference =
+			"I prefer jasmine tea, specifically the loose-leaf kind.";
+		const pendingReply =
+			"Your favorite tea is jasmine. Home is the destination I am taking you to next.";
+		const state: State = {
+			...makeState(),
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						text: `# Conversation Messages\nuser: ${priorPreference}`,
+						providerName: "RECENT_MESSAGES",
+						data: {
+							recentMessages: [
+								{
+									...makeMessage({ text: priorPreference }),
+									id: "00000000-0000-0000-0000-000000000010" as UUID,
+								},
+							],
+						},
+					},
+				},
+			},
+		};
+		const answer = "You prefer jasmine tea. Home is now open.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: pendingReply,
+				extra: { replyEffectStatus: "pending" },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "navigate-home",
+						name: "UI_ROUTE",
+						arguments: { destination: "home" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The requested destination was reached.",
+				messageToUser: answer,
+			}),
+		]);
+		runtime.composeState = vi.fn(async () => state);
+		const navigate = vi.fn<Action["handler"]>(async () => ({
+			success: true,
+			text: "Navigation completed: home.",
+			data: { destination: "home" },
+		}));
+		const shell = vi.fn(async () => ({
+			success: true,
+			text: "Unrelated shell result.",
+		}));
+		runtime.actions = [
+			{
+				name: "UI_ROUTE",
+				description:
+					"Navigate the user interface to the requested destination.",
+				parameters: [
+					{
+						name: "destination",
+						description: "Destination identifier",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: async () => true,
+				handler: navigate,
+			},
+			{
+				name: "SHELL",
+				description: "Run a local shell command.",
+				validate: async () => true,
+				handler: shell,
+			},
+		];
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "What tea do I prefer, and go home." }),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("planned_reply");
+		expect(navigate).toHaveBeenCalledTimes(1);
+		expect(navigate.mock.calls[0]?.[3]).toMatchObject({
+			parameters: { destination: "home" },
+		});
+		expect(shell).not.toHaveBeenCalled();
+		const calls = useModelCalls(runtime);
+		expect(calls.map(([model]) => model)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		// The original user memory, not just the discarded Stage1 answer, must
+		// remain available to both planning and grounded response evaluation.
+		for (const [, modelParams] of calls) {
+			const messages = (modelParams as { messages?: unknown }).messages;
+			expect(JSON.stringify(messages)).toContain(priorPreference);
+		}
+		expect(result.messageHandler.plan.reply).toBe("");
+		const params = calls[1]?.[1] as { tools?: Array<{ name: string }> };
+		expect(params.tools?.map(({ name }) => name)).toEqual(
+			expect.arrayContaining(["UI_ROUTE", "SHELL", "REPLY"]),
+		);
+		expect(JSON.stringify(calls[2]?.[1])).toContain(
+			"Navigation completed: home.",
+		);
+		if (result.kind === "planned_reply")
+			expect(result.result.responseContent?.text).toBe(answer);
+	});
+
+	it.each(["json", "transcript", "legacy"])(
+		"plans a typed pending reply from the %s envelope",
+		async (format) => {
+			const promise = "La próxima etapa todavía está pendiente.";
+			const flat = {
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: promise,
+				replyEffectStatus: "pending",
+			};
+			const raw =
+				format === "transcript"
+					? `shouldRespond: RESPOND\ncontexts:\nreplyText: ${promise}\nreplyEffectStatus: pending`
+					: JSON.stringify(
+							format === "legacy"
+								? {
+										processMessage: "RESPOND",
+										plan: {
+											contexts: [],
+											reply: promise,
+											replyEffectStatus: "pending",
+										},
+									}
+								: flat,
+						);
+			const answer =
+				"I cannot complete that request with the available capabilities.";
+			const runtime = makeRuntime([
+				raw,
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "pending-terminal",
+							name: "REPLY",
+							arguments: { text: answer },
+						},
+					],
+				},
+			]);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "Continue with my request." }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(result.kind).toBe("planned_reply");
+			expect(result.messageHandler.plan.replyEffectStatus).toBe("pending");
+			expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+			]);
+			if (result.kind === "planned_reply")
+				expect(result.result.responseContent?.text).toBe(answer);
+		},
+	);
+
+	it.each([
+		{
+			name: "MARKET_QUOTE",
+			description: "Read a current exchange quote for a cryptocurrency symbol.",
+			parameter: "symbol",
+			value: "BTC",
+		},
+		{
+			name: "BROWSER",
+			description:
+				"Read the live text of a public web page at the requested URL.",
+			parameter: "url",
+			value: "https://market.example.test/btc",
+		},
+	])(
+		"lets the planner use equivalent $name lookup capabilities without web-search aliases",
+		async ({ name, description, parameter, value }) => {
+			const answer = "The current quote is 61,234 USD per BTC.";
+			const runtime = makeRuntime([
+				stage1Response({ contexts: [], replyText: "Looking up BTC." }),
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "equivalent-lookup",
+							name,
+							arguments: { [parameter]: value },
+						},
+					],
+				},
+				JSON.stringify({
+					success: true,
+					decision: "FINISH",
+					thought: "The selected reader returned a current quote.",
+					messageToUser: answer,
+				}),
+			]);
+			const lookupHandler = vi.fn<Action["handler"]>(async () => ({
+				success: true,
+				text: "BTC/USD 61234; current exchange quote.",
+				data: {
+					actionName: name,
+					symbol: "BTC",
+					currency: "USD",
+					price: 61234,
+				},
+			}));
+			const shellHandler = vi.fn(async () => ({
+				success: true,
+				text: "Unrelated shell result.",
+			}));
+			runtime.actions = [
+				{
+					name,
+					description,
+					parameters: [
+						{
+							name: parameter,
+							description: "Quote source",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
+					validate: async () => true,
+					handler: lookupHandler,
+				},
+				{
+					name: "SHELL",
+					description: "Run a local shell command.",
+					validate: async () => true,
+					handler: shellHandler,
+				},
+			];
+			const message = makeMessage();
+			message.content.text = "what is btc at rn?";
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("planned_reply");
+			expect(lookupHandler).toHaveBeenCalledTimes(1);
+			expect(lookupHandler.mock.calls[0]?.[3]).toMatchObject({
+				parameters: { [parameter]: value },
+			});
+			expect(shellHandler).not.toHaveBeenCalled();
+			const calls = useModelCalls(runtime);
+			expect(calls.map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			const plannerParams = calls[1]?.[1] as {
+				tools?: Array<{ name: string }>;
+			};
+			expect(plannerParams.tools?.map((tool) => tool.name)).toEqual(
+				expect.arrayContaining([name, "SHELL", "REPLY"]),
+			);
+			expect(JSON.stringify(calls[2]?.[1])).toContain("61234");
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text).toBe(answer);
+			}
+		},
+	);
 
 	it("answers a trivial math turn directly despite a views capability-token overlap (tj-501e594bfb23a7)", async () => {
 		// Full Stage-1 pipeline fence for the VIEWS hijack: Stage 1 answers
@@ -3198,6 +3866,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			prompt:
 				"Identify the current open view. Reply with the view name and exact nonce CEREBRAS-E1F-20260826-0952. Do not use tools or change anything.",
 			reply: "notes CEREBRAS-E1F-20260826-0952",
+		},
+		{
+			caseName: "natural voice predicate order",
+			prompt: "Which view is open? End your answer with Mango 7.",
+			reply: "Notes is open. Mango 7.",
 		},
 	] as const)(
 		"keeps read-only current-view inspection direct when the view tool surface would overflow a planner call: $caseName",
@@ -4232,11 +4905,15 @@ describe("runV5MessageRuntimeStage1", () => {
 			"a direct mention, reply, or clear continuation addressed to Test Agent -> RESPOND",
 		);
 		expect(stage1Content).not.toContain("addressed to  ->");
-		expect(stage1Content).toContain("Default shouldRespond=IGNORE");
-		expect(stage1Content).toContain(
-			"challenges or asks to clarify your immediately preceding prior_message:agent reply",
-		);
-		expect(stage1Content).toContain("explicit standing responsibility");
+		// Participatory default (no reply_gate set): no @-mention needed — the
+		// model judges each unaddressed turn on concrete value. The restrained
+		// HARD-GATE wording is reserved for reply_gate=addressed_or_ambient
+		// (covered by the companion test below).
+		expect(stage1Content).toContain("need no @-mention to reply");
+		expect(stage1Content).toContain("judge each turn on concrete value");
+		expect(stage1Content).toContain("Do not reply to every message");
+		expect(stage1Content).not.toContain("Default shouldRespond=IGNORE");
+		expect(stage1Content).not.toContain("HARD GATE");
 		expect(stage1Content).not.toContain("someone asks the group");
 		expect(stage1Content).not.toContain("active in the conversation");
 		expect(stage1Content).not.toContain("able to usefully add");
@@ -4245,6 +4922,51 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		// Deliberate planner silence records as a terminal IGNORE — the same
 		// observable outcome a Stage-1 IGNORE gets — not a silent drop.
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+	});
+
+	it("renders the restrained HARD-GATE ambient policy only when reply_gate is addressed_or_ambient", async () => {
+		// The quiet-ambient bias is an opt-in now: rooms that want the agent to
+		// hold back on unaddressed group chatter set reply_gate to
+		// addressed_or_ambient, which restores the hard IGNORE default. The
+		// participatory wording must not leak into this mode.
+		const runtime = withReplyGateMode(
+			makeRuntime([
+				stage1Response({
+					thought: "Ambient chatter under the restrained gate.",
+					contexts: ["general"],
+					replyText: "",
+				}),
+				{
+					text: "",
+					toolCalls: [{ id: "ignore-2", name: "IGNORE", arguments: {} }],
+				},
+			]),
+			"addressed_or_ambient",
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000019" as UUID,
+		});
+
+		const calls = useModelCalls(runtime);
+		const stage1Params = calls[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (stage1Params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).toContain("ambient_turn_policy: HARD GATE");
+		expect(stage1Content).toContain("Default shouldRespond=IGNORE");
+		expect(stage1Content).not.toContain("need no @-mention to reply");
 		expect(result.kind).toBe("terminal");
 		if (result.kind === "terminal") {
 			expect(result.action).toBe("IGNORE");
@@ -4484,6 +5206,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				text: "",
 				toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
 			},
+			JSON.stringify({
+				response: "I need more context to answer that question.",
+			}),
 		]);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -4507,9 +5232,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			const text = result.result.responseContent?.text ?? "";
-			expect(text).toBe(
-				"I don't have a useful answer to that right now — ask again and I will retry.",
-			);
+			expect(text).toBe("I need more context to answer that question.");
 			// Effect honesty: nothing ran this turn, so no failure narrative.
 			expect(text).not.toMatch(/ran the steps|failed/i);
 		}
@@ -4605,6 +5328,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyText: "",
 			}),
 			plannerReplyRejectedByEgress(),
+			JSON.stringify({
+				response: "I need more context to answer that question.",
+			}),
 		]);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -4620,7 +5346,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"I don't have a useful answer to that right now — ask again and I will retry.",
+				"I need more context to answer that question.",
 			);
 			expect(result.result.responseContent?.text).not.toBe(
 				HANDLED_STEP_FALLBACK_MESSAGE,
@@ -4662,6 +5388,9 @@ describe("runV5MessageRuntimeStage1", () => {
 						replyText: "",
 					}),
 					plannerReplyRejectedByEgress(),
+					JSON.stringify({
+						response: "I need more context to answer that question.",
+					}),
 				]),
 			);
 			const result = await runV5MessageRuntimeStage1({
@@ -4677,7 +5406,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.kind, testCase.label).toBe("planned_reply");
 			if (result.kind === "planned_reply") {
 				expect(result.result.responseContent?.text, testCase.label).toBe(
-					"I don't have a useful answer to that right now — ask again and I will retry.",
+					"I need more context to answer that question.",
 				);
 			}
 		}
@@ -4718,6 +5447,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					text: "",
 					toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
 				},
+				JSON.stringify({
+					response: "I need more context to answer that question.",
+				}),
 			]);
 			runtime.providers = [
 				{
@@ -4941,7 +5673,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			text: "fallback text should not be needed",
 		};
 
-		await runV5MessageRuntimeStage1({
+		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({
 				text: [
@@ -4969,8 +5701,15 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 			state,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			// Inspect the Stage-1 input boundary without executing the planner
+			// that the bare progress acknowledgement correctly requests.
+			stage1DecisionOnly: true,
 		});
 
+		expect(result.kind).toBe("decision");
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
 		const firstCall = useModelCalls(runtime)[0];
 		const params = firstCall?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
@@ -5797,13 +6536,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				});
 				expect(decision.recover).toBe(true);
 				expect(decision.source).toBe("fallbackText");
-				expect(decision.text).toBe(
-					"I don't have a useful answer to that right now — ask again and I will retry.",
-				);
+				expect(decision.text).toBe("");
 				expect(decision.text).not.toMatch(/ran the steps|failed/i);
 			});
 
-			it("keeps the failed-steps fallback when failed steps actually ran", () => {
+			it("requires model-backed recovery when failed steps have no reply", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "",
 					actionResults: [{ success: false }],
@@ -5811,9 +6548,8 @@ describe("runV5MessageRuntimeStage1", () => {
 					earlyReplySent: false,
 				});
 				expect(decision.recover).toBe(true);
-				expect(decision.text).toContain(
-					"I ran the steps for that but they failed",
-				);
+				expect(decision.text).toBe("");
+				expect(decision.actionFailureCount).toBe(1);
 			});
 
 			it("prefers surviving planner text over everything else", () => {
@@ -5862,7 +6598,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(decision.source).toBe("fallbackText");
 			});
 
-			it("uses failure-aware fallback wording when every tool failed", () => {
+			it("preserves failure counts without producing canned prose", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "",
 					actionResults: [{ success: false }, { success: false }],
@@ -5870,13 +6606,12 @@ describe("runV5MessageRuntimeStage1", () => {
 					earlyReplySent: false,
 				});
 				expect(decision.source).toBe("fallbackText");
-				expect(decision.text).toContain("failed");
-				expect(decision.text).not.toContain("finished");
+				expect(decision.text).toBe("");
 				expect(decision.actionSuccessCount).toBe(0);
 				expect(decision.actionFailureCount).toBe(2);
 			});
 
-			it("reports completion without inviting a blind replay after a tool succeeded", () => {
+			it("leaves successful outcomes to model synthesis without inviting replay", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "",
 					actionResults: [{ success: true }],
@@ -5884,12 +6619,11 @@ describe("runV5MessageRuntimeStage1", () => {
 					earlyReplySent: false,
 				});
 				expect(decision.source).toBe("fallbackText");
-				expect(decision.text).toContain("completed");
-				expect(decision.text).toContain("Check the current state");
-				expect(decision.text).not.toContain("ask again");
+				expect(decision.text).toBe("");
+				expect(decision.actionSuccessCount).toBe(1);
 			});
 
-			it("reports mixed tool outcomes without presenting the turn as fully successful", () => {
+			it("preserves mixed outcomes for model synthesis", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "",
 					actionResults: [{ success: true }, { success: false }],
@@ -5897,9 +6631,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					earlyReplySent: false,
 				});
 				expect(decision.source).toBe("fallbackText");
-				expect(decision.text).toContain("Some steps completed and some failed");
-				expect(decision.text).toContain("Check the current state");
-				expect(decision.text).not.toContain("finished");
+				expect(decision.text).toBe("");
+				expect(decision.actionSuccessCount).toBe(1);
+				expect(decision.actionFailureCount).toBe(1);
 			});
 
 			it("recovers a mixed-outcome early-ack turn because one failed action may own the handoff", () => {
@@ -5911,7 +6645,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				});
 				expect(decision.recover).toBe(true);
 				expect(decision.source).toBe("fallbackText");
-				expect(decision.text).toContain("Some steps completed and some failed");
+				expect(decision.text).toBe("");
 				expect(decision.text).not.toBe("On it.");
 			});
 
@@ -6541,7 +7275,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				contexts: ["general"],
 				intents: ["stop work"],
 				candidateActionNames: ["CHECK_RUNTIME"],
-				extra: { abortTest: true },
+				extra: { abortTest: true, replyEffectStatus: "pending" },
 			}),
 		]);
 		const handle = vi.fn(async () => ({
@@ -6910,9 +7644,20 @@ describe("runV5MessageRuntimeStage1", () => {
 					},
 				],
 			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought:
+					"The Computer Use result confirms dispatch to the requested Telegram application.",
+				messageToUser: delivered,
+			}),
 		]);
 		const computerUseHandler = vi.fn(
 			async (_runtime, _message, _state, _options, callback) => {
+				expect(_options.parameters).toMatchObject({
+					action: "launch",
+					app: "Telegram",
+				});
 				await callback?.({
 					text: delivered,
 					source: "action",
@@ -7012,10 +7757,22 @@ describe("runV5MessageRuntimeStage1", () => {
 			"AUTOMATION_TRIGGER",
 		);
 		expect(computerUseHandler).toHaveBeenCalledTimes(1);
-		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+		const calls = useModelCalls(runtime);
+		expect(calls.map((call) => call[0])).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
 		]);
+		// A successful action still needs evaluation against the declared intent.
+		const evaluationParams = calls[2]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const evaluationContext = JSON.stringify(evaluationParams.messages);
+		expect(evaluationContext).toContain("open telegram using computer use");
+		expect(evaluationContext).toContain(delivered);
+		expect(reportErrorCalls(runtime).map((call) => call[0])).not.toContain(
+			"MessageService.plannerLoop",
+		);
 	});
 
 	it("does not execute browser or automation fallbacks when explicit Computer Use is unavailable", async () => {
@@ -7408,6 +8165,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				messageToUser:
 					"You're all set — I've scheduled your reminder for tomorrow.",
 			}),
+			JSON.stringify({ response: "The search returned sunny weather." }),
 		]);
 		const searchHandler = vi.fn(async () => ({
 			success: true,
@@ -7447,9 +8205,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 		]);
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toContain("couldn't verify");
+			expect(result.result.responseContent?.text).toBe(
+				"The search returned sunny weather.",
+			);
 			expect(result.result.responseContent?.text).not.toContain(
 				"scheduled your reminder",
 			);
@@ -7512,6 +8273,75 @@ describe("verified read actions own the turn's single user-facing message", () =
 			},
 		];
 	}
+
+	it("executes the planner-selected Calendar action while keeping authorized distractors available", async () => {
+		const runtime = makeRuntime(calendarPlannerResponses());
+		const calendarHandler = vi.fn(
+			async (_runtime, _message, _state, options) => {
+				expect(options.parameters).toMatchObject({
+					intent: "whats on my calendar tomorrow",
+				});
+				return {
+					success: true,
+					text: CALENDAR_ANSWER,
+					userFacingText: CALENDAR_ANSWER,
+					verifiedUserFacing: true,
+					turnComplete: true,
+				};
+			},
+		);
+		const distractorHandler = vi.fn(async () => {
+			throw new Error("The planner did not select this action.");
+		});
+		const distractor = (name: string): Action =>
+			({
+				name,
+				similes: [],
+				tags: ["domain:calendar"],
+				description: `${name} distractor sharing calendar schedule week event keywords.`,
+				contexts: ["calendar"],
+				parameters: [],
+				validate: async () => true,
+				handler: distractorHandler,
+			}) as Action;
+		runtime.actions = [
+			makeCalendarReadAction(calendarHandler),
+			distractor("SCHEDULED_HOUSEHOLD_DISTRACTOR"),
+			distractor("WEEKLY_BRIEF_DISTRACTOR"),
+		] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "whats on my calendar tomorrow" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000021" as UUID,
+		});
+
+		const calls = useModelCalls(runtime);
+		expect(calls.map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		expect(calendarHandler).toHaveBeenCalledTimes(1);
+		expect(distractorHandler).not.toHaveBeenCalled();
+		// Stage-1 hints do not authorize catalog removal: the planner receives
+		// every eligible action and its tool call determines which one executes.
+		const plannerParams = calls[1]?.[1] as {
+			tools?: Array<{ name: string }>;
+		};
+		expect(plannerParams.tools?.map((tool) => tool.name)).toEqual(
+			expect.arrayContaining([
+				"CALENDAR",
+				"SCHEDULED_HOUSEHOLD_DISTRACTOR",
+				"WEEKLY_BRIEF_DISTRACTOR",
+			]),
+		);
+		expect(result.kind).toBe("planned_reply");
+		expect(result.messageHandler.plan.deterministicToolCall).toBeUndefined();
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(CALENDAR_ANSWER);
+		}
+	});
 
 	it("delivers a turnComplete verified read answer exactly once with no model paraphrase", async () => {
 		const runtime = makeRuntime(calendarPlannerResponses());
@@ -7934,6 +8764,7 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 			stage1Response({
 				contexts: ["simple"],
 				replyText: "Done.",
+				extra: { replyEffectStatus: "pending" },
 			}),
 		]);
 		runtime.actions = [makeSpawnAction(spawnHandler)] as never;

@@ -121,7 +121,7 @@ describe("BrowserTabFoldControl", () => {
     const control = screen.getByTestId("browser-workspace-tab-fold-control");
     expect(
       screen.getByTestId("browser-workspace-tabs-icon").getAttribute("class"),
-    ).toContain("lucide-square-stack");
+    ).toContain("lucide-copy");
     expect(control.textContent).toContain("DuckDuckGo");
     expect(
       screen.getByTestId("browser-workspace-tab-count").textContent,
@@ -177,6 +177,25 @@ describe("BrowserTabSwitcher", () => {
     expect(
       within(dialog).getByRole("tablist", { name: "App Tabs" }),
     ).toBeTruthy();
+  });
+
+  it("uses a compact grid and hides the lone section label from sight", () => {
+    renderSwitcher({
+      folded: foldBrowserTabs(
+        [tab({ id: "solo", label: "Google", section: "user" })],
+        "solo",
+        SECTION_LABELS,
+      ),
+      activeTabId: "solo",
+    });
+    const dialog = screen.getByTestId("browser-workspace-tab-switcher");
+    const tablist = within(dialog).getByRole("tablist", { name: "User Tabs" });
+    expect(tablist.className).toContain("grid-cols-2");
+    expect(within(dialog).getByText("User Tabs").className).toContain(
+      "sr-only",
+    );
+    expect(within(dialog).getByText("solo.example")).toBeTruthy();
+    expect(dialog.textContent).not.toContain("https://solo.example");
   });
 
   it("keeps the active tab visible and marked aria-selected", () => {
@@ -257,7 +276,7 @@ describe("BrowserTabSwitcher", () => {
     expect(dialog.getAttribute("data-chat-clearance-aware")).toBe("true");
     expect(dialog.style.top).toContain("--eliza-chat-clearance");
     expect(dialog.style.maxHeight).toContain("--eliza-chat-clearance");
-    expect(dialog.className).toContain("rounded-2xl");
+    expect(dialog.className).toContain("rounded-3xl");
     expect(dialog.className).not.toContain("accent");
     expect(Z_VIEW_MODAL).toBeLessThan(Z_SHELL_OVERLAY);
     expect(Z_VIEW_MODAL_BACKDROP).toBeLessThan(Z_VIEW_MODAL);

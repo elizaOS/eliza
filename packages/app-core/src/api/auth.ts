@@ -503,14 +503,6 @@ export async function resolveAuthorizedRouteRole(
   }
 
   const ip = req.socket.remoteAddress ?? null;
-  if (isAuthRateLimited(ip)) {
-    return {
-      ok: false,
-      status: 429,
-      reason: "Too many authentication attempts",
-    };
-  }
-
   const state = "state" in options ? options.state : undefined;
   const db = state?.current?.adapter?.db;
   const store =
@@ -520,31 +512,14 @@ export async function resolveAuthorizedRouteRole(
         ? new AuthStore(db as ConstructorParameters<typeof AuthStore>[0])
         : null;
 
-  if (!store) {
-    const expectedToken = getCompatApiToken();
-    if (!expectedToken) {
-      recordFailedAuth(ip);
-      return { ok: false, status: 401, reason: "Unauthorized" };
-    }
-
-    const providedToken =
-      options.allowBearerAuth === false ? null : getProvidedApiToken(req);
-    if (providedToken && tokenMatches(expectedToken, providedToken)) {
-      return { ok: true, role: "OWNER" };
-    }
-
-    recordFailedAuth(ip);
-    return { ok: false, status: 401, reason: "Unauthorized" };
-  }
-
   const method = (req.method ?? "GET").toUpperCase();
   const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
 
   const sessionCookie =
-    options.allowCookieAuth === false
+    !store || options.allowCookieAuth === false
       ? null
       : readCookie(req, SESSION_COOKIE_NAME);
-  if (sessionCookie) {
+  if (store && sessionCookie) {
     const session = await findActiveSession(
       store,
       sessionCookie,
@@ -569,7 +544,7 @@ export async function resolveAuthorizedRouteRole(
 
   const provided =
     options.allowBearerAuth === false ? null : getProvidedApiToken(req);
-  if (provided) {
+  if (store && provided) {
     const sessionFromBearer = await resolveSessionTokenRole(provided, {
       store,
       now: options.now,
@@ -578,7 +553,37 @@ export async function resolveAuthorizedRouteRole(
     if (sessionFromBearer) {
       return sessionFromBearer;
     }
+  }
 
+  // A known, active session is not a failed authentication attempt. Resolve
+  // it before consulting the failure bucket so a newly paired device cannot
+  // remain locked out by the shell's pre-pairing API probes (especially when
+  // several clients share one reverse-proxy socket address). Unknown or stale
+  // credentials still hit the same limiter below.
+  if (isAuthRateLimited(ip)) {
+    return {
+      ok: false,
+      status: 429,
+      reason: "Too many authentication attempts",
+    };
+  }
+
+  if (!store) {
+    const expectedToken = getCompatApiToken();
+    if (!expectedToken) {
+      recordFailedAuth(ip);
+      return { ok: false, status: 401, reason: "Unauthorized" };
+    }
+
+    if (provided && tokenMatches(expectedToken, provided)) {
+      return { ok: true, role: "OWNER" };
+    }
+
+    recordFailedAuth(ip);
+    return { ok: false, status: 401, reason: "Unauthorized" };
+  }
+
+  if (provided) {
     const expectedToken = getCompatApiToken();
     if (
       process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1" &&

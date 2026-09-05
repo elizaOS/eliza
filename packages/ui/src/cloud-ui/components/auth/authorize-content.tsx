@@ -325,7 +325,10 @@ function AuthorizeFlow({
   const [error, setError] = useState<string | null>(null);
   const mobileAuthorizationStarted = useRef(false);
 
-  useEffect(storeCurrentAppAuthorizeReturnTo, []);
+  useEffect(() => {
+    if (status !== "ready") return;
+    storeCurrentAppAuthorizeReturnTo();
+  }, [status]);
 
   // Validate app + redirect_uri exactly once on mount.
   useEffect(() => {

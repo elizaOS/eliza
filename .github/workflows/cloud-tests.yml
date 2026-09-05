@@ -89,9 +89,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
-        with:
-          setup-db: "true"
-          db-backend: "pglite"
+      # The harness owns a uniquely leased PGlite bridge and data directory;
+      # starting the action's fixed :5432 service would reintroduce cross-job state.
       - name: Run cloud integration tests
         run: bun run test:cloud:integration
 

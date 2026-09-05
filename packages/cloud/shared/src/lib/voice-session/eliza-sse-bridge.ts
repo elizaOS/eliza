@@ -31,6 +31,7 @@ export const VOICE_CONVERSATION_HEADER = "X-Eliza-Conversation-Id";
 export const VOICE_ORGANIZATION_HEADER = "X-Eliza-Organization-Id";
 export const VOICE_USER_HEADER = "X-Eliza-User-Id";
 export const VOICE_STREAM_PROTOCOL = "delta-v2" as const;
+export const VOICE_CHANNEL_TYPE = "VOICE_DM" as const;
 
 const MAX_SERVER_TIMING_HEADER_CHARS = 2_048;
 const MAX_SERVER_TIMING_ENTRIES = 16;
@@ -141,6 +142,11 @@ export interface ElizaSseBridgeRequest {
   onResponseHeaders?: (headers: ElizaSseBridgeResponseHeaders) => void | Promise<void>;
   /** Emits a non-authoritative progress cue while an action-backed turn is pending. */
   onProgress?: (text: string) => void | Promise<void>;
+  /**
+   * Fires once the canonical route has finalized the authoritative reply text,
+   * before its durable persistence receipt and view-handoff metadata are ready.
+   */
+  onReplyReady?: () => void;
   /** Test hook; production uses six seconds between progress cues. */
   progressIntervalMs?: number;
   /** Injectable fetch for tests; defaults to global fetch. */
@@ -229,6 +235,7 @@ export async function streamElizaConversation(
       // sharedRestMessageSend/bridgeStream executes and persists this turn.
       body: JSON.stringify({
         text: request.transcript,
+        channelType: VOICE_CHANNEL_TYPE,
         ...(request.messageRole ? { messageRole: request.messageRole } : {}),
         ...(request.clientMessageId ? { clientMessageId: request.clientMessageId } : {}),
         ...(request.historyCutoffAt !== undefined
@@ -450,6 +457,11 @@ export async function streamElizaConversation(
             `Eliza agent stream error: ${extractErrorMessage(payload)}`,
             "upstream_error",
           );
+        }
+        if (payloadType === "reply_ready") {
+          finishAuthoritativeText(payload);
+          request.onReplyReady?.();
+          continue;
         }
         const update = extractTextUpdate(payload);
         if (update) applyTextUpdate(update);

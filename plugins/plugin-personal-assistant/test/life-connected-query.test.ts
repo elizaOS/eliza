@@ -14,10 +14,10 @@
  *   - backing service unavailable   → LifeOpsServiceError is translated, not
  *                                     thrown
  *
- * The LifeOpsService is stubbed per test; the fake runtime has no `useModel`,
- * so renderGroundedActionReply returns each handler's canonical fallback
- * string verbatim and assertions can target exact refusal wording, the
- * returned `data` DTO, and the service-call spies.
+ * The LifeOpsService and reply model are deterministic test collaborators.
+ * The reply collaborator returns each grounding template as a typed model
+ * reply, allowing assertions on refusal wording, returned DTOs, and service
+ * calls without exercising a live provider.
  */
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";

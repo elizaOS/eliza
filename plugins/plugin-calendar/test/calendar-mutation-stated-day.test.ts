@@ -140,6 +140,11 @@ function fakeDeps(service: StubService): CalendarActionDeps {
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async () => null),
     recentConversationTexts: vi.fn(async () => []),
+    // Deterministic presentation fixture, not a live-model response.
+    renderGroundedReply: async ({ fallback }) => ({
+      kind: "model",
+      text: fallback,
+    }),
     mutationGateway: {
       schedule: service.scheduleApproval,
       modify: service.modifyApproval,

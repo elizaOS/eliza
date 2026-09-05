@@ -39,6 +39,10 @@ import {
   loadSavedCustomCommands,
   normalizeSlashCommandName,
 } from "../chat";
+import {
+  captureCompletedActionNavigationFence,
+  dispatchCompletedActionNavigation,
+} from "../completed-action-navigation";
 import { dispatchWorkflowActionHandoff } from "../components/pages/workflow-action-handoff";
 import { dispatchDoorDashHumanHandoff } from "../doordash-human-handoff";
 import {
@@ -86,6 +90,7 @@ import type { ConversationMessageStateMutation } from "./useDataLoaders";
 // ── Types ────────────────────────────────────────────────────────────
 
 const CHAT_SEND_IDENTITY_OVERRIDE = Symbol("chat-send-identity-override");
+const CHAT_SEND_HYDRATION_SETTLED = Symbol("chat-send-hydration-settled");
 type ConversationStreamResult = Awaited<
   ReturnType<typeof client.sendConversationMessageStream>
 >;
@@ -97,6 +102,12 @@ interface ActiveChatTurn {
   abortServerTurn: (() => void) | null;
 }
 
+interface ChatViewHandoffOwner {
+  conversationId: string | null;
+  generation: number | null;
+  controller: AbortController | null;
+}
+
 export {
   buildSendFailureNotice,
   getSendValidationFailureMessage,
@@ -104,43 +115,41 @@ export {
   UNDELIVERED_TURN_NOTICE,
 } from "./chat-send-failures";
 
-async function handoffCompletedAction(
-  actionResults: ChatActionResultSummary[] | undefined,
+function createCompletedViewHandoff(
+  isTurnCurrent: () => boolean,
   showFailure: (message: string) => void,
-): Promise<void> {
-  const successfulActions =
-    actionResults?.filter((result) => result.success) ?? [];
-  if (successfulActions.length > 0) {
-    // Cleartext remote runtimes intentionally use REST-only transport inside
-    // the HTTPS native WebView. The completed turn is therefore the reliable
-    // client-side commit edge for mounted views that cannot receive the
-    // runtime's WebSocket invalidation frame.
-    emitViewEvent(
-      VIEW_EVENTS.VIEW_REFRESH,
-      {
-        actionNames: successfulActions.flatMap((result) =>
-          result.actionName ? [result.actionName] : [],
-        ),
-      },
-      "agent",
-    );
-  }
-  const viewHandoff = findViewActionHandoff(actionResults);
-  if (viewHandoff) {
-    // The completed stream result is scoped to this exact caller and contains
-    // the validated target returned by the successful VIEWS action. Dispatch it
-    // directly instead of consulting process-global `/api/views/current`, which
-    // can belong to another device and is unavailable to REST-only native
-    // renderers. The shell resolves the canonical path from the view id.
+): (actionResults: ChatActionResultSummary[] | undefined) => boolean {
+  const sourceBase = client.getBaseUrl();
+  const isNavigationCurrent = captureCompletedActionNavigationFence();
+  let fallbackHandoffId: string | undefined;
+  return (actionResults) => {
+    const viewHandoff = findViewActionHandoff(actionResults);
+    if (!viewHandoff) return false;
+    if (
+      !isTurnCurrent() ||
+      client.getBaseUrl() !== sourceBase ||
+      !isNavigationCurrent()
+    ) {
+      return true;
+    }
     try {
-      // A renderer-observed handoff id is stronger than the server's legacy
-      // synchronous socket-count marker: always offer the terminal path and let
-      // the mounted shell deduplicate whichever transport it handled first.
+      // Preserve server IDs for WS dedupe. Browser receipts without an ID share
+      // a request-local one across reply_ready and done. An unhandled early
+      // event can still be retried at done by the canonical navigation bridge.
       if (
         viewHandoff.completedActionHandoffId ||
         !viewHandoff.completedActionDelivered
       ) {
-        dispatchViewActionHandoffDirect(actionResults);
+        if (!viewHandoff.completedActionHandoffId && !fallbackHandoffId) {
+          fallbackHandoffId = generateChatClientMessageId();
+        }
+        dispatchViewActionHandoffDirect(actionResults, (detail) =>
+          dispatchCompletedActionNavigation({
+            ...detail,
+            completedActionHandoffId:
+              viewHandoff.completedActionHandoffId ?? fallbackHandoffId,
+          }),
+        );
       }
     } catch (err) {
       // error-policy:J4 the chat turn succeeded, so preserve it while surfacing a
@@ -153,8 +162,30 @@ async function handoffCompletedAction(
         "The agent chose a view, but the app couldn't open it. Try opening the view again.",
       );
     }
-    return;
+    return true;
+  };
+}
+
+async function handoffCompletedAction(
+  actionResults: ChatActionResultSummary[] | undefined,
+  handoffView: ReturnType<typeof createCompletedViewHandoff>,
+): Promise<void> {
+  const successfulActions =
+    actionResults?.filter((result) => result.success) ?? [];
+  if (successfulActions.length > 0) {
+    // Refresh remains a terminal commit edge; reply_ready only offers the
+    // finalized view destination while durable post-delivery work completes.
+    emitViewEvent(
+      VIEW_EVENTS.VIEW_REFRESH,
+      {
+        actionNames: successfulActions.flatMap((result) =>
+          result.actionName ? [result.actionName] : [],
+        ),
+      },
+      "agent",
+    );
   }
+  if (handoffView(actionResults)) return;
   if (dispatchDoorDashHumanHandoff(actionResults)) return;
   dispatchWorkflowActionHandoff(actionResults);
 }
@@ -339,6 +370,7 @@ export interface ChatSendTextOptions {
 }
 
 interface ChatSendTextInternalOptions extends ChatSendTextOptions {
+  [CHAT_SEND_HYDRATION_SETTLED]?: true;
   [CHAT_SEND_IDENTITY_OVERRIDE]?: {
     clientMessageId: string;
     optimisticTurn: QueuedChatSend["optimisticTurn"];
@@ -499,7 +531,7 @@ export interface UseChatSendDeps {
    * claims conversation ownership. Callers without startup hydration may omit
    * this dependency.
    */
-  settleConversationHydrationForSend?: () => Promise<void>;
+  settleConversationHydrationForSend?: () => Promise<boolean>;
 
   // Cloud state
   elizaCloudEnabled: boolean;
@@ -677,6 +709,29 @@ export function useChatSend(deps: UseChatSendDeps) {
     (conversationId: string | null): boolean =>
       activeConversationIdRef.current === conversationId,
     [activeConversationIdRef],
+  );
+
+  const createTurnViewHandoff = useCallback(
+    (owner: ChatViewHandoffOwner) =>
+      createCompletedViewHandoff(
+        () =>
+          !unmountingRef.current &&
+          owner.controller !== null &&
+          !owner.controller.signal.aborted &&
+          activeChatTurnRef.current?.controller === owner.controller &&
+          activeConversationIdRef.current === owner.conversationId &&
+          owner.generation !== null &&
+          isConversationMessagesOwnershipCurrent(
+            owner.conversationId,
+            owner.generation,
+          ),
+        (message) => setActionNotice(message, "error", 8_000),
+      ),
+    [
+      activeConversationIdRef,
+      isConversationMessagesOwnershipCurrent,
+      setActionNotice,
+    ],
   );
 
   const setConversationMessagesForConversation = useCallback(
@@ -1070,6 +1125,10 @@ export function useChatSend(deps: UseChatSendDeps) {
   }, []);
 
   useEffect(() => {
+    // StrictMode and Fast Refresh replay setup after cleanup on the same refs.
+    // A new mounted lifetime must accept its own turns; cleanup still aborts
+    // the previous controller so its callbacks cannot regain authority.
+    unmountingRef.current = false;
     return () => {
       unmountingRef.current = true;
       const activeTurn = activeChatTurnRef.current;
@@ -1681,6 +1740,12 @@ export function useChatSend(deps: UseChatSendDeps) {
       let controller: AbortController | null = null;
       let abortServerTurn: (() => void) | null = null;
       let convRoomId: string | null = null;
+      const viewHandoffOwner: ChatViewHandoffOwner = {
+        conversationId: optimisticOwnerConversationId,
+        generation: optimisticOwnerGeneration,
+        controller,
+      };
+      const handoffView = createTurnViewHandoff(viewHandoffOwner);
 
       let text = hasAttachedImages
         ? rawText || "Please review the attached image."
@@ -1827,7 +1892,10 @@ export function useChatSend(deps: UseChatSendDeps) {
               optimisticOwnerGeneration,
             );
           if (shouldActivateCreatedConversation) {
-            claimConversationMessagesOwnership(conversation.id);
+            viewHandoffOwner.generation = claimConversationMessagesOwnership(
+              conversation.id,
+            );
+            viewHandoffOwner.conversationId = conversation.id;
             setActiveConversationId(conversation.id);
             activeConversationIdRef.current = conversation.id;
             setCompanionMessageCutoffTs(nextCutoffTs);
@@ -1921,6 +1989,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
 
       controller = new AbortController();
+      viewHandoffOwner.controller = controller;
       chatAbortRef.current = controller;
       abortServerTurn = () => {
         abortServerConversationTurn(convRoomId, "ui-chat-abort");
@@ -1977,6 +2046,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           (event) => scheduleToolEvent(convId, assistantMsgId, event),
           // Stable idempotency key for this logical turn.
           clientMessageId,
+          handoffView,
         );
 
         // Commit any token parked by the throttle before the terminal
@@ -2031,9 +2101,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             setChatSending(false);
           }
         }
-        await handoffCompletedAction(data.actionResults, (message) => {
-          setActionNotice(message, "error", 8_000);
-        });
+        await handoffCompletedAction(data.actionResults, handoffView);
 
         const completedTurnSnapshot =
           isConversationCommitActive(convId) &&
@@ -2254,11 +2322,19 @@ export function useChatSend(deps: UseChatSendDeps) {
           try {
             const nextCutoffTs = Date.now();
             const shouldActivateReplay =
-              activeConversationIdRef.current === convId;
+              activeConversationIdRef.current === convId &&
+              viewHandoffOwner.generation !== null &&
+              isConversationMessagesOwnershipCurrent(
+                convId,
+                viewHandoffOwner.generation,
+              );
             discardConversationMessageState(convId);
             setConversations((prev) => [conversation, ...prev]);
             if (shouldActivateReplay) {
-              claimConversationMessagesOwnership(conversation.id);
+              viewHandoffOwner.generation = claimConversationMessagesOwnership(
+                conversation.id,
+              );
+              viewHandoffOwner.conversationId = conversation.id;
               setActiveConversationId(conversation.id);
               activeConversationIdRef.current = conversation.id;
               setCompanionMessageCutoffTs(nextCutoffTs);
@@ -2339,11 +2415,10 @@ export function useChatSend(deps: UseChatSendDeps) {
               // Same idempotency key across the whole logical turn, including
               // the 404 recreate-and-replay recovery.
               clientMessageId,
+              handoffView,
             );
 
-            await handoffCompletedAction(retryData.actionResults, (message) => {
-              setActionNotice(message, "error", 8_000);
-            });
+            await handoffCompletedAction(retryData.actionResults, handoffView);
 
             // Commit any throttle-parked token before the terminal modification.
             flushStreamingText();
@@ -2488,6 +2563,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     },
     [
       appendLocalCommandTurn,
+      createTurnViewHandoff,
       applyStreamingModificationForConversation,
       reconcileTerminalStream,
       loadConversationMessages,
@@ -2646,7 +2722,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       // the background. Let that restore choose the active conversation before
       // this turn snapshots the target or paints optimistically; otherwise the
       // late restore can replace the just-sent turn with stale history.
-      await settleConversationHydrationForSend?.();
+      if (
+        !options?.[CHAT_SEND_HYDRATION_SETTLED] &&
+        (await settleConversationHydrationForSend?.()) === false
+      )
+        return;
 
       // Claim + clear the active reply target here — the single chokepoint every
       // real user turn (composer send + overlay/voice send()) funnels through —
@@ -2755,6 +2835,15 @@ export function useChatSend(deps: UseChatSendDeps) {
         metadata?: Record<string, unknown>;
       },
     ) => {
+      if (
+        !chatInputRef.current.trim() &&
+        chatPendingImagesRef.current.length === 0
+      )
+        return;
+      // Keep the draft, attachments and reply target intact until restore has
+      // established the destination. Concurrent clicks then claim the draft
+      // only once, after this shared barrier settles.
+      if ((await settleConversationHydrationForSend?.()) === false) return;
       const claimedInput = chatInputRef.current;
       const imagesToSend = chatPendingImagesRef.current.length
         ? [...chatPendingImagesRef.current]
@@ -2776,7 +2865,10 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       // The reply target (if any) is attached + cleared inside sendChatText, the
       // single chokepoint both this and the overlay's send() funnel through.
-      await sendChatText(claimedInput, {
+      // Enqueue immediately after claiming the draft. A second asynchronous
+      // restore barrier here could reject after the draft has been cleared.
+      await sendChatTextInternal(claimedInput, {
+        [CHAT_SEND_HYDRATION_SETTLED]: true,
         channelType,
         conversationId: activeConversationIdRef.current,
         images: imagesToSend,
@@ -2787,7 +2879,8 @@ export function useChatSend(deps: UseChatSendDeps) {
       activeConversationIdRef,
       chatInputRef,
       chatPendingImagesRef,
-      sendChatText,
+      sendChatTextInternal,
+      settleConversationHydrationForSend,
       setChatInput,
       setChatPendingImages,
     ],
@@ -2798,11 +2891,17 @@ export function useChatSend(deps: UseChatSendDeps) {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      const viewHandoffOwner: ChatViewHandoffOwner = {
+        conversationId: null,
+        generation: null,
+        controller: null,
+      };
+      // Capture API/navigation scope before hydration can yield to user input.
+      const handoffView = createTurnViewHandoff(viewHandoffOwner);
       // Actions can be fired from shell surfaces while startup hydration is
-      // still choosing the initial conversation. Use the same bounded barrier
-      // as composer sends so a cold action cannot create A and then be hidden
-      // by the late hydration claim of H (or vice versa).
-      await settleConversationHydrationForSend?.();
+      // still choosing the initial conversation. An unavailable restore leaves
+      // the action unsent instead of allocating a competing conversation.
+      if ((await settleConversationHydrationForSend?.()) === false) return;
       if (chatSendBusyRef.current) return;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
@@ -2813,11 +2912,12 @@ export function useChatSend(deps: UseChatSendDeps) {
       try {
         const optimisticOwnerConversationId =
           activeConversationIdRef.current ?? activeConversationId ?? null;
+        viewHandoffOwner.conversationId = optimisticOwnerConversationId;
+        viewHandoffOwner.generation = claimConversationMessagesOwnership(
+          optimisticOwnerConversationId,
+        );
         let convId: string = optimisticOwnerConversationId ?? "";
         if (!convId) {
-          const coldOwnershipGeneration = claimConversationMessagesOwnership(
-            optimisticOwnerConversationId,
-          );
           try {
             const actionTitle =
               trimmed.length > 50 ? `${trimmed.slice(0, 47)}...` : trimmed;
@@ -2845,10 +2945,13 @@ export function useChatSend(deps: UseChatSendDeps) {
                 optimisticOwnerConversationId &&
               isConversationMessagesOwnershipCurrent(
                 optimisticOwnerConversationId,
-                coldOwnershipGeneration,
+                viewHandoffOwner.generation,
               )
             ) {
-              claimConversationMessagesOwnership(conversation.id);
+              viewHandoffOwner.generation = claimConversationMessagesOwnership(
+                conversation.id,
+              );
+              viewHandoffOwner.conversationId = conversation.id;
               setActiveConversationId(conversation.id);
               activeConversationIdRef.current = conversation.id;
               setCompanionMessageCutoffTs(nextCutoffTs);
@@ -2937,6 +3040,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
 
         controller = new AbortController();
+        viewHandoffOwner.controller = controller;
         chatAbortRef.current = controller;
         abortServerTurn = () => {
           abortServerConversationTurn(convRoomId, "ui-chat-abort");
@@ -2984,6 +3088,8 @@ export function useChatSend(deps: UseChatSendDeps) {
             // coalesced into the current transport burst with the text.
             undefined,
             (event) => scheduleToolEvent(convId, assistantMsgId, event),
+            undefined,
+            handoffView,
           );
 
           // Commit any token parked by the throttle before the terminal
@@ -2996,9 +3102,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               persistedMessageId: data.userMessageId,
             });
           }
-          await handoffCompletedAction(data.actionResults, (message) => {
-            setActionNotice(message, "error", 8_000);
-          });
+          await handoffCompletedAction(data.actionResults, handoffView);
 
           const interruptedPartial = reconcileTerminalStream(
             convId,
@@ -3102,6 +3206,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     },
     [
       activeConversationId,
+      createTurnViewHandoff,
       claimConversationMessagesOwnership,
       isConversationMessagesOwnershipCurrent,
       chatSendQueueRef,

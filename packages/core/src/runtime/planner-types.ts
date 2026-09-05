@@ -8,6 +8,7 @@ import type {
 	ActionFailureKind,
 	ActionFailureProvenance,
 } from "../types/action-failure";
+import type { ActionReplyFailure } from "../types/action-reply";
 import type { EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
@@ -195,6 +196,8 @@ export interface PlannerToolResult {
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;
+	/** Reply unavailable is independent of the completed tool outcome. */
+	replyFailure?: ActionReplyFailure;
 	/**
 	 * Action-owned completion signal that is honored only for a single executed
 	 * tool after the plan queue drains and the successful result carries verified
@@ -246,6 +249,7 @@ export interface PlannerTerminalFailure {
 		| "coding_mutation_unverified"
 		| "coding_verification_failed"
 		| "coding_tool_failure"
+		| ActionReplyFailure["kind"]
 		| ActionFailureKind;
 	transient: boolean;
 	message: string;

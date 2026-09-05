@@ -4609,12 +4609,48 @@ export async function handleConversationRoutes(
         // (thinking → running_action → thinking) still pass through.
         let lastStatusSignature = "thinking::";
         let generationResult: ChatGenerationResult | null = null;
+        let resolvedGenerationText: string | undefined;
+        let replyReadyPublished = false;
         try {
           const assertCurrentGenerationOwner = () =>
             assertConversationConnectionRuntime(
               state.runtime,
               connectionDescriptor,
             );
+          const publishReplyReady = async (result: ChatGenerationResult) => {
+            if (
+              replyReadyPublished ||
+              // Failure text is a typed system status, not an early model reply.
+              result.terminalFailure !== undefined ||
+              result.noResponseReason === "ignored" ||
+              disconnectTracker.isAborted() ||
+              disconnectTracker.checkConnectionClosed()
+            ) {
+              return;
+            }
+            assertCurrentGenerationOwner();
+            resolvedGenerationText = normalizeChatResponseText(
+              result.text,
+              state.logBuffer,
+              runtime,
+            );
+            writeSse(res, {
+              type: "reply_ready",
+              fullText:
+                result.transcriptVisibility === "internal"
+                  ? ""
+                  : resolvedGenerationText,
+              // Generation already copied the finalized client receipts. Expose
+              // that same snapshot now; durable completion still belongs to done.
+              ...(result.actionResults?.length
+                ? { actionResults: result.actionResults }
+                : {}),
+            });
+            replyReadyPublished = true;
+            // Bun's node:http compatibility layer can retain a small write
+            // until the handler reaches its next I/O boundary.
+            await new Promise<void>((resolve) => setImmediate(resolve));
+          };
           const result = await generateChatResponse(
             runtime,
             routedUserMessage,
@@ -4703,6 +4739,7 @@ export async function handleConversationRoutes(
                 assertCurrentGenerationOwner();
                 return resolveNoResponseFallback(state.logBuffer, runtime);
               },
+              onReplyReady: publishReplyReady,
               preferredLanguage,
             },
           );
@@ -4714,13 +4751,14 @@ export async function handleConversationRoutes(
 
           conv.updatedAt = new Date().toISOString();
           if (result.noResponseReason !== "ignored") {
-            const resolvedText = normalizeChatResponseText(
-              result.text,
-              state.logBuffer,
-              runtime,
-            );
+            const resolvedText =
+              resolvedGenerationText ??
+              normalizeChatResponseText(result.text, state.logBuffer, runtime);
+            const visibleResolvedText =
+              result.transcriptVisibility === "internal" ? "" : resolvedText;
             if (
               !disconnectTracker.isAborted() &&
+              !result.terminalFailure &&
               !streamedText &&
               resolvedText &&
               result.transcriptVisibility !== "internal"
@@ -4731,8 +4769,13 @@ export async function handleConversationRoutes(
                 tokenWriter.writeChunk(res, chunk, streamedText);
               }
             }
-            const visibleResolvedText =
-              result.transcriptVisibility === "internal" ? "" : resolvedText;
+            // The reply text is now authoritative: model generation, planner
+            // actions, callback replacement, and final normalization have all
+            // settled. Publish that boundary before durable persistence so
+            // realtime voice can synthesize while the receipt/ids are written;
+            // the later `done` frame remains the sole durable completion and
+            // carries view-handoff metadata.
+            await publishReplyReady(result);
             assertConversationConnectionRuntime(
               state.runtime,
               connectionDescriptor,

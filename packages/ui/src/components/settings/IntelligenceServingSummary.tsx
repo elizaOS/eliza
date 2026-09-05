@@ -8,7 +8,11 @@
 
 import { Cloud, Cpu, Server } from "lucide-react";
 import type { ComponentType } from "react";
-import type { ServingAxes, ServingRuntime } from "./resolveServingAxes";
+import {
+  type ServingAxes,
+  type ServingRuntime,
+  servingProviderLabel,
+} from "./resolveServingAxes";
 import { SettingsRow } from "./settings-layout";
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
@@ -68,7 +72,7 @@ function inferenceValue(axes: ServingAxes, t: Translate): string {
     case "external":
       // Name the provider the server reported; never claim "This device".
       return (
-        axes.activeChatProvider ??
+        servingProviderLabel(axes.activeChatProvider) ??
         t("providerswitcher.servingInferenceExternal", {
           defaultValue: "External provider",
         })
@@ -78,6 +82,11 @@ function inferenceValue(axes: ServingAxes, t: Translate): string {
         defaultValue: "Checking…",
       });
     case "local":
+      if (axes.runtime === "remote") {
+        return t("providerswitcher.servingInferenceRemote", {
+          defaultValue: "Remote host",
+        });
+      }
       return t("providerswitcher.servingInferenceLocal", {
         defaultValue: "This device",
       });
@@ -113,6 +122,12 @@ function inferenceDescription(axes: ServingAxes, t: Translate): string {
           "Waiting for the agent to report which provider is answering chat.",
       });
     case "local":
+      if (axes.runtime === "remote") {
+        return t("providerswitcher.servingInferenceRemoteDescription", {
+          defaultValue:
+            "Chat replies are computed by a model running with your remote agent.",
+        });
+      }
       return t("providerswitcher.servingInferenceLocalDescription", {
         defaultValue: "Chat replies are computed by the on-device model.",
       });

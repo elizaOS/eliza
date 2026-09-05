@@ -1,9 +1,9 @@
 /**
  * Native HTTP transport for Eliza Cloud and explicitly selected remote agents.
- * Bounded JSON/binary calls use CapacitorHttp. Bearer-capable dedicated Cloud
- * agent SSE keeps the browser streaming body; session-cookie remote-agent SSE
- * stays on the native cookie-jar transport. Arbitrary public origins remain
- * outside this transport.
+ * Bounded JSON/binary calls use CapacitorHttp. Bearer-authenticated agent SSE
+ * keeps the browser streaming body; session-cookie-only remote-agent SSE stays
+ * on the native cookie-jar transport. Arbitrary public origins remain outside
+ * this transport.
  */
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
@@ -116,6 +116,11 @@ function nativeWebFetch(): NativeWebFetch | null {
   return typeof candidate === "function" ? (candidate as NativeWebFetch) : null;
 }
 
+function hasBearerAuthorization(headers: HeadersInit | undefined): boolean {
+  const authorization = new Headers(headers ?? {}).get("authorization");
+  return authorization?.trim().toLowerCase().startsWith("bearer ") ?? false;
+}
+
 function responseBody(data: unknown): string {
   if (data === null || data === undefined) return "";
   if (typeof data === "string") return data;
@@ -168,22 +173,35 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     // subdomains only: they serve CORS for the app origin. The central
     // `api.eliza.app` does not, so its SSE stays on CapacitorHttp below.
     const isRemoteAgent = isNativeTrustedRemoteAgentUrl(url);
+    const isStream = isStreamingRequest(url, init.headers);
     if (
-      isNativeCloudAgentSubdomain(url) &&
-      isStreamingRequest(url, init.headers)
+      isStream &&
+      (isNativeCloudAgentSubdomain(url) ||
+        (isRemoteAgent && hasBearerAuthorization(init.headers)))
     ) {
       const webFetch = nativeWebFetch();
       if (webFetch) {
+        if (isRemoteAgent) {
+          // These attempt-correlation headers are optional telemetry. Older
+          // self-hosted Vite frontends do not advertise them in CORS even when
+          // the underlying agent does, which rejects the entire browser fetch
+          // before the authenticated stream reaches the server. Keep the
+          // bearer/client/language contract intact and omit only telemetry on
+          // this compatibility path.
+          const headers = new Headers(init.headers ?? {});
+          headers.delete("X-ElizaOS-Turn-Correlation");
+          headers.delete("X-ElizaOS-Turn-Attempt");
+          return webFetch(url, { ...init, headers });
+        }
         return webFetch(url, init);
       }
     }
 
-    // Session-authenticated remote-agent requests, including SSE, must remain
-    // on CapacitorHttp. Its native URLSession cookie jar carries the HttpOnly
-    // SameSite session established by password login; a cross-site WKWebView
-    // fetch cannot reliably attach that cookie. This intentionally accepts a
-    // buffered SSE response until a native incremental transport sharing the
-    // same cookie jar exists.
+    // Session-cookie-only remote-agent requests, including SSE, must remain on
+    // CapacitorHttp. Its native cookie jar carries the HttpOnly SameSite session
+    // established by password login; a cross-site WebView fetch cannot reliably
+    // attach that cookie. Bearer-authenticated SSE already returned above and
+    // therefore stays incremental without weakening the cookie-only path.
     const wantsBinary = context?.responseType === "arraybuffer";
     const isDirectApi = isNativeDirectCloudApiUrl(url);
     const isCloudHost = isNativeCloudHttpsUrl(url);

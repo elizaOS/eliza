@@ -344,11 +344,13 @@ function useShellMode(): AppShellMode {
  */
 function ChatOverlayShell({
   releaseFirstRunToFull,
+  retainMountedFirstRunOpen,
   onFirstRunReleaseHandled,
   onFirstRunChatMounted,
   firstRunMountEpoch,
 }: {
   releaseFirstRunToFull: boolean;
+  retainMountedFirstRunOpen: boolean;
   onFirstRunReleaseHandled: () => void;
   onFirstRunChatMounted: (epoch: number) => void;
   firstRunMountEpoch: number | null;
@@ -386,6 +388,7 @@ function ChatOverlayShell({
         <ShellFoundationMount
           useWebChatPanel
           releaseFirstRunToFull={releaseFirstRunToFull}
+          retainMountedFirstRunOpen={retainMountedFirstRunOpen}
           onFirstRunReleaseHandled={onFirstRunReleaseHandled}
           onFirstRunChatMounted={onFirstRunChatMounted}
           firstRunMountEpoch={firstRunMountEpoch}
@@ -2076,6 +2079,7 @@ function SecretsManagerModalMount(): ReactNode {
 function ShellFoundationMount({
   useWebChatPanel = false,
   releaseFirstRunToFull = false,
+  retainMountedFirstRunOpen = false,
   onFirstRunReleaseHandled = () => {},
   onFirstRunChatMounted,
   firstRunMountEpoch = null,
@@ -2083,6 +2087,8 @@ function ShellFoundationMount({
   /** Desktop opens the same draggable chat surface as web, not a separate drawer. */
   useWebChatPanel?: boolean;
   releaseFirstRunToFull?: boolean;
+  /** Keep an already-mounted authoritative onboarding transcript pinned while startup advances. */
+  retainMountedFirstRunOpen?: boolean;
   onFirstRunReleaseHandled?: () => void;
   onFirstRunChatMounted?: (epoch: number) => void;
   firstRunMountEpoch?: number | null;
@@ -2095,10 +2101,9 @@ function ShellFoundationMount({
     firstRunComplete: state.firstRunComplete,
     startupPhase: state.startupCoordinator.phase,
   }));
-  const firstRunPinnedOpen = isAuthoritativeFirstRunOpen(
-    firstRunComplete,
-    startupPhase,
-  );
+  const firstRunPinnedOpen =
+    isAuthoritativeFirstRunOpen(firstRunComplete, startupPhase) ||
+    (firstRunComplete === false && retainMountedFirstRunOpen);
   // Completion updates the store before the half-height overlay can release
   // its first-run pin. Keep that mounted instance through the edge so its
   // shared transcript stays visible until the user deliberately folds to the
@@ -2313,6 +2318,7 @@ function ShellFoundationMount({
         initialMode="input"
         fillHostAtHalf
         releaseFirstRunToFull={releaseFirstRunToFull}
+        retainMountedFirstRunOpen={retainMountedFirstRunOpen}
         onFirstRunReleaseHandled={onFirstRunReleaseHandled}
         onFirstRunChatMounted={onFirstRunChatMounted}
         firstRunMountEpoch={firstRunMountEpoch}
@@ -2395,6 +2401,7 @@ function ChatOverlayMount({
   initialMode,
   fillHostAtHalf = false,
   releaseFirstRunToFull,
+  retainMountedFirstRunOpen = false,
   onFirstRunReleaseHandled,
   onFirstRunChatMounted,
   firstRunMountEpoch = null,
@@ -2405,6 +2412,7 @@ function ChatOverlayMount({
   initialMode?: "input" | "half";
   fillHostAtHalf?: boolean;
   releaseFirstRunToFull: boolean;
+  retainMountedFirstRunOpen?: boolean;
   onFirstRunReleaseHandled: () => void;
   onFirstRunChatMounted?: (epoch: number) => void;
   firstRunMountEpoch?: number | null;
@@ -2420,10 +2428,9 @@ function ChatOverlayMount({
       firstRunComplete: s.firstRunComplete,
       startupPhase: s.startupCoordinator.phase,
     }));
-  const firstRunOpen = isAuthoritativeFirstRunOpen(
-    firstRunComplete,
-    startupPhase,
-  );
+  const firstRunOpen =
+    isAuthoritativeFirstRunOpen(firstRunComplete, startupPhase) ||
+    (firstRunComplete === false && retainMountedFirstRunOpen);
   // #12087 Item 20: derive the slash-command authority from the authoritative
   // role instead of the fail-open defaults. Elevated (owner-only) commands
   // require OWNER; authenticated commands require rank ≥ USER. A remote
@@ -3257,7 +3264,9 @@ function AppContent() {
   const bugReport = useBugReportState();
   // Loading is handled entirely by StartupScreen.
 
+  const androidCloudAuthAutoStart = isAndroidCloudBuild();
   const cloudAuthFirstScreenOwnsSurface =
+    androidCloudAuthAutoStart &&
     shellMode === "full" &&
     !isPopout &&
     !isAuxiliaryAppWindow &&
@@ -3289,6 +3298,7 @@ function AppContent() {
   const cloudAuthAutoStartedRef = useRef(false);
   useEffect(() => {
     if (
+      !androidCloudAuthAutoStart ||
       !cloudAuthFirstScreenOwnsSurface ||
       hasUsableCloudSession ||
       elizaCloudLoginBusy ||
@@ -3302,13 +3312,13 @@ function AppContent() {
       // error-policy:J4 the full-screen retry surface renders the hook's error.
     });
   }, [
+    androidCloudAuthAutoStart,
     cloudAuthFirstScreenOwnsSurface,
     elizaCloudLoginBusy,
     elizaCloudLoginError,
     hasUsableCloudSession,
     startCloudAuthFirstScreen,
   ]);
-
   useEffect(() => {
     // Safety-net watchdog: the coordinator has its own timeouts per phase, but
     // this catches any edge case where the coordinator gets stuck in a loading
@@ -3411,10 +3421,9 @@ function AppContent() {
     return <VoiceWorkbenchShell />;
   }
 
-  // Cloud account auth owns the primary viewport before chat exists. Hosted
-  // web redirects to Steward in this tab; the Android launcher keeps Eliza's
-  // hosted page in-app and uses the secure browser only for providers such as
-  // Google that reject embedded WebViews.
+  // Android's Cloud build owns its native auth startup surface. Web and Mac
+  // keep first run inside the normal Eliza chat overlay so sign-in remains a
+  // deliberate conversational choice instead of replacing the whole app.
   if (cloudAuthFirstScreenOwnsSurface && !hasUsableCloudSession) {
     return (
       <BugReportProvider value={bugReport}>
@@ -3459,6 +3468,7 @@ function AppContent() {
         <ShellControllerProvider>
           <ChatOverlayShell
             releaseFirstRunToFull={firstRunChatRelease.releasePending}
+            retainMountedFirstRunOpen={firstRunChatRelease.mountedOnboarding}
             onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
             onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
             firstRunMountEpoch={firstRunChatRelease.mountEpoch}
@@ -3661,21 +3671,17 @@ function AppContent() {
           // indicator, native-app style.
           data-app-shell-root=""
           className="relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
-          // Reserve a TIGHT status-bar inset: enough to clear the notch/Dynamic
-          // Island but no oversized empty band above the content (the repeated
-          // "too much space at the top" report; device r8 screenshot still showed
-          // dead space above the in-app clock). The iOS status bar clock already
-          // draws INSIDE the safe-area-top zone, so any app paddingTop below the
-          // full inset is ADDITIVE dead space. Shave harder, subtract 2rem from
-          // the safe area (was 1.25rem) so the big in-app clock seats snug under
-          // the status bar, with a 0.75rem floor so notch-less phones still
-          // clear their status bar. Top banners bleed their bg back up via
-          // `.mobile-top-banner:first-child` (styles.css). No-op on web.
+          // The OS inset is protected space, not decorative padding to trim.
+          // Settings and Wallet own the inset inside their scrolling headers;
+          // Home and other non-immersive views receive it once at this shared
+          // boundary. Home's wallpaper remains a separate full-bleed layer.
           style={{
             paddingTop:
-              isFullBleed || isSettingsPage || isWalletPage
+              (isFullBleed && !isChat) || isSettingsPage || isWalletPage
                 ? 0
-                : "max(calc(var(--safe-area-top, 0px) - 2rem), 0.75rem)",
+                : "var(--safe-area-top, 0px)",
+            paddingLeft: "var(--safe-area-left, 0px)",
+            paddingRight: "var(--safe-area-right, 0px)",
           }}
         >
           {/* BOTTOM-BAR / SAFE-AREA FLOOR (do not remove): a viewport-filling
@@ -3779,6 +3785,7 @@ function AppContent() {
           <>
             <ChatOverlayMount
               releaseFirstRunToFull={firstRunChatRelease.releasePending}
+              retainMountedFirstRunOpen={firstRunChatRelease.mountedOnboarding}
               onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
               onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
               firstRunMountEpoch={firstRunChatRelease.mountEpoch}
