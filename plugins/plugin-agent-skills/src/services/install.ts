@@ -519,7 +519,12 @@ export async function installSkillDependencies(
 	} = {},
 ): Promise<InstallDependencyResult[]> {
 	const metadata = skill.frontmatter.metadata?.otto;
-	const installOptions = metadata?.install || [];
+	// Defensive: a malformed frontmatter could leave `install` non-array; treat
+	// anything but a real list as "no install options" so this never throws on
+	// the `for (const option of installOptions)` loop below.
+	const installOptions = Array.isArray(metadata?.install)
+		? metadata.install
+		: [];
 
 	if (installOptions.length === 0) {
 		return [];
@@ -599,8 +604,12 @@ export async function getInstallPlan(skill: {
 }> {
 	const metadata = skill.frontmatter.metadata?.otto;
 
-	const requiredBins = metadata?.requires?.bins || [];
-	const installOptions = metadata?.install || [];
+	const requiredBins = Array.isArray(metadata?.requires?.bins)
+		? metadata.requires.bins
+		: [];
+	const installOptions = Array.isArray(metadata?.install)
+		? metadata.install
+		: [];
 
 	// Check which bins are missing
 	const missingBins: string[] = [];
