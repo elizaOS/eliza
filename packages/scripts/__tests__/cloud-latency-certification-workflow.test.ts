@@ -1,10 +1,21 @@
 /**
- * Fail-closed workflow contract for exact-SHA staging latency certification
- * and sanitized-only Worker Tail evidence retention.
+ * Executes the staging workflow's shell preflight and private-file cleanup,
+ * while checking its protected dispatch and sanitized artifact boundaries.
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const repoRoot = new URL("../../../", import.meta.url);
 const source = readFileSync(
@@ -53,6 +64,28 @@ function step(name: string): Step {
   return found;
 }
 
+function executeStep(name: string, env: Record<string, string>) {
+  const script = step(name).run;
+  if (!script) throw new Error(`Workflow step has no shell body: ${name}`);
+  return spawnSync("bash", ["-c", script], {
+    env: { PATH: process.env.PATH, ...env },
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+}
+
+const preflightEnvironment = {
+  EXPECTED_DEPLOY_SHA: "a".repeat(40),
+  GITHUB_SHA: "b".repeat(40),
+  GITHUB_REF: "refs/heads/develop",
+  RUN_AUTH: "false",
+  RUN_SUSPENDED: "false",
+  CEREBRAS_API_KEY: "private-fixture-cerebras",
+  ELIZAOS_CLOUD_API_KEY: "private-fixture-cloud",
+  CLOUDFLARE_API_TOKEN: "private-fixture-cloudflare",
+  CLOUDFLARE_ACCOUNT_ID: "private-fixture-account",
+};
+
 describe("Cloud latency certification workflow", () => {
   test("is manual-only, staging-scoped, read-only, and serialized", () => {
     expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_dispatch"]);
@@ -65,36 +98,52 @@ describe("Cloud latency certification workflow", () => {
     expect(source).not.toContain("environment: production");
   });
 
-  test("requires an exact SHA and keeps the auth lane explicitly optional", () => {
-    const inputs = workflow.on?.workflow_dispatch?.inputs;
-    expect(inputs?.expected_deploy_sha).toMatchObject({
-      required: true,
-      type: "string",
-    });
-    expect(inputs?.run_auth).toEqual({
-      description:
-        "Also run protected inference-auth hit, miss, non-standing guards, and sanitized Worker Tail proof.",
-      required: true,
-      default: false,
-      type: "boolean",
-    });
-    expect(inputs?.run_suspended).toEqual({
-      description:
-        "Also prove the optional suspended-standing 403 guard (requires run_auth).",
-      required: true,
-      default: false,
-      type: "boolean",
-    });
-    const preflight = step(
+  test("trusted preflight permits a distinct served revision for the ancestry verifier", () => {
+    const result = executeStep(
       "Validate trusted exact-SHA dispatch and protected credentials",
-    ).run;
-    expect(preflight).toContain('"$EXPECTED_DEPLOY_SHA" != "$GITHUB_SHA"');
-    expect(preflight).toContain('"$GITHUB_REF" != "refs/heads/develop"');
-    expect(preflight).toContain("^[a-f0-9]{40}$");
-    expect(preflight).toContain('if [[ "$RUN_AUTH" == "true" ]]');
-    expect(preflight).toContain(
-      'if [[ "$RUN_SUSPENDED" == "true" && "$RUN_AUTH" != "true" ]]',
+      preflightEnvironment,
     );
+    expect(result.status).toBe(0);
+    expect(result.error).toBeUndefined();
+    expect(result.stdout + result.stderr).not.toContain("private-fixture");
+  });
+
+  test.each([
+    { GITHUB_REF: "refs/heads/untrusted" },
+    { EXPECTED_DEPLOY_SHA: "not-a-commit" },
+    { RUN_SUSPENDED: "true" },
+    { CEREBRAS_API_KEY: " " },
+    { RUN_AUTH: "true" },
+    {
+      RUN_AUTH: "true",
+      RUN_SUSPENDED: "true",
+      INFERENCE_AUTH_PROBE_TOKEN: "private-fixture-probe",
+    },
+  ])(
+    "preflight rejects unsafe dispatch or missing selected credentials",
+    (overrides) => {
+      const result = executeStep(
+        "Validate trusted exact-SHA dispatch and protected credentials",
+        { ...preflightEnvironment, ...overrides },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stdout + result.stderr).not.toContain("private-fixture");
+    },
+  );
+
+  test("selected auth and suspended lanes accept configured private credentials without printing them", () => {
+    const result = executeStep(
+      "Validate trusted exact-SHA dispatch and protected credentials",
+      {
+        ...preflightEnvironment,
+        RUN_AUTH: "true",
+        RUN_SUSPENDED: "true",
+        INFERENCE_AUTH_PROBE_TOKEN: "private-fixture-probe",
+        ELIZA_STAGING_SUSPENDED_API_KEY: "private-fixture-suspended",
+      },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout + result.stderr).not.toContain("private-fixture");
   });
 
   test("fails closed on paired and optional auth credentials before checkout", () => {
@@ -167,11 +216,7 @@ describe("Cloud latency certification workflow", () => {
   });
 
   test("uploads only explicitly sanitized evidence and never raw Tail material", () => {
-    const cleanup = step("Remove private Worker Tail material");
-    expect(cleanup.run).toContain(
-      'private_tail_directories=("$RUNNER_TEMP"/eliza-inference-auth-tail-*)',
-    );
-    expect(cleanup.run).toContain('rm -rf -- "$directory"');
+    const cleanup = step("Remove private Worker telemetry material");
     expect(job?.steps?.indexOf(cleanup)).toBeLessThan(
       job?.steps?.indexOf(step("Upload sanitized certification evidence")) ??
         -1,
@@ -184,10 +229,54 @@ describe("Cloud latency certification workflow", () => {
     expect(paths).toContain("paired.jsonl");
     expect(paths).toContain("inference-auth.jsonl");
     expect(paths).toContain("inference-auth-worker.jsonl");
+    expect(paths).toContain("source.json");
+    expect(paths).toContain("inference-traces.json");
     expect(paths).toContain("summary.json");
     expect(paths).not.toContain("raw");
     expect(paths).not.toContain("stderr");
     expect(paths).not.toContain("RUNNER_TEMP");
     expect(source).not.toContain("tee ");
+  });
+
+  test("actual cleanup removes both private capture families and preserves unrelated files", () => {
+    const root = mkdtempSync(join(tmpdir(), "latency-workflow-test-"));
+    try {
+      for (const name of [
+        "eliza-inference-auth-tail-test",
+        "eliza-inference-trace-test",
+      ]) {
+        mkdirSync(join(root, name));
+        writeFileSync(join(root, name, "raw.json"), "private-fixture");
+      }
+      writeFileSync(join(root, "unrelated.txt"), "keep");
+      const result = executeStep("Remove private Worker telemetry material", {
+        RUNNER_TEMP: root,
+      });
+      expect(result.status).toBe(0);
+      expect(existsSync(join(root, "eliza-inference-auth-tail-test"))).toBe(
+        false,
+      );
+      expect(existsSync(join(root, "eliza-inference-trace-test"))).toBe(false);
+      expect(readFileSync(join(root, "unrelated.txt"), "utf8")).toBe("keep");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("actual cleanup refuses symlink targets without deleting their contents", () => {
+    const root = mkdtempSync(join(tmpdir(), "latency-workflow-test-"));
+    try {
+      const target = join(root, "unrelated");
+      mkdirSync(target);
+      writeFileSync(join(target, "keep.txt"), "keep");
+      symlinkSync(target, join(root, "eliza-inference-trace-link"), "dir");
+      const result = executeStep("Remove private Worker telemetry material", {
+        RUNNER_TEMP: root,
+      });
+      expect(result.status).toBe(1);
+      expect(readFileSync(join(target, "keep.txt"), "utf8")).toBe("keep");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
