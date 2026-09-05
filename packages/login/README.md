@@ -57,3 +57,19 @@ for browser passkey registration, sign-in, grant scope and replay checks. This
 uses the real browser SDK, server and database with a virtual authenticator and
 a seeded verified-email grant; it does not verify external email delivery or a
 physical biometric device.
+
+A source deployment can install only the service's production dependency closure
+from the monorepo lockfile, then start Bun with the source export condition:
+
+```bash
+bun install --filter @elizaos/login --production --ignore-scripts --frozen-lockfile
+LOGIN_BIND_HOST=0.0.0.0 bun --conditions=eliza-source packages/login/src/server/start.ts
+```
+
+Run both commands from the repository root with Bun 1.3.14. The filtered install
+skips application/native-inference setup; it does not build or start the Eliza
+application. Configure the platform's install command accordingly, and use
+`/health` as its startup health check. Keep the existing database and encryption,
+session, provider and relying-party settings when switching the service source.
+The service handles SIGTERM by closing its listener and owned connections before
+exiting; the process integration test guards against leaked event-loop handles.

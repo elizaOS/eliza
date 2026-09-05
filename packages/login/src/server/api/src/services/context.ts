@@ -94,11 +94,6 @@ export const RATE_LIMIT_MAX_REQUESTS = positiveIntEnv(
   "STEWARD_RATE_LIMIT_MAX_REQUESTS",
   100,
 );
-export const isWorkersRuntime =
-  process.env.STEWARD_RUNTIME === "workers" ||
-  (typeof navigator !== "undefined" &&
-    navigator.userAgent === "Cloudflare-Workers");
-
 // ─── JWT helpers ──────────────────────────────────────────────────────────────
 
 /**
@@ -265,25 +260,6 @@ export async function verifySessionToken(token: string) {
     return null;
   }
 }
-
-// ─── SIWE nonce store ─────────────────────────────────────────────────────────
-
-export const nonceStore = new Map<
-  string,
-  { nonce: string; expiresAt: number }
->();
-
-export const nonceCleanupTimer = isWorkersRuntime
-  ? undefined
-  : setInterval(
-      () => {
-        const now = Date.now();
-        for (const [key, entry] of nonceStore.entries()) {
-          if (entry.expiresAt <= now) nonceStore.delete(key);
-        }
-      },
-      5 * 60 * 1000,
-    );
 
 // ─── Input validation helpers ─────────────────────────────────────────────────
 
