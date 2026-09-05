@@ -2012,6 +2012,36 @@ describe("InferenceAdmissionGate", () => {
     expect(recoverExpiredLease).not.toHaveBeenCalled();
   });
 
+  test.each(["/lease-dispatched", "/lease-dispatched-authorized"])(
+    "%s refuses a missing cancellation capability without reserving money",
+    async (path) => {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10);
+      const response = await post(gate, path, {
+        organizationId: "org-a",
+        requestId: "missing-combined-capability",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 4,
+        recovery: organizationRecovery("missing-combined-capability"),
+        credential: {
+          kind: "api_key",
+          credentialId: "key-a",
+          userId: "user-a",
+        },
+      });
+      expect(response.status).toBe(400);
+      expect(
+        storage.read(storedLeaseKey("missing-combined-capability")),
+      ).toBeUndefined();
+      expect(storage.read("ledger")).toMatchObject({
+        availableUsd: 10,
+        activeLeaseCount: 0,
+      });
+    },
+  );
+
   test("prepared admission performs exactly one combined gate call before provider invocation", async () => {
     const storage = new TestStorage();
     const gate = createGate(storage);
@@ -2106,6 +2136,79 @@ describe("InferenceAdmissionGate", () => {
     ).toBeUndefined();
     expect(storage.read(storedLeaseKey("prepared-revoked"))).toBeUndefined();
   });
+
+  test.each(["transport", "malformed", "unavailable"] as const)(
+    "revocation after a %s combined acknowledgement still cancels the committed lease",
+    async (fault) => {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10);
+      let combinedCalls = 0;
+      const bindings = {
+        INFERENCE_ADMISSION_GATES: {
+          getByName: (_name: string) => ({
+            fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+              const incoming = new Request(request, init);
+              const path = new URL(incoming.url).pathname;
+              const response = await gate.fetch(incoming);
+              if (
+                path === "/lease-dispatched-authorized" &&
+                ++combinedCalls === 1
+              ) {
+                expect(response.status).toBe(200);
+                await post(gate, "/credential/revoke", {
+                  organizationId: "org-a",
+                  kind: "api_key",
+                  credentialId: "key-a",
+                });
+                if (fault === "malformed")
+                  return new Response("unreadable acknowledgement", {
+                    status: 200,
+                  });
+                if (fault === "unavailable")
+                  return new Response("unavailable acknowledgement", {
+                    status: 503,
+                  });
+                throw new Error(
+                  "injected lost acknowledgement before credential revocation",
+                );
+              }
+              return response;
+            },
+          }),
+        },
+      };
+      await runWithCloudBindingsAsync(bindings, async () => {
+        const lease = await acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "prepared-revoked-after-commit",
+          balanceUsd: 10,
+          balanceRevision: "1",
+          estimatedCostUsd: 4,
+          recovery: organizationRecovery("prepared-revoked-after-commit"),
+          credential: {
+            kind: "api_key",
+            credentialId: "key-a",
+            userId: "user-a",
+          },
+          deferCommitUntilDispatch: true,
+        });
+        await expect(
+          markInferenceAdmissionLeaseDispatched(lease),
+        ).rejects.toBeInstanceOf(InferenceCredentialRevokedError);
+        await settleInferenceAdmissionLease(lease, 0, 0);
+      });
+      expect(combinedCalls).toBe(2);
+      expect(
+        storage.read(storedLeaseKey("prepared-revoked-after-commit")),
+      ).toBeUndefined();
+      expect(storage.read("ledger")).toMatchObject({
+        availableUsd: 10,
+        activeLeaseCount: 0,
+      });
+      expect(storage.alarm).toBeUndefined();
+    },
+  );
 
   test("lost combined acknowledgements release a committed lease before provider work", async () => {
     const storage = new TestStorage();

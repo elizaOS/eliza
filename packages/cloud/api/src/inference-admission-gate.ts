@@ -1477,12 +1477,24 @@ export class InferenceAdmissionGate {
     }
     if (path === "/lease-dispatched") {
       const dispatch = body as LeaseDispatchRequest;
+      if (!validTrimmedId(dispatch.preProviderCancellationToken)) {
+        return jsonError(
+          "Invalid inference admission dispatch capability",
+          400,
+        );
+      }
       return await this.serialize(() =>
         this.lease(dispatch, dispatch.preProviderCancellationToken),
       );
     }
     if (path === "/lease-dispatched-authorized") {
       const dispatch = body as AuthorizedLeaseDispatchRequest;
+      if (!validTrimmedId(dispatch.preProviderCancellationToken)) {
+        return jsonError(
+          "Invalid inference admission dispatch capability",
+          400,
+        );
+      }
       return await this.serializeRevocation(() =>
         this.serialize(() =>
           this.authorizedLease(dispatch, dispatch.preProviderCancellationToken),
