@@ -166,6 +166,7 @@ function* walk(directory) {
         "generated",
         "dist-mobile",
         ".git",
+        ".vite",
       ].includes(entry.name) ||
       entry.name.startsWith("dist-mobile-") ||
       entry.name.startsWith(".playwright-artifacts-")

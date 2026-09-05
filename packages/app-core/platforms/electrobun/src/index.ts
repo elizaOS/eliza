@@ -1982,6 +1982,23 @@ async function _startAgent(): Promise<void> {
     );
     const externalApiBase = runtimeResolution.externalApi.base;
     if (externalApiBase && isBrowserBridgeLoopbackApiBase(externalApiBase)) {
+      const externalUrl = new URL(externalApiBase);
+      const rendererBase = resolveRendererFacingApiBase(
+        process.env as Record<string, string | undefined>,
+        Number(
+          externalUrl.port || (externalUrl.protocol === "https:" ? 443 : 80),
+        ),
+      );
+      const sessionPrimed = await primeDesktopSessionAuth(
+        externalApiBase,
+        rendererBase,
+      );
+      await reloadRendererAfterDesktopSessionPrime({
+        sessionPrimed,
+        backendGeneration: externalApiBase,
+        window: currentWindow,
+        resolveRendererUrl: resolveMainWindowRendererUrl,
+      });
       try {
         await startBrowserBridgeDesktopLifecycle({ apiBase: externalApiBase });
       } catch (error) {
@@ -3153,17 +3170,15 @@ async function main(): Promise<void> {
     }
   }
 
-  // Agent startup: in external mode, push the API base via the
-  // api-base-owner (the agent is already running externally). In local
-  // mode, start the embedded agent first — apiBaseOwner.injectIntoHtml()
+  // Both runtime modes establish loopback session authority before publishing
+  // the API connection. Local mode starts the embedded agent first;
+  // apiBaseOwner.injectIntoHtml()
   // already seeded the initial boot-config apiBase from the seed value
   // in main(), but _startAgent will push the actual port once the agent
   // reports it.
   const rt = resolveDesktopRuntime();
-  if (rt.mode === "external") {
-    injectApiBaseIntoOpenRendererWindows();
-  } else if (rt.mode === "local") {
-    logger.info("[Main] Starting embedded agent (local mode).");
+  if (rt.mode === "external" || rt.mode === "local") {
+    logger.info(`[Main] Starting agent connection (${rt.mode} mode).`);
     _startAgent().catch((err) => {
       logger.error(
         `[Main] Agent auto-start failed: ${err instanceof Error ? err.message : String(err)}`,

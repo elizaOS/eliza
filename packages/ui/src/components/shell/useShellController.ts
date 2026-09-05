@@ -24,6 +24,7 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
@@ -61,6 +62,7 @@ import {
 } from "../../state/persistence";
 import { goHome } from "../../state/shell-surface-store";
 import { deriveAgentReady } from "../../state/types";
+import { openDesktopSettingsWindow } from "../../utils/desktop-workspace";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { TurnAggregator } from "../../voice/end-of-turn";
 import {
@@ -733,7 +735,20 @@ export function useShellController(): ShellController {
   );
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
-  const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
+  const openSettings = React.useCallback(() => {
+    if (isElectrobunRuntime()) {
+      void openDesktopSettingsWindow().catch((error: unknown) => {
+        // error-policy:J4 surface native window failures so Settings can be retried
+        setActionNotice(
+          `Settings could not open. ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+          6000,
+        );
+      });
+      return;
+    }
+    setTab("settings");
+  }, [setTab, setActionNotice]);
   // Commit the home half of the shared rail before the route changes so the
   // destination cannot paint one frame of the launcher with the wrong surface.
   const navigateHome = React.useCallback(() => {

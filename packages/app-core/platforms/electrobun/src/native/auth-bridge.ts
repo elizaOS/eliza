@@ -601,6 +601,7 @@ export async function bootstrapDesktopSession(
       warnAuthBridge("Desktop auth bootstrap endpoint failed", {
         url,
         status: response.status,
+        errorCode,
       });
       return null;
     }

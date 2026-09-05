@@ -78,6 +78,17 @@ test("hidden cached React and CSS cannot change maintained inventory or complian
   }
 });
 
+test("Vite dependency cache is excluded from the maintained source boundary", () => {
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL("../../app/.vite/deps/vendor.tsx", import.meta.url),
+      ),
+    ),
+    false,
+  );
+});
+
 test("generated mobile platform bundles and staging roots are outside governed source", () => {
   assert.equal(
     isGovernedSource(

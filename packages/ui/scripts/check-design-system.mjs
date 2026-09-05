@@ -434,7 +434,7 @@ export function isGovernedSource(file) {
     /^(packages|plugins)\//.test(rel) &&
     !path.posix.dirname(rel).split("/").some(isHiddenSourceArtifactDirectory) &&
     /\.[jt]sx?$/.test(rel) &&
-    !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
+    !/(^|\/)(node_modules|dist|build|coverage|generated|\.vite|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
       rel,
     ) &&
     !/(^|\/)packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) &&
@@ -459,6 +459,7 @@ function* walk(directory) {
         "dist-mobile",
         "test-results",
         ".git",
+        ".vite",
       ].includes(entry.name) ||
       entry.name.startsWith(".playwright-artifacts-") ||
       entry.name.startsWith("dist-mobile-")
@@ -511,6 +512,7 @@ function* walkStylesheets(directory) {
         "dist-mobile",
         "test-results",
         ".git",
+        ".vite",
         "stories",
         "test",
         "__tests__",
