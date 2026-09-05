@@ -1720,10 +1720,11 @@ describe("SubAgentRouter", () => {
         acp.emit(SESSION_ID, "task_complete", {
           response: `${localStyle}\n${publicScript}`,
         });
-        await new Promise((r) => setTimeout(r, 200));
+        await vi.waitFor(() => {
+          expect(handleMessage).toHaveBeenCalledTimes(1);
+        });
 
         expect(spawnSession).not.toHaveBeenCalled();
-        expect(handleMessage).toHaveBeenCalledTimes(1);
         const posted = handleMessage.mock.calls[0]?.[1];
         expect(posted?.content?.text).not.toContain(localPage);
         expect(posted?.content?.text).toContain(publicPage);
@@ -1940,11 +1941,12 @@ describe("SubAgentRouter", () => {
         acp.emit(SESSION_ID, "task_complete", {
           response: `Wrote files under apps/random-tweet-generator/. Public URL ${appUrl}`,
         });
-        await new Promise((r) => setTimeout(r, 200));
+        await vi.waitFor(() => {
+          expect(handleMessage).toHaveBeenCalledTimes(1);
+        });
 
         // No spurious verify-retry, and the completion turn is posted as-is.
         expect(spawnSession).not.toHaveBeenCalled();
-        expect(handleMessage).toHaveBeenCalledTimes(1);
         const posted = handleMessage.mock.calls[0]?.[1];
         expect(posted?.content?.text).not.toContain(
           "not updated during this session",
@@ -2001,10 +2003,11 @@ describe("SubAgentRouter", () => {
         acp.emit(SESSION_ID, "task_complete", {
           response: `Done — live at ${appUrl}`,
         });
-        await new Promise((r) => setTimeout(r, 200));
+        await vi.waitFor(() => {
+          expect(handleMessage).toHaveBeenCalledTimes(1);
+        });
 
         expect(spawnSession).not.toHaveBeenCalled();
-        expect(handleMessage).toHaveBeenCalledTimes(1);
         const posted = handleMessage.mock.calls[0]?.[1];
         expect(posted?.content?.text).not.toContain("[verification:");
       } finally {
@@ -2194,13 +2197,14 @@ describe("SubAgentRouter", () => {
         acp.emit(SESSION_ID, "task_complete", {
           response: localUrl,
         });
-        await new Promise((r) => setTimeout(r, 200));
+        await vi.waitFor(() => {
+          expect(handleMessage).toHaveBeenCalledTimes(1);
+        });
 
         const fetched = fetchMock.mock.calls.map(([url]) => String(url));
         expect(fetched).toContain(localUrl);
         expect(fetched).toContain(publicUrl);
         expect(spawnSession).not.toHaveBeenCalled();
-        expect(handleMessage).toHaveBeenCalledTimes(1);
         const posted = handleMessage.mock.calls[0]?.[1];
         expect(posted?.content?.metadata?.subAgentVerifiedUrls).toEqual([
           publicUrl,
@@ -2379,12 +2383,13 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: `The cached URL ${staleUrl} is stale; the app now uses ${freshUrl}`,
       });
-      await new Promise((r) => setTimeout(r, 200));
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       const fetched = fetchMock.mock.calls.map(([url]) => String(url));
       expect(fetched).toEqual([freshUrl]);
       expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).not.toContain("[verification:");
     });
