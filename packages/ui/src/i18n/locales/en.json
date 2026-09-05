@@ -4666,6 +4666,7 @@
   "settings.exportAgentShort": "Backup all data",
   "settings.filterConsoleLinesEGRpcFetchTalkmode404": "Filter console lines (e.g. rpc, fetch, talkmode, 404)",
   "settings.identity.loading": "Loading",
+  "settings.identity.previewFailed": "Couldn't play this voice preview. Check your connection and try again.",
   "settings.identity.previewVoice": "Preview Voice",
   "settings.identity.saveFailed": "Save Failed",
   "settings.identity.stopVoicePreview": "Stop Voice Preview",
