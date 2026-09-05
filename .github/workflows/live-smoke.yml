@@ -924,7 +924,7 @@ jobs:
               WHEN error ~ 'canceling statement due to statement timeout' THEN 'database_statement_timeout'
               WHEN error ~ 'Reviewed backup authority changed' THEN 'reviewed_backup_changed'
               WHEN error ~ 'Reviewed fresh-boot authority changed' THEN 'reviewed_fresh_boot_changed'
-              WHEN error ~* 'timed out|timeout' THEN 'timeout'
+              WHEN split_part(error, E'\n', 1) ~* 'timed out|timeout' THEN 'timeout'
               ELSE 'unclassified' END FROM latest_job),
             'organizationActive', (SELECT is_active FROM organization),
             'accountLifecycleState', (SELECT account_lifecycle_state FROM organization),

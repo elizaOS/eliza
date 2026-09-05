@@ -70,7 +70,7 @@ test("reads only the bound owner's latest provision error and emits closed terms
     );
 
     await db.query("UPDATE jobs SET error = $1 WHERE id = 'current'", [
-      "Unexpected operation failure\n at /private/provisioning-account-lifecycle-fence.ts:1:1",
+      "Unexpected operation failure\n at /private/provisioning-account-lifecycle-fence.ts:1:1\n at /private/with-timeout.ts:2:1",
     ]);
     const stackOnly = await db.query<{
       json_build_object: Record<string, unknown>;
@@ -78,7 +78,10 @@ test("reads only the bound owner's latest provision error and emits closed terms
     expect(stackOnly.rows[0].json_build_object).toMatchObject({
       failureKind: "unclassified",
       errorTerms: ["operation"],
-      stackFrames: ["provisioning-account-lifecycle-fence.ts:1:1"],
+      stackFrames: [
+        "provisioning-account-lifecycle-fence.ts:1:1",
+        "with-timeout.ts:2:1",
+      ],
     });
 
     await db.exec(`
