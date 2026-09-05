@@ -1527,10 +1527,9 @@ export class DockerNodeManager {
       },
     );
     try {
-      // Live staging showed graceful `systemctl restart docker` can hang when
-      // dockerd/containerd content ingest is already wedged. Stamp the cooldown
-      // before attempting the shared-host recovery, then force-kill dockerd and
-      // bounce containerd; live-restore plus container shims keep agents alive.
+      // Stamp the cooldown before recovery so a failed daemon restart cannot
+      // cause repeated disruption. The command requires live-restore and leaves
+      // containerd running while it replaces only dockerd's main process.
       state.lastSelfHealMs = Date.now();
       prePullFailureState.set(node.node_id, state);
       await ssh.exec(buildPrePullSelfHealRecoverCommand(), 120_000);

@@ -125,6 +125,11 @@ title check cover narrower contracts. None replaces the required
 `All Tests Passed` aggregate.
 Representative examples:
 
+- `cloud-tests.yml` distributes the complete unit manifest across four jobs with
+  `ELIZA_CLOUD_TEST_SHARD=index/total`. Each API unit file runs in a fresh process
+  to isolate module mocks and request bindings. The Vitest-only suites run once
+  on shard 1; every unit shard must succeed. Omit the shard variable for the full
+  local `bun run test:cloud` lane.
 - `gitleaks.yml` scans the develop tip inside Develop Full. `pr-static-smoke.yml` owns the
   equivalent diff-scoped pull-request secret scan on a hosted runner.
 - `quality.yml` supplies the extended homepage build and workspace format gate

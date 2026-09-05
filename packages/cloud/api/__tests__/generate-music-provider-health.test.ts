@@ -9,7 +9,31 @@
  * auth, rate limiting, pricing, credits, and the audio provider are mocked.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
+
+// These purchased-credit fixtures have no paid subscription. Keep the real
+// funding selector and reservation path while supplying that repository state.
+let entitlementLookup: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  entitlementLookup = spyOn(
+    subscriptionEntitlementsRepository,
+    "find",
+  ).mockResolvedValue(undefined);
+});
+afterEach(() => {
+  entitlementLookup.mockRestore();
+});
+
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit-hono-cloudflare";
 import * as audioRegistryActual from "@/lib/providers/audio/registry";
@@ -265,7 +289,7 @@ describe("generate-music provider health gate", () => {
     expect(stillOpen.status).toBe(200);
   });
 
-  test("failed requests that trip the breaker still refund their hold", async () => {
+  test("an ambiguous timeout retains the admitted charge while recording provider failure", async () => {
     const { state, reservation } = makeReservation();
     reserve.mockResolvedValueOnce(reservation);
     generateAudio.mockRejectedValueOnce(
@@ -274,6 +298,6 @@ describe("generate-music provider health gate", () => {
     const res = await post({ model: MINIMAX, prompt: "storm ambience" });
     expect(res.status).toBeGreaterThanOrEqual(500);
     expect(state.reconcileCalls).toBe(1);
-    expect(state.lastActual).toBe(0);
+    expect(state.lastActual).toBe(COST.totalCost);
   });
 });

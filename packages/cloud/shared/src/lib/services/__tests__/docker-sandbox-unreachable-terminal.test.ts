@@ -19,11 +19,11 @@
  * mocked to reject (no real SSH) and the in-memory container pre-seeded so no DB
  * lookup is needed.
  */
-import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 
-// Fake SSH client: getClient() returns an object whose exec() rejects with a
-// caller-controlled error. Registered BEFORE importing the provider so the
-// provider binds to this mock. This is the only thing we need to stub — the
+// Fake SSH transport: the dedicated client exec() rejects with a
+// caller-controlled error. Only the per-test dedicated-client factory is
+// replaced, so neighboring suites retain the real SSH class. The
 // container meta is pre-seeded in memory (no DB lookup), and the provider no
 // longer touches `allocated_count` at all, so no database is involved in the
 // stop path (#17185).
@@ -32,19 +32,11 @@ let execBehavior: (command: string) => Promise<string> = async () => {
   throw nextExecError;
 };
 let disconnectCalls = 0;
-mock.module("../docker-ssh", () => ({
-  DockerSSHClient: {
-    createDedicated: () => ({
-      exec: async (command: string) => execBehavior(command),
-      disconnect: async () => {
-        disconnectCalls += 1;
-      },
-    }),
-  },
-}));
+let sshFactorySpy: ReturnType<typeof spyOn>;
 
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import { DockerSandboxProvider } from "../docker-sandbox-provider";
+import { DockerSSHClient } from "../docker-ssh";
 
 const SANDBOX_ID = "agent-unreachable-test";
 
@@ -86,6 +78,26 @@ describe("DockerSandboxProvider deletion policy on unreachable node", () => {
       throw nextExecError;
     };
     disconnectCalls = 0;
+    sshFactorySpy = spyOn(DockerSSHClient, "createDedicated").mockImplementation(
+      (hostname, port, hostKeyFingerprint, username) => {
+        const client = new DockerSSHClient({
+          hostname,
+          port,
+          hostKeyFingerprint,
+          username,
+          privateKey: Buffer.from("test-only-ssh-key"),
+        });
+        spyOn(client, "exec").mockImplementation((command) => execBehavior(command));
+        spyOn(client, "disconnect").mockImplementation(async () => {
+          disconnectCalls += 1;
+        });
+        return client;
+      },
+    );
+  });
+
+  afterEach(() => {
+    sshFactorySpy.mockRestore();
   });
 
   test("reconnects before rm when the graceful stop loses its SSH transport", async () => {

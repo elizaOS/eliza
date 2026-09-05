@@ -148,6 +148,36 @@ export function formatBatchFiles(batch, root) {
   return batch.map((file) => `  - ${path.relative(root, file)}`).join("\n");
 }
 
+/** Assign complete batches once across CI jobs, preserving per-process isolation. */
+export function selectTestShard(batches, value) {
+  if (value === undefined) return batches;
+  const match = /^([1-9]\d*)\/([1-9]\d*)$/.exec(value);
+  if (!match) {
+    throw new Error(
+      "[test:cloud] ELIZA_CLOUD_TEST_SHARD must be index/total (one-based)",
+    );
+  }
+  const index = Number(match[1]);
+  const total = Number(match[2]);
+  if (
+    !Number.isSafeInteger(index) ||
+    !Number.isSafeInteger(total) ||
+    index > total
+  ) {
+    throw new Error(
+      "[test:cloud] ELIZA_CLOUD_TEST_SHARD has an invalid index or total",
+    );
+  }
+  if (total > batches.length) {
+    throw new Error(
+      "[test:cloud] ELIZA_CLOUD_TEST_SHARD would leave an empty job",
+    );
+  }
+  return batches.filter(
+    (_batch, batchIndex) => batchIndex % total === index - 1,
+  );
+}
+
 // Write straight to the stdout/stderr file descriptors. `process.stdout.write`
 // buffers asynchronously when the sink is a back-pressured pipe (the GitHub
 // Actions log collector is exactly that): each per-batch `bun test` dump queues
@@ -1239,18 +1269,33 @@ async function main() {
     process.exit(1);
   }
 
+  // Match cloud/api's package-local runner: its route fixtures replace shared
+  // modules and request bindings, which Bun's --isolate does not fully reset.
+  // Each API file needs an OS process so one fixture cannot affect the next.
+  for (const file of cloudApiUnitTests) isolatedTestFiles.add(file);
+
   const maxArgsChars =
     process.platform === "win32" ? MAX_ARGS_CHARS_WIN32 : MAX_ARGS_CHARS_POSIX;
   const maxFilesPerBatch =
     process.platform === "win32"
       ? MAX_FILES_PER_BATCH_WIN32
       : MAX_FILES_PER_BATCH;
-  const batches = chunkByBudget(
+  const allBatches = chunkByBudget(
     allTestFiles,
     maxFilesPerBatch,
     maxArgsChars,
     isolatedTestFiles,
   );
+  const batches = selectTestShard(
+    allBatches,
+    process.env.ELIZA_CLOUD_TEST_SHARD,
+  );
+  if (process.env.ELIZA_CLOUD_TEST_SHARD !== undefined) {
+    writeSyncAll(
+      1,
+      `[test:cloud] shard ${process.env.ELIZA_CLOUD_TEST_SHARD}: ${batches.length}/${allBatches.length} batches\n`,
+    );
+  }
 
   const writeOut = (text) => writeSyncAll(1, text);
   const writeErr = (text) => writeSyncAll(2, text);

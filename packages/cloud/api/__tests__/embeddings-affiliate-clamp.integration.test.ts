@@ -156,6 +156,8 @@ mock.module("@/lib/services/organization-inference-admission", () => ({
       },
       params.estimatedInputTokens,
       params.estimatedOutputTokens,
+      // This admission fixture authorizes purchased credits, with no paid plan.
+      { subscriptionFunded: false },
     );
     const settle = createCreditReservationSettler(reservation);
     return {

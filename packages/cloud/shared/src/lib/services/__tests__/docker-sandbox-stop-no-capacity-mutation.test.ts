@@ -14,24 +14,17 @@
  * failure — decides each path. `decrementAllocated` is spied, never stubbed out
  * of existence: the assertion is that the real method is never reached.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 
-// Scripted SSH transport. Registered BEFORE the provider import so the provider
-// binds to it. `exec` is caller-controlled per test, which is what lets one
-// harness cover success, already-absent, unreachable, and hard-failure paths.
+// The transport factory is replaced only while each test runs. A module-wide
+// replacement also changes the SSH class seen by neighboring health suites.
 let execBehavior: (command: string) => Promise<string> = async () => "";
-mock.module("../docker-ssh", () => ({
-  DockerSSHClient: {
-    createDedicated: () => ({
-      exec: async (command: string) => execBehavior(command),
-      disconnect: async () => {},
-    }),
-  },
-}));
+let sshFactorySpy: ReturnType<typeof spyOn>;
 
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import { DockerSandboxProvider } from "../docker-sandbox-provider";
+import { DockerSSHClient } from "../docker-ssh";
 
 const SANDBOX_ID = "agent-capacity-ownership-test";
 const NODE_ID = "node-1";
@@ -72,11 +65,26 @@ beforeEach(() => {
   delete process.env.HEADSCALE_API_KEY;
   delete process.env.CONTAINERS_PREPULL_SELF_HEAL_RESTART;
   delete process.env.ELIZA_CONTAINERS_PREPULL_SELF_HEAL_RESTART;
+  sshFactorySpy = spyOn(DockerSSHClient, "createDedicated").mockImplementation(
+    (hostname, port, hostKeyFingerprint, username) => {
+      const client = new DockerSSHClient({
+        hostname,
+        port,
+        hostKeyFingerprint,
+        username,
+        privateKey: Buffer.from("test-only-ssh-key"),
+      });
+      spyOn(client, "exec").mockImplementation((command) => execBehavior(command));
+      spyOn(client, "disconnect").mockResolvedValue(undefined);
+      return client;
+    },
+  );
   decrementSpy = spyOn(dockerNodesRepository, "decrementAllocated");
 });
 
 afterEach(() => {
   decrementSpy.mockRestore();
+  sshFactorySpy.mockRestore();
 });
 
 describe("provider stop never mutates node capacity", () => {

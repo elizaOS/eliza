@@ -7,6 +7,7 @@
 
 import {
   afterAll,
+  afterEach,
   beforeEach,
   describe,
   expect,
@@ -14,6 +15,21 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
+
+// These purchased-credit fixtures have no paid subscription. Keep the real
+// funding selector and reservation path while supplying that repository state.
+let entitlementLookup: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  entitlementLookup = spyOn(
+    subscriptionEntitlementsRepository,
+    "find",
+  ).mockResolvedValue(undefined);
+});
+afterEach(() => {
+  entitlementLookup.mockRestore();
+});
+
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as aiPricingActual from "@/lib/services/ai-pricing";
 import * as contentSafetyActual from "@/lib/services/content-safety";

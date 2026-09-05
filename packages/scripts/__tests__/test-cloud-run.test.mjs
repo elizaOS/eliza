@@ -12,6 +12,7 @@ import {
   mkdirSync,
   mkdtempSync,
   openSync,
+  readFileSync,
   readSync,
   rmSync,
   writeFileSync,
@@ -38,6 +39,7 @@ import {
   runBatches,
   runCommandWithWatchdog,
   runPreflightStep,
+  selectTestShard,
   terminateProcessTree,
   walkTests,
   windowsTaskkillInvocation,
@@ -125,6 +127,87 @@ describe("formatBatchFiles", () => {
     expect(formatBatchFiles(batch, root)).toBe(
       `  - ${join("packages", "a", "x.test.ts")}\n  - ${join("packages", "b", "y.spec.ts")}`,
     );
+  });
+});
+
+describe("CI batch sharding", () => {
+  it("runs every test once across all jobs while keeping API fixtures in fresh processes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "test-cloud-shards-"));
+    const output = join(root, "executed.jsonl");
+    const files = ["route-a", "route-b", "shared-a", "shared-b"].map((name) =>
+      join(root, `${name}.test.ts`),
+    );
+    try {
+      for (const [index, file] of files.entries()) {
+        writeFileSync(
+          file,
+          [
+            'import { test, expect } from "bun:test";',
+            'import { appendFileSync } from "node:fs";',
+            `test("request fixture ${index}", () => {`,
+            "  expect(process.env.CLOUD_FIXTURE_OWNER).toBeUndefined();",
+            `  process.env.CLOUD_FIXTURE_OWNER = ${JSON.stringify(file)};`,
+            `  appendFileSync(${JSON.stringify(output)}, JSON.stringify({ file: ${JSON.stringify(file)}, pid: process.pid }) + "\\n");`,
+            "});",
+          ].join("\n"),
+        );
+      }
+      const batches = chunkByBudget(files, 80, 100000, new Set(files));
+      let diagnostics = "";
+      for (let shard = 1; shard <= 2; shard += 1) {
+        const failed = await runBatches(
+          selectTestShard(batches, `${shard}/2`),
+          {
+            repoRoot: root,
+            stagingDir: root,
+            env: { ...process.env, CLOUD_FIXTURE_OWNER: undefined },
+            writeOut: (text) => {
+              diagnostics += text;
+            },
+            writeErr: (text) => {
+              diagnostics += text;
+            },
+            spawnBatch: (batch, options) =>
+              runCommandWithWatchdog(
+                "bun",
+                ["test", "--isolate", ...batch],
+                options,
+              ),
+          },
+        );
+        expect(failed, diagnostics).toBe(false);
+      }
+      const executions = readFileSync(output, "utf8")
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      expect(executions.map((entry) => entry.file).sort()).toEqual(
+        [...files].sort(),
+      );
+      expect(new Set(executions.map((entry) => entry.pid)).size).toBe(
+        files.length,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects malformed or empty shard selections before any dispatch", () => {
+    const batches = [["a"], ["b"]];
+    for (const value of [
+      "",
+      "0/2",
+      "2/1",
+      "1/0",
+      "1/3",
+      "1/2/3",
+      "1/9007199254740992",
+    ]) {
+      expect(() => selectTestShard(batches, value)).toThrow(
+        "ELIZA_CLOUD_TEST_SHARD",
+      );
+    }
+    expect(selectTestShard(batches, undefined)).toBe(batches);
   });
 });
 

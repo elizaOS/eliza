@@ -43,11 +43,16 @@ jobs:
   # twice per PR on the saturated runner fleet.
 
   unit-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    # Cloud unit tests can run past 25m on saturated self-hosted runners while still passing.
+    # Separate jobs bound suite duration; every batch belongs to exactly one shard.
     timeout-minutes: 40
     env:
       NODE_ENV: test
+      ELIZA_CLOUD_TEST_SHARD: ${{ matrix.shard }}/4
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
@@ -79,6 +84,7 @@ jobs:
       # (33 tests, in-process PGlite) actually executes instead of vacuously
       # skipping. Uses pglite://memory — no DB service required.
       - name: Run cloud vitest-only suites
+        if: matrix.shard == 1
         run: bun run --cwd packages/cloud/shared test:vitest
 
   integration-tests:

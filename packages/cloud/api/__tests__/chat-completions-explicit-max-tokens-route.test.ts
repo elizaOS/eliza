@@ -8,7 +8,30 @@
  * a spend limit and must pass through to the provider unchanged.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
+
+// These purchased-credit fixtures have no paid subscription. Keep the real
+// funding selector and reservation path while supplying that repository state.
+let entitlementLookup: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  entitlementLookup = spyOn(
+    subscriptionEntitlementsRepository,
+    "find",
+  ).mockResolvedValue(undefined);
+});
+afterEach(() => {
+  entitlementLookup.mockRestore();
+});
 
 // Keep the real modules so afterAll can restore them — bun's `mock.module` is
 // process-global and leaks into sibling test files in the same batch process
