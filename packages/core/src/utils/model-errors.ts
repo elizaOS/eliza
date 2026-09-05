@@ -10,6 +10,7 @@
  * instead of dead turns.
  */
 import { ElizaError } from "../errors";
+import { toWellFormedUnicode, truncateWellFormed } from "./well-formed";
 
 const TRANSIENT_MODEL_ERROR_PATTERNS = [
 	"service temporarily unavailable",
@@ -234,10 +235,11 @@ export function modelProviderErrorDetail(
 		if (responseBodyExcerpt === undefined) {
 			const body = (node as { responseBody?: unknown }).responseBody;
 			if (typeof body === "string" && body.trim().length > 0) {
-				responseBodyExcerpt = body
-					.replace(/\s+/g, " ")
-					.trim()
-					.slice(0, RESPONSE_BODY_EXCERPT_MAX_CHARS);
+				const cleaned = body.replace(/\s+/g, " ").trim();
+				responseBodyExcerpt = truncateWellFormed(
+					toWellFormedUnicode(cleaned),
+					RESPONSE_BODY_EXCERPT_MAX_CHARS,
+				);
 				providerMessage = providerMessageFromBody(body);
 			}
 		}
