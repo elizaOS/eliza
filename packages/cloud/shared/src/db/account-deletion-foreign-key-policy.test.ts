@@ -27,7 +27,7 @@ describe("account deletion full-schema foreign-key policy", () => {
       .update(descriptors.map(serializeDescriptor).join("\n"))
       .digest("hex");
 
-    expect(descriptors).toHaveLength(248);
+    expect(descriptors).toHaveLength(250);
     expect(digest).toBe(ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256);
   });
 
@@ -37,10 +37,10 @@ describe("account deletion full-schema foreign-key policy", () => {
       action: classifyAccountDeletionForeignKey(descriptor),
     }));
 
-    expect(classified).toHaveLength(248);
+    expect(classified).toHaveLength(250);
     expect(classified.every(({ action }) => Boolean(action))).toBe(true);
     expect(classified.filter(({ action }) => action === "reconcile_external_resource").length).toBe(
-      73,
+      75,
     );
     expect(classified.filter(({ action }) => action === "transfer_shared_resource").length).toBe(
       11,
@@ -79,6 +79,32 @@ describe("account deletion full-schema foreign-key policy", () => {
       onDelete: "cascade",
     });
     expect(classifyAccountDeletionForeignKey(admissionWork!)).toBe("reconcile_external_resource");
+  });
+
+  test("requires reconciliation before deleting outreachr delegations", () => {
+    const delegations = listAccountDeletionForeignKeys().filter(
+      ({ sourceTable }) => sourceTable === "outreachr_delegations",
+    );
+
+    expect(delegations).toEqual([
+      {
+        sourceTable: "outreachr_delegations",
+        sourceColumns: "organization_id",
+        targetTable: "organizations",
+        targetColumns: "id",
+        onDelete: "cascade",
+      },
+      {
+        sourceTable: "outreachr_delegations",
+        sourceColumns: "user_id",
+        targetTable: "users",
+        targetColumns: "id",
+        onDelete: "cascade",
+      },
+    ]);
+    for (const descriptor of delegations) {
+      expect(classifyAccountDeletionForeignKey(descriptor)).toBe("reconcile_external_resource");
+    }
   });
 
   test("anonymizes all four billing-cancel subject relationships", () => {
