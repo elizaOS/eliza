@@ -800,33 +800,47 @@ describe("chat save flow", () => {
 });
 
 describe("coding save flow", () => {
-  it("saves without confirmation or restart and shows the no-restart copy", async () => {
-    clientMock.updateModelsConfig.mockResolvedValue({
-      kind: "applied",
-      restart: false,
-      keys: ["ELIZA_CODEX_MODEL_POWERFUL", "ELIZA_CODEX_EFFORT"],
-    });
-    await renderReady();
+  it.each([true, false])(
+    "saves coding settings without changing chat when chat controls are visible: %s",
+    async (showChatModels) => {
+      clientMock.updateModelsConfig.mockResolvedValue({
+        kind: "applied",
+        restart: false,
+        keys: ["ELIZA_CODEX_MODEL_POWERFUL", "ELIZA_CODEX_EFFORT"],
+      });
+      render(<ModelConfigurationPanel showChatModels={showChatModels} />);
+      await waitFor(() =>
+        expect(agentElements.has("models-coding-save")).toBe(true),
+      );
+      if (!showChatModels) {
+        expect(
+          document.querySelector('[data-agent-id="models-small-provider"]'),
+        ).toBeNull();
+        expect(
+          document.querySelector('[data-agent-id="models-large-provider"]'),
+        ).toBeNull();
+      }
 
-    act(() => agentButton("models-coding-save").click());
-    await waitFor(() =>
-      expect(clientMock.updateModelsConfig).toHaveBeenCalledWith({
-        target: "coding",
-        backend: "codex",
-        model: "gpt-5.6-terra",
-        effort: "medium",
-        // codex is the persisted ELIZA_DEFAULT_AGENT_TYPE, so the default
-        // switch is prefilled on.
-        defaultBackend: "codex",
-      }),
-    );
+      act(() => agentButton("models-coding-save").click());
+      await waitFor(() =>
+        expect(clientMock.updateModelsConfig).toHaveBeenCalledWith({
+          target: "coding",
+          backend: "codex",
+          model: "gpt-5.6-terra",
+          effort: "medium",
+          // codex is the persisted ELIZA_DEFAULT_AGENT_TYPE, so the default
+          // switch is prefilled on.
+          defaultBackend: "codex",
+        }),
+      );
 
-    expect(
-      await screen.findByText("Saved. Applies to the next coding task."),
-    ).toBeTruthy();
-    expect(clientMock.getStatus).not.toHaveBeenCalled();
-    expect(clientMock.restartAgent).not.toHaveBeenCalled();
-  });
+      expect(
+        await screen.findByText("Saved. Applies to the next coding task."),
+      ).toBeTruthy();
+      expect(clientMock.getStatus).not.toHaveBeenCalled();
+      expect(clientMock.restartAgent).not.toHaveBeenCalled();
+    },
+  );
 
   it("posts the eliza-code wire value with a free-form model and no effort", async () => {
     clientMock.updateModelsConfig.mockResolvedValue({
