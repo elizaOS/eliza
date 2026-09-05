@@ -108,7 +108,7 @@ describe("v1 route URL builders", () => {
 describe("configuredCloudVoiceOrigin (boot-config cloud worker origin, #16116)", () => {
   it("returns the boot-config cloud origin (default production)", () => {
     setBootConfig({ branding: {}, cloudApiBase: "https://elizacloud.ai" });
-    expect(configuredCloudVoiceOrigin()).toBe("https://elizacloud.ai");
+    expect(configuredCloudVoiceOrigin()).toBe("https://api.eliza.app");
   });
 
   it("honors a staging/custom origin (not hardcoded to production)", () => {
@@ -116,7 +116,7 @@ describe("configuredCloudVoiceOrigin (boot-config cloud worker origin, #16116)",
       branding: {},
       cloudApiBase: "https://staging.elizacloud.ai",
     });
-    expect(configuredCloudVoiceOrigin()).toBe("https://staging.elizacloud.ai");
+    expect(configuredCloudVoiceOrigin()).toBe("https://api-staging.eliza.app");
   });
 
   it("strips a trailing /api/v1 and trailing slashes", () => {
