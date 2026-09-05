@@ -115,7 +115,10 @@ declared loopback proxy ports. The root launcher clears its environment and
 consumes a strict caller-owned environment file from a private temporary
 directory outside uploaded artifacts, then deletes both. Kernel seccomp and
 namespace ownership enforce the boundary even if a nested user namespace
-regains capabilities. The
+regains capabilities. Cleanup transfers retained artifact ownership to the
+caller before removing the sandbox identity. If processes survive or ownership
+cannot be transferred, the identity and its restrictions remain and the run
+fails for operator cleanup. The
 pinned-Bun preload remains application-level diagnostics; private `/run`,
 `/tmp`, and `/var/tmp` mounts plus syscall denial for `socketpair` and all
 io_uring entry points close host AF_UNIX delegation paths. The kernel boundary

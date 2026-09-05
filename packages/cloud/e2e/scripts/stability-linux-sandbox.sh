@@ -67,6 +67,8 @@ grant_output_search_acls() {
   done
 }
 
+sandbox_uid_has_processes() { /usr/bin/pgrep -u "$SANDBOX_UID" >/dev/null 2>&1; }
+
 sandbox_cleanup() {
   [ "$SANDBOX_CLEANED" -eq 0 ] || return "$SANDBOX_CLEANUP_STATUS"
   SANDBOX_CLEANED=1
@@ -74,12 +76,28 @@ sandbox_cleanup() {
   if [[ "$SANDBOX_UID" =~ ^[1-9][0-9]*$ ]]; then
     /usr/bin/pkill -KILL -u "$SANDBOX_UID" 2>/dev/null
     for _ in $(/usr/bin/seq 1 100); do
-      /usr/bin/pgrep -u "$SANDBOX_UID" >/dev/null 2>&1 || break
+      sandbox_uid_has_processes || break
       /bin/sleep 0.02
     done
-    if /usr/bin/pgrep -u "$SANDBOX_UID" >/dev/null 2>&1; then
-      echo "[cloud-stability-sandbox] sandbox UID retained a process" >&2
+    if sandbox_uid_has_processes; then
+      echo "[cloud-stability-sandbox] UID $SANDBOX_UID retained a process; identity, firewall, and ACL restrictions remain for operator cleanup" >&2
       SANDBOX_CLEANUP_STATUS=1
+      return "$SANDBOX_CLEANUP_STATUS"
+    fi
+  fi
+  if [ -n "$SANDBOX_OUTPUT_DIR" ] && [[ "$SANDBOX_UID" =~ ^[1-9][0-9]*$ ]]; then
+    local caller_group remaining_owned
+    caller_group="$(/usr/bin/stat -c %g "$SANDBOX_OUTPUT_DIR")"
+    if ! [[ "$caller_group" =~ ^[0-9]+$ ]] ||
+      ! /usr/bin/chown --no-dereference -R --from="$SANDBOX_UID" "$SANDBOX_CALLER_UID:$caller_group" "$SANDBOX_OUTPUT_DIR"; then
+      echo "[cloud-stability-sandbox] artifact ownership transfer failed; UID $SANDBOX_UID and containment remain for operator cleanup" >&2
+      SANDBOX_CLEANUP_STATUS=1
+      return "$SANDBOX_CLEANUP_STATUS"
+    fi
+    if ! remaining_owned="$(/usr/bin/find "$SANDBOX_OUTPUT_DIR" -uid "$SANDBOX_UID" -print -quit)" || [ -n "$remaining_owned" ]; then
+      echo "[cloud-stability-sandbox] artifacts retain UID $SANDBOX_UID; identity and containment remain for operator cleanup" >&2
+      SANDBOX_CLEANUP_STATUS=1
+      return "$SANDBOX_CLEANUP_STATUS"
     fi
   fi
   if [ "$SANDBOX_IPV4_JUMP" -eq 1 ] && ! /usr/sbin/iptables -w 5 -D OUTPUT -m owner --uid-owner "$SANDBOX_UID" -j "$SANDBOX_CHAIN"; then SANDBOX_CLEANUP_STATUS=1; fi
@@ -273,8 +291,10 @@ PY
   return "$execution_status"
 }
 
+if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
 case "${1:-}" in
   setup) shift; setup "$@" ;;
   run) shift; run "$@" ;;
   *) die "usage: $0 setup | run PORTS REPO OUTPUT CALLER_HOME CALLER_UID ENV COMMAND [ARG ...]" ;;
 esac
+fi

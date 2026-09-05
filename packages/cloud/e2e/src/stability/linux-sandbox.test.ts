@@ -728,6 +728,9 @@ setInterval(() => {}, 1000);
         Bun.sleep(10_000).then(() => false),
       ]);
       expect(closed).toBe(true);
+      const retainedStat = await stat(readyPath);
+      expect(retainedStat.uid).toBe(process.getuid?.());
+      expect(retainedStat.gid).toBe((await stat(directory)).gid);
       expect(
         spawnSync("pgrep", ["-u", String(ready.hostUid)], {
           stdio: "ignore",
@@ -757,4 +760,67 @@ setInterval(() => {}, 1000);
     }
   },
   30_000,
+);
+
+// The real cleanup function owns real user/firewall/ACL fixtures. Only the
+// process observer models a kernel that still reports a process after SIGKILL.
+test.skipIf(!hostedLinux)(
+  "failed process reaping preserves identity and containment",
+  async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "sandbox-survivor-"));
+    const launcher = path.join(
+      repoRoot,
+      "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+    );
+    const script = `
+source "$1"
+name="eliza-test-${process.pid}-$RANDOM"
+chain="ELIZA_TEST_$$"
+uid=""
+cleanup_fixture() {
+  /usr/sbin/iptables -w 5 -D OUTPUT -m owner --uid-owner "$uid" -j "$chain" 2>/dev/null || true
+  /usr/sbin/iptables -w 5 -F "$chain" 2>/dev/null || true
+  /usr/sbin/iptables -w 5 -X "$chain" 2>/dev/null || true
+  /usr/bin/setfacl -x "u:$uid" "$2" 2>/dev/null || true
+  /usr/sbin/userdel "$name" 2>/dev/null || true
+}
+/usr/sbin/useradd --system --no-create-home --shell /usr/sbin/nologin "$name"
+uid="$(/usr/bin/id -u "$name")"
+trap 'cleanup_fixture "$1" "$2"' EXIT
+/usr/sbin/iptables -w 5 -N "$chain"
+/usr/sbin/iptables -w 5 -A "$chain" -j REJECT
+/usr/sbin/iptables -w 5 -A OUTPUT -m owner --uid-owner "$uid" -j "$chain"
+/usr/bin/setfacl -m "u:$uid:rwx" "$2"
+acl="$(/usr/bin/getfacl -cpn "$2")"
+SANDBOX_USER="$name"
+SANDBOX_UID="$uid"
+SANDBOX_OUTPUT_DIR="$2"
+SANDBOX_CHAIN="$chain"
+SANDBOX_IPV4_CHAIN=1
+SANDBOX_IPV4_JUMP=1
+SANDBOX_CLEANED=0
+sandbox_uid_has_processes() { return 0; }
+if sandbox_cleanup; then exit 90; fi
+set -e
+/usr/bin/getent passwd "$name" >/dev/null
+/usr/sbin/iptables -w 5 -C OUTPUT -m owner --uid-owner "$uid" -j "$chain"
+[ "$(/usr/bin/getfacl -cpn "$2")" = "$acl" ]
+echo preserved
+`;
+    try {
+      const result = spawnSync(
+        "sudo",
+        ["-n", "/bin/bash", "-c", script, "survivor-test", launcher, directory],
+        { encoding: "utf8", timeout: 15_000 },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout.trim()).toBe("preserved");
+      expect(result.stderr).toContain(
+        "restrictions remain for operator cleanup",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  20_000,
 );
