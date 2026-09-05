@@ -129,9 +129,7 @@ describe("ChatMessage reply-generation failure recovery", () => {
       );
 
       expect(screen.getByText(terminalFailure.message)).not.toBeNull();
-      expect(
-        screen.queryByRole("button", { name: "Retry", exact: true }),
-      ).toBeNull();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
       expect(onRetry).not.toHaveBeenCalled();
 
       view.rerender(
@@ -149,9 +147,7 @@ describe("ChatMessage reply-generation failure recovery", () => {
           onRetry={onRetry}
         />,
       );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Retry", exact: true }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
       expect(onRetry).toHaveBeenCalledExactlyOnceWith(message.id);
     },
   );

@@ -124,6 +124,7 @@ import {
 } from "../../state/useStreamingText";
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
+import { ViewHeader } from "../shared/ViewHeader";
 import { ChatOverlay, PillHandle } from "./ChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
@@ -1854,6 +1855,52 @@ describe("ChatOverlay", () => {
     fireEvent.pointerDown(document.body);
     expect(document.activeElement).not.toBe(input);
   });
+
+  it.each(["mouse", "touch"])(
+    "lets a %s tap activate the view back button without consuming the chat draft",
+    (pointerType) => {
+      function ActiveView() {
+        const [notesOpen, setNotesOpen] = React.useState(true);
+        return (
+          <>
+            {notesOpen ? (
+              <ViewHeader title="Notes" onBack={() => setNotesOpen(false)} />
+            ) : (
+              <h1>Home</h1>
+            )}
+            <ChatOverlay controller={makeController()} />
+          </>
+        );
+      }
+      render(<ActiveView />);
+      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+      // Model handoffs keep an already-open chat focused. Unlike focus from
+      // collapsed, outside pointerdown must not unmount the capture handlers.
+      fireEvent.focus(input);
+      act(() => input.focus());
+      fireEvent.change(input, { target: { value: "Keep this draft" } });
+      const back = screen.getByRole("button", { name: "Back to launcher" });
+      const icon = back.querySelector("svg");
+      if (!icon) throw new Error("Back control must render its icon target");
+      const pointer = {
+        pointerId: 41,
+        pointerType,
+        button: 0,
+        clientX: 24,
+        clientY: 24,
+      };
+      fireEvent.pointerDown(icon, pointer);
+      fireEvent.pointerUp(icon, pointer);
+      fireEvent.click(icon, { clientX: 24, clientY: 24 });
+
+      expect(screen.getByRole("heading", { name: "Home" })).toBeTruthy();
+      expect(screen.queryByRole("heading", { name: "Notes" })).toBeNull();
+      expect(input.value).toBe("Keep this draft");
+      expect(
+        screen.getByTestId("chat-sheet").getAttribute("data-variant"),
+      ).toBe("open");
+    },
+  );
 
   it("composes multi-line with an auto-growing textarea (Enter still sends)", () => {
     const controller = makeController();

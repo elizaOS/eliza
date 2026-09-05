@@ -13,22 +13,26 @@
  *  - `showBack={false}` opts a view out of the back control cleanly.
  */
 
+import { resolveSurfaceManifest } from "@elizaos/core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  SurfaceRealmDeniedError,
+  SurfaceRealmScope,
+  setActiveSurfaceRealmScope,
+} from "../../surface-realm-broker";
 
 vi.mock("../../agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
-}));
-
-vi.mock("../../navigation", () => ({
-  shouldUseHashNavigation: () => true,
 }));
 
 import { ViewHeader } from "./ViewHeader";
 
 afterEach(() => {
   cleanup();
-  window.location.hash = "";
+  setActiveSurfaceRealmScope(null);
+  window.history.replaceState(null, "", "/");
 });
 
 describe("ViewHeader — standardized normal-view header (#13451)", () => {
@@ -46,18 +50,58 @@ describe("ViewHeader — standardized normal-view header (#13451)", () => {
     expect(kids.indexOf(back)).toBe(0);
   });
 
-  it("invokes the launcher navigation on back by default", () => {
+  it("invokes launcher hash navigation in an app window", () => {
+    window.history.replaceState(null, "", "/index.html?appWindow=1#/documents");
     render(<ViewHeader title="Knowledge" />);
     fireEvent.click(screen.getByRole("button", { name: /back/i }));
     expect(window.location.hash).toBe("#/views");
+    expect(window.location.pathname).toBe("/index.html");
+  });
+
+  it("permits shell back through an active view's real history guard", () => {
+    window.history.replaceState(null, "", "/notes");
+    const scope = new SurfaceRealmScope(
+      resolveSurfaceManifest({ surface: { capabilities: [] } }),
+      "notes",
+      window.localStorage,
+      () => {
+        throw new Error("The shared shell back must not use the view facade");
+      },
+    );
+    setActiveSurfaceRealmScope(scope);
+    expect(() => window.history.pushState(null, "", "/views")).toThrow(
+      SurfaceRealmDeniedError,
+    );
+    const navigationEvent = vi.fn();
+    window.addEventListener("popstate", navigationEvent);
+    try {
+      render(<ViewHeader title="Notes" />);
+      fireEvent.click(screen.getByRole("button", { name: "Back to launcher" }));
+      expect(window.location.pathname).toBe("/views");
+      expect(navigationEvent).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("popstate", navigationEvent);
+    }
   });
 
   it("routes a sub-view's back through the supplied onBack handler", () => {
-    const onBack = vi.fn();
-    render(<ViewHeader title="AI Model" onBack={onBack} />);
-    fireEvent.click(screen.getByRole("button", { name: /back/i }));
-    expect(onBack).toHaveBeenCalledTimes(1);
+    window.history.replaceState(null, "", "/settings/model");
+    function SettingsSubview() {
+      const [section, setSection] = useState("AI Model");
+      return (
+        <ViewHeader
+          title={section}
+          onBack={() => setSection("Settings")}
+          backLabel="Back to Settings"
+        />
+      );
+    }
+    render(<SettingsSubview />);
+    fireEvent.click(screen.getByRole("button", { name: "Back to Settings" }));
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "AI Model" })).toBeNull();
     // A scoped onBack must not also fire the launcher fallback.
+    expect(window.location.pathname).toBe("/settings/model");
     expect(window.location.hash).toBe("");
   });
 

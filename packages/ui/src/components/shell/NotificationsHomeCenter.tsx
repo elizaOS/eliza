@@ -81,6 +81,7 @@ import {
   retryNotificationHydration,
   useNotifications,
 } from "../../state/notifications/notification-store";
+import { isInteractiveGestureTarget } from "../../utils/interactive-gesture-target";
 import {
   ClearConfirmationContent,
   groupDashboardNotifications,
@@ -93,7 +94,6 @@ import {
   CLEAR_CONFIRM_TIMEOUT_MS,
   EMPTY_PULL_COMMIT_PX,
   isClickBelowNotificationCards,
-  isInteractiveGestureTarget,
   MAX_PULL_PREVIEW_GROUPS,
   MAX_RENDERED_ROWS,
   MAX_VISIBLE_STACK_LAYERS,

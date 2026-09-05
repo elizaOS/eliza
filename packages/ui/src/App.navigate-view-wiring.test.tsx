@@ -1,4 +1,8 @@
-/** Verifies App navigate-view event wiring through the package's configured test harness. */
+/**
+ * Verifies rendered App navigation with deterministic service/page fixtures.
+ * Launcher-back cases compose the real AppProvider navigation hooks, history,
+ * and surface-realm guards; older event cases retain their tab spy.
+ */
 // @vitest-environment jsdom
 
 /**
@@ -21,7 +25,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type * as React from "react";
+import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentButton, getViewRegistry } from "./agent-surface";
 import { registerAppShellPage } from "./app-shell-registry";
@@ -30,9 +34,49 @@ import { DEFAULT_BRANDING } from "./config/branding-base";
 import { BrandingContext } from "./config/branding-react.hooks";
 import type { AuthStatusState } from "./hooks/useAuthStatus";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
+import {
+  getWindowNavigationPath,
+  resolveInitialTabForPath,
+  type Tab,
+} from "./navigation";
 import { resetUiRegistryHostForTests } from "./registry-host";
-import { getActiveSurfaceRealmScope } from "./surface-realm-broker";
+import { useNavigationPathSync } from "./state/useAppProviderEffects";
+import { useNavigationState } from "./state/useNavigationState";
+import {
+  getActiveSurfaceRealmScope,
+  SurfaceRealmDeniedError,
+} from "./surface-realm-broker";
 import { shellHistory } from "./surface-realm-channel";
+
+const NavigationHarnessContext = React.createContext<{
+  tab: Tab;
+  setTab: ReturnType<typeof useNavigationState>["setTab"];
+  navigation: ReturnType<typeof useNavigationState>["navigation"];
+} | null>(null);
+
+function AppWithRealNavigation() {
+  // Match AppProvider's actual state + navigation composition. No test event
+  // listener or manual rerender may stand in for the production path sync.
+  const [tab, setTabRaw] = React.useState<Tab>(() =>
+    resolveInitialTabForPath(getWindowNavigationPath(), "chat"),
+  );
+  const [, setAppsSubTab] = React.useState<"browse" | "running" | "games">(
+    "browse",
+  );
+  const { setTab, navigation } = useNavigationState({
+    tab,
+    setTabRaw,
+    uiShellMode: "native",
+    hasActiveGameRun: false,
+    setAppsSubTab,
+  });
+  useNavigationPathSync({ tab, setTabRaw });
+  return (
+    <NavigationHarnessContext.Provider value={{ tab, setTab, navigation }}>
+      <App />
+    </NavigationHarnessContext.Provider>
+  );
+}
 
 const appState = vi.hoisted(() => ({
   backendConnectionState: "connected",
@@ -457,15 +501,19 @@ vi.mock("./state", async () => {
     uiTheme: "light",
     uiThemeMode: "system",
   });
+  function useAppValue() {
+    const navigation = React.useContext(NavigationHarnessContext);
+    return { ...getAppValue(), ...navigation };
+  }
   return {
     ACCENT_PRESETS,
-    useApp: () => getAppValue(),
+    useApp: useAppValue,
     useAppSelector: <T,>(
-      selector: (s: ReturnType<typeof getAppValue>) => T,
-    ): T => selector(getAppValue()),
+      selector: (s: ReturnType<typeof useAppValue>) => T,
+    ): T => selector(useAppValue()),
     useAppSelectorShallow: <T,>(
-      selector: (s: ReturnType<typeof getAppValue>) => T,
-    ): T => selector(getAppValue()),
+      selector: (s: ReturnType<typeof useAppValue>) => T,
+    ): T => selector(useAppValue()),
   };
 });
 
@@ -1098,6 +1146,75 @@ describe("App navigate-view event wiring", () => {
     expect(getAllByTestId("view-header")).toHaveLength(1);
     expect(getByTestId("view-header").textContent).toContain("Signed Normal");
   });
+
+  it.each([
+    { strictMode: false, entry: "direct" },
+    { strictMode: true, entry: "direct" },
+    { strictMode: false, entry: "navigate-view" },
+    { strictMode: true, entry: "navigate-view" },
+  ])(
+    "returns from Notes to the launcher through guarded history navigation ($entry, StrictMode=$strictMode)",
+    async ({ strictMode, entry }) => {
+      electrobunRuntimeState.enabled = false;
+      registerAppShellPage({
+        id: "notes",
+        pluginId: "@elizaos/plugin-notes",
+        label: "Notes",
+        path: "/notes",
+        surface: { header: "normal", capabilities: [] },
+        Component: () => (
+          <section aria-label="Notes fixture">A saved note</section>
+        ),
+      });
+      window.history.replaceState(
+        null,
+        "",
+        entry === "direct" ? "/notes" : "/views",
+      );
+      render(
+        strictMode ? (
+          <React.StrictMode>
+            <AppWithRealNavigation />
+          </React.StrictMode>
+        ) : (
+          <AppWithRealNavigation />
+        ),
+      );
+      if (entry === "navigate-view") {
+        await screen.findByTestId("launcher-surface");
+        navigateView({ viewId: "notes", viewPath: "/notes" });
+      }
+
+      await screen.findByRole("region", { name: "Notes fixture" });
+      expect(screen.getByRole("heading", { name: "Notes" })).toBeTruthy();
+      expect(getActiveSurfaceRealmScope()?.viewId).toBe("notes");
+      // Prove the guard is armed, not just that a scope-shaped object exists.
+      expect(() => window.history.pushState(null, "", "/views")).toThrow(
+        SurfaceRealmDeniedError,
+      );
+      expect(window.location.pathname).toBe("/notes");
+
+      fireEvent.click(screen.getByRole("button", { name: "Back to launcher" }));
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe("/views");
+        expect(screen.getByTestId("launcher-surface")).toBeTruthy();
+        expect(
+          screen.queryByRole("region", { name: "Notes fixture" }),
+        ).toBeNull();
+        expect(screen.queryByRole("heading", { name: "Notes" })).toBeNull();
+        expect(getActiveSurfaceRealmScope()?.viewId).not.toBe("notes");
+      });
+      // A second real browser event must not resurrect stale provider tab state.
+      act(() => window.dispatchEvent(new PopStateEvent("popstate")));
+      expect(window.location.pathname).toBe("/views");
+      expect(screen.getByTestId("launcher-surface")).toBeTruthy();
+      expect(
+        screen.queryByRole("region", { name: "Notes fixture" }),
+      ).toBeNull();
+      expect(appState.setTab).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps modal remote pages headerless without treating them as fullscreen", async () => {
     mockAvailableViews.push(modalView);

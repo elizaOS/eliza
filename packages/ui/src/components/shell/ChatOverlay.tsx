@@ -127,6 +127,7 @@ import {
   MAX_CHAT_IMAGES,
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
+import { isInteractiveGestureTarget } from "../../utils/interactive-gesture-target";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { findChoiceRegions } from "../chat/message-choice-parser";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
@@ -4737,7 +4738,10 @@ export function ChatOverlay({
       // audio-unlock chip) is INSIDE — see isOverlayControlTarget's contract.
       if (
         isOverlayControlTarget(event.target) ||
-        isAboveShellOverlay(event.target)
+        isAboveShellOverlay(event.target) ||
+        // View controls remain usable beneath the non-modal chat. Consuming
+        // their pointerup also ate Back/navigation clicks after model handoffs.
+        isInteractiveGestureTarget(event.target)
       ) {
         outsideSheetPointerRef.current = null;
         return;
