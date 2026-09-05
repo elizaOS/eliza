@@ -36,6 +36,11 @@ import {
 	toWellFormedUnicode,
 	truncateWellFormed,
 } from "../utils/well-formed.ts";
+import {
+	formatRecentMessages,
+	getRoomTranscript,
+	ROOM_TRANSCRIPT_HEADING,
+} from "./evaluator-transcript.ts";
 
 type PreparedEntry = {
 	evaluator: RegisteredEvaluator;
@@ -147,6 +152,9 @@ ${part("responseTexts")}
 Action results:
 ${part("actionResults", "[]")}
 
+${ROOM_TRANSCRIPT_HEADING} (complete, oldest first):
+${part("roomTranscript")}
+
 Provider context:
 ${part("providerContext")}
 `;
@@ -180,6 +188,8 @@ function buildPrompt(params: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
+	/** Complete room transcript, or null when the read failed this turn. */
+	roomTranscript: Memory[] | null;
 	active: PreparedEntry[];
 	options: EvaluatorRunOptions;
 }): string {
@@ -207,7 +217,16 @@ function buildPrompt(params: {
 				}).text
 			: stringifyForPrompt(actionResults ?? []),
 		providerContext,
+		// Rendered once here; sections refer to it instead of embedding their
+		// own copy (live 2026-09-05: five copies of the room history per call).
+		// A failed transcript read leaves sections on their own copies so the
+		// failure isolates per evaluator exactly as before.
+		roomTranscript:
+			params.roomTranscript === null
+				? "(unavailable this turn)"
+				: formatRecentMessages(params.roomTranscript),
 	};
+	const shared = { roomTranscriptRendered: params.roomTranscript !== null };
 
 	const sections: PromptSection[] = active.map(({ evaluator, prepared }) => {
 		const section = evaluator.prompt({
@@ -216,6 +235,7 @@ function buildPrompt(params: {
 			state,
 			options,
 			prepared,
+			shared,
 		});
 		return {
 			name: evaluator.name,
@@ -775,11 +795,18 @@ export class EvaluatorService extends BaseService {
 			return this.skippedResult({ errors });
 		}
 
-		const composedState = await this.composeEvaluatorState(
-			message,
-			state,
-			active,
-		);
+		const [composedState, roomTranscript] = await Promise.all([
+			this.composeEvaluatorState(message, state, active),
+			getRoomTranscript(this.runtime, message).catch((error: unknown) => {
+				// error-policy:J7 the shared transcript is a dedupe of what each
+				// evaluator reads for itself; its failure is reported and the
+				// sections fall back to their own reads, which isolate per evaluator.
+				this.runtime.reportError("EvaluatorService.roomTranscript", error, {
+					roomId: message.roomId,
+				});
+				return null;
+			}),
+		]);
 		const preparedEntries = await this.collectPreparedEntries(
 			active,
 			message,
@@ -816,6 +843,7 @@ export class EvaluatorService extends BaseService {
 			runtime: this.runtime,
 			message,
 			state: composedState,
+			roomTranscript,
 			active: preparedEntries,
 			options,
 		});

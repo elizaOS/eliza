@@ -24,6 +24,11 @@ import z from "zod";
 import { getEntityDetails } from "../../../entities.ts";
 import { renderActionResultsForModel } from "../../../runtime/planner-rendering.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import {
+	formatRecentMessages,
+	getRoomTranscript,
+	recentMessagesSection,
+} from "../../../services/evaluator-transcript.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
 	ActionResult,
@@ -409,22 +414,7 @@ function formatKnownLines(memories: Memory[], kind: FactKind): string {
 	return lines.length > 0 ? lines.join("\n") : "(none)";
 }
 
-export function formatRecentMessages(memories: Memory[]): string {
-	const lines: string[] = [];
-	for (const memory of memories) {
-		if (isSyntheticConversationArtifactMemory(memory)) continue;
-		const text = memory.content.text;
-		if (typeof text !== "string" || !text.trim()) continue;
-		const senderName =
-			(typeof memory.content.senderName === "string" &&
-				memory.content.senderName) ||
-			(typeof memory.content.name === "string" && memory.content.name) ||
-			memory.entityId ||
-			"someone";
-		lines.push(`- ${senderName}: ${text}`);
-	}
-	return lines.length > 0 ? lines.join("\n") : "(none)";
-}
+export { formatRecentMessages };
 
 function formatEntities(entities: Entity[]): string {
 	if (entities.length === 0) return "(none)";
@@ -477,20 +467,14 @@ async function prepareReflectionContext(
 	if (existing) return existing;
 	const prepared = (async () => {
 		const agentId = message.agentId ?? runtime.agentId;
-		const [recentMessagesRaw, existingRelationships, entities] =
-			await Promise.all([
-				runtime.getMemories({
-					tableName: "messages",
-					roomId: message.roomId,
-					unique: false,
-				}),
+		const [recentMessages, existingRelationships, entities] = await Promise.all(
+			[
+				getRoomTranscript(runtime, message),
 				runtime.getRelationships({
 					entityIds: message.entityId ? [message.entityId, agentId] : [agentId],
 				}),
 				getEntityDetails({ runtime, roomId: message.roomId }),
-			]);
-		const recentMessages = recentMessagesRaw.filter(
-			(memory) => !isSyntheticConversationArtifactMemory(memory),
+			],
 		);
 		return {
 			recentMessages,
@@ -979,7 +963,7 @@ export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 	async prepare({ runtime, message }) {
 		return prepareFacts(runtime, message);
 	},
-	prompt({ prepared }) {
+	prompt({ prepared, shared }) {
 		const { durable, current } = partitionByKind(prepared.knownFacts);
 		return `Find stable/current facts about speaker.
 
@@ -1002,8 +986,7 @@ Rules:
   life_event/goal: event, to, goal, domain.
   Omit unknown fields; do not invent values.
 
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}
+${recentMessagesSection(shared, prepared.recentMessages)}
 
 Known durable facts:
 ${formatKnownLines(durable, "durable")}
@@ -1094,7 +1077,7 @@ export const relationshipEvaluator: Evaluator<
 	async prepare({ runtime, message }) {
 		return prepareReflectionContext(runtime, message);
 	},
-	prompt({ prepared }) {
+	prompt({ prepared, shared }) {
 		return `Find semantic relationship changes between participants.
 
 Rules:
@@ -1103,8 +1086,7 @@ Rules:
 - Directional: sourceEntityId initiates, targetEntityId receives.
 - Nothing changed -> {"relationships":[]}.
 
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}
+${recentMessagesSection(shared, prepared.recentMessages)}
 
 Entities in Room:
 ${formatEntities(prepared.entities)}
@@ -1149,7 +1131,7 @@ export const identityEvaluator: Evaluator<
 	async prepare({ runtime, message }) {
 		return prepareReflectionContext(runtime, message);
 	},
-	prompt({ prepared }) {
+	prompt({ prepared, shared }) {
 		return `Find explicit platform identity claims for known room participants.
 
 Rules:
@@ -1160,8 +1142,7 @@ Rules:
 - confidence 0-1: higher for self-claims, lower for second-hand.
 - Nothing mentioned -> {"identities":[]}.
 
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}
+${recentMessagesSection(shared, prepared.recentMessages)}
 
 Entities in Room:
 ${formatEntities(prepared.entities)}`;
@@ -1210,7 +1191,7 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 					: actionResultsFromState(state),
 		};
 	},
-	prompt({ prepared, options }) {
+	prompt({ prepared, options, shared }) {
 		return `Evaluate if current user task is complete after agent response.
 
 Rules:
@@ -1220,8 +1201,7 @@ Rules:
 
 Did respond: ${options.didRespond === true ? "true" : "false"}
 
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}
+${recentMessagesSection(shared, prepared.recentMessages)}
 
 Action results:
 ${renderActionResultsForModel(prepared.actionResults).text}`;
