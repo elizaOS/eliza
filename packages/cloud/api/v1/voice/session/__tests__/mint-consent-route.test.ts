@@ -5,20 +5,12 @@
  */
 
 import { beforeAll, describe, expect, mock, test } from "bun:test";
-import * as workerCoreStub from "@elizaos/core/edge";
 import { Hono } from "hono";
-import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 const fakeLogger = {
   logger: { error: mock(), info: mock(), warn: mock(), debug: mock() },
 };
 mock.module("@/lib/utils/logger", () => fakeLogger);
-mock.module("@elizaos/core", () => ({
-  ...workerCoreStub,
-  ...coreTestContract,
-  isSensitiveKeyName: () => false,
-  redactLogArgs: (a: unknown) => a,
-}));
 // Auth: return a fixed authed user.
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg: async () => ({
@@ -88,7 +80,7 @@ const activePersonalTargetLookups: Array<{
 mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
   findActivePersonalDedicatedTarget: async (
     organizationId: string,
-    _userId: string,
+    userId: string,
     sourceAgentId: string,
   ) => {
     activePersonalTargetLookups.push({ organizationId, userId, sourceAgentId });
