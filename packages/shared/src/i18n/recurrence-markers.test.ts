@@ -91,6 +91,61 @@ describe("textStatesExplicitRecurrence", () => {
     }
   });
 
+  it("handles negated cadence with intervening verbs without swallowing positive statements or questions", () => {
+    for (const text of [
+      "won't be daily",
+      "don't make it weekly",
+      "isn't going to be weekly",
+      "doesn't run daily",
+    ]) {
+      expect(textStatesExplicitRecurrence(text)).toBe(false);
+    }
+    for (const text of [
+      "will be daily",
+      "runs daily",
+      "is going to be weekly",
+      "isn't this a daily job?",
+    ]) {
+      expect(textStatesExplicitRecurrence(text)).toBe(true);
+    }
+    expect(
+      textStatesExplicitRecurrence("don't be daily, make it weekly instead"),
+    ).toBe(true);
+    expect(
+      textStatesExplicitRecurrence("weekly, actually don't make it daily"),
+    ).toBe(false);
+  });
+
+  it("treats a verb-linked negation exactly like the bare negation it mirrors", () => {
+    // The bridge must not invent new span semantics: a trailing subordinate
+    // clause is swallowed by a negated cadence today for the bare form, so
+    // the verb-linked form has to agree. Pinning the PAIR (rather than each
+    // string alone) is what keeps the two spellings from drifting apart.
+    const pairs: Array<[string, string]> = [
+      [
+        "not daily because it is already weekly",
+        "doesn't run daily because it is already weekly",
+      ],
+      [
+        "never weekly since monthly is intended",
+        "won't be weekly since monthly is intended",
+      ],
+    ];
+    for (const [bare, verbLinked] of pairs) {
+      expect(textStatesExplicitRecurrence(verbLinked)).toBe(
+        textStatesExplicitRecurrence(bare),
+      );
+    }
+
+    // A contrast marker still terminates the span in both spellings, so a
+    // genuine correction survives as recurrence.
+    expect(
+      textStatesExplicitRecurrence(
+        "don't make it daily, make it weekly instead",
+      ),
+    ).toBe(true);
+  });
+
   it("ignores role-labelled non-user text", () => {
     expect(
       textStatesExplicitRecurrence("assistant: should this be weekly?"),
