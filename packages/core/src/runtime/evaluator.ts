@@ -91,6 +91,8 @@ interface RawEvaluatorOutput {
 interface ParsedEvaluatorObject {
 	object: RawEvaluatorOutput | null;
 	parseError?: string;
+	/** The unparseable response is a tool invocation, not a malformed verdict. */
+	toolInvocation?: true;
 }
 
 const EVALUATOR_ENVELOPE_KEYS = new Set([
@@ -818,6 +820,23 @@ export function parseEvaluatorOutput(
 ): EvaluatorOutput {
 	const parsedResult = getStructuredEvaluatorObject(raw);
 	if (parsedResult.parseError) {
+		if (parsedResult.toolInvocation) {
+			// The model tried to ACT instead of judging. In substance that is a
+			// CONTINUE verdict — the recorded work is not finished — so it must not
+			// be reported as a protocol failure: the loop answers a protocol
+			// failure by relaying the last successful tool text as the final
+			// message (live: a calendar delete ended after its lookup step with
+			// "Your matching calendar event is …" while the evaluator had emitted
+			// the delete_event call). A plain CONTINUE replans through real tool
+			// dispatch; the invocation itself is never executed from here.
+			return {
+				success: false,
+				decision: "CONTINUE",
+				thought: `Invalid evaluator output: ${parsedResult.parseError}; the response is a tool invocation, so the recorded work is not finished. Replanning from recorded tool results.`,
+				parseError: parsedResult.parseError,
+				raw: {},
+			};
+		}
 		return {
 			success: false,
 			decision: "CONTINUE",
@@ -1631,6 +1650,24 @@ function isToolAttemptObject(value: unknown): boolean {
 	);
 }
 
+/**
+ * Model output that is a tool invocation rather than a verdict: native XML tool
+ * markup, a JSON tool-call shape, a bare ACTION_NAME followed by a JSON args
+ * object, or an invocation DSL. An evaluator model reaches this shape by
+ * continuing the planner transcript it was shown (live: Qwen answered a
+ * calendar delete's evaluation with `<tool_call><function=CALENDAR>` …
+ * `delete_event`). These are the same screens that gate user-facing prose in
+ * {@link looksLikeUserFacingAnswer}.
+ */
+function looksLikeToolInvocation(text: string): boolean {
+	return (
+		containsToolCallShapedMarkup(text) ||
+		/\{\s*"(?:action|tool|name|parameters|command)"\s*:/i.test(text) ||
+		/^\s*[A-Z][A-Z0-9_]{2,}\s*\n\s*\{/.test(text) ||
+		containsInvocationDsl(text)
+	);
+}
+
 function looksLikeUserFacingAnswer(text: string): boolean {
 	if (text.length < 8 || text.length > 4000) return false;
 	if (looksLikeRawToolTranscript(text)) return false;
@@ -1831,9 +1868,13 @@ function getStructuredEvaluatorObject(
 		// parse-error path so the loop sees a malformed evaluation and retries,
 		// instead of a silent default verdict.
 		if (!isEvaluatorShapedObject(raw.object)) {
+			const serialized = toWellFormedUnicode(JSON.stringify(raw.object));
 			return {
 				object: null,
-				parseError: `structured evaluator output is not evaluator-shaped: ${toWellFormedUnicode(JSON.stringify(raw.object))}`,
+				parseError: `structured evaluator output is not evaluator-shaped: ${serialized}`,
+				...(looksLikeToolInvocation(serialized)
+					? { toolInvocation: true }
+					: {}),
 			};
 		}
 		return { object: raw.object as RawEvaluatorOutput };
@@ -1901,6 +1942,7 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 			return {
 				object: null,
 				parseError: "JSON object is not evaluator-shaped",
+				...(looksLikeToolInvocation(candidate) ? { toolInvocation: true } : {}),
 			};
 		}
 		return { object: parsed };
@@ -1929,6 +1971,9 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 							object: null,
 							parseError:
 								"leading evaluator envelope followed by machine output (tool syntax), not a user-facing answer",
+							...(looksLikeToolInvocation(prose)
+								? { toolInvocation: true }
+								: {}),
 						};
 					}
 					record.messageToUser = prose;
@@ -1948,7 +1993,11 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 		if (labeled) {
 			return { object: labeled };
 		}
-		return { object: null, parseError: "response is not a single JSON object" };
+		return {
+			object: null,
+			parseError: "response is not a single JSON object",
+			...(looksLikeToolInvocation(candidate) ? { toolInvocation: true } : {}),
+		};
 	}
 }
 
