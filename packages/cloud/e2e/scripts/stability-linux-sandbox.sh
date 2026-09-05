@@ -69,6 +69,23 @@ grant_output_search_acls() {
 
 sandbox_uid_has_processes() { /usr/bin/pgrep -u "$SANDBOX_UID" >/dev/null 2>&1; }
 
+require_unused_sandbox_uid() {
+  local uid="$1" observation_status
+  if /usr/bin/pgrep -u "$uid" >/dev/null 2>&1; then
+    observation_status=0
+  else
+    observation_status=$?
+  fi
+  if [ "$observation_status" -ne 1 ]; then
+    # These processes predate this launch. Neither kill them nor release their
+    # newly reserved identity when ownership cannot be established.
+    SANDBOX_CLEANED=1
+    SANDBOX_CLEANUP_STATUS=1
+    echo "[cloud-stability-sandbox] fresh UID $uid is not verifiably unused (observer $observation_status); identity remains reserved for operator cleanup" >&2
+    return 1
+  fi
+}
+
 sandbox_cleanup() {
   [ "$SANDBOX_CLEANED" -eq 0 ] || return "$SANDBOX_CLEANUP_STATUS"
   SANDBOX_CLEANED=1
@@ -211,10 +228,7 @@ run() {
   local gid
   gid="$(/usr/bin/id -g "$sandbox_user")"
   [ "$uid" -ne 0 ] || die "sandbox user resolved to root"
-  if /usr/bin/pgrep -u "$uid" >/dev/null 2>&1; then
-    /usr/sbin/userdel "$sandbox_user" 2>/dev/null
-    die "fresh sandbox UID already owns a process"
-  fi
+  require_unused_sandbox_uid "$uid"
 
   local chain="ELIZA_SBX_${$}_$RANDOM" sandbox_root=""
   chain="${chain:0:27}"

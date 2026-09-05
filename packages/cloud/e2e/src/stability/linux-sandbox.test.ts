@@ -768,6 +768,56 @@ setInterval(() => {}, 1000);
   30_000,
 );
 
+test.skipIf(!hostedLinux)(
+  "a preexisting UID process retains its identity without being terminated",
+  () => {
+    const launcher = path.join(
+      repoRoot,
+      "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+    );
+    const script = `
+source "$1"
+name="eliza-collision-${process.pid}-$RANDOM"
+pid=""
+cleanup_fixture() {
+  if [ -n "$pid" ]; then
+    /bin/kill -KILL "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  fi
+  /usr/sbin/userdel "$name" 2>/dev/null || true
+}
+/usr/sbin/useradd --system --no-create-home --shell /usr/sbin/nologin "$name"
+trap cleanup_fixture EXIT
+uid="$(/usr/bin/id -u "$name")"
+gid="$(/usr/bin/id -g "$name")"
+/usr/bin/setpriv --reuid "$uid" --regid "$gid" --clear-groups -- /bin/sleep 30 &
+pid=$!
+for _ in $(/usr/bin/seq 1 100); do
+  if /usr/bin/pgrep -u "$uid" >/dev/null; then break; fi
+  /bin/sleep 0.01
+done
+/usr/bin/pgrep -u "$uid" >/dev/null
+SANDBOX_USER="$name"
+SANDBOX_CLEANED=0
+if require_unused_sandbox_uid "$uid"; then exit 90; fi
+if sandbox_cleanup; then exit 91; fi
+/usr/bin/getent passwd "$name" >/dev/null
+/bin/kill -0 "$pid"
+/usr/bin/pgrep -u "$uid" >/dev/null
+echo preserved
+`;
+    const result = spawnSync(
+      "sudo",
+      ["-n", "/bin/bash", "-c", script, "uid-collision-test", launcher],
+      { encoding: "utf8", timeout: 15_000 },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe("preserved");
+    expect(result.stderr).toContain("identity remains reserved");
+  },
+  20_000,
+);
+
 // The real cleanup function owns real user/firewall/ACL fixtures. Only the
 // process observer models a survivor or an OS observation failure after SIGKILL.
 for (const observerStatus of [0, 2]) {
