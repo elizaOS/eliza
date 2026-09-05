@@ -96,4 +96,31 @@ describe("number parsing utilities", () => {
       }),
     ).toBe(15);
   });
+
+  it("throws when clamped integer bounds are inverted", () => {
+    expect(() => parseClampedInteger("3", { min: 10, max: 5 })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      parseClampedInteger("3", { min: 10, max: 5, fallback: 1 }),
+    ).toThrow(RangeError);
+    expect(() => parseClampedInteger("", { min: 10, max: 5 })).toThrow(
+      RangeError,
+    );
+    expect(parseClampedInteger("3", { min: 5, max: 10 })).toBe(5);
+    expect(parseClampedInteger("3", { min: 1 })).toBe(3);
+    expect(parseClampedInteger("3", { max: 10 })).toBe(3);
+  });
+
+  it("throws when clamped float bounds are inverted", () => {
+    expect(() => parseClampedFloat("3", { min: 10, max: 5 })).toThrow(
+      RangeError,
+    );
+    expect(() => parseClampedFloat("", { min: 10, max: 5 })).toThrow(
+      RangeError,
+    );
+    expect(parseClampedFloat("3.5", { min: 0, max: 10 })).toBe(3.5);
+    expect(parseClampedFloat("12.5", { min: 0, max: 10 })).toBe(10);
+    expect(parseClampedFloat("3", { min: 1 })).toBe(3);
+  });
 });
