@@ -473,32 +473,41 @@ describe("resolveInferenceAuthContext", () => {
     }
   });
 
-  test("the resolver retains the sole usage update without joining it to authorization", async () => {
-    const usage = Promise.withResolvers<void>();
-    incrementUsage = async (id) => {
-      incrementUsageCalls.push(id);
-      await usage.promise;
-    };
-    const waited: Promise<unknown>[] = [];
-    const warning = spyOn(logger, "warn").mockImplementation(() => undefined);
+  test.each([
+    ["cache-only continuation", { cacheOnly: true }, true],
+    ["direct cold request", {}, true],
+    ["forced authoritative request", { forceAuthoritative: true }, true],
+    ["cache-disabled request", {}, false],
+  ])(
+    "%s retains the sole usage update without joining it to authorization",
+    async (_label, options, strongRevocationEnabled) => {
+      process.env.INFERENCE_STRONG_REVOCATION_ENABLED = String(strongRevocationEnabled);
+      const usage = Promise.withResolvers<void>();
+      incrementUsage = async (id) => {
+        incrementUsageCalls.push(id);
+        await usage.promise;
+      };
+      const waited: Promise<unknown>[] = [];
+      const warning = spyOn(logger, "warn").mockImplementation(() => undefined);
 
-    const result = await resolveInferenceAuthContext(reqWithApiKey(), {
-      cacheOnly: true,
-      deferStrongCredentialCheck: true,
-      executionCtx: { waitUntil: (promise) => waited.push(promise) },
-    });
+      const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+        ...options,
+        deferStrongCredentialCheck: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      });
 
-    expect(result).toMatchObject({ kind: "authorized", source: "origin" });
-    expect(incrementUsageCalls).toEqual(["key-1"]);
-    expect(waited.length).toBeGreaterThan(1);
+      expect(result).toMatchObject({ kind: "authorized", source: "origin" });
+      expect(incrementUsageCalls).toEqual(["key-1"]);
+      expect(waited.length).toBeGreaterThanOrEqual(1);
 
-    usage.reject(new Error("usage database unavailable"));
-    await expect(Promise.all(waited)).resolves.toBeDefined();
-    expect(warning).toHaveBeenCalledWith(
-      "[InferenceAuth] API-key usage update failed",
-      expect.objectContaining({ apiKeyId: "key-1", error: "usage database unavailable" }),
-    );
-  });
+      usage.reject(new Error("usage database unavailable"));
+      await expect(Promise.all(waited)).resolves.toBeDefined();
+      expect(warning).toHaveBeenCalledWith(
+        "[InferenceAuth] API-key usage update failed",
+        expect.objectContaining({ apiKeyId: "key-1", error: "usage database unavailable" }),
+      );
+    },
+  );
 
   test("concurrent cache-only misses share one authoritative hydration", async () => {
     const gate = Promise.withResolvers<void>();
@@ -537,6 +546,7 @@ describe("resolveInferenceAuthContext", () => {
     gate.resolve();
     await Promise.all(waited);
     expect(chainCalls).toBe(1);
+    expect(incrementUsageCalls).toEqual([]);
     expect(await readInferenceAuthContext(hashApiKey(KEY))).not.toBeNull();
   });
 
@@ -890,7 +900,8 @@ describe("resolveInferenceAuthContext", () => {
       });
 
       expect(result.kind).toBe("authorized");
-      expect(waited).toHaveLength(1);
+      expect(waited).toHaveLength(2);
+      expect(incrementUsageCalls).toEqual(["key-1"]);
       expect(resolutionTelemetry?.cacheWrite).toBe("deferred");
       expect(resolutionTelemetry?.timings.cacheWriteMs).toBeNull();
       expect(cacheWriteTelemetry).toBeUndefined();
