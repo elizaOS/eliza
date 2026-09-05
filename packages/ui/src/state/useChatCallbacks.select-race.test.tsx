@@ -1014,12 +1014,10 @@ describe("rapid conversation switching must never delete a real conversation", (
         conversationId: "conv-new-greeting",
       },
     );
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalled();
     await act(async () => {
       await sentTurn;
     });
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalled();
     expect(h.conversationMessagesRef.current).toMatchObject([
       { id: "sent-user", text: "sent before greeting" },
       { id: "sent-assistant", text: "terminal reply" },
@@ -1154,6 +1152,118 @@ describe("rapid conversation switching must never delete a real conversation", (
     expect(h.chatInputRef.current).toBe("stay with B");
     expect(h.chatPendingImagesRef.current).toEqual([queuedImage]);
     expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+  });
+
+  it("retries failed recovery without losing a composer draft or creating a conversation", async () => {
+    const h = makeHarness([]);
+    const { result } = mountChat(h);
+    h.chatInputRef.current = "Please keep my draft";
+    const images: ImageAttachment[] = [
+      {
+        data: "aGVsbG8=",
+        mimeType: "image/png",
+        name: "draft.png",
+      },
+    ];
+    h.chatPendingImagesRef.current = images;
+    mocks.client.listConversations.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => {
+      await result.current.callbacks.handleChatSend();
+    });
+    expect(h.chatInputRef.current).toBe("Please keep my draft");
+    expect(h.chatPendingImagesRef.current).toBe(images);
+    expect(h.callbackDepsBase.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("conversation is still unavailable"),
+      "error",
+      8000,
+    );
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+
+    const restored = conversationRecord("personal-history");
+    mocks.client.listConversations.mockResolvedValue({
+      conversations: [restored],
+    });
+    mocks.client.getConversationMessages.mockResolvedValue({
+      messages: realHistory("personal"),
+    });
+    let identity: string | null = null;
+    await act(async () => {
+      identity = await result.current.callbacks.ensureActiveConversation();
+    });
+    expect(identity).toBe(restored.id);
+    expect(h.conversationMessagesRef.current).toEqual(realHistory("personal"));
+    expect(h.chatInputRef.current).toBe("Please keep my draft");
+    expect(h.chatPendingImagesRef.current).toBe(images);
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+  });
+
+  it("shares one first-conversation creation across concurrent startup and voice recovery", async () => {
+    const h = makeHarness([]);
+    const { result } = mountChat(h);
+    let resolveCreate!: (value: { conversation: Conversation }) => void;
+    mocks.client.listConversations.mockResolvedValue({ conversations: [] });
+    mocks.client.createConversation.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        }),
+    );
+    let hydration!: Promise<string | null>;
+    let voiceRecovery!: Promise<string | null>;
+    let retryRecovery!: Promise<string | null>;
+    act(() => {
+      hydration = result.current.callbacks.hydrateInitialConversationState();
+      expect(result.current.callbacks.hydrateInitialConversationState()).toBe(
+        hydration,
+      );
+      voiceRecovery = result.current.callbacks.ensureActiveConversation();
+      retryRecovery = result.current.callbacks.ensureActiveConversation();
+    });
+    await flushPendingWork();
+    expect(mocks.client.listConversations).toHaveBeenCalledTimes(1);
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveCreate({ conversation: conversationRecord("first-personal") });
+      await hydration;
+      expect(await voiceRecovery).toBe("first-personal");
+      expect(await retryRecovery).toBe("first-personal");
+    });
+    expect(h.activeConversationIdRef.current).toBe("first-personal");
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not send or start voice from a provisional id after message restore fails", async () => {
+    const existing = conversationRecord("provisional");
+    const h = makeHarness([existing]);
+    const { result } = mountChat(h);
+    h.chatInputRef.current = "Do not lose this";
+    mocks.client.listConversations.mockResolvedValue({
+      conversations: [existing],
+    });
+    mocks.client.getConversationMessages.mockRejectedValue(
+      new Error("offline"),
+    );
+    await act(async () => {
+      await result.current.callbacks.hydrateInitialConversationState();
+      expect(h.activeConversationIdRef.current).toBe(existing.id);
+      expect(
+        await result.current.callbacks.ensureActiveConversation(),
+      ).toBeNull();
+      await result.current.callbacks.handleChatSend();
+    });
+    expect(h.chatInputRef.current).toBe("Do not lose this");
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    mocks.client.getConversationMessages.mockResolvedValue({
+      messages: realHistory("restored"),
+    });
+    await act(async () => {
+      expect(await result.current.callbacks.ensureActiveConversation()).toBe(
+        existing.id,
+      );
+    });
+    expect(h.conversationMessagesRef.current).toEqual(realHistory("restored"));
   });
 
   it("waits for a cold startup hydration before routing an action send", async () => {
