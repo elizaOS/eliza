@@ -759,6 +759,7 @@ const CAPABILITY_PARAM_RESERVED_KEYS = new Set([
 	"intent",
 	"editTarget",
 	"choice",
+	"taskId",
 	"confirm",
 	"sha",
 	"pluginName",
@@ -2861,6 +2862,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				name: "editTarget",
 				description:
 					"Skip the picker and edit this installed view directly (create mode).",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "taskId",
+				description:
+					"Exact pending VIEWS create-choice task ID from app_control_choices. Required when more than one view creation is pending; use with choice.",
 				required: false,
 				schema: { type: "string" },
 			},

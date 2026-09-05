@@ -72,12 +72,18 @@ function appIntent(roomId = "room-1") {
 		choices: [{ key: "cancel", label: "Cancel" }],
 		intentCreatedAt: "2026-07-06T00:00:00.000Z",
 	};
-	return { id: "app-intent-1", tags: [APP_CREATE_INTENT_TAG], metadata };
+	return {
+		id: "app-intent-1",
+		agentId: "agent-1",
+		tags: [APP_CREATE_INTENT_TAG],
+		metadata,
+	};
 }
 
 function viewsIntent(roomId = "room-1") {
 	return {
 		id: "views-intent-1",
+		agentId: "agent-1",
 		tags: [VIEWS_CREATE_INTENT_TAG],
 		metadata: {
 			roomId,

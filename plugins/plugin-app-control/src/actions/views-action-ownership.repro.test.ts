@@ -315,6 +315,11 @@ describe("VIEWS action ownership after planner selection", () => {
 		async (kind) => {
 			const { action, listViews } = makeAction(true);
 			const runtime = makeRuntime(action);
+			// The continuation handler independently verifies the canonical owner;
+			// the aggregate action's injected permission seam is not authority.
+			runtime.getSetting = vi.fn((key: string) =>
+				key === "ELIZA_ADMIN_ENTITY_ID" ? message("").entityId : undefined,
+			);
 			const task = installPendingViewTask(runtime, kind);
 			const options =
 				kind === "create"

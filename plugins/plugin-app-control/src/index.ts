@@ -24,10 +24,10 @@ import {
 	viewsAction,
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
-import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
+import { pendingAppControlChoicesProvider } from "./providers/pending-choices.js";
 import {
 	applyCurrentViewComposeHook,
 	CURRENT_VIEW_HOOK_ID,
@@ -177,11 +177,11 @@ export const appControlPlugin: Plugin = {
 	//     surface (the rigid matchViewCommand matcher, or the legacy intent
 	//     rules it falls back to), so it never contends with the action.
 	evaluators: [viewContextEvaluator],
-	// Persisted choice widgets are an explicit continuation protocol. View
-	// navigation remains on the ordinary Eliza response-handler/planner path so
-	// the visible reply is model-authored and grounded in the action result.
-	responseHandlerEvaluators: [createChoiceShortcutEvaluator],
-	providers: [availableAppsProvider, currentViewProvider],
+	providers: [
+		availableAppsProvider,
+		currentViewProvider,
+		pendingAppControlChoicesProvider,
+	],
 	services: [
 		AppRegistryService,
 		AppVerificationService,
