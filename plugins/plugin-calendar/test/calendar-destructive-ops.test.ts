@@ -68,6 +68,11 @@ function event(args: {
 }
 
 const LUNCH_MAYA = event({ externalId: "evt-1", title: "Lunch with Maya" });
+const STANDUP_FRIDAY = event({
+  externalId: "evt-3",
+  title: "Standup",
+  startAt: "2026-07-10T15:00:00.000Z",
+});
 const LUNCH_GRANDMA = event({
   externalId: "evt-2",
   title: "Lunch with Grandma",
@@ -258,6 +263,25 @@ describe("CALENDAR delete_event disambiguation", () => {
       }),
     );
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("a multi-target message lets the per-target intent pick the day instead of the message's first date", async () => {
+    // Live 2026-09-05 22:44: three deletes in one message were all constrained
+    // to the first stated day, so two existing events came back "not found".
+    const multi = stubService([LUNCH_MAYA, LUNCH_GRANDMA, STANDUP_FRIDAY]);
+    const result = await runHandler({
+      service: multi,
+      text: "delete lunch with maya on 2026-07-08 and the standup on 2026-07-10 from my calendar",
+      parameters: {
+        subaction: "delete_event",
+        query: "standup",
+        intent: "delete the standup on 2026-07-10 from my calendar",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(multi.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: STANDUP_FRIDAY }),
+    );
   });
 
   it("typed delete_event + title (no query) → reads the feed and targets that event", async () => {

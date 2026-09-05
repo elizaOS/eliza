@@ -2316,6 +2316,28 @@ function resolveStatedCreateDate(args: {
   return messageDates[0] ?? intentDate;
 }
 
+/**
+ * Texts consulted, in order, for the stated day of an update/delete target: an
+ * explicit `date` detail first; then the user's message when it names a single
+ * day; when it names several (one message, several targets — live 2026-09-05
+ * 22:44 "the yoga class on thursday, the pottery class on saturday and the
+ * haircut on sunday" constrained every target to Thursday), the planner's
+ * per-target intent decides ahead of the message.
+ */
+function mutationTargetTexts(args: {
+  details: Record<string, unknown> | undefined;
+  currentMessage: string;
+  intent: string;
+  timeZone: string;
+}): (string | undefined)[] {
+  const explicitDate = detailString(args.details, "date");
+  const messageNamesSeveralDays =
+    distinctStatedLocalDates(args.currentMessage, args.timeZone).length >= 2;
+  return messageNamesSeveralDays
+    ? [explicitDate, args.intent, args.currentMessage]
+    : [explicitDate, args.currentMessage, args.intent];
+}
+
 const PAST_START_GRACE_MS = 5 * 60 * 1000;
 const EXPLICIT_DATE_TOKEN_PATTERN =
   /\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/;
@@ -4950,11 +4972,12 @@ const calendarAction: CalendarHandlerAction = {
             titleHint,
             // An explicit `date` detail names the target's local day ahead of
             // any date phrase in the prose.
-            texts: [
-              detailString(details, "date"),
-              messageText(message),
+            texts: mutationTargetTexts({
+              details,
+              currentMessage: messageText(message),
               intent,
-            ],
+              timeZone: planningTimeZone,
+            }),
             timeZone: planningTimeZone,
           });
           if (candidates.length === 0) {
@@ -5300,11 +5323,12 @@ const calendarAction: CalendarHandlerAction = {
             titleHint,
             // An explicit `date` detail names the target's local day ahead of
             // any date phrase in the prose.
-            texts: [
-              detailString(details, "date"),
-              messageText(message),
+            texts: mutationTargetTexts({
+              details,
+              currentMessage: messageText(message),
               intent,
-            ],
+              timeZone: planningTimeZone,
+            }),
             timeZone: planningTimeZone,
           });
           if (candidates.length === 0) {
