@@ -61,7 +61,7 @@ function writePackage(
 
 function runLoader(
   packageName = "@elizaos/plugin-openai",
-  options: { source?: boolean; env?: Record<string, string> } = {},
+  options: { source?: boolean; env?: NodeJS.ProcessEnv } = {},
 ) {
   return spawnSync(
     "bun",

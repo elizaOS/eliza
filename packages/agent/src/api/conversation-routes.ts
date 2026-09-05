@@ -4621,13 +4621,20 @@ export async function handleConversationRoutes(
 
         const endActiveChatTurn = beginActiveChatTurn(state);
 
+        // Completion callbacks belong to this acquired lease, not the mutable
+        // cleanup slot that is cleared when the request finally releases it.
+        const generationLease = runtimeTurnLease;
         let streamedText = "";
         // The route already wrote a `thinking` status when the SSE channel opened;
         // collapse the identical opening status generateChatResponse re-emits so
         // the wire carries each phase transition once. Distinct consecutive phases
         // (thinking → running_action → thinking) still pass through.
         let lastStatusSignature = "thinking::";
-        let generationResult: ChatGenerationResult | null = null;
+        // The early callback can settle a reply before generation later throws.
+        // Keep that shared result readable by the terminal recovery path.
+        const generation: { result: ChatGenerationResult | null } = {
+          result: null,
+        };
         let resolvedGenerationText: string | undefined;
         let replyReadyPublished = false;
         let generationCompletion: Promise<void> | undefined;
@@ -4671,6 +4678,148 @@ export async function handleConversationRoutes(
             // Bun's node:http compatibility layer can retain a small write
             // until the handler reaches its next I/O boundary.
             await new Promise<void>((resolve) => setImmediate(resolve));
+          };
+          const completeGeneration = (
+            result: ChatGenerationResult,
+          ): Promise<void> => {
+            if (generationCompletion) return generationCompletion;
+            generationCompletion = (async () => {
+              generation.result = result;
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+
+              conv.updatedAt = new Date().toISOString();
+              if (result.noResponseReason !== "ignored") {
+                const resolvedText =
+                  resolvedGenerationText ??
+                  normalizeChatResponseText(
+                    result.text,
+                    state.logBuffer,
+                    runtime,
+                  );
+                const visibleResolvedText =
+                  result.transcriptVisibility === "internal"
+                    ? ""
+                    : resolvedText;
+                if (
+                  !disconnectTracker.isAborted() &&
+                  !result.terminalFailure &&
+                  !streamedText &&
+                  resolvedText &&
+                  result.transcriptVisibility !== "internal"
+                ) {
+                  for (const chunk of chunkVisibleTextForSse(resolvedText)) {
+                    if (disconnectTracker.isAborted()) break;
+                    streamedText += chunk;
+                    tokenWriter.writeChunk(res, chunk, streamedText);
+                  }
+                }
+                // The reply text is now authoritative: model generation, planner
+                // actions, callback replacement, and final normalization have all
+                // settled. Publish that boundary before durable persistence so
+                // realtime voice can synthesize while the receipt/ids are written;
+                // the later `done` frame remains the sole durable completion and
+                // carries view-handoff metadata.
+                await publishReplyReady(result);
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                // Durable completion belongs to the turn, not to the transport. A
+                // disconnected client can retry the same key and receive this exact
+                // committed outcome without executing or billing another model turn.
+                const persistedAssistant = await resolvePersistedAssistantTurn(
+                  runtime,
+                  conv.roomId,
+                  turnStartedAt,
+                  result,
+                  resolvedText,
+                  channelType,
+                  generationLease,
+                  messageToStore.id,
+                  assertLocalVoiceTurnFence,
+                );
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const persistedAssistantId =
+                  persistedAssistant.kind === "durable"
+                    ? persistedAssistant.id
+                    : undefined;
+                if (
+                  result.actionCallbackHistory?.length &&
+                  persistedAssistantId
+                ) {
+                  await persistRecentAssistantActionCallbackHistory(
+                    runtime,
+                    conv.roomId,
+                    result.actionCallbackHistory,
+                    turnStartedAt,
+                    persistedAssistantId,
+                    generationLease,
+                    assertLocalVoiceTurnFence,
+                  );
+                }
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const outcome = buildGenerationMessageIdOutcome(
+                  result,
+                  visibleResolvedText,
+                  persistedAssistantId,
+                  {
+                    userMessageId: messageToStore.id,
+                    ...(persistedAssistant.kind === "ephemeral"
+                      ? { assistantEphemeral: true }
+                      : {}),
+                    ...(result.usedActionCallbacks
+                      ? { historyRefreshRequired: true }
+                      : {}),
+                  },
+                );
+                if (persistedAssistant.kind === "durable") {
+                  await settleDurableAssistantOutcome(outcome);
+                } else {
+                  await settleTurnReservation(outcome);
+                }
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                if (!disconnectTracker.isAborted()) {
+                  writeConversationDoneSse(res, outcome);
+                }
+              } else {
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const outcome = buildGenerationMessageIdOutcome(
+                  result,
+                  "",
+                  undefined,
+                  {
+                    userMessageId: messageToStore.id,
+                    assistantEphemeral: true,
+                  },
+                );
+                await settleTurnReservation(outcome);
+                if (!disconnectTracker.isAborted()) {
+                  writeConversationDoneSse(res, outcome);
+                }
+              }
+              // Delivery is durable now, independently of post-turn reflection.
+              // generateChatResponse still drains room-state work, and the outer
+              // route retains its lease/server activity until that barrier settles.
+              clearInterval(heartbeatInterval);
+              finishStreamResponse();
+              generationDelivered = true;
+            })();
+            return generationCompletion;
           };
           const result = await generateChatResponse(
             runtime,
@@ -4768,150 +4917,8 @@ export async function handleConversationRoutes(
           // Adapters that do not publish the early callback still use the same
           // durable completion path. The promise fences repeated callbacks.
           await completeGeneration(result);
-
-          function completeGeneration(
-            result: ChatGenerationResult,
-          ): Promise<void> {
-            if (generationCompletion) return generationCompletion;
-            generationCompletion = (async () => {
-              generationResult = result;
-              assertConversationConnectionRuntime(
-                state.runtime,
-                connectionDescriptor,
-              );
-
-              conv.updatedAt = new Date().toISOString();
-              if (result.noResponseReason !== "ignored") {
-                const resolvedText =
-                  resolvedGenerationText ??
-                  normalizeChatResponseText(
-                    result.text,
-                    state.logBuffer,
-                    runtime,
-                  );
-                const visibleResolvedText =
-                  result.transcriptVisibility === "internal"
-                    ? ""
-                    : resolvedText;
-                if (
-                  !disconnectTracker.isAborted() &&
-                  !result.terminalFailure &&
-                  !streamedText &&
-                  resolvedText &&
-                  result.transcriptVisibility !== "internal"
-                ) {
-                  for (const chunk of chunkVisibleTextForSse(resolvedText)) {
-                    if (disconnectTracker.isAborted()) break;
-                    streamedText += chunk;
-                    tokenWriter.writeChunk(res, chunk, streamedText);
-                  }
-                }
-                // The reply text is now authoritative: model generation, planner
-                // actions, callback replacement, and final normalization have all
-                // settled. Publish that boundary before durable persistence so
-                // realtime voice can synthesize while the receipt/ids are written;
-                // the later `done` frame remains the sole durable completion and
-                // carries view-handoff metadata.
-                await publishReplyReady(result);
-                assertConversationConnectionRuntime(
-                  state.runtime,
-                  connectionDescriptor,
-                );
-                // Durable completion belongs to the turn, not to the transport. A
-                // disconnected client can retry the same key and receive this exact
-                // committed outcome without executing or billing another model turn.
-                const persistedAssistant = await resolvePersistedAssistantTurn(
-                  runtime,
-                  conv.roomId,
-                  turnStartedAt,
-                  result,
-                  resolvedText,
-                  channelType,
-                  runtimeTurnLease,
-                  messageToStore.id,
-                  assertLocalVoiceTurnFence,
-                );
-                assertConversationConnectionRuntime(
-                  state.runtime,
-                  connectionDescriptor,
-                );
-                const persistedAssistantId =
-                  persistedAssistant.kind === "durable"
-                    ? persistedAssistant.id
-                    : undefined;
-                if (
-                  result.actionCallbackHistory?.length &&
-                  persistedAssistantId
-                ) {
-                  await persistRecentAssistantActionCallbackHistory(
-                    runtime,
-                    conv.roomId,
-                    result.actionCallbackHistory,
-                    turnStartedAt,
-                    persistedAssistantId,
-                    runtimeTurnLease,
-                    assertLocalVoiceTurnFence,
-                  );
-                }
-                assertConversationConnectionRuntime(
-                  state.runtime,
-                  connectionDescriptor,
-                );
-                const outcome = buildGenerationMessageIdOutcome(
-                  result,
-                  visibleResolvedText,
-                  persistedAssistantId,
-                  {
-                    userMessageId: messageToStore.id,
-                    ...(persistedAssistant.kind === "ephemeral"
-                      ? { assistantEphemeral: true }
-                      : {}),
-                    ...(result.usedActionCallbacks
-                      ? { historyRefreshRequired: true }
-                      : {}),
-                  },
-                );
-                if (persistedAssistant.kind === "durable") {
-                  await settleDurableAssistantOutcome(outcome);
-                } else {
-                  await settleTurnReservation(outcome);
-                }
-                assertConversationConnectionRuntime(
-                  state.runtime,
-                  connectionDescriptor,
-                );
-                if (!disconnectTracker.isAborted()) {
-                  writeConversationDoneSse(res, outcome);
-                }
-              } else {
-                assertConversationConnectionRuntime(
-                  state.runtime,
-                  connectionDescriptor,
-                );
-                const outcome = buildGenerationMessageIdOutcome(
-                  result,
-                  "",
-                  undefined,
-                  {
-                    userMessageId: messageToStore.id,
-                    assistantEphemeral: true,
-                  },
-                );
-                await settleTurnReservation(outcome);
-                if (!disconnectTracker.isAborted()) {
-                  writeConversationDoneSse(res, outcome);
-                }
-              }
-              // Delivery is durable now, independently of post-turn reflection.
-              // generateChatResponse still drains room-state work, and the outer
-              // route retains its lease/server activity until that barrier settles.
-              clearInterval(heartbeatInterval);
-              finishStreamResponse();
-              generationDelivered = true;
-            })();
-            return generationCompletion;
-          }
         } catch (err) {
+          const generationResult = generation.result;
           // Post-delivery drain failure must reach the HTTP error boundary
           // without replacing the durable outcome or writing to its closed SSE.
           if (generationDelivered) throw err;
