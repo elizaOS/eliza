@@ -30,11 +30,14 @@ import {
   createUniqueUuid,
   ElizaError,
   getEntityRole,
+  getInferenceTimer,
   hasAtLeastRole,
+  InferenceTurnTimer,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
+  nextInferenceTurnId,
   type RoleGrantSource,
   type RolesWorldMetadata,
   type RoomHandlerLease,
@@ -43,9 +46,11 @@ import {
   RoomHandlerQueueSaturatedError,
   recordOwnerGrant,
   recordRoleGrant,
+  runWithInferenceTiming,
   shouldSkipResponseMemoryPersistence,
   stringToUuid,
   type TrustedApiPrincipal,
+  timeInferenceSpan,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
@@ -2789,6 +2794,7 @@ function buildMessageSearchSnippet(text: string, query: string): string {
 export async function handleConversationRoutes(
   ctx: ConversationRouteContext,
 ): Promise<boolean> {
+  const requestStartedAt = Date.now();
   const { req, res, method, pathname, readJsonBody, json, error, state } = ctx;
   const trustedApiPrincipal = resolveTrustedApiPrincipal(
     req,
@@ -4189,6 +4195,15 @@ export async function handleConversationRoutes(
         return failStream("Agent is not running");
       }
 
+      const inferenceTimer =
+        getInferenceTimer() ??
+        new InferenceTurnTimer({
+          turnId: nextInferenceTurnId(),
+          traceId: trace.traceId,
+          label: "chat-request",
+          roomId: conv.roomId,
+          t0EpochMs: requestStartedAt,
+        });
       const caller = resolveConversationCaller(
         req,
         state,
@@ -4313,9 +4328,13 @@ export async function handleConversationRoutes(
       chatReservation = idempotencyAdmission.reservation;
       writeChatStatusSse(res, { kind: "thinking" });
       try {
-        runtimeTurnLease = await runtime.roomHandlerQueue.acquire(
-          conv.roomId,
-          disconnectTracker.signal,
+        runtimeTurnLease = await runWithInferenceTiming(inferenceTimer, () =>
+          timeInferenceSpan("chat:room-lease-wait", () =>
+            runtime.roomHandlerQueue.acquire(
+              conv.roomId,
+              disconnectTracker.signal,
+            ),
+          ),
         );
         if (
           !isLocalVoiceRuntimeFenceCurrent(state, localVoiceRuntimeFence, conv)
@@ -4659,6 +4678,7 @@ export async function handleConversationRoutes(
             state.agentName,
             {
               traceId: trace.traceId,
+              inferenceTimer,
               abortSignal: disconnectTracker.signal,
               roomHandlerLease: runtimeTurnLease,
               onStatus: (status) => {
@@ -5343,6 +5363,14 @@ export async function handleConversationRoutes(
       error(res, "Agent is not running", 503);
       return true;
     }
+    const inferenceTimer =
+      getInferenceTimer() ??
+      new InferenceTurnTimer({
+        turnId: nextInferenceTurnId(),
+        label: "chat-request",
+        roomId: conv.roomId,
+        t0EpochMs: requestStartedAt,
+      });
     const caller = resolveConversationCaller(
       req,
       state,
@@ -5429,9 +5457,13 @@ export async function handleConversationRoutes(
     };
     try {
       try {
-        runtimeTurnLease = await runtime.roomHandlerQueue.acquire(
-          conv.roomId,
-          admissionDisconnectTracker.signal,
+        runtimeTurnLease = await runWithInferenceTiming(inferenceTimer, () =>
+          timeInferenceSpan("chat:room-lease-wait", () =>
+            runtime.roomHandlerQueue.acquire(
+              conv.roomId,
+              admissionDisconnectTracker.signal,
+            ),
+          ),
         );
       } catch (err) {
         admissionDisconnectTracker.dispose();
@@ -5634,6 +5666,7 @@ export async function handleConversationRoutes(
             routedUserMessage,
             state.agentName,
             {
+              inferenceTimer,
               roomHandlerLease: runtimeTurnLease,
               resolveNoResponseText: () =>
                 resolveNoResponseFallback(state.logBuffer, runtime),
