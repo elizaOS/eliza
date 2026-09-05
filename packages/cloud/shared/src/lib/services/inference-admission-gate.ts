@@ -703,10 +703,6 @@ export function inferenceSettlementAmounts(
 export async function markInferenceAdmissionLeaseDispatched(
   lease: InferenceAdmissionLease,
 ): Promise<void> {
-  if (lease.providerDispatched) {
-    lease.preProviderCancellationToken = undefined;
-    return;
-  }
   const cancellationToken = lease.preProviderCancellationToken;
   if (!cancellationToken) {
     throw new InferenceAdmissionDispatchMarkError(
