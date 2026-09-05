@@ -401,6 +401,15 @@ const vitestResolveAlias: ModuleAlias[] = [
   ...(elizaCoreEntry
     ? [
         {
+          // Native view handlers use the browser-safe error entry. Resolve it
+          // before the bare-core alias can treat the entry file as a directory.
+          find: /^@elizaos\/core\/errors$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts") ? "errors.ts" : "errors.js",
+          ),
+        },
+        {
           // Resolve the testing subpath to source before the broad
           // `@elizaos/core` alias, which would otherwise treat the source
           // entry file as a directory (`index.node.ts/testing` → ENOTDIR).

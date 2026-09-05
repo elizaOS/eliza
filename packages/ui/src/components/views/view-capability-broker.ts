@@ -1,26 +1,12 @@
 /**
- * Capability broker for dynamically-loaded plugin views (#13452). A view bundle
- * runs in the host realm and the agent can drive it through the view-interact
- * channel (`get-state`, `agent-fill`, `click-element`, …). Without a boundary,
- * every loaded view would expose the full mutating surface to the agent — a
- * plugin view could be driven to click/fill/focus its own DOM even when its
- * author never opted into agent control.
- *
- * The broker gates that surface on the view's resolved {@link
- * ResolvedSurfaceManifest}: a view only gets the mutating agent-surface
- * capabilities when its manifest grants `agent-surface`. Read-only introspection
- * (`get-text`, `get-state`, `list-elements`, `describe-element`, focus/agent
- * state reads) is always allowed — the agent can always *inspect* a mounted view
- * to reason about it — but write operations (fill/click/focus/scroll, forced
- * refresh) require the explicit grant. `DynamicViewLoader` wraps its interact
- * handler with {@link brokerViewInteract} so the gate sits on the one path every
- * capability call flows through.
- *
- * Consumed by `DynamicViewLoader.tsx`. The classification is grep-able and
- * unit-tested in `view-capability-broker.test.ts`.
+ * Enforces each mounted view's declared agent authority before dispatch.
+ * Human-only capabilities are always denied. Explicit agent capabilities may
+ * invoke the view's semantic handler without granting generic DOM mutation;
+ * legacy operations retain the surface-manifest grant rules. Dynamic bundles
+ * and bundled native pages share this broker.
  */
 
-import type { ResolvedSurfaceManifest } from "@elizaos/core";
+import type { ResolvedSurfaceManifest, ViewCapability } from "@elizaos/core";
 import { surfaceGrants } from "@elizaos/core";
 
 /**
@@ -51,14 +37,18 @@ export function isReadOnlyViewCapability(capability: string): boolean {
 }
 
 /**
- * Whether the manifest permits a given interact capability. Read-only
- * capabilities are always allowed; every mutating capability requires the
- * `agent-surface` grant.
+ * Declared human authority overrides every grant. Explicit agent authority
+ * admits a named semantic operation; otherwise legacy reads and the generic
+ * `agent-surface` grant determine admission.
  */
 export function viewManifestAllowsCapability(
   manifest: ResolvedSurfaceManifest,
   capability: string,
+  declarations?: readonly ViewCapability[],
 ): boolean {
+  const declared = declarations?.filter((entry) => entry.id === capability);
+  if (declared?.some((entry) => entry.authority === "human")) return false;
+  if (declared?.some((entry) => entry.authority === "agent")) return true;
   if (isReadOnlyViewCapability(capability)) return true;
   return surfaceGrants(manifest, "agent-surface");
 }
@@ -71,16 +61,15 @@ export class ViewCapabilityDeniedError extends Error {
   ) {
     super(
       `View "${viewId}" is not granted capability "${capability}" ` +
-        "(its surface manifest does not grant `agent-surface`)",
+        "(agent-surface or declared agent authority is required; human-only capabilities are denied)",
     );
     this.name = "ViewCapabilityDeniedError";
   }
 }
 
 /**
- * Wrap a view's interact handler with the manifest gate. The returned handler
- * throws {@link ViewCapabilityDeniedError} for any mutating capability the
- * manifest does not grant, and otherwise delegates to the underlying handler.
+ * Wrap a view handler with its capability and manifest authority. Denied
+ * operations throw before either a semantic handler or a DOM operation runs.
  *
  * The thrown error surfaces to the agent through the view-interact result path
  * (the planner sees the failure and can react) — it never fabricates a
@@ -93,9 +82,10 @@ export function brokerViewInteract(
     capability: string,
     params?: Record<string, unknown>,
   ) => Promise<unknown>,
+  declarations?: readonly ViewCapability[],
 ): (capability: string, params?: Record<string, unknown>) => Promise<unknown> {
   return async (capability, params) => {
-    if (!viewManifestAllowsCapability(manifest, capability)) {
+    if (!viewManifestAllowsCapability(manifest, capability, declarations)) {
       throw new ViewCapabilityDeniedError(viewId, capability);
     }
     return handler(capability, params);

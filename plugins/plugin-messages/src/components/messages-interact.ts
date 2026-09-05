@@ -1,24 +1,36 @@
 /**
- * View-bundle `interact` capability handler for the view surface. Kept in
- * its own module (not the React component file) so the view bundle can re-export
- * `interact` via ./messages-view-bundle.ts without coupling to JSX.
+ * Dispatches the Messages view bundle's classified interaction operations.
+ * Keeping the exact handler map keyed by the production declaration union
+ * makes an undeclared operation or an unimplemented declaration a type error.
  */
 
 import { Messages } from "@elizaos/capacitor-messages";
 import { System } from "@elizaos/capacitor-system";
-import {
-  loadMessagesState,
-  normalizeMessagesLimit,
-} from "./messages-view-helpers.ts";
+import { ElizaError } from "@elizaos/core/errors";
+import type { MessagesViewCapabilityId } from "../view-capabilities.ts";
+import { loadMessagesState } from "./messages-view-helpers.ts";
 
-export async function interact(
-  capability: string,
+type MessagesCapabilityHandler = (
   params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "list-threads") {
-    const state = await loadMessagesState(
-      normalizeMessagesLimit(params?.limit),
-    );
+) => Promise<unknown>;
+
+const COMPLETE_MESSAGES_READ_LIMIT = 500;
+
+const MESSAGES_CAPABILITY_HANDLERS: Record<
+  MessagesViewCapabilityId,
+  MessagesCapabilityHandler
+> = {
+  "list-threads": async () => {
+    const state = await loadMessagesState(COMPLETE_MESSAGES_READ_LIMIT);
+    if (state.messages.length === COMPLETE_MESSAGES_READ_LIMIT) {
+      throw new ElizaError(
+        "Messages read reached the native bridge boundary; refusing to return a potentially incomplete conversation history.",
+        {
+          code: "NATIVE_MESSAGES_READ_INCOMPLETE",
+          context: { limit: COMPLETE_MESSAGES_READ_LIMIT },
+        },
+      );
+    }
     return {
       threads: state.threads.map((thread) => ({
         id: thread.id,
@@ -31,9 +43,8 @@ export async function interact(
       ownsSmsRole: state.ownsSmsRole,
       smsRoleHolder: state.smsRoleHolder,
     };
-  }
-
-  if (capability === "send-sms") {
+  },
+  "send-sms": async (params) => {
     const address =
       typeof params?.address === "string"
         ? params.address.trim()
@@ -56,9 +67,8 @@ export async function interact(
     if (!body) throw new Error("body is required");
     await Messages.sendSms({ address, body });
     return { sent: true, address, bodyLength: body.length };
-  }
-
-  if (capability === "request-sms-role") {
+  },
+  "request-sms-role": async () => {
     await System.requestRole({ role: "sms" });
     const state = await loadMessagesState(200);
     return {
@@ -66,7 +76,17 @@ export async function interact(
       ownsSmsRole: state.ownsSmsRole,
       smsRoleHolder: state.smsRoleHolder,
     };
-  }
+  },
+};
 
-  throw new Error(`Unsupported capability "${capability}"`);
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (!Object.hasOwn(MESSAGES_CAPABILITY_HANDLERS, capability)) {
+    throw new Error(`Unsupported capability "${capability}"`);
+  }
+  return MESSAGES_CAPABILITY_HANDLERS[capability as MessagesViewCapabilityId](
+    params,
+  );
 }
