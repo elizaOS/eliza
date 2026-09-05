@@ -1735,10 +1735,17 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     );
     let containerTailnetIp = "100.64.0.42";
     let transientEmptyTailnetReads = 0;
+    let simulatedNow = Date.now();
+    let slowTailnetQueries = false;
     const ssh = {
       disconnect: mock(async () => {}),
-      exec: mock(async (command: string) => {
+      exec: mock(async (command: string, timeoutMs?: number) => {
         if (!command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4")) return "";
+        if (slowTailnetQueries) {
+          if (timeoutMs === undefined) throw new Error("Missing SSH command timeout");
+          simulatedNow += timeoutMs;
+          throw new Error("Local tailscaled command timed out");
+        }
         if (transientEmptyTailnetReads > 0) {
           transientEmptyTailnetReads -= 1;
           return "\n";
@@ -1774,6 +1781,32 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       );
       expect(delayedBinding.metadata?.vpnNodeId).toBe(EXACT_VPN_NODE_ID);
       expect(transientEmptyTailnetReads).toBe(0);
+
+      slowTailnetQueries = true;
+      const beforeSlowQueries = simulatedNow;
+      const timedOutBinding = await replacementProvider({ now: () => simulatedNow })
+        .create(
+          replacementCreateConfig({
+            replacementAttemptId: ATTEMPT_ID,
+            dockerImage: "eliza-agent:test",
+            environmentVars: { ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1" },
+            reclaimStaleVpnNode: false,
+            onReplacementCreateAttemptStarted: async () => {},
+            onReplacementCreateIntent: async () => {},
+            onReplacementCreated: async () => {},
+            onReplacementVpnRegistered: async () => {},
+            onReplacementCreateSettled: async () => {},
+          }),
+        )
+        .catch((caught: unknown) => caught);
+      expect(timedOutBinding).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+      expect((timedOutBinding as SandboxReplacementCleanupUnresolvedError).vpnNodeId).toBe(
+        EXACT_VPN_NODE_ID,
+      );
+      // The failed binding also performs a bounded 20-second diagnostic probe.
+      // Both stages must settle before the outer provision budget expires.
+      expect(simulatedNow - beforeSlowQueries).toBeLessThanOrEqual(160_000);
+      slowTailnetQueries = false;
 
       containerTailnetIp = "100.64.0.99";
       const identityMismatch = await replacementProvider()

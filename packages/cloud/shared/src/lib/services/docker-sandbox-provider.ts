@@ -1315,6 +1315,7 @@ const HEALTH_CHECK_POLL_INTERVAL_MS = 3_000;
  * mismatch.
  */
 const HEADSCALE_DOCKER_BINDING_MAX_OBSERVATIONS = 130;
+const HEADSCALE_DOCKER_BINDING_TIMEOUT_MS = 130_000;
 const HEADSCALE_DOCKER_BINDING_POLL_INTERVAL_MS = 1_000;
 
 /**
@@ -4069,15 +4070,18 @@ export class DockerSandboxProvider implements SandboxProvider {
             }
             let containerTailnetLines: string[] = [];
             let lastTailnetQueryError: unknown;
+            const bindingDeadline = this.now() + HEADSCALE_DOCKER_BINDING_TIMEOUT_MS;
             for (
               let observation = 0;
               observation < HEADSCALE_DOCKER_BINDING_MAX_OBSERVATIONS;
               observation += 1
             ) {
+              const remaining = bindingDeadline - this.now();
+              if (remaining <= 0) break;
               try {
                 const containerTailnetOutput = await ssh.exec(
                   `docker exec ${shellQuote(createdContainerId)} tailscale --socket=/tmp/tailscaled.sock ip -4`,
-                  DOCKER_CMD_TIMEOUT_MS,
+                  Math.min(DOCKER_CMD_TIMEOUT_MS, remaining),
                 );
                 containerTailnetLines = containerTailnetOutput
                   .split(/\r?\n/)
@@ -4085,6 +4089,8 @@ export class DockerSandboxProvider implements SandboxProvider {
                   .filter(Boolean);
                 lastTailnetQueryError = undefined;
               } catch (error: unknown) {
+                // error-policy:J4 a pending local netmap remains unavailable
+                // until the bounded observer proves the exact address binding.
                 // A joining tailscaled can reject `ip -4` before its local
                 // netmap catches up with the already-observed control-plane
                 // registration. Preserve the final cause, but let the bounded
@@ -4094,7 +4100,12 @@ export class DockerSandboxProvider implements SandboxProvider {
               }
               if (containerTailnetLines.length > 0) break;
               if (observation < HEADSCALE_DOCKER_BINDING_MAX_OBSERVATIONS - 1) {
-                await this.headscaleDockerBindingDelay(HEADSCALE_DOCKER_BINDING_POLL_INTERVAL_MS);
+                const delay = Math.min(
+                  HEADSCALE_DOCKER_BINDING_POLL_INTERVAL_MS,
+                  bindingDeadline - this.now(),
+                );
+                if (delay <= 0) break;
+                await this.headscaleDockerBindingDelay(delay);
               }
             }
             const containerTailnetIp = containerTailnetLines[0];
@@ -5381,6 +5392,8 @@ export class DockerSandboxProvider implements SandboxProvider {
           logger.info(`[docker-sandbox] Container stopped: ${meta.containerName}`);
         }
       } catch (err) {
+        // error-policy:J1 Retain the stop failure for the final teardown verdict;
+        // only an authoritative remove or absence result can resolve it.
         stopErr = err;
         logger.warn(
           `[docker-sandbox] docker stop failed for ${meta.containerName}: ${err instanceof Error ? err.message : String(err)}`,
@@ -5410,6 +5423,8 @@ export class DockerSandboxProvider implements SandboxProvider {
           logger.info(`[docker-sandbox] Container removed: ${meta.containerName}`);
         }
       } catch (err) {
+        // error-policy:J1 The final teardown verdict below preserves this
+        // remote failure unless recovery proves the exact container absent.
         rmErr = err;
         logger.error(
           `[docker-sandbox] docker rm failed for ${meta.containerName}: ${err instanceof Error ? err.message : String(err)}`,
@@ -5536,6 +5551,8 @@ export class DockerSandboxProvider implements SandboxProvider {
           agentId: meta.agentId,
         });
       } catch (recoveryError) {
+        // error-policy:J1 Recovery failure leaves the original stop/remove
+        // failures authoritative in the typed teardown result below.
         logger.error("[docker-sandbox] Docker daemon recovery did not prove container removal", {
           nodeId: meta.nodeId,
           containerName: meta.containerName,
@@ -6108,10 +6125,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       hostname: dbNode.hostname,
       containerName: sandbox.container_name,
       agentId: sandbox.id,
-      // Primary provisions use the deterministic container name as
-      // TS_HOSTNAME. Rehydrating it lets a restarted worker retire the stale
-      // Headscale registration after it proves compute is absent.
-      tsHostname: sandbox.container_name,
       sshPort: dbNode.ssh_port ?? DEFAULT_SSH_PORT,
       sshUser: dbNode.ssh_user ?? DEFAULT_SSH_USERNAME,
       hostKeyFingerprint: dbNode.host_key_fingerprint ?? undefined,
@@ -6131,19 +6144,18 @@ export class DockerSandboxProvider implements SandboxProvider {
     ) {
       throw new Error("[docker-sandbox] Invalid lifecycle-captured deletion locator");
     }
-    const hasCompleteSshAuthority =
-      Boolean(locator.hostname?.trim()) &&
-      Boolean(locator.sshUser?.trim()) &&
-      Number.isSafeInteger(locator.sshPort) &&
-      (locator.sshPort ?? 0) >= 1 &&
-      (locator.sshPort ?? 0) <= 65_535;
+    const hasCapturedSshAuthority =
+      locator.hostname !== undefined ||
+      locator.sshUser !== undefined ||
+      locator.sshPort !== undefined ||
+      locator.hostKeyFingerprint !== undefined;
     logger.info("[docker-sandbox] Teardown sandbox authority resolved", {
       agentId: locator.agentId,
     });
-    const dbNode = hasCompleteSshAuthority
+    const dbNode = hasCapturedSshAuthority
       ? null
       : await dockerNodesRepository.findByNodeIdOnPrimary(locator.nodeId);
-    if (!hasCompleteSshAuthority && !dbNode) {
+    if (!hasCapturedSshAuthority && !dbNode) {
       throw new Error(
         `[docker-sandbox] Missing persisted docker node metadata for node "${locator.nodeId}"`,
       );
@@ -6154,15 +6166,46 @@ export class DockerSandboxProvider implements SandboxProvider {
     logger.info("[docker-sandbox] Teardown target resolved from lifecycle authority", {
       agentId: locator.agentId,
     });
+    const hostname = hasCapturedSshAuthority ? locator.hostname : dbNode?.hostname;
+    const sshUser = hasCapturedSshAuthority ? locator.sshUser : dbNode?.ssh_user;
+    const sshPort = hasCapturedSshAuthority ? locator.sshPort : dbNode?.ssh_port;
+    if (
+      typeof hostname !== "string" ||
+      !hostname.trim() ||
+      typeof sshUser !== "string" ||
+      !sshUser.trim() ||
+      typeof sshPort !== "number" ||
+      !Number.isSafeInteger(sshPort) ||
+      sshPort < 1 ||
+      sshPort > 65_535
+    ) {
+      throw new ElizaError("Deletion requires complete, valid SSH authority", {
+        code: "SANDBOX_DELETION_SSH_AUTHORITY_INVALID",
+        context: { agentId: locator.agentId, nodeId: locator.nodeId, hasCapturedSshAuthority },
+      });
+    }
+    const tracked = this.containers.get(sandboxId);
+    const trackedRegistration =
+      tracked?.nodeId === locator.nodeId &&
+      tracked.containerName === locator.containerName &&
+      tracked.agentId === locator.agentId
+        ? {
+            tsHostname: tracked.tsHostname,
+            vpnNodeId: tracked.vpnNodeId,
+            previousVpnNodeId: tracked.previousVpnNodeId,
+          }
+        : {};
     return {
       nodeId: locator.nodeId,
-      hostname: locator.hostname ?? dbNode?.hostname ?? "",
+      hostname: hostname.trim(),
       containerName: locator.containerName,
       agentId: locator.agentId,
-      tsHostname: locator.containerName,
-      sshPort: locator.sshPort ?? dbNode?.ssh_port ?? DEFAULT_SSH_PORT,
-      sshUser: locator.sshUser ?? dbNode?.ssh_user ?? DEFAULT_SSH_USERNAME,
-      hostKeyFingerprint: locator.hostKeyFingerprint ?? dbNode?.host_key_fingerprint ?? undefined,
+      sshPort,
+      sshUser: sshUser.trim(),
+      hostKeyFingerprint: hasCapturedSshAuthority
+        ? locator.hostKeyFingerprint
+        : (dbNode?.host_key_fingerprint ?? undefined),
+      ...trackedRegistration,
     };
   }
 

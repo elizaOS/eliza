@@ -32,6 +32,7 @@ mock.module("../docker-ssh", () => ({
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import { DockerSandboxProvider } from "../docker-sandbox-provider";
+import { headscaleIntegration } from "../headscale-integration";
 
 const SANDBOX_ID = "agent-capacity-ownership-test";
 const NODE_ID = "node-1";
@@ -45,6 +46,8 @@ type ContainerMetaSeed = {
   agentId: string;
   sshPort: number;
   sshUser: string;
+  tsHostname?: string;
+  vpnNodeId?: string;
 };
 
 function seedContainer(provider: DockerSandboxProvider): void {
@@ -80,6 +83,78 @@ afterEach(() => {
 });
 
 describe("provider stop never mutates node capacity", () => {
+  test.each(["current", "stale", "absent"])(
+    "uses only observed VPN identity for lifecycle deletion (%s)",
+    async (registration) => {
+      process.env.HEADSCALE_API_KEY = "test-headscale-key";
+      execBehavior = async () => "absent";
+      const provider = new DockerSandboxProvider();
+      if (registration !== "absent") {
+        const containers = (provider as unknown as { containers: Map<string, ContainerMetaSeed> })
+          .containers;
+        seedContainer(provider);
+        const meta = containers.get(SANDBOX_ID);
+        if (!meta) throw new Error("Missing seeded container");
+        meta.tsHostname = "registered-agent-111111111111";
+        meta.vpnNodeId = "42";
+        if (registration === "stale") meta.nodeId = "previous-node";
+      }
+      const byId = spyOn(headscaleIntegration, "removeVpnNodeById").mockResolvedValue();
+      const byName = spyOn(headscaleIntegration, "cleanupContainerVPN").mockResolvedValue();
+      try {
+        await expect(
+          provider.stopForDeletion(SANDBOX_ID, {
+            sandboxId: SANDBOX_ID,
+            agentId: SANDBOX_ID,
+            nodeId: NODE_ID,
+            containerName: SANDBOX_ID,
+            hostname: "host.example.test",
+            sshUser: "root",
+            sshPort: 22,
+          }),
+        ).resolves.toEqual({ kind: "not-running-proven" });
+        expect(byName).not.toHaveBeenCalled();
+        if (registration === "current") expect(byId).toHaveBeenCalledWith("42");
+        else expect(byId).not.toHaveBeenCalled();
+        expect(decrementSpy).not.toHaveBeenCalled();
+      } finally {
+        byId.mockRestore();
+        byName.mockRestore();
+        delete process.env.HEADSCALE_API_KEY;
+      }
+    },
+  );
+
+  test.each([
+    { hostname: "", sshUser: "root", sshPort: 22 },
+    { hostname: "host.example.test", sshUser: " ", sshPort: 22 },
+    { hostname: "host.example.test", sshUser: "root", sshPort: 0 },
+    { hostname: "host.example.test" },
+  ])("rejects incomplete captured SSH authority before remote work: %j", async (authority) => {
+    const commands: string[] = [];
+    execBehavior = async (command) => {
+      commands.push(command);
+      return "absent";
+    };
+    const nodeLookup = spyOn(dockerNodesRepository, "findByNodeIdOnPrimary");
+    try {
+      await expect(
+        new DockerSandboxProvider().stopForDeletion(SANDBOX_ID, {
+          sandboxId: SANDBOX_ID,
+          agentId: SANDBOX_ID,
+          nodeId: NODE_ID,
+          containerName: SANDBOX_ID,
+          ...authority,
+        }),
+      ).rejects.toMatchObject({ code: "SANDBOX_DELETION_SSH_AUTHORITY_INVALID" });
+      expect(commands).toEqual([]);
+      expect(nodeLookup).not.toHaveBeenCalled();
+      expect(decrementSpy).not.toHaveBeenCalled();
+    } finally {
+      nodeLookup.mockRestore();
+    }
+  });
+
   test("an exact absence probe skips mutating Docker commands on a deletion retry", async () => {
     const commands: string[] = [];
     execBehavior = async (command) => {
