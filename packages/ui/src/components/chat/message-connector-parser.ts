@@ -9,7 +9,8 @@
 
 // Keep the id charset in lockstep with CONFIG_RE (message-parser-helpers.ts):
 // both markers name the same plugin-id namespace.
-export const CONNECTOR_RE = /\[CONNECTOR:([@\w][\w@./:-]*)\]/g;
+export const CONNECTOR_RE =
+  /\[[ \t]*CONNECTOR[ \t]*:[ \t]*([@\w][\w@./:-]*?)[ \t]*\]/g;
 
 export interface ConnectorCardMatch {
   start: number;

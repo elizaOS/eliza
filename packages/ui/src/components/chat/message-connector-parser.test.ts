@@ -28,4 +28,18 @@ describe("message-connector-parser", () => {
     expect(regions.length).toBe(1);
     expect(regions[0].pluginId).toBe("@elizaos/plugin-discord");
   });
+
+  it("extracts connector card region with whitespace inside tag brackets", () => {
+    const text = "Authorize here: [  CONNECTOR:twitter  ] to continue.";
+    const regions = findConnectorCardRegions(text);
+    expect(regions).toHaveLength(1);
+    expect(regions[0].pluginId).toBe("twitter");
+  });
+
+  it("extracts connector card region with whitespace around separator colon", () => {
+    const text = "[ CONNECTOR : @elizaos/plugin-discord ]";
+    const regions = findConnectorCardRegions(text);
+    expect(regions).toHaveLength(1);
+    expect(regions[0].pluginId).toBe("@elizaos/plugin-discord");
+  });
 });
