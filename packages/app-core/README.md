@@ -45,7 +45,8 @@ This package is consumed by `@elizaos/agent`, `@elizaos/ui`, `@elizaos/shared`, 
 
 A normal root `bun install` initializes the pinned fused inference submodule,
 ensures the host library and its companion libraries are current, and provisions
-the hash-verified default embedding model. The runtime discovers these artifacts
+the hash-verified default embedding model. Setup then loads the native library
+and computes a local embedding before reporting readiness. The runtime discovers these artifacts
 under the same state directory without additional environment configuration.
 Relative `ELIZA_STATE_DIR` paths resolve from the current working directory;
 `~` expands to the user's home directory.

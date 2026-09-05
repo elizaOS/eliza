@@ -250,6 +250,18 @@ export async function ensureFusedInferenceInstall({
   );
   run(bunExecutable, [stageScript, "--ensure"], { cwd: repoRoot, env });
   const embedding = await ensureEmbedding({ env, repoRoot, fetchImpl });
+  run(
+    bunExecutable,
+    [
+      "--conditions=eliza-source",
+      path.join(
+        repoRoot,
+        "packages/app-core/scripts/verify-fused-embedding.mjs",
+      ),
+      embedding.path,
+    ],
+    { cwd: repoRoot, env },
+  );
   log("fused desktop inference and embedding model are installed and current");
   return { status: "ready", embedding };
 }

@@ -75,7 +75,7 @@ test("CI is not an implicit escape hatch", async () => {
   });
 
   assert.equal(result.status, "ready");
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
 });
 
 test("missing Linux prerequisites are provisioned before the native build", async () => {
@@ -98,6 +98,7 @@ test("missing Linux prerequisites are provisioned before the native build", asyn
   assert.deepEqual(events, [
     ["run", "git"],
     ["provision", "cmake", "build-essential"],
+    ["run", "/bun"],
     ["run", "/bun"],
   ]);
 });
