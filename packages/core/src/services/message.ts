@@ -4061,10 +4061,15 @@ function buildV5PlannerActionSurface(params: {
 			return authorizedActionIdentities.has(childName.trim());
 		}),
 	}));
+	const catalogStartedAt = performance.now();
 	const catalog = getCachedActionCatalog(
 		authorizedCatalogActions,
 		params.localizedExamples,
 	);
+	recordInferenceSpan("actions:catalog", performance.now() - catalogStartedAt, {
+		actions: authorizedCatalogActions.length,
+		parents: catalog.parents.length,
+	});
 	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
 	const messageText = getUserMessageText(params.message);
 	if (typeof messageText !== "string") {
@@ -4078,6 +4083,7 @@ function buildV5PlannerActionSurface(params: {
 	}
 	const retrievalMessageText =
 		typeof messageText === "string" ? messageText : "";
+	const retrievalStartedAt = performance.now();
 	const retrieval = retrieveActions({
 		catalog,
 		messageText: retrievalMessageText,
@@ -4090,6 +4096,11 @@ function buildV5PlannerActionSurface(params: {
 		parentActionHints,
 		measurementMode,
 	});
+	recordInferenceSpan(
+		"actions:retrieval",
+		performance.now() - retrievalStartedAt,
+	);
+	const tieringStartedAt = performance.now();
 	const tieredSurface = tierActionResults({
 		catalog,
 		results: retrieval.results,
@@ -4097,6 +4108,7 @@ function buildV5PlannerActionSurface(params: {
 		// Kept for source compatibility; child availability is complete.
 		queryTokens: retrieval.query.tokens,
 	});
+	recordInferenceSpan("actions:tiering", performance.now() - tieringStartedAt);
 	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = authorizedActionNames;
 	const tierAChildrenByParent = Object.fromEntries(

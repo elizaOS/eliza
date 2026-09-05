@@ -88,14 +88,26 @@ describe("prepared keyword matching", () => {
 		}
 	});
 
-	it("keeps raw-term identity and drops only entries that can never match", () => {
+	it("keeps raw-term identity and collapses exact duplicates", () => {
 		const prepared = prepareKeywordTerms(TERMS);
 		const rawTerms = prepared.map((entry) => entry.term);
 		expect(rawTerms).toContain("calendar");
 		expect(rawTerms).toContain("CALENDAR");
 		expect(rawTerms.filter((term) => term === "calendar")).toHaveLength(1);
-		expect(rawTerms).not.toContain("");
-		expect(rawTerms).not.toContain("   ");
+		expect(new Set(rawTerms).size).toBe(rawTerms.length);
+	});
+
+	it("preserves text-first insertion order like the unprepared matcher", () => {
+		const texts = ["delete the gym session", "whats on my calendar"];
+		const terms = ["calendar", "gym", "delete"];
+		expect([
+			...collectPreparedKeywordTermMatches(texts, prepareKeywordTerms(terms)),
+		]).toEqual([...collectKeywordTermMatches(texts, terms)]);
+		expect([...collectKeywordTermMatches(texts, terms)]).toEqual([
+			"gym",
+			"delete",
+			"calendar",
+		]);
 	});
 
 	it("returns an empty set for empty inputs", () => {
