@@ -1256,6 +1256,11 @@ interface ResolvedModelRegistration {
 	provider: string;
 }
 
+/** Backoff between eager service-start attempts after a failed boot-time start. */
+const EAGER_SERVICE_START_RETRY_DELAYS_MS: readonly number[] = [
+	2_000, 5_000, 10_000,
+];
+
 export class AgentRuntime implements IAgentRuntime {
 	/** The runtime invokes request preparation before each resolved model handler. */
 	readonly supportsModelAttemptPreparation = true;
@@ -2582,20 +2587,7 @@ export class AgentRuntime implements IAgentRuntime {
 			// snapshot, otherwise the first declaration can fail before a later
 			// implementation of the same service type is visible.
 			for (const serviceType of serviceTypesToStart) {
-				this._ensureServiceStarted(serviceType).catch((err) => {
-					// error-policy:J5 eager startup is fire-and-forget; _runServiceStart
-					// reports the failure and service-load callers observe the rejection.
-					this.logger.error(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							plugin: pluginToRegister.name,
-							serviceType,
-							error: err instanceof Error ? err.message : String(err),
-						},
-						"Service start failed",
-					);
-				});
+				void this.startServiceEagerly(serviceType, pluginToRegister.name);
 			}
 		}
 		if (pluginToRegister.adapter) {
@@ -5757,6 +5749,48 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/** Starts every pending implementation in parallel and waits for the full set. */
+	/**
+	 * Eager startup for one service type with a bounded retry. Boot starts every
+	 * service at once, so a transient failure (a saturated database pool, a
+	 * dependency still warming) used to mark the type "failed" for the whole
+	 * process lifetime and every later `getService` returned null (live
+	 * 2026-09-05: two services dead after a 5 s pool timeout at boot). Each
+	 * retry re-enters `_ensureServiceStarted`, which re-arms the class start;
+	 * a stop request ends the sequence.
+	 */
+	private async startServiceEagerly(
+		serviceType: ServiceTypeName | string,
+		pluginName: string,
+	): Promise<void> {
+		for (let attempt = 0; ; attempt += 1) {
+			try {
+				await this._ensureServiceStarted(serviceType);
+				return;
+			} catch (err) {
+				// error-policy:J5 eager startup is fire-and-forget; _runServiceStart
+				// reports each failure and service-load callers observe the rejection.
+				const delayMs = EAGER_SERVICE_START_RETRY_DELAYS_MS[attempt];
+				const willRetry =
+					delayMs !== undefined && !this.stopRequested && !this.stopped;
+				this.logger.error(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						plugin: pluginName,
+						serviceType,
+						attempt: attempt + 1,
+						willRetry,
+						error: err instanceof Error ? err.message : String(err),
+					},
+					willRetry ? "Service start failed; retrying" : "Service start failed",
+				);
+				if (!willRetry) return;
+				await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+				if (this.stopRequested || this.stopped) return;
+			}
+		}
+	}
+
 	private async _ensureServiceStarted(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null> {

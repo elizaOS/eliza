@@ -1236,6 +1236,55 @@ describe("malformed envelope recovery (#18240 class — the 2026-08-10 leak)", (
 		expect(result.messageToUser).toBe("Your note is updated.");
 	});
 
+	it("replans (not a protocol failure) on prose plus a trailing fenced non-terminal envelope with unlicensed fields", async () => {
+		// Live 2026-09-05 (tj-103a1bfb93f2e1): after a successful calendar lookup
+		// the model wrote prose, then a fenced NEXT_RECOMMENDED envelope carrying
+		// invented `nextTool`/`nextParams`; the protocol failure relayed the
+		// lookup text as the final answer and the requested delete never ran.
+		const raw = [
+			"There are two Gym session entries on Tuesday. I will delete the 7 AM event.",
+			"```json",
+			JSON.stringify({
+				thought: "Delete the confirmed 7 AM event next.",
+				success: true,
+				decision: "NEXT_RECOMMENDED",
+				nextTool: "CALENDAR_DELETE_EVENT",
+				nextParams: { event_id: "event-96120c00" },
+			}),
+			"```",
+		].join("\n");
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.success).toBe(false);
+		expect(result.protocolFailure).toBeUndefined();
+		expect(result.messageToUser).toBeUndefined();
+		expect(
+			(result.raw as { recoverySource?: string } | undefined)?.recoverySource,
+		).toBe("unlicensed_envelope_nonterminal");
+	});
+
+	it("recovers a valid FINISH verdict from a trailing fenced envelope after prose", async () => {
+		const raw = [
+			"Checked the search results.",
+			"```json",
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The answer is grounded in the search results.",
+				messageToUser: "The repo has 42 open issues, mostly about connectors.",
+			}),
+			"```",
+		].join("\n");
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe(
+			"The repo has 42 open issues, mostly about connectors.",
+		);
+		expect(
+			(result.raw as { recoverySource?: string } | undefined)?.recoverySource,
+		).toBe("trailing_evaluator_envelope");
+	});
+
 	it("replans instead of shipping debris when a terminal envelope has no answer", async () => {
 		const raw = `None${JSON.stringify({
 			success: false,

@@ -16,6 +16,7 @@ import {
 } from "../types";
 import { ChannelType } from "../types/primitives";
 import { EvaluatorService, runPostTurnEvaluators } from "./evaluator";
+import { getRoomTranscript } from "./evaluator-transcript";
 
 const LARGE_PROMPT_SECTION_CHARS = 130_000;
 
@@ -63,6 +64,41 @@ function schema() {
 }
 
 describe("EvaluatorService", () => {
+	it("shares transcript reads within a runtime but never across runtimes", async () => {
+		const first = makeRuntime();
+		const second = makeRuntime();
+		const message = makeMessage();
+		const firstHistory = [
+			{ ...message, content: { text: "First agent context" } },
+		];
+		const secondHistory = [
+			{ ...message, content: { text: "Second agent context" } },
+		];
+		vi.spyOn(first, "getMemories").mockResolvedValue(firstHistory);
+		vi.spyOn(second, "getMemories").mockResolvedValue(secondHistory);
+		const firstRead = getRoomTranscript(first, message);
+		expect(getRoomTranscript(first, message)).toBe(firstRead);
+		expect(await firstRead).toEqual(firstHistory);
+		expect(await getRoomTranscript(second, message)).toEqual(secondHistory);
+		expect(first.getMemories).toHaveBeenCalledTimes(1);
+		expect(second.getMemories).toHaveBeenCalledTimes(1);
+	});
+
+	it("retries a failed transcript read instead of caching an empty conversation", async () => {
+		const runtime = makeRuntime();
+		const message = makeMessage();
+		vi.spyOn(runtime, "getMemories")
+			.mockRejectedValueOnce(new Error("storage unavailable"))
+			.mockResolvedValue([message]);
+		await expect(getRoomTranscript(runtime, message)).rejects.toThrow(
+			"storage unavailable",
+		);
+		await expect(getRoomTranscript(runtime, message)).resolves.toEqual([
+			message,
+		]);
+		expect(runtime.getMemories).toHaveBeenCalledTimes(2);
+	});
+
 	it.each([ChannelType.VOICE_DM, ChannelType.VOICE_GROUP])(
 		"does not serialize %s turns behind optional post-turn reflection",
 		async (channelType) => {
@@ -75,6 +111,61 @@ describe("EvaluatorService", () => {
 			expect(getServiceLoadPromise).not.toHaveBeenCalled();
 		},
 	);
+
+	it("renders the room transcript once in the shared context for every section", async () => {
+		// Live 2026-09-05: five sections each embedded the whole room history.
+		const runtime = makeRuntime();
+		const transcript: Memory[] = [
+			{
+				id: "00000000-0000-0000-0000-000000000011" as Memory["id"],
+				entityId: "00000000-0000-0000-0000-000000000002" as Memory["entityId"],
+				roomId: "00000000-0000-0000-0000-000000000003" as Memory["roomId"],
+				content: { text: "I moved to Lisbon last week", source: "test" },
+			} as Memory,
+			{
+				id: "00000000-0000-0000-0000-000000000012" as Memory["id"],
+				entityId: "00000000-0000-0000-0000-000000000009" as Memory["entityId"],
+				roomId: "00000000-0000-0000-0000-000000000003" as Memory["roomId"],
+				content: { text: "Congrats on the move!", source: "test" },
+			} as Memory,
+		];
+		runtime.getMemories = vi.fn(
+			async () => transcript,
+		) as AgentRuntime["getMemories"];
+		const sectionFor = (name: string): Evaluator => ({
+			name,
+			description: `${name} evaluator`,
+			providers: ["CONVERSATION_PROXIMITY"],
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: ({ shared }) =>
+				shared?.roomTranscriptRendered
+					? `${name}: see shared transcript`
+					: `${name}: OWN COPY`,
+			parse: (output) => output as never,
+		});
+		runtime.registerEvaluator(sectionFor("alpha"));
+		runtime.registerEvaluator(sectionFor("beta"));
+		let prompt = "";
+		runtime.useModel = vi.fn(async (_modelType, params) => {
+			prompt = String(params.messages?.[0]?.content ?? "");
+			return { alpha: { ok: true }, beta: { ok: true } };
+		}) as AgentRuntime["useModel"];
+
+		await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: {},
+			text: "STAGE1-PROVIDER-BLOB",
+		});
+
+		expect(prompt.split("I moved to Lisbon last week")).toHaveLength(2);
+		expect(prompt).toContain("Room transcript");
+		expect(prompt).toContain("alpha: see shared transcript");
+		expect(prompt).toContain("beta: see shared transcript");
+		expect(prompt).not.toContain("OWN COPY");
+		expect(prompt).toContain("STAGE1-PROVIDER-BLOB");
+		expect(runtime.getMemories).toHaveBeenCalledTimes(1);
+	});
 
 	it("merges active evaluator sections into one structured model call", async () => {
 		const runtime = makeRuntime();

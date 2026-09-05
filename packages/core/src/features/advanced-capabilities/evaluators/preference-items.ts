@@ -30,6 +30,10 @@
 import { v4 } from "uuid";
 import { logger } from "../../../logger.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import {
+	getRoomTranscript,
+	recentMessagesSection,
+} from "../../../services/evaluator-transcript.ts";
 import type {
 	Evaluator,
 	IAgentRuntime,
@@ -71,7 +75,6 @@ import {
 import {
 	canEvaluateMessage,
 	DEDUP_SIMILARITY_THRESHOLD,
-	formatRecentMessages,
 	NEW_FACT_CONFIDENCE,
 	preserveFactMetadata,
 	STRENGTHEN_DELTA,
@@ -171,11 +174,7 @@ async function preparePreferences(
 	message: Memory,
 ): Promise<PreferencePrepared> {
 	const [recentMessagesRaw, entityFacts] = await Promise.all([
-		runtime.getMemories({
-			tableName: "messages",
-			roomId: message.roomId,
-			unique: false,
-		}),
+		getRoomTranscript(runtime, message),
 		runtime.getMemories({
 			tableName: "facts",
 			roomId: message.roomId,
@@ -402,7 +401,7 @@ export const preferenceEvaluator: Evaluator<
 	async prepare({ runtime, message }) {
 		return preparePreferences(runtime, message);
 	},
-	prompt({ runtime, prepared }) {
+	prompt({ runtime, prepared, shared }) {
 		const agentName = runtime.character.name ?? "Agent";
 		// Without the PersonalityStore, slot ops would be dropped in the
 		// processor anyway — don't advertise them, so the model routes
@@ -433,8 +432,7 @@ ${formatSlotForPrompt(prepared.slot)}
 Known preferences already stored:
 ${formatKnownPreferences(prepared.knownPreferenceFacts)}
 
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}`;
+${recentMessagesSection(shared, prepared.recentMessages)}`;
 	},
 	parse(output) {
 		// Tolerant, op-by-op — drops are logged inside

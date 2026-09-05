@@ -1318,11 +1318,18 @@ function recoverEvaluatorTextOutput(
 
 	const envelope = trailingEvaluatorEnvelope(text);
 	if (envelope) {
+		const envelopeSource = (envelope.raw as { recoverySource?: unknown })
+			?.recoverySource;
 		return {
 			...envelope,
 			messageToUser:
 				envelope.decision === "FINISH" ? envelope.messageToUser : undefined,
-			raw: { recoverySource: "trailing_evaluator_envelope" },
+			raw: {
+				recoverySource:
+					typeof envelopeSource === "string"
+						? envelopeSource
+						: "trailing_evaluator_envelope",
+			},
 		};
 	}
 	if (!looksLikeUserFacingAnswer(text)) return output;
@@ -1400,20 +1407,59 @@ function latestVerifiedToolUserFacingText(
  * into a finished user reply merely because noisy text preceded them.
  */
 function trailingEvaluatorEnvelope(text: string): EvaluatorOutput | null {
-	const trimmed = text.trimEnd();
+	// A trailing fenced envelope (prose, then a ```json … ``` block) is the same
+	// verdict as a bare trailing object; only the fence has to go (live
+	// 2026-09-05: a NEXT_RECOMMENDED delete verdict inside a fence read as a
+	// protocol failure and the turn ended on the lookup listing).
+	const trimmed = stripTrailingJsonFence(text.trimEnd());
 	if (!trimmed.endsWith("}")) return null;
 	const objects = extractJsonObjects(trimmed);
 	if (objects.length !== 1) return null;
 	const candidate = objects[0];
 	if (!candidate || !trimmed.endsWith(candidate)) return null;
-	if (!isEvaluatorEnvelopeObject(tryParseJson(candidate))) return null;
+	const object = tryParseJson(candidate);
+	if (!isEvaluatorEnvelopeObject(object)) return null;
 	const parsed = parseEvaluatorOutput(candidate);
-	if (parsed.parseError) return null;
+	if (parsed.parseError || parsed.protocolFailure) {
+		// The envelope names a valid non-terminal decision but carries fields the
+		// protocol does not license (e.g. `nextTool`/`nextParams` the model
+		// invented to request the next step). Its intent is unambiguous: the
+		// work is not finished. Replan through real tool dispatch instead of
+		// reporting a protocol failure, which the loop answers by relaying the
+		// last tool text as the final message.
+		const record = object as { decision?: unknown; route?: unknown };
+		const decision = String(
+			record.decision ?? record.route ?? "",
+		).toUpperCase();
+		if (decision === "CONTINUE" || decision === "NEXT_RECOMMENDED") {
+			return {
+				success: false,
+				decision: "CONTINUE",
+				thought:
+					"Evaluator envelope carried unlicensed fields with a non-terminal decision; replanning from recorded tool results.",
+				raw: { recoverySource: "unlicensed_envelope_nonterminal" },
+			};
+		}
+		return null;
+	}
 	// A terminal envelope without an answer still uses the existing safe prose
 	// recovery. Nonterminal decisions must never be replaced by that prose.
 	if (parsed.decision === "FINISH" && !parsed.messageToUser?.trim())
 		return null;
 	return parsed;
+}
+
+/** Remove one trailing fenced block's fences so its body ends the text. */
+function stripTrailingJsonFence(text: string): string {
+	if (!text.endsWith("```")) return text;
+	const withoutClose = text.slice(0, -3).trimEnd();
+	const open = withoutClose.lastIndexOf("```");
+	if (open === -1) return text;
+	const body = withoutClose
+		.slice(open + 3)
+		.replace(/^(?:json|json5)?\s*/i, "")
+		.trimEnd();
+	return `${withoutClose.slice(0, open).trimEnd()}\n${body}`.trimEnd();
 }
 
 /**

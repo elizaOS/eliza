@@ -57,6 +57,7 @@ import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
 import {
   getActionPlannerModel,
+  getApiKey,
   getBaseURL,
   getExperimentalTelemetry,
   getLargeModel,
@@ -2140,6 +2141,107 @@ function isSpuriousToolPairingRejection(error: unknown): boolean {
   return SPURIOUS_TOOL_PAIRING_400_RE.test(providerErrorSearchText(error));
 }
 
+/**
+ * Per-model rate-limit cooldown shared by a runtime's text handlers. A
+ * provider that answers with a per-minute-bucket 429 (`Retry-After` beyond the
+ * transient lane's cap) will reject the same concrete model until the window
+ * resets; re-sending a 20-45K-token prompt to it — directly or through a
+ * runtime fallback alias that resolves to the same model — only burns the
+ * bucket further and delays failover. A runtime never inherits another
+ * runtime's cooldown; changing its endpoint or credential resets the memo.
+ * Entries expire at the provider's Retry-After and never block another model.
+ */
+const RATE_LIMIT_COOLDOWN_MAX_MS = 120_000;
+const rateLimitCooldowns = new WeakMap<
+  IAgentRuntime,
+  { endpoint: string; credential: string | undefined; models: Map<string, number> }
+>();
+
+class ProviderRateLimitCooldownError extends Error {
+  readonly statusCode = 429;
+  readonly retryAfterMs: number;
+  constructor(modelName: string, retryAfterMs: number) {
+    super(
+      `${modelName} is rate limited (Too Many Requests; provider window resets in ${Math.ceil(retryAfterMs / 1000)}s); not re-sent`
+    );
+    this.name = "ProviderRateLimitCooldownError";
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+function runtimeRateLimitCooldowns(runtime: IAgentRuntime): Map<string, number> {
+  const endpoint = getBaseURL(runtime);
+  const credential = getApiKey(runtime);
+  let cooldown = rateLimitCooldowns.get(runtime);
+  if (!cooldown || cooldown.endpoint !== endpoint || cooldown.credential !== credential) {
+    cooldown = { endpoint, credential, models: new Map() };
+    rateLimitCooldowns.set(runtime, cooldown);
+  }
+  for (const [model, until] of cooldown.models) {
+    if (until <= Date.now()) cooldown.models.delete(model);
+  }
+  return cooldown.models;
+}
+
+function assertModelNotCoolingDown(models: Map<string, number>, modelName: string): void {
+  const until = models.get(modelName);
+  if (until === undefined) return;
+  const remaining = until - Date.now();
+  if (remaining <= 0) {
+    models.delete(modelName);
+    return;
+  }
+  throw new ProviderRateLimitCooldownError(modelName, remaining);
+}
+
+function noteRateLimitCooldown(
+  models: Map<string, number>,
+  modelName: string,
+  error: unknown
+): void {
+  const status =
+    (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
+    (error as { status?: number } | undefined)?.status;
+  if (status !== 429) return;
+  const retryAfter = rateLimitRetryAfterSeconds(error);
+  if (retryAfter === undefined || retryAfter <= TRANSIENT_LANE_MAX_BACKOFF_SECONDS) return;
+  const untilMs = Date.now() + Math.min(retryAfter * 1000, RATE_LIMIT_COOLDOWN_MAX_MS);
+  const existing = models.get(modelName) ?? 0;
+  if (untilMs > existing) models.set(modelName, untilMs);
+  logger.warn(
+    { src: "plugin:openai", model: modelName, retryAfterSeconds: retryAfter },
+    "[OpenAI] provider rate limit reached; holding this model until the window resets"
+  );
+}
+
+/** Longest wait the transient lanes will spend on one retry (see waitForTransientRetry). */
+const TRANSIENT_LANE_MAX_BACKOFF_SECONDS = 3;
+
+/**
+ * Read the provider's `Retry-After` from an AI SDK API error. Returns seconds,
+ * or undefined when the header is absent or unparseable.
+ */
+function rateLimitRetryAfterSeconds(error: unknown): number | undefined {
+  const headers = (error as { responseHeaders?: unknown } | undefined)?.responseHeaders;
+  if (!headers || typeof headers !== "object") return undefined;
+  for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
+    if (key.toLowerCase() !== "retry-after") continue;
+    const raw = Array.isArray(value) ? value[0] : value;
+    if (typeof raw !== "string" || raw.trim().length === 0) return undefined;
+    const seconds = Number(raw.trim());
+    if (Number.isFinite(seconds)) return seconds >= 0 ? seconds : undefined;
+    const at = Date.parse(raw);
+    if (!Number.isFinite(at)) return undefined;
+    return Math.max(0, Math.round((at - Date.now()) / 1000));
+  }
+  return undefined;
+}
+
+function rateLimitOutlastsTransientLane(error: unknown): boolean {
+  const retryAfter = rateLimitRetryAfterSeconds(error);
+  return retryAfter !== undefined && retryAfter > TRANSIENT_LANE_MAX_BACKOFF_SECONDS;
+}
+
 function isTransientProviderError(error: unknown): boolean {
   // The SDK already owns HTTP retries. Re-entering it after exhaustion
   // multiplies its budget (up to 18 requests for one streamed model call).
@@ -2150,7 +2252,12 @@ function isTransientProviderError(error: unknown): boolean {
     | undefined;
   if (!e) return false;
   const status = e.statusCode ?? e.status;
-  if (status === 408 || status === 409 || status === 429) return true;
+  // A 429 whose Retry-After exceeds this lane's backoff cap is a drained
+  // per-minute bucket, not a hiccup: retrying here cannot succeed inside the
+  // window and only delays the runtime's failover to another model. A 429
+  // without that signal (burst limiter) still gets the bounded retry.
+  if (status === 429) return !rateLimitOutlastsTransientLane(error);
+  if (status === 408 || status === 409) return true;
   if (typeof status === "number" && status >= 500 && status < 600) return true;
   // Include the raw response body: the AI SDK derives `message` from the
   // OpenAI `{"error":{...}}` envelope only, so a provider that reports its
@@ -2528,6 +2635,11 @@ async function consumeStreamWithTransientRetry(
   }
 }
 
+const CEREBRAS_STRICT_RESPONSE_SCHEMA_MODELS: ReadonlySet<string> = new Set([
+  "qwen-3.8-27b",
+  "gemma-4-31b",
+]);
+
 /**
  * Generates text using the specified model type.
  *
@@ -2545,6 +2657,9 @@ async function generateTextByModelType(
 ): Promise<string | TextStreamResult> {
   const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
   const openai = createOpenAIClient(runtime);
+  // Keep retries and their failures bound to this call's endpoint/credential,
+  // even if runtime settings change while the HTTP request is in flight.
+  const modelCooldowns = runtimeRateLimitCooldowns(runtime);
   const modelName = resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
   const usageProvider = getUsageProvider(runtime);
 
@@ -2629,8 +2744,14 @@ async function generateTextByModelType(
   const sanitizedResponseSchema = paramsWithAttachments.responseSchema
     ? deepToWellFormedUnicode(paramsWithAttachments.responseSchema)
     : undefined;
+  // Cerebras models with a strict json_schema contract (documented for Qwen 3.8
+  // and Gemma 4). Without it the evaluator/extractor calls on the second bucket
+  // ran in json_object mode, where prose + a fenced envelope came back and the
+  // planner read a protocol failure (live 2026-09-05).
   const qwenResponseSchema =
-    cerebrasMode && modelName === "qwen-3.8-27b" && normalizedTools === undefined;
+    cerebrasMode &&
+    CEREBRAS_STRICT_RESPONSE_SCHEMA_MODELS.has(normalizeCerebrasModelId(modelName)) &&
+    normalizedTools === undefined;
   const preparedOutput =
     sanitizedResponseSchema && (!cerebrasMode || qwenResponseSchema)
       ? buildStructuredOutput(sanitizedResponseSchema, modelType, qwenResponseSchema)
@@ -2681,6 +2802,13 @@ async function generateTextByModelType(
     ...deepToWellFormedUnicode(promptOrMessages),
     system: systemPrompt === undefined ? undefined : deepToWellFormedUnicode(systemPrompt),
     allowSystemInMessages: true,
+    // The SDK's built-in retry honors a provider `Retry-After`, and Cerebras
+    // answers a per-minute token-bucket 429 with `Retry-After: 60`, so one
+    // model call blocked a user-visible turn for a full minute before the
+    // runtime could fail over (live 2026-09-05: 61.9s Stage-1, 63s post-turn
+    // tails). Retries are owned by the transient lanes below (bounded 3s
+    // backoff) and by the runtime's provider failover, never by the SDK.
+    maxRetries: 0,
     ...(params.signal ? { abortSignal: params.signal } : {}),
     // An omitted caller cap delegates the output boundary to the provider/model.
     ...(params.omitMaxTokens || params.maxTokens === undefined
@@ -2733,6 +2861,7 @@ async function generateTextByModelType(
       details.response = "";
       const hasResponseTransform = preparedOutput?.transform !== undefined;
       const buffered = await recordLlmCall(runtime, details, async () => {
+        assertModelNotCoolingDown(modelCooldowns, modelName);
         const result = await consumeStreamWithTransientRetry(
           generateParams,
           hasResponseTransform ? undefined : params.onStreamChunk,
@@ -2743,7 +2872,10 @@ async function generateTextByModelType(
             beforeAttempt: () => attestLlmInputSubstring(details),
             streamTiming,
           }
-        );
+        ).catch((error: unknown) => {
+          noteRateLimitCooldown(modelCooldowns, modelName, error);
+          throw error;
+        });
         const text = restoreResponseText(result.text);
         const toolCalls = restoreRecordArgToolCalls(
           result.toolCalls,
@@ -3072,11 +3204,15 @@ async function generateTextByModelType(
     generateParams
   );
   const result = await recordLlmCall(runtime, details, async () => {
+    assertModelNotCoolingDown(modelCooldowns, modelName);
     const result = await generateTextWithTransientRetry(generateParams, {
       model: modelName,
       retryState,
       maxRetries: 3,
       beforeAttempt: () => attestLlmInputSubstring(details),
+    }).catch((error: unknown) => {
+      noteRateLimitCooldown(modelCooldowns, modelName, error);
+      throw error;
     });
     const restoredText = restoreResponseText(result.text);
     const restoredToolCalls = restoreRecordArgToolCalls(

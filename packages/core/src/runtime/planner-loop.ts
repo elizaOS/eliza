@@ -595,6 +595,11 @@ async function runPlannerLoopIterations(
 	// An omitted declaration cannot erase work the planner explicitly left
 	// pending. A later explicit final declaration releases this authority.
 	let lastPlannerExplicitCompleted: boolean | undefined;
+	// The successful FINISH most recently rejected by the pending-scope rule. If
+	// the planner repeats settled operations, do not replay them. Repetition
+	// alone is not completion: the planner must explicitly release pending
+	// scope before that evaluator verdict can become the final response.
+	let pendingScopeRejectedFinish: EvaluatorOutput | undefined;
 	const correctPendingSuccessfulFinish = (
 		evaluator: EvaluatorOutput,
 		iteration: number,
@@ -631,6 +636,7 @@ async function runPlannerLoopIterations(
 				"If a genuine blocker prevents completion, report that stopped outcome with success=false. " +
 				"Only an explicit final planner declaration can supersede the pending scope.",
 		});
+		pendingScopeRejectedFinish = evaluator;
 		return {
 			...evaluator,
 			success: false,
@@ -639,6 +645,54 @@ async function runPlannerLoopIterations(
 			thought:
 				"The planner explicitly left work pending; successful completion requires a later final declaration.",
 		};
+	};
+	const finishWithEvaluator = (
+		evaluator: EvaluatorOutput,
+	): PlannerLoopResult => ({
+		status: "finished",
+		trajectory,
+		evaluator,
+		finalMessage: userSafeFinalMessage(
+			terminalMessageWithFailureAuthority(
+				trajectory,
+				preferredFinalMessageFromToolOrModel(
+					trajectory,
+					evaluator.messageToUser,
+					evaluator.success === false
+						? failedToolFallbackMessage(trajectory)
+						: undefined,
+				),
+				evaluator.success === false
+					? userSafeFailureReport(evaluator.messageToUser, trajectory)
+					: undefined,
+			),
+			trajectory,
+		),
+	});
+	/** Every non-terminal call repeats an operation that already succeeded here. */
+	const batchOnlyRepeatsSettledWork = (
+		calls: readonly PlannerToolCall[],
+	): boolean => {
+		const nonTerminal = calls.filter((call) => !isTerminalToolCall(call));
+		if (nonTerminal.length === 0) return false;
+		const settledKeys = new Set(
+			[...trajectory.archivedSteps, ...trajectory.steps]
+				.filter(
+					(step) =>
+						step.toolCall &&
+						!isTerminalToolCall(step.toolCall) &&
+						step.result?.success === true,
+				)
+				.map((step) =>
+					plannerToolOperationKey(
+						step.toolCall as PlannerToolCall,
+						step.result,
+					),
+				),
+		);
+		return nonTerminal.every((call) =>
+			settledKeys.has(plannerToolOperationKey(call)),
+		);
 	};
 	// A successful sole action may request one natural, model-authored terminal
 	// reply after its effect completes. This is deliberately narrower than the
@@ -847,6 +901,42 @@ async function runPlannerLoopIterations(
 							: TURN_SCOPE_MORE_WORK_PENDING,
 					}),
 				});
+			}
+			if (pendingScopeRejectedFinish) {
+				if (batchOnlyRepeatsSettledWork(plannerOutput.toolCalls)) {
+					if (plannerOutput.completed !== true) {
+						appendPlannerModelFeedbackEvent(trajectory, {
+							id: `pending-scope-repeat:${iteration}`,
+							type: "instruction",
+							source: "planner-loop",
+							createdAt: Date.now(),
+							content:
+								"This batch only repeats successful recorded operations and was not executed again. " +
+								"Continue the outstanding parts of the user's request. If the entire request is already satisfied, " +
+								"explicitly declare final scope and answer from the recorded results instead of repeating the work.",
+						});
+						continue;
+					}
+					// The planner now explicitly agrees that the whole request is
+					// complete. Reuse the evaluator's generated reply without replay.
+					params.runtime.logger?.warn?.(
+						{
+							iteration,
+							repeated: plannerOutput.toolCalls.map((call) => call.name),
+						},
+						"[planner-loop] planner repeated settled operations after a pending-scope replan; delivering the rejected FINISH instead of replaying them",
+					);
+					const rejectedFinish = pendingScopeRejectedFinish;
+					pendingScopeRejectedFinish = undefined;
+					trajectory.evaluatorOutputs.push(
+						projectToolDiagnosticValue(
+							rejectedFinish,
+							redactDiagnosticText,
+						) as EvaluatorOutput,
+					);
+					return finishWithEvaluator(rejectedFinish);
+				}
+				pendingScopeRejectedFinish = undefined;
 			}
 			if (synthesizingRequiredModelReply) {
 				pendingRequiredModelReply = false;
@@ -5038,13 +5128,75 @@ function terminalMessageWithFailureAuthority(
 		unresolvedFailure,
 		failureReport,
 	);
-	if (trajectory.codingMode !== true) return failureNote;
+	if (trajectory.codingMode !== true) {
+		// A VERIFIED action-owned success after the failure is the turn's
+		// answer: the vetted action delivered its own user-facing text for a
+		// different operation than the one that failed (live 2026-09-05: a UI
+		// panel interaction failed, then CALENDAR create succeeded with "Done.
+		// Gym session is set for Tuesday at 7 AM." — the fallback replaced it,
+		// the forced synthesis call cost 1.5 s / 19K tokens and once shipped
+		// "No reply generated"). Keep that text; add the failed tool's OWN
+		// user-safe note when it has one, never the generic placeholder that
+		// would trigger the synthesis over a verified result.
+		const verifiedEvidence = verifiedToolOwnedSuccessTextsAfter(
+			trajectory,
+			unresolvedFailure,
+		);
+		if (verifiedEvidence.length === 0) return failureNote;
+		const verifiedText =
+			candidate !== undefined && verifiedEvidence.includes(candidate)
+				? candidate
+				: (verifiedEvidence[verifiedEvidence.length - 1] as string);
+		const ownedFailureNote = failedToolOwnedUserSafeText(unresolvedFailure);
+		return ownedFailureNote
+			? `${verifiedText}\n\n${ownedFailureNote}`
+			: verifiedText;
+	}
 	const successEvidence = toolOwnedSuccessEvidenceAfter(
 		trajectory,
 		unresolvedFailure,
 	);
 	if (successEvidence.length === 0) return failureNote;
 	return `${failureNote}\n\nWork that did complete: ${successEvidence.join(" ")}`;
+}
+
+/**
+ * User-facing texts of steps after `failedStep` whose action verified its own
+ * reply (`success`, `verifiedUserFacing`, non-empty `userFacingText`). Unlike
+ * {@link toolOwnedSuccessEvidenceAfter} this excludes planner-facing `text`
+ * and unverified results, so only vetted action-owned replies can stand as
+ * the turn's answer over an earlier failure.
+ */
+function verifiedToolOwnedSuccessTextsAfter(
+	trajectory: PlannerTrajectory,
+	failedStep: PlannerStep,
+): string[] {
+	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+	const failedIndex = steps.indexOf(failedStep);
+	if (failedIndex === -1) return [];
+	const evidence: string[] = [];
+	for (const step of steps.slice(failedIndex + 1)) {
+		const result = step.result;
+		if (
+			step.toolCall === undefined ||
+			isTerminalToolCall(step.toolCall) ||
+			result?.success !== true ||
+			result.verifiedUserFacing !== true
+		) {
+			continue;
+		}
+		const owned = sanitizePlannerMessage(result.userFacingText);
+		if (!owned || isUnsafeUserVisibleText(owned)) continue;
+		if (!evidence.includes(owned)) evidence.push(owned);
+	}
+	return evidence;
+}
+
+/** The failed step's own user-safe text, or undefined when it owns none. */
+function failedToolOwnedUserSafeText(step: PlannerStep): string | undefined {
+	const candidate = sanitizePlannerMessage(step.result?.userFacingText);
+	if (!candidate || isUnsafeUserVisibleText(candidate)) return undefined;
+	return candidate;
 }
 
 function codingToolTerminalFailure(

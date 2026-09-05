@@ -173,6 +173,49 @@ describe("planner-declared pending work", () => {
 		).toBeUndefined();
 	});
 
+	it("delivers the rejected FINISH when the planner explicitly releases pending scope without replay", async () => {
+		// Live 2026-09-05 (tj-9a419beee929da): a single calendar delete was
+		// declared more_work_pending, the evaluator's correct FINISH was rejected,
+		// and the replanned planner re-issued the same delete (a noop) before a
+		// third planner call finally replied.
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("DELETE", "more_work_pending")] },
+				{ text: "", toolCalls: [call("DELETE", "final")] },
+			],
+			evaluations: [finish("Deleted the 7am gym session on Tuesday.")],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["DELETE"]);
+		expect(result.finalMessage).toBe("Deleted the 7am gym session on Tuesday.");
+		expect(h.useModel).toHaveBeenCalledTimes(3);
+		expect(result.evaluator).toMatchObject({
+			decision: "FINISH",
+			success: true,
+		});
+	});
+
+	it.each(["more_work_pending", undefined] as const)(
+		"does not finish an incomplete compound request when a repeated action has scope %s",
+		async (scope) => {
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("DELETE", "more_work_pending")] },
+					{ text: "", toolCalls: [call("DELETE", scope)] },
+					{ text: "", toolCalls: [call("NAVIGATE", "final")] },
+				],
+				evaluations: [
+					finish("Only deleted."),
+					finish("Deleted and opened the destination."),
+				],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["DELETE", "NAVIGATE"]);
+			expect(result.finalMessage).toBe("Deleted and opened the destination.");
+			expect(h.useModel).toHaveBeenCalledTimes(5);
+		},
+	);
+
 	it("preserves the queued batch after rejecting a premature successful FINISH", async () => {
 		const h = harness({
 			plans: [

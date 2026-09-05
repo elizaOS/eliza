@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NoModelProviderConfiguredError } from "../runtime";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import { TurnControllerRegistry } from "../runtime/turn-controller";
 import { getStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
@@ -19,7 +20,11 @@ import {
 } from "../types/action-reply";
 import { asUUID, ChannelType, type UUID } from "../types/primitives";
 import { DefaultMessageService } from "./message";
-import { drainPostDeliveryTasks } from "./post-delivery-task-tracker";
+import {
+	drainPostDeliveryTasks,
+	drainRoomPostDeliveryTasks,
+	pendingRoomPostDeliveryTaskCount,
+} from "./post-delivery-task-tracker";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000002a1" as UUID;
 const ENTITY_ID = "00000000-0000-0000-0000-0000000002b1" as UUID;
@@ -519,5 +524,62 @@ describe("DefaultMessageService run-terminal owner", () => {
 			{ text: "Okay.)" },
 			{ text: "arrived." },
 		]);
+	});
+
+	it("keeps post-turn state writes ordered while visible delivery is already complete", async () => {
+		// ALWAYS_AFTER can mutate state used by the next turn. It cannot be
+		// classified as diagnostics simply to release the room lease earlier.
+		const afterGate = deferred();
+		const afterStarted = deferred();
+		const { runtime, terminalPayloads } = makeRuntime({});
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		(
+			runtime as unknown as { roomHandlerQueue: RoomHandlerQueue }
+		).roomHandlerQueue = queue;
+		(runtime.runActionsByMode as ReturnType<typeof vi.fn>).mockImplementation(
+			async (mode: string) => {
+				if (mode === "ALWAYS_AFTER") {
+					afterStarted.release();
+					await afterGate.promise;
+				}
+			},
+		);
+		const service = new DefaultMessageService();
+		const lease = await queue.acquire(ROOM_ID);
+
+		const result = await queue.runInLease(ROOM_ID, lease, () =>
+			service.handleMessage(
+				runtime,
+				inputMessage("what's on my calendar tuesday?"),
+				async () => [],
+				{ roomHandlerLease: lease },
+			),
+		);
+		expect(result.trajectoryTerminalOwner).toBe("run");
+		await afterStarted.promise;
+
+		// Delivery is done, but the next turn must still wait for state writes.
+		const settledBefore = <T>(work: Promise<T>) =>
+			Promise.race([
+				work.then(() => "settled" as const),
+				new Promise<"blocked">((resolve) =>
+					setTimeout(() => resolve("blocked"), 250),
+				),
+			]);
+		const roomDrain = drainRoomPostDeliveryTasks(runtime, ROOM_ID);
+		expect(await settledBefore(roomDrain)).toBe("blocked");
+		expect(pendingRoomPostDeliveryTaskCount(runtime, ROOM_ID)).toBeGreaterThan(
+			0,
+		);
+		const nextTurn = queue.acquire(ROOM_ID);
+		expect(await settledBefore(nextTurn)).toBe("blocked");
+		expect(terminalPayloads).toEqual([]);
+
+		afterGate.release();
+		await roomDrain;
+		await lease.release();
+		await drainPostDeliveryTasks(runtime);
+		expect(terminalPayloads).toHaveLength(1);
+		await (await nextTurn).release();
 	});
 });

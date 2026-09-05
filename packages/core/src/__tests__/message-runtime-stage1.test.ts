@@ -1946,6 +1946,107 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(wireText).not.toContain("STALE_VOICE_ROOM_HISTORY");
 	});
 
+	describe("Stage-1 cross-room history form", () => {
+		function historyState(): State {
+			return {
+				values: { availableContexts: "general" },
+				data: {
+					providerOrder: ["recent-conversations", "RECENT_MESSAGES"],
+					providers: {
+						"recent-conversations": {
+							text: "EAGER_CROSS_ROOM_HISTORY",
+							overflowText: "LOSSLESS_HISTORY_MANIFEST",
+							values: {},
+							data: {},
+						},
+						RECENT_MESSAGES: {
+							text: "EAGER_CURRENT_ROOM_HISTORY",
+							values: {},
+							data: {
+								recentMessages: [
+									{
+										id: "00000000-0000-0000-0000-000000000031" as UUID,
+										entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+										agentId: "00000000-0000-0000-0000-000000000003" as UUID,
+										roomId: "00000000-0000-0000-0000-000000000004" as UUID,
+										createdAt: 10,
+										content: { text: "CURRENT_ROOM_TURN", source: "test" },
+									},
+								],
+							},
+						},
+					},
+				},
+				text: "EAGER_CROSS_ROOM_HISTORY",
+			};
+		}
+		function runtimeWithHistoryProvider() {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: "Sure." }),
+			]);
+			runtime.providers = [
+				{
+					name: "recent-conversations",
+					description: "cross-room history",
+					relevanceKeywords: ["discuss", "remember", "said", "talked"],
+					get: async () => ({ text: "", values: {}, data: {} }),
+				},
+			] as never;
+			return runtime;
+		}
+		function wireOfFirstCall(runtime: IAgentRuntime): string {
+			const firstCall = useModelCalls(runtime)[0];
+			if (!firstCall) throw new Error("Expected the Stage-1 model call");
+			return JSON.stringify(
+				(firstCall[1] as { messages?: unknown }).messages ?? [],
+			);
+		}
+
+		it("sends the lossless manifest on a text turn with no recall signal", async () => {
+			// Live 2026-09-05: the eager cross-room history was 22.7K of a
+			// 44K-token Stage-1 prompt on "whats on my calendar tuesday?".
+			const runtime = runtimeWithHistoryProvider();
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "whats on my calendar tuesday?" }),
+				state: historyState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			const wire = wireOfFirstCall(runtime);
+			expect(wire).toContain("LOSSLESS_HISTORY_MANIFEST");
+			expect(wire).not.toContain("EAGER_CROSS_ROOM_HISTORY");
+			// The current room's own history is a different provider and stays.
+			expect(wire).toContain("CURRENT_ROOM_TURN");
+		});
+
+		it("keeps the eager history when the message matches the provider's recall keywords", async () => {
+			const runtime = runtimeWithHistoryProvider();
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "what did we discuss in discord yesterday?",
+				}),
+				state: historyState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			const wire = wireOfFirstCall(runtime);
+			expect(wire).toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).not.toContain("LOSSLESS_HISTORY_MANIFEST");
+		});
+
+		it("keeps the eager history for a manifest provider that declares no keywords", async () => {
+			const runtime = runtimeWithHistoryProvider();
+			runtime.providers = [] as never;
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "whats on my calendar tuesday?" }),
+				state: historyState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(wireOfFirstCall(runtime)).toContain("EAGER_CROSS_ROOM_HISTORY");
+		});
+	});
+
 	it("keeps generic programming questions on the simple path even when stale attachments linger in state", async () => {
 		// Regression for the false-positive routing where a verb like "read"
 		// in a normal dev question ("read a large file line by line in node")
