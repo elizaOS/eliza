@@ -1377,13 +1377,16 @@ export function calibrateEmailCurationConfidence(
   if (input.evidence.some((item) => item.kind === "prompt_injection_attempt")) {
     confidence -= 0.08;
   }
-  if (input.blockedDelete && input.action === "review") {
-    confidence = Math.min(confidence, 0.66);
-  }
   for (const effect of input.policyEffects) {
     if (effect.kind === "lower_confidence") {
       confidence -= effect.amount ?? 0.1;
     }
+  }
+  // Applied after the policy-effects loop by design: a negative
+  // lower_confidence amount raises confidence, and this cap guarantees a
+  // review whose delete was blocked never presents above 0.66 even then.
+  if (input.blockedDelete && input.action === "review") {
+    confidence = Math.min(confidence, 0.66);
   }
   if (hasUncitedStrongSemanticEvidence(input.evidence)) {
     confidence = Math.min(confidence, 0.79);
