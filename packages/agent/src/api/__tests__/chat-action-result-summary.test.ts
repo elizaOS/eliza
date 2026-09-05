@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { AgentRuntime } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { summarizeRuntimeActionResults } from "../chat-routes";
 
 describe("chat action-result summaries", () => {
