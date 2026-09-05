@@ -83,6 +83,7 @@ import { registerFallbackActionIfAbsent } from "./runtime-action-ownership.ts";
 import { runRuntimeStartupMaintenance } from "./runtime-maintenance.ts";
 import {
   buildRuntimeSettingsProjection,
+  hydrateConfigEnvForBoot,
   type RuntimeSettingsProjectionOptions,
 } from "./runtime-settings.ts";
 import {
@@ -97,7 +98,10 @@ export {
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.ts";
-export { isEnvKeyAllowedForForwarding } from "./runtime-settings.ts";
+export {
+  hydrateConfigEnvForBoot,
+  isEnvKeyAllowedForForwarding,
+} from "./runtime-settings.ts";
 
 import { PROVIDER_PLUGIN_MAP } from "./plugin-collector.ts";
 import { STATIC_ELIZA_PLUGIN_LOADERS } from "./plugin-types.ts";
@@ -294,7 +298,6 @@ import {
   createDevCloudConfigAuthorityView,
   createDevCloudRuntimeSettingsAuthorityOverlay,
   isDevCloudEnvOwnedKey,
-  isDevCloudInternalEnvKey,
   restoreDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
 import {
@@ -1946,40 +1949,6 @@ function assertPersistentDatabaseRequired(
     throw new Error(
       `Eliza requires persistent database storage and does not permit ALLOW_NO_DATABASE (agent ${runtime.agentId}). Remove ALLOW_NO_DATABASE from config/env and use @elizaos/plugin-sql.`,
     );
-  }
-}
-
-function isElizaCloudManagedProcessEnvKey(key: string): boolean {
-  const upper = key.toUpperCase();
-  return isDevCloudEnvOwnedKey(upper) || isDevCloudInternalEnvKey(upper);
-}
-
-/**
- * Hydrate user-owned config environment values without allowing persisted
- * state to forge launcher authority or repopulate launcher-owned Cloud keys.
- * @internal Exported for regression tests.
- */
-export function hydrateConfigEnvForBoot(
-  config: Pick<ElizaConfig, "env">,
-  env: NodeJS.ProcessEnv = process.env,
-): void {
-  if (
-    !config.env ||
-    typeof config.env !== "object" ||
-    Array.isArray(config.env)
-  ) {
-    return;
-  }
-  const hydrateEntries = (values: Record<string, unknown>): void => {
-    for (const [key, value] of Object.entries(values)) {
-      if (isElizaCloudManagedProcessEnvKey(key)) continue;
-      if (typeof value === "string" && !env[key]) env[key] = value;
-    }
-  };
-  hydrateEntries(config.env as Record<string, unknown>);
-  const vars = (config.env as Record<string, unknown>).vars;
-  if (vars && typeof vars === "object" && !Array.isArray(vars)) {
-    hydrateEntries(vars as Record<string, unknown>);
   }
 }
 
