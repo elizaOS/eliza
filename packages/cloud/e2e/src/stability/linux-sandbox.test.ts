@@ -763,16 +763,17 @@ setInterval(() => {}, 1000);
 );
 
 // The real cleanup function owns real user/firewall/ACL fixtures. Only the
-// process observer models a kernel that still reports a process after SIGKILL.
-test.skipIf(!hostedLinux)(
-  "failed process reaping preserves identity and containment",
-  async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "sandbox-survivor-"));
-    const launcher = path.join(
-      repoRoot,
-      "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
-    );
-    const script = `
+// process observer models a survivor or an OS observation failure after SIGKILL.
+for (const observerStatus of [0, 2]) {
+  test.skipIf(!hostedLinux)(
+    `failed process reaping (${observerStatus}) preserves identity and containment`,
+    async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "sandbox-survivor-"));
+      const launcher = path.join(
+        repoRoot,
+        "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+      );
+      const script = `
 source "$1"
 name="eliza-test-${process.pid}-$RANDOM"
 chain="ELIZA_TEST_$$"
@@ -799,7 +800,7 @@ SANDBOX_CHAIN="$chain"
 SANDBOX_IPV4_CHAIN=1
 SANDBOX_IPV4_JUMP=1
 SANDBOX_CLEANED=0
-sandbox_uid_has_processes() { return 0; }
+sandbox_uid_has_processes() { return ${observerStatus}; }
 if sandbox_cleanup; then exit 90; fi
 set -e
 /usr/bin/getent passwd "$name" >/dev/null
@@ -807,20 +808,29 @@ set -e
 [ "$(/usr/bin/getfacl -cpn "$2")" = "$acl" ]
 echo preserved
 `;
-    try {
-      const result = spawnSync(
-        "sudo",
-        ["-n", "/bin/bash", "-c", script, "survivor-test", launcher, directory],
-        { encoding: "utf8", timeout: 15_000 },
-      );
-      expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout.trim()).toBe("preserved");
-      expect(result.stderr).toContain(
-        "restrictions remain for operator cleanup",
-      );
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  },
-  20_000,
-);
+      try {
+        const result = spawnSync(
+          "sudo",
+          [
+            "-n",
+            "/bin/bash",
+            "-c",
+            script,
+            "survivor-test",
+            launcher,
+            directory,
+          ],
+          { encoding: "utf8", timeout: 15_000 },
+        );
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout.trim()).toBe("preserved");
+        expect(result.stderr).toContain(
+          "restrictions remain for operator cleanup",
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+}
