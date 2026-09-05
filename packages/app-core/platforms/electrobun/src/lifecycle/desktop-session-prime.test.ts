@@ -110,6 +110,7 @@ vi.mock("../native/auth-bridge", async (importOriginal) => {
 import { logger } from "../logger";
 import {
   createDesktopSessionGenerationTracker,
+  initializeExternalDesktopRuntimeSession,
   markDesktopSessionStale,
   primeDesktopSessionAuth,
 } from "./desktop-session-prime";
@@ -629,5 +630,95 @@ describe("desktop-session-prime", () => {
     expect(logger.info).toHaveBeenCalledWith(
       "[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
     );
+  });
+
+  describe("initializeExternalDesktopRuntimeSession", () => {
+    it("primes session and reloads renderer for external loopback runtime", async () => {
+      seedPersistedSession();
+      const externalApiBase = "http://127.0.0.1:3000";
+      const devServerOrigin = "http://localhost:5173";
+      const loadURL = vi.fn();
+      const currentWindow = { webview: { loadURL } };
+      const publishAgentApiBase = vi.fn();
+      const setAgentReady = vi.fn();
+      const injectApiBaseIntoWindows = vi.fn();
+
+      const result = await initializeExternalDesktopRuntimeSession({
+        mode: "external",
+        externalApiBase,
+        externalReachability: "available",
+        currentWindow,
+        resolveRendererOrigin: () => devServerOrigin,
+        resolveApiToken: () => "test-token",
+        publishAgentApiBase,
+        collectOpenWindows: () => [currentWindow],
+        setAgentReady,
+        resolveRendererUrl: async () => "http://localhost:5173/app",
+        injectApiBaseIntoWindows,
+      });
+
+      expect(result).toBe(true);
+      expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledWith({
+        apiBase: externalApiBase,
+        reusePersistedSession: false,
+      });
+      expect(publishAgentApiBase).toHaveBeenCalledWith(
+        devServerOrigin,
+        "test-token",
+        [currentWindow],
+      );
+      expect(setAgentReady).toHaveBeenCalledWith(true);
+      expect(loadURL).toHaveBeenCalledWith("http://localhost:5173/app");
+      expect(injectApiBaseIntoWindows).not.toHaveBeenCalled();
+    });
+
+    it("does not prime session and does not reload renderer for remote external runtime", async () => {
+      seedPersistedSession();
+      const externalApiBase = "https://api.elizaos.ai";
+      const loadURL = vi.fn();
+      const currentWindow = { webview: { loadURL } };
+      const publishAgentApiBase = vi.fn();
+      const setAgentReady = vi.fn();
+      const injectApiBaseIntoWindows = vi.fn();
+
+      const result = await initializeExternalDesktopRuntimeSession({
+        mode: "external",
+        externalApiBase,
+        externalReachability: "available",
+        currentWindow,
+        publishAgentApiBase,
+        collectOpenWindows: () => [currentWindow],
+        setAgentReady,
+        resolveRendererUrl: async () => "http://localhost:5173/app",
+        injectApiBaseIntoWindows,
+      });
+
+      expect(result).toBe(false);
+      expect(authBridgeState.loadOrCreateDesktopSession).not.toHaveBeenCalled();
+      expect(publishAgentApiBase).not.toHaveBeenCalled();
+      expect(setAgentReady).not.toHaveBeenCalled();
+      expect(loadURL).not.toHaveBeenCalled();
+      expect(injectApiBaseIntoWindows).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not prime session when mode is disabled", async () => {
+      const loadURL = vi.fn();
+      const currentWindow = { webview: { loadURL } };
+      const injectApiBaseIntoWindows = vi.fn();
+
+      const result = await initializeExternalDesktopRuntimeSession({
+        mode: "disabled",
+        externalApiBase: "http://127.0.0.1:3000",
+        currentWindow,
+        publishAgentApiBase: vi.fn(),
+        collectOpenWindows: () => [],
+        setAgentReady: vi.fn(),
+        resolveRendererUrl: async () => "http://localhost:5173/app",
+        injectApiBaseIntoWindows,
+      });
+
+      expect(result).toBe(false);
+      expect(injectApiBaseIntoWindows).toHaveBeenCalledTimes(1);
+    });
   });
 });

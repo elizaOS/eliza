@@ -72,6 +72,7 @@ import { publishAgentApiBase } from "./lifecycle/agent-ready-publish";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
   createDesktopSessionGenerationTracker,
+  initializeExternalDesktopRuntimeSession,
   markDesktopSessionStale,
   primeDesktopSessionAuth,
 } from "./lifecycle/desktop-session-prime";
@@ -97,7 +98,6 @@ import {
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
 } from "./native/agent";
-import { isLoopbackBase } from "./native/auth-bridge";
 import {
   isBrowserBridgeLoopbackApiBase,
   startBrowserBridgeDesktopLifecycle,
@@ -1996,34 +1996,22 @@ async function _startAgent(): Promise<void> {
       }
     }
 
-    if (
-      runtimeResolution.mode === "external" &&
-      externalApiBase &&
-      isLoopbackBase(externalApiBase)
-    ) {
-      const devServerRenderer = resolveHttpLoopbackRendererOriginForApiClient(
-        process.env as Record<string, string | undefined>,
-      );
-      const rendererBase = devServerRenderer ?? externalApiBase;
-      const sessionPrimed = await primeDesktopSessionAuth(
-        externalApiBase,
-        rendererBase,
-      );
-      const apiToken =
-        resolveApiToken(process.env) ??
-        resolveQualifiedExternalToken(runtimeResolution, externalApiBase) ??
-        "";
-      publishAgentApiBase(rendererBase, apiToken, collectOpenRendererWindows());
-      setAgentReady(runtimeResolution.externalReachability !== "unavailable");
-      await reloadRendererAfterDesktopSessionPrime({
-        sessionPrimed,
-        backendGeneration: `external:${externalApiBase}`,
-        window: currentWindow,
-        resolveRendererUrl: resolveMainWindowRendererUrl,
-      });
-    } else {
-      injectApiBaseIntoOpenRendererWindows();
-    }
+    await initializeExternalDesktopRuntimeSession({
+      mode: runtimeResolution.mode,
+      externalApiBase,
+      externalReachability: runtimeResolution.externalReachability,
+      currentWindow,
+      resolveRendererOrigin: resolveHttpLoopbackRendererOriginForApiClient,
+      resolveApiToken: (env) => resolveApiToken(env),
+      resolveQualifiedToken: (base) =>
+        resolveQualifiedExternalToken(runtimeResolution, base),
+      publishAgentApiBase: (base, token, windows) =>
+        publishAgentApiBase(base, token, windows),
+      collectOpenWindows: collectOpenRendererWindows,
+      setAgentReady,
+      resolveRendererUrl: resolveMainWindowRendererUrl,
+      injectApiBaseIntoWindows: injectApiBaseIntoOpenRendererWindows,
+    });
     return;
   }
 
@@ -3204,8 +3192,6 @@ async function main(): Promise<void> {
       sendToActiveRenderer("agentStartupFailed", { error });
       console.error(`title: "${BRAND.appName} startup failed"`);
     });
-  } else {
-    injectApiBaseIntoOpenRendererWindows();
   }
 
   void setupUpdater();
