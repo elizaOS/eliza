@@ -518,16 +518,15 @@ const ALWAYS_SHARED = new Set([
   "background@/background",
   "views@/views",
   "apps@/apps",
-  // Default views paint NO surface of their own: they sit on the shared
-  // launcher wallpaper (readability scrim above it). Settings is the canonical
-  // representative asserted here.
-  "settings@/settings",
 ]);
 
 // Routes that must be isolated from the launcher wallpaper/global background.
-// Only surfaces with an explicit opaque/native manifest remain (the browser's
-// native-webview isolation).
-const MUST_BE_OPAQUE = new Set<string>();
+// Ordinary pages must stay neutral even when no surface manifest is declared.
+const MUST_BE_OPAQUE = new Set(
+  BUILTIN_TABS.map(({ tab, path }) => `${tab}@${path}`).filter(
+    (key) => !ALWAYS_SHARED.has(key),
+  ),
+);
 
 // Deterministic PRNG (mulberry32) so the fuzz is reproducible — no Math.random.
 function makeRng(seed: number): () => number {
@@ -946,12 +945,11 @@ describe("App view-surface mutation isolation — rogue view cannot leak global 
     });
   }
 
-  // Opaque surfaces: with builtin views defaulting to the shared wallpaper,
-  // only a view with an explicit opaque manifest stays isolated — the
-  // browser's native-webview surface. It MUST stay opaque no matter what a
-  // view broadcasts.
+  // Ordinary pages stay opaque regardless of background events.
   const OPAQUE_SURFACES: { tab: BuiltinTab; path: string }[] = [
     { tab: "browser", path: "/browser" },
+    { tab: "automations", path: "/automations" },
+    { tab: "settings", path: "/settings" },
   ];
 
   const SHARED_SURFACE = { tab: "chat" as BuiltinTab, path: "/chat" };

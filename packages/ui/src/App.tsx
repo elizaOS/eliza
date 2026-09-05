@@ -755,16 +755,6 @@ function useCurrentNavigationPath(): string {
 function viewRegistrationBackgroundPolicy(
   decl: SurfaceManifestBearer | null | undefined,
 ): AppShellBackgroundPolicy {
-  // Host default: a BUILTIN view that declares no background sits on the
-  // shared launcher wallpaper (with the readability scrim). The wallpaper
-  // default is scoped to first-party registrations only — an undeclared
-  // remote/plugin view keeps the grant-gated default-deny (#13452: shared is
-  // an explicit opt-in via the `wallpaper` grant, never an accident), and an
-  // explicit declaration always resolves through the core resolver (browser
-  // stays opaque; ungranted "shared" downgrades).
-  const declared = decl?.surface?.background ?? decl?.backgroundPolicy;
-  const builtin = (decl as { builtin?: boolean } | null | undefined)?.builtin;
-  if (declared === undefined && builtin === true) return "shared";
   return resolveSurfaceBackgroundPolicy(decl);
 }
 
@@ -840,11 +830,8 @@ function resolveActiveScreenBackgroundPolicy({
     return viewRegistrationBackgroundPolicy(registeredView);
   }
 
-  // Default: builtin views paint NO surface of their own — they sit on the
-  // shared launcher wallpaper (with the readability scrim below). A view that
-  // needs an opaque surface declares it (manifest / registration), like the
-  // browser's native-webview isolation above.
-  return "shared";
+  // Ordinary views use the neutral surface. Wallpaper is an explicit opt-in.
+  return "opaque";
 }
 
 function useActiveScreenBackgroundPolicy({
