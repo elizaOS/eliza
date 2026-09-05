@@ -435,6 +435,54 @@ describe("runFactsAndRelationshipsStage", () => {
 		);
 	});
 
+	it("never suppresses a fact whose subject the room could not resolve, even when the author's durable row matches", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [{ subject: "Carol", fact: "prefers oat milk" }],
+				relationships: [],
+				thought: "unresolved subject",
+			}),
+		);
+		const message = makeMessage();
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-00000000bbb6" as UUID,
+				entityId: message.entityId,
+				agentId: runtime.agentId,
+				roomId: message.roomId,
+				content: { text: "User prefers oat milk.", source: "MEMORY" },
+				metadata: {
+					type: "custom",
+					source: "MEMORY",
+					kind: "durable",
+					messageId: message.id,
+				},
+				createdAt: 2,
+			} as Memory,
+		]);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message,
+			state: makeState(),
+			extract: { facts: ["Carol prefers oat milk"] },
+		});
+
+		expect(result.written.facts).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entityId: message.entityId,
+				metadata: expect.objectContaining({
+					subject: "Carol",
+					subjectResolved: false,
+					kind: "current",
+				}),
+			}),
+			"facts",
+			true,
+		);
+	});
+
 	it("still persists a Stage-1 fact when the same-message durable row has the opposite polarity", async () => {
 		const runtime = makeRuntime(
 			JSON.stringify({

@@ -260,6 +260,26 @@ describe("CALENDAR delete_event disambiguation", () => {
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
+  it("typed delete_event + title (no query) → reads the feed and targets that event", async () => {
+    // ROOT trace step-1788648925553-vzj6rq (2026-09-05): the planner sent
+    // subaction=delete_event with the exact title and a date; the handler
+    // discarded the title and asked which event, without any lookup.
+    const result = await runHandler({
+      service,
+      text: "clean up the two QA events",
+      parameters: {
+        subaction: "delete_event",
+        title: "Lunch with Grandma",
+        details: { date: "2026-07-08", timeZone: "UTC" },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
+    expect(service.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+    );
+  });
+
   it("explicit eventId → proceeds directly without a feed lookup", async () => {
     const result = await runHandler({
       service,

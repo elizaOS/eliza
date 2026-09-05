@@ -569,6 +569,50 @@ describe("applyPreferenceOps preference facts", () => {
 		expect(result?.data).toMatchObject({ factsAdded: 0, factsStrengthened: 1 });
 	});
 
+	it("never promotes a same-message row whose subject the room could not resolve", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const unresolved: Memory = {
+			id: "00000000-0000-4000-8000-0000000000c4" as UUID,
+			entityId: USER,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "prefers morning check-ins", type: "fact" },
+			metadata: {
+				type: "custom",
+				source: "facts_and_relationships_stage",
+				messageId: makeMessage().id,
+				subject: "Carol",
+				subjectResolved: false,
+				kind: "current",
+				category: "uncategorized",
+				keywords: ["prefers", "morning", "check", "ins"],
+			},
+			createdAt: Date.now() - 1_000,
+		};
+		fake.memories.set("facts", [unresolved]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "prefers morning check-ins",
+						keywords: ["morning", "check-ins"],
+					},
+				],
+			}),
+			{ knownPreferenceFacts: [] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows).toHaveLength(2);
+		expect(rows[0].metadata).toMatchObject({
+			kind: "current",
+			subject: "Carol",
+			subjectResolved: false,
+		});
+		expect(result?.data).toMatchObject({ factsAdded: 1, factsStrengthened: 0 });
+	});
+
 	it("never promotes or strengthens a row with the opposite polarity", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
 		const negated: Memory = {

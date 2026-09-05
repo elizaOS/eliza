@@ -50,6 +50,7 @@ const CALENDAR_DETAIL_STRING_KEYS = [
   "oldtitle",
   "old_title",
   "title",
+  "date",
   "query",
   "label",
   "description",
@@ -96,6 +97,7 @@ const CALENDAR_DETAIL_BOOLEAN_KEYS = [
   "forcesync",
   "force_sync",
   "notifyAttendees",
+  "allowPast",
 ] as const;
 
 const CALENDAR_DETAIL_RECURRENCE_KEYS = [
@@ -128,6 +130,13 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   timeMax: "Window end (exclusive) in the same format as timeMin.",
   timeZone:
     "IANA timezone only when the user names one (e.g. America/New_York); otherwise omit it so the user's configured timezone applies.",
+  date: "Local calendar date YYYY-MM-DD of the target event for update_event/delete_event lookups when the user named a day; use start/startAt for create_event.",
+};
+const CALENDAR_DETAIL_BOOLEAN_DESCRIPTIONS: Partial<
+  Record<(typeof CALENDAR_DETAIL_BOOLEAN_KEYS)[number], string>
+> = {
+  allowPast:
+    "Set true only when the user explicitly wants an event at a time that has already passed (recording a past event, or confirming the past time after being asked); otherwise omit it and the action asks before creating in the past.",
 };
 const numberSchema: ActionParameterSchema = { type: "number" };
 const booleanSchema: ActionParameterSchema = { type: "boolean" };
@@ -155,7 +164,13 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
       CALENDAR_DETAIL_NUMBER_KEYS.map((key) => [key, numberSchema]),
     ),
     ...Object.fromEntries(
-      CALENDAR_DETAIL_BOOLEAN_KEYS.map((key) => [key, booleanSchema]),
+      CALENDAR_DETAIL_BOOLEAN_KEYS.map((key) => {
+        const description = CALENDAR_DETAIL_BOOLEAN_DESCRIPTIONS[key];
+        return [
+          key,
+          description ? { ...booleanSchema, description } : booleanSchema,
+        ];
+      }),
     ),
     ...Object.fromEntries(
       CALENDAR_DETAIL_RECURRENCE_KEYS.map((key) => [key, recurrenceSchema]),

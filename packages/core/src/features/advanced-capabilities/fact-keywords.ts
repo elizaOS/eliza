@@ -186,19 +186,55 @@ export function scoreFactKeywordRelevance(
 }
 
 const NEGATION_PATTERN =
-	/\b(?:not|no|never|none|neither|nor|without|cannot|can't|cant|won't|wont|don't|dont|doesn't|doesnt|didn't|didnt|isn't|isnt|aren't|arent|wasn't|wasnt|hasn't|hasnt|haven't|havent|wouldn't|wouldnt|shouldn't|shouldnt|couldn't|couldnt|dislikes?|disliked|hates?|hated|avoids?|avoided|stopped|quit|refuses?|refused)\b/i;
+	/\b(?:not|no|never|none|neither|nor|without|cannot|can't|cant|won't|wont|don't|dont|doesn't|doesnt|didn't|didnt|isn't|isnt|aren't|arent|wasn't|wasnt|hasn't|hasnt|haven't|havent|wouldn't|wouldnt|shouldn't|shouldnt|couldn't|couldnt|dislikes?|disliked|hates?|hated|avoids?|avoided|stopped|quit|refuses?|refused)\b/gi;
 
 /**
- * True when exactly one side carries a negation, so a lexical match must not
- * be treated as the same claim ("likes oat milk" vs "does not like oat milk").
- * Keyword similarity drops stopwords such as "not" and cannot see this.
+ * Markers that place a claim in the past or mark a reversal, so "used to
+ * prefer X" and "prefers X" are different claims however many words they share.
+ */
+const TEMPORAL_SHIFT_PATTERN =
+	/\b(?:used to|no longer|not anymore|anymore|any more|previously|formerly|back then|in the past|these days|nowadays|from now on|switched (?:to|from)|changed (?:to|from))\b/i;
+
+function negationParity(text: string): number {
+	const normalized = text.replace(/[\u2018\u2019]/g, "'");
+	const matches = normalized.match(NEGATION_PATTERN);
+	return (matches?.length ?? 0) % 2;
+}
+
+/**
+ * True when the two texts cannot be the same claim: their negation parity
+ * differs ("likes oat milk" vs "does not like oat milk"; "used to hate oat
+ * milk" vs "does not hate oat milk", where the double negation flips back), or
+ * exactly one side carries a past/reversal marker ("used to prefer" vs
+ * "prefers"). Keyword similarity drops stopwords such as "not" and cannot see
+ * either, so a lexical match alone is never treated as equivalence.
  */
 export function factPolarityDiffers(left: string, right: string): boolean {
-	const normalize = (text: string) => text.replace(/[\u2018\u2019]/g, "'");
+	if (negationParity(left) !== negationParity(right)) return true;
 	return (
-		NEGATION_PATTERN.test(normalize(left)) !==
-		NEGATION_PATTERN.test(normalize(right))
+		TEMPORAL_SHIFT_PATTERN.test(left) !== TEMPORAL_SHIFT_PATTERN.test(right)
 	);
+}
+
+/**
+ * Conservative "same claim" test for destructive convergence (one row absorbs
+ * another): the two texts must have the identical set of content keywords
+ * (case, punctuation, stopwords and word order ignored) and the same
+ * polarity. "prefers oat milk in coffee" and "User prefers oat milk in their
+ * coffee." are the same claim; "previously liked oat milk" and "nowadays
+ * likes oat milk", or any paraphrase that adds or drops a content word, are
+ * not, and stay as separate rows. Keyword similarity scores remain retrieval
+ * ranking only, never proof of equivalence.
+ */
+export function factClaimsEquivalent(left: string, right: string): boolean {
+	if (factPolarityDiffers(left, right)) return false;
+	const leftTerms = new Set(extractFactKeywords([left]));
+	const rightTerms = new Set(extractFactKeywords([right]));
+	if (leftTerms.size === 0 || leftTerms.size !== rightTerms.size) return false;
+	for (const term of leftTerms) {
+		if (!rightTerms.has(term)) return false;
+	}
+	return true;
 }
 
 export function factLexicalSimilarity(

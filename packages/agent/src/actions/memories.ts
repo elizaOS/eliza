@@ -17,11 +17,9 @@ import type {
 } from "@elizaos/core";
 import {
   buildFactKeywordsForStorage,
-  buildFactSearchText,
   MemoryType as CoreMemoryType,
   ElizaError,
-  factLexicalSimilarity,
-  factPolarityDiffers,
+  factClaimsEquivalent,
   getRelatedEntityIds,
   logger,
   ModelType,
@@ -220,7 +218,6 @@ const EXPLICIT_MEMORY_CONFIDENCE = 0.95;
  * lexical overlap alone cannot tell a restatement from a changed value.
  */
 const STAGE_FACT_SOURCE = "facts_and_relationships_stage";
-const SAME_MESSAGE_UPGRADE_SIMILARITY = 0.42;
 
 function metadataRecord(memory: Memory): Record<string, unknown> {
   const meta = memory.metadata;
@@ -233,7 +230,6 @@ async function findSameMessageStageFact(
   runtime: IAgentRuntime,
   message: Memory,
   text: string,
-  keywords: string[],
 ): Promise<(Memory & { id: UUID }) | null> {
   if (!message.id || !message.roomId || !message.entityId) return null;
   const rows = await runtime.getMemories({
@@ -243,7 +239,6 @@ async function findSameMessageStageFact(
     authorEntityIds: [message.entityId],
     unique: false,
   });
-  let best: { memory: Memory & { id: UUID }; similarity: number } | null = null;
   for (const row of rows) {
     const meta = metadataRecord(row);
     if (
@@ -261,19 +256,13 @@ async function findSameMessageStageFact(
     }
     const rowText =
       typeof row.content.text === "string" ? row.content.text : "";
-    if (factPolarityDiffers(text, rowText)) continue;
-    const similarity = factLexicalSimilarity(
-      [text, keywords],
-      [buildFactSearchText(row), readStoredFactKeywords(row)],
-    );
-    if (
-      similarity >= SAME_MESSAGE_UPGRADE_SIMILARITY &&
-      (!best || similarity > best.similarity)
-    ) {
-      best = { memory: row as Memory & { id: UUID }, similarity };
+    // Only the identical claim (same content words, same polarity) is absorbed;
+    // any paraphrase that adds or drops a content word stays a separate row.
+    if (factClaimsEquivalent(text, rowText)) {
+      return row as Memory & { id: UUID };
     }
   }
-  return best?.memory ?? null;
+  return null;
 }
 
 async function upgradeStageFact(
@@ -375,12 +364,7 @@ async function doCreate(
   const agentId = runtime.agentId as UUID;
   const createdAt = Date.now();
   const keywords = buildFactKeywordsForStorage(tags, text, kind ?? "");
-  const stageFact = await findSameMessageStageFact(
-    runtime,
-    message,
-    text,
-    keywords,
-  );
+  const stageFact = await findSameMessageStageFact(runtime, message, text);
   if (stageFact) {
     return upgradeStageFact(runtime, stageFact, {
       text,

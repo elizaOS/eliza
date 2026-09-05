@@ -122,6 +122,7 @@ export {
 export {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
+	factClaimsEquivalent,
 	factLexicalSimilarity,
 	factPolarityDiffers,
 	readStoredFactKeywords,

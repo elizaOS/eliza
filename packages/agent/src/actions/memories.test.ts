@@ -276,6 +276,49 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
     expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
   });
 
+  it("keeps a paraphrase that adds a content word as a separate row", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "prefers oat milk",
+      messageId: message.id as UUID,
+      keywords: ["prefers", "oat", "milk"],
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in their coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.content.text).toBe("prefers oat milk");
+    expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
+  });
+
+  it("keeps a past claim and its present correction as two rows (review counterexample)", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "used to hate oat milk",
+      messageId: message.id as UUID,
+      keywords: ["hate", "oat", "milk"],
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User does not hate oat milk anymore.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.content.text).toBe("used to hate oat milk");
+    expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
+    expect(rows[1].memory.content.text).toBe(
+      "User does not hate oat milk anymore.",
+    );
+  });
+
   it("never merges a same-message Stage-1 fact authored by another participant", async () => {
     const { runtime, rows } = makeRuntime();
     const message = makeMessage();
