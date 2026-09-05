@@ -127,9 +127,11 @@ mock.module("./provisioning-jobs", () => ({
       agentInfrastructureCalls += 1;
       lastAgentSuspendParams = params;
       await agentInfrastructureMutation?.();
+      return { job: { id: "agent-stop-job" }, created: true };
     },
     enqueueAgentDeleteOnce: async () => {
       agentInfrastructureCalls += 1;
+      return { job: { id: "agent-delete-job" }, created: true };
     },
     triggerImmediate: async () => {},
   },
@@ -171,6 +173,7 @@ const baseAgent = (overrides: Record<string, unknown> = {}) => ({
   user_id: "agent-user",
   status: "running",
   billing_status: "active",
+  billingStatus: "active",
   total_billed: "3.00",
   hourly_rate: "0.0100",
   character_id: "char-1",
@@ -180,6 +183,11 @@ const baseAgent = (overrides: Record<string, unknown> = {}) => ({
   last_backup_at: null,
   scheduled_shutdown_at: null,
   execution_tier: "dedicated-always",
+  lifecycle_revision: 1,
+  pool_status: null,
+  deletion_attempt_id: null,
+  deletionAttemptId: null,
+  deleted_at: null,
   ...overrides,
 });
 
@@ -375,12 +383,18 @@ describe("cancelResource fail-closed before side effects", () => {
       authorizeInfrastructureMutation: async () => undefined,
     });
 
-    expect(result.stoppedBilling).toBe(true);
+    expect(result).toMatchObject({
+      stoppedBilling: false,
+      infrastructureAction: { status: "queued", attempted: false },
+      resource: { billingStatus: "active", metadata: { cancellationId: "agent-stop-job" } },
+    });
     expect(lastAgentSuspendParams).toMatchObject({
       agentId: "agent-100000",
       organizationId: ORG,
       userId: "agent-user",
       authorization: "user_request",
+      expectedLifecycleRevision: 1,
+      requireUserOwnedBillingAuthority: true,
     });
   });
 
@@ -419,14 +433,7 @@ describe("cancelResource fail-closed before side effects", () => {
   test("deletion winning the billing CAS returns an explicit conflict instead of fake suspension", async () => {
     agentRows = [baseAgent()];
     agentInfrastructureMutation = async () => {
-      agentRows = [
-        baseAgent({
-          deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          deletion_started_at: new Date("2026-07-23T12:30:00.000Z"),
-          status: "deletion_pending",
-          billing_status: "active",
-        }),
-      ];
+      agentRows = [];
     };
     dbWriteUpdateRows = [];
 
@@ -442,12 +449,12 @@ describe("cancelResource fail-closed before side effects", () => {
       expect(error).toMatchObject({
         status: 409,
         code: "session_not_ready",
-        message: "Managed agent deletion is in progress",
+        message: "Managed agent billing authority changed during cancellation",
       });
     }
 
     expect(agentInfrastructureCalls).toBe(1);
-    expect(dbWriteUpdateCalls).toBe(1);
+    expect(dbWriteUpdateCalls).toBe(0);
   });
 
   test("authority loss after resource lookup prevents every infrastructure effect", async () => {

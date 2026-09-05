@@ -74,14 +74,18 @@ export type AgentHourlyBillingOutcome =
 
 const BILLABLE_BILLING_STATUSES: AgentBillingStatus[] = ["active", "warning", "shutdown_pending"];
 
-/** Restricts agent-compute billing to live, user-owned container workloads. */
+/** Restricts agent-compute billing to user-owned provider-backed workloads. */
 function agentComputeBillingAuthority() {
   return [
     inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
     isNull(agentSandboxes.pool_status),
     isNull(agentSandboxes.deleted_at),
-    isNull(agentSandboxes.deletion_attempt_id),
   ];
+}
+
+/** Lifecycle billing transitions cannot supersede an owned deletion attempt. */
+function agentBillingLifecycleAuthority() {
+  return [...agentComputeBillingAuthority(), isNull(agentSandboxes.deletion_attempt_id)];
 }
 
 export class AgentBillingRepository {
@@ -137,7 +141,7 @@ export class AgentBillingRepository {
         .from(agentSandboxes)
         .where(
           and(
-            eq(agentSandboxes.status, "running"),
+            inArray(agentSandboxes.status, ["running", "deletion_pending", "deletion_failed"]),
             ...agentComputeBillingAuthority(),
             // The shutdown-pending cron acts directly on discovery by emitting
             // a depleted webhook and enqueueing suspend, before the later debit
@@ -176,7 +180,7 @@ export class AgentBillingRepository {
       .where(
         and(
           eq(agentSandboxes.status, "error"),
-          ...agentComputeBillingAuthority(),
+          ...agentBillingLifecycleAuthority(),
           inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
         ),
       )
@@ -217,7 +221,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
-          ...agentComputeBillingAuthority(),
+          ...agentBillingLifecycleAuthority(),
         ),
       );
   }
@@ -257,7 +261,7 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.id, input.sandboxId),
             eq(agentSandboxes.organization_id, input.organizationId),
-            ...agentComputeBillingAuthority(),
+            ...agentBillingLifecycleAuthority(),
             inArray(agentSandboxes.billing_status, ["active", "warning"]),
             isNull(agentSandboxes.shutdown_warning_sent_at),
           ),
@@ -290,7 +294,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
-          ...agentComputeBillingAuthority(),
+          ...agentBillingLifecycleAuthority(),
         ),
       );
   }
@@ -312,7 +316,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           ...(organizationId ? [eq(agentSandboxes.organization_id, organizationId)] : []),
-          ...agentComputeBillingAuthority(),
+          ...agentBillingLifecycleAuthority(),
           ne(agentSandboxes.billing_status, "exempt"),
         ),
       );
@@ -372,7 +376,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
-          ...agentComputeBillingAuthority(),
+          ...agentBillingLifecycleAuthority(),
         ),
       )
       .limit(1);
@@ -445,7 +449,7 @@ export class AgentBillingRepository {
         (!options.forceLifecycleSettlement &&
           (!BILLABLE_BILLING_STATUSES.includes(claimedSandbox.billing_status) ||
             !(
-              claimedSandbox.status === "running" ||
+              ["running", "deletion_pending", "deletion_failed"].includes(claimedSandbox.status) ||
               (claimedSandbox.status === "stopped" && claimedSandbox.last_backup_at !== null)
             )))
       ) {
