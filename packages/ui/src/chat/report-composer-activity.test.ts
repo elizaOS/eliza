@@ -7,6 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rememberCsrfTokenForUrl } from "../api/auth/csrf-cookie";
 
 const { elizaGlobalsMock } = vi.hoisted(() => ({
   elizaGlobalsMock: {
@@ -30,12 +31,32 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
 });
 afterEach(() => {
+  localStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe("reportComposerActivity (#14679)", () => {
-  it("POSTs composer metadata with auth and no draft text", () => {
+  it("authenticates cookie-session writes without a bearer token", async () => {
+    elizaGlobalsMock.token = "";
+    rememberCsrfTokenForUrl(elizaGlobalsMock.base, "composer-session-csrf");
+    reportComposerActivity({
+      activity: "typing_started",
+      surface: "chat_overlay",
+      draftLength: 4,
+    });
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(init.credentials).toBe("include");
+    expect(new Headers(init.headers).get("x-eliza-csrf")).toBe(
+      "composer-session-csrf",
+    );
+  });
+  it("POSTs composer metadata with auth and no draft text", async () => {
     reportComposerActivity({
       activity: "typing_paused",
       surface: "chat_overlay",
@@ -45,14 +66,14 @@ describe("reportComposerActivity (#14679)", () => {
       occurredAt: "2026-06-01T12:00:02.000Z",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0] as unknown as [
       string,
       RequestInit,
     ];
     expect(url).toBe("http://localhost:31337/api/interactions/composer");
     expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>).Authorization).toBe(
+    expect(new Headers(init.headers).get("Authorization")).toBe(
       "Bearer test-token",
     );
     const body = JSON.parse(init.body as string);
@@ -69,7 +90,7 @@ describe("reportComposerActivity (#14679)", () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it("reports a cleared draft reason", () => {
+  it("reports a cleared draft reason", async () => {
     reportComposerActivity({
       activity: "draft_abandoned",
       surface: "chat_overlay",
@@ -77,6 +98,7 @@ describe("reportComposerActivity (#14679)", () => {
       reason: "cleared",
     });
 
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [, init] = fetchMock.mock.calls[0] as unknown as [
       string,
       RequestInit,
@@ -90,8 +112,8 @@ describe("reportComposerActivity (#14679)", () => {
     );
   });
 
-  it("is fire-and-forget when fetch rejects", () => {
-    fetchMock.mockReturnValueOnce(Promise.reject(new Error("offline")));
+  it("is fire-and-forget when fetch rejects", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("offline"));
     expect(() =>
       reportComposerActivity({
         activity: "typing_started",
@@ -99,6 +121,7 @@ describe("reportComposerActivity (#14679)", () => {
         draftLength: 3,
       }),
     ).not.toThrow();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 
   it("skips direct cloud-agent bases that do not expose composer telemetry", () => {
