@@ -35,18 +35,25 @@ import { CloudSettingsSectionShell } from "./CloudSettingsSectionShell";
 export function CloudAccountSection(): React.JSX.Element {
   const {
     elizaCloudLoginBusy,
+    elizaCloudLoginError,
     handleInteractiveCloudLogin,
     setActionNotice,
     t,
   } = useAppSelectorShallow((state) => ({
     elizaCloudLoginBusy: state.elizaCloudLoginBusy,
+    elizaCloudLoginError: state.elizaCloudLoginError,
     handleInteractiveCloudLogin: state.handleInteractiveCloudLogin,
     setActionNotice: state.setActionNotice,
     t: state.t,
   }));
   const handleSignIn = useCallback(() => {
     claimCloudLoginWindow();
-    void handleInteractiveCloudLogin().catch((error) => {
+    // The Account session has resolved signed out. A connected agent or stale
+    // renderer credential cannot satisfy this explicit browser sign-in.
+    void handleInteractiveCloudLogin({
+      requireClientAuth: true,
+      forceReauth: true,
+    }).catch((error) => {
       // error-policy:J4 Sign-in launch failures remain visible as an error notice.
       setActionNotice(
         error instanceof Error
@@ -65,6 +72,7 @@ export function CloudAccountSection(): React.JSX.Element {
       <AccountSurface
         onSignIn={handleSignIn}
         signInBusy={elizaCloudLoginBusy}
+        signInError={elizaCloudLoginError}
       />
     </CloudSettingsSectionShell>
   );

@@ -18,6 +18,7 @@ import { useUserProfile } from "./data/user";
 export interface AccountSurfaceProps {
   onSignIn?: () => void;
   signInBusy?: boolean;
+  signInError?: string | null;
 }
 
 interface InteractiveSignInButtonProps {
@@ -63,6 +64,7 @@ function InteractiveSignInButton({
 export function AccountSurface({
   onSignIn,
   signInBusy = false,
+  signInError = null,
 }: AccountSurfaceProps = {}) {
   const t = useCloudT();
   const {
@@ -109,14 +111,24 @@ export function AccountSurface({
   if (!isAuthenticated) {
     return (
       <ContentState
-        state="empty"
+        state={signInError ? "error" : "empty"}
         placement="surface"
-        title={t("cloud.account.signInTitle", {
-          defaultValue: "Sign in required",
-        })}
-        description={t("cloud.account.signInDescription", {
-          defaultValue: "Sign in to manage your Eliza Cloud account.",
-        })}
+        role={signInError ? "alert" : undefined}
+        title={
+          signInError
+            ? t("cloud.account.signInFailed", {
+                defaultValue: "Sign in unavailable",
+              })
+            : t("cloud.account.signInTitle", {
+                defaultValue: "Sign in required",
+              })
+        }
+        description={
+          signInError ??
+          t("cloud.account.signInDescription", {
+            defaultValue: "Sign in to manage your Eliza Cloud account.",
+          })
+        }
         action={
           onSignIn ? (
             <InteractiveSignInButton
