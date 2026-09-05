@@ -2170,9 +2170,9 @@ describe("InferenceAdmissionGate", () => {
       preProviderCancellationToken: "cancel-auth-token",
     });
     expect(releaseRes.status).toBe(200);
-    expect(
-      storage.read<{ availableUsd: number }>("ledger")?.availableUsd,
-    ).toBe(10);
+    expect(storage.read<{ availableUsd: number }>("ledger")?.availableUsd).toBe(
+      10,
+    );
   });
 
   test("combined dispatch replay does not extend expiresAt", async () => {
