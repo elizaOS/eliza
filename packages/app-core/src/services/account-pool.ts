@@ -906,7 +906,7 @@ export function isAccountSelectableNow(
   return (
     account.health === "rate-limited" &&
     typeof account.healthDetail?.until === "number" &&
-    account.healthDetail.until < now
+    account.healthDetail.until <= now
   );
 }
 
