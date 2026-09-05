@@ -19,6 +19,7 @@ import {
   resolveUserPath,
 } from "@elizaos/core";
 import { isElizaCloudServiceSelectedInConfig } from "../contracts/cloud-topology.js";
+import { resolveCloudApiBaseUrl } from "./base-url.js";
 import { getCloudSecret } from "./cloud-secrets.js";
 import {
   resolveDevCloudAuthorityEnvValue,
@@ -212,7 +213,7 @@ export function resolveCloudTtsBaseUrl(
       ? null
       : resolveCloudBaseUrlFromConfig();
   const configured = fromEnv.length > 0 ? fromEnv : (fromConfig?.trim() ?? "");
-  const fallback = "https://api.eliza.app/api/v1";
+  const fallback = resolveCloudApiBaseUrl();
   const base = configured.length > 0 ? configured : fallback;
 
   try {
@@ -224,6 +225,7 @@ export function resolveCloudTtsBaseUrl(
     parsed.pathname = pathName;
     return parsed.toString().replace(/\/$/, "");
   } catch {
+    // error-policy:J3 malformed speech overrides use the canonical environment.
     return fallback;
   }
 }
