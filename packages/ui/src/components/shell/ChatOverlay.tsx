@@ -6276,9 +6276,8 @@ export function ChatOverlay({
                       // Always the centered reading column (a no-op at rest): the
                       // transcript stays this width THROUGH the maximize morph and
                       // at full-bleed — only the glass grows, the text never reflows.
-                      // No top-edge fade mask and no grabber inset: the transcript
-                      // runs to the panel's top edge and hard-clips there (the
-                      // floating grabber overlays it).
+                      // The transcript reaches the floating grabber; the viewport's
+                      // edge fades soften content passing beneath it.
                       "mx-auto max-w-3xl",
                     )}
                     // Flex-basis IS the motion value (px string) — set 1:1 during a drag,
@@ -6354,11 +6353,8 @@ export function ChatOverlay({
                           <MessageScrollerViewport
                             id="continuous-thread"
                             data-testid="chat-thread-scroll"
-                            // Fullscreen no longer changes flex-basis while the user
-                            // reads, so its top edge can use the real scroll mask and
-                            // dissolve into the sheet's nuanced surface. Resizable
-                            // detents retain the compositor overlay below.
-                            fade={fullBleed ? "both" : "bottom"}
+                            // Match the composer fade at the grabber edge in every detent.
+                            fade="both"
                             ref={threadRef}
                             preserveScrollOnPrepend={false}
                             onScroll={handleThreadScroll}

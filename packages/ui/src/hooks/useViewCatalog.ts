@@ -31,7 +31,10 @@ import {
   getActiveAgentAuthority,
   useActiveAgentAuthority,
 } from "./useActiveAgentAuthority";
-import { useRoutableViews } from "./useAvailableViews";
+import {
+  useDefaultViewsNetworkEnabled,
+  useRoutableViews,
+} from "./useAvailableViews";
 import { useCachedResource } from "./useCachedResource";
 import { mergeViewCatalog, type ViewEntry } from "./view-catalog";
 
@@ -208,9 +211,9 @@ export function useViewCatalog(): UseViewCatalogResult {
   } = useRoutableViews();
   const enabledKinds = useEnabledViewKinds();
   const activeModality = useMemo(() => getActiveViewModality(), []);
-  const appShellRoutesSupported = supportsFullAppShellRoutes(
-    client.getBaseUrl(),
-  );
+  const viewsNetworkEnabled = useDefaultViewsNetworkEnabled();
+  const appShellRoutesSupported =
+    viewsNetworkEnabled && supportsFullAppShellRoutes(client.getBaseUrl());
   const catalogCacheKey = `${CATALOG_CACHE_KEY}:${authority}`;
   const installedCacheKey = `${INSTALLED_CACHE_KEY}:${authority}`;
 
