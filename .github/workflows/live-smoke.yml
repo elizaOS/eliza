@@ -535,7 +535,74 @@ jobs:
           bun-version: "1.3.14"
 
       - name: Validate provision diagnostic contract
-        run: bun test packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.test.ts
+        run: >-
+          bun test
+          packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.test.ts
+          packages/scripts/__tests__/staging-worker-journal-diagnostic.test.ts
+
+      - name: Classify recent provisioning worker failures
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            sudo journalctl -u eliza-provisioning-worker.service --since '2 hours ago' -o json --no-pager | python3 -c '
+            import collections, json, re, sys
+            patterns = {
+                "sandbox_health_timeout": r"Sandbox health check timed out",
+                "sandbox_creation_timeout": r"Sandbox creation failed:.*(?:timed out|timeout)",
+                "database_provision_failed": r"Database provisioning failed:",
+                "environment_decryption_failed": r"Environment decryption failed:",
+                "ssh_command_timeout": r"\[docker-ssh\] Command timed out",
+                "ssh_connect_timeout": r"(?:SSH|connection|connect).*timed out",
+                "docker_health_timeout": r"Docker health check timed out",
+                "tailnet_health_timeout": r"Tailnet health check timed out",
+                "vpn_registration_timeout": r"VPN registration timeout",
+                "registration_unresolved": r"Headscale registration did not reach an exact observable completion",
+                "job_watchdog_timeout": r"Execution timed out; retaining ownership until quiescent",
+                "image_pull_failed": r"Image pull failed",
+                "image_pull_completed": r"Image pulled successfully",
+                "docker_capacity_unavailable": r"No (?:reachable )?Docker capacity",
+                "container_daemon_unavailable": r"Cannot connect to the Docker daemon|docker_daemon_unavailable",
+                "container_created": r"\[docker-sandbox\] Created container",
+                "provision_failed": r"agent_provision failed",
+                "provision_completed": r"agent_provision completed",
+                "runtime_module_resolution": r"Cannot find (?:package|module)|ERR_MODULE_NOT_FOUND",
+                "runtime_out_of_memory": r"heap out of memory|Out of memory|OOMKilled",
+                "runtime_database_unavailable": r"database.*(?:unavailable|connection refused|timeout)",
+                "remote_command_timeout": r"remote_command_timeout",
+                "unclassified_timeout": r"timed out|timeout|ETIMEDOUT",
+            }
+            patterns = {key: re.compile(value, re.I) for key, value in patterns.items()}
+            counts = collections.Counter()
+            durations = collections.Counter()
+            functions = collections.Counter()
+            allowed_functions = (
+                "executeJob", "provision", "create", "checkHealthDetailed", "checkHealth",
+                "ensureDatabase", "mintAgentToken", "ensureImage", "prepareRuntime",
+                "withTimeout", "fetch", "exec", "connect", "ensureAgentDatabase",
+            )
+            records = 0
+            for line in sys.stdin:
+                entry = json.loads(line)
+                message = entry["MESSAGE"]
+                if not isinstance(message, str):
+                    raise ValueError("Journal message is not text")
+                records += 1
+                for key, pattern in patterns.items():
+                    if pattern.search(message):
+                        counts[key] += 1
+                if patterns["unclassified_timeout"].search(message):
+                    for value in re.findall(r"timed out after ([0-9]{1,8})ms", message):
+                        durations[value] += 1
+                    for name in allowed_functions:
+                        if re.search(r"\bat (?:[A-Za-z0-9_]+\.)?" + name + r"\s*\(", message):
+                            functions[name] += 1
+            print(json.dumps({"schemaVersion": 1, "scope": "staging-worker-two-hours", "records": records, "signals": dict(counts), "timeoutDurationsMs": dict(durations), "timeoutFunctions": dict(functions)}, sort_keys=True))
+            '
 
       - name: Classify exact canary journal by suffix
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
