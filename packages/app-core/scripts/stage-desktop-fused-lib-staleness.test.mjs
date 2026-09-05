@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { nativeLibraryInventory } from "./lib/fused-artifact-integrity.mjs";
 
 // Exercises the desktop fused-lib staleness guard (`--check`): a stale or
 // unstamped staged lib must exit non-zero (2) so build/deploy flows never ship
@@ -87,6 +88,9 @@ test("--check: stamp matching the current fork + lib hash is FRESH → exit 0", 
     fs.writeFileSync(
       path.join(dir, STAMP),
       JSON.stringify({
+        platform: process.platform,
+        arch: process.arch,
+        libraries: nativeLibraryInventory(dir),
         forkCommit: currentFork(),
         forkDirty: "",
         backend: "test",
@@ -110,6 +114,9 @@ test("--check: stamp from a DIFFERENT fork commit is STALE → exit 2", () => {
     fs.writeFileSync(
       path.join(dir, STAMP),
       JSON.stringify({
+        platform: process.platform,
+        arch: process.arch,
+        libraries: nativeLibraryInventory(dir),
         forkCommit: "0000000000000000000000000000000000000000",
         forkDirty: "",
         backend: "test",
@@ -134,6 +141,9 @@ test("--check: staged lib whose bytes don't match the stamp hash is STALE → ex
     fs.writeFileSync(
       path.join(dir, STAMP),
       JSON.stringify({
+        platform: process.platform,
+        arch: process.arch,
+        libraries: nativeLibraryInventory(dir),
         forkCommit: currentFork(),
         forkDirty: "",
         backend: "test",
@@ -156,6 +166,9 @@ test("--check: a host-native stamp is stale for a portable CPU request", () => {
     fs.writeFileSync(
       path.join(dir, STAMP),
       JSON.stringify({
+        platform: process.platform,
+        arch: process.arch,
+        libraries: nativeLibraryInventory(dir),
         forkCommit: currentFork(),
         forkDirty: "",
         backend: "cpu",
@@ -179,6 +192,9 @@ test("--check: a portable CPU stamp is fresh for a portable CPU request", () => 
     fs.writeFileSync(
       path.join(dir, STAMP),
       JSON.stringify({
+        platform: process.platform,
+        arch: process.arch,
+        libraries: nativeLibraryInventory(dir),
         forkCommit: currentFork(),
         forkDirty: "",
         backend: "cpu",

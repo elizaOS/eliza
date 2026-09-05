@@ -239,3 +239,23 @@ test("a corrupt download is rejected without replacing the existing artifact", a
     rmSync(repoRoot, { recursive: true, force: true });
   }
 });
+
+test("relative state directories stage embedding bytes where the runtime resolves them", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "fused-relative-state-"));
+  const relativeState = path.relative(process.cwd(), root);
+  const bytes = Buffer.from("runtime-visible embedding fixture");
+  try {
+    const result = await ensureEmbeddingArtifact({
+      env: { ELIZA_STATE_DIR: relativeState },
+      artifact: fixtureArtifact(bytes),
+      fetchImpl: async () => fixtureResponse(bytes),
+    });
+    assert.deepEqual(
+      readFileSync(path.join(root, "models", "gte-small_fp16.gguf")),
+      bytes,
+    );
+    assert.equal(result.path, path.join(root, "models", "gte-small_fp16.gguf"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
