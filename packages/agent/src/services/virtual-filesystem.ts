@@ -516,7 +516,7 @@ export class VirtualFilesystemService {
     snapshot: VirtualFilesystemSnapshot,
     root: string,
   ): Promise<void> {
-    const stats = await this.measureTree(root);
+    const stats = await this.measureTree(root, true);
     if (
       stats.bytes !== snapshot.filesBytes ||
       stats.fileCount !== snapshot.fileCount

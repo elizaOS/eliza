@@ -41,6 +41,38 @@ async function names(root: string) {
   return (await fsp.readdir(root)).sort();
 }
 
+describe("snapshot restore quotas", () => {
+  it("rejects a file exceeding the current limit before changing live or saved state", async () => {
+    const initial = new VirtualFilesystemService({
+      stateDir,
+      projectId,
+      maxFileBytes: 16,
+    });
+    await initial.writeFile("nested/state.txt", "0123456789");
+    const oversized = await initial.createSnapshot();
+    await initial.writeFile("nested/state.txt", "ok");
+    const valid = await initial.createSnapshot();
+    await initial.writeFile("nested/state.txt", "now");
+    const limited = new VirtualFilesystemService({
+      stateDir,
+      projectId,
+      maxFileBytes: 4,
+    });
+    const before = await names(limited.projectRoot);
+    const snapshots = await limited.listSnapshots();
+
+    await expect(limited.rollback(oversized.id)).rejects.toMatchObject({
+      code: "QUOTA_EXCEEDED",
+    });
+    expect(await service().readFile("nested/state.txt")).toBe("now");
+    expect(await names(limited.projectRoot)).toEqual(before);
+    expect(await limited.listSnapshots()).toEqual(snapshots);
+
+    await limited.rollback(valid.id);
+    expect(await service().readFile("nested/state.txt")).toBe("ok");
+  });
+});
+
 describe("saved VFS metadata", () => {
   it("distinguishes absence from an actual metadata read failure", async () => {
     const { vfs, snapshot, metadata } = await savedWorkspace();
