@@ -27,6 +27,12 @@ describe("scoreEndOfTurnHeuristic — canonical heuristic", () => {
     expect(score("that makes sense correct")).toBe(0.85);
   });
 
+  it("does not misclassify words ending in question-tag substrings as question tags", () => {
+    expect(score("the sun is bright")).toBe(0.5);
+    expect(score("this statement is incorrect")).toBe(0.5);
+    expect(score("register a copyright")).toBe(0.5);
+  });
+
   it("rule 4: trailing conjunction → mid-clause (0.15)", () => {
     expect(score("buy milk and")).toBe(0.15);
     expect(score("i can't do that because")).toBe(0.15);

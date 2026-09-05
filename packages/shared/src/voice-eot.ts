@@ -179,7 +179,15 @@ export function scoreEndOfTurnHeuristic(transcript: string): number {
 
   const lower = text.toLowerCase();
   for (const tag of QUESTION_TAGS) {
-    if (lower.endsWith(tag)) return 0.85;
+    if (lower.endsWith(tag)) {
+      const prefixLength = lower.length - tag.length;
+      if (
+        prefixLength === 0 ||
+        /[\s,;:-]/.test(lower[prefixLength - 1] ?? "")
+      ) {
+        return 0.85;
+      }
+    }
   }
 
   const words = lower
