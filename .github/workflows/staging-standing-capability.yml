@@ -22,7 +22,6 @@ jobs:
     environment: staging
     env:
       EXPECTED_DEPLOY_SHA: ${{ inputs.expected_deploy_sha }}
-      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
     steps:
       - name: Require trusted develop source
         shell: bash
@@ -45,6 +44,8 @@ jobs:
 
       - name: Inspect bounded staging capability
         shell: bash
+        env:
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
         run: |
           set -euo pipefail
           node packages/cloud/scripts/staging-standing-capability.mjs \
