@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -15,10 +15,12 @@ import {
   parseCertificationArgs,
   requireAuthSecrets,
   requirePairedSecrets,
+  requireTraceSecrets,
   validateAuthEvidence,
   validatePairedEvidence,
   verifyExactDeployment,
   withPrivateTailDirectory,
+  withPrivateTraceDirectory,
 } from "./cloud-latency-certification.mjs";
 
 const SHA = "a".repeat(40);
@@ -387,5 +389,50 @@ test("private Tail directory is deleted when capture fails", async () => {
     assert.equal(existsSync(observedDirectory), false);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("trace capture removes private raw bytes on success and failure", async () => {
+  const root = await mkdtemp(join(tmpdir(), "eliza-trace-cleanup-test-"));
+  try {
+    for (const fail of [false, true]) {
+      let observedDirectory;
+      const capture = withPrivateTraceDirectory(async (directory) => {
+        observedDirectory = directory;
+        assert.equal((await stat(directory)).mode & 0o777, 0o700);
+        await writeFile(join(directory, "raw.json"), '{"private":"sentinel"}', {
+          mode: 0o600,
+        });
+        if (fail) throw new Error("trace boundary failed");
+        return { status: "inconclusive_sampling" };
+      }, root);
+      if (fail) await assert.rejects(capture, /trace boundary failed/);
+      else assert.equal((await capture).status, "inconclusive_sampling");
+      assert.equal(existsSync(observedDirectory), false);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("trace credentials fail closed without exposing configured values", () => {
+  const configured = {
+    CLOUDFLARE_API_TOKEN: "private-trace-token",
+    CLOUDFLARE_ACCOUNT_ID: "private-account",
+  };
+  assert.equal(
+    requireTraceSecrets(configured).cloudflareApiToken,
+    configured.CLOUDFLARE_API_TOKEN,
+  );
+  for (const missing of Object.keys(configured)) {
+    assert.throws(
+      () => requireTraceSecrets({ ...configured, [missing]: " " }),
+      (error) => {
+        assert.ok(error.message.includes(missing));
+        assert.ok(!error.message.includes("private-trace-token"));
+        assert.ok(!error.message.includes("private-account"));
+        return true;
+      },
+    );
   }
 });

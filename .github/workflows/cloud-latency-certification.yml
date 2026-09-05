@@ -64,13 +64,14 @@ jobs:
             echo "::error::run_suspended is valid only when run_auth=true."
             exit 1
           fi
-          required=(CEREBRAS_API_KEY ELIZAOS_CLOUD_API_KEY)
+          required=(
+            CEREBRAS_API_KEY
+            ELIZAOS_CLOUD_API_KEY
+            CLOUDFLARE_API_TOKEN
+            CLOUDFLARE_ACCOUNT_ID
+          )
           if [[ "$RUN_AUTH" == "true" ]]; then
-            required+=(
-              INFERENCE_AUTH_PROBE_TOKEN
-              CLOUDFLARE_API_TOKEN
-              CLOUDFLARE_ACCOUNT_ID
-            )
+            required+=(INFERENCE_AUTH_PROBE_TOKEN)
           fi
           if [[ "$RUN_SUSPENDED" == "true" ]]; then
             required+=(ELIZA_STAGING_SUSPENDED_API_KEY)
@@ -120,14 +121,17 @@ jobs:
           fi
           node packages/cloud/scripts/cloud-latency-certification.mjs "${args[@]}"
 
-      - name: Remove private Worker Tail material
+      - name: Remove private Worker telemetry material
         if: ${{ always() }}
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
-          private_tail_directories=("$RUNNER_TEMP"/eliza-inference-auth-tail-*)
-          for directory in "${private_tail_directories[@]}"; do
+          private_directories=(
+            "$RUNNER_TEMP"/eliza-inference-auth-tail-*
+            "$RUNNER_TEMP"/eliza-inference-trace-*
+          )
+          for directory in "${private_directories[@]}"; do
             if [[ ! -d "$directory" || -L "$directory" ]]; then
               echo "::error::Refusing unexpected private Tail cleanup target."
               exit 1
@@ -145,6 +149,7 @@ jobs:
             artifacts/cloud-latency-certification/paired.jsonl
             artifacts/cloud-latency-certification/inference-auth.jsonl
             artifacts/cloud-latency-certification/inference-auth-worker.jsonl
+            artifacts/cloud-latency-certification/inference-traces.json
             artifacts/cloud-latency-certification/summary.json
           if-no-files-found: warn
           retention-days: 7

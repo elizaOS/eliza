@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-
+import { collectInferenceTraceEvidence } from "./cloudflare-inference-trace-evidence.mjs";
 import {
   inferenceAuthTailFailureCode,
   isCloudflarePlacement,
@@ -100,6 +100,13 @@ export function requirePairedSecrets(env) {
   return {
     directApiKey: requireSecret(env, "CEREBRAS_API_KEY"),
     gatewayApiKey: requireSecret(env, "ELIZAOS_CLOUD_API_KEY"),
+  };
+}
+
+export function requireTraceSecrets(env) {
+  return {
+    cloudflareApiToken: requireSecret(env, "CLOUDFLARE_API_TOKEN"),
+    cloudflareAccountId: requireSecret(env, "CLOUDFLARE_ACCOUNT_ID"),
   };
 }
 
@@ -283,27 +290,45 @@ export function validateAuthEvidence(text, deploySha, runSuspended = false) {
   return { records, traceIds };
 }
 
-export async function withPrivateTailDirectory(task, root = tmpdir()) {
-  const directory = await mkdtemp(join(root, "eliza-inference-auth-tail-"));
+async function withPrivateCaptureDirectory({ prefix, label, task, root }) {
+  const directory = await mkdtemp(join(root, prefix));
   await chmod(directory, 0o700);
   let result;
   let failure;
   try {
     result = await task(directory);
   } catch (error) {
-    // error-policy:J5 the same failure is rethrown immediately after the raw
-    // Tail directory has been removed.
+    // error-policy:J5 the same failure is rethrown immediately after its raw
+    // private capture directory has been removed.
     failure = error;
   }
   try {
     await rm(directory, { recursive: true, force: true });
   } catch (cause) {
-    // error-policy:J2 raw Tail cleanup is a security boundary and therefore
+    // error-policy:J2 raw capture cleanup is a security boundary and therefore
     // cannot degrade to a warning or a successful certification.
-    throw new Error("Private Worker Tail cleanup failed", { cause });
+    throw new Error(`Private ${label} cleanup failed`, { cause });
   }
   if (failure) throw failure;
   return result;
+}
+
+export async function withPrivateTailDirectory(task, root = tmpdir()) {
+  return await withPrivateCaptureDirectory({
+    prefix: "eliza-inference-auth-tail-",
+    label: "Worker Tail",
+    task,
+    root,
+  });
+}
+
+export async function withPrivateTraceDirectory(task, root = tmpdir()) {
+  return await withPrivateCaptureDirectory({
+    prefix: "eliza-inference-trace-",
+    label: "Cloudflare trace",
+    task,
+    root,
+  });
 }
 
 async function runCommandToFile({
@@ -492,6 +517,30 @@ async function runPaired({ deploySha, outputDir, env }) {
   }
 }
 
+async function runTraces({ deploySha, outputDir, env, pairedRecords }) {
+  const secrets = requireTraceSecrets(env);
+  const privateRoot = env.RUNNER_TEMP?.trim() || tmpdir();
+  return await withPrivateTraceDirectory(async (directory) => {
+    const evidence = await collectInferenceTraceEvidence({
+      pairedRecords,
+      deploySha,
+      accountId: secrets.cloudflareAccountId,
+      apiToken: secrets.cloudflareApiToken,
+      privateDirectory: directory,
+    });
+    await writeFile(
+      join(outputDir, "inference-traces.json"),
+      `${JSON.stringify(evidence)}\n`,
+      { mode: 0o600, flag: "wx" },
+    );
+    return {
+      status: evidence.status,
+      reason: evidence.reason,
+      coverage: evidence.coverage,
+    };
+  }, privateRoot);
+}
+
 async function runAuth({ deploySha, outputDir, env, runSuspended }) {
   const secrets = requireAuthSecrets(env, runSuspended);
   const privateRoot = env.RUNNER_TEMP?.trim() || tmpdir();
@@ -601,19 +650,49 @@ export async function runCertification(
     { mode: 0o600, flag: "wx" },
   );
   const paired = await runPaired({ ...options, env });
-  const auth = options.runAuth
-    ? await runAuth({ ...options, env })
-    : {
-        skipped: true,
-        reason: "not_requested",
-        suspendedGuard: "not_requested",
-      };
+  // Start trace lookup immediately after the paired calls. Its rejection is
+  // observed here so a slower auth failure cannot create an unhandled promise;
+  // the finally below still waits for private-response cleanup and evidence.
+  const traceOutcomePromise = runTraces({
+    ...options,
+    env,
+    pairedRecords: paired.records,
+  }).then(
+    (value) => ({ value, error: null }),
+    (error) => ({ value: null, error }),
+  );
+  let auth = {
+    skipped: true,
+    reason: "not_requested",
+    suspendedGuard: "not_requested",
+  };
+  let authFailure;
+  let traceOutcome;
+  try {
+    if (options.runAuth) auth = await runAuth({ ...options, env });
+  } catch (error) {
+    // error-policy:J5 the same auth failure is rethrown after the concurrent
+    // trace capture has finished and removed all raw telemetry.
+    authFailure = error;
+  } finally {
+    traceOutcome = await traceOutcomePromise;
+  }
+  if (authFailure && traceOutcome.error) {
+    // error-policy:J2 neither boundary may hide the other; retain both causes
+    // privately while the CLI emits only this bounded category.
+    throw new Error("Auth probe and distributed trace collection both failed", {
+      cause: new AggregateError([authFailure, traceOutcome.error]),
+    });
+  }
+  if (authFailure) throw authFailure;
+  if (traceOutcome.error) throw traceOutcome.error;
   const summary = {
     kind: "cloud_latency_certification",
     deploySha: options.deploySha,
     environment: "staging",
     paired: { records: paired.records.length, counts: paired.counts },
     auth,
+    traces: traceOutcome.value,
   };
   await writeFile(
     join(options.outputDir, "summary.json"),
