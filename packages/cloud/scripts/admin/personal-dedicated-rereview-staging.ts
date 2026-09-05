@@ -61,15 +61,21 @@ interface RereviewTargetDiagnostic {
   provisionFailure: ManagedDedicatedProvisionFailureCode;
   hasContainer: boolean;
   hasBridge: boolean;
+  sandboxHealthCheckTimedOut: boolean;
+  imageFamily: "canonical" | "demo" | "custom" | "unconfigured";
+  publicImageReferenceDigest: string | null;
+  publicRecordedImageDigest: string | null;
 }
 
-/** Emits only lifecycle vocabulary and presence flags from the retained row. */
+/** Emits lifecycle vocabulary and public image digests, never private image references. */
 export function diagnoseRereviewTarget(target: {
   status: string;
   database_status: string;
   error_message: string | null;
   sandbox_id: string | null;
   bridge_url: string | null;
+  docker_image: string | null;
+  image_digest: string | null;
 }): RereviewTargetDiagnostic {
   if (
     ![
@@ -89,15 +95,44 @@ export function diagnoseRereviewTarget(target: {
       "selected_target_status_invalid",
     );
   }
+  // Only official public repositories may reveal digests. Private repositories,
+  // tags, malformed references and arbitrary database text never cross this boundary.
+  const publicImage = target.docker_image?.match(
+    /^ghcr\.io\/elizaos\/(eliza|eliza-demo)(?::[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}|@(sha256:[0-9a-f]{64}))?$/,
+  );
+  const imageFamily = publicImage
+    ? publicImage[1] === "eliza"
+      ? "canonical"
+      : "demo"
+    : target.docker_image === null
+      ? "unconfigured"
+      : "custom";
   return {
     status: target.status,
     databaseStatus: target.database_status,
+    imageFamily,
+    publicImageReferenceDigest: publicImage?.[2] ?? null,
+    publicRecordedImageDigest:
+      publicImage &&
+      target.image_digest !== null &&
+      /^sha256:[0-9a-f]{64}$/.test(target.image_digest)
+        ? target.image_digest
+        : null,
     provisionFailure: classifyManagedDedicatedProvisionFailure(
       target.error_message,
       "selected target error",
     ),
     hasContainer: Boolean(target.sandbox_id),
     hasBridge: Boolean(target.bridge_url),
+    sandboxHealthCheckTimedOut:
+      target.error_message !== null &&
+      target.error_message
+        .split(/\r?\n/)
+        .some(
+          (line, index) =>
+            (index === 0 || line.startsWith("caused by:")) &&
+            line.includes("Sandbox health check timed out"),
+        ),
   };
 }
 
