@@ -1487,7 +1487,7 @@ jobs:
             unset probe_status
             jq -e '
               keys == ["container", "logs", "runtime", "schemaVersion", "tailscale", "targetCount"] and
-              .schemaVersion == 2 and
+              .schemaVersion == 3 and
               .targetCount == 1 and
               (.container | keys == ["exitCode", "imageMatchesConfigured", "inspect", "status"]) and
               (.container.inspect == "success" or .container.inspect == "error") and
@@ -1499,9 +1499,11 @@ jobs:
               (.tailscale.backendState == null or (.tailscale.backendState | IN("NeedsLogin", "NeedsMachineAuth", "NoState", "Running", "Starting", "Stopped"))) and
               (.tailscale.machineAuthorized == null or (.tailscale.machineAuthorized | type == "boolean")) and
               ([.tailscale.authUrlPresent, .tailscale.daemonPresent, .tailscale.ipPresent, .tailscale.socketPresent] | all(type == "boolean")) and
-              (.logs | keys == ["agentStarted", "authKeyRejected", "interactiveAuthRequired", "tailscaleUpFailed"]) and
+              (.logs | keys == ["agentStarted", "authKeyRejected", "interactiveAuthRequired", "query", "tailscaleUpFailed"]) and
+              (.logs.query == "success" or .logs.query == "error") and
               ([.logs.agentStarted, .logs.authKeyRejected, .logs.interactiveAuthRequired, .logs.tailscaleUpFailed] | all(type == "boolean")) and
-              (.runtime | keys == ["agentProcessPresent", "entrypointProcessPresent", "forceNoise443Enabled", "pid1", "stuckCliEscapePresent", "tailscaleUpProcessPresent"]) and
+              (.runtime | keys == ["agentProcessPresent", "entrypointProcessPresent", "forceNoise443Enabled", "pid1", "query", "stuckCliEscapePresent", "tailscaleUpProcessPresent"]) and
+              (.runtime.query == "success" or .runtime.query == "error") and
               (.runtime.pid1 | IN("agent", "entrypoint", "other", "tailscale-up", "unknown")) and
               ([.runtime.agentProcessPresent, .runtime.entrypointProcessPresent, .runtime.forceNoise443Enabled, .runtime.stuckCliEscapePresent, .runtime.tailscaleUpProcessPresent] | all(type == "boolean"))
             ' <<<"$diagnostic" >/dev/null
@@ -1516,10 +1518,12 @@ jobs:
               "private_mesh_tailscale_socket=" + (.tailscale.socketPresent | tostring),
               "private_mesh_tailscale_daemon=" + (.tailscale.daemonPresent | tostring),
               "private_mesh_tailscale_ip=" + (.tailscale.ipPresent | tostring),
+              "private_mesh_log_query=" + .logs.query,
               "private_mesh_log_auth_key_rejected=" + (.logs.authKeyRejected | tostring),
               "private_mesh_log_interactive_auth=" + (.logs.interactiveAuthRequired | tostring),
               "private_mesh_log_tailscale_up_failed=" + (.logs.tailscaleUpFailed | tostring),
               "private_mesh_log_agent_started=" + (.logs.agentStarted | tostring),
+              "private_mesh_runtime_query=" + .runtime.query,
               "private_mesh_runtime_pid1=" + .runtime.pid1,
               "private_mesh_runtime_agent_process=" + (.runtime.agentProcessPresent | tostring),
               "private_mesh_runtime_entrypoint_process=" + (.runtime.entrypointProcessPresent | tostring),
