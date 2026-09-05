@@ -303,9 +303,47 @@ describe("managed Eliza environment", () => {
       agentSandboxId: "cloud-agent-1",
     });
 
+    expect(result.environmentVars.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBe("1");
     expect(result.environmentVars.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(result.environmentVars.EMBEDDING_DIMENSION).toBe("384");
     expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
+  });
+
+  test("does not migrate existing stores or explicit cloud opt-outs to local embeddings", async () => {
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const existing = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-existing",
+      existingEnv: {
+        ELIZAOS_CLOUD_API_KEY: "eliza_existing_agent_key",
+        EMBEDDING_DIMENSION: "1536",
+        ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: "1536",
+      },
+    });
+    const optedOut = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-opted-out",
+      existingEnv: { ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "0" },
+    });
+    const cloudPinned = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-cloud-pinned",
+      existingEnv: { ELIZAOS_CLOUD_USE_EMBEDDINGS: "true" },
+    });
+
+    expect(existing.environmentVars.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBeUndefined();
+    expect(existing.environmentVars.EMBEDDING_DIMENSION).toBe("1536");
+    expect(existing.environmentVars.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+    expect(optedOut.environmentVars.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBe("0");
+    expect(optedOut.environmentVars.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
+    expect(optedOut.environmentVars.EMBEDDING_DIMENSION).toBe("1536");
+    expect(cloudPinned.environmentVars.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBeUndefined();
+    expect(cloudPinned.environmentVars.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("true");
+    expect(cloudPinned.environmentVars.EMBEDDING_DIMENSION).toBe("1536");
   });
 
   test("honors explicit per-agent embedding-dimension overrides", async () => {
@@ -346,8 +384,10 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
       "ELIZAOS_CLOUD_LARGE_MODEL",
       "ELIZAOS_CLOUD_SMALL_MODEL",
       "ELIZAOS_CLOUD_USE_EMBEDDINGS",
+      "ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS",
       "EMBEDDING_DIMENSION",
     ]);
+    expect(result.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBe("1");
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
@@ -363,6 +403,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
       ELIZAOS_CLOUD_API_KEY: "eliza_existing_agent_key",
     });
 
+    expect(result.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBeUndefined();
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
     expect(result.EMBEDDING_DIMENSION).toBe("1536");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
@@ -375,6 +416,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
       ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "0",
     });
 
+    expect(result.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBeUndefined();
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
     expect(result.EMBEDDING_DIMENSION).toBe("1536");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
@@ -388,6 +430,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
       ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "1",
     });
 
+    expect(result.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBe("1");
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
@@ -404,6 +447,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
       ELIZAOS_CLOUD_USE_EMBEDDINGS: "true",
     });
 
+    expect(result.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBeUndefined();
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
     expect(result.EMBEDDING_DIMENSION).toBe("1536");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
