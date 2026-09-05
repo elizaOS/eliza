@@ -548,3 +548,103 @@ describe("document-list capability contract", () => {
 		).toEqual([ready.id]);
 	});
 });
+
+describe("documentMutationSnapshotMatches clause isolation", () => {
+	const OTHER_UUID = "00000000-0000-0000-0000-0000000000ff" as UUID;
+	const ATTEMPT_ID = "00000000-0000-0000-0000-00000000a11e" as UUID;
+
+	/** A document carrying every field the mutation snapshot compares. */
+	function snapshotDocument(overrides: Partial<Memory> = {}): Memory {
+		const base = document(21);
+		return {
+			...base,
+			metadata: {
+				...base.metadata,
+				scope: "owner-private",
+				scopedToEntityId: REQUESTER_ID,
+				addedBy: REQUESTER_ID,
+				directGrantEntityIds: [REQUESTER_ID],
+				documentRevision: 4,
+				ingestionAttemptId: ATTEMPT_ID,
+				ingestionState: "pending",
+			},
+			...overrides,
+		} as Memory;
+	}
+
+	function matchesAfter(mutate: (memory: Memory) => Memory): boolean {
+		const original = snapshotDocument();
+		const expected = readDocumentMutationSnapshot(original);
+		if (!expected) throw new Error("fixture must produce a snapshot");
+		return documentMutationSnapshotMatches(mutate(original), expected);
+	}
+
+	function withMetadata(patch: Record<string, unknown>) {
+		return (memory: Memory): Memory =>
+			({
+				...memory,
+				metadata: { ...memory.metadata, ...patch },
+			}) as Memory;
+	}
+
+	it("matches a document that is unchanged since the snapshot was taken", () => {
+		expect(matchesAfter((memory) => memory)).toBe(true);
+	});
+
+	// `compareAndSwapDocument` and `replaceDocumentRevision` return
+	// `{ status: "conflict" }` when this predicate is false, so every field it
+	// compares is a lost-update detector. Asserted one at a time: a fixture that
+	// perturbs several fields at once cannot tell you which comparisons survive.
+	const divergences: Array<[string, (memory: Memory) => Memory]> = [
+		[
+			"the row no longer reads as a document snapshot",
+			(memory) => ({ ...memory, roomId: "not-a-uuid" }) as unknown as Memory,
+		],
+		["the scope changed", withMetadata({ scope: "global" })],
+		["the room changed", (memory) => ({ ...memory, roomId: OTHER_UUID })],
+		[
+			"the owning entity changed",
+			(memory) => ({ ...memory, entityId: OTHER_UUID }),
+		],
+		[
+			"a direct grant was added",
+			withMetadata({ directGrantEntityIds: [REQUESTER_ID, OTHER_UUID] }),
+		],
+		[
+			"the private-scope target changed",
+			withMetadata({ scopedToEntityId: OTHER_UUID }),
+		],
+		["the recorded author changed", withMetadata({ addedBy: OTHER_UUID })],
+		["the revision advanced", withMetadata({ documentRevision: 5 })],
+		[
+			"a different ingestion attempt owns the row",
+			withMetadata({ ingestionAttemptId: OTHER_UUID }),
+		],
+		["the ingestion state advanced", withMetadata({ ingestionState: "ready" })],
+	];
+
+	it.each(divergences)("reports a conflict when %s", (_name, mutate) => {
+		expect(matchesAfter(mutate)).toBe(false);
+	});
+
+	it("compares direct grants by order as well as membership", () => {
+		// `uuidArraysEqual` is index-wise, so a reordered grant list is a
+		// divergence. Pinned because a set-equality rewrite would look harmless.
+		const original = snapshotDocument({
+			metadata: {
+				...snapshotDocument().metadata,
+				directGrantEntityIds: [REQUESTER_ID, OTHER_UUID],
+			},
+		} as Partial<Memory>);
+		const expected = readDocumentMutationSnapshot(original);
+		if (!expected) throw new Error("fixture must produce a snapshot");
+		const reordered = {
+			...original,
+			metadata: {
+				...original.metadata,
+				directGrantEntityIds: [OTHER_UUID, REQUESTER_ID],
+			},
+		} as Memory;
+		expect(documentMutationSnapshotMatches(reordered, expected)).toBe(false);
+	});
+});
