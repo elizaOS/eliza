@@ -61,11 +61,7 @@ export function ViewBackButton({
     description: "Return to the launcher",
     onActivate: handleBack,
   });
-  // The BUTTON is the hit target and must meet the 44px mobile minimum on its
-  // own box (#13586 / #14152 — a tap target borrowed from the surrounding row
-  // is not clickable-by-contract). h-11 w-11 with -m-1 keeps the 36px layout
-  // footprint; the visual affordance (36px hover chip) lives on the inner span
-  // so the resting/hover appearance is unchanged.
+  // Keep the full 44px hit target; hover brightens only the icon.
   return (
     <Button
       ref={ref}

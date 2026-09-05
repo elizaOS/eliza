@@ -141,7 +141,7 @@ export function BrowserTabFoldControl({
       }}
       {...agentProps}
       type="button"
-      variant="surface"
+      variant="ghostMuted"
       size="touch"
       shape="circle"
       onClick={onOpen}
@@ -153,7 +153,7 @@ export function BrowserTabFoldControl({
       className="relative min-w-11 shrink-0 px-0 md:px-4"
     >
       <Copy
-        className="size-4 shrink-0 text-muted"
+        className="size-4 shrink-0"
         data-testid="browser-workspace-tabs-icon"
         aria-hidden
       />

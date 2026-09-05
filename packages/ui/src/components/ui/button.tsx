@@ -44,12 +44,12 @@ const buttonVariants = cva(
         secondary:
           "bg-bg-accent text-txt-strong hover:bg-surface disabled:text-muted-strong",
         ghost:
-          "text-txt-strong hover:bg-surface hover:text-txt-strong disabled:text-muted-strong",
+          "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt-strong disabled:text-muted-strong",
         link: "text-accent underline-offset-4 hover:underline disabled:text-muted-strong",
         selection:
-          "bg-transparent text-txt-strong hover:bg-accent-subtle data-[state=on]:bg-accent-subtle data-[state=on]:text-txt-strong",
+          "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt-strong data-[state=on]:bg-accent-subtle data-[state=on]:hover:bg-accent-subtle data-[state=on]:text-txt-strong",
         settingsRow:
-          "bg-transparent text-muted hover:bg-bg-hover hover:text-txt-strong data-[state=on]:bg-bg-hover data-[state=on]:text-txt-strong",
+          "bg-transparent text-muted hover:bg-transparent hover:text-txt-strong data-[state=on]:bg-bg-hover data-[state=on]:hover:bg-bg-hover data-[state=on]:text-txt-strong",
         choice:
           "border border-border-strong bg-card text-txt-strong hover:border-accent hover:bg-surface disabled:opacity-40 aria-disabled:opacity-40 data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-fg data-[state=on]:disabled:opacity-100 data-[state=on]:aria-disabled:opacity-100",
         publicRow:
@@ -66,15 +66,16 @@ const buttonVariants = cva(
           "h-auto w-full justify-start whitespace-normal rounded-sm bg-transparent px-3 py-2 text-left font-mono text-xs-tight text-muted-strong hover:bg-surface hover:text-txt",
         dangerOutline:
           "border border-danger/30 bg-transparent text-danger hover:border-danger/50 hover:bg-danger/10 hover:text-danger",
-        ghostMuted: "bg-transparent text-muted hover:bg-surface hover:text-txt",
+        ghostMuted:
+          "bg-transparent text-muted hover:bg-transparent hover:text-txt",
         selectionNeutral:
-          "bg-transparent text-txt-strong hover:bg-surface data-[state=on]:bg-surface data-[state=on]:text-txt-strong",
+          "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt-strong data-[state=on]:bg-surface data-[state=on]:hover:bg-surface data-[state=on]:text-txt-strong",
         externalLink:
           "h-auto bg-transparent p-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline",
         sectionToggle:
-          "h-auto w-full justify-start gap-2 rounded-sm bg-transparent px-3 py-2 text-left hover:bg-bg-hover",
+          "h-auto w-full justify-start gap-2 rounded-sm bg-transparent px-3 py-2 text-left text-muted-strong hover:bg-transparent hover:text-txt-strong",
         dangerGhost:
-          "bg-transparent text-muted hover:bg-danger/10 hover:text-danger",
+          "bg-transparent text-muted hover:bg-transparent hover:text-danger",
         outlineMuted:
           "border border-border bg-card text-muted-strong hover:border-border-strong hover:bg-surface hover:text-txt",
         mutedLink:
