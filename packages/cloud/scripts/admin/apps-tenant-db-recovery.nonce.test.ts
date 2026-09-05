@@ -1,25 +1,42 @@
 /**
- * Proves the restore-drill nonce is genuinely one-use (#21729 hardening):
- * exercises the real `verifyAndConsumeRestoreTargetIdentity` orchestration
- * against a scripted psql double that models the documented Postgres
- * semantics of `ALTER SYSTEM RESET` + `pg_reload_conf()` (the setting reads
- * back unset once reloaded). No live Postgres is involved — this is a
- * behavioral double of the external tool boundary, not the SQL engine
- * itself; the sibling `apps-tenant-db-recovery.test.ts` states the same
- * posture for the rest of the suite.
+ * Proves the restore-drill authority is genuinely one-use after completion
+ * (#23453): exercises the real `verifyRestoreAuthority` and
+ * `consumeRestoreAuthority` orchestration against a scripted psql double
+ * that models the documented Postgres semantics of `ALTER SYSTEM RESET` +
+ * `pg_reload_conf()` (settings read back unset once reloaded). No live
+ * Postgres is involved — this is a behavioral double of the external tool
+ * boundary, not the SQL engine itself; the sibling
+ * `apps-tenant-db-recovery.test.ts` states the same posture for the rest of
+ * the suite. Live-server coverage of the same sequence lives in
+ * `apps-tenant-db-recovery.postgres.test.ts` (gated).
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  mintRestoreCapability,
+  serializeRestoreCapability,
+} from "./restore-capability";
 
 const TARGET_ID = "drill-11111111-2222-4333-8444-555555555555";
-const TARGET_DSN = "postgresql://restore_admin:pw@127.0.0.1:5433/postgres";
+const TARGET_DSN = "postgresql://restore_admin:***@127.0.0.1:5433/postgres";
+const SIGNING_KEY = "nonce-test-key";
+const ARCHIVE_SHA = "d".repeat(64);
 
-/** Minimal fake Postgres session state: one custom setting, reset or not. */
-function makeFakeServer(initialTargetId: string | null) {
+/**
+ * Minimal fake Postgres server: the two twin settings, reset or not. The
+ * authority read returns both settings plus the role inventory; guarded
+ * --file steps enforce the guard before running; the consume script resets
+ * both settings (mirroring real ALTER SYSTEM RESET + pg_reload_conf).
+ */
+function makeFakeServer(
+  initialTargetId: string | null,
+  initialCapability: string | null,
+) {
   let restoreTargetId = initialTargetId;
+  let restoreCapability = initialCapability;
   return {
     spawnSync(
       command: string,
@@ -34,22 +51,32 @@ function makeFakeServer(initialTargetId: string | null) {
         return {
           status: 0,
           stdout: JSON.stringify({
-            target_id: restoreTargetId,
+            target_id: restoreTargetId ?? "",
+            capability: restoreCapability ?? "",
             existing_roles: [],
           }),
           stderr: "",
           error: undefined,
         };
       }
-      // A guarded --file step (only the consume script in this test).
-      const setIndex = args.indexOf("--set");
-      const expected = args[setIndex + 1]?.split("=")[1];
+      // A guarded --file step: the guard's twin-setting check runs first.
+      const expectedTarget = args.find((a) =>
+        a.startsWith("expected_target_id="),
+      );
+      const expectedCapability = args.find((a) =>
+        a.startsWith("expected_capability="),
+      );
       const script = readFileSync(args[fileIndex + 1], "utf-8");
-      if (restoreTargetId === null || restoreTargetId !== expected) {
+      const matches =
+        restoreTargetId !== null &&
+        restoreCapability !== null &&
+        expectedTarget === `expected_target_id=${restoreTargetId}` &&
+        expectedCapability === `expected_capability=${restoreCapability}`;
+      if (!matches) {
         return {
           status: 1,
           stdout: "",
-          stderr: "restore target identity mismatch",
+          stderr: "restore target authority mismatch",
           error: undefined,
         };
       }
@@ -57,13 +84,23 @@ function makeFakeServer(initialTargetId: string | null) {
         // Mirrors real Postgres: RESET + reload makes current_setting(..., true)
         // read back unset for every session opened afterward.
         restoreTargetId = null;
+        restoreCapability = null;
       }
       return { status: 0, stdout: "", stderr: "", error: undefined };
     },
   };
 }
 
-describe("restore target nonce is genuinely one-use", () => {
+function mintedCapability() {
+  return mintRestoreCapability({
+    signingKey: SIGNING_KEY,
+    targetId: TARGET_ID,
+    archiveSha256: ARCHIVE_SHA,
+    expiresAtEpochMs: Date.now() + 3_600_000,
+  });
+}
+
+describe("restore target authority is one-use after completion", () => {
   let work: string | undefined;
   let restoreModule: typeof import("node:child_process") | undefined;
 
@@ -77,10 +114,12 @@ describe("restore target nonce is genuinely one-use", () => {
     restoreModule = undefined;
   });
 
-  test("a second invocation with the same target id fails REFUSED_TARGET_AUTHORITY after the first consumes it", async () => {
+  test("verify succeeds against matching twins; a second drill after consume fails closed", async () => {
     const { mock } = await import("bun:test");
     restoreModule = await import("node:child_process");
-    const server = makeFakeServer(TARGET_ID);
+    const cap = mintedCapability();
+    const envelope = serializeRestoreCapability(cap);
+    const server = makeFakeServer(TARGET_ID, envelope);
     mock.module("node:child_process", () => ({
       ...restoreModule,
       spawnSync: server.spawnSync,
@@ -91,20 +130,32 @@ describe("restore target nonce is genuinely one-use", () => {
     );
     work = mkdtempSync(join(tmpdir(), "nonce-reuse-test-"));
 
-    const first = mod.verifyAndConsumeRestoreTargetIdentity(
+    // Verify passes against the provisioned twins.
+    const authority = mod.verifyRestoreAuthority(
       TARGET_DSN,
       TARGET_ID,
-      work,
+      cap,
+      SIGNING_KEY,
+      Date.now(),
     );
-    expect(first.targetId).toBe(TARGET_ID);
+    expect(authority.targetId).toBe(TARGET_ID);
 
-    // The nonce is spent: current_setting now reads unset, so the very next
-    // authority read — a re-run of the same drill, an operator mistake, or a
-    // process racing the first — fails closed instead of replaying it.
+    // Consume spends both settings.
+    mod.consumeRestoreAuthority(TARGET_DSN, TARGET_ID, cap, work);
+
+    // The very next verify — a re-run of the completed drill — fails
+    // closed: the settings are gone, the nonce is dead.
     let reuseError: unknown;
     try {
-      mod.verifyAndConsumeRestoreTargetIdentity(TARGET_DSN, TARGET_ID, work);
+      mod.verifyRestoreAuthority(
+        TARGET_DSN,
+        TARGET_ID,
+        cap,
+        SIGNING_KEY,
+        Date.now(),
+      );
     } catch (error) {
+      // The expected refusal itself is captured, not swallowed.
       reuseError = error;
     }
     expect(reuseError).toBeDefined();
@@ -113,36 +164,80 @@ describe("restore target nonce is genuinely one-use", () => {
     );
   });
 
-  test("an unrelated concurrent target id is unaffected by another drill's consumption", async () => {
+  test("a mismatched twin (re-provisioned target) is refused before any work", async () => {
     const { mock } = await import("bun:test");
     restoreModule = await import("node:child_process");
-    const otherTargetId = "drill-22222222-3333-4444-8555-666666666666";
-    const server = makeFakeServer(otherTargetId);
+    const cap = mintedCapability();
+    const otherEnvelope = serializeRestoreCapability(
+      mintRestoreCapability({
+        signingKey: SIGNING_KEY,
+        targetId: TARGET_ID,
+        archiveSha256: "e".repeat(64),
+        expiresAtEpochMs: Date.now() + 3_600_000,
+      }),
+    );
+    const server = makeFakeServer(TARGET_ID, otherEnvelope);
     mock.module("node:child_process", () => ({
       ...restoreModule,
       spawnSync: server.spawnSync,
     }));
 
     const mod = await import(
-      `./apps-tenant-db-recovery?nonce-independent-test=${Date.now()}`
+      `./apps-tenant-db-recovery?nonce-mismatch-test=${Date.now()}`
     );
-    work = mkdtempSync(join(tmpdir(), "nonce-independent-test-"));
 
     let mismatchError: unknown;
     try {
-      mod.verifyAndConsumeRestoreTargetIdentity(TARGET_DSN, TARGET_ID, work);
+      mod.verifyRestoreAuthority(
+        TARGET_DSN,
+        TARGET_ID,
+        cap,
+        SIGNING_KEY,
+        Date.now(),
+      );
     } catch (error) {
+      // The expected refusal itself is captured, not swallowed.
       mismatchError = error;
     }
     expect((mismatchError as { code?: string }).code).toBe(
       "REFUSED_TARGET_AUTHORITY",
     );
+  });
 
-    const stillGood = mod.verifyAndConsumeRestoreTargetIdentity(
-      TARGET_DSN,
-      otherTargetId,
-      work,
+  test("a failed drill does not consume the twins (idempotent re-run within TTL)", async () => {
+    const { mock } = await import("bun:test");
+    restoreModule = await import("node:child_process");
+    const cap = mintedCapability();
+    const envelope = serializeRestoreCapability(cap);
+    const server = makeFakeServer(TARGET_ID, envelope);
+    mock.module("node:child_process", () => ({
+      ...restoreModule,
+      spawnSync: server.spawnSync,
+    }));
+
+    const mod = await import(
+      `./apps-tenant-db-recovery?nonce-recover-test=${Date.now()}`
     );
-    expect(stillGood.targetId).toBe(otherTargetId);
+
+    // Verify twice without consuming: both succeed — the crash-recovery
+    // path never spends the authority.
+    expect(
+      mod.verifyRestoreAuthority(
+        TARGET_DSN,
+        TARGET_ID,
+        cap,
+        SIGNING_KEY,
+        Date.now(),
+      ).targetId,
+    ).toBe(TARGET_ID);
+    expect(
+      mod.verifyRestoreAuthority(
+        TARGET_DSN,
+        TARGET_ID,
+        cap,
+        SIGNING_KEY,
+        Date.now(),
+      ).targetId,
+    ).toBe(TARGET_ID);
   });
 });
