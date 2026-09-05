@@ -575,19 +575,21 @@ export class VideoService extends IVideoService {
   ): Promise<string> {
     elizaLogger.log("Getting transcript");
     try {
-      // Check for manual subtitles
-      if (videoInfo.subtitles?.en) {
+      // Check for manual subtitles. yt-dlp maps each language to an array of
+      // tracks that may be present-but-empty or missing a url; select the first
+      // usable track defensively so a malformed listing degrades to the next
+      // grounded source instead of throwing.
+      const manualUrl = videoInfo.subtitles?.en?.[0]?.url;
+      if (manualUrl) {
         elizaLogger.log("Manual subtitles found");
-        const srtContent = await this.downloadSRT(
-          videoInfo.subtitles.en[0].url,
-        );
+        const srtContent = await this.downloadSRT(manualUrl);
         return this.parseSRT(srtContent);
       }
 
-      // Check for automatic captions
-      if (videoInfo.automatic_captions?.en) {
+      // Check for automatic captions (same empty/malformed-array guard).
+      const captionUrl = videoInfo.automatic_captions?.en?.[0]?.url;
+      if (captionUrl) {
         elizaLogger.log("Automatic captions found");
-        const captionUrl = videoInfo.automatic_captions.en[0].url;
         const captionContent = await this.downloadCaption(captionUrl);
         return this.parseCaption(captionContent);
       }
