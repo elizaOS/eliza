@@ -455,7 +455,7 @@ describe("AuthTokenSync", () => {
     expect(storage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
   });
 
-  it("clears a STILL-VALID token when session-sync 401s with session_ended — an explicit cross-host logout is a real revocation, not a stale proxy", async () => {
+  it("clears session_ended under the held Web Lock without self-deadlocking", async () => {
     // Far outside the refresh-ahead window: only the session-sync POST fires,
     // isolating the session_ended handling from the refresh path.
     const token = makeJwt({
@@ -463,6 +463,45 @@ describe("AuthTokenSync", () => {
       exp: Math.floor(Date.now() / 1000) + 3600,
     });
     storage.setItem(STEWARD_TOKEN_KEY, token);
+
+    // Model the browser's non-reentrant Web Lock precisely: work submitted
+    // while a callback is active queues behind it. Before the regression fix,
+    // clearStaleStewardSession tried to acquire this lock again and the outer
+    // passive-mirror callback awaited work that could not start until it
+    // returned. Lending the held authority context avoids that cycle.
+    let lockTail: Promise<unknown> = Promise.resolve();
+    let activeLocks = 0;
+    let peakActiveLocks = 0;
+    const request = vi.fn(
+      <T,>(
+        _name: string,
+        _options: { mode: "exclusive"; signal: AbortSignal },
+        callback: () => T | PromiseLike<T>,
+      ): Promise<T> => {
+        const result = lockTail.then(async () => {
+          activeLocks += 1;
+          peakActiveLocks = Math.max(peakActiveLocks, activeLocks);
+          try {
+            return await callback();
+          } finally {
+            activeLocks -= 1;
+          }
+        });
+        lockTail = result.then(
+          () => undefined,
+          () => undefined,
+        );
+        return result;
+      },
+    );
+    const navigatorWithLocks = Object.create(window.navigator) as Navigator;
+    Object.defineProperty(navigatorWithLocks, "locks", {
+      configurable: true,
+      value: { request },
+    });
+    vi.stubGlobal("navigator", navigatorWithLocks);
+    vi.stubGlobal("isSecureContext", true);
+
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -489,6 +528,10 @@ describe("AuthTokenSync", () => {
     // stored session even though the token itself is still unexpired — this is
     // what propagates a logout performed on the PAIRED origin to this one.
     await waitFor(() => expect(storage.getItem(STEWARD_TOKEN_KEY)).toBeNull());
+    // The second acquisition is the intentionally detached cookie DELETE; it
+    // starts only after the passive-mirror callback releases the first lock.
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(peakActiveLocks).toBe(1);
   });
 
   it("clears an expired token on a refresh 401 (genuine end-of-session still self-heals)", async () => {
