@@ -299,8 +299,14 @@ describe("isTouchPrimaryWebBrowser", () => {
 describe("buildSameTabCloudLoginPath", () => {
   it("carries the caller's location as returnTo", () => {
     expect(
-      buildSameTabCloudLoginPath({ pathname: "/settings", search: "?t=c" }),
-    ).toBe(`/login?returnTo=${encodeURIComponent("/settings?t=c")}`);
+      buildSameTabCloudLoginPath({
+        pathname: "/settings",
+        search: "?t=c",
+        hash: "#cloud-account",
+      }),
+    ).toBe(
+      `/login?returnTo=${encodeURIComponent("/settings?t=c#cloud-account")}`,
+    );
   });
 
   it("falls back to /chat when already on the login page", () => {
