@@ -194,7 +194,10 @@ async function runWithOrderedPostgresTeardown<T>(
     }
   }
 
-  const closeResults = await Promise.allSettled([writer.end(), observer.end()]);
+  const closeResults = await Promise.allSettled([
+    Promise.resolve().then(() => writer.end()),
+    Promise.resolve().then(() => observer.end()),
+  ]);
   for (const [index, result] of closeResults.entries()) {
     if (result.status === "rejected") {
       // error-policy:J6 best-effort teardown — both clients are independently
@@ -262,6 +265,55 @@ async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
 }
 
 describe("PostgreSQL capacity proof teardown", () => {
+  test("preserves the proof failure and closes the observer when writer close throws synchronously", async () => {
+    const events: string[] = [];
+    const primary = new Error("primary proof failed");
+    const closeFailure = new Error("synchronous writer close failure");
+    const writer = teardownClient("writer", events);
+    writer.end = () => {
+      events.push("writer:close");
+      throw closeFailure;
+    };
+    const rejection = await rejectionOf(
+      runWithOrderedPostgresTeardown(writer, teardownClient("observer", events), async () => {
+        throw primary;
+      }),
+    );
+
+    expect(rejection).toBeInstanceOf(AggregateError);
+    expect((rejection as AggregateError).errors[0]).toBe(primary);
+    expect((rejection as AggregateError).errors[1].cause).toBe(closeFailure);
+    expect((rejection as AggregateError).cause).toBe(primary);
+    expect(events).toEqual([
+      "writer:connect",
+      "observer:connect",
+      "writer:ROLLBACK",
+      "writer:close",
+      "observer:close",
+    ]);
+  });
+
+  test("closes both clients without rolling back a writer that failed to connect", async () => {
+    const events: string[] = [];
+    const connectionFailure = new Error("writer connection failed");
+    const rejection = await rejectionOf(
+      runWithOrderedPostgresTeardown(
+        teardownClient("writer", events, { connect: connectionFailure }),
+        teardownClient("observer", events),
+        async () => {
+          throw new Error("proof must not run after failed connection");
+        },
+      ),
+    );
+    expect(rejection).toBe(connectionFailure);
+    expect(events).toEqual([
+      "writer:connect",
+      "observer:connect",
+      "writer:close",
+      "observer:close",
+    ]);
+  });
+
   test("preserves a primary proof failure after ordered successful teardown", async () => {
     const events: string[] = [];
     const primary = new Error("primary proof failed");
