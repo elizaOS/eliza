@@ -1512,22 +1512,26 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
     backupSandboxRecordId?: string;
     reconstructError?: Error;
     restoreHttpStatus?: number;
+    createError?: Error;
   }) {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const rec = sleepingSandboxRec();
     const backup = backupRow(opts.backupSandboxRecordId ?? rec.id);
     const provider: SandboxProvider = {
-      create: mock(async () => ({
-        sandboxId: "agent-e06bb509",
-        bridgeUrl: "https://runtime.example",
-        healthUrl: "https://runtime.example/health",
-        metadata: {
-          nodeId: "node-1",
-          containerName: "agent-e06bb509",
-          bridgePort: 21060,
-          webUiPort: 3000,
-        },
-      })),
+      create: mock(async () => {
+        if (opts.createError) throw opts.createError;
+        return {
+          sandboxId: "agent-e06bb509",
+          bridgeUrl: "https://runtime.example",
+          healthUrl: "https://runtime.example/health",
+          metadata: {
+            nodeId: "node-1",
+            containerName: "agent-e06bb509",
+            bridgePort: 21060,
+            webUiPort: 3000,
+          },
+        };
+      }),
       stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
@@ -1596,6 +1600,22 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
       },
     };
   }
+
+  test("provider creation failures preserve the original cause for the job boundary", async () => {
+    const transport = new Error("provider socket failed");
+    const creation = new Error("RequestTimeoutError", { cause: transport });
+    const h = await armFromBackupProvision({ createError: creation });
+    try {
+      const result = await h.svc.provision(h.rec.id, h.rec.organization_id);
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("expected provision failure");
+      expect(result.failureCause).toBe(creation);
+      expect((result.failureCause as Error).cause).toBe(transport);
+      expect(h.pruneSpy).not.toHaveBeenCalled();
+    } finally {
+      h.restore();
+    }
+  });
 
   test("an unreconstructable explicit backup FAILS the provision — no fresh boot, no prune", async () => {
     // A REAL AeadError: without the override this exact error is classified
@@ -6756,9 +6776,9 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
         error: unknown;
       }>;
       // Let getProvider() + the try-body microtasks settle so the timeout
-      // timer is actually armed, then blow past the 120s hard cap.
+      // timer is actually armed, then cross the four-minute recovery deadline.
       await Promise.resolve();
-      jest.advanceTimersByTime(120_001);
+      jest.advanceTimersByTime(240_001);
       const res = await pending;
       expect(res.kind).toBe("stop-timed-out");
       expect(res.error).toBeInstanceOf(Error);

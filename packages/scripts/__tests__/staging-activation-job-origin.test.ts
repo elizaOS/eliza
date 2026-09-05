@@ -62,7 +62,7 @@ test("reads only the bound owner's latest provision error and emits closed terms
       accountLifecycleRevision: "1",
       accountDeletionRequested: false,
       jobHasLiveLease: false,
-      errorTerms: ["connect", "exceeded", "timeout", "trying"],
+      errorTerms: ["connect", "credential", "exceeded", "timeout", "trying"],
       stackModules: ["pg-pool/index.js"],
     });
     expect(JSON.stringify(report)).not.toMatch(
@@ -82,6 +82,17 @@ test("reads only the bound owner's latest provision error and emits closed terms
         "provisioning-account-lifecycle-fence.ts:1:1",
         "with-timeout.ts:2:1",
       ],
+    });
+
+    await db.query("UPDATE jobs SET error = $1 WHERE id = 'current'", [
+      "Error: UND_ERR_CONNECT_TIMEOUT (RequestTimeoutError)",
+    ]);
+    const machineCode = await db.query<{
+      json_build_object: Record<string, unknown>;
+    }>(query, ["r33717318238a1"]);
+    expect(machineCode.rows[0].json_build_object).toMatchObject({
+      failureKind: "timeout",
+      errorTerms: ["connect", "request", "timeout"],
     });
 
     await db.exec(`

@@ -1735,10 +1735,12 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     );
     let containerTailnetIp = "100.64.0.42";
     let transientEmptyTailnetReads = 0;
+    let tailnetReadDeadline: ((timeoutMs: number) => void) | undefined;
     const ssh = {
       disconnect: mock(async () => {}),
-      exec: mock(async (command: string) => {
+      exec: mock(async (command: string, timeoutMs: number) => {
         if (!command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4")) return "";
+        tailnetReadDeadline?.(timeoutMs);
         if (transientEmptyTailnetReads > 0) {
           transientEmptyTailnetReads -= 1;
           return "\n";
@@ -1774,6 +1776,37 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       );
       expect(delayedBinding.metadata?.vpnNodeId).toBe(EXACT_VPN_NODE_ID);
       expect(transientEmptyTailnetReads).toBe(0);
+
+      let elapsedMs = 0;
+      const commandBudgets: number[] = [];
+      transientEmptyTailnetReads = Number.POSITIVE_INFINITY;
+      tailnetReadDeadline = (timeoutMs) => {
+        commandBudgets.push(timeoutMs);
+        elapsedMs += timeoutMs;
+      };
+      const expiredBinding = await replacementProvider({ now: () => elapsedMs })
+        .create(
+          replacementCreateConfig({
+            replacementAttemptId: ATTEMPT_ID,
+            dockerImage: "eliza-agent:test",
+            environmentVars: { ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1" },
+            reclaimStaleVpnNode: false,
+            onReplacementCreateAttemptStarted: async () => {},
+            onReplacementCreateIntent: async () => {},
+            onReplacementCreated: async () => {},
+            onReplacementVpnRegistered: async () => {},
+            onReplacementCreateSettled: async () => {},
+          }),
+        )
+        .catch((caught: unknown) => caught);
+      expect(expiredBinding).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+      expect(commandBudgets).toHaveLength(3);
+      expect(commandBudgets[2]).toBeLessThan(commandBudgets[0]);
+      expect((expiredBinding as SandboxReplacementCleanupUnresolvedError).vpnNodeId).toBe(
+        EXACT_VPN_NODE_ID,
+      );
+      tailnetReadDeadline = undefined;
+      transientEmptyTailnetReads = 0;
 
       containerTailnetIp = "100.64.0.99";
       const identityMismatch = await replacementProvider()

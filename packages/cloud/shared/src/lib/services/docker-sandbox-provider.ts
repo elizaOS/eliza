@@ -1316,6 +1316,7 @@ const HEALTH_CHECK_POLL_INTERVAL_MS = 3_000;
  */
 const HEADSCALE_DOCKER_BINDING_MAX_OBSERVATIONS = 130;
 const HEADSCALE_DOCKER_BINDING_POLL_INTERVAL_MS = 1_000;
+const HEADSCALE_DOCKER_BINDING_TIMEOUT_MS = 130_000;
 
 /**
  * Health-check polling: total timeout (ms). A cold dedicated agent (first image
@@ -4069,15 +4070,18 @@ export class DockerSandboxProvider implements SandboxProvider {
             }
             let containerTailnetLines: string[] = [];
             let lastTailnetQueryError: unknown;
+            const bindingDeadline = this.now() + HEADSCALE_DOCKER_BINDING_TIMEOUT_MS;
             for (
               let observation = 0;
               observation < HEADSCALE_DOCKER_BINDING_MAX_OBSERVATIONS;
               observation += 1
             ) {
+              const remainingMs = bindingDeadline - this.now();
+              if (remainingMs <= 0) break;
               try {
                 const containerTailnetOutput = await ssh.exec(
                   `docker exec ${shellQuote(createdContainerId)} tailscale --socket=/tmp/tailscaled.sock ip -4`,
-                  DOCKER_CMD_TIMEOUT_MS,
+                  Math.min(DOCKER_CMD_TIMEOUT_MS, remainingMs),
                 );
                 containerTailnetLines = containerTailnetOutput
                   .split(/\r?\n/)
@@ -4085,6 +4089,7 @@ export class DockerSandboxProvider implements SandboxProvider {
                   .filter(Boolean);
                 lastTailnetQueryError = undefined;
               } catch (error: unknown) {
+                // error-policy:J4 a bounded joining-state retry preserves the final cause.
                 // A joining tailscaled can reject `ip -4` before its local
                 // netmap catches up with the already-observed control-plane
                 // registration. Preserve the final cause, but let the bounded
@@ -4094,7 +4099,11 @@ export class DockerSandboxProvider implements SandboxProvider {
               }
               if (containerTailnetLines.length > 0) break;
               if (observation < HEADSCALE_DOCKER_BINDING_MAX_OBSERVATIONS - 1) {
-                await this.headscaleDockerBindingDelay(HEADSCALE_DOCKER_BINDING_POLL_INTERVAL_MS);
+                const delayMs = Math.min(
+                  HEADSCALE_DOCKER_BINDING_POLL_INTERVAL_MS,
+                  bindingDeadline - this.now(),
+                );
+                if (delayMs > 0) await this.headscaleDockerBindingDelay(delayMs);
               }
             }
             const containerTailnetIp = containerTailnetLines[0];
@@ -6148,6 +6157,24 @@ export class DockerSandboxProvider implements SandboxProvider {
         `[docker-sandbox] Missing persisted docker node metadata for node "${locator.nodeId}"`,
       );
     }
+    const hostname = hasCompleteSshAuthority ? locator.hostname : dbNode?.hostname;
+    const sshPort = hasCompleteSshAuthority ? locator.sshPort : dbNode?.ssh_port;
+    const sshUser = hasCompleteSshAuthority ? locator.sshUser : dbNode?.ssh_user;
+    if (
+      typeof hostname !== "string" ||
+      !hostname.trim() ||
+      typeof sshUser !== "string" ||
+      !sshUser.trim() ||
+      typeof sshPort !== "number" ||
+      !Number.isSafeInteger(sshPort) ||
+      sshPort < 1 ||
+      sshPort > 65_535
+    ) {
+      throw new ElizaError("Deletion node SSH authority is incomplete", {
+        code: "SANDBOX_DELETION_SSH_AUTHORITY_INVALID",
+        context: { nodeId: locator.nodeId },
+      });
+    }
     logger.info("[docker-sandbox] Teardown node authority resolved", {
       agentId: locator.agentId,
     });
@@ -6156,13 +6183,15 @@ export class DockerSandboxProvider implements SandboxProvider {
     });
     return {
       nodeId: locator.nodeId,
-      hostname: locator.hostname ?? dbNode?.hostname ?? "",
+      hostname,
       containerName: locator.containerName,
       agentId: locator.agentId,
       tsHostname: locator.containerName,
-      sshPort: locator.sshPort ?? dbNode?.ssh_port ?? DEFAULT_SSH_PORT,
-      sshUser: locator.sshUser ?? dbNode?.ssh_user ?? DEFAULT_SSH_USERNAME,
-      hostKeyFingerprint: locator.hostKeyFingerprint ?? dbNode?.host_key_fingerprint ?? undefined,
+      sshPort,
+      sshUser,
+      hostKeyFingerprint: hasCompleteSshAuthority
+        ? locator.hostKeyFingerprint
+        : (dbNode?.host_key_fingerprint ?? undefined),
     };
   }
 

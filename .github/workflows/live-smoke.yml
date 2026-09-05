@@ -942,7 +942,7 @@ jobs:
             ) FROM latest_job),
             'errorTerms', ARRAY(
               SELECT DISTINCT term[1] FROM latest_job,
-                regexp_matches(lower(split_part(error, E'\n', 1)), '\m(timeout|timed|query|connection|connect|handshake|socket|pool|database|postgres|acquire|client|read|write|fetch|abort|aborted|operation|exceeded|trying|response|request|statement|health|sandbox|docker|ssh|vpn|headscale|backup|restore|revocation|lock|lease|body|headers|control|preflight|capacity|admission|fence|fenced|account|lifecycle|generation|owned|current|conflicting|revision|stale|steward|kms|crypto|encryption|decryption|redis|s3|r2|tls|certificate|auth|credential|token|key|econnreset|etimedout|econnrefused)\M', 'g') AS term
+                regexp_matches(lower(split_part(error, E'\n', 1)), '(timeout|timed|query|connection|connect|handshake|socket|pool|database|postgres|acquire|client|read|write|fetch|abort|aborted|operation|exceeded|trying|response|request|statement|health|sandbox|docker|ssh|vpn|headscale|backup|restore|revocation|lock|lease|body|headers|control|preflight|capacity|admission|fence|fenced|account|lifecycle|generation|owned|current|conflicting|revision|stale|steward|kms|crypto|encryption|decryption|redis|s3|r2|tls|certificate|auth|credential|token|key|econnreset|etimedout|econnrefused)', 'g') AS term
               ORDER BY term[1]
             ),
             'stackFrames', ARRAY(

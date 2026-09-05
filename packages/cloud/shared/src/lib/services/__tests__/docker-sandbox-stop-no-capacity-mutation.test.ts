@@ -163,6 +163,34 @@ describe("provider stop never mutates node capacity", () => {
     }
   });
 
+  test("incomplete persisted SSH authority rejects before any Docker command", async () => {
+    const commands: string[] = [];
+    execBehavior = async (command) => {
+      commands.push(command);
+      return "";
+    };
+    const nodeLookup = spyOn(dockerNodesRepository, "findByNodeIdOnPrimary").mockResolvedValue({
+      node_id: NODE_ID,
+      hostname: "",
+      ssh_port: 22,
+      ssh_user: "root",
+    } as never);
+    try {
+      await expect(
+        new DockerSandboxProvider().stopForDeletion(SANDBOX_ID, {
+          sandboxId: SANDBOX_ID,
+          agentId: SANDBOX_ID,
+          nodeId: NODE_ID,
+          containerName: SANDBOX_ID,
+        }),
+      ).rejects.toThrow("Deletion node SSH authority is incomplete");
+      expect(commands).toEqual([]);
+      expect(decrementSpy).not.toHaveBeenCalled();
+    } finally {
+      nodeLookup.mockRestore();
+    }
+  });
+
   test("an unreachable container retains its capacity for reconciliation", async () => {
     execBehavior = async () => {
       throw new Error("[docker-ssh] Connection to 138.201.80.125:22 timed out after 10000ms");

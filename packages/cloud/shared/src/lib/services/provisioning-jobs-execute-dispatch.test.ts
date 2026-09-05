@@ -1041,6 +1041,42 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("terminal provision failures persist the original provider stack through job writeback", async () => {
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => true,
+      releaseProviderAdmission: async () => {},
+    });
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION), service);
+    function providerSocketFailure(): Error {
+      return new Error("RequestTimeoutError", {
+        cause: new Error("Authorization: Bearer test-private-provider-secret"),
+      });
+    }
+    stub("provision", {
+      success: false,
+      error: "RequestTimeoutError",
+      failureCause: providerSocketFailure(),
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "error" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION, service);
+      expect(res).toMatchObject({ retried: 0, failed: 1 });
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
+      const durableError = String(ctx.incrementSpy.mock.calls[0]?.[1]);
+      expect(durableError).toContain("providerSocketFailure");
+      expect(durableError).toContain("caused by:");
+      expect(durableError).not.toContain("test-private-provider-secret");
+      expect(ctx.retryLaterSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("agent_provision retains the typed startup cause in the durable retry error", async () => {
     const service = new ProvisioningJobService({
       acquireProviderAdmission: async () => true,

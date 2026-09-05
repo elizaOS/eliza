@@ -149,11 +149,11 @@ jobs:
       # environment variable. Keeping the value here also lets a deploy repair
       # a missing/stale host entry when the GitHub variable inventory is empty.
       HEADSCALE_PUBLIC_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.eliza.app' || 'https://headscale-staging.eliza.app' }}
-      # The container entrypoint may spend up to 120s completing `tailscale up`.
+      # The container entrypoint may spend up to 300s completing `tailscale up`.
       # Keep the control-plane observer above that bound with margin. This must
       # be repository-owned: an old hand-set short host value made the worker
       # abandon pending joins before the entrypoint could finish.
-      VPN_REGISTRATION_TIMEOUT_MS: "180000"
+      VPN_REGISTRATION_TIMEOUT_MS: "360000"
       # Base64 private key used by the daemon to reach dedicated-agent nodes.
       # Keep this in the protected environment instead of relying on a
       # hand-copied file that can drift or disappear when the CP host is rebuilt.

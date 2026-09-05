@@ -46,8 +46,10 @@ their evidence can be reused.
 After the exact aggregate succeeds, `develop-full.yml` hands its SHA and run ID
 to the non-cancelable, dispatch-only `develop-reconcile.yml` authority. The
 reconciler revalidates the successful Develop Full push and its exact manifests,
-then records agent-image, Cloud staging, apps-worker staging, and provisioning-
-worker staging effects in GitHub Deployments. `.github/develop-effects.json`
+then records agent-image, apps-worker staging, provisioning-worker staging, and
+Cloud staging effects in GitHub Deployments. Both daemons deploy before the
+Cloud release runs its live renderer gate, so that gate verifies the current
+release against its provisioning and app workers. `.github/develop-effects.json`
 binds every effect to its validation-surface digests, immutable workflow bytes,
 and typed inputs. A current exact success is idempotent; matching prior input is
 re-ledgered for the current SHA. An interrupted dispatch is resumed only when

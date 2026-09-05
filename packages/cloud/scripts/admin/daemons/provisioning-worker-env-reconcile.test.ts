@@ -612,7 +612,33 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
 
   it("owns and verifies a VPN observation budget longer than the container join budget", () => {
     const forwarded = workflowEnvs();
-    expect(workflow).toContain(`${VPN_REGISTRATION_TIMEOUT_KEY}: "180000"`);
+    const configured = Bun.YAML.parse(workflow) as {
+      jobs: Record<string, { env?: Record<string, string> }>;
+    };
+    const budget = Object.values(configured.jobs)
+      .map((job) => job.env?.[VPN_REGISTRATION_TIMEOUT_KEY])
+      .find((value) => value !== undefined);
+    if (!budget) throw new Error("Missing worker VPN registration budget");
+    // Boot the real consumer with the workflow value. A copied literal check
+    // allowed the deploy's 180-second value to drift below the runtime minimum.
+    execFileSync(
+      process.execPath,
+      [
+        "--eval",
+        `await import(${JSON.stringify(
+          path.join(
+            repoRoot,
+            "packages/cloud/shared/src/lib/services/headscale-integration.ts",
+          ),
+        )});`,
+      ],
+      {
+        cwd: repoRoot,
+        env: { ...process.env, [VPN_REGISTRATION_TIMEOUT_KEY]: budget },
+        timeout: 30_000,
+        stdio: "pipe",
+      },
+    );
     expect(forwarded).toContain(VPN_REGISTRATION_TIMEOUT_KEY);
     expect(workflow).toContain(
       `"${VPN_REGISTRATION_TIMEOUT_KEY}=$${VPN_REGISTRATION_TIMEOUT_KEY}"`,
