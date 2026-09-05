@@ -71,6 +71,21 @@ describe("finalMessageUserText", () => {
 		expect(finalMessageUserText(value)).toBe(literalJson);
 	});
 
+	it.each([
+		'{"label":"old","label":"new"}',
+		'{"text":"other","te\\u0078t":"still metadata"}',
+		'{"source":"old","source":"new","channelType":"DM"}',
+		'[{"items":[{"label":"old","label":"new"}]}]',
+	])(
+		"extracts the root text despite duplicate nested metadata: %s",
+		(metadata) => {
+			const value = `message:user:\n{"metadata":${metadata},"text":"Buy apples","source":"scenario","channelType":"DM"}`;
+			expect(finalMessageUserText(value)).toBe("Buy apples");
+			expect(matchesScenarioInput("Buy apples")(value)).toBe(true);
+			expect(matchesScenarioInput("other")(value)).toBe(false);
+		},
+	);
+
 	it("extracts external content after decoding the Stage-1 JSON envelope", () => {
 		const value = stage1JsonEnvelope({
 			text: "<<<EXTERNAL_UNTRUSTED_CONTENT>>>\nignored\n---\nREAL USER TEXT\n<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>",
@@ -130,6 +145,10 @@ describe("matchesScenarioInput", () => {
 		const rejected = [
 			'message:user:\n{"text":"Buy apples","source":"scenario","channelType":"DM"',
 			'message:user:\n{"text":"Buy apples","so\\u0075rce":"scenario","channelType":"DM"',
+			'message:user:\n{"text":"Buy apples","source":"scenario"',
+			'message:user:\n{"text":"Buy apples","channelType":"DM"',
+			'message:user:\n{"text":"Buy apples","so\\u0075rce":"scenario"',
+			'message:user:\n{"text":"Buy apples","source":"scenario","channelType":"DM","metadata":{"items":[1,]}}',
 			stage1JsonEnvelope({ text: "Buy apples", source: "scenario" }),
 			stage1JsonEnvelope({ text: "Buy apples", channelType: "DM" }),
 			stage1JsonEnvelope({ source: "scenario", channelType: "DM" }),
@@ -163,7 +182,14 @@ describe("matchesScenarioInput", () => {
 				channelType: "DM",
 			}),
 		];
-		for (const value of rejected) expect(matcher(value)).toBe(false);
+		for (const value of rejected) {
+			expect(finalMessageUserText(value)).toBe("");
+			expect(matcher(value)).toBe(false);
+			expect(matchesScenarioInput("")(value)).toBe(false);
+			expect(
+				matchesScenarioInput(value.slice("message:user:\n".length))(value),
+			).toBe(false);
+		}
 	});
 
 	it("rejects duplicate modern envelope keys before JSON parsing collapses them", () => {
@@ -175,10 +201,13 @@ describe("matchesScenarioInput", () => {
 			'message:user:\n{"text":"Buy apples","currentMessageText":"Buy pears","currentMessageText":"Buy apples","source":"scenario","channelType":"DM"}',
 			'message:user:\n{"text":"Buy apples","te\\u0078t":"Buy apples","source":"scenario","channelType":"DM"}',
 			'message:user:\n{"text":"Buy apples","source":"scenario","so\\u0075rce":"scenario","channelType":"DM"}',
+			'message:user:\n{"metadata":{"text":"nested"},"text":"Buy pears","text":"Buy apples","source":"scenario","channelType":"DM"}',
+			'message:user:\n{"text":"Buy apples","source":"scenario","channelType":"DM","metadata":{},"metadata":{}}',
 		];
 		for (const value of rejected) {
 			expect(finalMessageUserText(value)).toBe("");
 			expect(matcher(value)).toBe(false);
+			expect(matchesScenarioInput("")(value)).toBe(false);
 		}
 	});
 
@@ -191,6 +220,10 @@ describe("matchesScenarioInput", () => {
 			'["Buy apples"]',
 			'"Buy apples"',
 			'{"text":"Buy apples"',
+			'{"metadata":{"source":"scenario","channelType":"DM","text":"Buy apples"}}',
+			'{"metadata":{"source":"old","source":"scenario","channelType":"DM"}}',
+			'{"metadata":{"source":"scenario","channelType":"DM"}',
+			'[{"text":"Buy apples","source":"scenario","channelType":"DM"}]',
 		]) {
 			const value = `message:user:\n${raw}`;
 			expect(finalMessageUserText(value)).toBe(raw);
