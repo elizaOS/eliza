@@ -4,11 +4,25 @@
  */
 import { describe, expect, test } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  buildDockerCreateAttemptCleanupCommand,
   buildDockerEnvFileStdinTransport,
+  buildExactRestoreBootFencedCommand,
+  getReplacementCandidateObservedReceipt,
+  getReplacementDockerCreateQuiescentReceipt,
+  getReplacementSecretArtifactsCleanupReceipt,
+  parseDockerCreateAttemptCleanupReceipt,
   shellQuote,
   validateDockerEnvFileStdinEnvironment,
 } from "./docker-sandbox-utils";
@@ -42,6 +56,140 @@ function makeTemporaryDirectory(prefix: string): string {
 }
 
 describe("generic Docker env-file stdin transport", () => {
+  test("remote boot mismatch or unreadability prevents the wrapped command", async () => {
+    const root = makeTemporaryDirectory("eliza-remote-boot-");
+    const marker = join(root, "executed");
+    const expected = "33333333-3333-4333-8333-333333333333";
+    const command = buildExactRestoreBootFencedCommand(
+      expected,
+      `printf executed > ${shellQuote(marker)}`,
+    );
+    try {
+      expect((await runShell(`cat() { printf '%s' other-boot; }; ${command}`, "")).code).toBe(78);
+      expect(existsSync(marker)).toBe(false);
+      expect((await runShell(`cat() { return 1; }; ${command}`, "")).code).toBe(78);
+      expect(existsSync(marker)).toBe(false);
+      expect(
+        (await runShell(`cat() { printf '%s' ${shellQuote(expected)}; }; ${command}`, "")).code,
+      ).toBe(0);
+      expect(readFileSync(marker, "utf8")).toBe("executed");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("cleanup receipt parser rejects wrong owners, partial IDs and ambiguous extra records", () => {
+    const attempt = "33333333-3333-4333-8333-333333333333";
+    const base = getReplacementSecretArtifactsCleanupReceipt(attempt);
+    const candidate = getReplacementCandidateObservedReceipt(attempt, "a".repeat(64));
+    expect(parseDockerCreateAttemptCleanupReceipt(`${base}\n${candidate}\n`, attempt)).toEqual({
+      quiescent: false,
+      containerId: "a".repeat(64),
+    });
+    for (const output of [
+      "",
+      `${base}\n${base}`,
+      `${base}\n${candidate}\nextra`,
+      `${base}\n${getReplacementCandidateObservedReceipt(attempt, "a".repeat(12))}`,
+      getReplacementSecretArtifactsCleanupReceipt("44444444-4444-4444-8444-444444444444"),
+    ]) {
+      expect(() => parseDockerCreateAttemptCleanupReceipt(output, attempt)).toThrow(
+        "receipt is invalid",
+      );
+    }
+  });
+  test("fenced stdin persists one candidate and rejects replay or cancellation", async () => {
+    // Real shell and file effects; stat/flock stand in for Linux root ownership
+    // and locking on macOS. This is not a cross-process exclusion proof.
+    const root = makeTemporaryDirectory("eliza-framed-attempt-");
+    const bin = join(root, "bin");
+    const attempts = join(root, "attempts");
+    const attemptId = "33333333-3333-4333-8333-333333333333";
+    const attempt = join(attempts, attemptId);
+    const capture = join(root, "captured-secret");
+    const capturedEnv = join(root, "captured-env");
+    const containerId = "a".repeat(64);
+    mkdirSync(bin, { mode: 0o700 });
+    writeFileSync(join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+    writeFileSync(
+      join(bin, "stat"),
+      '#!/bin/sh\ncase "$2" in "%u") printf 0 ;; "%a") if test -d "$4"; then printf 700; else printf 600; fi ;; "%h") printf 1 ;; *) exit 64 ;; esac\n',
+      { mode: 0o700 },
+    );
+    const secret = "first line\nsecond 'quoted' line\n";
+    const transport = buildDockerEnvFileStdinTransport(
+      {
+        APP_SECRET: secret,
+        attempt_dir: "/untrusted-value",
+        candidate_id: "untrusted-candidate",
+      },
+      (envPath) =>
+        [
+          `printf '%s' "$APP_SECRET" > ${shellQuote(capture)}`,
+          `cp ${envPath} ${shellQuote(capturedEnv)}`,
+          `printf '%s\\n' ${shellQuote(containerId)}`,
+        ].join("; "),
+      { replacementAttemptId: attemptId },
+    );
+    const remap = (command: string) =>
+      command
+        .replaceAll("/var/lib/eliza/replacement-attempts", attempts)
+        .replaceAll("chmod 700 --", "chmod 700")
+        .replaceAll("chmod 600 --", "chmod 600")
+        .replaceAll("cat -- ", "cat ")
+        .replaceAll("mv -- ", "mv ");
+    const command = remap(transport.command);
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+    try {
+      expect(await runShell(command, transport.input, env)).toEqual({
+        code: 0,
+        output: `${containerId}\n`,
+      });
+      expect(readFileSync(capture, "utf8")).toBe(secret);
+      expect(readFileSync(capturedEnv, "utf8")).toContain("attempt_dir=/untrusted-value\n");
+      expect(readFileSync(join(attempt, "candidate-id"), "utf8")).toBe(`${containerId}\n`);
+      for (const name of ["container-env", "container-env.body", "container-env.end", "active"]) {
+        expect(existsSync(join(attempt, name))).toBe(false);
+      }
+      expect((await runShell(command, transport.input, env)).code).toBe(75);
+      rmSync(join(attempt, "candidate-id"));
+      const cleanup = await runShell(
+        remap(buildDockerCreateAttemptCleanupCommand(attemptId)),
+        "",
+        env,
+      );
+      expect(cleanup.code).toBe(0);
+      expect(cleanup.output).toContain(getReplacementSecretArtifactsCleanupReceipt(attemptId));
+      expect(cleanup.output).toContain(getReplacementDockerCreateQuiescentReceipt(attemptId));
+      expect((await runShell(command, transport.input, env)).code).toBe(75);
+
+      expect(existsSync(join(attempt, "candidate-id"))).toBe(false);
+      rmSync(join(attempt, "cancelled"));
+      const ambiguous = buildDockerEnvFileStdinTransport(
+        { APP_SECRET: secret },
+        () => "printf 'daemon request failed' >&2; exit 1",
+        { replacementAttemptId: attemptId },
+      );
+      expect((await runShell(remap(ambiguous.command), ambiguous.input, env)).code).toBe(1);
+      expect(existsSync(join(attempt, "active"))).toBe(true);
+      expect(existsSync(join(attempt, "container-env"))).toBe(false);
+      expect(existsSync(join(attempt, "container-env.body"))).toBe(false);
+      expect(existsSync(join(attempt, "container-env.end"))).toBe(false);
+      expect((await runShell(command, transport.input, env)).code).toBe(75);
+      const unresolved = await runShell(
+        remap(buildDockerCreateAttemptCleanupCommand(attemptId)),
+        "",
+        env,
+      );
+      expect(unresolved.code).toBe(0);
+      expect(unresolved.output).not.toContain(
+        getReplacementDockerCreateQuiescentReceipt(attemptId),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   test("keeps arbitrary keys and values out of command argv", () => {
     const environment = Object.fromEntries([
       ["ARGV_SENTINEL_KEY", "argv-sentinel-value with spaces = and 'quotes'"],
