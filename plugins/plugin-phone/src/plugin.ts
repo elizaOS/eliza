@@ -40,7 +40,7 @@ export const appPhonePlugin: Plugin = {
       path: "/phone",
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
-      capabilities: [...PHONE_VIEW_CAPABILITIES],
+      capabilities: PHONE_VIEW_CAPABILITIES,
       roleGate: { minRole: "ADMIN" },
       componentExport: "PhoneView",
       tags: ["phone", "calls", "android"],

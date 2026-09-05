@@ -31,7 +31,7 @@ export const appMessagesPlugin: Plugin = {
       path: "/messages",
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
-      capabilities: [...MESSAGES_VIEW_CAPABILITIES],
+      capabilities: MESSAGES_VIEW_CAPABILITIES,
       roleGate: { minRole: "ADMIN" },
       componentExport: "MessagesView",
       tags: ["messaging", "sms", "android"],

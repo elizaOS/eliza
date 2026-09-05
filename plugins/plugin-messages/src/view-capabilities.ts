@@ -33,20 +33,43 @@ export const MESSAGES_VIEW_CAPABILITIES = [
     description: "Ask Android to make Eliza the default SMS role holder.",
     authority: "human",
   },
-  ...[
-    "get-state",
-    "get-text",
-    "list-elements",
-    "describe-element",
-    "get-focus",
-    "get-agent-state",
-  ].map((id) => ({
-    id,
+  {
+    id: "get-state",
     description:
       "Inspect renderer-owned state or elements outside the complete semantic message read.",
-    authority: "human" as const,
-  })),
-] as const satisfies readonly ViewCapability[];
+    authority: "human",
+  },
+  {
+    id: "get-text",
+    description:
+      "Inspect renderer-owned state or elements outside the complete semantic message read.",
+    authority: "human",
+  },
+  {
+    id: "list-elements",
+    description:
+      "Inspect renderer-owned state or elements outside the complete semantic message read.",
+    authority: "human",
+  },
+  {
+    id: "describe-element",
+    description:
+      "Inspect renderer-owned state or elements outside the complete semantic message read.",
+    authority: "human",
+  },
+  {
+    id: "get-focus",
+    description:
+      "Inspect renderer-owned state or elements outside the complete semantic message read.",
+    authority: "human",
+  },
+  {
+    id: "get-agent-state",
+    description:
+      "Inspect renderer-owned state or elements outside the complete semantic message read.",
+    authority: "human",
+  },
+] satisfies ViewCapability[];
 
 export type MessagesViewCapabilityId =
   | "list-threads"

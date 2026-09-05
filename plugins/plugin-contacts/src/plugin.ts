@@ -30,7 +30,7 @@ export const appContactsPlugin: Plugin = {
       path: "/contacts",
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
-      capabilities: [...CONTACTS_VIEW_CAPABILITIES],
+      capabilities: CONTACTS_VIEW_CAPABILITIES,
       roleGate: { minRole: "ADMIN" },
       componentExport: "ContactsView",
       tags: ["contacts", "android", "address-book"],
