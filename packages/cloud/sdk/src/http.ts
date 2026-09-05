@@ -252,6 +252,18 @@ async function readBoundedResponseText(
   }
 }
 
+function hasJsonContentType(response: Response): boolean {
+  const mediaType = response.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  return (
+    mediaType === "application/json" ||
+    /^application\/[\w.+-]+\+json$/.test(mediaType ?? "")
+  );
+}
+
 async function parseResponseBody(
   response: Response,
   signal: AbortSignal | undefined,
@@ -259,8 +271,7 @@ async function parseResponseBody(
   const text = await readBoundedResponseText(response, signal);
   if (!text) return undefined;
 
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
+  if (!hasJsonContentType(response)) {
     return text;
   }
 
@@ -680,17 +691,33 @@ export class ElizaCloudHttpClient {
           : new CloudApiError(response.status, errorBody);
       }
 
-      // A 2xx that promised JSON but delivered unparseable bytes is a broken
-      // response, not a success — surface it instead of fabricating one.
+      if (
+        method === "HEAD" ||
+        response.status === 204 ||
+        response.status === 205
+      ) {
+        return undefined as TResponse;
+      }
+      if (!hasJsonContentType(response)) {
+        throw new CloudApiError(response.status, {
+          success: false,
+          code: "unexpected_response_content_type",
+          error: `HTTP ${response.status}: expected a JSON response; use requestRaw for text or binary responses`,
+        });
+      }
+      if (body === undefined) {
+        throw new CloudApiError(response.status, {
+          success: false,
+          code: "empty_response_body",
+          error: `HTTP ${response.status}: expected a JSON response body`,
+        });
+      }
       if (isMalformedJsonBody(body)) {
         throw new CloudApiError(response.status, {
           success: false,
+          code: "malformed_json_response",
           error: `HTTP ${response.status}: malformed JSON response body: ${body.text}`,
         });
-      }
-
-      if (body === undefined || typeof body === "string") {
-        return { success: true } as TResponse;
       }
 
       return body as TResponse;

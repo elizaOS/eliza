@@ -34,7 +34,7 @@ describe("whatsappFetch — bounded WhatsApp hops fail closed and compose caller
         undefined,
         100,
       ),
-    ).rejects.toThrow(/aborted/i);
+    ).rejects.toMatchObject({ name: "TimeoutError" });
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
@@ -61,7 +61,7 @@ describe("whatsappFetch — bounded WhatsApp hops fail closed and compose caller
         },
         100,
       ),
-    ).rejects.toThrow(/aborted/i);
+    ).rejects.toMatchObject({ name: "TimeoutError" });
     expect(Date.now() - start).toBeLessThan(5_000);
     expect(controller.signal.aborted).toBe(false);
   });
