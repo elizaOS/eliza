@@ -630,8 +630,15 @@ async function migrateKeyToProfiles(key: string): Promise<MigrationResult> {
 async function readJsonBody(
   req: http.IncomingMessage,
 ): Promise<unknown | null> {
-  let body = "";
-  for await (const chunk of req) body += chunk;
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(
+      typeof chunk === "string"
+        ? Buffer.from(chunk, "utf-8")
+        : (chunk as Buffer),
+    );
+  }
+  const body = chunks.length > 0 ? Buffer.concat(chunks).toString("utf-8") : "";
   if (!body) return {};
   try {
     return JSON.parse(body);
@@ -641,3 +648,5 @@ async function readJsonBody(
     return null;
   }
 }
+
+export const _readJsonBodyForTesting = readJsonBody;
