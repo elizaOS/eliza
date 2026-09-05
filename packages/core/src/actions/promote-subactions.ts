@@ -406,6 +406,7 @@ export function promoteSubactionsToActions(
 			handler: buildVirtualHandler(parent, subKey),
 			validate: buildVirtualValidator(parent, subKey),
 			parameters: pinDiscriminatorForVirtual(parent.parameters, subKey),
+			toolSchemaStrict: parent.toolSchemaStrict,
 			contexts: parent.contexts,
 			contextGate: parent.contextGate,
 			roleGate: parent.roleGate,

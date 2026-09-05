@@ -12,6 +12,10 @@ import { getStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
 import type { IAgentRuntime, Memory } from "../types";
 import { EventType, ModelType } from "../types";
+import {
+	applyGroundedActionReply,
+	createUnavailableGroundedActionReply,
+} from "../types/action-reply";
 import { asUUID, ChannelType, type UUID } from "../types/primitives";
 import { DefaultMessageService } from "./message";
 import { drainPostDeliveryTasks } from "./post-delivery-task-tracker";
@@ -195,6 +199,87 @@ function makeRuntime(options: {
 }
 
 describe("DefaultMessageService run-terminal owner", () => {
+	it("ends a committed action with unavailable reply without post-turn models or action hooks", async () => {
+		const { runtime, useModel, terminalPayloads } = makeRuntime({});
+		const unavailable = createUnavailableGroundedActionReply({
+			kind: "provider_issue",
+			code: "GROUNDED_REPLY_GENERATION_FAILED",
+		});
+		const receipt = {
+			receiptId: "saved-1",
+			operation: "lifeops.reminder.create",
+			resource: { kind: "lifeops.reminder", id: "reminder-1" },
+			artifacts: [],
+			idempotency: { key: "request-1", replayed: false },
+			observedAt: "2026-07-27T18:00:00.000Z",
+			outcome: "applied" as const,
+			commit: {
+				kind: "durable" as const,
+				id: "txn-1",
+				committedAt: "2026-07-27T18:00:00.000Z",
+			},
+		};
+		const stage1 = stage1Reply("");
+		Object.assign(stage1.toolCalls[0].arguments, {
+			contexts: ["general"],
+			candidateActionNames: ["SAVE"],
+			requiresTool: true,
+		});
+		useModel.mockReset().mockImplementation(async (type) => {
+			if (type === ModelType.TEXT_EMBEDDING) return [0.1, 0.2, 0.3];
+			if (type === ModelType.RESPONSE_HANDLER) return stage1;
+			if (type === ModelType.ACTION_PLANNER)
+				return {
+					text: "",
+					toolCalls: [{ id: "save-1", name: "SAVE", arguments: {} }],
+				};
+			throw new Error(`Unexpected post-reply model: ${type}`);
+		});
+		const handler = vi.fn(async () =>
+			applyGroundedActionReply(
+				{ success: true, effectReceipts: [receipt] },
+				unavailable,
+			),
+		);
+		runtime.actions = [
+			{
+				name: "SAVE",
+				description: "Save a reminder.",
+				contexts: ["general"],
+				tags: ["write"],
+				validate: async () => true,
+				handler,
+			},
+		];
+		const callback = vi.fn(async () => []);
+		const result = await new DefaultMessageService().handleMessage(
+			runtime,
+			inputMessage("Save this reminder."),
+			callback,
+		);
+		await drainPostDeliveryTasks(runtime);
+		expect(result).toMatchObject({
+			responseContent: null,
+			terminalFailure: unavailable.failure,
+			actionResults: [
+				{
+					success: true,
+					effectReceipts: [receipt],
+					replyFailure: unavailable.failure,
+				},
+			],
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(
+			useModel.mock.calls.filter(([type]) => type !== ModelType.TEXT_EMBEDDING),
+		).toHaveLength(2);
+		expect(callback).not.toHaveBeenCalled();
+		expect(
+			vi.mocked(runtime.runActionsByMode).mock.calls.map(([mode]) => mode),
+		).not.toContain("ALWAYS_AFTER");
+		expect(terminalPayloads).toHaveLength(1);
+	});
+
 	it("waits for parallel facts extraction without delaying visible delivery", async () => {
 		const gate = deferred();
 		const started = deferred();

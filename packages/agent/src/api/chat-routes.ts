@@ -15,6 +15,7 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isDeepStrictEqual } from "node:util";
 import {
+  type ActionReplyFailure,
   type ActionResult,
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
@@ -44,6 +45,7 @@ import {
   type RolesWorldMetadata,
   type RoomHandlerLease,
   type RouteRequestContext,
+  readActionReplyFailure,
   recordOwnerGrant,
   recordRoleGrant,
   renderInteractionsAsPlainText,
@@ -559,6 +561,7 @@ function recoverSettledMutatingActionTurn(
   text: string;
   actionResults: ActionResult[];
   actionNames: string[];
+  replyFailure?: ActionReplyFailure;
 } | null {
   const allReceipts = settledResults.flatMap(
     (result) => result.effectReceipts ?? [],
@@ -590,6 +593,10 @@ function recoverSettledMutatingActionTurn(
   });
   if (committedResults.length === 0) return null;
 
+  const replyFailure = settledResults
+    .map((result) => readActionReplyFailure(result.replyFailure))
+    .find((failure) => failure !== undefined);
+
   let verifiedResult: ActionResult | undefined;
   try {
     verifiedResult = [...committedResults]
@@ -619,9 +626,11 @@ function recoverSettledMutatingActionTurn(
     ),
   );
   return {
-    text: verifiedText || POST_COMMIT_INTERRUPTED_REPLY,
+    text:
+      replyFailure?.message ?? (verifiedText || POST_COMMIT_INTERRUPTED_REPLY),
     actionResults: [...settledResults],
     actionNames,
+    ...(replyFailure ? { replyFailure } : {}),
   };
 }
 
@@ -1152,11 +1161,12 @@ export function markSyntheticChatFailureContent<T extends Content>(
 function terminalFailureVisibleText(
   deliveredText: string,
   failure: ChatTerminalFailure,
+  replyUnavailable = false,
 ): string {
   const delivered = deliveredText.trimEnd();
   if (!delivered) return failure.message;
   if (delivered.includes(failure.message)) return deliveredText;
-  return `${delivered}\n\nTask failed: ${failure.message}`;
+  return `${delivered}\n\n${replyUnavailable ? "" : "Task failed: "}${failure.message}`;
 }
 
 /** Converts the public DTO to Content's JSON-compatible indexed object shape. */
@@ -3027,6 +3037,7 @@ async function generateChatResponseWithTiming(
         >
       | undefined;
     let terminalFailure: ChatTerminalFailure | undefined;
+    let replyFailure: ActionReplyFailure | undefined;
     let trajectoryTerminalOwner: "run" | undefined;
     const settledActionResults: ActionResult[] = [];
     let capturedUsage: CapturedModelUsage | null = null;
@@ -3224,16 +3235,21 @@ async function generateChatResponseWithTiming(
             if (!recovery) throw error;
             responseText = recovery.text;
             result = {
-              didRespond: true,
-              responseContent: {
-                text: recovery.text,
-                ...(recovery.actionNames.length > 0
-                  ? { actions: recovery.actionNames }
-                  : {}),
-              },
+              didRespond: !recovery.replyFailure,
+              responseContent: recovery.replyFailure
+                ? null
+                : {
+                    text: recovery.text,
+                    ...(recovery.actionNames.length > 0
+                      ? { actions: recovery.actionNames }
+                      : {}),
+                  },
               responseMessages: [],
               actionResults: recovery.actionResults,
               mode: "actions",
+              ...(recovery.replyFailure
+                ? { terminalFailure: recovery.replyFailure }
+                : {}),
               ...(trajectoryTerminalOwner ? { trajectoryTerminalOwner } : {}),
             } as typeof result;
             runtime.logger.warn(
@@ -3253,12 +3269,21 @@ async function generateChatResponseWithTiming(
           // new work while the owner signal is live.
 
           terminalFailure = parseChatTerminalFailure(result?.terminalFailure);
+          replyFailure = result?.actionResults
+            ?.map((actionResult) =>
+              readActionReplyFailure(actionResult.replyFailure),
+            )
+            .find((failure) => failure !== undefined);
           if (terminalFailure) {
             const failureText =
               opts?.onChunk && !opts.onSnapshot
-                ? terminalFailureVisibleText(responseText, terminalFailure)
+                ? terminalFailureVisibleText(
+                    responseText,
+                    terminalFailure,
+                    replyFailure !== undefined,
+                  )
                 : terminalFailure.message;
-            if (opts?.onSnapshot) {
+            if (opts?.onSnapshot && !replyFailure) {
               emitSnapshot(failureText);
             } else {
               responseText = failureText;
@@ -3286,6 +3311,13 @@ async function generateChatResponseWithTiming(
                   text: responseText,
                   failureKind: terminalFailure.kind,
                   terminalFailure: terminalFailureContentValue(terminalFailure),
+                  ...(replyFailure
+                    ? {
+                        elizaSyntheticFailure: true,
+                        agentVoiced: false,
+                        replyFailure: { ...replyFailure },
+                      }
+                    : {}),
                 } satisfies Content)
               : baseFallbackResponseContent;
             // Safety net ONLY for flows where the message handler produced no
@@ -3345,8 +3377,8 @@ async function generateChatResponseWithTiming(
               "Failed to emit MESSAGE_SENT event",
             );
           }
-          // Post-process fallback actions
-          if (result) {
+          // A terminal reply failure must not start new actions after a commit.
+          if (result && !terminalFailure) {
             const rc = result.responseContent as Record<string, unknown> | null;
             const resultRecord = asRecord(result);
             runtime.logger.info(
@@ -3517,13 +3549,19 @@ async function generateChatResponseWithTiming(
     );
 
     // Fallback: if callbacks weren't used for text, stream + return final text.
-    if (!responseText && resultText && resultTextVisibility !== "internal") {
+    if (
+      !terminalFailure &&
+      !responseText &&
+      resultText &&
+      resultTextVisibility !== "internal"
+    ) {
       if (opts?.onSnapshot) {
         emitSnapshot(resultText);
       } else {
         emitChunk(resultText);
       }
     } else if (
+      !terminalFailure &&
       visibleCallbackDeliveries === 0 &&
       resultText &&
       resultTextVisibility !== "internal" &&
@@ -3532,6 +3570,7 @@ async function generateChatResponseWithTiming(
     ) {
       emitChunk(resultText.slice(responseText.length));
     } else if (
+      !terminalFailure &&
       visibleCallbackDeliveries === 0 &&
       resultText &&
       resultTextVisibility !== "internal" &&
@@ -3547,6 +3586,7 @@ async function generateChatResponseWithTiming(
     }
 
     if (
+      !terminalFailure &&
       isWalletActionRequiredIntent(originalUserText) &&
       !successfulTurnActionResults.some((actionResult) => {
         const normalizedName = readActionResultName(actionResult);
@@ -3571,9 +3611,10 @@ async function generateChatResponseWithTiming(
     }
 
     const noResponseFallback = opts?.resolveNoResponseText?.();
-    const exactDocumentValue = generationAbortController.signal.aborted
-      ? null
-      : await resolveExactDocumentValueForChat(runtime, message);
+    const exactDocumentValue =
+      terminalFailure || generationAbortController.signal.aborted
+        ? null
+        : await resolveExactDocumentValueForChat(runtime, message);
     const normalizedResponseText = trimWalletProgressPrefix(
       terminalFailure
         ? responseText
@@ -3601,7 +3642,7 @@ async function generateChatResponseWithTiming(
             resultContentCandidates,
           );
 
-    if (opts?.onChunk && !opts.onSnapshot) {
+    if (opts?.onChunk && !opts.onSnapshot && !replyFailure) {
       const authoritativeText =
         transcriptVisibility === "internal" ? "" : finalText;
       if (!authoritativeText.startsWith(appendOnlyText)) {
@@ -3647,6 +3688,13 @@ async function generateChatResponseWithTiming(
               ...(terminalFailureKind
                 ? { failureKind: terminalFailureKind }
                 : {}),
+              ...(replyFailure
+                ? {
+                    elizaSyntheticFailure: true,
+                    agentVoiced: false,
+                    replyFailure: { ...replyFailure },
+                  }
+                : {}),
               ...(terminalFailure
                 ? {
                     terminalFailure:
@@ -3665,6 +3713,13 @@ async function generateChatResponseWithTiming(
               text: finalText,
               ...(terminalFailureKind
                 ? { failureKind: terminalFailureKind }
+                : {}),
+              ...(replyFailure
+                ? {
+                    elizaSyntheticFailure: true,
+                    agentVoiced: false,
+                    replyFailure: { ...replyFailure },
+                  }
                 : {}),
               ...(terminalFailure
                 ? {

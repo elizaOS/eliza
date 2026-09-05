@@ -30,6 +30,7 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  createUnavailableGroundedActionReply,
   getInferenceTimer,
   logger,
   type Memory,
@@ -2850,6 +2851,117 @@ describe("conversation stream SSE contract (#10712)", () => {
           },
         },
       });
+    },
+  );
+
+  it.each([
+    ["provider_issue", undefined, false],
+    ["rate_limited", undefined, false],
+    ["no_provider", undefined, false],
+    ["provider_issue", "delta-v2", false],
+    ["rate_limited", "delta-v2", false],
+    ["no_provider", "delta-v2", false],
+    ["provider_issue", "delta-v2", true],
+  ] as const)(
+    "preserves a completed action with %s reply status (%s; interrupted=%s) and replays its stream without another mutation",
+    async (kind, protocol, interrupted) => {
+      requestStreamProtocol = protocol;
+      const unavailable = createUnavailableGroundedActionReply({
+        kind,
+        code: "GROUNDED_REPLY_GENERATION_FAILED",
+      });
+      const receipt = {
+        receiptId: "receipt-1",
+        operation: "lifeops.reminder.create",
+        resource: { kind: "lifeops.reminder", id: "reminder-1" },
+        artifacts: [],
+        idempotency: { key: "request-1", replayed: false },
+        observedAt: "2026-07-27T18:00:00.000Z",
+        outcome: "applied" as const,
+        commit: {
+          kind: "durable" as const,
+          id: "txn-1",
+          committedAt: "2026-07-27T18:00:00.000Z",
+        },
+      };
+      const actionResult = {
+        success: true,
+        text: "Internal action receipt.",
+        transcriptVisibility: "internal" as const,
+        data: { actionName: "SAVE" },
+        effectReceipts: [receipt],
+        replyFailure: unavailable.failure,
+      };
+      const messageService = createViewShortcutMessageService();
+      const handleMessage = vi.fn<
+        NonNullable<AgentRuntime["messageService"]>["handleMessage"]
+      >(async (_runtime, _message, _callback, options) => {
+        if (interrupted) {
+          options?.onSettledActionResult?.(actionResult);
+          throw new Error(
+            "Message processing interrupted after committed unavailable reply.",
+          );
+        }
+        return {
+          didRespond: false,
+          responseContent: null,
+          responseMessages: [],
+          mode: "none" as const,
+          terminalFailure: unavailable.failure,
+          actionResults: [actionResult],
+        };
+      });
+      messageService.handleMessage = handleMessage;
+      requestClientMessageId = crypto.randomUUID();
+      const { ctx, record, state, useModel } = createCtx(messageService);
+      const emitEvent = vi.mocked(
+        state.runtime?.emitEvent as NonNullable<AgentRuntime["emitEvent"]>,
+      );
+      await handleConversationRoutes(ctx);
+      const done = parseSsePayloads(record.writes).find(
+        (payload) => payload.type === "done",
+      );
+      expect(
+        parseSsePayloads(record.writes).filter(
+          (payload) =>
+            payload.type === "token" || payload.type === "reply_ready",
+        ),
+      ).toEqual([]);
+      expect(done).toMatchObject({
+        type: "done",
+        fullText: unavailable.failure.message,
+        failureKind: kind,
+        terminalFailure: unavailable.failure,
+        actionResults: [{ actionName: "SAVE", success: true }],
+      });
+      expect(record.writes.join("")).not.toContain("Canned success");
+      expect(actionResult.effectReceipts).toEqual([receipt]);
+      const emitted = emitEvent.mock.calls.find(
+        ([event]) => event === "MESSAGE_SENT",
+      );
+      expect(emitted?.[1]).toMatchObject({
+        message: {
+          content: {
+            text: unavailable.failure.message,
+            elizaSyntheticFailure: true,
+            agentVoiced: false,
+            replyFailure: unavailable.failure,
+            terminalFailure: unavailable.failure,
+          },
+        },
+      });
+      const replay = createFollowupCtx(ctx, state);
+      await handleConversationRoutes(replay.ctx);
+      expect(
+        parseSsePayloads(replay.record.writes).find(
+          (payload) => payload.type === "done",
+        ),
+      ).toMatchObject({
+        fullText: unavailable.failure.message,
+        terminalFailure: unavailable.failure,
+      });
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      expect(useModel).not.toHaveBeenCalled();
     },
   );
 

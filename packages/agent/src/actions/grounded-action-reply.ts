@@ -5,8 +5,15 @@
  * this boundary unchanged; invalid context fails explicitly instead of producing
  * a plausible reply from a partial prompt.
  */
-import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  ActionResult,
+  GroundedActionReply,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import {
+  createUnavailableGroundedActionReply,
   ElizaError,
   isModelProviderError,
   ModelType,
@@ -160,11 +167,11 @@ function domainLabel(domain: GroundedReplyDomain): string {
   }
 }
 
-export async function renderGroundedActionReply(
+async function renderGroundedActionReplyText(
   args: RenderGroundedActionReplyArgs,
 ): Promise<string> {
   if (typeof args.runtime.useModel !== "function") {
-    return args.fallback;
+    throw new NoModelProviderConfiguredError();
   }
 
   const recentConversation = await recentConversationTexts({
@@ -208,39 +215,9 @@ export async function renderGroundedActionReply(
     `Canonical fallback: ${JSON.stringify(args.fallback)}`,
   ].join("\n");
 
-  let result: unknown;
-  try {
-    result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
-  } catch (error) {
-    // error-policy:J4 The canonical fallback IS the complete grounded reply
-    // built from the already-completed action, so polishing failures degrade
-    // to it: a zero-key runtime (no provider), or a structural provider failure
-    // (HTTP 4xx/5xx — e.g. a 429 wrapped in the AI SDK RetryError — or a
-    // network error). The committed step's success and receipts are not the
-    // polish model's to fail (observed live: a committed calendar create was
-    // reported as failed after a post-commit 429). Anything else stays loud.
-    if (
-      error instanceof NoModelProviderConfiguredError &&
-      error.reason === "no-provider"
-    ) {
-      return args.fallback;
-    }
-    if (isModelProviderError(error)) {
-      args.runtime.logger?.warn(
-        {
-          src: "grounded-action-reply",
-          domain: args.domain,
-          scenario: args.scenario,
-          ...modelProviderErrorDetail(error),
-        },
-        "[GroundedActionReply] provider failed after the action completed; delivering the canonical grounded reply",
-      );
-      return args.fallback;
-    }
-    throw error;
-  }
+  const result: unknown = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+    prompt,
+  });
   if (typeof result !== "string") {
     throw new ElizaError("Grounded reply model returned a non-text response", {
       code: "GROUNDED_REPLY_OUTPUT_INVALID",
@@ -258,4 +235,54 @@ export async function renderGroundedActionReply(
     );
   }
   return result;
+}
+
+/**
+ * Rendering is independent of action settlement. An unavailable reply carries
+ * no substitute prose; callers retain the actual effect and publish the typed
+ * system status without replaying the action or trying another synthesis call.
+ */
+export async function renderGroundedActionReply(
+  args: RenderGroundedActionReplyArgs,
+): Promise<GroundedActionReply> {
+  try {
+    return { kind: "model", text: await renderGroundedActionReplyText(args) };
+  } catch (error) {
+    // error-policy:J1 A presentation failure must not erase a committed effect.
+    // Unexpected context/output/programming failures remain loud diagnostics,
+    // but cross this boundary as unavailable presentation, never false action
+    // failure or a hand-authored assistant reply.
+    const noProvider = error instanceof NoModelProviderConfiguredError;
+    const detail = modelProviderErrorDetail(error);
+    const record = asRecord(error);
+    const code = noProvider
+      ? error.reason === "capability-disabled"
+        ? "GROUNDED_REPLY_CAPABILITY_DISABLED"
+        : "GROUNDED_REPLY_NO_PROVIDER"
+      : typeof record?.code === "string" && error instanceof ElizaError
+        ? record.code
+        : "GROUNDED_REPLY_GENERATION_FAILED";
+    const diagnostic = {
+      domain: args.domain,
+      scenario: args.scenario,
+      code,
+      ...detail,
+    };
+    if (!noProvider && !isModelProviderError(error)) {
+      args.runtime.reportError?.("grounded-action-reply", error, diagnostic);
+    } else {
+      args.runtime.logger?.warn(
+        { src: "grounded-action-reply", ...diagnostic },
+        "[GroundedActionReply] reply unavailable; preserving the action outcome",
+      );
+    }
+    return createUnavailableGroundedActionReply({
+      kind: noProvider
+        ? "no_provider"
+        : detail?.status === 429
+          ? "rate_limited"
+          : "provider_issue",
+      code,
+    });
+  }
 }

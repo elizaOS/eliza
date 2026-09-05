@@ -16,6 +16,7 @@ import type {
   ActionExample,
   ActionResult,
   EffectReceipt,
+  GroundedActionReply,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -23,7 +24,12 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  applyGroundedActionReply,
+  createUnavailableGroundedActionReply,
   describeUserReference,
+  isModelProviderError,
+  modelProviderErrorDetail,
+  NoModelProviderConfiguredError,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
   unwrapUserMessageText,
@@ -1318,26 +1324,55 @@ async function renderCalendarActionReply(args: {
   scenario: string;
   fallback: string;
   context?: Record<string, unknown>;
-}): Promise<string> {
+}): Promise<GroundedActionReply> {
   const { runtime, message, state, intent, scenario, fallback, context } = args;
   const renderGroundedReply = deps().renderGroundedReply;
-  if (!renderGroundedReply) return fallback;
-  return renderGroundedReply({
-    runtime,
-    message,
-    state,
-    intent,
-    scenario,
-    fallback,
-    context,
-    additionalRules: [
-      "Mirror the user's phrasing for dates, times, ranges, and scheduling language when possible.",
-      "Prefer phrases like tomorrow morning, next week, later, earlier, free, busy, or the user's own wording over robotic calendar language.",
-      "Never surface raw ISO timestamps unless the user used raw ISO timestamps.",
-      "Preserve all concrete event facts from the context and canonical fallback.",
-      "If this is reply-only or a clarification, do not pretend you already changed the calendar.",
-    ],
-  });
+  if (!renderGroundedReply) {
+    return createUnavailableGroundedActionReply({
+      kind: "no_provider",
+      code: "GROUNDED_REPLY_NO_RENDERER",
+    });
+  }
+  try {
+    return await renderGroundedReply({
+      runtime,
+      message,
+      state,
+      intent,
+      scenario,
+      fallback,
+      context,
+      additionalRules: [
+        "Mirror the user's phrasing for dates, times, ranges, and scheduling language when possible.",
+        "Prefer phrases like tomorrow morning, next week, later, earlier, free, busy, or the user's own wording over robotic calendar language.",
+        "Never surface raw ISO timestamps unless the user used raw ISO timestamps.",
+        "Preserve all concrete event facts from the context and canonical fallback.",
+        "If this is reply-only or a clarification, do not pretend you already changed the calendar.",
+      ],
+    });
+  } catch (error) {
+    // Reply delivery cannot erase an action already committed before rendering.
+    const noProvider = error instanceof NoModelProviderConfiguredError;
+    const detail = modelProviderErrorDetail(error);
+    if (!noProvider && !isModelProviderError(error)) {
+      runtime.reportError?.("calendar-reply", error, { scenario });
+    } else {
+      runtime.logger.warn(
+        { src: "plugin:calendar:reply", scenario, ...detail },
+        "Calendar reply unavailable; preserving the action outcome",
+      );
+    }
+    return createUnavailableGroundedActionReply({
+      kind: noProvider
+        ? "no_provider"
+        : detail?.status === 429
+          ? "rate_limited"
+          : "provider_issue",
+      code: noProvider
+        ? "GROUNDED_REPLY_NO_PROVIDER"
+        : "GROUNDED_REPLY_GENERATION_FAILED",
+    });
+  }
 }
 
 function normalizeText(value: string): string {
@@ -1448,9 +1483,6 @@ function normalizeCalendarDetails(
 
   const normalized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(details)) {
-    if (typeof value === "string" && value.trim().toLowerCase() === "unknown") {
-      continue;
-    }
     const canonical = aliasMap.get(normalizeLookupKey(key)) ?? key;
     if (
       typeof value === "string" &&
@@ -1458,6 +1490,7 @@ function normalizeCalendarDetails(
     ) {
       const trimmed = value.trim();
       if (
+        trimmed.toLowerCase() === "unknown" ||
         PLANNER_KEY_FRAGMENT_PATTERN.test(trimmed) ||
         normalizeLookupKey(trimmed) === normalizeLookupKey(canonical)
       ) {
@@ -3163,14 +3196,14 @@ async function inferCreateEventDetails(
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
     "Use the calendar context below to ground any timing guess.",
     "Preserve names and places in their original language or script when useful.",
-    "Return JSON only as a single object. No prose. Leave fields empty when unknown.",
+    "Return JSON only as a single object. No prose. Omit optional fields that have no source in the request or conversation; do not invent values to fill them. Preserve literal user-provided titles, descriptions, and locations.",
     "If a start time or window is implied but duration is not explicit, infer a reasonable positive duration.",
     "For short prep or reminder blocks, use at least 15 minutes instead of 0.",
     "Set isShortPreparation=true when the event is a brief prep/reminder/leave-for/get-ready block (any language) where 15 minutes is the right default.",
     "When the user gives a concrete day or date without an exact time-of-day, use the calendar context to infer a plausible open startAt in the calendar timezone. Avoid obvious overlaps with nearby events. If the calendar context is unavailable or the timing is ambiguous, leave startAt empty.",
     "Only use windowPreset for explicit 'tomorrow morning|afternoon|evening' phrasing — never as a fallback for arbitrary dates.",
     "If the user asks for travel time, commute time, or a buffer from a place, capture the origin separately as travelOriginAddress.",
-    "Leave travelOriginAddress empty unless the request explicitly names the origin or departure place.",
+    "Omit travelOriginAddress unless the request explicitly names the origin or departure place.",
     "When the user asks for a repeating event (every day, every week, every two weeks, weekdays, every month, etc.), emit the matching RFC 5545 RRULE in recurrence. Use BYDAY for weekly day selection, INTERVAL for every-N spacing, and COUNT or UNTIL only when the user bounds the repetition. Leave recurrence empty for one-off events.",
     "",
     "title: event title",
@@ -4039,6 +4072,8 @@ export function createCalendarActionRunner(
 
 const calendarAction: CalendarHandlerAction = {
   name: "CALENDAR",
+  // This operation union needs absent optional detail fields to stay absent on the wire.
+  toolSchemaStrict: false,
   similes: [
     "CALENDAR_ACTION",
     "CHECK_CALENDAR",
@@ -4228,23 +4263,24 @@ const calendarAction: CalendarHandlerAction = {
       T extends NonNullable<ActionResult["data"]> | undefined,
     >(payload: {
       success: boolean;
-      text: string;
+      text: string | GroundedActionReply;
       data?: T;
       effectReceipt: EffectReceipt;
     }): Promise<ActionResult> => {
       const effectReceipt = normalizeEffectReceipt(payload.effectReceipt);
-      const text = payload.text.trim();
-      await callback?.({
-        text,
-        source: "action",
-        action: "CALENDAR",
-      });
-      return {
+      const reply = payload.text;
+      const text =
+        typeof reply === "string"
+          ? reply.trim()
+          : reply.kind === "model"
+            ? reply.text.trim()
+            : "";
+      const result: ActionResult = {
         success: payload.success,
         text,
         userFacingText: text,
         verifiedUserFacing: true,
-        // The callback above already delivered this exact text, and the action
+        // A successful reply callback delivers this exact text, and the action
         // description promises the final grounded reply. A calendar operation
         // is a single-operation turn whose delivered text IS the answer — on
         // success AND on failure ("calendar's acting up" is the complete
@@ -4257,6 +4293,18 @@ const calendarAction: CalendarHandlerAction = {
         userFacingEffectReceiptIds: [effectReceipt.receiptId],
         ...(payload.data !== undefined ? { data: payload.data } : {}),
       };
+      const settled =
+        typeof reply === "string"
+          ? result
+          : applyGroundedActionReply(result, reply);
+      if (!settled.replyFailure) {
+        await callback?.({
+          text: settled.text,
+          source: "action",
+          action: "CALENDAR",
+        });
+      }
+      return settled;
     };
     const renderReply = (
       scenario: string,

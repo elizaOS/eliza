@@ -386,6 +386,9 @@ export function projectActionResultForClipboard(
 		...(result.failureProvenance !== undefined
 			? { failureProvenance: result.failureProvenance }
 			: {}),
+		...(result.replyFailure !== undefined
+			? { replyFailure: result.replyFailure }
+			: {}),
 		...(Object.keys(safeControlData).length > 0
 			? { data: safeControlData }
 			: {}),
@@ -436,6 +439,9 @@ function projectSettledResultForObserver(
 			: {}),
 		...(projected.failureProvenance !== undefined
 			? { failureProvenance: projected.failureProvenance }
+			: {}),
+		...(projected.replyFailure !== undefined
+			? { replyFailure: projected.replyFailure }
 			: {}),
 		data: controlData,
 		...(projected.turnComplete !== undefined
@@ -1108,6 +1114,7 @@ function actionResultToStreamingResult(
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
 		effectReceipts: result.effectReceipts,
+		replyFailure: result.replyFailure,
 		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		error: result.error ? stringifyError(result.error) : undefined,
 		data: options.suppressData

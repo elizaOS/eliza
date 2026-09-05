@@ -10,7 +10,6 @@
 import { describe, expect, it } from "vitest";
 import {
   detailString,
-  isPlaceholderDetailValue,
   sanitizeCalendarId,
   sanitizeWindowPreset,
 } from "./detail.js";
@@ -71,29 +70,43 @@ describe("sanitizeWindowPreset", () => {
   });
 });
 
-describe("detailString placeholder filtering", () => {
-  it("treats model placeholder values as unset", () => {
-    // The live regression: every travel/location key filled with the key
-    // echoed back as "<field>_missing", then "n/a" on the retry — non-empty
-    // strings that resolved a travel intent and failed the create closed.
-    const details = {
-      location: "location_missing",
-      travelOriginAddress: "traveloriginaddress_missing",
-      departure_address: "n/a",
-      description: "None",
-      title: "Gym session",
-    };
-    expect(detailString(details, "location")).toBeUndefined();
-    expect(detailString(details, "travelOriginAddress")).toBeUndefined();
-    expect(detailString(details, "departure_address")).toBeUndefined();
-    expect(detailString(details, "description")).toBeUndefined();
-    expect(detailString(details, "title")).toBe("Gym session");
+describe("detailString literal values", () => {
+  it.each([
+    "n/a",
+    "na",
+    "None",
+    "null",
+    "undefined",
+    "Unknown",
+    "unset",
+    "missing",
+    "not specified",
+    "not provided",
+    "TBD",
+    "placeholder",
+    "location_missing",
+    "traveloriginaddress_missing",
+    "unknown_missing",
+    "Missing Persons rehearsal",
+    "Nana's house",
+  ])("preserves the user-authored value %s in text fields", (value) => {
+    for (const key of [
+      "title",
+      "description",
+      "query",
+      "location",
+      "travelOriginAddress",
+    ]) {
+      expect(detailString({ [key]: value }, key)).toBe(value);
+    }
   });
 
-  it("keeps real values that merely contain placeholder words", () => {
-    expect(isPlaceholderDetailValue("Missing Persons rehearsal")).toBe(false);
-    expect(isPlaceholderDetailValue("Nana's house")).toBe(false);
-    expect(isPlaceholderDetailValue("unknown_missing")).toBe(true);
+  it("omits only absent, non-string, and blank values", () => {
+    for (const value of [undefined, null, false, 0, {}, [], "", "   "]) {
+      expect(detailString({ title: value }, "title")).toBeUndefined();
+    }
+    expect(detailString(undefined, "title")).toBeUndefined();
+    expect(detailString({}, "travelOriginAddress")).toBeUndefined();
     expect(detailString({ location: "  Golden Gate Park  " }, "location")).toBe(
       "Golden Gate Park",
     );

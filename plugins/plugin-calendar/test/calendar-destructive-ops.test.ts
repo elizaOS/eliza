@@ -10,8 +10,8 @@
  *   - no match                    → not-found reply, no approval
  *
  * The CalendarService is stubbed (feed fixtures + spied mutations); the fake
- * runtime has no `useModel`, so replies deterministically use the handler's
- * canonical fallback strings.
+ * runtime has no `useModel`; an explicit deterministic presentation fixture
+ * supplies canonical text. This is not evidence of a live model reply.
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
@@ -27,6 +27,10 @@ function fakeDeps(service: StubService): CalendarActionDeps {
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async () => null),
     recentConversationTexts: vi.fn(async () => []),
+    renderGroundedReply: async ({ fallback }) => ({
+      kind: "model",
+      text: fallback,
+    }),
     mutationGateway: {
       schedule: service.scheduleApproval,
       modify: service.modifyApproval,
@@ -133,8 +137,7 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
 type StubService = ReturnType<typeof stubService>;
 
 function fakeRuntime(service: StubService): IAgentRuntime {
-  // No `useModel` on purpose: the handler returns its canonical grounded
-  // fallback strings verbatim.
+  // The explicit fakeDeps renderer owns this test's deterministic presentation.
   return {
     agentId: "agent-1",
     logger: {
@@ -252,7 +255,10 @@ describe("CALENDAR delete_event disambiguation", () => {
 
   it("delegates presentation without changing the grounded action result", async () => {
     const renderGroundedReply = vi.fn(
-      async ({ fallback }) => `Human-readable: ${fallback}`,
+      async ({ fallback }: { fallback: string }) => ({
+        kind: "model" as const,
+        text: `Human-readable: ${fallback}`,
+      }),
     );
     const action = createCalendarActionRunner({
       ...fakeDeps(service),
