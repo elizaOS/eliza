@@ -13,7 +13,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AccountPool,
   type AccountPoolDeps,
+  applyDirectProviderCredentialsToEnv,
   configureDefaultAccountPoolSelection,
+  type DirectProviderEnvLedger,
+  retractAllExportedDirectProviderEnv,
   selectionForProvider,
 } from "./account-pool";
 
@@ -1175,6 +1178,441 @@ describe("AccountPool drain-soonest-reset selection", () => {
     expect(selectionForProvider("anthropic-subscription").strategy).toBe(
       "priority",
     );
+  });
+
+  it.each([
+    ["openrouter", "openrouter-api"],
+    // First-run persists the canonical `grok` backend for xAI; `xai` is the
+    // compatibility alias.
+    ["grok", "xai-api"],
+    ["xai", "xai-api"],
+  ] as const)(
+    "maps the %s inference route to its linked-account authority",
+    (backend, providerId) => {
+      configureDefaultAccountPoolSelection({
+        serviceRouting: {
+          llmText: {
+            backend,
+            accountIds: ["selected-account"],
+            strategy: "priority",
+          },
+        },
+      });
+
+      expect(selectionForProvider(providerId)).toEqual({
+        accountIds: ["selected-account"],
+        strategy: "priority",
+      });
+    },
+  );
+});
+
+describe("applyDirectProviderCredentialsToEnv fail-closed export", () => {
+  function harness(
+    accounts: Record<string, LinkedAccountConfig>,
+    tokens: Record<string, string>,
+    env: NodeJS.ProcessEnv = {},
+    ledger: DirectProviderEnvLedger = new Map(),
+  ) {
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+    const getToken = vi.fn(
+      async (_providerId: string, accountId: string) =>
+        tokens[accountId] ?? null,
+    );
+    const deps = {
+      pool,
+      listAccounts: (providerId: string) =>
+        Object.values(accounts)
+          .filter((account) => account.providerId === providerId)
+          .map((account) => ({ id: account.id })),
+      getToken,
+      env,
+      ledger,
+    };
+    return { env, ledger, getToken, deps };
+  }
+
+  it("exports the pinned xAI account for the canonical grok route and maps the OpenAI-compatible base", async () => {
+    configureDefaultAccountPoolSelection({
+      serviceRouting: {
+        llmText: { backend: "grok", accountIds: ["b"], strategy: "priority" },
+      },
+    });
+    const { env, deps, getToken } = harness(
+      {
+        "xai-api:a": account("xai-api", { id: "a", priority: 0 }),
+        "xai-api:b": account("xai-api", { id: "b", priority: 1 }),
+      },
+      { a: "token-a", b: "token-b" },
+    );
+
+    await applyDirectProviderCredentialsToEnv("grok", deps);
+
+    expect(getToken).toHaveBeenCalledWith("xai-api", "b");
+    expect(getToken).not.toHaveBeenCalledWith("xai-api", "a");
+    expect(env.XAI_API_KEY).toBe("token-b");
+    expect(env.OPENAI_API_KEY).toBe("token-b");
+    expect(env.OPENAI_BASE_URL).toBe("https://api.x.ai/v1");
+  });
+
+  it.each([
+    [
+      "disabled",
+      {
+        "openrouter-api:only": account("openrouter-api", {
+          id: "only",
+          enabled: false,
+        }),
+      },
+      undefined,
+    ],
+    [
+      "invalid",
+      {
+        "openrouter-api:only": account("openrouter-api", {
+          id: "only",
+          health: "invalid",
+        }),
+      },
+      undefined,
+    ],
+    [
+      "rate-limited",
+      {
+        "openrouter-api:only": account("openrouter-api", {
+          id: "only",
+          health: "rate-limited",
+          healthDetail: { until: Date.now() + 60_000 },
+        }),
+      },
+      undefined,
+    ],
+    [
+      "missing pinned",
+      { "openrouter-api:only": account("openrouter-api", { id: "only" }) },
+      ["does-not-exist"],
+    ],
+  ] as const)(
+    "does not export an %s OpenRouter account and retracts a previously exported one",
+    async (_label, accounts, pinnedIds) => {
+      configureDefaultAccountPoolSelection({
+        serviceRouting: {
+          llmText: {
+            backend: "openrouter",
+            ...(pinnedIds ? { accountIds: [...pinnedIds] } : {}),
+            strategy: "priority",
+          },
+        },
+      });
+      const ledger: DirectProviderEnvLedger = new Map([
+        ["openrouter-api", { token: "stale-token", openAiCompat: true }],
+      ]);
+      const env: NodeJS.ProcessEnv = {
+        OPENROUTER_API_KEY: "stale-token",
+        OPENAI_API_KEY: "stale-token",
+        OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+      };
+      const { deps, getToken } = harness(
+        accounts as unknown as Record<string, LinkedAccountConfig>,
+        { only: "only-token" },
+        env,
+        ledger,
+      );
+
+      await applyDirectProviderCredentialsToEnv("openrouter", deps);
+
+      expect(getToken).not.toHaveBeenCalled();
+      expect(env.OPENROUTER_API_KEY).toBeUndefined();
+      expect(env.OPENAI_API_KEY).toBeUndefined();
+      expect(env.OPENAI_BASE_URL).toBeUndefined();
+      expect(ledger.has("openrouter-api")).toBe(false);
+    },
+  );
+
+  it("never retracts operator launch env it did not export", async () => {
+    const env: NodeJS.ProcessEnv = {
+      OPENROUTER_API_KEY: "operator-token",
+      OPENAI_API_KEY: "operator-openai",
+    };
+    const { deps } = harness(
+      {
+        "openrouter-api:only": account("openrouter-api", {
+          id: "only",
+          enabled: false,
+        }),
+      },
+      { only: "only-token" },
+      env,
+    );
+
+    await applyDirectProviderCredentialsToEnv("openrouter", deps);
+
+    expect(env.OPENROUTER_API_KEY).toBe("operator-token");
+    expect(env.OPENAI_API_KEY).toBe("operator-openai");
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+  });
+
+  it("restores operator provider and OpenAI-compatible env after a linked account is disabled", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "openrouter-api:linked": account("openrouter-api", { id: "linked" }),
+    };
+    const env: NodeJS.ProcessEnv = {
+      OPENROUTER_API_KEY: "operator-router",
+      OPENAI_API_KEY: "operator-openai",
+      OPENAI_BASE_URL: "https://operator.example/v1",
+    };
+    const { deps } = harness(accounts, { linked: "linked-router" }, env);
+
+    await applyDirectProviderCredentialsToEnv("openrouter", deps);
+    expect(env.OPENROUTER_API_KEY).toBe("linked-router");
+    expect(env.OPENAI_API_KEY).toBe("linked-router");
+    expect(env.OPENAI_BASE_URL).toBe("https://openrouter.ai/api/v1");
+
+    accounts["openrouter-api:linked"] = account("openrouter-api", {
+      id: "linked",
+      enabled: false,
+    });
+    await applyDirectProviderCredentialsToEnv("openrouter", deps);
+
+    expect(env.OPENROUTER_API_KEY).toBe("operator-router");
+    expect(env.OPENAI_API_KEY).toBe("operator-openai");
+    expect(env.OPENAI_BASE_URL).toBe("https://operator.example/v1");
+  });
+
+  it("owns operator-fallback compatibility aliases across route switch and reset", async () => {
+    const env: NodeJS.ProcessEnv = {
+      OPENROUTER_API_KEY: "operator-router",
+      OPENAI_API_KEY: "operator-openai",
+      OPENAI_BASE_URL: "https://operator.example/v1",
+    };
+    const ledger: DirectProviderEnvLedger = new Map();
+    const { deps } = harness({}, {}, env, ledger);
+
+    await applyDirectProviderCredentialsToEnv("openrouter", deps);
+    expect(env.OPENROUTER_API_KEY).toBe("operator-router");
+    expect(env.OPENAI_API_KEY).toBe("operator-router");
+    expect(env.OPENAI_BASE_URL).toBe("https://openrouter.ai/api/v1");
+    expect(ledger.get("openrouter-api")).toMatchObject({
+      token: "operator-router",
+      openAiCompat: true,
+      providerEnv: false,
+    });
+
+    await applyDirectProviderCredentialsToEnv("openai", deps);
+    expect(env.OPENROUTER_API_KEY).toBe("operator-router");
+    expect(env.OPENAI_API_KEY).toBe("operator-openai");
+    expect(env.OPENAI_BASE_URL).toBe("https://operator.example/v1");
+    expect(ledger.size).toBe(0);
+
+    await applyDirectProviderCredentialsToEnv("openrouter", deps);
+    retractAllExportedDirectProviderEnv(env, ledger);
+    expect(env.OPENROUTER_API_KEY).toBe("operator-router");
+    expect(env.OPENAI_API_KEY).toBe("operator-openai");
+    expect(env.OPENAI_BASE_URL).toBe("https://operator.example/v1");
+  });
+
+  it.each(["select", "token"] as const)(
+    "retracts a revoked export before a fallible %s read",
+    async (failure) => {
+      const accounts: Record<string, LinkedAccountConfig> = {
+        "openrouter-api:linked": account("openrouter-api", { id: "linked" }),
+      };
+      const env: NodeJS.ProcessEnv = {};
+      const ledger: DirectProviderEnvLedger = new Map();
+      const { deps } = harness(
+        accounts,
+        { linked: "revoked-token" },
+        env,
+        ledger,
+      );
+      await applyDirectProviderCredentialsToEnv("openrouter", deps);
+      expect(env.OPENROUTER_API_KEY).toBe("revoked-token");
+
+      const failingDeps = {
+        ...deps,
+        ...(failure === "select"
+          ? {
+              pool: {
+                select: async () => {
+                  throw new Error("selection storage failed");
+                },
+              },
+            }
+          : {
+              getToken: async () => {
+                throw new Error("credential read failed");
+              },
+            }),
+      };
+
+      await expect(
+        applyDirectProviderCredentialsToEnv("openrouter", failingDeps),
+      ).rejects.toThrow(failure === "select" ? "selection" : "credential");
+      expect(env.OPENROUTER_API_KEY).toBeUndefined();
+      expect(env.OPENAI_API_KEY).toBeUndefined();
+      expect(env.OPENAI_BASE_URL).toBeUndefined();
+      expect(ledger.size).toBe(0);
+    },
+  );
+
+  it("generation-fences an older selection after a newer disable sync", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "openrouter-api:linked": account("openrouter-api", { id: "linked" }),
+    };
+    const env: NodeJS.ProcessEnv = {};
+    const ledger: DirectProviderEnvLedger = new Map();
+    let releaseFirstToken: (() => void) | undefined;
+    let signalFirstTokenRead: (() => void) | undefined;
+    const firstTokenRead = new Promise<void>((resolve) => {
+      signalFirstTokenRead = resolve;
+    });
+    const firstTokenGate = new Promise<void>((resolve) => {
+      releaseFirstToken = resolve;
+    });
+    let tokenReads = 0;
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+    const deps = {
+      pool,
+      listAccounts: (providerId: string) =>
+        Object.values(accounts)
+          .filter((candidate) => candidate.providerId === providerId)
+          .map((candidate) => ({ id: candidate.id })),
+      getToken: async () => {
+        tokenReads += 1;
+        if (tokenReads === 1) {
+          signalFirstTokenRead?.();
+          await firstTokenGate;
+        }
+        return "linked-router";
+      },
+      env,
+      ledger,
+    };
+
+    const olderSync = applyDirectProviderCredentialsToEnv("openrouter", deps);
+    await firstTokenRead;
+    accounts["openrouter-api:linked"] = account("openrouter-api", {
+      id: "linked",
+      enabled: false,
+    });
+    const newerDisableSync = applyDirectProviderCredentialsToEnv(
+      "openrouter",
+      deps,
+    );
+    await newerDisableSync;
+    releaseFirstToken?.();
+    await olderSync;
+
+    expect(tokenReads).toBe(1);
+    expect(env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(env.OPENAI_API_KEY).toBeUndefined();
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+    expect(ledger.size).toBe(0);
+  });
+
+  it("retracts the export after the selected account is deleted and re-exports after it is re-enabled", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "xai-api:only": account("xai-api", { id: "only" }),
+    };
+    const ledger: DirectProviderEnvLedger = new Map();
+    const env: NodeJS.ProcessEnv = {};
+    const { deps } = harness(accounts, { only: "live-token" }, env, ledger);
+
+    await applyDirectProviderCredentialsToEnv("grok", deps);
+    expect(env.XAI_API_KEY).toBe("live-token");
+    expect(env.OPENAI_BASE_URL).toBe("https://api.x.ai/v1");
+
+    accounts["xai-api:only"] = account("xai-api", {
+      id: "only",
+      enabled: false,
+    });
+    await applyDirectProviderCredentialsToEnv("grok", deps);
+    expect(env.XAI_API_KEY).toBeUndefined();
+    expect(env.OPENAI_API_KEY).toBeUndefined();
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+
+    accounts["xai-api:only"] = account("xai-api", { id: "only" });
+    await applyDirectProviderCredentialsToEnv("grok", deps);
+    expect(env.XAI_API_KEY).toBe("live-token");
+    expect(env.OPENAI_API_KEY).toBe("live-token");
+
+    delete accounts["xai-api:only"];
+    await applyDirectProviderCredentialsToEnv("grok", deps);
+    expect(env.XAI_API_KEY).toBeUndefined();
+    expect(env.OPENAI_API_KEY).toBeUndefined();
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+  });
+
+  it("switches OpenRouter to native OpenAI as an atomic key and base pair", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "openrouter-api:router": account("openrouter-api", { id: "router" }),
+      "openai-api:native": account("openai-api", { id: "native" }),
+    };
+    const ledger: DirectProviderEnvLedger = new Map();
+    const env: NodeJS.ProcessEnv = {};
+    const { deps } = harness(
+      accounts,
+      { router: "router-token", native: "native-token" },
+      env,
+      ledger,
+    );
+
+    await applyDirectProviderCredentialsToEnv("openrouter", deps);
+    expect(env.OPENAI_API_KEY).toBe("router-token");
+    expect(env.OPENAI_BASE_URL).toBe("https://openrouter.ai/api/v1");
+
+    await applyDirectProviderCredentialsToEnv("openai", deps);
+    expect(env.OPENAI_API_KEY).toBe("native-token");
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+  });
+
+  it("switches native OpenAI to xAI as an atomic key and base pair", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "openai-api:native": account("openai-api", { id: "native" }),
+      "xai-api:grok": account("xai-api", { id: "grok" }),
+    };
+    const ledger: DirectProviderEnvLedger = new Map();
+    const env: NodeJS.ProcessEnv = {};
+    const { deps } = harness(
+      accounts,
+      { native: "native-token", grok: "grok-token" },
+      env,
+      ledger,
+    );
+
+    await applyDirectProviderCredentialsToEnv("openai", deps);
+    expect(env.OPENAI_API_KEY).toBe("native-token");
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+
+    await applyDirectProviderCredentialsToEnv("grok", deps);
+    expect(env.OPENAI_API_KEY).toBe("grok-token");
+    expect(env.OPENAI_BASE_URL).toBe("https://api.x.ai/v1");
+  });
+
+  it("retracts owned provider exports before clearing reset evidence", () => {
+    const env: NodeJS.ProcessEnv = {
+      OPENROUTER_API_KEY: "owned-token",
+      OPENAI_API_KEY: "owned-token",
+      OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+      XAI_API_KEY: "operator-token",
+    };
+    const ledger: DirectProviderEnvLedger = new Map([
+      ["openrouter-api", { token: "owned-token", openAiCompat: true }],
+    ]);
+
+    retractAllExportedDirectProviderEnv(env, ledger);
+
+    expect(env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(env.OPENAI_API_KEY).toBeUndefined();
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+    expect(env.XAI_API_KEY).toBe("operator-token");
+    expect(ledger.size).toBe(0);
   });
 });
 
