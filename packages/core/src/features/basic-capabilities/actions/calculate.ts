@@ -287,9 +287,17 @@ export const calculateAction: Action = {
 		}
 		try {
 			const { text, exact } = evaluateArithmetic(expression);
+			const rendered = `${expression} = ${text}${exact ? "" : " (floating-point; 15 significant digits)"}`;
+			// Deterministic arithmetic is its own complete answer: declare the
+			// verified single-operation terminal result so the runtime delivers it
+			// verbatim instead of spending a post-tool evaluator model call to
+			// restate it (the planner keeps its veto for multi-step turns).
 			return {
 				success: true,
-				text: `${expression} = ${text}${exact ? "" : " (floating-point; 15 significant digits)"}`,
+				text: rendered,
+				userFacingText: rendered,
+				verifiedUserFacing: true,
+				turnComplete: true,
 				values: { success: true, result: text, exact },
 				data: { actionName: "CALCULATE", expression, result: text, exact },
 			};
