@@ -16,7 +16,7 @@ export function ActionNoticeToast({
           ? "toastError"
           : actionNotice.tone === "success"
             ? "toastSuccess"
-            : "toastInfo"
+            : "default"
       }
       // A `role="status"` toast is a passive announcement with no
       // interactive controls (spinner + text only); at `z-[10000]` it sits
