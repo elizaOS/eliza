@@ -222,9 +222,19 @@ export const notesAction: Action = {
 
     if (op === "create") {
       const body = readString(params.body);
-      const created = await service.createNoteWithCommit(
-        parseNoteContent(body ? `${content}\n${body}` : content),
+      const separateBody = body !== undefined && !content.includes("\n");
+      const noteContent = parseNoteContent(
+        separateBody ? `${content}\n${body}` : content,
       );
+      if (body && !separateBody && noteContent.body !== body) {
+        // Two different complete bodies are ambiguous; reject before writing
+        // rather than appending them or silently selecting one.
+        return failure(
+          "The create arguments contain different note bodies. Pass the complete note in content only, or a title in content and its body in body.",
+          "NOTES_CONFLICTING_BODY",
+        );
+      }
+      const created = await service.createNoteWithCommit(noteContent);
       const note = created.value;
       const text = created.replayed
         ? `that note was already saved: ${describe(note)}`

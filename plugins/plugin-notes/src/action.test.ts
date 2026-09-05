@@ -264,26 +264,58 @@ describe("NOTES operation parsing", () => {
     expect(created.text).toContain("Demo Checklist — mic, charger, water");
   });
 
-  it("preserves a create body when the provider separates it from the title", async () => {
+  it.each(["Stable Local Notes QA", "QA: afternoon"])(
+    "preserves a separate create body with title %s",
+    async (title) => {
+      const runtime = await harness();
+      const created = await run(runtime, {
+        action: "create",
+        content: title,
+        body: "Cerebras local note persistence",
+      });
+
+      expect(created.success).toBe(true);
+      expect(created.text).toContain(
+        `${title} — Cerebras local note persistence`,
+      );
+      const listed = await run(runtime, { action: "list" });
+      expect(listed.data?.notes).toMatchObject([
+        {
+          title,
+          body: "Cerebras local note persistence",
+          color: "yellow",
+        },
+      ]);
+    },
+  );
+
+  it("stores a redundant create body once without removing intentional repeated lines", async () => {
+    const runtime = await harness();
+    const body = "Bring a charger and water.\nBring a charger and water.";
+    const created = await run(runtime, {
+      action: "create",
+      content: `Checklist\n${body}`,
+      body,
+    });
+    expect(created.success).toBe(true);
+    const listed = await run(runtime, { action: "list", content: "Checklist" });
+    expect(listed.data?.notes).toMatchObject([{ title: "Checklist", body }]);
+    expect(listed.data?.count).toBe(1);
+  });
+
+  it("rejects conflicting create bodies without persisting either version", async () => {
     const runtime = await harness();
     const created = await run(runtime, {
       action: "create",
-      content: "Stable Local Notes QA",
-      body: "Cerebras local note persistence",
+      content: "Checklist\nBring water.",
+      body: "Bring a charger.",
     });
-
-    expect(created.success).toBe(true);
-    expect(created.text).toContain(
-      "Stable Local Notes QA — Cerebras local note persistence",
-    );
+    expect(created).toMatchObject({
+      success: false,
+      error: "NOTES_CONFLICTING_BODY",
+    });
     const listed = await run(runtime, { action: "list" });
-    expect(listed.data?.notes).toMatchObject([
-      {
-        title: "Stable Local Notes QA",
-        body: "Cerebras local note persistence",
-        color: "yellow",
-      },
-    ]);
+    expect(listed.data?.notes).toEqual([]);
   });
 
   it("returns the persisted label and body as evidence after a content update", async () => {
