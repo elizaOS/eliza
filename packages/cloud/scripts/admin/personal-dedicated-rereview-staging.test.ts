@@ -41,6 +41,8 @@ const snapshot = {
     error_message: null,
     sandbox_id: null,
     bridge_url: null,
+    docker_image: null,
+    image_digest: null,
   }),
 };
 
@@ -107,6 +109,8 @@ describe("personal Dedicated staging re-review operator", () => {
       error_message: `Headscale routing is required but HEADSCALE_API_KEY is not configured ${privateLocator}`,
       sandbox_id: "private-container-id",
       bridge_url: privateLocator,
+      docker_image: "private.registry.invalid/private-agent:secret-tag",
+      image_digest: "private-digest-value",
     });
     const result = await runRereviewOperator(
       config("preview"),
@@ -119,6 +123,10 @@ describe("personal Dedicated staging re-review operator", () => {
     );
     expect(JSON.stringify(result)).not.toContain(privateLocator);
     expect(JSON.stringify(result)).not.toContain("private-container-id");
+    expect(JSON.stringify(result)).not.toContain("private.registry.invalid");
+    expect(JSON.stringify(result)).not.toContain("secret-tag");
+    expect(JSON.stringify(result)).not.toContain("private-digest-value");
+    expect(result.selectedTarget.imageFamily).toBe("custom");
     expect(() =>
       diagnoseRereviewTarget({
         status: privateLocator,
@@ -126,8 +134,94 @@ describe("personal Dedicated staging re-review operator", () => {
         error_message: null,
         sandbox_id: null,
         bridge_url: null,
+        docker_image: null,
+        image_digest: null,
       }),
     ).toThrow("selected_target_status_invalid");
+  });
+
+  test("publishes only validated official image digests through the operator evidence", async () => {
+    const digest = `sha256:${"a".repeat(64)}`;
+    for (const [image, family, referenceDigest, recordedDigest] of [
+      [`ghcr.io/elizaos/eliza@${digest}`, "canonical", digest, digest],
+      ["ghcr.io/elizaos/eliza-demo:develop", "demo", null, digest],
+      ["ghcr.io/elizaos/eliza-private:secret", "custom", null, null],
+      ["ghcr.io/elizaos/eliza@sha256:private-value", "custom", null, null],
+      ["ghcr.io/elizaos/eliza:tag/private-value", "custom", null, null],
+      [null, "unconfigured", null, null],
+    ] as const) {
+      const selectedTarget = diagnoseRereviewTarget({
+        status: "error",
+        database_status: "ready",
+        error_message: "Provisioning timeout",
+        sandbox_id: null,
+        bridge_url: null,
+        docker_image: image,
+        image_digest: digest,
+      });
+      const result = await runRereviewOperator(
+        config("preview"),
+        dependencies({
+          snapshot: async () => ({ ...snapshot, selectedTarget }),
+        }).value,
+      );
+      expect(result.selectedTarget.imageFamily).toBe(family);
+      expect(result.selectedTarget.publicImageReferenceDigest).toBe(
+        referenceDigest,
+      );
+      expect(result.selectedTarget.publicRecordedImageDigest).toBe(
+        recordedDigest,
+      );
+      expect(JSON.stringify(result)).not.toContain("private-value");
+      expect(JSON.stringify(result)).not.toContain("secret");
+    }
+    const invalidRecordedDigest = diagnoseRereviewTarget({
+      status: "error",
+      database_status: "ready",
+      error_message: null,
+      sandbox_id: null,
+      bridge_url: null,
+      docker_image: "ghcr.io/elizaos/eliza:develop",
+      image_digest: "private-invalid-digest",
+    });
+    expect(JSON.stringify(invalidRecordedDigest)).not.toContain(
+      "private-invalid-digest",
+    );
+    expect(invalidRecordedDigest.publicRecordedImageDigest).toBeNull();
+  });
+
+  test("distinguishes sandbox readiness expiry without interpreting stack paths as failures", async () => {
+    for (const [error, expected] of [
+      [
+        "Sandbox health check timed out; private-host.invalid/private-agent",
+        true,
+      ],
+      ["Provision failed\ncaused by: Sandbox health check timed out", true],
+      [
+        "Job execution timeout\n    at Sandbox health check timed out (/private/path)",
+        false,
+      ],
+      [null, false],
+    ] as const) {
+      const selectedTarget = diagnoseRereviewTarget({
+        status: "error",
+        database_status: "ready",
+        error_message: error,
+        sandbox_id: null,
+        bridge_url: null,
+        docker_image: null,
+        image_digest: null,
+      });
+      const result = await runRereviewOperator(
+        config("preview"),
+        dependencies({
+          snapshot: async () => ({ ...snapshot, selectedTarget }),
+        }).value,
+      );
+      expect(result.selectedTarget.sandboxHealthCheckTimedOut).toBe(expected);
+      expect(JSON.stringify(result)).not.toContain("private-host");
+      expect(JSON.stringify(result)).not.toContain("/private/path");
+    }
   });
 
   test("classifies zero, one, and invariant-breaking receipt counts", () => {
