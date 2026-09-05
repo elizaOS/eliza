@@ -217,7 +217,67 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       connectAccountAction,
       pairOwnerAccountAction,
       notifyAction,
-      ...promoteSubactionsToActions(memoryAction),
+      ...promoteSubactionsToActions(memoryAction, {
+        overrides: {
+          create: { description: "Store a memory. Supply text to save." },
+          update: {
+            description:
+              "Replace an existing memory. Supply text with the full replacement content, confirm:true, and either memoryId or a unique query. Search first when the target is ambiguous.",
+          },
+          delete: {
+            description:
+              "Delete an existing memory. Supply confirm:true and either memoryId or a unique query.",
+          },
+        },
+      }).map((action) => {
+        // The umbrella keeps its conditional parameters; each promoted tool
+        // must expose the requirements of the operation it actually executes.
+        // Otherwise planners can repeatedly call UPDATE without replacement text.
+        const fields: Record<string, readonly string[]> = {
+          MEMORY_CREATE: ["action", "text", "kind", "tags"],
+          MEMORY_SEARCH: [
+            "action",
+            "type",
+            "entityId",
+            "roomId",
+            "query",
+            "limit",
+            "offset",
+            "snapshot",
+          ],
+          MEMORY_UPDATE: [
+            "action",
+            "text",
+            "memoryId",
+            "query",
+            "type",
+            "entityId",
+            "roomId",
+            "confirm",
+          ],
+          MEMORY_DELETE: [
+            "action",
+            "memoryId",
+            "query",
+            "type",
+            "entityId",
+            "roomId",
+            "confirm",
+          ],
+        };
+        const allowed = fields[action.name];
+        if (!allowed) return action;
+        action.parameters = action.parameters
+          ?.filter((parameter) => allowed.includes(parameter.name))
+          .map((parameter) => ({
+            ...parameter,
+            required:
+              parameter.name === "text" || parameter.name === "confirm"
+                ? true
+                : parameter.required,
+          }));
+        return action;
+      }),
       filesAction,
       // Global knowledge-hub actions (#13595): search + attach-to-chat +
       // send-to-someone, callable from any view.
