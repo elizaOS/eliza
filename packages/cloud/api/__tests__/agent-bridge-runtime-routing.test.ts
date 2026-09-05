@@ -93,7 +93,10 @@ const sharedAgent = {
 const executionCtx = {
   waitUntil() {},
 };
-const TRACE_ID = "11111111-1111-4111-8111-111111111111";
+// Must satisfy the closed-schema trace-id validator (32 lowercase hex):
+// resolveElizaTraceId replaces UUID-shaped caller ids with a minted id at
+// ingress, so a UUID sentinel here would assert the replaced id, not ours.
+const TRACE_ID = "11111111111111111111111111111111";
 
 describe("agent bridge runtime routing", () => {
   test("records an allow-listed bridge method and first logical attempt on early warming", async () => {
