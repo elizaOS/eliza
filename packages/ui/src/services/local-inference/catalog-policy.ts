@@ -2,7 +2,7 @@
  * Policy predicates over the model catalog: which models are the default Eliza-1
  * family and thus eligible for the first-run local path.
  */
-import { DEFAULT_ELIGIBLE_MODEL_IDS } from "./catalog";
+import { DEFAULT_ELIGIBLE_MODEL_IDS, eliza1TierPublishStatus } from "./catalog";
 import type { CatalogModel, InstalledModel } from "./types";
 
 export function isEliza1ModelFamilyId(id: string): boolean {
@@ -16,7 +16,11 @@ export function isDefaultLocalModelFamily(model: CatalogModel): boolean {
 }
 
 export function isSettingsDefaultLocalModel(model: CatalogModel): boolean {
-  return !model.hiddenFromCatalog && isDefaultLocalModelFamily(model);
+  return (
+    !model.hiddenFromCatalog &&
+    isDefaultLocalModelFamily(model) &&
+    (model.publishStatus ?? eliza1TierPublishStatus(model.id)) === "published"
+  );
 }
 
 export function isVerifiedCuratedEliza1Download(
