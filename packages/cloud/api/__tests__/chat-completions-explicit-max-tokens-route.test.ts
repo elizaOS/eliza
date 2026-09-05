@@ -304,6 +304,10 @@ mock.module("@/lib/services/ai-billing", () => ({
   })),
   recordUsageAnalytics: mock(async () => ({ id: "usage-record-1" })),
   InsufficientCreditsError: TestInsufficientCreditsError,
+  // Admission pays its authoritative subscription-entitlement read before credit
+  // reservation (organization-inference-admission); this harness has no
+  // subscription schema, so treat every org as credits-funded.
+  isSubscriptionFundedOrganization: mock(async () => false),
 }));
 
 mock.module("@/lib/services/ai-billing-records", () => ({
