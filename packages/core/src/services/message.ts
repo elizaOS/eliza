@@ -3860,10 +3860,17 @@ export function privacyDenialReplyForReasons(
 
 function messageHandlerStageOneReplyContexts(
 	messageHandler: MessageHandlerResult,
-): { stageOneContexts: readonly string[]; stageOneReplyText: string } {
+): {
+	stageOneContexts: readonly string[];
+	stageOneReplyText: string;
+	stageOneReplyEffectStatus: MessageHandlerResult["plan"]["replyEffectStatus"];
+	stageOneIntents: readonly string[];
+} {
 	return {
 		stageOneContexts: messageHandler.plan.contexts ?? [],
 		stageOneReplyText: String(messageHandler.plan.reply ?? ""),
+		stageOneReplyEffectStatus: messageHandler.plan.replyEffectStatus,
+		stageOneIntents: messageHandler.plan.intents ?? [],
 	};
 }
 
@@ -6451,6 +6458,7 @@ export function messageHandlerFromFieldResult(
 	const replyEffectStatus = normalizeReplyEffectStatus(
 		result.replyEffectStatus,
 	);
+	const declaredIntents = stringArrayProperty(result.intents);
 	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
 		candidateActions,
 		runtimeContext,
@@ -6482,15 +6490,17 @@ export function messageHandlerFromFieldResult(
 					currentMessageText,
 				)
 			: ({ names: [], kind: null } as DirectCurrentRequestCandidateInference);
-	// A weak view-capability token overlap must not force-plan a turn Stage 1
-	// already answered (see shouldSuppressInferredCandidateEscalation) — drop
-	// the inferred candidates entirely so the turn keeps its direct reply.
+	// Text-derived view hints cannot override a completed model answer unless
+	// the model also declared work or an effect requiring verification.
 	const directCurrentCandidateActions =
 		shouldSuppressInferredCandidateEscalation({
 			inference: directCurrentInference,
 			stageOneContexts: rawContexts,
 			stageOneReplyText: replyTextRaw,
 			stageOneCandidateActions: rawCandidateActions,
+			stageOneReplyEffectStatus:
+				result.replyEffectStatus === undefined ? undefined : replyEffectStatus,
+			stageOneIntents: declaredIntents,
 		})
 			? []
 			: directCurrentInference.names;
@@ -6596,7 +6606,6 @@ export function messageHandlerFromFieldResult(
 	const initialPlanningContexts = routedContexts.filter(
 		(context) => context !== SIMPLE_CONTEXT_ID,
 	);
-	const declaredIntents = stringArrayProperty(result.intents);
 	const pendingDeclaredWork =
 		processMessage === "RESPOND" &&
 		!preemptDirect &&
@@ -7342,30 +7351,30 @@ function inferDirectCurrentRequestCandidateInference(
 }
 
 /**
- * True when a text-inferred (never model-emitted) candidate set must NOT
- * escalate this turn to a tool-required planner surface: Stage 1 already
- * ANSWERED the turn (only simple/absent contexts, a non-empty replyText, and
- * zero candidateActionNames of its own) and the only "evidence" for a tool is
- * a weak view-capability token overlap (e.g. "whats 17 TIMES 23" matching the
- * views action's "screen-time" tag via TIME). Observed live on both the app
- * REST surface and Discord (trajectories tj-501e594bfb23a7, tj-5d1c9601f33e8d):
- * the injected VIEWS candidate forced toolChoice=required, the planner's
- * correct terminal answer was rejected maxRequiredToolMisses times, and the
- * user got the generic transient-failure apology instead of the answer.
- *
- * Deliberately narrow — keyed on the Stage-1 plan SHAPE, not the connector:
- * model-emitted candidates always escalate, shell/coding/web inferences keep
- * their backstop behavior (live-info acks still force the fetch), and the
- * strong view inferences (explicit surface nouns, bare-name voice navigation)
- * still escalate so genuine view-switching UX is untouched.
+ * Keep answered simple turns out of planning when only inferred view metadata
+ * suggests a tool. Surface-word matches also require the model's explicit
+ * no-effect classification and no declared intent; legacy incomplete envelopes
+ * remain conservative. Model-selected actions and pending/applied effects keep
+ * their normal planning and verification paths.
  */
 function shouldSuppressInferredCandidateEscalation(args: {
 	inference: DirectCurrentRequestCandidateInference;
 	stageOneContexts: readonly string[];
 	stageOneReplyText: string;
 	stageOneCandidateActions: readonly string[];
+	stageOneReplyEffectStatus: MessageHandlerResult["plan"]["replyEffectStatus"];
+	stageOneIntents: readonly string[];
 }): boolean {
-	if (args.inference.kind !== "view-capability") return false;
+	if (
+		args.inference.kind !== "view-capability" &&
+		!(
+			args.inference.kind === "view-surface" &&
+			args.stageOneReplyEffectStatus === "none" &&
+			args.stageOneIntents.length === 0
+		)
+	) {
+		return false;
+	}
 	if (args.stageOneCandidateActions.length > 0) return false;
 	if (args.stageOneReplyText.trim().length === 0) return false;
 	// An ack-shaped reply ("On it.", "Let me pull that up.") is a delegation

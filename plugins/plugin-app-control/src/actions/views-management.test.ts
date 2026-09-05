@@ -1925,10 +1925,9 @@ describe("view management actions", () => {
 		);
 	});
 
-	it('routes "open <name> view" to show/navigate, not the current-view query', async () => {
-		// Regression: CURRENT_VIEW_VERBS once included "open", so "open wallet
-		// view" matched current before show and reported the active view instead
-		// of navigating. inferMode must resolve this to a show/navigate.
+	it("executes a planned view navigation instead of querying the current view", async () => {
+		// The planner supplies the action and target; user text cannot substitute
+		// for a missing destination or override the structured navigation.
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const getCurrentView = vi.fn(async () => null);
@@ -1947,12 +1946,11 @@ describe("view management actions", () => {
 			json: async () => ({}),
 		} as Response);
 
-		// No explicit action option — this exercises inferMode on the raw text.
 		const result = await action.handler(
 			runtime as never,
 			message("open the wallet view") as never,
 			undefined,
-			undefined,
+			{ action: "show", view: "wallet" },
 			callback,
 		);
 
@@ -2482,7 +2480,7 @@ describe("view management actions", () => {
 		expect(client.getCurrentView).not.toHaveBeenCalled();
 	});
 
-	it('resolves casual aliases like "notepad" and "calender" for view navigation', async () => {
+	it('resolves structured target aliases like "notepad" and "calender" for view navigation', async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -2523,21 +2521,21 @@ describe("view management actions", () => {
 			runtime as never,
 			message("open the notepad pls") as never,
 			undefined,
-			undefined,
+			{ action: "show", view: "notepad" },
 			callback,
 		);
 		const calendarResult = await action.handler(
 			runtime as never,
 			message("open the calender view") as never,
 			undefined,
-			undefined,
+			{ action: "show", view: "calender" },
 			callback,
 		);
 		const homeResult = await action.handler(
 			runtime as never,
 			message(composedViewPrompt("go home")) as never,
 			undefined,
-			{ action: "show", mode: "simple" },
+			{ action: "show", view: "home", mode: "simple" },
 			callback,
 		);
 

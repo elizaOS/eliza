@@ -1,6 +1,6 @@
 /**
  * Verifies that completed navigation state cannot leak a second acknowledgement
- * into a later turn, while a new explicit target still reaches Stage 1.
+ * into a later turn, while a navigation request gets observed renderer state.
  */
 
 import type {
@@ -133,7 +133,7 @@ describe("view-switch response context ownership", () => {
 		expect(context.providers.current).not.toContain("current_view");
 	});
 
-	it("makes a new explicit target authoritative over the recently active view", async () => {
+	it("keeps the observed view distinct from a new requested destination", async () => {
 		const context = makeComposeCtx("switch to notes");
 		applyCurrentViewComposeHook(context);
 		expect(context.providers.current).toContain("current_view");
@@ -152,10 +152,12 @@ describe("view-switch response context ownership", () => {
 			message("switch to notes"),
 			{ values: {}, data: {}, text: "" },
 		);
-		expect(result.text).toContain("Requested view target: Notes");
-		expect(result.text).toContain("authoritative for this turn");
+		expect(result.text).toContain("currently viewing the Simple Calendar view");
 		expect(result.text).not.toContain("acknowledge");
-		expect(result.values?.switchingToViewId).toBe("notes");
+		expect(result.values?.currentViewId).toBe("simple-calendar");
+		expect(result.data?.currentView).toMatchObject({
+			viewId: "simple-calendar",
+		});
 	});
 
 	it("does not inject current-view state into unrelated ordinary chat", () => {

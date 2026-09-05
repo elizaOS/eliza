@@ -4136,6 +4136,12 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it.each([
 		{
+			caseName: "current-view question with negated navigation",
+			prompt:
+				"What view am I looking at right now? Just answer; do not navigate or change anything.",
+			reply: "You're looking at the Calendar view.",
+		},
+		{
 			caseName: "currently-open adjective order",
 			prompt:
 				'Reply in one concise sentence beginning with "BUDGET-READONLY" and identify the currently open view. Do not use tools or change anything.',
@@ -4160,6 +4166,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				stage1Response({
 					contexts: ["simple"],
 					replyText: reply,
+					extra: { replyEffectStatus: "none" },
 				}),
 			]);
 			const viewsHandler = vi.fn(async () => ({

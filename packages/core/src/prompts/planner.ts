@@ -19,7 +19,7 @@ export const plannerBatchScopeDescription =
 export const plannerTemplate = `task: Plan next native tool calls.
 
 rules:
-- use only tools array; smallest grounded queue that covers every explicit requested outcome, including navigation separately from data changes. Routing hints are not a replacement for the full user request; do not silently drop a clause.
+- use only tools array; smallest grounded queue that covers every explicit requested outcome, including navigation separately from reading, searching, or changing data. Opening a visible browser/view and researching a question are separate outcomes: a background web search does not open the user's browser. Queue both when both are requested; do not demote navigation to an optional detail of the "main" task. Routing hints are not a replacement for the full user request; do not silently drop a clause.
 - routed action: set parameters.action only if schema has it
 - args grounded in user request or prior tool results
 - obey schema; arrays as JSON arrays, not comma strings
