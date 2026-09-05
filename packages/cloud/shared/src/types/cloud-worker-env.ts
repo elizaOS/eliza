@@ -23,6 +23,13 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
+  /** Registered Outreachr app, narrow BFF client secret digest, and exact hosted origin. */
+  OUTREACHR_APP_ID?: string;
+  OUTREACHR_CLIENT_SECRET_SHA256?: string;
+  OUTREACHR_ORIGIN?: string;
+  OUTREACHR_STRIPE_SOL_PRICE?: string;
+  OUTREACHR_STRIPE_ASTRA_PRICE?: string;
+  OUTREACHR_STRIPE_WEBHOOK_SECRET?: string;
   // ---- Deployment environment ----
   /**
    * Wrangler environment name (`"production"` | `"staging"`); unset in local
