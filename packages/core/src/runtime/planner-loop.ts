@@ -2040,6 +2040,77 @@ async function runPlannerLoopIterations(
 			};
 		}
 
+		// Grounded receipt gate (owner ruling 2026-09-05): a single declared intent
+		// settled by ONE verified internal action needs a user-facing phrasing of
+		// its receipt facts, not a second model judgment over the whole composed
+		// state. The action's applied/noop receipt is the verification; its
+		// replyContext facts are the only source for the reply. Multi-intent
+		// turns, pending scope, failures, confirmation/input pauses, and any
+		// unverified result keep the full evaluator. A failed or unsafe render
+		// also falls through to it.
+		const groundedReceipt =
+			requiresIntentEvaluation && declaredIntentCount === 1
+				? selectGroundedReceiptReply({
+						trajectory,
+						failures,
+						lastPlannerExplicitCompleted,
+					})
+				: null;
+		if (groundedReceipt) {
+			const renderStartedAt = Date.now();
+			const rendered = await renderGroundedReceiptReply(
+				params,
+				groundedReceipt,
+			);
+			if (rendered) {
+				const gated: EvaluatorOutput = {
+					success: true,
+					decision: "FINISH",
+					thought: GROUNDED_RECEIPT_GATED_EVALUATOR_THOUGHT,
+					messageToUser: rendered,
+				};
+				trajectory.evaluatorOutputs.push(
+					projectToolDiagnosticValue(
+						gated,
+						redactDiagnosticText,
+					) as EvaluatorOutput,
+				);
+				appendEvaluatorContextEvent(
+					trajectory,
+					gated,
+					iteration,
+					redactDiagnosticText,
+				);
+				await recordGatedEvaluationStage({
+					runtime: params.runtime,
+					recorder: params.recorder,
+					trajectoryId: params.trajectoryId,
+					parentStageId: params.parentStageId,
+					iteration,
+					startedAt: renderStartedAt,
+					endedAt: Date.now(),
+					output: gated,
+					reason: "grounded_receipt_render",
+					logger: params.runtime.logger,
+				});
+				return {
+					status: "finished",
+					trajectory,
+					evaluator: gated,
+					finalMessage: userSafeFinalMessage(
+						terminalMessageWithFailureAuthority(
+							trajectory,
+							preferredFinalMessageFromToolOrModel(
+								trajectory,
+								gated.messageToUser,
+							),
+						),
+						trajectory,
+					),
+				};
+			}
+		}
+
 		let evaluator: EvaluatorOutput;
 		try {
 			evaluator = await evaluateTrajectory(params, trajectory, iteration);
@@ -7069,6 +7140,122 @@ function trySubPlannerVerdictGate(args: {
 			messageToUser: message,
 		},
 	};
+}
+
+export const GROUNDED_RECEIPT_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: single declared intent settled by one verified internal action; reply rendered from its receipt facts; evaluator LLM call skipped.";
+
+interface GroundedReceiptReply {
+	domain: string;
+	intent: string;
+	scenario: string;
+	facts: string;
+}
+
+/**
+ * The one shape the grounded receipt gate accepts: exactly one completed tool
+ * step, successful, internal-transcript, carrying applied/noop effect receipts
+ * and a replyContext with facts, nothing queued, nothing failed, no pause for
+ * the user, and no planner-declared pending scope.
+ */
+function selectGroundedReceiptReply(args: {
+	trajectory: PlannerTrajectory;
+	failures: readonly FailureLike[];
+	lastPlannerExplicitCompleted: boolean | undefined;
+}): GroundedReceiptReply | null {
+	const { trajectory, failures } = args;
+	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (trajectory.plannedQueue.length > 0 || failures.length > 0) return null;
+	if (completedToolStepCount(trajectory) !== 1) return null;
+	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
+	const latestStep = trajectory.steps[trajectory.steps.length - 1];
+	const result = latestStep?.result;
+	if (!latestStep?.toolCall || !result || result.success !== true) return null;
+	if (result.transcriptVisibility !== "internal") return null;
+	if (hasAwaitingUserInputMarker(result)) return null;
+	if (hasRequiresConfirmationMarker(result)) return null;
+	const receipts = result.effectReceipts ?? [];
+	if (receipts.length === 0) return null;
+	if (
+		receipts.some(
+			(receipt) => receipt.outcome !== "applied" && receipt.outcome !== "noop",
+		)
+	) {
+		return null;
+	}
+	const data = result.data;
+	const context =
+		data && typeof data === "object"
+			? (data as Record<string, unknown>).replyContext
+			: undefined;
+	if (!context || typeof context !== "object" || Array.isArray(context)) {
+		return null;
+	}
+	const record = context as Record<string, unknown>;
+	const facts = typeof record.facts === "string" ? record.facts.trim() : "";
+	const domain = typeof record.domain === "string" ? record.domain.trim() : "";
+	if (!facts || !domain) return null;
+	return {
+		domain,
+		intent: typeof record.intent === "string" ? record.intent.trim() : "",
+		scenario: typeof record.scenario === "string" ? record.scenario.trim() : "",
+		facts,
+	};
+}
+
+/**
+ * Compact TEXT_SMALL render of an action's receipt facts. Null on any failure
+ * or unsafe output so the caller falls back to the full evaluator.
+ */
+async function renderGroundedReceiptReply(
+	params: PlannerLoopParams,
+	reply: GroundedReceiptReply,
+): Promise<string | null> {
+	const agentName =
+		(
+			params.runtime as { character?: { name?: string } }
+		).character?.name?.trim() || "the assistant";
+	const system = [
+		`You are ${agentName}. A ${reply.domain} operation the user asked for has just completed. Write the reply the user will read.`,
+		"Rules: plain everyday words in one or two short sentences; keep every date, time, name and number exactly as given; if the facts say something was not found, not changed, or needs the user's input, say that plainly instead of claiming it was done; never expose ids, field names, JSON, tool names, or receipt metadata; add no offers or follow-up questions the facts do not ask for.",
+	].join("\n");
+	const user = [
+		reply.intent ? `User request: ${reply.intent}` : "",
+		reply.scenario ? `Outcome type: ${reply.scenario}` : "",
+		"Authoritative facts (use only these; do not add, infer, or soften anything):",
+		reply.facts,
+	]
+		.filter((line) => line !== "")
+		.join("\n");
+	try {
+		const raw = await params.runtime.useModel(ModelType.TEXT_SMALL, {
+			messages: [
+				{ role: "system", content: system },
+				{ role: "user", content: user },
+			],
+			maxTokens: 240,
+		});
+		const text = (
+			typeof raw === "string"
+				? raw
+				: typeof (raw as { text?: unknown } | null)?.text === "string"
+					? (raw as { text: string }).text
+					: ""
+		).trim();
+		if (!text || isUnsafeUserVisibleText(text)) return null;
+		return text;
+	} catch (error) {
+		// error-policy:J4 a failed render is not a failed turn: the full evaluator
+		// owns the reply and its own provider-failure handling.
+		params.runtime.logger?.warn?.(
+			{
+				src: "planner-loop",
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Grounded receipt render failed; using the full evaluator",
+		);
+		return null;
+	}
 }
 
 function tryGateEvaluator(args: {
