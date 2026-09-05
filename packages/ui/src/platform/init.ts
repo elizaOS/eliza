@@ -300,23 +300,7 @@ export function setupPlatformStyles(): void {
     clearStandaloneBottomReclaim();
   }
 
-  // Expose the OS safe-area insets as CSS vars. `--safe-area-top` reserves the
-  // notch/camera/status-bar clearance (the app column pads its top by it);
-  // `--safe-area-bottom` is the home-indicator clearance the chat composer pads
-  // into so its controls stay tappable. The wallpaper and content still bleed
-  // full-bleed to the physical bottom under those, with the reclaim above
-  // re-seating the composer at the true edge on the collapsed iOS surface.
-  root.style.setProperty("--safe-area-top", "env(safe-area-inset-top, 0px)");
-  root.style.setProperty(
-    "--safe-area-bottom",
-    "env(safe-area-inset-bottom, 0px)",
-  );
-  root.style.setProperty("--safe-area-left", "env(safe-area-inset-left, 0px)");
-  root.style.setProperty(
-    "--safe-area-right",
-    "env(safe-area-inset-right, 0px)",
-  );
-
+  // Shared base.css owns the live Capacitor/env safe-area aliases on every host.
   root.style.setProperty("--keyboard-height", "0px");
 }
 

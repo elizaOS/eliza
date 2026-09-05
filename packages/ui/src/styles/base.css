@@ -1,6 +1,21 @@
 /* Eliza — Theme System */
 
 :root {
+  /* Capacitor SystemBars publishes corrected Android insets (including zero
+     when the native WebView is already padded). Browser/iOS env() is only the
+     fallback. One CSS owner serves both app and UI entrypoints and follows
+     rotation/resume without duplicate JS setup or polling. */
+  --safe-area-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-area-bottom: var(
+    --safe-area-inset-bottom,
+    env(safe-area-inset-bottom, 0px)
+  );
+  --safe-area-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --safe-area-right: var(
+    --safe-area-inset-right,
+    env(safe-area-inset-right, 0px)
+  );
+
   /* Legacy alias retained for old theme references, neutralized per #8796. */
   --brand-blue: rgba(0, 0, 0, 0.6);
   /* Retained for wallpaper/content assets; routine product chrome is neutral. */
@@ -43,6 +58,9 @@
   --notification-source-background: rgb(0 0 0 / 30%);
   --notification-source-border: rgb(255 255 255 / 15%);
   --notification-source-radius: 9px;
+  --notification-card-background: rgb(18 18 20);
+  --notification-card-border: rgb(255 255 255 / 40%);
+  --notification-card-hover: rgb(30 30 32);
   --assistant-overlay-card: rgb(20 20 24 / 82%);
   --assistant-overlay-foreground: #f5f5f5;
   --assistant-overlay-strong-foreground: #ffffff;
@@ -206,6 +224,8 @@
      `env(safe-area-*)`, `--safe-area-top/bottom`, `--eliza-mobile-nav-offset`,
      or `--eliza-chat-clearance` itself — that double-pads. It only
      adds these tight content gutters on top of the frame the shell gives it.
+     Fullscreen/immersive manifests bypass the shell's top inset: those views
+     own it once inside their interactive chrome (Calendar, Browser).
      One token per axis so the whole app breathes on one rhythm. */
   --view-pad-top: 0.5rem;
   --view-pad-bottom: 1rem;

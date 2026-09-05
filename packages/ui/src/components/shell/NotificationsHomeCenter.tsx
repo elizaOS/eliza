@@ -9,7 +9,7 @@
  * terminal load-failure state is a visible unavailable card with a manual retry,
  * so a broken persistence path never masquerades as loading or an empty inbox. The
  * inbox container has no
- * card chrome of its own; each notification is a liquid-glass card. Groups
+ * card chrome of its own; each notification has a solid fill and outline. Groups
  * carry NO headers or dividers — the physical gap between card clusters is the
  * only group structure (producer labels survive as grouping keys and
  * accessible names, never as rendered eyebrows).
@@ -128,14 +128,6 @@ export {
 
 import { Button } from "../ui/button";
 import {
-  LIQUID_GLASS_BLUR,
-  LIQUID_GLASS_EDGE_SHADOW,
-  LIQUID_GLASS_REFRACTION,
-  LIQUID_GLASS_SHEEN,
-  LiquidGlassRefractionDefs,
-  liquidGlassRimCss,
-} from "./liquid-glass";
-import {
   applyNotificationPullPresentation,
   clearNotificationPullVisibilityOverrides,
   dampenPull,
@@ -227,12 +219,11 @@ interface PendingStackFold {
 }
 
 /**
- * Scroll + glass polish for the shade, in one inline block (house pattern —
+ * Scroll and card presentation for the shade, in one inline block (house pattern —
  * see HOME_ENTER_CSS in HomeScreen):
  *
- *  - `.eliza-notif-glass` is the liquid-glass card recipe every notification
- *    (and stack peek) carries: frosted translucent fill, the shared specular
- *    sheen + inset edge stack from ./liquid-glass, hover as a neutral lighten.
+ *  - Every notification and stack peek uses one solid surface with a uniform
+ *    outline. No per-card blur, refraction, or gradient rim is needed.
  *  - The scrollport exposes only the edge masks that represent hidden content:
  *    no mask without overflow, bottom-only at the top, both in the middle, and
  *    top-only at the end. Geometry observation keeps that contract reliable in
@@ -278,9 +269,7 @@ const NOTIF_SCROLL_CSS = `
   .eliza-notif-meta { font-size: clamp(.6875rem, calc(.5rem + .75cqi), .8125rem); }
 }
 .eliza-notif-glass {
-  --eliza-notif-glass-fill: rgb(12 12 14 / 34%);
-  --eliza-notif-glass-sheen: ${LIQUID_GLASS_SHEEN};
-  --eliza-notif-glass-backdrop: ${LIQUID_GLASS_BLUR};
+  --eliza-notif-glass-fill: var(--notification-card-background);
   --eliza-notif-glass-visibility: 1;
   isolation: isolate;
   background-color: transparent;
@@ -289,74 +278,26 @@ const NOTIF_SCROLL_CSS = `
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-/* The fill and edge depth live on a permanent layer beneath card content. The
-   mask-composite rim remains the permanent ::before layer below, so neither
-   layer changes ownership when a shade gesture begins. */
+/* Keep fill and border on one layer so shade gestures fade them together
+   without fading the content twice or changing row geometry. */
 .eliza-notif-glass::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
   border-radius: inherit;
+  border: 1px solid var(--notification-card-border);
   background-color: var(--eliza-notif-glass-fill);
-  background-image: var(--eliza-notif-glass-sheen);
-  box-shadow: ${LIQUID_GLASS_EDGE_SHADOW};
-  -webkit-backdrop-filter: var(--eliza-notif-glass-backdrop);
-  backdrop-filter: var(--eliza-notif-glass-backdrop);
   opacity: var(--eliza-notif-glass-visibility);
   pointer-events: none;
   transition: background-color 150ms linear;
-}
-/* Chromium honors url(#…) on backdrop-filter → refract the background at the
-   rim (the "liquid" cue). WebKit can't, so it keeps the frosted blur above. */
-@supports (backdrop-filter: url(#x)) or (-webkit-backdrop-filter: url(#x)) {
-  .eliza-notif-glass {
-    --eliza-notif-glass-backdrop: ${LIQUID_GLASS_REFRACTION};
-  }
-}
-/* A dense expanded inbox cannot afford one live backdrop-refraction graph per
-   card. Keep the full material for the small rested triage; while previewing
-   or expanded, the same sheen/rim sits on a solid fill so drag
-   and scroll stay compositor-cheap even at the 100-row render cap. */
-.eliza-notif-scroll[data-shade-preview] .eliza-notif-glass,
-.eliza-notif-scroll[data-shade-mode="expanded"] .eliza-notif-glass {
-  --eliza-notif-glass-fill: rgb(22 22 25);
-  --eliza-notif-glass-backdrop: none;
-}
-/* Backdrop refraction has to resample the fixed wallpaper while the complete
-   home pane translates. Keep the same opaque material during a horizontal rail
-   drag/settle, then restore refraction when the pager reaches rest. */
-[data-rail-gesture-active] .eliza-notif-glass {
-  --eliza-notif-glass-fill: rgb(22 22 25 / 88%);
-  --eliza-notif-glass-backdrop: none;
-}
-/* A collapsed stack is a set of physical cards, not translucent glass panes.
-   Keep its front card and peeks solid through every shade/pager material
-   override so the wallpaper and adjacent rows cannot show through. */
-.eliza-notif-scroll [data-notification-stack-material] .eliza-notif-glass,
-.eliza-notif-scroll [data-notification-stacked] .eliza-notif-glass,
-.eliza-notif-scroll .eliza-notif-glass.eliza-notif-stack-peek {
-  --eliza-notif-glass-fill: rgb(28 28 30);
-  --eliza-notif-glass-sheen: none;
-  --eliza-notif-glass-backdrop: none;
-}
-/* Directional specular rim tracing every rounded corner (mask-composite ring)
-   — replaces the old one-sided inset hairline that read as a vertical line. */
-${liquidGlassRimCss(".eliza-notif-glass")}
-.eliza-notif-glass::before {
-  opacity: var(--eliza-notif-glass-visibility);
 }
 /* Touch browsers can leave :hover latched on the release target until React's
    settled projection replaces it. Only precise pointers get a hover material,
    so every physical card keeps one fill throughout a touch release. */
 @media (hover: hover) and (pointer: fine) {
-  .eliza-notif-scroll [data-notification-stack-material] .eliza-notif-glass:hover,
-  .eliza-notif-scroll [data-notification-stacked] .eliza-notif-glass:hover,
-  .eliza-notif-scroll .eliza-notif-glass.eliza-notif-stack-peek:hover {
-    --eliza-notif-glass-fill: rgb(38 38 42);
-  }
   .eliza-notif-glass:hover {
-    --eliza-notif-glass-fill: rgb(38 38 42 / 42%);
+    --eliza-notif-glass-fill: var(--notification-card-hover);
   }
 }
 .eliza-notif-pull-reveal {
@@ -425,11 +366,9 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   --eliza-notif-glass-visibility: var(--eliza-notif-group-surface-visibility, 1);
   opacity: 1 !important;
 }
-.eliza-notif-scroll[data-shade-mode="expanded"][data-shade-dragging] [data-notification-group-content] .eliza-notif-glass::before,
 .eliza-notif-scroll[data-shade-mode="expanded"][data-shade-dragging] [data-notification-group-content] .eliza-notif-glass::after {
   transition: none;
 }
-.eliza-notif-scroll[data-shade-mode="expanded"][data-shade-settling] [data-notification-group-content] .eliza-notif-glass::before,
 .eliza-notif-scroll[data-shade-mode="expanded"][data-shade-settling] [data-notification-group-content] .eliza-notif-glass::after {
   transition: opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
 }
@@ -443,7 +382,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   --eliza-notif-glass-visibility: 1;
   opacity: 1 !important;
 }
-[data-notification-shade-cancelling] .eliza-notif-glass::before,
 [data-notification-shade-cancelling] .eliza-notif-glass::after {
   transition: opacity var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms) ${SHADE_EASING};
 }
@@ -751,6 +689,10 @@ export function NotificationsHomeCenter({
     [notifications],
   );
   const inboxEmpty = notifications.length === 0;
+  const hasNotifications = !inboxEmpty;
+  const surfaceReady = hasNotifications || (hydrated && pendingActionsLoaded);
+  const showHydrationFailure =
+    hydrationStatus === "failed" && pendingActions.length === 0;
   const reduceMotion = usePrefersReducedMotion();
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
@@ -1183,7 +1125,7 @@ export function NotificationsHomeCenter({
   );
   useLayoutEffect(() => {
     const scrollport = scrollRef.current;
-    if (!scrollport) return;
+    if (!scrollport || !surfaceReady || showHydrationFailure) return;
 
     let syncFrame: number | null = null;
     const sync = () => syncNotificationScrollFade(scrollport);
@@ -1199,6 +1141,9 @@ export function NotificationsHomeCenter({
         ? new ResizeObserver(scheduleSync)
         : null;
     const observeContent = () => {
+      // Mutations can replace entire groups. Release detached targets before
+      // observing the current children; otherwise the observer retains them.
+      resizeObserver?.disconnect();
       resizeObserver?.observe(scrollport);
       for (const child of Array.from(scrollport.children)) {
         resizeObserver?.observe(child);
@@ -1222,7 +1167,7 @@ export function NotificationsHomeCenter({
       window.removeEventListener("resize", scheduleSync);
       if (syncFrame !== null) window.cancelAnimationFrame(syncFrame);
     };
-  }, []);
+  }, [surfaceReady, showHydrationFailure]);
   const pullVisibleGroupsRef = useRef<HTMLElement[] | undefined>(undefined);
   const pointerPull = useRef<{
     id: number;
@@ -1906,8 +1851,6 @@ export function NotificationsHomeCenter({
   // ordinary scrolling (see reference: pan-y pull gestures are dead on arrival
   // without this). `surfaceReady` re-runs the bind when hydration establishes a
   // genuinely empty inbox or when a notification arrives before hydration.
-  const hasNotifications = !inboxEmpty;
-  const surfaceReady = hasNotifications || (hydrated && pendingActionsLoaded);
   useEffect(() => {
     const list = scrollRef.current;
     if (!list || !surfaceReady) return;
@@ -2695,7 +2638,7 @@ export function NotificationsHomeCenter({
   // Do not flash an empty result while the initial request is still in flight.
   // Once hydrated, keep the transparent pull target mounted so an empty shade
   // can communicate its state instead of ignoring the gesture.
-  if (hydrationStatus === "failed" && pendingActions.length === 0) {
+  if (showHydrationFailure) {
     return (
       <section
         aria-label="Notifications"
@@ -2703,11 +2646,10 @@ export function NotificationsHomeCenter({
         className="eliza-notif-center relative flex min-h-20 flex-none items-center px-1.5 py-1 text-white"
       >
         <style>{NOTIF_SCROLL_CSS}</style>
-        <LiquidGlassRefractionDefs />
         <div
           role="alert"
           data-testid="notifications-unavailable"
-          className="eliza-notif-glass flex w-full items-center justify-between gap-3 rounded-2xl border border-orange-500/30 px-4 py-3"
+          className="eliza-notif-glass relative flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3"
         >
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white">
@@ -2867,7 +2809,6 @@ export function NotificationsHomeCenter({
       )}
     >
       <style>{NOTIF_SCROLL_CSS}</style>
-      <LiquidGlassRefractionDefs />
       {/* No "Notifications" header, no group eyebrows, no dividers: the
           physical gaps between card clusters ARE the grouping. Directional
           pull gestures own the shade transition. */}

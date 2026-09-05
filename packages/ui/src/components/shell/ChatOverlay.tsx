@@ -2851,7 +2851,7 @@ export function ChatOverlay({
   }, []);
   const [viewport, setViewport] = React.useState(readViewport);
   const [bottomPad, setBottomPad] = React.useState(0);
-  // The real `env(safe-area-inset-top)` in px, so the full-bleed header reserves
+  // The resolved shared safe-area inset in px, so the full-bleed header reserves
   // the actual notch/Dynamic-Island inset instead of a fixed guess. Re-measured
   // on rotation (`resize`); it never changes between resizes, so it stays off the
   // high-rate vv `scroll`.
@@ -3412,7 +3412,7 @@ export function ChatOverlay({
   // Full-bleed extends the glass UP under the status bar; riding the shape
   // spring (instead of a discrete swap at commit) keeps the top edge from
   // popping a safe-area-height on notch devices. 0px at rest (t=0).
-  const glassTopExtension = useMotionTemplate`calc(${fullBleedT} * -1 * env(safe-area-inset-top, 0px))`;
+  const glassTopExtension = useMotionTemplate`calc(${fullBleedT} * -1 * var(--safe-area-top, 0px))`;
   // At full-bleed the composer floats as its OWN glass capsule — the exact
   // chrome of the resting input bar (frosted fill, hairline border, capsule
   // radius) — instead of dissolving into the edge-to-edge panel. All of it
@@ -6150,7 +6150,7 @@ export function ChatOverlay({
                   <div
                     className="pointer-events-auto absolute inset-x-0 top-0 z-[15]"
                     style={{
-                      height: `calc(env(safe-area-inset-top, 0px) + ${MAXIMIZE_RESTORE_ZONE_PX}px)`,
+                      height: `calc(var(--safe-area-top, 0px) + ${MAXIMIZE_RESTORE_ZONE_PX}px)`,
                     }}
                   >
                     <Button

@@ -383,8 +383,11 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
   }
 
   await page.evaluate(() => {
-    document.documentElement.style.setProperty("--safe-area-top", "47px");
-    document.documentElement.style.setProperty("--safe-area-bottom", "24px");
+    document.documentElement.style.setProperty("--safe-area-inset-top", "47px");
+    document.documentElement.style.setProperty(
+      "--safe-area-inset-bottom",
+      "24px",
+    );
     document.documentElement.style.setProperty(
       "--eliza-mobile-nav-offset",
       "60px",
@@ -432,9 +435,8 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
       };
     });
 
-  // WebKit-backed mobile shells publish the status/home-indicator and bottom
-  // navigation insets on the shared workspace chrome. The routed view keeps
-  // only its own 16px content gutter plus the measured 96px chat footprint.
+  // Fullscreen Browser owns its top status-bar inset. Shared workspace chrome
+  // owns bottom navigation; the view adds its content gutter and chat footprint.
   await expect
     .poll(async () => {
       const geometry = await readInsetGeometry();
@@ -449,7 +451,7 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
       };
     })
     .toEqual({
-      rootPaddingTop: 12,
+      rootPaddingTop: 47 + 12,
       rootOwnsOnlyContentAndChat: true,
       chromePaddingBottom: 84,
       shellBottomGap: 84,
@@ -470,7 +472,7 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
       };
     })
     .toEqual({
-      rootPaddingTop: 24,
+      rootPaddingTop: 47 + 24,
       rootOwnsOnlyContentAndChat: true,
       chromePaddingBottom: 84,
       shellBottomGap: 84,

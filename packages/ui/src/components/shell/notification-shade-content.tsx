@@ -588,7 +588,7 @@ export const NotificationRow = memo(function NotificationRow({
       >
         <Button
           type="button"
-          variant="surface"
+          variant="transparent"
           size="row"
           align="start"
           data-testid="notification-row"

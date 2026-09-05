@@ -309,7 +309,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     }
   });
 
-  it("reserves the resting chat footprint without reapplying shell-owned insets", async () => {
+  it("reserves the resting chat footprint without reapplying bottom insets", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
 
@@ -318,7 +318,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(root.getAttribute("data-chat-clearance-aware")).toBe("true");
     expect(root.className).toContain("--eliza-chat-clearance");
     expect(root.className).not.toContain("--eliza-mobile-nav-offset");
-    expect(root.className).not.toContain("--safe-area-top");
     expect(root.className).not.toContain("--safe-area-bottom");
     expect(root.className).not.toContain("--android-gesture-inset-bottom");
     expect(root.contains(surface)).toBe(true);

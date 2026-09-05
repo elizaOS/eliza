@@ -2736,16 +2736,7 @@ function setupPlatformStyles(): void {
     }")`,
   );
 
-  root.style.setProperty("--safe-area-top", "env(safe-area-inset-top, 0px)");
-  root.style.setProperty(
-    "--safe-area-bottom",
-    "env(safe-area-inset-bottom, 0px)",
-  );
-  root.style.setProperty("--safe-area-left", "env(safe-area-inset-left, 0px)");
-  root.style.setProperty(
-    "--safe-area-right",
-    "env(safe-area-inset-right, 0px)",
-  );
+  // Shared base.css owns the live Capacitor/env safe-area aliases on every host.
   root.style.setProperty("--keyboard-height", "0px");
 }
 
