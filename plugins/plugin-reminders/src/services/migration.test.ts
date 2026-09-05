@@ -4,6 +4,7 @@ import {
   MIGRATED_REMINDER_TABLES,
   migrateReminderTable,
   migrateReminderTables,
+  parseSqlBoolean,
   type SqlExecutor,
 } from "./migration.ts";
 
@@ -16,6 +17,12 @@ function fakeExec(
     log?.push(sql);
     for (const [re, rows] of responses) {
       if (re.test(sql)) return rows;
+    }
+    if (
+      sql.includes("reminders_migration_state") &&
+      sql.includes("SELECT EXISTS")
+    ) {
+      return [{ done: false }];
     }
     return [];
   };
@@ -62,6 +69,12 @@ describe("RemindersMigration", () => {
 
   it("tolerates a concurrent migration after observing an empty target", async () => {
     const exec: SqlExecutor = async (sql) => {
+      if (
+        sql.includes("reminders_migration_state") &&
+        sql.includes("SELECT EXISTS")
+      ) {
+        return [{ done: false }];
+      }
       if (sql.includes("to_regclass")) return [{ present: true }];
       if (sql.includes("SELECT NOT EXISTS")) return [{ empty: true }];
       if (
@@ -160,5 +173,54 @@ describe("one-shot migration marker (2026-08-16 phantom routine rows)", () => {
     const firstRegclass = log.findIndex((s) => s.includes("to_regclass"));
     expect(markerCreate).toBeGreaterThanOrEqual(0);
     expect(markerCreate).toBeLessThan(firstRegclass);
+  });
+
+  it("handles postgres wire protocol boolean representations (t, 1, true)", async () => {
+    const exec = fakeExec([
+      [/reminders_migration_state[\s\S]*table_name = /, [{ done: "f" }]],
+      [/to_regclass/, [{ present: "t" }]],
+      [/SELECT NOT EXISTS/, [{ empty: 1 }]],
+    ]);
+    const r = await migrateReminderTable(exec, "life_reminder_plans");
+    expect(r.outcome).toBe("copied");
+  });
+});
+
+describe("parseSqlBoolean", () => {
+  it("recognizes standard boolean and SQL wire truthy formats", () => {
+    expect(parseSqlBoolean(true)).toBe(true);
+    expect(parseSqlBoolean(1)).toBe(true);
+    expect(parseSqlBoolean("true")).toBe(true);
+    expect(parseSqlBoolean("TRUE")).toBe(true);
+    expect(parseSqlBoolean("t")).toBe(true);
+    expect(parseSqlBoolean("T")).toBe(true);
+    expect(parseSqlBoolean("1")).toBe(true);
+  });
+
+  it("recognizes standard boolean and SQL wire falsy formats", () => {
+    expect(parseSqlBoolean(false)).toBe(false);
+    expect(parseSqlBoolean(0)).toBe(false);
+    expect(parseSqlBoolean("false")).toBe(false);
+    expect(parseSqlBoolean("FALSE")).toBe(false);
+    expect(parseSqlBoolean("f")).toBe(false);
+    expect(parseSqlBoolean("F")).toBe(false);
+    expect(parseSqlBoolean("0")).toBe(false);
+  });
+
+  it("throws on null, undefined, and unrecognized inputs", () => {
+    expect(() => parseSqlBoolean(null)).toThrow("Expected boolean result");
+    expect(() => parseSqlBoolean(undefined)).toThrow("Expected boolean result");
+    expect(() => parseSqlBoolean("unknown")).toThrow("Expected boolean result");
+    expect(() => parseSqlBoolean({})).toThrow("Expected boolean result");
+    expect(() => parseSqlBoolean(123)).toThrow("Expected boolean result");
+  });
+
+  it("aborts migration when database query returns malformed/empty results", async () => {
+    const emptyExec = fakeExec([
+      [/reminders_migration_state[\s\S]*table_name = /, []],
+    ]);
+    await expect(
+      migrateReminderTable(emptyExec, "life_reminder_plans"),
+    ).rejects.toThrow("Missing query result");
   });
 });
