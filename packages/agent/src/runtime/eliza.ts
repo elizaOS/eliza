@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * elizaOS runtime entry point for Eliza.
  *
@@ -2390,9 +2391,9 @@ export function bindCloudGithubTokenToRuntime(
  * mean "yes, a 31-char placeholder" without the log showing it.
  */
 export function cloudApiKeyFingerprint(value: string | undefined): string {
-  const v = value?.trim();
+  const v = value ? toWellFormedUnicode(value).trim() : "";
   if (!v) return "(none)";
-  return `${v.slice(0, 6)}…(len ${v.length})`;
+  return `${truncateWellFormed(v, 6)}…(len ${v.length})`;
 }
 
 /**
