@@ -702,6 +702,7 @@
   "cloud.account.profile.uploading": "Uploading...",
   "cloud.account.signInDescription": "Sign in to manage your Eliza Cloud account.",
   "cloud.account.signInError": "Could not start Eliza Cloud sign-in.",
+  "cloud.account.signInFailed": "Sign in unavailable",
   "cloud.account.signInTitle": "Sign in required",
   "cloud.account.security.apiKeysDesc": "Manage your API keys for programmatic access",
   "cloud.account.security.apiKeysTitle": "API Keys",
