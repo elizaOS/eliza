@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Public shared-chat landing for a character. Fetches the redacted public
  * character from /api/characters/:ref/public (no-login funnel) and presents it
@@ -163,7 +164,7 @@ export default function PublicChatPage() {
           />
         ) : (
           <div className="mx-auto flex size-20 items-center justify-center rounded-full border border-border bg-bg-elevated text-2xl font-semibold text-muted">
-            {character.name.slice(0, 2).toUpperCase()}
+            {truncateWellFormed(toWellFormedUnicode(character.name), 2).toUpperCase()}
           </div>
         )}
         <div className="space-y-2">
