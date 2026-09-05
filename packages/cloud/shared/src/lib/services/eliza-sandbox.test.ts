@@ -6245,7 +6245,20 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
         })),
       })),
     }));
-    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => ({
+          rows: [
+            {
+              hostname: "dedicated-node.example.test",
+              ssh_port: 2222,
+              ssh_user: "eliza",
+              host_key_fingerprint: "SHA256:test",
+            },
+          ],
+        }),
+        update,
+      });
 
     try {
       await expect(
@@ -6266,6 +6279,16 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
         }),
       ).resolves.toMatchObject({
         ok: true,
+        deletionLocator: {
+          sandboxId: live.sandbox_id,
+          agentId: live.id,
+          nodeId: live.node_id,
+          containerName: live.container_name,
+          hostname: "dedicated-node.example.test",
+          sshPort: 2222,
+          sshUser: "eliza",
+          hostKeyFingerprint: "SHA256:test",
+        },
       });
       expect(update).toHaveBeenCalled();
     } finally {
@@ -6398,6 +6421,10 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       const res = (await svc.deleteAgent(AGENT, ORG)) as { success: boolean; error?: string };
       expect(res.success).toBe(false);
       expect(res.error).toBe("Failed to delete sandbox");
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[agent-sandbox] Stop failed during delete",
+        expect.objectContaining({ stopFailureKind: "docker_stop_pair_failed" }),
+      );
       // Critically: the row delete is never attempted when the container may
       // still be running.
       expect(commit).not.toHaveBeenCalled();

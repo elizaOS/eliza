@@ -70,6 +70,22 @@ export type SandboxDeletionStopOutcome =
   | { kind: "not-running-proven" }
   | { kind: "not-running-unresolved"; reason: "node-unreachable" };
 
+/**
+ * Exact container placement captured by the lifecycle transaction before a
+ * destructive delete leaves its database ownership boundary. SSH authority
+ * may be carried by an exact caller or hydrated from the captured node ID.
+ */
+export interface SandboxDeletionLocator {
+  sandboxId: string;
+  agentId: string;
+  nodeId: string;
+  containerName: string;
+  hostname?: string;
+  sshPort?: number;
+  sshUser?: string;
+  hostKeyFingerprint?: string;
+}
+
 export interface SandboxReplacementCleanupLocator {
   sandboxId: string;
   nodeId: string;
@@ -256,7 +272,10 @@ export interface SandboxProvider {
    * the workload is not running. The deletion workflow owns capacity release,
    * so an unresolved outcome completes deletion without authorizing release.
    */
-  stopForDeletion(sandboxId: string): Promise<SandboxDeletionStopOutcome>;
+  stopForDeletion(
+    sandboxId: string,
+    locator?: SandboxDeletionLocator,
+  ): Promise<SandboxDeletionStopOutcome>;
   /**
    * Retires a sandbox before a replacement is allowed to start. Unlike the
    * ordinary delete-oriented stop path, this must reject whenever the provider

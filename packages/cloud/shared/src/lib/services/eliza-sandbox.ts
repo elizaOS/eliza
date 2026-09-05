@@ -134,6 +134,7 @@ import {
 } from "./sandbox-provider";
 import {
   isContainerBackedExecutionTier,
+  type SandboxDeletionLocator,
   type SandboxDeletionStopOutcome,
   SandboxReplacementCleanupUnresolvedError,
 } from "./sandbox-provider-types";
@@ -545,6 +546,71 @@ export type DeleteAgentResult =
       deletedSandbox: AgentSandbox;
     }
   | { success: false; error: string; retryable?: true };
+
+export type SandboxDeleteStopFailureKind =
+  | "teardown_locator_unresolved"
+  | "teardown_node_metadata_missing"
+  | "teardown_node_hostname_missing"
+  | "ssh_authentication"
+  | "ssh_transport"
+  | "remote_command_timeout"
+  | "docker_daemon"
+  | "docker_stop_pair_failed"
+  | "provider_initialization"
+  | "unclassified";
+
+/** Reduces a provider exception to a closed, secret-free teardown diagnosis. */
+export function classifySandboxDeleteStopFailure(error: unknown): SandboxDeleteStopFailureKind {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  if (normalized.includes("not found in memory or db. cannot resolve target node")) {
+    return "teardown_locator_unresolved";
+  }
+  if (normalized.includes("missing persisted docker node metadata")) {
+    return "teardown_node_metadata_missing";
+  }
+  if (normalized.includes("docker node") && normalized.includes("is missing hostname")) {
+    return "teardown_node_hostname_missing";
+  }
+  if (
+    normalized.includes("authentication failed") ||
+    normalized.includes("permission denied") ||
+    normalized.includes("no supported authentication methods") ||
+    normalized.includes("publickey")
+  ) {
+    return "ssh_authentication";
+  }
+  if (
+    normalized.includes("econnrefused") ||
+    normalized.includes("ehostunreach") ||
+    normalized.includes("enetunreach") ||
+    normalized.includes("no route to host") ||
+    normalized.includes("connection refused") ||
+    normalized.includes("connection reset") ||
+    normalized.includes("connection timed out") ||
+    normalized.includes("connect timeout") ||
+    normalized.includes("getaddrinfo")
+  ) {
+    return "ssh_transport";
+  }
+  if (normalized.includes("timed out") || normalized.includes("timeout")) {
+    return "remote_command_timeout";
+  }
+  if (
+    normalized.includes("cannot connect to the docker daemon") ||
+    normalized.includes("docker daemon")
+  ) {
+    return "docker_daemon";
+  }
+  if (
+    normalized.includes("failed to stop container") ||
+    (normalized.includes("docker stop ->") && normalized.includes("docker rm -f ->"))
+  ) {
+    return "docker_stop_pair_failed";
+  }
+  if (!normalized.includes("docker-sandbox")) return "provider_initialization";
+  return "unclassified";
+}
 
 export type DeleteAuthorization = "user_request" | "billing_request" | "account_deletion";
 
@@ -1185,12 +1251,17 @@ const UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS = 30_000;
 // pre-cutover replacement out of the crash-recovery sweep long enough for the
 // 15-minute cold-boot job ceiling and any bounded leaf cleanup to settle.
 const PRE_CUTOVER_REPLACEMENT_SWEEP_GRACE_MINUTES = 30;
-// Hard cap on the container+VPN teardown during agent delete. The underlying
-// docker rm (60s) and headscale deletion (15s) are each internally bounded, but
-// an EARLY hang (SSH connect / provider init) was not — and a single stuck node
-// could then hang the delete past the 300s job watchdog and wedge the whole
-// provisioning worker. Generous over the internal caps, well under the watchdog.
-const SANDBOX_DELETE_STOP_TIMEOUT_MS = 120_000;
+// Hard cap on the container+VPN teardown during agent delete. The ordinary
+// path remains much shorter, but opted-in daemon recovery can consume the
+// bounded absence probe, stop, force-remove, daemon restart, exact removal,
+// and Headscale cleanup in sequence. Each fresh isolated SSH session also owns
+// a bounded 10-second handshake before its command timer begins, so the full
+// worst-case chain is about 177 seconds before scheduling/DB overhead. The
+// former 120- and 180-second races expired before that chain could settle,
+// persisted a false unresolved tombstone, and left the recovery promise
+// running without an owner. 240 seconds leaves bounded settlement headroom
+// while remaining below the provisioning worker's 300-second watchdog.
+const SANDBOX_DELETE_STOP_TIMEOUT_MS = 240_000;
 type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /** Columns the tailnet-IP reconcile path reads to locate and repair an agent. */
@@ -2869,7 +2940,7 @@ export class ElizaSandboxService {
 
     if (precheck.sandboxId) {
       const sandboxId = precheck.sandboxId;
-      const stop = await this.runBoundedSandboxStop(sandboxId);
+      const stop = await this.runBoundedSandboxStop(sandboxId, precheck.deletionLocator);
 
       if (stop.kind === "stop-timed-out") {
         const errorMessage = stop.error instanceof Error ? stop.error.message : String(stop.error);
@@ -2893,16 +2964,19 @@ export class ElizaSandboxService {
         );
       } else if (stop.kind === "stop-failed") {
         const errorMessage = stop.error instanceof Error ? stop.error.message : String(stop.error);
+        const stopFailureKind = classifySandboxDeleteStopFailure(stop.error);
         if (this.isIgnorableSandboxStopError(stop.error)) {
           logger.info("[agent-sandbox] Sandbox already absent during delete cleanup", {
             sandboxId,
             status: precheck.status,
+            stopFailureKind,
             error: errorMessage,
           });
         } else {
           logger.warn("[agent-sandbox] Stop failed during delete", {
             sandboxId,
             status: precheck.status,
+            stopFailureKind,
             error: errorMessage,
           });
           return { success: false, error: "Failed to delete sandbox" };
@@ -3134,6 +3208,7 @@ export class ElizaSandboxService {
         deletionAttemptId: string;
         deletionStartedAt: Date;
         preDeleteBackupId: string | null;
+        deletionLocator: SandboxDeletionLocator | null;
       }
     | { ok: false; error: string }
   > {
@@ -3316,6 +3391,38 @@ export class ElizaSandboxService {
         lifecycleRevision = persisted.lifecycleRevision;
       }
 
+      let deletionLocator: SandboxDeletionLocator | null = null;
+      if (rec.sandbox_id && rec.node_id && rec.container_name) {
+        const nodeAuthority = await tx.execute<{
+          hostname: string;
+          ssh_port: number;
+          ssh_user: string;
+          host_key_fingerprint: string | null;
+        }>(sql`
+          SELECT hostname, ssh_port, ssh_user, host_key_fingerprint
+          FROM ${dockerNodes}
+          WHERE node_id = ${rec.node_id}
+          LIMIT 1
+        `);
+        const node = nodeAuthority.rows[0];
+        deletionLocator = {
+          sandboxId: rec.sandbox_id,
+          agentId: rec.id,
+          nodeId: rec.node_id,
+          containerName: rec.container_name,
+          ...(node
+            ? {
+                hostname: node.hostname,
+                sshPort: node.ssh_port,
+                sshUser: node.ssh_user,
+                ...(node.host_key_fingerprint
+                  ? { hostKeyFingerprint: node.host_key_fingerprint }
+                  : {}),
+              }
+            : {}),
+        };
+      }
+
       return {
         ok: true as const,
         sandboxId: rec.sandbox_id,
@@ -3327,6 +3434,7 @@ export class ElizaSandboxService {
         deletionAttemptId: owned.deletionAttemptId,
         deletionStartedAt: owned.deletionStartedAt,
         preDeleteBackupId,
+        deletionLocator,
       };
     });
   }
@@ -3631,12 +3739,13 @@ export class ElizaSandboxService {
    */
   private async runBoundedSandboxStop(
     sandboxId: string,
+    locator?: SandboxDeletionLocator | null,
   ): Promise<BoundedDeletionSandboxStopResult> {
     return withTimeout(
       (async (): Promise<SandboxDeletionStopOutcome | { kind: "stop-failed"; error: unknown }> => {
         try {
           const provider = await this.getProvider();
-          return await provider.stopForDeletion(sandboxId);
+          return await provider.stopForDeletion(sandboxId, locator ?? undefined);
         } catch (error) {
           // error-policy:J1 provider boundary translation — deletion records the
           // exact stop failure so the outer workflow can report a structured outcome.

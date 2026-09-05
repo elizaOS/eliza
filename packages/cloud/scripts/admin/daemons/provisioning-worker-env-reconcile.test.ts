@@ -40,8 +40,7 @@ const CONTAINERS_SSH_KEY = "CONTAINERS_SSH_KEY";
 const STEWARD_API_URL = "STEWARD_API_URL";
 const STEWARD_PLATFORM_KEYS = "STEWARD_PLATFORM_KEYS";
 const AGENT_TOKEN_PRIVATE_KEY_PEM = "AGENT_TOKEN_PRIVATE_KEY_PEM";
-const AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64 =
-  "AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64";
+const AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64 = "AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64";
 const AGENT_TOKEN_PRIVATE_KEY_TRANSPORT_FIXTURE = Buffer.from(
   "-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----\n",
 ).toString("base64");
@@ -395,6 +394,13 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
       expect(workflow).toContain(`"${name}=$${name}"`);
     }
     expect(forwarded).toContain(AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64);
+    expect(forwarded).toContain("CONTAINERS_PREPULL_SELF_HEAL_RESTART");
+    expect(workflow).toContain(
+      '"CONTAINERS_PREPULL_SELF_HEAL_RESTART=$CONTAINERS_PREPULL_SELF_HEAL_RESTART"',
+    );
+    expect(workflow).toContain(
+      "needs.determine-env.outputs.environment == 'staging' && 'true' || 'false'",
+    );
     expect(workflow).toContain(
       `"${AGENT_TOKEN_PRIVATE_KEY_PEM}=$${AGENT_TOKEN_PRIVATE_KEY_PEM}"`,
     );
@@ -611,9 +617,7 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
     expect(workflow).toContain(
       `"${VPN_REGISTRATION_TIMEOUT_KEY}=$${VPN_REGISTRATION_TIMEOUT_KEY}"`,
     );
-    expect(workflow).toContain(
-      `"$ENV_FILE" ${VPN_REGISTRATION_TIMEOUT_KEY}`,
-    );
+    expect(workflow).toContain(`"$ENV_FILE" ${VPN_REGISTRATION_TIMEOUT_KEY}`);
     expect(workflow).toContain(
       "Provisioning host VPN registration timeout drift. Values were not printed.",
     );
@@ -632,9 +636,7 @@ describe("atomic workflow block (executed verbatim)", () => {
     expect(result.host).toContain("UNRELATED=preserved\n");
     expect(
       lookupSystemdEnvironmentValue(result.host, AGENT_TOKEN_PRIVATE_KEY_PEM),
-    ).toBe(
-      "-----BEGIN PRIVATE KEY-----\\nfixture\\n-----END PRIVATE KEY-----",
-    );
+    ).toBe("-----BEGIN PRIVATE KEY-----\\nfixture\\n-----END PRIVATE KEY-----");
   });
 
   it("preserves an existing value when GitHub supplies an empty setting", () => {

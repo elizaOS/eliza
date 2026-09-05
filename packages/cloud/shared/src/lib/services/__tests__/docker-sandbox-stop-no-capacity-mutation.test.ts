@@ -22,12 +22,14 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 let execBehavior: (command: string) => Promise<string> = async () => "";
 mock.module("../docker-ssh", () => ({
   DockerSSHClient: {
-    getClient: () => ({
+    createDedicated: () => ({
       exec: async (command: string) => execBehavior(command),
+      disconnect: async () => {},
     }),
   },
 }));
 
+import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import { DockerSandboxProvider } from "../docker-sandbox-provider";
 
@@ -68,6 +70,8 @@ let decrementSpy: ReturnType<typeof spyOn>;
 beforeEach(() => {
   // Headscale deletion is skipped when unconfigured.
   delete process.env.HEADSCALE_API_KEY;
+  delete process.env.CONTAINERS_PREPULL_SELF_HEAL_RESTART;
+  delete process.env.ELIZA_CONTAINERS_PREPULL_SELF_HEAL_RESTART;
   decrementSpy = spyOn(dockerNodesRepository, "decrementAllocated");
 });
 
@@ -76,6 +80,25 @@ afterEach(() => {
 });
 
 describe("provider stop never mutates node capacity", () => {
+  test("an exact absence probe skips mutating Docker commands on a deletion retry", async () => {
+    const commands: string[] = [];
+    execBehavior = async (command) => {
+      commands.push(command);
+      return command.startsWith("sh -lc") ? "absent\n" : "";
+    };
+    const provider = new DockerSandboxProvider();
+    seedContainer(provider);
+
+    await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
+      kind: "not-running-proven",
+    });
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toContain("docker container inspect");
+    expect(commands[0]).not.toContain("docker stop");
+    expect(commands[0]).not.toContain("docker rm -f");
+    expect(decrementSpy).not.toHaveBeenCalled();
+  });
+
   test("a clean stop + rm leaves allocated_count to the caller", async () => {
     execBehavior = async () => "";
     const provider = new DockerSandboxProvider();
@@ -103,6 +126,43 @@ describe("provider stop never mutates node capacity", () => {
     expect(decrementSpy).not.toHaveBeenCalled();
   });
 
+  test("a restarted worker deletes from lifecycle placement without re-reading the sandbox", async () => {
+    execBehavior = async () => {
+      throw new Error("Error response from daemon: No such container: agent-x");
+    };
+    const sandboxLookup = spyOn(
+      agentSandboxesRepository,
+      "findBySandboxIdForWrite",
+    ).mockImplementation(async () => {
+      throw new Error("sandbox lookup must not run after deletion ownership is captured");
+    });
+    const nodeLookup = spyOn(dockerNodesRepository, "findByNodeIdOnPrimary").mockResolvedValue({
+      node_id: NODE_ID,
+      hostname: "138.201.80.125",
+      ssh_port: 22,
+      ssh_user: "root",
+      host_key_fingerprint: "test-fingerprint",
+    } as never);
+    const provider = new DockerSandboxProvider();
+
+    try {
+      await expect(
+        provider.stopForDeletion(SANDBOX_ID, {
+          sandboxId: SANDBOX_ID,
+          agentId: SANDBOX_ID,
+          nodeId: NODE_ID,
+          containerName: SANDBOX_ID,
+        }),
+      ).resolves.toEqual({ kind: "not-running-proven" });
+      expect(sandboxLookup).not.toHaveBeenCalled();
+      expect(nodeLookup).toHaveBeenCalledWith(NODE_ID);
+      expect(decrementSpy).not.toHaveBeenCalled();
+    } finally {
+      sandboxLookup.mockRestore();
+      nodeLookup.mockRestore();
+    }
+  });
+
   test("an unreachable container retains its capacity for reconciliation", async () => {
     execBehavior = async () => {
       throw new Error("[docker-ssh] Connection to 138.201.80.125:22 timed out after 10000ms");
@@ -128,6 +188,149 @@ describe("provider stop never mutates node capacity", () => {
     seedContainer(provider);
 
     await expect(provider.stopForDeletion(SANDBOX_ID)).rejects.toThrow(/Failed to stop container/);
+    expect(decrementSpy).not.toHaveBeenCalled();
+  });
+
+  test("an opted-in deletion recovers a twice-timed-out Docker daemon before exact removal", async () => {
+    process.env.CONTAINERS_PREPULL_SELF_HEAL_RESTART = "true";
+    const commands: string[] = [];
+    execBehavior = async (command) => {
+      commands.push(command);
+      if (command.startsWith("sh -lc")) return "unknown\n";
+      if (command.startsWith("docker stop") || command.startsWith("docker rm")) {
+        throw new Error(
+          "[docker-ssh] Command timed out after 25000ms on 138.201.80.125: docker [redacted]",
+        );
+      }
+      return "";
+    };
+    const provider = new DockerSandboxProvider();
+    seedContainer(provider);
+
+    await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
+      kind: "not-running-proven",
+    });
+    expect(commands.some((command) => command.includes("/etc/docker/daemon.json"))).toBe(true);
+    expect(commands.some((command) => command.includes("--kill-who=main"))).toBe(true);
+    expect(commands.some((command) => command.includes("systemctl start docker.service"))).toBe(
+      true,
+    );
+    expect(commands.some((command) => command.includes("docker info"))).toBe(true);
+    expect(commands.some((command) => command.includes("systemctl restart containerd"))).toBe(
+      false,
+    );
+    expect(
+      commands.some((command) =>
+        command.includes(`timeout -k 2s 20s docker rm -f '${SANDBOX_ID}'`),
+      ),
+    ).toBe(true);
+    expect(decrementSpy).not.toHaveBeenCalled();
+  });
+
+  test("an opted-in deletion recovers when the Docker timeout poisons the reconnect", async () => {
+    process.env.CONTAINERS_PREPULL_SELF_HEAL_RESTART = "true";
+    const commands: string[] = [];
+    let deleteAttempts = 0;
+    execBehavior = async (command) => {
+      commands.push(command);
+      if (command.startsWith("sh -lc")) return "unknown\n";
+      if (command.startsWith("docker stop")) {
+        throw new Error(
+          "[docker-ssh] Command timed out after 25000ms on 138.201.80.125: docker [redacted]",
+        );
+      }
+      if (command.startsWith("docker rm")) {
+        deleteAttempts += 1;
+        if (deleteAttempts === 1) {
+          throw new Error("[docker-ssh] Connection error: channel closed after reconnect");
+        }
+      }
+      return "";
+    };
+    const provider = new DockerSandboxProvider();
+    seedContainer(provider);
+
+    await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
+      kind: "not-running-proven",
+    });
+    expect(commands.some((command) => command.includes("/etc/docker/daemon.json"))).toBe(true);
+    expect(commands.some((command) => command.includes("--kill-who=main"))).toBe(true);
+    expect(deleteAttempts).toBe(1);
+    expect(
+      commands.some((command) =>
+        command.includes(`timeout -k 2s 20s docker rm -f '${SANDBOX_ID}'`),
+      ),
+    ).toBe(true);
+    expect(decrementSpy).not.toHaveBeenCalled();
+  });
+
+  test("an opted-in deletion re-probes a transport-failed pair before deciding to restart Docker", async () => {
+    process.env.CONTAINERS_PREPULL_SELF_HEAL_RESTART = "true";
+    const commands: string[] = [];
+    let initialDeleteAttempts = 0;
+    execBehavior = async (command) => {
+      commands.push(command);
+      if (command.startsWith("sh -lc")) return "unknown\n";
+      if (command.startsWith("docker stop") || command.startsWith("docker rm")) {
+        initialDeleteAttempts += 1;
+        throw new Error("[docker-ssh] stream error on node: channel closed");
+      }
+      if (command.startsWith("if timeout") && command.includes("docker info")) return "healthy";
+      return "";
+    };
+    const provider = new DockerSandboxProvider();
+    seedContainer(provider);
+
+    await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
+      kind: "not-running-proven",
+    });
+    expect(initialDeleteAttempts).toBe(2);
+    expect(commands.some((command) => command.includes("/etc/docker/daemon.json"))).toBe(true);
+    expect(commands.some((command) => command.includes("--kill-who=main"))).toBe(false);
+    expect(
+      commands.some((command) =>
+        command.includes(`timeout -k 2s 20s docker rm -f '${SANDBOX_ID}'`),
+      ),
+    ).toBe(true);
+    expect(decrementSpy).not.toHaveBeenCalled();
+  });
+
+  test("an opted-in deletion recovers after a remote daemon error plus exact timeout", async () => {
+    process.env.CONTAINERS_PREPULL_SELF_HEAL_RESTART = "true";
+    const commands: string[] = [];
+    let deleteAttempts = 0;
+    execBehavior = async (command) => {
+      commands.push(command);
+      if (command.startsWith("sh -lc")) return "unknown\n";
+      if (command.startsWith("docker stop")) {
+        throw new Error(
+          "[docker-ssh] Command exited with code 1 on node: Cannot connect to the Docker daemon",
+        );
+      }
+      if (command.startsWith("docker rm")) {
+        deleteAttempts += 1;
+        if (deleteAttempts === 1) {
+          throw new Error(
+            "[docker-ssh] Command timed out after 25000ms on node: docker [redacted]",
+          );
+        }
+      }
+      return "";
+    };
+    const provider = new DockerSandboxProvider();
+    seedContainer(provider);
+
+    await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
+      kind: "not-running-proven",
+    });
+    expect(commands.some((command) => command.includes("/etc/docker/daemon.json"))).toBe(true);
+    expect(commands.some((command) => command.includes("--kill-who=main"))).toBe(true);
+    expect(deleteAttempts).toBe(1);
+    expect(
+      commands.some((command) =>
+        command.includes(`timeout -k 2s 20s docker rm -f '${SANDBOX_ID}'`),
+      ),
+    ).toBe(true);
     expect(decrementSpy).not.toHaveBeenCalled();
   });
 
