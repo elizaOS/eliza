@@ -12,6 +12,7 @@ import * as realDockerNodesNs from "../../../db/repositories/docker-nodes";
 import * as realDockerNodeWorkloadsNs from "../docker-node-workloads";
 import * as realHetznerCloudApiNs from "./hetzner-cloud-api";
 import * as realNodeBootstrapNs from "./node-bootstrap";
+import * as realRetirementNs from "./node-retirement-authority";
 
 // Snapshot the real exports into plain objects *before* the `mock.module` calls
 // below run. The `import * as` namespaces are live bindings — once `mock.module`
@@ -22,6 +23,7 @@ const realDockerNodes = { ...realDockerNodesNs };
 const realDockerNodeWorkloads = { ...realDockerNodeWorkloadsNs };
 const realHetznerCloudApi = { ...realHetznerCloudApiNs };
 const realNodeBootstrap = { ...realNodeBootstrapNs };
+const realRetirement = { ...realRetirementNs };
 
 const AGENT_IMAGE = "ELIZA_AGENT_IMAGE";
 const AGENT_IMAGE_PLATFORM = "ELIZA_AGENT_IMAGE_PLATFORM";
@@ -97,6 +99,35 @@ mock.module("./node-provision-authority", () => ({
   ) => operation({ nodes: mocks.nodes, createNode: mocks.createNode }),
 }));
 
+// Retirement persistence is a stateful repository boundary in this autoscaler unit harness.
+mock.module("./node-retirement-authority", () => ({
+  requestNodeRetirement: async (nodeId: string) => {
+    const node = await mocks.findByNodeId(nodeId);
+    if (!node) throw new Error("Node missing");
+    await mocks.updateNode(node.id, {
+      enabled: false,
+      metadata: { ...node.metadata, requestedProviderRetirement: node.provider_server_id },
+    });
+  },
+  findRequestedNodeRetirements: async () =>
+    (await mocks.findAllNodes()).filter(
+      (node: DockerNode) =>
+        !node.enabled &&
+        node.provider_server_id !== null &&
+        node.metadata.requestedProviderRetirement === node.provider_server_id,
+    ),
+  withNodeRetirementAuthority: async (
+    nodeId: string,
+    retire: (node: DockerNode) => Promise<boolean>,
+  ) => {
+    const node = await mocks.findByNodeId(nodeId);
+    if (!node) return true;
+    if (!(await retire(node))) return false;
+    await mocks.deleteNode(node.id);
+    return true;
+  },
+}));
+
 mock.module("./node-bootstrap", () => ({
   buildContainerNodeUserData: mocks.buildUserData,
 }));
@@ -106,6 +137,7 @@ afterAll(() => {
   mock.module("../docker-node-workloads", () => realDockerNodeWorkloads);
   mock.module("./hetzner-cloud-api", () => realHetznerCloudApi);
   mock.module("./node-bootstrap", () => realNodeBootstrap);
+  mock.module("./node-retirement-authority", () => realRetirement);
 });
 
 import { InMemoryComputeProvider } from "./compute-provider-fake";
@@ -1241,5 +1273,58 @@ describe("NodeAutoscaler full provision\u2192healthy\u2192drain loop (#8920)", (
     const drained = await autoscaler.evaluateCapacity();
     expect(drained.healthyNodeCount).toBe(0);
     expect(drained.shouldScaleUp).toBe(true);
+  });
+  test("retries a failed retirement while preserving manual disablement and retained state", async () => {
+    class FailingDeleteProvider extends InMemoryComputeProvider {
+      failNextDelete = true;
+      override async deleteServer(id: number): Promise<void> {
+        if (this.failNextDelete) {
+          this.failNextDelete = false;
+          throw new Error("provider temporarily unavailable");
+        }
+        await super.deleteServer(id);
+      }
+    }
+    const fake = new FailingDeleteProvider({ serverActivateAfterTicks: 1 });
+    const autoscaler = new NodeAutoscaler(policy, () => NOW, fake);
+    const provisioned = await autoscaler.provisionNode(
+      { nodeId: "retry-node", capacity: 8, prePullImages: [] },
+      { controlPlanePublicKey: "ssh-ed25519 AAAAcontrol" },
+    );
+    fake.tick(1);
+    store[0].status = "healthy";
+    delete store[0].metadata.capacityProvisional;
+    await expect(autoscaler.drainNode("retry-node", { deprovision: true })).rejects.toThrow(
+      "provider temporarily unavailable",
+    );
+    expect(await fake.getServer(provisioned.hcloudServerId)).not.toBeNull();
+    expect(store[0].enabled).toBe(false);
+
+    // A later process cycle uses persisted intent, even when no enabled node is drainable.
+    const restarted = new NodeAutoscaler(policy, () => NOW, fake);
+    mocks.countRetained.mockResolvedValue(1);
+    expect(await restarted.reconcileRetirements()).toEqual({
+      completed: 0,
+      retained: 1,
+      failed: 0,
+    });
+    expect(await fake.getServer(provisioned.hcloudServerId)).not.toBeNull();
+    mocks.countRetained.mockResolvedValue(0);
+    expect(await restarted.reconcileRetirements()).toEqual({
+      completed: 1,
+      retained: 0,
+      failed: 0,
+    });
+    expect(await fake.getServer(provisioned.hcloudServerId)).toBeNull();
+    expect(store).toHaveLength(0);
+
+    const manual = await autoscaler.provisionNode(
+      { nodeId: "manual-node", capacity: 8, prePullImages: [] },
+      { controlPlanePublicKey: "ssh-ed25519 AAAAcontrol" },
+    );
+    fake.tick(1);
+    await autoscaler.drainNode("manual-node");
+    await restarted.reconcileRetirements();
+    expect(await fake.getServer(manual.hcloudServerId)).not.toBeNull();
   });
 });

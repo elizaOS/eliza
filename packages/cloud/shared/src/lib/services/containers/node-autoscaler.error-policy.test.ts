@@ -13,17 +13,16 @@ import * as realDockerNodeWorkloadsNs from "../docker-node-workloads";
 import type { ComputeProvider } from "./compute-provider";
 import * as realHetznerCloudApiNs from "./hetzner-cloud-api";
 import * as realNodeBootstrapNs from "./node-bootstrap";
+import * as realRetirementNs from "./node-retirement-authority";
 
 const realDockerNodes = { ...realDockerNodesNs };
 const realDockerNodeWorkloads = { ...realDockerNodeWorkloadsNs };
 const realHetznerCloudApi = { ...realHetznerCloudApiNs };
 const realNodeBootstrap = { ...realNodeBootstrapNs };
+const realRetirement = { ...realRetirementNs };
 const originalFirewallIds = process.env.CONTAINERS_HCLOUD_FIREWALL_IDS;
 const originalEnvironment = process.env.ENVIRONMENT;
 
-// The source narrows the swallow to `err instanceof HetznerCloudError &&
-// err.code === "not_found"`, so the thrown error must be an instance of the
-// SAME class the module-under-test imports — i.e. this mocked one.
 class FakeHetznerCloudError extends Error {
   constructor(
     public readonly code: string,
@@ -66,6 +65,20 @@ mock.module("./hetzner-cloud-api", () => ({
   isHetznerCloudConfigured: mocks.isConfigured,
 }));
 
+mock.module("./node-retirement-authority", () => ({
+  requestNodeRetirement: async () => {},
+  findRequestedNodeRetirements: async () => [],
+  withNodeRetirementAuthority: async (
+    nodeId: string,
+    retire: (node: DockerNode) => Promise<boolean>,
+  ) => {
+    const node = await mocks.findByNodeId(nodeId);
+    if (!(await retire(node))) return false;
+    await mocks.deleteNode(node.id);
+    return true;
+  },
+}));
+
 mock.module("./node-bootstrap", () => ({
   buildContainerNodeUserData: mock(() => "#cloud-config\n"),
 }));
@@ -75,6 +88,7 @@ afterAll(() => {
   mock.module("../docker-node-workloads", () => realDockerNodeWorkloads);
   mock.module("./hetzner-cloud-api", () => realHetznerCloudApi);
   mock.module("./node-bootstrap", () => realNodeBootstrap);
+  mock.module("./node-retirement-authority", () => realRetirement);
   if (originalFirewallIds === undefined) delete process.env.CONTAINERS_HCLOUD_FIREWALL_IDS;
   else process.env.CONTAINERS_HCLOUD_FIREWALL_IDS = originalFirewallIds;
   if (originalEnvironment === undefined) delete process.env.ENVIRONMENT;
@@ -181,9 +195,10 @@ describe("NodeAutoscaler drain deprovision — fail-closed error policy (#13415)
   });
 
   test("treats an idempotent not_found as designed success and removes the DB row", async () => {
-    mocks.deleteServer.mockRejectedValue(
-      new FakeHetznerCloudError("not_found", "server already deleted"),
-    );
+    mocks.deleteServer.mockImplementation(async () => {
+      mocks.getServer.mockResolvedValue(null);
+      throw new FakeHetznerCloudError("not_found", "server already deleted");
+    });
 
     await expect(drainDeprovision()).resolves.toBeUndefined();
 
@@ -195,7 +210,9 @@ describe("NodeAutoscaler drain deprovision — fail-closed error policy (#13415)
   });
 
   test("a clean delete removes the DB row (baseline distinct from failure)", async () => {
-    mocks.deleteServer.mockResolvedValue(undefined);
+    mocks.deleteServer.mockImplementation(async () => {
+      mocks.getServer.mockResolvedValue(null);
+    });
 
     await expect(drainDeprovision()).resolves.toBeUndefined();
 
@@ -224,6 +241,28 @@ describe("NodeAutoscaler drain deprovision — fail-closed error policy (#13415)
       "returned server 9999 for requested server 4242",
     );
     expect(mocks.deleteServer).not.toHaveBeenCalled();
+    expect(mocks.deleteNode).not.toHaveBeenCalled();
+  });
+  test("does not equate a successful delete response with completed deletion", async () => {
+    mocks.deleteServer.mockResolvedValue(undefined);
+    await expect(drainDeprovision()).rejects.toThrow("not yet confirmed absent");
+    expect(mocks.deleteNode).not.toHaveBeenCalled();
+  });
+
+  test("settles a lost deletion acknowledgement by observing provider absence", async () => {
+    mocks.deleteServer.mockImplementation(async () => {
+      mocks.getServer.mockResolvedValue(null);
+      throw new Error("lost response");
+    });
+    await expect(drainDeprovision()).resolves.toBeUndefined();
+    expect(mocks.deleteNode).toHaveBeenCalledWith("db-1");
+  });
+
+  test("keeps the record if absence readback fails", async () => {
+    mocks.deleteServer.mockImplementation(async () => {
+      mocks.getServer.mockRejectedValue(new Error("provider read unavailable"));
+    });
+    await expect(drainDeprovision()).rejects.toThrow("provider read unavailable");
     expect(mocks.deleteNode).not.toHaveBeenCalled();
   });
 });

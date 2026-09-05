@@ -8,6 +8,16 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
+import {
+  buildExactRestoreBootFencedCommand,
+  buildExactRestoreDockerBootFencedCommand,
+} from "./docker-sandbox-utils";
+
+export {
+  buildExactRestoreBootFencedCommand,
+  buildExactRestoreDockerBootFencedCommand,
+} from "./docker-sandbox-utils";
+
 import { ElizaError } from "@elizaos/core";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -241,8 +251,6 @@ const EXACT_RESTORE_NODE_INCARNATION_LABEL = "ai.elizaos.restore-node-incarnatio
 const EXACT_RESTORE_NODE_HISTORY_LABEL = "ai.elizaos.restore-node-history-id";
 const EXACT_RESTORE_IMAGE_DIGEST_LABEL = "ai.elizaos.restore-image-digest";
 const EXACT_RESTORE_QUARANTINE_LABEL = "ai.elizaos.restore-quarantine";
-const REMOTE_NODE_BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
-const EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE = 78;
 const REPLACEMENT_VPN_SETTLE_OBSERVATIONS = 4;
 const REPLACEMENT_VPN_SETTLE_INTERVAL_MS = 750;
 const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
@@ -410,50 +418,6 @@ function isExactRestoreContainerName(value: string): boolean {
     // error-policy:J3 canonical validation translates rejected input to false.
     return false;
   }
-}
-
-export function buildExactRestoreBootFencedCommand(
-  expectedNodeIncarnation: string,
-  exactCommand: string,
-): string {
-  return [
-    `observed_boot_id=$(cat ${shellQuote(REMOTE_NODE_BOOT_ID_PATH)} 2>/dev/null) || { printf '%s\\n' 'ELIZA_RESTORE_BOOT_ID_UNREADABLE' >&2; exit ${EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE}; }`,
-    `if [ "$observed_boot_id" != ${shellQuote(expectedNodeIncarnation)} ]; then printf '%s\\n' 'ELIZA_RESTORE_BOOT_ID_MISMATCH' >&2; exit ${EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE}; fi`,
-    exactCommand,
-  ].join("; ");
-}
-
-/** Boot-fence and isolate every exact Docker CLI call from ambient client state. */
-export function buildExactRestoreDockerBootFencedCommand(
-  expectedNodeIncarnation: string,
-  exactDockerCommand: string,
-): string {
-  const configTemplate = "/tmp/eliza-exact-docker.XXXXXXXXXX";
-  const cleanup =
-    "cleanup_exact_docker_config() { cleanup_status=$?; trap - EXIT; " +
-    'case "$exact_docker_config" in /tmp/eliza-exact-docker.?*) ' +
-    'rm -rf -- "$exact_docker_config" || cleanup_status=70 ;; *) cleanup_status=70 ;; esac; ' +
-    'exit "$cleanup_status"; }';
-  const isolatedCommand = [
-    "set -eu",
-    "umask 077",
-    `exact_docker_config=$(mktemp -d ${shellQuote(configTemplate)})`,
-    cleanup,
-    "trap cleanup_exact_docker_config EXIT",
-    "trap 'exit 129' HUP",
-    "trap 'exit 130' INT",
-    "trap 'exit 143' TERM",
-    'chmod 700 -- "$exact_docker_config"',
-    `printf '%s\\n' ${shellQuote('{"auths":{},"proxies":{}}')} > "$exact_docker_config/config.json"`,
-    'chmod 600 -- "$exact_docker_config/config.json"',
-    "unset DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH DOCKER_CONFIG DOCKER_DEFAULT_PLATFORM DOCKER_API_VERSION",
-    'DOCKER_HOST="unix:///var/run/docker.sock"',
-    'DOCKER_CONFIG="$exact_docker_config"',
-    "export DOCKER_HOST DOCKER_CONFIG",
-    'docker() { command docker --host unix:///var/run/docker.sock --config "$exact_docker_config" "$@"; }',
-    `(${exactDockerCommand})`,
-  ].join("; ");
-  return buildExactRestoreBootFencedCommand(expectedNodeIncarnation, isolatedCommand);
 }
 
 function buildExactRestoreAnonymousPullCommand(
@@ -3285,7 +3249,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // one service transaction. Ordinary creates retain provider-owned
       // accounting because they have no durable replacement fence.
       if (providerManagesCapacity) {
-        await dockerNodesRepository.incrementAllocated(nodeId);
+        await dockerNodesRepository.incrementAllocated(nodeId, dbNode.id);
       }
     } else {
       const registeredNodes = await dockerNodesRepository.findAll();
