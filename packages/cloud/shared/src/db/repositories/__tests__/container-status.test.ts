@@ -17,6 +17,7 @@ const EVERY_STATUS: Record<ContainerStatus, true> = {
   running: true,
   stopped: true,
   failed: true,
+  cleanup_required: true,
   deleting: true,
   deleted: true,
 };
