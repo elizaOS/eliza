@@ -113,6 +113,28 @@ describe("planner-declared pending work", () => {
 		).toBeUndefined();
 	});
 
+	it("delivers the rejected FINISH instead of replaying a settled operation the planner repeats", async () => {
+		// Live 2026-09-05 (tj-9a419beee929da): a single calendar delete was
+		// declared more_work_pending, the evaluator's correct FINISH was rejected,
+		// and the replanned planner re-issued the same delete (a noop) before a
+		// third planner call finally replied.
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("DELETE", "more_work_pending")] },
+				{ text: "", toolCalls: [call("DELETE", "more_work_pending")] },
+			],
+			evaluations: [finish("Deleted the 7am gym session on Tuesday.")],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["DELETE"]);
+		expect(result.finalMessage).toBe("Deleted the 7am gym session on Tuesday.");
+		expect(h.useModel).toHaveBeenCalledTimes(3);
+		expect(result.evaluator).toMatchObject({
+			decision: "FINISH",
+			success: true,
+		});
+	});
+
 	it("preserves the queued batch after rejecting a premature successful FINISH", async () => {
 		const h = harness({
 			plans: [

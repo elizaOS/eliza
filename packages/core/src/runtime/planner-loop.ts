@@ -595,6 +595,13 @@ async function runPlannerLoopIterations(
 	// An omitted declaration cannot erase work the planner explicitly left
 	// pending. A later explicit final declaration releases this authority.
 	let lastPlannerExplicitCompleted: boolean | undefined;
+	// The successful FINISH most recently rejected by the pending-scope rule. If
+	// the planner's next batch only repeats operations that already settled
+	// successfully in this trajectory, that FINISH was right and is delivered
+	// instead of replaying a mutation (live 2026-09-05: a single calendar delete
+	// declared more_work_pending, the correct FINISH was rejected, and the
+	// planner re-issued the same delete — a noop — before finally replying).
+	let pendingScopeRejectedFinish: EvaluatorOutput | undefined;
 	const correctPendingSuccessfulFinish = (
 		evaluator: EvaluatorOutput,
 		iteration: number,
@@ -631,6 +638,7 @@ async function runPlannerLoopIterations(
 				"If a genuine blocker prevents completion, report that stopped outcome with success=false. " +
 				"Only an explicit final planner declaration can supersede the pending scope.",
 		});
+		pendingScopeRejectedFinish = evaluator;
 		return {
 			...evaluator,
 			success: false,
@@ -639,6 +647,54 @@ async function runPlannerLoopIterations(
 			thought:
 				"The planner explicitly left work pending; successful completion requires a later final declaration.",
 		};
+	};
+	const finishWithEvaluator = (
+		evaluator: EvaluatorOutput,
+	): PlannerLoopResult => ({
+		status: "finished",
+		trajectory,
+		evaluator,
+		finalMessage: userSafeFinalMessage(
+			terminalMessageWithFailureAuthority(
+				trajectory,
+				preferredFinalMessageFromToolOrModel(
+					trajectory,
+					evaluator.messageToUser,
+					evaluator.success === false
+						? failedToolFallbackMessage(trajectory)
+						: undefined,
+				),
+				evaluator.success === false
+					? userSafeFailureReport(evaluator.messageToUser, trajectory)
+					: undefined,
+			),
+			trajectory,
+		),
+	});
+	/** Every non-terminal call repeats an operation that already succeeded here. */
+	const batchOnlyRepeatsSettledWork = (
+		calls: readonly PlannerToolCall[],
+	): boolean => {
+		const nonTerminal = calls.filter((call) => !isTerminalToolCall(call));
+		if (nonTerminal.length === 0) return false;
+		const settledKeys = new Set(
+			[...trajectory.archivedSteps, ...trajectory.steps]
+				.filter(
+					(step) =>
+						step.toolCall &&
+						!isTerminalToolCall(step.toolCall) &&
+						step.result?.success === true,
+				)
+				.map((step) =>
+					plannerToolOperationKey(
+						step.toolCall as PlannerToolCall,
+						step.result,
+					),
+				),
+		);
+		return nonTerminal.every((call) =>
+			settledKeys.has(plannerToolOperationKey(call)),
+		);
 	};
 	// A successful sole action may request one natural, model-authored terminal
 	// reply after its effect completes. This is deliberately narrower than the
@@ -847,6 +903,31 @@ async function runPlannerLoopIterations(
 							: TURN_SCOPE_MORE_WORK_PENDING,
 					}),
 				});
+			}
+			if (pendingScopeRejectedFinish) {
+				if (batchOnlyRepeatsSettledWork(plannerOutput.toolCalls)) {
+					// The planner was asked to continue its declared pending work and
+					// answered by repeating operations that already succeeded: the
+					// pending declaration was wrong and the rejected verdict was right.
+					// Deliver it; never replay a settled mutation.
+					params.runtime.logger?.warn?.(
+						{
+							iteration,
+							repeated: plannerOutput.toolCalls.map((call) => call.name),
+						},
+						"[planner-loop] planner repeated settled operations after a pending-scope replan; delivering the rejected FINISH instead of replaying them",
+					);
+					const rejectedFinish = pendingScopeRejectedFinish;
+					pendingScopeRejectedFinish = undefined;
+					trajectory.evaluatorOutputs.push(
+						projectToolDiagnosticValue(
+							rejectedFinish,
+							redactDiagnosticText,
+						) as EvaluatorOutput,
+					);
+					return finishWithEvaluator(rejectedFinish);
+				}
+				pendingScopeRejectedFinish = undefined;
 			}
 			if (synthesizingRequiredModelReply) {
 				pendingRequiredModelReply = false;
