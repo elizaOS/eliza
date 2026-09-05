@@ -249,6 +249,7 @@ describe("Cloud live trajectory diagnostic", () => {
       runtimeCloudActionAttemptCount: 1,
       runtimeCloudActionSuccessCount: 0,
       runtimeCloudActionTimeoutCount: 0,
+      runtimeCloudActionUnavailableCount: 0,
       ...ZERO_PERSONAL_BODY_AND_RECOVERY_COUNTERS,
       personalIdentityGetRequestCount: 1,
       successfulPersonalIdentityGetResponseCount: 1,
