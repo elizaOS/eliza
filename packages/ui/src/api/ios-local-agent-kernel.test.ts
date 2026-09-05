@@ -801,6 +801,55 @@ describe("handleIosLocalAgentRequest", () => {
     expect(CLOUD_BRIDGE_REQUEST_TIMEOUT_MS).toBe(60_000);
     expect(IOS_BUNDLE_MANIFEST_TIMEOUT_MS).toBe(30_000);
   });
+
+  it("preserves complete surrogate pairs when truncating local conversation title", async () => {
+    const localStorage = stubLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    const createResponse = await handleIosLocalAgentRequest(
+      new Request("http://127.0.0.1:31337/api/conversations", {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(createResponse.status).toBe(200);
+    const created = (await createResponse.json()) as {
+      conversation: { id: string; title: string };
+    };
+    expect(created.conversation.title).toBe("New chat");
+    const emoji = String.fromCodePoint(0x1f600);
+    const longText = "a".repeat(59) + emoji + "X" + "b".repeat(10);
+    expect(longText.length).toBe(72);
+    expect(longText.charCodeAt(59)).toBe(0xd83d);
+    expect(longText.charCodeAt(60)).toBe(0xde00);
+    const messageResponse = await handleIosLocalAgentRequest(
+      new Request(
+        `http://127.0.0.1:31337/api/conversations/${created.conversation.id}/messages`,
+        {
+          method: "POST",
+          body: JSON.stringify({ text: longText }),
+        },
+      ),
+    );
+    expect(messageResponse.status).toBe(200);
+    const list = (await getJson("/api/conversations")) as {
+      conversations: Array<{ id: string; title: string }>;
+    };
+    const updated = list.conversations.find(
+      (entry) => entry.id === created.conversation.id,
+    );
+    expect(updated).toBeDefined();
+    expect(updated?.title.length).toBe(59);
+    expect(updated?.title).toBe("a".repeat(59));
+    const title = updated?.title ?? "";
+    const isWellFormed =
+      typeof (title as unknown as { isWellFormed?: () => boolean })
+        .isWellFormed === "function"
+        ? (title as unknown as { isWellFormed: () => boolean }).isWellFormed()
+        : true;
+    expect(isWellFormed).toBe(true);
+    expect(title.charCodeAt(title.length - 1)).not.toBe(0xd83d);
+    expect(() => JSON.stringify({ title })).not.toThrow();
+  });
 });
 
 describe("handleIosLocalAgentRequest cloud bridge timeouts (portable fallback, fake timers)", () => {
