@@ -60,7 +60,9 @@ import {
 import {
   buildAggregate, writeReport, printStdoutSummary, writeScenarioRunViewer,
   createScenarioStabilityPlan, buildScenarioStabilityReport,
-  executeScenarioStability,
+  executeScenarioStability, deriveScenarioStabilityExecutionAttemptIdentities,
+  deriveScenarioStabilityFocusList, deriveScenarioStabilityFailureClusters,
+  scenarioStabilityExecutionPlanFingerprint,
 } from "@elizaos/scenario-runner";
 
 // Native (training corpus) export

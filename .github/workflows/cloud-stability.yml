@@ -56,6 +56,8 @@ jobs:
           bun run --cwd packages/cloud/e2e stability:keyless --
           --run-id cloud-pr-${{ github.run_id }}-${{ github.run_attempt }}
           --output ${{ github.workspace }}/artifacts/cloud-stability/pr
+      - name: Verify retained deterministic artifacts
+        run: bun run --cwd packages/cloud/e2e stability:verify -- --output "${{ github.workspace }}/artifacts/cloud-stability/pr"
       - name: Upload deterministic trajectories and ledgers
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -95,6 +97,8 @@ jobs:
           ${{ inputs.model && format('--model {0}', inputs.model) || '' }}
           --run-id cloud-real-${{ github.run_id }}-${{ github.run_attempt }}
           --output ${{ github.workspace }}/artifacts/cloud-stability/real
+      - name: Verify retained real-model artifacts
+        run: bun run --cwd packages/cloud/e2e stability:verify -- --output "${{ github.workspace }}/artifacts/cloud-stability/real"
       - name: Upload real-model trajectories and mock-service ledgers
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
