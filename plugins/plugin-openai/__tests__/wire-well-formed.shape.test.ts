@@ -9,7 +9,7 @@
  * raw request bytes; the assertions replay a strict parser's view of the body.
  */
 import { createServer, type Server } from "node:http";
-import { type ElizaError, type IAgentRuntime, MAX_WELL_FORMED_VISITS } from "@elizaos/core";
+import { type ElizaError, type IAgentRuntime, logger, MAX_WELL_FORMED_VISITS } from "@elizaos/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models";
 
@@ -25,6 +25,7 @@ interface CapturedRequest {
 const captured: CapturedRequest[] = [];
 let server: Server;
 let baseUrl: string;
+let rateLimitNextRequest = false;
 
 function startCaptureServer(): Promise<string> {
   server = createServer((request, response) => {
@@ -33,6 +34,14 @@ function startCaptureServer(): Promise<string> {
     request.on("end", () => {
       const raw = Buffer.concat(chunks).toString("utf8");
       captured.push({ url: request.url ?? "", bytes: Buffer.from(raw, "utf8") });
+      if (rateLimitNextRequest) {
+        rateLimitNextRequest = false;
+        response.writeHead(429, { "content-type": "application/json", "retry-after": "0.001" });
+        response.end(
+          JSON.stringify({ error: { message: "test rate limit", type: "rate_limit_error" } })
+        );
+        return;
+      }
       response.writeHead(200, { "content-type": "application/json" });
       // When the request includes response_format (structured output), the AI
       // SDK parses the response content as JSON; return valid JSON for those.
@@ -99,6 +108,7 @@ afterAll(() => {
 
 beforeEach(() => {
   captured.length = 0;
+  rateLimitNextRequest = false;
   vi.stubEnv("OPENAI_API_KEY", "test-key");
   vi.stubEnv("OPENAI_BASE_URL", baseUrl);
   vi.stubEnv("OPENAI_SMALL_MODEL", "test-model");
@@ -108,6 +118,31 @@ beforeEach(() => {
 });
 
 describe("#18025: request bodies are well-formed strict JSON", () => {
+  it("observes SDK-internal rate-limit retries without logging prompts or credentials", async () => {
+    const warn = vi.spyOn(logger, "warn");
+    const debug = vi.spyOn(logger, "debug");
+    rateLimitNextRequest = true;
+    try {
+      const result = await handleTextSmall(buildRuntime(), {
+        prompt: "private-prompt-marker",
+      } as never);
+      expect(result).toBe("ok");
+      expect(captured).toHaveLength(2);
+      const messages = [...warn.mock.calls, ...debug.mock.calls]
+        .flat()
+        .filter((value) => typeof value === "string" && value.startsWith("[OpenAI] HTTP"));
+      expect(
+        messages.some((message) => /status=429 headersMs=\d+ retryAfterSeconds=0.001/.test(message))
+      ).toBe(true);
+      expect(messages.some((message) => /status=200 headersMs=\d+/.test(message))).toBe(true);
+      expect(messages.join("\n")).not.toContain("private-prompt-marker");
+      expect(messages.join("\n")).not.toContain("test-key");
+    } finally {
+      warn.mockRestore();
+      debug.mockRestore();
+    }
+  });
+
   it("sends JSON mode for Cerebras evaluator schemas without requiring a duplicate format flag", async () => {
     vi.stubEnv("ELIZA_PROVIDER", "cerebras");
     vi.stubEnv("OPENAI_SMALL_MODEL", "qwen-3.8-27b");
