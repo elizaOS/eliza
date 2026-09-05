@@ -1,12 +1,8 @@
-// Interaction coverage for the decomposed personal-assistant domain views
-// (calendar, finances, focus, goals, health, inbox, todos, relationships).
-// These are dynamic plugin views; the ui-smoke stub registers their bundles so
-// they render (not the launcher fallback). Each `<Domain>View` is a spatial
-// wrapper that renders the same DOM on the desktop `chromium` and Pixel-7
-// `mobile-chromium` lanes, so every assertion below is a viewport-independent
-// semantic outcome: populated content from the mocked lifeops endpoints plus a
-// real state-changing interaction (channel/kind/status filters, calendar day
-// selection and month navigation). This is the interaction owner that closes
+/**
+ * Exercises populated personal-assistant plugin views and their state-changing
+ * controls through the real desktop and Pixel-7 renderer with deterministic
+ * lifeops endpoints. Hit testing also catches overlays that intercept input.
+ */
 
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
@@ -126,23 +122,26 @@ test("inbox decomposed view: channel filters toggle", async ({ page }) => {
     page.getByText("gm everyone — standup in 10").first(),
   ).toBeVisible({ timeout: 15_000 });
 
-  // Activating a channel chip narrows the server query (?channels=<channel>)
-  // and the rendered list: the active chip is renamed "* <Channel>", its
-  // thread stays, and the other channel's thread disappears.
+  // The selected channel must narrow the rendered server-backed list, and
+  // clearing it must restore the other channel's messages.
   const emailChip = page
     .getByRole("button", { name: "Email", exact: true })
     .first();
   await expectTopmostAtCenter(emailChip, "Inbox Email filter chip");
   await emailChip.click();
-  await expect(
-    page.getByRole("button", { name: "* Email", exact: true }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(emailChip).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Invoice #42 overdue").first()).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("gm everyone — standup in 10")).toHaveCount(0, {
     timeout: 15_000,
   });
+  await emailChip.click();
+  await expect(emailChip).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    page.getByText("gm everyone — standup in 10").first(),
+  ).toBeVisible();
+  await expect(page.getByText("Invoice #42 overdue").first()).toBeVisible();
 });
 
 test("finances decomposed view: renders the financial summary", async ({
@@ -178,7 +177,9 @@ test("focus decomposed view: renders the focus scaffold", async ({ page }) => {
   ).toBeVisible({ timeout: 60_000 });
 });
 
-test("goals decomposed view: renders the goals scaffold", async ({ page }) => {
+test("goals decomposed view: filters populated goals by status", async ({
+  page,
+}) => {
   // The goals mock seeds one active goal + one paused goal (flagged
   // needs_attention → the "1 goal needs a review." proactive line).
   await openAppPath(page, "/goals");
@@ -192,15 +193,28 @@ test("goals decomposed view: renders the goals scaffold", async ({ page }) => {
     timeout: 15_000,
   });
 
-  // Toggling the "Active" status chip narrows the groups: the paused goal
-  // disappears, the active goal stays.
-  await page.getByRole("button", { name: "Active", exact: true }).click();
+  const statusFilter = page.getByRole("combobox", {
+    name: "Status",
+    exact: true,
+  });
+  await expectTopmostAtCenter(statusFilter, "Goals status filter");
+  await statusFilter.selectOption({ label: "Active" });
   await expect(page.getByText("Learn conversational Spanish")).toHaveCount(0, {
     timeout: 15_000,
   });
   await expect(page.getByText("Run a half marathon").first()).toBeVisible({
     timeout: 15_000,
   });
+  await statusFilter.selectOption({ label: "Paused" });
+  await expect(page.getByText("Run a half marathon")).toHaveCount(0);
+  await expect(
+    page.getByText("Learn conversational Spanish").first(),
+  ).toBeVisible();
+  await statusFilter.selectOption({ label: "All goals" });
+  await expect(page.getByText("Run a half marathon").first()).toBeVisible();
+  await expect(
+    page.getByText("Learn conversational Spanish").first(),
+  ).toBeVisible();
 });
 
 test("health decomposed view: renders the health regions", async ({ page }) => {

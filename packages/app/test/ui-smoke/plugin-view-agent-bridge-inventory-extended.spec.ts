@@ -115,10 +115,9 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     label: "Goals",
     path: "/goals",
     viewId: "goals",
-    // Populated goals fixture → 1 active + 1 paused goal, so the active/paused
-    // status-filter chips both render.
+    // The populated goals fixture exposes its status selector to the bridge.
     ready: { text: "Run a half marathon" },
-    requiredIds: ["filter:active", "filter:paused"],
+    requiredIds: ["goal-status-filter"],
   },
   {
     label: "Todos",
@@ -348,3 +347,27 @@ for (const target of PLUGIN_VIEW_TARGETS) {
     await scanUnwiredControls(page, target.label);
   });
 }
+
+test("Goals agent bridge filters the rendered goal list", async ({ page }) => {
+  await openAppPath(page, "/goals");
+  await expect(page.getByText("Run a half marathon").first()).toBeVisible();
+  await expect(
+    page.getByText("Learn conversational Spanish").first(),
+  ).toBeVisible();
+  await waitForAgentBridge(page);
+  await expectAgentIds(page, "goals", ["goal-status-filter"], "Goals");
+  await interact(page, "goals", "agent-fill", {
+    id: "goal-status-filter",
+    value: "Active",
+  });
+  await expect(page.getByText("Learn conversational Spanish")).toHaveCount(0);
+  await expect(page.getByText("Run a half marathon").first()).toBeVisible();
+  await interact(page, "goals", "agent-fill", {
+    id: "goal-status-filter",
+    value: "Paused",
+  });
+  await expect(page.getByText("Run a half marathon")).toHaveCount(0);
+  await expect(
+    page.getByText("Learn conversational Spanish").first(),
+  ).toBeVisible();
+});
