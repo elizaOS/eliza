@@ -70,6 +70,13 @@ export const TEST_FILES_REQUIRING_FRESH_PROCESS = [
     "services",
     "agent-backup-capture-v2-pipeline.test.ts",
   ),
+  path.join(
+    "packages",
+    "cloud",
+    "scripts",
+    "admin",
+    "migrate-database.diagnostic.test.ts",
+  ),
 ];
 const MAX_TIMER_MS = 2_147_483_647;
 // Prefer the already-provisioned PowerShell 7 host on CI: the legacy Windows

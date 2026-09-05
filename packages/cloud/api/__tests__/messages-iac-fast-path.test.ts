@@ -10,6 +10,8 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const aiActual = require("ai") as Record<string, unknown>;
+const aiBillingActual = { ...(await import("@/lib/services/ai-billing")) };
+const creditsActual = { ...(await import("@/lib/services/credits")) };
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
@@ -99,6 +101,8 @@ const billUsage = mock();
 const estimateInputTokens = mock();
 const recordUsageAnalytics = mock();
 mock.module("@/lib/services/ai-billing", () => ({
+  ...aiBillingActual,
+  isSubscriptionFundedOrganization: mock(async () => false),
   InsufficientCreditsError: TestInsufficientCreditsError,
   billUsage,
   estimateInputTokens,
@@ -138,6 +142,7 @@ mock.module("@/lib/services/ai-billing", () => ({
 }));
 
 mock.module("@/lib/services/credits", () => ({
+  ...creditsActual,
   COST_BUFFER: 1.5,
   InsufficientCreditsError: TestInsufficientCreditsError,
   MIN_RESERVATION: 0.01,
@@ -385,6 +390,7 @@ describe("/v1/messages IAC fast path", () => {
       }),
       expect.any(Number),
       16,
+      { subscriptionFunded: false },
     );
     expect(generateText).toHaveBeenCalledTimes(1);
   });
