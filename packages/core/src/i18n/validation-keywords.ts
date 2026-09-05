@@ -88,30 +88,35 @@ export function splitKeywordDoc(value: string | undefined): string[] {
 	return terms;
 }
 
-export function textIncludesKeywordTerm(text: string, term: string): boolean {
-	const normalizedText = normalizeKeywordMatchText(text);
+function compileKeywordTerm(term: string) {
 	const normalizedTerm = normalizeKeywordMatchText(term);
-	if (!normalizedText || !normalizedTerm) {
-		return false;
-	}
+	const pattern = usesAsciiWordBoundaries(normalizedTerm)
+		? new RegExp(
+				`\\b${escapePattern(normalizedTerm).replace(/\\ /g, "\\s+")}\\b`,
+				"i",
+			)
+		: null;
 
-	if (usesAsciiWordBoundaries(normalizedTerm)) {
-		const pattern = new RegExp(
-			`\\b${escapePattern(normalizedTerm).replace(/\\ /g, "\\s+")}\\b`,
-			"i",
-		);
-		if (pattern.test(text)) {
-			return true;
+	return (text: string, normalizedText: string, hasNonAsciiText: boolean) => {
+		if (!normalizedText || !normalizedTerm) {
+			return false;
 		}
-
-		const hasNonAsciiText = [...text].some((char) => char.charCodeAt(0) > 0x7f);
-		if (hasNonAsciiText) {
-			return normalizedText.includes(normalizedTerm);
+		if (pattern) {
+			return (
+				pattern.test(text) ||
+				(hasNonAsciiText && normalizedText.includes(normalizedTerm))
+			);
 		}
-		return false;
-	}
+		return normalizedText.includes(normalizedTerm);
+	};
+}
 
-	return normalizedText.includes(normalizedTerm);
+export function textIncludesKeywordTerm(text: string, term: string): boolean {
+	return compileKeywordTerm(term)(
+		text,
+		normalizeKeywordMatchText(text),
+		/\P{ASCII}/u.test(text),
+	);
 }
 
 export function collectKeywordTermMatches(
@@ -119,9 +124,19 @@ export function collectKeywordTermMatches(
 	terms: readonly string[],
 ): Set<string> {
 	const matches = new Set<string>();
+	if (texts.length === 0 || terms.length === 0) return matches;
+	// Keep preparation local to this call: conversation text must not be retained
+	// in a cross-turn cache. Reuse each normalized text and compiled term across
+	// the Cartesian comparison, preserving text-first match insertion order.
+	const matchers = terms.map((term) => ({
+		term,
+		matches: compileKeywordTerm(term),
+	}));
 	for (const text of texts) {
-		for (const term of terms) {
-			if (textIncludesKeywordTerm(text, term)) {
+		const normalizedText = normalizeKeywordMatchText(text);
+		const hasNonAsciiText = /\P{ASCII}/u.test(text);
+		for (const { term, matches: test } of matchers) {
+			if (test(text, normalizedText, hasNonAsciiText)) {
 				matches.add(term);
 			}
 		}
