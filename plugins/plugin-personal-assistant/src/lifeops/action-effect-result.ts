@@ -84,6 +84,19 @@ export async function completeLifeOpsEffect(
   result: ActionResult,
   receipt: EffectReceipt,
 ): Promise<ActionResult> {
+  if (result.replyFailure) {
+    // The reply renderer was unavailable (typed, non-replayable: rate limit,
+    // provider issue, no provider). The effect still happened, so bind its
+    // receipt and hand the failure through for the runtime to publish as a
+    // system status. Requiring exact text here turned a completed calendar
+    // read into a failed step under a 429 (live 2026-09-05).
+    return {
+      ...result,
+      transcriptVisibility: "internal",
+      turnComplete: false,
+      effectReceipts: [receipt],
+    };
+  }
   const text = result.text?.trim();
   if (!text) {
     throw new ElizaError(
