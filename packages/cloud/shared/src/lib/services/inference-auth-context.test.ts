@@ -21,6 +21,7 @@ type AuthImpl = () => Promise<{
 
 let authImpl: AuthImpl;
 let shouldBlock: (userId: string) => Promise<boolean>;
+let memoizedShouldBlock: (userId: string) => Promise<boolean>;
 let assertCredentialActive: (
   organizationId: string,
   credential: { kind: string; credentialId?: string; userId: string },
@@ -29,6 +30,7 @@ const incrementUsageCalls: string[] = [];
 let incrementUsage: (id: string) => Promise<void>;
 const authBoundaryCalls: string[] = [];
 const moderationBypassCacheCalls: boolean[] = [];
+const moderationMemoCalls: string[] = [];
 const ADMISSION = {
   subscriptionFunded: false,
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
@@ -58,7 +60,7 @@ mock.module("./inference-api-key-auth", () => ({
 }));
 mock.module("./admin", () => ({
   adminService: {
-    shouldBlockUser: (userId: string) => {
+    shouldBlockUserConsistent: (userId: string) => {
       moderationBypassCacheCalls.push(true);
       return shouldBlock(userId);
     },
@@ -66,9 +68,9 @@ mock.module("./admin", () => ({
 }));
 mock.module("./content-moderation", () => ({
   contentModerationService: {
-    shouldBlockUser: (userId: string, options: { bypassCache?: boolean } = {}) => {
-      moderationBypassCacheCalls.push(options.bypassCache === true);
-      return shouldBlock(userId);
+    shouldBlockUser: (userId: string) => {
+      moderationMemoCalls.push(userId);
+      return memoizedShouldBlock(userId);
     },
   },
 }));
@@ -147,6 +149,7 @@ beforeEach(async () => {
     apiKey: { id: "key-1" },
   });
   shouldBlock = async () => false;
+  memoizedShouldBlock = async () => false;
   assertCredentialActive = async () => undefined;
   incrementUsage = async (id) => {
     incrementUsageCalls.push(id);
@@ -154,6 +157,7 @@ beforeEach(async () => {
   incrementUsageCalls.length = 0;
   authBoundaryCalls.length = 0;
   moderationBypassCacheCalls.length = 0;
+  moderationMemoCalls.length = 0;
   __clearInferenceApiKeyHydrations();
   // Clear any cached entry from a prior test.
   await invalidateInferenceAuthContextByKeyHash(hashApiKey(KEY));
@@ -805,6 +809,17 @@ describe("resolveInferenceAuthContext", () => {
       cacheRead.mockRestore();
       errorSpy.mockRestore();
     }
+  });
+
+  test("an IAC miss refreshes from primary standing instead of a stale moderation memo", async () => {
+    memoizedShouldBlock = async () => true;
+    shouldBlock = async () => false;
+
+    const result = await resolveInferenceAuthContext(reqWithApiKey());
+
+    expect(result).toMatchObject({ kind: "authorized", source: "origin" });
+    expect(moderationBypassCacheCalls).toEqual([true]);
+    expect(moderationMemoCalls).toEqual([]);
   });
 
   test("inline continuation deadline returns warming after one cache read", async () => {
