@@ -202,33 +202,61 @@ export class CloudContainerService
         return;
       }
 
-      const container = await this.getContainer(containerId);
-      const status = container.status;
-
-      logger.debug(`[CloudContainer] Poll #${attempt} for ${containerId}: status=${status}`);
-
-      if (status === "running") {
-        logger.info(
-          `[CloudContainer] Container ${containerId} is now running at ${container.load_balancer_url}`
-        );
-        this.startHealthMonitoring(containerId);
-        return;
-      }
-
-      if (status === "failed" || status === "stopped" || status === "suspended") {
-        logger.warn(`[CloudContainer] Container ${containerId} reached terminal state: ${status}`);
-        if (container.error_message) {
-          logger.error(`[CloudContainer] Error: ${container.error_message}`);
-        }
-        return;
-      }
-
-      // Schedule next poll with exponential backoff
+      // Exponential backoff shared by the normal reschedule path and the
+      // transient-error retry path below.
       const delay = Math.min(baseInterval * 2 ** Math.min(attempt - 1, 3), maxInterval);
-      tracked.pollingTimer = setTimeout(poll, delay);
+
+      try {
+        const container = await this.getContainer(containerId);
+        const status = container.status;
+
+        logger.debug(`[CloudContainer] Poll #${attempt} for ${containerId}: status=${status}`);
+
+        if (status === "running") {
+          logger.info(
+            `[CloudContainer] Container ${containerId} is now running at ${container.load_balancer_url}`
+          );
+          this.startHealthMonitoring(containerId);
+          return;
+        }
+
+        if (status === "failed" || status === "stopped" || status === "suspended") {
+          logger.warn(
+            `[CloudContainer] Container ${containerId} reached terminal state: ${status}`
+          );
+          if (container.error_message) {
+            logger.error(`[CloudContainer] Error: ${container.error_message}`);
+          }
+          return;
+        }
+
+        // Not terminal yet — keep polling.
+        tracked.pollingTimer = schedulePoll(delay);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(
+          `[CloudContainer] Poll #${attempt} failed for ${containerId}: ${message}. Retrying in ${Math.round(delay / 1000)}s`
+        );
+        // Transient API errors must not kill the poller: reschedule the next
+        // poll (still bounded by maxAttempts) instead of letting the promise
+        // reject and silently stopping the loop.
+        tracked.pollingTimer = schedulePoll(delay);
+      }
     };
 
-    tracked.pollingTimer = setTimeout(poll, baseInterval);
+    // Schedule a poll run, swallowing any rejection so a throw can never
+    // surface as an unhandledRejection that stops the process.
+    const schedulePoll = (delay: number): ReturnType<typeof setTimeout> => {
+      return setTimeout(() => {
+        poll().catch((error: Error) => {
+          logger.error(
+            `[CloudContainer] Unexpected error polling container ${containerId}: ${error.message}`
+          );
+        });
+      }, delay);
+    };
+
+    tracked.pollingTimer = schedulePoll(baseInterval);
   }
 
   /**
