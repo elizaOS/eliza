@@ -554,9 +554,74 @@ test.describe("settings shares the unified app background (#9143)", () => {
       "Model activation failed its quality checks",
     );
     await expect(notice).toBeInViewport();
+    await screenshot(page, "detached-settings-action-error");
     await page.getByRole("button", { name: "General", exact: true }).click();
     await expect(page.getByTestId("background-catalog-gallery")).toBeVisible();
   });
+
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 390, height: 844 },
+  ]) {
+    test(`makes failed voice previews visible and retryable at ${viewport.width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await seedSettingsBackgroundStorage(page, {
+        mode: "image",
+        color: "#ef5a1f",
+        imageUrl: "/bg-sunset.webp",
+      });
+      await installReadyDesktopStatusBridge(page);
+      await installSettingsBackgroundRoutes(page);
+      await page.route("**/api/cloud/status", (route) =>
+        fulfillJson(route, {
+          connected: true,
+          enabled: true,
+          cloudVoiceProxyAvailable: true,
+          hasApiKey: true,
+        }),
+      );
+      let previewRequests = 0;
+      await page.route(
+        "https://storage.googleapis.com/eleven-public-prod/**",
+        (route) => {
+          previewRequests += 1;
+          // Exercise the browser's real media decoder failure, not a replacement Audio object.
+          return route.fulfill({
+            status: 200,
+            contentType: "audio/mpeg",
+            body: "invalid audio payload",
+          });
+        },
+      );
+      await openAppPath(page, "/settings?shell=settings#voice");
+      const voice = page.getByRole("combobox", { name: "Voice", exact: true });
+      await voice.click();
+      await page.getByRole("option", { name: /Rachel/ }).click();
+      const preview = page.getByRole("button", {
+        name: "Preview Voice",
+        exact: true,
+      });
+      await preview.click();
+      const error = page
+        .getByRole("alert")
+        .filter({ hasText: "Couldn't play this voice preview" });
+      await expect(error).toBeVisible();
+      await expect(preview).toBeEnabled();
+      await error.scrollIntoViewIfNeeded();
+      await screenshot(page, `voice-preview-error-${viewport.width}`);
+      const requestsBeforeRetry = previewRequests;
+      await preview.click();
+      await expect
+        .poll(() => previewRequests)
+        .toBeGreaterThan(requestsBeforeRetry);
+      await expect(error).toBeVisible();
+      await voice.click();
+      await page.getByRole("option", { name: /Sarah/ }).click();
+      await expect(error).toHaveCount(0);
+    });
+  }
 
   test("scrolls detached Settings to its lower controls", async ({ page }) => {
     await page.setViewportSize({ width: 1044, height: 768 });
