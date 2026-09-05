@@ -3429,8 +3429,9 @@ export function ChatOverlay({
     return `color-mix(in srgb, var(--bg) ${percent}%, ${GLASS_SHEET_FILL})`;
   });
   // Opaque sheets do not need to filter the hidden backdrop.
-  const surfaceBackdropFilter = useTransform(surfaceBlackout, (t: number) =>
-    t >= 1 ? "none" : GLASS_SHEET_BACKDROP_FILTER,
+  const surfaceBackdropFilter = useTransform(
+    surfaceBlackout,
+    (t: number): string => (t >= 1 ? "none" : GLASS_SHEET_BACKDROP_FILTER),
   );
   // Keep transformed transcript children one physical border-width inside the
   // inset glass. The rim is translucent, so clipping at its outer edge lets
