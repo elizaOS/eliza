@@ -7,6 +7,8 @@
  * revalidates. The canonical segmented control owns both the visible buttons
  * and their agent-surface registrations.
  */
+
+import { toWellFormedUnicode } from "@elizaos/core";
 import {
   ChevronLeft,
   ChevronRight,
@@ -438,7 +440,9 @@ export function DatabaseView({
             active={selectedTable === table.name}
             onClick={() => handleSelectTable(table.name)}
           >
-            {table.name.slice(0, 1).toUpperCase()}
+            {(
+              Array.from(toWellFormedUnicode(table.name))[0] ?? ""
+            ).toUpperCase()}
           </SidebarContent.RailItem>
         ))}
       >
@@ -473,6 +477,13 @@ export function DatabaseView({
                       onClick={() => handleSelectTable(table.name)}
                       className="rounded-none border-b border-border/50 px-1 py-2.5"
                     >
+                      <SidebarContent.ItemIcon
+                        active={selectedTable === table.name}
+                      >
+                        {(
+                          Array.from(toWellFormedUnicode(table.name))[0] ?? ""
+                        ).toUpperCase()}
+                      </SidebarContent.ItemIcon>
                       <SidebarContent.ItemBody>
                         <SidebarContent.ItemTitle>
                           {table.name}
@@ -702,6 +713,13 @@ export function DatabaseView({
                         onClick={() => handleSelectTable(t.name)}
                         className="rounded-none border-b border-border/50 px-1 py-2.5"
                       >
+                        <SidebarContent.ItemIcon
+                          active={selectedTable === t.name}
+                        >
+                          {(
+                            Array.from(toWellFormedUnicode(t.name))[0] ?? ""
+                          ).toUpperCase()}
+                        </SidebarContent.ItemIcon>
                         <SidebarContent.ItemBody>
                           <SidebarContent.ItemTitle>
                             {t.name}

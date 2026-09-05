@@ -3,11 +3,16 @@
  * per merged identity, showing its platform, primary name, and handle/entity id.
  * Renders nothing when the person has no identities.
  */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { Fingerprint } from "lucide-react";
 import type { RelationshipsPersonDetail } from "../../api/client-types-relationships";
 
 function shortLabel(value: string, maxLength = 18): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+  const wellFormed = toWellFormedUnicode(value);
+  return wellFormed.length > maxLength
+    ? `${truncateWellFormed(wellFormed, maxLength - 1)}…`
+    : wellFormed;
 }
 
 export function RelationshipsIdentityCluster({

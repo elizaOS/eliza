@@ -242,4 +242,41 @@ describe("DatabaseView", () => {
       { timeout: 1000 },
     );
   });
+
+  it("preserves well-formed avatar monogram when table name starts with astral emoji", async () => {
+    const fox = String.fromCharCode(0xd83e, 0xdd8a);
+    clientMock.getDatabaseStatus.mockResolvedValue(connectedStatus);
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: [
+        { name: `${fox}memories`, rowCount: 1, columns: [{ name: "id" }] },
+      ],
+    });
+    clientMock.getDatabaseRows.mockResolvedValue({
+      columns: ["id"],
+      rows: [],
+      total: 0,
+    });
+
+    const { container } = render(<DatabaseView />);
+
+    await waitFor(() => {
+      expect(screen.getByText(`${fox}memories`)).toBeTruthy();
+    });
+
+    const html = container.textContent ?? "";
+    function isWellFormed(value: string): boolean {
+      for (let i = 0; i < value.length; i++) {
+        const c = value.charCodeAt(i);
+        if (c >= 0xd800 && c <= 0xdbff) {
+          const n = value.charCodeAt(i + 1);
+          if (!(n >= 0xdc00 && n <= 0xdfff)) return false;
+          i++;
+        } else if (c >= 0xdc00 && c <= 0xdfff) return false;
+      }
+      return true;
+    }
+    expect(isWellFormed(html)).toBe(true);
+    expect(() => JSON.stringify(html)).not.toThrow();
+    expect(html).toContain(fox);
+  });
 });
