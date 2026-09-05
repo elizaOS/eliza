@@ -27,6 +27,7 @@ import {
 	readFileSync,
 	realpathSync,
 	renameSync,
+	rmSync,
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -217,6 +218,13 @@ function canonicalizeLocalPath(localPath: string): string {
  * `isProjectRegistry` rejects both as `null`, but only the latter holds a user's
  * projects a downgrade would silently drop.
  */
+let tmpSequenceCounter = 0n;
+
+function tmpPathFor(filePath: string): string {
+	tmpSequenceCounter += 1n;
+	return `${filePath}.tmp-${process.pid}-${Date.now()}-${tmpSequenceCounter}`;
+}
+
 function readRegistryVersionOnDisk(env: NodeJS.ProcessEnv): number | null {
 	const filePath = projectRegistryPath(env);
 	let raw: string;
@@ -265,9 +273,19 @@ export function writeProjectRegistry(
 	}
 	const filePath = projectRegistryPath(env);
 	mkdirSync(dirname(filePath), { recursive: true });
-	const tmpPath = `${filePath}.${process.pid}.tmp`;
-	writeFileSync(tmpPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
-	renameSync(tmpPath, filePath);
+	const tmpPath = tmpPathFor(filePath);
+	try {
+		writeFileSync(tmpPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8", {
+			flag: "wx",
+		});
+		renameSync(tmpPath, filePath);
+	} finally {
+		try {
+			rmSync(tmpPath, { force: true });
+		} catch {
+			// error-policy:J6 best-effort tmp cleanup; must not mask write/rename error.
+		}
+	}
 	return registry;
 }
 

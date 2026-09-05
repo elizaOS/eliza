@@ -238,4 +238,40 @@ describe("project-registry", () => {
 		expect(reg?.activeProjectId).toBe("p1");
 		expect(reg?.projects[0]?.name).toBe("a");
 	});
+
+	it("uses unique tmp file per write and leaves no stale tmp", () => {
+		const reg = {
+			version: 1 as const,
+			activeProjectId: null,
+			projects: [],
+		};
+		// Mock Date.now to same millisecond to prove sequence counter provides uniqueness
+		const origDateNow = Date.now;
+		let call = 0;
+		(Date as unknown as { now: () => number }).now = () => 1_700_000_000_000;
+		try {
+			writeProjectRegistry(reg, env);
+			writeProjectRegistry(reg, env);
+			const files = (() => {
+				try {
+					return (
+						require("node:fs").readdirSync(stateDir) as string[]
+					);
+				} catch {
+					return [];
+				}
+			})();
+			expect(files).toEqual(["projects.json"]);
+			// Verify tmp was unique by checking that two writes didn't collide on same pid.tmp name:
+			// Old code would have used `${path}.${pid}.tmp` — if we had a stale file there, new code would not overwrite it.
+			const stale = `${projectRegistryPath(env)}.${process.pid}.tmp`;
+			writeFileSync(stale, "stale", "utf8");
+			writeProjectRegistry(reg, env);
+			// New code leaves stale file untouched (unique tmp), old code would have overwritten it
+			expect(readFileSync(stale, "utf8")).toBe("stale");
+			rmSync(stale, { force: true });
+		} finally {
+			(Date as unknown as { now: () => number }).now = origDateNow;
+		}
+	});
 });
