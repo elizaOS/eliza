@@ -10,7 +10,8 @@ import {
 	type Service,
 	type ServiceClass,
 } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BionicHostLoader } from "../services/bionic-host-loader";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
 const assignmentsState = vi.hoisted(() => ({
@@ -947,5 +948,37 @@ describe("ensureLocalInferenceHandler", () => {
 				thinking: "off",
 			}),
 		);
+	});
+});
+
+afterEach(() => vi.restoreAllMocks());
+
+describe("dedicated bionic embedding registration", () => {
+	it("does not replace the chat loader with an embedding assignment", async () => {
+		process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";
+		process.env.ELIZA_BIONIC_INFERENCE_SOCK = "test-dedicated-encoder";
+		assignmentsState.assignments = { TEXT_EMBEDDING: "gte-small" };
+		registryState.installed = [
+			{ id: "gte-small", path: "/models/gte-small_fp16.gguf" },
+		];
+		const vector = Array.from({ length: 384 }, (_, i) => (i - 192) / 384);
+		const embed = vi
+			.spyOn(BionicHostLoader.prototype, "embed")
+			.mockResolvedValue({ embedding: vector, tokens: 9 });
+		const load = vi.spyOn(BionicHostLoader.prototype, "loadModel");
+		const unload = vi.spyOn(BionicHostLoader.prototype, "unloadModel");
+		const { runtime, registrations } = makeRuntime();
+		await ensureLocalInferenceHandler(runtime);
+		const beforeLoads = load.mock.calls.length;
+		const beforeUnloads = unload.mock.calls.length;
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TEXT_EMBEDDING,
+		);
+		const text = "Complete source that must use the dedicated encoder";
+		expect(await handler(runtime, { text })).toEqual(vector);
+		expect(embed).toHaveBeenCalledWith({ input: text });
+		expect(load.mock.calls.length).toBe(beforeLoads);
+		expect(unload.mock.calls.length).toBe(beforeUnloads);
 	});
 });

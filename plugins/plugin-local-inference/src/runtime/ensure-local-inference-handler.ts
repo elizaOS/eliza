@@ -601,7 +601,7 @@ function extractEmbeddingText(
  * the runtime falls back to a non-local provider rather than serving a
  * silent zero-vector (Commandment 8: don't hide broken pipelines).
  */
-function makeEmbeddingHandler(): EmbeddingHandler {
+function makeEmbeddingHandler(dedicatedEncoder = false): EmbeddingHandler {
 	return async (runtime, params) => {
 		const loader = getLoader(runtime);
 		if (!loader?.embed) {
@@ -609,10 +609,10 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 				"[local-inference] Active loader does not implement embed; falling through to next provider",
 			);
 		}
-		// Embeddings in this runtime are not slot-aware — there's a single
-		// active model. Make sure the user's TEXT_EMBEDDING assignment, if
-		// any, is loaded before we hit the loader.
-		await ensureAssignedModelLoaded(loader, "TEXT_EMBEDDING");
+		// Bionic embeddings own a separate encoder. Loading the embedding
+		// assignment into the shared loader would replace its chat-model path.
+		if (!dedicatedEncoder)
+			await ensureAssignedModelLoaded(loader, "TEXT_EMBEDDING");
 		const text = extractEmbeddingText(params);
 		const result = await loader.embed({ input: text });
 		return result.embedding;
@@ -1662,7 +1662,7 @@ export async function ensureLocalInferenceHandler(
 	const embeddingHandler = isLocalEmbeddingDisabledByEnv()
 		? null
 		: loaderForEmbed && typeof loaderForEmbed.embed === "function"
-			? makeEmbeddingHandler()
+			? makeEmbeddingHandler(bionicHostRegistered)
 			: provider === LOCAL_INFERENCE_PROVIDER
 				? makeFusedEmbeddingHandler()
 				: null;
