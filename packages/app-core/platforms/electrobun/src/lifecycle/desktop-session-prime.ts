@@ -5,8 +5,11 @@ import { resolveMainWindowPartition } from "../main-window-session";
 import {
   type DesktopSession,
   installDesktopSessionCookies,
+  isLoopbackBase,
   loadOrCreateDesktopSession,
 } from "../native/auth-bridge";
+import type { PushableWindow } from "./agent-ready-publish";
+import { reloadRendererAfterDesktopSessionPrime } from "./desktop-session-renderer-ready";
 
 // Tracks whether the desktop loopback session has already been primed for the
 // current process lifetime. The bridge is idempotent on disk, but cookie jar
@@ -172,4 +175,84 @@ export async function primeDesktopSessionAuth(
   }
   await desktopSessionPrimeInFlight;
   return desktopSessionPrimed;
+}
+
+export interface ExternalRuntimeDesktopWindow extends PushableWindow {
+  webview: {
+    loadURL(url: string): void;
+    rpc?: unknown;
+  };
+}
+
+export interface ExternalDesktopRuntimeInitOptions {
+  mode: "local" | "external" | "disabled";
+  externalApiBase?: string | null;
+  externalReachability?: "verified" | "unavailable";
+  env?: Record<string, string | undefined>;
+  currentWindow: ExternalRuntimeDesktopWindow | null;
+  resolveRendererOrigin?: (
+    env: Record<string, string | undefined>,
+  ) => string | null | undefined;
+  resolveApiToken?: (
+    env: Record<string, string | undefined>,
+  ) => string | null | undefined;
+  resolveQualifiedToken?: (
+    externalApiBase: string,
+  ) => string | null | undefined;
+  publishAgentApiBase: (
+    rendererBase: string,
+    apiToken: string,
+    windows: Iterable<PushableWindow>,
+  ) => void;
+  collectOpenWindows: () => Iterable<PushableWindow>;
+  setAgentReady: (ready: boolean) => void;
+  resolveRendererUrl: () => Promise<string>;
+  injectApiBaseIntoWindows: () => void;
+}
+
+export async function initializeExternalDesktopRuntimeSession(
+  options: ExternalDesktopRuntimeInitOptions,
+): Promise<boolean> {
+  const {
+    mode,
+    externalApiBase,
+    externalReachability,
+    env = process.env as Record<string, string | undefined>,
+    currentWindow,
+    resolveRendererOrigin,
+    resolveApiToken,
+    resolveQualifiedToken,
+    publishAgentApiBase,
+    collectOpenWindows,
+    setAgentReady,
+    resolveRendererUrl,
+    injectApiBaseIntoWindows,
+  } = options;
+
+  if (
+    mode === "external" &&
+    externalApiBase &&
+    isLoopbackBase(externalApiBase)
+  ) {
+    const devServerRenderer = resolveRendererOrigin?.(env);
+    const rendererBase = devServerRenderer ?? externalApiBase;
+    const sessionPrimed = await primeDesktopSessionAuth(
+      externalApiBase,
+      rendererBase,
+    );
+    const apiToken =
+      resolveApiToken?.(env) ?? resolveQualifiedToken?.(externalApiBase) ?? "";
+    publishAgentApiBase(rendererBase, apiToken, collectOpenWindows());
+    setAgentReady(externalReachability !== "unavailable");
+    await reloadRendererAfterDesktopSessionPrime({
+      sessionPrimed,
+      backendGeneration: `external:${externalApiBase}`,
+      window: currentWindow,
+      resolveRendererUrl,
+    });
+    return sessionPrimed;
+  }
+
+  injectApiBaseIntoWindows();
+  return false;
 }

@@ -491,7 +491,7 @@ function waitForSocketConsumption(
   });
 }
 
-function isLoopbackBase(apiBase: string): boolean {
+export function isLoopbackBase(apiBase: string): boolean {
   try {
     const url = new URL(apiBase);
     const host = url.hostname.toLowerCase();

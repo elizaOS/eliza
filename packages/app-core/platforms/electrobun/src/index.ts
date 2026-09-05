@@ -22,6 +22,7 @@ import Electrobun, {
 } from "electrobun/bun";
 import {
   resolveDesktopRuntimeModeWithDeployment,
+  resolveHttpLoopbackRendererOriginForApiClient,
   resolveInitialApiBase,
   resolveRendererFacingApiBase,
 } from "./api-base";
@@ -71,6 +72,7 @@ import { publishAgentApiBase } from "./lifecycle/agent-ready-publish";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
   createDesktopSessionGenerationTracker,
+  initializeExternalDesktopRuntimeSession,
   markDesktopSessionStale,
   primeDesktopSessionAuth,
 } from "./lifecycle/desktop-session-prime";
@@ -1993,7 +1995,23 @@ async function _startAgent(): Promise<void> {
         );
       }
     }
-    injectApiBaseIntoOpenRendererWindows();
+
+    await initializeExternalDesktopRuntimeSession({
+      mode: runtimeResolution.mode,
+      externalApiBase,
+      externalReachability: runtimeResolution.externalReachability,
+      currentWindow,
+      resolveRendererOrigin: resolveHttpLoopbackRendererOriginForApiClient,
+      resolveApiToken: (env) => resolveApiToken(env),
+      resolveQualifiedToken: (base) =>
+        resolveQualifiedExternalToken(runtimeResolution, base),
+      publishAgentApiBase: (base, token, windows) =>
+        publishAgentApiBase(base, token, windows),
+      collectOpenWindows: collectOpenRendererWindows,
+      setAgentReady,
+      resolveRendererUrl: resolveMainWindowRendererUrl,
+      injectApiBaseIntoWindows: injectApiBaseIntoOpenRendererWindows,
+    });
     return;
   }
 
@@ -3160,10 +3178,12 @@ async function main(): Promise<void> {
   // in main(), but _startAgent will push the actual port once the agent
   // reports it.
   const rt = resolveDesktopRuntime();
-  if (rt.mode === "external") {
-    injectApiBaseIntoOpenRendererWindows();
-  } else if (rt.mode === "local") {
-    logger.info("[Main] Starting embedded agent (local mode).");
+  if (rt.mode === "external" || rt.mode === "local") {
+    if (rt.mode === "local") {
+      logger.info("[Main] Starting embedded agent (local mode).");
+    } else {
+      logger.info("[Main] Initializing external agent runtime.");
+    }
     _startAgent().catch((err) => {
       logger.error(
         `[Main] Agent auto-start failed: ${err instanceof Error ? err.message : String(err)}`,
