@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Cross-builds the fused voice inference library for Android arm64-v8a with
+ * Cross-builds the fused voice inference library for Android arm64-v8a and x86_64 with
  * the NDK and stages it into the app's jniLibs. The CPU variant statically
  * links ggml/llama/mtmd; the Vulkan variant stages their shared backends and
  * requires host shader tooling supplied by the documented ELIZA_* overrides.
@@ -51,7 +51,7 @@ function parseArgs(argv) {
 // a HOST-built vulkan-shaders-gen, which needs glslc + the Vulkan/SPIRV headers
 // on the build machine. These are not vendored in the fork; discover the proven
 // locations (env overrides win) and fail loudly with what to provide.
-function resolveVulkanHostTooling(ndk) {
+function resolveVulkanHostTooling(ndk, abi) {
   const firstExisting = (cands) => cands.find((p) => p && existsSync(p));
 
   const glslc =
@@ -96,7 +96,7 @@ function resolveVulkanHostTooling(ndk) {
   const vulkanLib = firstExisting([
     path.join(
       ndk,
-      "toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/31/libvulkan.so",
+      `toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${abi === "x86_64" ? "x86_64" : "aarch64"}-linux-android/31/libvulkan.so`,
     ),
   ]);
 
@@ -105,6 +105,7 @@ function resolveVulkanHostTooling(ndk) {
 
 const ABI_TO_PLATFORM = {
   "arm64-v8a": "android-23",
+  x86_64: "android-23",
 };
 
 function resolveSdk() {
@@ -150,7 +151,7 @@ function run(cmd, args, opts = {}) {
 
 const { abi, variant } = parseArgs(process.argv.slice(2));
 const platform = ABI_TO_PLATFORM[abi];
-if (!platform) die(`unsupported abi ${abi} (Phase 3a: arm64-v8a only)`);
+if (!platform) die(`unsupported abi ${abi} (arm64-v8a | x86_64)`);
 log(`variant: ${variant}`);
 
 const sdk = resolveSdk();
@@ -244,7 +245,7 @@ if (variant === "cpu") {
   // glue), so this variant ships the sibling .so set instead. Shaders are
   // cross-compiled to SPIR-V by a host vulkan-shaders-gen (needs glslc + the
   // Vulkan/SPIRV headers — see resolveVulkanHostTooling).
-  const vk = resolveVulkanHostTooling(ndk);
+  const vk = resolveVulkanHostTooling(ndk, abi);
   log(`vulkan glslc: ${vk.glslc}`);
   log(`vulkan SPIRV-Headers: ${vk.spirvHeadersDir}`);
   log(`vulkan headers: ${vk.vulkanIncludeDir}`);
@@ -274,7 +275,7 @@ run("cmake", [
   "--target",
   "elizainference",
   "-j",
-  String(jobs),
+  String(process.env.CMAKE_BUILD_PARALLEL_LEVEL || jobs),
 ]);
 
 const binDir = path.join(buildDir, "bin");

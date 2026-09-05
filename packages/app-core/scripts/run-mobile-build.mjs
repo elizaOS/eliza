@@ -58,6 +58,7 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
+import { packagedRuntimeFiles } from "./lib/apk-runtime-provenance.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10955,6 +10956,8 @@ function writeAndroidSystemProvenance(apkPath) {
             ? sha256File(runtimeProvenancePath)
             : null,
           runtime_provenance: runtimeProvenance,
+          runtime_provenance_stage: "pre_gradle_inputs",
+          packaged_runtime_files: packagedRuntimeFiles(apkPath),
           android_system_variant: APP.appName,
           android_package: APP.appId,
           claim_boundary:
