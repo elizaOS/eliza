@@ -4214,6 +4214,9 @@ const calendarAction: CalendarHandlerAction = {
       llmPlan,
       fallbackQueries: [tripWindowIntent?.location],
     });
+    // Remembered so the read path does not repeat the same extraction with
+    // the same inputs when this one found nothing.
+    let searchQueriesInferred = false;
     if (subaction === "search_events" && searchQueries.length === 0) {
       searchQueries = await inferCalendarSearchQueriesWithLlm({
         runtime,
@@ -4222,6 +4225,7 @@ const calendarAction: CalendarHandlerAction = {
         intent,
         llmPlan,
       });
+      searchQueriesInferred = true;
     }
     const service = resolveCalendarService(runtime);
     // Complete evidence for the existing planner evaluator, not a second
@@ -5270,20 +5274,15 @@ const calendarAction: CalendarHandlerAction = {
       if (subaction === "search_events") {
         let queriesForSearch = searchQueries;
         const currentMessageText = messageText(message);
-        const recentConversation = (
-          await collectRecentConversationTexts({
-            runtime,
-            message,
-            state,
-          })
-        ).join("\n");
         if (queriesForSearch.length === 0) {
-          queriesForSearch = await inferCalendarSearchQueriesWithLlm({
-            runtime,
-            message,
-            state,
-            intent,
-          });
+          if (!searchQueriesInferred) {
+            queriesForSearch = await inferCalendarSearchQueriesWithLlm({
+              runtime,
+              message,
+              state,
+              intent,
+            });
+          }
           if (queriesForSearch.length === 0) {
             const groundedFromFeed = await groundCalendarSearchMatchesWithLlm(
               runtime,
@@ -5330,6 +5329,16 @@ const calendarAction: CalendarHandlerAction = {
                 }),
               });
             }
+            // The complete room transcript is only needed by this
+            // disambiguation fallback; every other search read skipped an
+            // unbounded room scan that nothing consumed.
+            const recentConversation = (
+              await collectRecentConversationTexts({
+                runtime,
+                message,
+                state,
+              })
+            ).join("\n");
             const recoveredReadPlan = await disambiguateCalendarReadPlanWithLlm(
               {
                 runtime,
