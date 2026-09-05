@@ -5,6 +5,7 @@
  */
 
 import { logger } from "@elizaos/logger";
+import { isLoopbackBindHost } from "@elizaos/shared";
 import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
@@ -284,8 +285,7 @@ function isMobileLocalActiveServer(
 }
 
 function isLoopbackHostname(hostname: string): boolean {
-  const h = hostname.toLowerCase();
-  return h === "127.0.0.1" || h === "localhost" || h === "::1";
+  return isLoopbackBindHost(hostname);
 }
 
 // Re-resolve a persisted loopback apiBase against whatever port the
@@ -293,7 +293,7 @@ function isLoopbackHostname(hostname: string): boolean {
 // previous session may have captured a stale port (e.g. 31337) when
 // the live API has moved (e.g. 31338). Without this, every restore
 // re-applies the dead URL and the renderer 404s on every fetch.
-function reconcilePersistedApiBaseWithLive(
+export function reconcilePersistedApiBaseWithLive(
   apiBase: string | undefined,
 ): string | undefined {
   if (!apiBase) return apiBase;
