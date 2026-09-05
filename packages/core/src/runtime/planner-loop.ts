@@ -1975,14 +1975,16 @@ async function runPlannerLoopIterations(
 		// action-owned completion. Falls through on any ambiguity. See
 		// `tryGateEvaluator` for the full contract.
 		const gateStartedAt = Date.now();
-		const gatedDecision = requiresIntentEvaluation
-			? null
-			: tryGateEvaluator({
-					trajectory,
-					failures,
-					lastPlannerExplicitMessageToUser,
-					lastPlannerExplicitCompleted,
-				});
+		const gatedDecision =
+			trySubPlannerVerdictGate(trajectory, failures) ??
+			(requiresIntentEvaluation
+				? null
+				: tryGateEvaluator({
+						trajectory,
+						failures,
+						lastPlannerExplicitMessageToUser,
+						lastPlannerExplicitCompleted,
+					}));
 		if (gatedDecision) {
 			const { output: gated, reason } = gatedDecision;
 			trajectory.evaluatorOutputs.push(
@@ -6998,8 +7000,48 @@ type GatedEvaluatorDecision = {
 		| "explicit_terminal_reply"
 		| "action_terminal_result"
 		| "action_terminal_failure"
-		| "post_tool_model_reply";
+		| "post_tool_model_reply"
+		| "sub_planner_evaluator_finish";
 };
+
+export const SUB_PLANNER_VERDICT_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: the umbrella action's sub-planner evaluator already judged these results against the declared intents; second evaluator LLM call skipped.";
+
+/**
+ * An umbrella action routed through the sub-planner carries its child
+ * evaluator's verdict. That evaluator ran over the same planner context and
+ * declared intents the outer loop would use, so a successful FINISH with a
+ * user-facing message is a completed intent evaluation: judging the identical
+ * results again costs one more ~18K-token model call and ~1 s (live
+ * 2026-09-05: umbrella CALENDAR delete 11.1 s vs 3.3 s for the direct child
+ * call). Applies only when that umbrella step is the sole completed tool, the
+ * queue is drained and nothing failed; every other shape still evaluates.
+ */
+function trySubPlannerVerdictGate(
+	trajectory: PlannerTrajectory,
+	failures: readonly FailureLike[],
+): GatedEvaluatorDecision | null {
+	if (trajectory.plannedQueue.length > 0) return null;
+	if (failures.length > 0) return null;
+	if (completedToolStepCount(trajectory) !== 1) return null;
+	const latestStep = trajectory.steps[trajectory.steps.length - 1];
+	const result = latestStep?.result;
+	const verdict = result?.subPlannerEvaluation;
+	if (!latestStep?.toolCall || !result || !verdict) return null;
+	if (result.success !== true || verdict.success !== true) return null;
+	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
+	const message = verdict.messageToUser?.trim();
+	if (!message || isUnsafeUserVisibleText(message)) return null;
+	return {
+		reason: "sub_planner_evaluator_finish",
+		output: {
+			success: true,
+			decision: "FINISH",
+			thought: SUB_PLANNER_VERDICT_GATED_EVALUATOR_THOUGHT,
+			messageToUser: message,
+		},
+	};
+}
 
 function tryGateEvaluator(args: {
 	trajectory: PlannerTrajectory;

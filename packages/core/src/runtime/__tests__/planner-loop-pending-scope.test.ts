@@ -216,6 +216,61 @@ describe("planner-declared pending work", () => {
 		},
 	);
 
+	it("adopts the sub-planner evaluator's FINISH for an umbrella result instead of evaluating again", async () => {
+		// Live 2026-09-05 (tj-b2756267002022): umbrella CALENDAR → sub-planner →
+		// child evaluator FINISH → umbrella step settled → a second evaluation ran
+		// over the same results (11.1 s vs 3.3 s for the direct child call).
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [],
+			results: [
+				{
+					success: true,
+					text: "OK CALENDAR_DELETE_EVENT",
+					transcriptVisibility: "internal" as const,
+					subPlannerEvaluation: {
+						decision: "FINISH" as const,
+						success: true,
+						messageToUser: "Deleted the gym session on Tuesday at 7am.",
+					},
+				},
+			],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["CALENDAR"]);
+		expect(result.finalMessage).toBe(
+			"Deleted the gym session on Tuesday at 7am.",
+		);
+		expect(
+			h.useModel.mock.calls.filter(
+				([type]) => type === ModelType.RESPONSE_HANDLER,
+			),
+		).toHaveLength(0);
+	});
+
+	it("still evaluates when the sub-planner verdict was not a successful FINISH", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [
+				finish("Nothing was deleted; the event was not found.", false),
+			],
+			results: [
+				{
+					success: true,
+					text: "OK CALENDAR_DELETE_EVENT",
+					transcriptVisibility: "internal" as const,
+					subPlannerEvaluation: { decision: "FINISH" as const, success: false },
+				},
+			],
+		});
+		await h.run();
+		expect(
+			h.useModel.mock.calls.filter(
+				([type]) => type === ModelType.RESPONSE_HANDLER,
+			),
+		).toHaveLength(1);
+	});
+
 	it("preserves the queued batch after rejecting a premature successful FINISH", async () => {
 		const h = harness({
 			plans: [
