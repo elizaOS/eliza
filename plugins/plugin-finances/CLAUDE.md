@@ -26,8 +26,7 @@ and on `@elizaos/plugin-elizacloud` for the managed Plaid / PayPal clients.
   `FinancesServiceError` (HTTP status) on invalid input.
 - `FinancesRepository` (`src/db/finances-repository.ts`) — raw SQL over
   `app_finances` (payment sources / transactions + subscription audits /
-  candidates / cancellations). Uses the self-contained `src/db/sql.ts` helpers
-  (runtime DB handle). PA's `LifeOpsRepository` delegates its finance methods
+  candidates / cancellations). Uses `src/db/sql.ts` for the runtime DB handle and shared SQL primitives. PA's `LifeOpsRepository` delegates its finance methods
   here so the PA subscriptions mixin reaches the finance tables unchanged.
 - `SubscriptionsService` (`src/services/subscriptions-service.ts`) — standalone
   successor to PA's `withSubscriptions` mixin. Handles subscription audit /
@@ -86,7 +85,7 @@ src/
     finances.ts                   runPaymentsHandler + OWNER_FINANCES param schema
   db/
     schema.ts                     pgSchema("app_finances") + finance tables
-    sql.ts                        Self-contained raw-SQL helpers (runtime DB)
+    sql.ts                        Runtime DB lookup and shared raw-SQL helpers
     finances-repository.ts        FinancesRepository (raw SQL over app_finances)
     index.ts                      re-exports schema.ts
   services/
