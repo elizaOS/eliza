@@ -45,17 +45,6 @@ vi.mock("../ui/select", () => ({
   SelectValue: () => null,
 }));
 vi.mock("../ui/settings-controls", () => ({
-  SettingsActionButton: ({
-    children,
-    onClick,
-  }: {
-    children: ReactNode;
-    onClick: () => void;
-  }) => (
-    <button type="button" onClick={onClick}>
-      {children}
-    </button>
-  ),
   SettingsSelectTrigger: ({
     children,
     "aria-label": ariaLabel,

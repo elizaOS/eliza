@@ -18,11 +18,9 @@ import type {
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
-import {
-  SettingsActionButton,
-  SettingsSelectTrigger,
-} from "../ui/settings-controls";
+import { SettingsSelectTrigger } from "../ui/settings-controls";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
 
 const PREFERRED_AUTO_VALUE = "__auto__";
@@ -166,6 +164,15 @@ export function RoutingMatrix() {
     }
   }, []);
 
+  const { ref: retryHardwareRef, agentProps: retryHardwareProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "model-routing-retry-hardware",
+      role: "button",
+      label: "Retry hardware detection",
+      group: "models",
+      onActivate: () => void loadHardware(),
+    });
+
   useEffect(() => {
     void loadHardware();
     return () => {
@@ -283,16 +290,15 @@ export function RoutingMatrix() {
                 "Hardware details are unavailable. Auto routing estimates cannot be shown.",
             })}
           </span>
-          <SettingsActionButton
-            agentId="model-routing-retry-hardware"
-            agentLabel="Retry hardware detection"
-            agentGroup="models"
+          <Button
+            ref={retryHardwareRef}
+            {...retryHardwareProps}
             variant="outline"
             size="sm"
             onClick={() => void loadHardware()}
           >
             {t("common.retry", { defaultValue: "Retry" })}
-          </SettingsActionButton>
+          </Button>
         </div>
       ) : null}
       {error ? (
