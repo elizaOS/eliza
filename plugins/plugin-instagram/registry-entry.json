@@ -55,6 +55,7 @@
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#instagram"
   },
   "dependsOn": [],
+  "channels": ["instagram"],
   "kind": "connector",
   "subtype": "messaging",
   "auth": {

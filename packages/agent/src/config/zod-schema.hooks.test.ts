@@ -35,7 +35,6 @@ const HOOK_CHANNELS = [
   "googlechat",
   "slack",
   "imessage",
-  "msteams",
 ] as const;
 
 describe("HookMappingSchema", () => {

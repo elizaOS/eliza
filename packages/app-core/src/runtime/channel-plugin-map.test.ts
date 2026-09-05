@@ -19,9 +19,8 @@ const expectedChannelPluginMap: Record<string, string> = {
   discordLocal: "@elizaos/plugin-discord",
   googlechat: "@elizaos/plugin-google-workspace",
   imessage: "@elizaos/plugin-imessage",
+  instagram: "@elizaos/plugin-instagram",
   matrix: "@elizaos/plugin-matrix",
-  mattermost: "@elizaos/plugin-mattermost",
-  msteams: "@elizaos/plugin-msteams",
   slack: "@elizaos/plugin-slack",
   telegram: "@elizaos/plugin-telegram",
   twitter: "@elizaos/plugin-x",
@@ -45,9 +44,8 @@ describe("CHANNEL_PLUGIN_MAP", () => {
       "@elizaos/plugin-google-workspace",
     );
     expect(CHANNEL_PLUGIN_MAP.imessage).toBe("@elizaos/plugin-imessage");
+    expect(CHANNEL_PLUGIN_MAP.instagram).toBe("@elizaos/plugin-instagram");
     expect(CHANNEL_PLUGIN_MAP.matrix).toBe("@elizaos/plugin-matrix");
-    expect(CHANNEL_PLUGIN_MAP.mattermost).toBe("@elizaos/plugin-mattermost");
-    expect(CHANNEL_PLUGIN_MAP.msteams).toBe("@elizaos/plugin-msteams");
     expect(CHANNEL_PLUGIN_MAP.slack).toBe("@elizaos/plugin-slack");
     expect(CHANNEL_PLUGIN_MAP.telegram).toBe("@elizaos/plugin-telegram");
     expect(CHANNEL_PLUGIN_MAP.twitter).toBe("@elizaos/plugin-x");
@@ -69,6 +67,11 @@ describe("CHANNEL_PLUGIN_MAP", () => {
     expect(CHANNEL_PLUGIN_MAP.TELEGRAM).toBeUndefined();
     expect(CHANNEL_PLUGIN_MAP.bluebubbles).toBeUndefined();
     expect(CHANNEL_PLUGIN_MAP.signal).toBeUndefined();
+    // External transports unregistered by #24373 must stay unresolvable.
+    // blooio is no longer in this class: develop 9b93ec4374 made it a
+    // canonical connector key owned by @elizaos/plugin-imessage.
+    expect(CHANNEL_PLUGIN_MAP.mattermost).toBeUndefined();
+    expect(CHANNEL_PLUGIN_MAP.msteams).toBeUndefined();
   });
 
   it("exposes a non-empty map whose keys are sorted and whose values are plugin packages", () => {
