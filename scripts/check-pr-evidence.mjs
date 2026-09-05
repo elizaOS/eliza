@@ -48,13 +48,14 @@ export function hasMatchingEvidenceHead(body, headSha) {
  * A changed file forces surface artifacts when it is a rendered-UI source file
  * — labels are advisory and agents routinely omit them, so the gate cannot rely
  * on them alone. Detection is deliberately narrow: a visual EXTENSION (`.tsx`,
- * CSS family, `.svg`, `.html`, `.vue`) under a UI-bearing PACKAGE, excluding
+ * CSS family, `.svg`, `.html`, `.vue`) under a UI-bearing package or plugin,
+ * excluding
  * test/story/fixture files that render nothing a user sees. This is why editing
- * a real component in `packages/ui` or `packages/app` demands screenshots while
- * editing its `*.test.tsx` or `*.stories.tsx` does not.
+ * a real component in `packages/ui`, `packages/app`, or `plugins/*` demands
+ * screenshots while editing its `*.test.tsx` or `*.stories.tsx` does not.
  */
 const SURFACE_PATH_RE =
-  /(^|\/)(packages\/(app|ui|tui|homepage)|apps\/app|packages\/cloud\/frontend)\//i;
+  /(^|\/)(packages\/(app|ui|tui|homepage)|apps\/app|packages\/cloud\/frontend|plugins)\//i;
 const SURFACE_VISUAL_EXT_RE = /\.(tsx|jsx|css|scss|sass|less|svg|html|vue)$/i;
 const SURFACE_NON_VISUAL_RE =
   /(\.(test|spec|stories|story|bench)\.|\.d\.ts$|(^|\/)(__tests__|__e2e__|__mocks__|__fixtures__|test|tests|e2e|stories)\/)/i;
