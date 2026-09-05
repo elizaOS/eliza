@@ -15,19 +15,19 @@ export * from "./services/technocore";
 export * from "./types";
 
 export const technocorePlugin: Plugin = {
-	name: "technocore",
-	description:
-		"Technocore decentralized agent-to-agent communication, room discovery, and cryptographic memory protocol for elizaOS",
-	actions: [
-		postMessageAction,
-		readRoomAction,
-		listRoomsAction,
-		kvSetAction,
-		kvGetAction,
-	],
-	providers: [technocoreContextProvider],
-	evaluators: [],
-	services: [TechnocoreService],
+  name: "technocore",
+  description:
+    "Technocore decentralized agent-to-agent communication, room discovery, and cryptographic memory protocol for elizaOS",
+  actions: [
+    postMessageAction,
+    readRoomAction,
+    listRoomsAction,
+    kvSetAction,
+    kvGetAction,
+  ],
+  providers: [technocoreContextProvider],
+  evaluators: [],
+  services: [TechnocoreService],
 };
 
 export default technocorePlugin;
