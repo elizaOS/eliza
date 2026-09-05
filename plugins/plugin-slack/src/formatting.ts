@@ -103,7 +103,8 @@ export function escapeSlackMrkdwn(text: string): string {
 }
 
 // Sentinel used during conversion to prevent bold from being matched as italic.
-const BOLD_SENTINEL = "\u0000BOLD\u0000";
+const NUL = "\u0000";
+const BOLD_SENTINEL = `${NUL}BOLD${NUL}`;
 
 /**
  * Converts markdown bold to Slack mrkdwn
@@ -206,8 +207,14 @@ export function markdownToSlackMrkdwn(markdown: string): string {
     return "";
   }
 
+  // The bold pass swaps `**` for a NUL-delimited sentinel and swaps it back
+  // afterwards, so a NUL arriving in the caller's text can forge one: the
+  // sender gets bold they never typed, or a stray `*`. Slack never renders
+  // NUL, so dropping it up front costs nothing and closes that.
+  const source = markdown.split(NUL).join("");
+
   // Process in order: code blocks -> links -> headings -> text styles -> escape
-  let result = convertCodeBlocks(markdown);
+  let result = convertCodeBlocks(source);
   result = convertLinks(result);
   result = convertHeadings(result);
   result = convertBold(result);
