@@ -50,6 +50,10 @@ export interface ActionParameterSchema {
 	additionalProperties?: boolean | ActionParameterSchema;
 	/** For array types, define the item schema */
 	items?: ActionParameterSchema;
+	/** Minimum number of items for array-valued parameters */
+	minItems?: number;
+	/** Maximum number of items for array-valued parameters */
+	maxItems?: number;
 	/** Enumerated allowed values (schema-compatible) */
 	enumValues?: string[];
 	/** Enumerated allowed values */

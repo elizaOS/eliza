@@ -108,6 +108,36 @@ describe("validate-tool-args", () => {
 			expect(errors).toHaveLength(0);
 			expect(result).toEqual({ id: "item-1", enabled: true });
 		});
+
+		it("validates array minItems and maxItems bounds", () => {
+			const errors: string[] = [];
+			const arraySchema = {
+				type: "array" as const,
+				minItems: 2,
+				maxItems: 4,
+				items: { type: "string" as const },
+			};
+
+			const valid = validateSchema(
+				arraySchema,
+				["a", "b", "c"],
+				"tags",
+				errors,
+			);
+			expect(valid).toEqual(["a", "b", "c"]);
+			expect(errors).toHaveLength(0);
+
+			validateSchema(arraySchema, ["a"], "tags", errors);
+			expect(errors).toContain(
+				"Argument 'tags' must contain at least 2 items, got 1",
+			);
+
+			errors.length = 0;
+			validateSchema(arraySchema, ["a", "b", "c", "d", "e"], "tags", errors);
+			expect(errors).toContain(
+				"Argument 'tags' must contain at most 4 items, got 5",
+			);
+		});
 	});
 
 	describe("validateToolArgs", () => {
