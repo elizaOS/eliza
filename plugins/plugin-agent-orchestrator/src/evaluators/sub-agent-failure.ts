@@ -121,10 +121,26 @@ export function extractFailureReason(errorOutput: string): string {
 }
 const shortReason = extractFailureReason;
 
+// Compose the single user-facing failure line. The router's error narration is
+// unedited content: a reason clause frequently arrives already ending in
+// sentence punctuation ("…timed out.", "…crashed!"), so appending the template's
+// own terminator unconditionally doubled it ("timed out.. Want me…"). This is the
+// one shared boundary that owns the terminator: if the assembled clause already
+// ends in a sentence terminator we keep that exact punctuation, otherwise we add
+// exactly one period. The class covers the ASCII stops plus the horizontal
+// ellipsis and the fullwidth/ideographic stops, because `extractFailureReason`
+// keeps only the first line of a multi-line narration and routers commonly mark
+// that truncation with `…` (and non-Latin narration may end in `。`/`！`/`？`) —
+// each of those would otherwise be the exact doubling this guards against. Only
+// the punctuation composition is normalized — the reason text, label, and
+// question tail are untouched.
+const SENTENCE_TERMINATOR = /[.!?…。！？]$/u;
 function buildFailureReply(label: string, reason: string): string {
   const what = label ? `the "${label}" task` : "that task";
-  const because = reason ? ` — ${reason.replace(/[.!?]+$/, "")}` : "";
-  return `Couldn't finish ${what}${because}. Want me to retry?`;
+  const because = reason ? ` — ${reason}` : "";
+  const clause = `Couldn't finish ${what}${because}`;
+  const terminator = SENTENCE_TERMINATOR.test(clause) ? "" : ".";
+  return `${clause}${terminator} Want me to retry?`;
 }
 
 function respondIfNeeded(messageHandler: MessageHandlerResult) {
