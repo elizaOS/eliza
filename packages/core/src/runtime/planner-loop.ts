@@ -2551,13 +2551,10 @@ const TURN_SCOPE_ARG_SCHEMA: JSONSchema = {
 	type: "string",
 	enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
 	description:
-		"Scope of the entire batch, not this call's position. Use the same value " +
-		"on every call in one batch: " +
-		`"${TURN_SCOPE_FINAL}" when this batch covers the full request; ` +
-		`"${TURN_SCOPE_MORE_WORK_PENDING}" when a later batch is needed, including ` +
-		"a read whose results are needed to ground a later write. Another call " +
-		"already in this batch or a final conversational confirmation does not " +
-		"make the batch pending. Results are still verified. Stripped before the tool runs.",
+		"Does another non-terminal action batch need these results? Use the same value on every call: " +
+		`"${TURN_SCOPE_FINAL}" if no later actions are needed; the evaluator verifies these results and writes the answer, including read-dependent details. ` +
+		`"${TURN_SCOPE_MORE_WORK_PENDING}" only if results must ground later actions, such as a lookup before an update. ` +
+		"Queued calls and composing a reply do not require another batch. Stripped before execution.",
 };
 
 /**
@@ -3330,6 +3327,15 @@ async function recordPlannerStage(args: {
 		const usage = extractUsage(args.raw);
 		const finishReason = extractFinishReason(args.raw);
 		const modelName = extractModelName(args.raw);
+		// Record the model's native declarations before execution-only parsing
+		// strips reserved control arguments. Otherwise traces lose the very
+		// scope flag that can trigger a replan. JSON outputs remain in response.
+		const nativeCalls =
+			typeof args.raw === "string"
+				? []
+				: normalizeToolCalls(args.raw.toolCalls);
+		const recordedCalls =
+			nativeCalls.length > 0 ? nativeCalls : args.parsed.toolCalls;
 		// Flatten `messages` only to locate provider spans; the flattened form is
 		// not persisted — `messages` is the canonical record and spans index into
 		// `flattenTrajectoryMessages(messages)` reconstructed at read time.
@@ -3354,7 +3360,7 @@ async function recordPlannerStage(args: {
 				toolChoice: args.modelParams.toolChoice,
 				providerOptions: args.modelParams.providerOptions,
 				response: responseText,
-				toolCalls: args.parsed.toolCalls.map<RecordedToolCall>((tc) => ({
+				toolCalls: recordedCalls.map<RecordedToolCall>((tc) => ({
 					id: tc.id,
 					name: tc.name,
 					args: tc.params,

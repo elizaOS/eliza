@@ -42,6 +42,58 @@ function renderedMessagePrompt(
 }
 
 describe("v5 planner loop skeleton", () => {
+	it("records native turn scope without passing it to the action", async () => {
+		const stages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: vi.fn(() => "native-scope"),
+			recordStage: vi.fn(async (_id, stage) => {
+				stages.push(stage);
+			}),
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "found",
+		}));
+		await runPlannerLoop({
+			runtime: {
+				useModel: vi.fn(async () => ({
+					text: "",
+					toolCalls: [
+						{
+							id: "read",
+							name: "LOOKUP",
+							arguments: { query: "status", eliza_turn_scope: "final" },
+						},
+					],
+				})),
+			},
+			context: { id: "native-scope" },
+			executeToolCall,
+			evaluate: vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+			})),
+			recorder,
+			trajectoryId: "native-scope",
+		});
+		expect(
+			stages.find((stage) => stage.kind === "planner")?.model?.toolCalls,
+		).toEqual([
+			{
+				id: "read",
+				name: "LOOKUP",
+				args: { query: "status", eliza_turn_scope: "final" },
+			},
+		]);
+		expect(executeToolCall).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ name: "LOOKUP", params: { query: "status" } }),
+			expect.anything(),
+		);
+	});
+
 	it("parses planner tool calls", () => {
 		const output = parsePlannerOutput(`{
   "thought": "Fetch state.",
