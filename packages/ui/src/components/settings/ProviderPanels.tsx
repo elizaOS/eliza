@@ -15,6 +15,7 @@ import type {
 import { useAppSelector } from "../../state";
 import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
+import { Alert, AlertDescription } from "../ui/alert";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
@@ -137,6 +138,8 @@ export function CloudPanel({
   onModelFieldChange,
 }: CloudPanelProps) {
   const t = useAppSelector((s) => s.t);
+  const loginBusy = useAppSelector((s) => s.elizaCloudLoginBusy);
+  const loginError = useAppSelector((s) => s.elizaCloudLoginError);
   const cloudActive =
     !cloudCallsDisabled && isCloudSelected && elizaCloudConnected;
   const needsSignIn = !elizaCloudConnected;
@@ -162,7 +165,7 @@ export function CloudPanel({
           type="button"
           variant={cloudActive || needsSignIn ? "default" : "outline"}
           className="h-9 rounded-md px-3 text-xs font-medium"
-          disabled={routingModeSaving}
+          disabled={routingModeSaving || loginBusy}
           aria-label={
             needsSignIn
               ? t("providerpanels.signInToCloud", {
@@ -188,12 +191,20 @@ export function CloudPanel({
             : t("providerpanels.cloud", { defaultValue: "Cloud" })}
         </SettingsActionButton>
       </ProviderPanelHeader>
+      {loginError ? (
+        <Alert variant="destructive">
+          <AlertDescription>{loginError}</AlertDescription>
+        </Alert>
+      ) : loginBusy ? (
+        <Alert role="status" aria-busy="true">
+          <AlertDescription>Opening Cloud sign-in…</AlertDescription>
+        </Alert>
+      ) : null}
       {needsSignIn ? (
         <div className="p-3 sm:px-4">
           <div className="rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.cloudUnsignedUsingLocal", {
-              defaultValue:
-                "Eliza Cloud isn't signed in. Chat replies are using Local.",
+              defaultValue: "Sign in to use Eliza Cloud services.",
             })}
           </div>
         </div>
