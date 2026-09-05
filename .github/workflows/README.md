@@ -340,13 +340,14 @@ exists for the exact new head (the canonical-source guard reports
 `superseded=true`, every deploy job skips, and no certification is uploaded).
 Ancestry without a successor run, production staleness, divergence, or any
 unverifiable source still fails the run. After every successful, non-superseded
-automatic `develop` Cloud release, `cloud-cf-deploy.yml` uploads a
-14-day immutable certification whose JSON names the repository, workflow,
+`develop` Cloud release, `cloud-cf-deploy.yml` uploads a 14-day immutable
+certification whose JSON names the repository, workflow,
 source SHA, root Git tree, run/attempt, environment, and deterministic artifact
 name. A production dispatch checks out the exact requested `main` SHA and must
 resolve that tree's non-expired artifact from a completed successful
-`push`/`develop` run before the protected `production` approval job is even
-reachable. The artifact id, GitHub digest, owning run, payload, current workflow
+`develop` run admitted by `push` or `workflow_dispatch` before the protected
+`production` approval job is even reachable. The artifact id, GitHub digest,
+owning run, payload, current workflow
 bytes, and expiry are all checked. Different merge commits are accepted only
 when their root trees are byte-identical; `force` never bypasses this gate.
 
