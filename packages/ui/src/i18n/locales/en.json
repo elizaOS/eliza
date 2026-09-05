@@ -6533,6 +6533,8 @@
   "hardwarebadge.recommendedPresetTitle": "Recommended preset",
   "hardwarebadge.gpuProbeLimitedTitle": "Install plugin-local-ai for full GPU detection",
   "hardwarebadge.gpuProbeLimited": "GPU probe limited",
+  "routingmatrix.hardwareLoading": "Checking device hardware…",
+  "routingmatrix.hardwareUnavailable": "Hardware details are unavailable. Auto routing estimates cannot be shown.",
   "routingmatrix.loadError": "Failed to load routing",
   "routingmatrix.policyError": "Failed to update policy",
   "routingmatrix.updateError": "Failed to update preferred provider",
