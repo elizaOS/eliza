@@ -41,12 +41,13 @@ const getModelsConfig = vi.hoisted(() =>
   })),
 );
 
+const voiceState = vi.hoisted(() => ({ provider: "local-inference" }));
 vi.mock("../../voice/useVoiceConfig", () => ({
   useVoiceConfig: () => ({
     voiceConfig: {
       provider: selection.cloudRuntimeLocked
         ? "eliza-cloud"
-        : "local-inference",
+        : voiceState.provider,
     },
   }),
 }));
@@ -213,6 +214,20 @@ describe("ProviderSwitcher", () => {
     vi.clearAllMocks();
     selection.visibleProviderPanelId = "__local__";
     selection.cloudRuntimeLocked = false;
+    voiceState.provider = "local-inference";
+  });
+
+  it("updates the playback summary when Cloud replaces a saved browser voice after sign-in", () => {
+    voiceState.provider = "robot-voice";
+    const { rerender } = render(
+      <ProviderSwitcher elizaCloudConnected={false} />,
+    );
+    const row = () =>
+      screen.getByText("Speech playback").closest('[data-slot="settings-row"]');
+    expect(row()?.textContent).not.toContain("Eliza Cloud");
+    rerender(<ProviderSwitcher elizaCloudConnected />);
+    expect(row()?.textContent).toContain("Eliza Cloud");
+    expect(row()?.textContent).not.toContain("Unconfirmed");
   });
 
   it("states both serving axes above the intelligence tiles", async () => {
