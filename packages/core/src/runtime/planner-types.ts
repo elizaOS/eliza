@@ -87,6 +87,8 @@ export interface EvaluatorEffects {
 }
 
 export type EvaluatorOutput = EvaluationResult & {
+	/** Model-selected proof for messageToUser; egress resolves these against this turn's results. */
+	effectReceiptIds?: readonly string[];
 	nextTool?: PlannerToolCall;
 	/** The model response violated the evaluator protocol. */
 	protocolFailure?: true;

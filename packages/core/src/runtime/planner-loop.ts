@@ -3620,6 +3620,9 @@ function evaluationContextEvent(args: {
 			decision: evaluator.decision,
 			thought: evaluator.thought,
 			messageToUser: evaluator.messageToUser,
+			effectReceiptIds: evaluator.effectReceiptIds
+				? [...evaluator.effectReceiptIds]
+				: undefined,
 			recommendedToolCallId: evaluator.recommendedToolCallId,
 			protocolFailure: evaluator.protocolFailure,
 			parseError: evaluator.parseError,

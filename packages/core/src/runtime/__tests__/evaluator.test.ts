@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../../errors";
-import { evaluatorTemplate } from "../../prompts/evaluator";
+import { evaluatorSchema, evaluatorTemplate } from "../../prompts/evaluator";
 import {
 	type ChatMessage,
 	ModelType,
@@ -16,6 +16,40 @@ import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {
+	it("keeps receipt selection compatible with provider structured-output schemas", () => {
+		// Cerebras rejected uniqueItems in the live post-tool evaluator request.
+		// The parser below, not provider-specific grammar, validates these IDs.
+		const receiptSchema = evaluatorSchema.properties?.effectReceiptIds;
+		expect(receiptSchema).toMatchObject({
+			type: "array",
+			items: { type: "string" },
+		});
+		expect(receiptSchema).not.toHaveProperty("uniqueItems");
+		expect(receiptSchema).not.toHaveProperty("items.minLength");
+	});
+
+	it.each([
+		"note-proof",
+		[42],
+		[""],
+		["  "],
+		["note-proof", "note-proof"],
+		null,
+	])("rejects malformed effect receipt selection: %j", (effectReceiptIds) => {
+		const output = parseEvaluatorOutput(
+			JSON.stringify({
+				thought: "The note write succeeded.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: "I've created the picnic note.",
+				effectReceiptIds,
+			}),
+		);
+		expect(output.protocolFailure).toBe(true);
+		expect(output.decision).toBe("CONTINUE");
+		expect(output.effectReceiptIds).toBeUndefined();
+	});
+
 	it("keeps synthesized replies human-readable unless raw output was requested", () => {
 		expect(evaluatorTemplate).toContain(
 			"natural conversation, not a database or debug log",

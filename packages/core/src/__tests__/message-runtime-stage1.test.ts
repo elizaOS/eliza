@@ -15,6 +15,7 @@ import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-fi
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { ContextRegistry } from "../runtime/context-registry";
 import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
+import { effectDeliveryBindingProvesApplication } from "../runtime/effect-delivery";
 import { HANDLED_STEP_FALLBACK_MESSAGE } from "../runtime/planner-loop";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
@@ -6391,6 +6392,88 @@ describe("runV5MessageRuntimeStage1", () => {
 				"I couldn't verify that build completed.",
 			);
 		}
+	});
+
+	it("carries evaluator-selected proof through the complete planned reply without rewriting or replaying", async () => {
+		const reply = "I've created Picnic with your reminder to bring a charger.";
+		const observedAt = "2026-09-05T12:00:00.000Z";
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Save the requested picnic note.",
+				contexts: ["notes"],
+				intents: ["Create the picnic note to bring a charger."],
+				candidateActionNames: ["NOTES"],
+				replyText: "",
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "note-create",
+						name: "NOTES",
+						arguments: { eliza_turn_scope: "final" },
+					},
+				],
+			},
+			JSON.stringify({
+				thought: "The note receipt proves the requested write.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: reply,
+				effectReceiptIds: ["note-proof"],
+			}),
+		]);
+		const handler = vi.fn(async () => ({
+			success: true,
+			modelReplyRequired: true,
+			data: { note: { title: "Picnic", body: "bring a charger" } },
+			effectReceipts: [
+				{
+					receiptId: "note-proof",
+					operation: "notes.create",
+					outcome: "applied" as const,
+					resource: { kind: "note", id: "picnic" },
+					artifacts: [],
+					idempotency: { key: "picnic-request", replayed: false },
+					observedAt,
+					commit: {
+						kind: "durable" as const,
+						id: "note-write",
+						committedAt: observedAt,
+					},
+				},
+			],
+		}));
+		runtime.actions = [
+			{
+				name: "NOTES",
+				description: "Create the picnic note.",
+				contexts: ["notes"],
+				tags: ["capability:write"],
+				validate: async () => true,
+				handler,
+			},
+		];
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Create a picnic note to bring a charger.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("planned_reply");
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(useModelCalls(runtime)).toHaveLength(3);
+		if (result.kind !== "planned_reply")
+			throw new Error("Expected a planned reply");
+		const response = result.result.responseContent;
+		if (!response) throw new Error("Expected a delivered response");
+		expect(response.text).toBe(reply);
+		expect(response.agentVoiced).toBe(true);
+		expect(response.effectReceiptIds).toEqual(["note-proof"]);
+		expect(effectDeliveryBindingProvesApplication(response)).toBe(true);
 	});
 
 	it("does not let a rejected early completion claim hide the later receipt-grounded confirmation", async () => {

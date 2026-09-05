@@ -30,6 +30,7 @@ rules:
 - When the latest tool result has verifiedUserFacing=true with non-empty userFacingText, that text is the canonical user-visible outcome (OAuth URL, permission card, [CONFIG:…] marker, command output, etc.). For FINISH after such a result: omit messageToUser entirely unless you add NEW task-grounded substance the tool did not already state (e.g. a one-sentence interpretation of a table). Never set messageToUser to process-status narration alone after tools already ran — no "on it", "working on it", "got it", "one moment", "looking into it", or any similar stall/ack as the whole message; those create a useless second bubble.
 - When you do set messageToUser after tool use, ground it in THIS request's outcome in everyday language (what was connected, opened, searched, built, or fixed). Do not rely on a fixed canned phrase list, and never use a process-status ack alone as the whole message.
 - FINISH after tool use without verifiedUserFacing => include concise grounded messageToUser that states the outcome in task-specific language
+- When messageToUser confirms completed changes, select effectReceiptIds from THIS turn's supplied effectReceipts for every change you describe. Select only applied receipts or replayed no-op receipts confirming a prior commit, never previews, failed/uncertain outcomes, or receipts reverted by a rollback. Do not invent IDs or cite proof for a different operation/resource. Put these IDs in effectReceiptIds, not in the conversational message. For replies without completed-change claims, omit effectReceiptIds or use [].
 - FINISH success=false after a failed step => messageToUser states plainly what was attempted and why it did not work, in everyday language grounded in the tool result; no file paths, internal ids, or raw logs; do not invent authentication or settings failures the tool did not report
 - no raw transcripts/banners/logs unless user asked raw output
 - copyToClipboard optional; requires title + content
@@ -60,6 +61,14 @@ export const evaluatorSchema: JSONSchema = {
 			enum: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],
 		},
 		messageToUser: { type: "string" },
+		effectReceiptIds: {
+			type: "array",
+			// Keep the wire schema within providers' structured-output subset;
+			// parseEvaluatorOutput enforces nonblank, unique IDs after decoding.
+			items: { type: "string" },
+			description:
+				"Current-turn committed effect receipts grounding the changes described in messageToUser. Never display these IDs in the reply.",
+		},
 		copyToClipboard: {
 			type: "object",
 			additionalProperties: false,
