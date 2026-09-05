@@ -63,7 +63,7 @@
       ],
       "minimumMaintainedReferences": 2,
       "responsibility": "Empty and loading presentation inside page-panel placements.",
-      "maintainedReferences": 3
+      "maintainedReferences": 4
     },
     {
       "id": "settings-row",
