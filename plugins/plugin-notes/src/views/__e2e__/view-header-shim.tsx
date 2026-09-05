@@ -4,8 +4,8 @@
  * deliberately avoids; production Notes continues to import the real header.
  */
 
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/button";
 import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
 
