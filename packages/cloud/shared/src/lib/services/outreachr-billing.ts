@@ -69,6 +69,21 @@ function assertBilling(condition: unknown, message: string): asserts condition {
   if (!condition) throw new OutreachrDelegationError(403, "OUTREACHR_BILLING_SCOPE", message);
 }
 
+function assertSeatPrice(price: Stripe.Price, chosen: "sol" | "astra", appId: string): void {
+  assertBilling(
+    price.type === "recurring" &&
+      price.billing_scheme === "per_unit" &&
+      price.transform_quantity === null &&
+      price.currency === "usd" &&
+      price.unit_amount === (chosen === "sol" ? 4900 : 20000) &&
+      price.recurring?.interval === "month" &&
+      price.recurring.interval_count === 1 &&
+      price.recurring.usage_type === "licensed" &&
+      price.metadata.outreachr_app_id === appId,
+    "Outreachr price does not match the registered per-seat plan",
+  );
+}
+
 export async function outreachrBillingOperation(
   stripe: Stripe,
   registration: OutreachrRegistration,
@@ -92,15 +107,8 @@ export async function outreachrBillingOperation(
         "Outreachr subscription prices are not configured",
       );
     const price = await stripe.prices.retrieve(id);
-    assertBilling(
-      price.active &&
-        price.currency === "usd" &&
-        price.unit_amount === (chosen === "sol" ? 4900 : 20000) &&
-        price.recurring?.interval === "month" &&
-        price.recurring.interval_count === 1 &&
-        price.metadata.outreachr_app_id === registration.appId,
-      "Outreachr price does not match the registered plan",
-    );
+    assertBilling(price.active, "Outreachr price is inactive");
+    assertSeatPrice(price, chosen, registration.appId);
     return price;
   };
   if (input.action === "event") {
@@ -188,39 +196,38 @@ export async function outreachrBillingOperation(
       subscriptions.data.every((sub) => matches(sub.metadata, input.workspaceId)),
     "Unexpected subscriptions exist for this Outreachr customer",
   );
-  if (input.action === "subscriptions") {
+  const subscriptionStates = subscriptions.data.map((sub) => {
+    const item = sub.items.data[0];
+    const known =
+      item?.price.id === config.solPrice
+        ? "sol"
+        : item?.price.id === config.astraPrice
+          ? "astra"
+          : null;
+    assertBilling(
+      sub.items.data.length === 1 && !sub.items.has_more && item && known,
+      "Subscription does not match an Outreachr plan",
+    );
+    assertSeatPrice(item.price, known, registration.appId);
+    assertBilling(
+      typeof item.quantity === "number" &&
+        Number.isSafeInteger(item.quantity) &&
+        item.quantity >= 1 &&
+        item.quantity <= 1000,
+      "Subscription does not have a valid Outreachr seat quantity",
+    );
     return {
-      subscriptions: subscriptions.data.map((sub) => {
-        const item = sub.items.data[0];
-        const known =
-          item?.price.id === config.solPrice
-            ? "sol"
-            : item?.price.id === config.astraPrice
-              ? "astra"
-              : null;
-        assertBilling(
-          sub.items.data.length === 1 &&
-            item &&
-            known &&
-            item.price.currency === "usd" &&
-            item.price.unit_amount === (known === "sol" ? 4900 : 20000) &&
-            item.price.recurring?.interval === "month" &&
-            item.price.recurring.interval_count === 1,
-          "Subscription does not match an Outreachr plan",
-        );
-        return {
-          id: sub.id,
-          status: sub.status,
-          plan: known,
-          seats: item.quantity,
-          periodStart: item.current_period_start,
-          periodEnd: item.current_period_end,
-          cancelAtPeriodEnd: sub.cancel_at_period_end,
-          created: sub.created,
-        };
-      }),
+      id: sub.id,
+      status: sub.status,
+      plan: known,
+      seats: item.quantity,
+      periodStart: item.current_period_start,
+      periodEnd: item.current_period_end,
+      cancelAtPeriodEnd: sub.cancel_at_period_end,
+      created: sub.created,
     };
-  }
+  });
+  if (input.action === "subscriptions") return { subscriptions: subscriptionStates };
   const prices = await Promise.all([priceFor("sol"), priceFor("astra")]);
   const products = new Map<string, string[]>();
   for (const price of prices) {
