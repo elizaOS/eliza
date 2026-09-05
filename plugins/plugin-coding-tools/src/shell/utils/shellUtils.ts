@@ -12,7 +12,7 @@ import type {
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   resolveExecutable,
   resolveTerminalShell,
@@ -207,30 +207,78 @@ export function chunkString(input: string, limit = CHUNK_LIMIT): string[] {
 }
 
 /**
- * Safely slice a string respecting UTF-16 surrogate pairs
+ * Safely slice a string respecting UTF-16 surrogate pairs.
+ * Normalizes input via toWellFormedUnicode so lone surrogates do not escape,
+ * advances start past any split low surrogate, and backs end off before
+ * any split high surrogate.
  */
 export function sliceUtf16Safe(
   str: string,
   start: number,
   end?: number,
 ): string {
-  const effectiveEnd = end ?? str.length;
-  if (start < 0) {
-    const adjustedStart = Math.max(0, str.length + start);
-    return str.slice(adjustedStart, effectiveEnd);
+  const wellFormed = toWellFormedUnicode(str);
+  const len = wellFormed.length;
+  let s = start < 0 ? Math.max(0, len + start) : Math.min(start, len);
+  let e =
+    end === undefined
+      ? len
+      : end < 0
+        ? Math.max(0, len + end)
+        : Math.min(end, len);
+
+  if (s >= e) {
+    return "";
   }
-  return str.slice(start, effectiveEnd);
+
+  // If start lands between a surrogate pair (on the low surrogate), advance past it
+  if (s > 0 && s < len) {
+    const prev = wellFormed.charCodeAt(s - 1);
+    const curr = wellFormed.charCodeAt(s);
+    if (prev >= 0xd800 && prev <= 0xdbff && curr >= 0xdc00 && curr <= 0xdfff) {
+      s += 1;
+    }
+  }
+
+  // If end lands between a surrogate pair (before the low surrogate), back off before high surrogate
+  if (e > 0 && e < len) {
+    const prev = wellFormed.charCodeAt(e - 1);
+    const curr = wellFormed.charCodeAt(e);
+    if (prev >= 0xd800 && prev <= 0xdbff && curr >= 0xdc00 && curr <= 0xdfff) {
+      e -= 1;
+    }
+  }
+
+  if (s >= e) {
+    return "";
+  }
+  return wellFormed.slice(s, e);
 }
 
 /**
- * Truncate string in the middle with ellipsis
+ * Truncate string in the middle with ellipsis without splitting surrogate pairs
+ * or exceeding the specified max length.
  */
 export function truncateMiddle(str: string, max: number): string {
-  if (str.length <= max) {
-    return str;
+  if (max <= 0) {
+    return "";
   }
-  const half = Math.floor((max - 3) / 2);
-  return `${sliceUtf16Safe(str, 0, half)}...${sliceUtf16Safe(str, -half)}`;
+  const wellFormed = toWellFormedUnicode(str);
+  if (wellFormed.length <= max) {
+    return wellFormed;
+  }
+  if (max <= 3) {
+    return "...".slice(0, max);
+  }
+
+  const budget = max - 3;
+  const leadBudget = Math.ceil(budget / 2);
+  const tailBudget = Math.floor(budget / 2);
+
+  const head = truncateWellFormed(wellFormed, leadBudget);
+  const tail = tailBudget > 0 ? sliceUtf16Safe(wellFormed, -tailBudget) : "";
+
+  return `${head}...${tail}`;
 }
 
 /**
