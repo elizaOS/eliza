@@ -26,6 +26,11 @@ describe("normalizeWerText", () => {
     expect(normalizeWerText("It's 42, really?!")).toBe("it's 42 really");
   });
 
+  it("normalizes typographic/curly apostrophes to ascii apostrophe", () => {
+    expect(normalizeWerText("don’t it’s we‘re")).toBe("don't it's we're");
+    expect(wordErrorRate("don't it's we're", "don’t it’s we‘re")).toBe(0);
+  });
+
   it("retains unicode letters/numbers", () => {
     expect(normalizeWerText("Café déjà 3")).toBe("café déjà 3");
   });
