@@ -16,7 +16,7 @@ import { makeOcrAnalyzer } from "../analyzers/ocr/ocr.ts";
 import type { Analyzer } from "../analyzers/types.ts";
 import { FileJobQueue } from "./file-queue.ts";
 import { DEFAULT_LIMITS, type WorkerState } from "./state.ts";
-import { processJob, runQueueWorker } from "./worker.ts";
+import { processJob, runQueueWorker, type WorkerEvent } from "./worker.ts";
 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "evidence-worker-"));
 afterAll(() => fs.rmSync(scratch, { recursive: true, force: true }));
@@ -388,4 +388,69 @@ describe("queue worker cancellation cleanup", () => {
     await worker;
     expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
   });
+});
+
+describe("invalid queue job outcomes", () => {
+  it.each([false, true])(
+    "reports every invalid job and keeps processing valid work (mixed=%s)",
+    async (mixed) => {
+      const root = newRoot();
+      const queue = new FileJobQueue(root);
+      for (const [id, raw] of [
+        ["000-invalid-json", "broken"],
+        ["001-invalid-shape", "{}"],
+      ]) {
+        fs.writeFileSync(path.join(root, "pending", `${id}.json`), raw);
+      }
+      let validId: string | undefined;
+      if (mixed) {
+        validId = queue.enqueue(
+          writePng(path.join(root, "shot.png")),
+          "ocr.unlimited",
+          {
+            artifact: "shot.png",
+            kind: "screenshot",
+            analysisPath: path.join(root, "analysis.json"),
+          },
+        ).id;
+      }
+      const events: WorkerEvent[] = [];
+      const counts = await runQueueWorker({
+        queue,
+        analyzers: [unlimitedAt(undefined)],
+        stopWhenIdle: true,
+        limits: { drainAfterMs: 0 },
+        onEvent: (event) => events.push(event),
+      });
+      expect(counts).toEqual({
+        completed: 0,
+        failed: 2,
+        skipped: mixed ? 1 : 0,
+        requeued: 0,
+      });
+      for (const id of ["000-invalid-json", "001-invalid-shape"]) {
+        const result = queue.readResult(id);
+        expect(result?.status).toBe("failed");
+        expect(
+          events.filter(
+            (event) => event.type === "processed" && event.id === id,
+          ),
+        ).toEqual([
+          { type: "processed", id, action: "failed", reason: result?.reason },
+        ]);
+        expect(fs.existsSync(path.join(root, "done", `${id}.json`))).toBe(true);
+      }
+      if (validId) expect(queue.readResult(validId)?.status).toBe("skipped");
+      expect(queue.pendingCount()).toBe(0);
+      const secondEvents: WorkerEvent[] = [];
+      expect(
+        await runQueueWorker({
+          queue,
+          stopWhenIdle: true,
+          onEvent: (event) => secondEvents.push(event),
+        }),
+      ).toEqual({ completed: 0, failed: 0, skipped: 0, requeued: 0 });
+      expect(secondEvents).toEqual([{ type: "idle" }]);
+    },
+  );
 });

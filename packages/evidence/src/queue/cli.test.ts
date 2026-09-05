@@ -1,8 +1,4 @@
-// The evidence:gpu-queue CLI as a process boundary: argv parsing, usage/error
-// exit codes, `enqueue` writing a real pending job, and `worker --once` draining
-// to honest skip records when no vision service is reachable. Drives the real
-// runQueueCli with a captured CliIo (no spawned process); the library it calls
-// is the same one exercised elsewhere.
+/** Exercises queue CLI outcomes against actual files, including invalid jobs and unavailable analyzers. */
 
 import fs from "node:fs";
 import os from "node:os";
@@ -32,6 +28,36 @@ function captureIo() {
 }
 
 describe("runQueueCli", () => {
+  it("reports newly retired invalid jobs and exits nonzero without recounting historical failures", async () => {
+    const root = newRoot();
+    const queue = new FileJobQueue(root);
+    fs.writeFileSync(
+      path.join(root, "pending", "000-invalid.json"),
+      "{not JSON",
+    );
+    const first = captureIo();
+    expect(
+      await runQueueCli(["worker", "--root", root, "--once"], first.io),
+    ).toBe(1);
+    const result = queue.readResult("000-invalid");
+    expect(result).toMatchObject({ status: "failed", id: "000-invalid" });
+    expect(result?.reason).toBeTruthy();
+    expect(first.out.join("\n")).toContain(
+      "0 completed, 1 failed, 0 skipped, 0 requeued",
+    );
+    expect(fs.existsSync(path.join(root, "done", "000-invalid.json"))).toBe(
+      true,
+    );
+    const second = captureIo();
+    expect(
+      await runQueueCli(["worker", "--root", root, "--once"], second.io),
+    ).toBe(0);
+    expect(second.out.join("\n")).toContain(
+      "0 completed, 0 failed, 0 skipped, 0 requeued",
+    );
+    expect(queue.readResult("000-invalid")).toEqual(result);
+  });
+
   it("prints usage and exits 1 on an unknown command", async () => {
     const { io, err } = captureIo();
     expect(await runQueueCli(["bogus"], io)).toBe(1);
