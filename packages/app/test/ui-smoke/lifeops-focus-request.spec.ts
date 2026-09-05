@@ -67,6 +67,25 @@ for (const viewport of [
         );
       },
     );
+    for (const view of ["finances", "goals", "health", "inbox", "todos"]) {
+      await openAppPath(page, `/${view}`);
+      const control =
+        view === "inbox"
+          ? page.getByRole("button", { name: "Email", exact: true })
+          : view === "todos"
+            ? page.getByRole("button", { name: "Add todo", exact: true })
+            : page.getByRole("combobox").first();
+      await expect(control).toBeVisible({ timeout: 60_000 });
+      await page.screenshot({
+        path: testInfo.outputPath(`${viewport.name}-${view}-rest.jpg`),
+        fullPage: true,
+      });
+      await control.hover();
+      await page.screenshot({
+        path: testInfo.outputPath(`${viewport.name}-${view}-hover.jpg`),
+        fullPage: true,
+      });
+    }
     await openAppPath(page, "/focus");
     const start = page.getByRole("button", {
       name: "Start focus",
