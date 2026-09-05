@@ -360,8 +360,11 @@ export async function runPlannerLoop(
 		}
 		throw error;
 	}
-	const honest = await ensureFailedTurnFinalMessage(trackedParams, result);
-	const final = await ensureToolTurnFinalMessage(trackedParams, honest);
+	const withReply = await ensureToolTurnFinalMessage(trackedParams, result);
+	// Failure-aware synthesis is the final authority. Its grounded answer must
+	// not re-enter the pre-tool acknowledgement heuristic and be replaced by
+	// another synthesis that lacks the recorded failure context.
+	const final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
 	return { ...final, modelUsage: usage };
 }
 
@@ -5999,6 +6002,7 @@ async function ensureToolTurnFinalMessage(
 			finalMessage !== undefined &&
 			finalMessage.trim() !== "" &&
 			finalMessage !== HANDLED_STEP_FALLBACK_MESSAGE &&
+			finalMessage !== FAILED_TOOL_FALLBACK_MESSAGE &&
 			userSafeCapturedAnswerCandidate(finalMessage) !== undefined;
 		params.runtime.logger?.warn?.(
 			{ iteration, synthesizedUsable },
