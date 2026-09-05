@@ -840,16 +840,20 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   await expect(page.getByTestId(RUNTIME_CHOICE("remote"))).toBeVisible();
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
 
-  // Onboarding surface (#12178): the composer stays enabled so a user can answer
-  // the in-chat conductor naturally. Attachments, voice, and ordinary agent
-  // sends remain gated by the first-run controller; the active sheet preserves
-  // the wallpaper and remains non-dismissable at its half detent.
+  // The runtime chooser accepts conductor-only text before an agent exists.
+  // The accessibility hint makes that boundary explicit: setup may retain the
+  // user's request, but it cannot reach the runtime until onboarding finishes.
+  // Hosted Cloud's later sign-in-only step remains separately locked. The
+  // active onboarding sheet stays non-dismissable at its half detent.
   const composer = page.getByTestId("chat-composer-textarea");
   await expect(composer).toBeEnabled();
   await expect(composer).toHaveAttribute("placeholder", "Hey Eliza…");
   await expect(composer).toHaveAttribute(
     "aria-describedby",
-    "cc-first-run-hint",
+    /\bcc-first-run-hint\b/,
+  );
+  await expect(page.locator("#cc-first-run-hint")).toContainText(
+    "Your answer stays in setup until your agent is ready.",
   );
   await expect(page.getByTestId("chat-first-run-backdrop")).toHaveCount(0);
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
@@ -982,6 +986,12 @@ async function pickTutorial(
 ): Promise<void> {
   const start = page.getByTestId(TUTORIAL_CHOICE("start"));
   const skip = page.getByTestId(TUTORIAL_CHOICE("skip"));
+  // Cloud binding can settle the sheet to its collapsed composer before the
+  // tutorial turn paints. Reopen it through the same composer gesture a user
+  // takes; the conductor state already owns the pending tutorial choices.
+  if (!(await start.isVisible().catch(() => false))) {
+    await page.getByTestId("chat-composer-textarea").click();
+  }
   await expect(start).toBeVisible({ timeout: 30_000 });
   await expect(skip).toBeVisible();
   await click(choice === "start" ? start : skip);
