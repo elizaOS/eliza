@@ -18,6 +18,7 @@ const appMock = vi.hoisted(() => ({
 
 const clientMock = vi.hoisted(() => ({
   listInstalledApps: vi.fn(),
+  listCatalogApps: vi.fn(),
   listAppRuns: vi.fn(),
   fetch: vi.fn(),
   launchApp: vi.fn(),
@@ -40,6 +41,7 @@ describe("AppsManagementSection failure states", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clientMock.listInstalledApps.mockResolvedValue([]);
+    clientMock.listCatalogApps.mockResolvedValue([]);
     clientMock.listAppRuns.mockResolvedValue([]);
   });
 
@@ -112,6 +114,7 @@ describe("AppsManagementSection failure states", () => {
     await waitFor(() => {
       expect(clientMock.listInstalledApps).toHaveBeenCalledTimes(2);
     });
-    expect(await screen.findByRole("status")).toBeTruthy();
+    const emptyState = await screen.findByRole("status");
+    expect(emptyState.textContent).toContain("No apps installed");
   });
 });
