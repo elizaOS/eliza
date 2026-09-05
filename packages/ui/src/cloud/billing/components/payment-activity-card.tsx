@@ -76,12 +76,26 @@ export interface PaymentStateDisplay {
 
 interface PaymentStatesResponse {
   states: PaymentStateDisplay[];
+  /** Route contract fields; treated as optional so a payload missing them
+   *  still renders the page (no pagination controls) instead of erroring. */
+  total?: number;
+  offset?: number;
+  hasMore?: boolean;
 }
 
 type FetchPhase =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; rows: PaymentStateDisplay[] };
+  | {
+      kind: "ready";
+      rows: PaymentStateDisplay[];
+      hasMore: boolean;
+      total: number | null;
+      envelope: boolean;
+    };
+
+/** Matches the list route's default first-page limit (`limit=50, offset=0`). */
+const PAGE_SIZE = 50;
 
 // Status is never conveyed by color alone: every branch pairs a lucide glyph
 // with the verbatim state key so screen-reader and monochrome users read the
@@ -143,8 +157,12 @@ export function PaymentActivityCard() {
   const t = useCloudT();
   const [phase, setPhase] = useState<FetchPhase>({ kind: "loading" });
 
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+
   const fetchStates = useCallback(async () => {
     setPhase({ kind: "loading" });
+    setLoadMoreError(null);
     try {
       const data = await api<PaymentStatesResponse>(
         "/api/v1/billing/payment-states",
@@ -166,7 +184,26 @@ export function PaymentActivityCard() {
         });
         return;
       }
-      setPhase({ kind: "ready", rows: data.states });
+      // Pagination envelope: `total`/`offset`/`hasMore` come from the list
+      // route contract. Defensive when absent (older payloads / proxies): a
+      // missing envelope degrades to "no pagination controls", and hasMore is
+      // also derived from the page length so a short page ends traversal.
+      const total =
+        typeof data.total === "number" && Number.isFinite(data.total)
+          ? data.total
+          : null;
+      const hasMore =
+        typeof data.hasMore === "boolean"
+          ? data.hasMore
+          : total !== null && data.states.length >= PAGE_SIZE;
+      const envelope = typeof data.hasMore === "boolean" || total !== null;
+      setPhase({
+        kind: "ready",
+        rows: data.states,
+        hasMore,
+        total,
+        envelope,
+      });
     } catch (error) {
       // error-policy:J4 transport failure becomes a visible error state with
       // an explicit retry action — never a silent empty list.
@@ -185,6 +222,51 @@ export function PaymentActivityCard() {
       void fetchStates();
     });
   }, [fetchStates]);
+
+  /** Fetches the next page (offset = rows already shown) and appends it.
+   *  Failures leave the existing rows intact with an inline retry — a paging
+   *  failure must never tear down already-loaded history. */
+  const loadMore = useCallback(async () => {
+    if (phase.kind !== "ready" || loadingMore || !phase.hasMore) return;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const data = await api<PaymentStatesResponse>(
+        `/api/v1/billing/payment-states?offset=${phase.rows.length}`,
+      );
+      if (
+        !data ||
+        !Array.isArray(data.states) ||
+        !data.states.every(isPaymentStateRow)
+      ) {
+        setLoadMoreError("Payment activity response was malformed.");
+        return;
+      }
+      const total =
+        typeof data.total === "number" && Number.isFinite(data.total)
+          ? data.total
+          : phase.total;
+      const hasMore =
+        typeof data.hasMore === "boolean"
+          ? data.hasMore
+          : total !== null && data.states.length >= PAGE_SIZE;
+      setPhase({
+        kind: "ready",
+        rows: [...phase.rows, ...data.states],
+        hasMore,
+        total,
+        envelope: true,
+      });
+    } catch (error) {
+      setLoadMoreError(
+        error instanceof Error
+          ? error.message
+          : "Older payments could not be loaded.",
+      );
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [phase, loadingMore]);
 
   return (
     <Card variant="brand" className="relative">
@@ -503,6 +585,66 @@ export function PaymentActivityCard() {
             </ul>
           </Card>
         )}
+
+        {phase.kind === "ready" && phase.rows.length > 0 ? (
+          <div
+            className="flex flex-col gap-2"
+            data-testid="payment-activity-pagination"
+          >
+            {loadMoreError !== null ? (
+              <p
+                className="flex items-center gap-1.5 text-xs font-mono text-destructive"
+                data-testid="payment-activity-load-more-error"
+              >
+                <AlertCircle className="size-3.5 shrink-0" aria-hidden={true} />
+                {t("cloud.billingTab.paymentActivityLoadMoreFailed", {
+                  defaultValue: "Older payments could not be loaded",
+                })}
+                : {loadMoreError}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {phase.total !== null ? (
+                <p
+                  className="text-xs font-mono text-muted-strong tabular-nums"
+                  data-testid="payment-activity-count"
+                >
+                  {t("cloud.billingTab.paymentActivityCount", {
+                    defaultValue: "Showing {{shown}} of {{total}} payments",
+                    shown: phase.rows.length,
+                    total: phase.total,
+                  })}
+                </p>
+              ) : null}
+              {phase.hasMore ? (
+                <Button
+                  variant="linkMono"
+                  type="button"
+                  disabled={loadingMore}
+                  onClick={() => void loadMore()}
+                  data-testid="payment-activity-load-more"
+                >
+                  {loadingMore
+                    ? t("cloud.billingTab.paymentActivityLoadingMore", {
+                        defaultValue: "Loading older payments…",
+                      })
+                    : t("cloud.billingTab.paymentActivityLoadMore", {
+                        defaultValue: "Load older payments",
+                      })}
+                </Button>
+              ) : phase.envelope ? (
+                <p
+                  className="text-xs font-mono text-muted-strong"
+                  data-testid="payment-activity-end"
+                >
+                  {t("cloud.billingTab.paymentActivityAllShown", {
+                    defaultValue: "All payments shown",
+                  })}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
     </Card>
   );
