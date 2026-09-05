@@ -134,6 +134,20 @@ function failedTokenResponse(reason: string): TokenFailure {
   return { type: "failed", reason };
 }
 
+async function releaseRejectedResponse(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // error-policy:J6 response teardown is best-effort; the provider's HTTP
+    // failure remains authoritative and neither body nor transport errors may
+    // expose credentials through diagnostics.
+    logger.warn(
+      { status: response.status },
+      "[openai-codex] Could not release rejected token response",
+    );
+  }
+}
+
 function parseTokenResponse(
   payload: unknown,
   context: TokenResponseContext,
@@ -251,6 +265,7 @@ export async function exchangeAuthorizationCode(
     }),
   });
   if (!response.ok) {
+    await releaseRejectedResponse(response);
     logger.error(
       { mode: "exchange", status: response.status },
       "[openai-codex] Token request returned a non-success status",
@@ -274,6 +289,7 @@ async function refreshAccessToken(
       }),
     });
     if (!response.ok) {
+      await releaseRejectedResponse(response);
       logger.error(
         { mode: "refresh", status: response.status },
         "[openai-codex] Token request returned a non-success status",
