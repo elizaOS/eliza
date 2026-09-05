@@ -98,6 +98,7 @@ describe("view-switch response context ownership", () => {
 		const result = await runViewsShow({
 			client: viewsClient,
 			message: message("open notes"),
+			options: { action: "show", view: "notes" },
 			callback,
 		});
 
