@@ -1,10 +1,12 @@
 /**
  * The CURRENT_TIME provider renders an active sender device's wall clock when
  * its IANA timezone is available. Agent configuration and the runtime host are
- * retained as reference-clock fallbacks, but are never represented as the
- * sender's local time. Text comes from the centralized provider specification.
+ * used as fallbacks. A configured owner's zone can be user-local; agent/host
+ * clocks remain references for other senders. Text comes from the centralized
+ * provider specification.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import { getConfiguredOwnerEntityIds } from "../../../roles.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -104,19 +106,25 @@ export const currentTimeProvider: Provider = {
 		const isoTimestamp = now.toISOString();
 		const unixTimestamp = Math.floor(now.getTime() / 1000);
 		const { timeZone, origin } = resolveCurrentTimeZone(runtime, message);
+		const userTimeZone =
+			origin === "device" ||
+			(origin === "agent-setting" &&
+				getConfiguredOwnerEntityIds(runtime).includes(message.entityId))
+				? timeZone
+				: undefined;
 		const { humanReadable, dateOnly, timeOnly, dayOfWeek } = formatInZone(
 			now,
 			timeZone,
 		);
 
 		const contextText =
-			origin === "device"
+			userTimeZone
 				? `# Current Time
 - User local time: ${humanReadable}
 - Date: ${dateOnly}
 - Time: ${timeOnly} ${timeZone}
 - Day: ${dayOfWeek}
-- User timezone: ${timeZone} (from the active device)
+- User timezone: ${timeZone} (${origin === "device" ? "from the active device" : "the owner's configured timezone; use it unless the user states another"})
 - ISO (UTC): ${isoTimestamp}
 The local time above is already the user's wall-clock time. State it as-is; do not perform timezone arithmetic.`
 				: `# Current Time
@@ -134,7 +142,7 @@ The reference clock above is not the user's local time. Do not present it as use
 				dayOfWeek,
 				unixTimestamp,
 				timeZone,
-				userTimeZone: origin === "device" ? timeZone : undefined,
+				userTimeZone,
 				timeZoneOrigin: origin,
 			},
 			data: {
@@ -145,7 +153,7 @@ The reference clock above is not the user's local time. Do not present it as use
 				humanReadable,
 				unixTimestamp,
 				timeZone,
-				userTimeZone: origin === "device" ? timeZone : null,
+				userTimeZone: userTimeZone ?? null,
 				timeZoneOrigin: origin,
 			},
 		};
