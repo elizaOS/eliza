@@ -257,7 +257,7 @@ describe("createNativeStreamingResponse", () => {
     }
   });
 
-  it("rejects the head on the head timeout so the caller falls back", async () => {
+  it("rejects the head on timeout and detaches listeners", async () => {
     vi.useFakeTimers();
     try {
       const { agent, listenerCount } = makeFakeAgent();
@@ -355,5 +355,30 @@ describe("createNativeStreamingResponse", () => {
     emit("agentStreamComplete", { streamId: "s1" });
     await reader.read();
     expect(listenerCount()).toBe(0);
+  });
+
+  it("detaches earlier listeners when later registration fails", async () => {
+    const registrationError = new Error("chunk listener unavailable");
+    const removeFirst = vi.fn();
+    const addListener = vi
+      .fn<NativeStreamingAgentPlugin["addListener"]>()
+      .mockResolvedValueOnce({ remove: removeFirst })
+      .mockRejectedValueOnce(registrationError);
+    const agent: NativeStreamingAgentPlugin = {
+      async requestStream() {
+        return { streamId: "s1", completion: new Promise(() => {}) };
+      },
+      addListener,
+    };
+
+    await expect(
+      createNativeStreamingResponse(agent, { path: "/mutating-stream" }),
+    ).rejects.toMatchObject({
+      message: "Native stream listener registration failed",
+      cause: registrationError,
+    });
+
+    expect(addListener).toHaveBeenCalledTimes(2);
+    expect(removeFirst).toHaveBeenCalledOnce();
   });
 });

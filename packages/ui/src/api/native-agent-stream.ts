@@ -93,9 +93,9 @@ export async function createNativeStreamingResponse(
   // body is streaming each chunk must arrive within IDLE_TIMEOUT_MS. Without
   // these a dropped head/terminal event (agent crash, killed loopback, lost
   // Capacitor event) would hang the reply forever — Android's `requestStream`
-  // carries no `completion` safety net, so the transport's try/catch fallback
-  // never fires. On timeout the head rejects (caller falls back to the buffered
-  // request) or the body errors, and `detach()` clears both timers.
+  // carries no `completion` safety net. On timeout the head rejects or the body
+  // errors, and `detach()` clears both timers; each platform caller decides
+  // whether any pre-dispatch fallback remains safe.
   const HEAD_TIMEOUT_MS = options.timeoutMs ?? 30000;
   const IDLE_TIMEOUT_MS = options.timeoutMs ?? 30000;
   let headTimer: ReturnType<typeof setTimeout> | null = null;
@@ -272,12 +272,25 @@ export async function createNativeStreamingResponse(
     void stream.completion.then(finishStream, failStream);
   }
 
-  trackHandle(await agent.addListener("agentStreamResponse", onResponse));
-  trackHandle(await agent.addListener("agentStreamChunk", onChunk));
-  trackHandle(await agent.addListener("agentStreamComplete", onComplete));
+  await (async () => {
+    trackHandle(await agent.addListener("agentStreamResponse", onResponse));
+    trackHandle(await agent.addListener("agentStreamChunk", onChunk));
+    trackHandle(await agent.addListener("agentStreamComplete", onComplete));
+  })().then(undefined, (error: unknown) => {
+    // error-policy:J2 add registration context while preserving the native
+    // listener failure as the typed error cause.
+    const registrationError = new Error(
+      "Native stream listener registration failed",
+      { cause: error },
+    );
+    // Registration happens after native dispatch. Settle the head and detach
+    // every handle already acquired before preserving the boundary failure.
+    failStream(registrationError);
+    throw registrationError;
+  });
 
-  // Head deadline: if no response arrives in time, fail the head so the caller's
-  // try/catch falls back to the buffered request instead of hanging.
+  // Head deadline: if no response arrives in time, reject the caller instead of
+  // leaving the native request pending indefinitely.
   headTimer = setTimeout(() => {
     if (!headSettled) failStream(new Error("native stream head timeout"));
   }, HEAD_TIMEOUT_MS);

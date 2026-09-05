@@ -335,4 +335,109 @@ describe("iOS local agent transport (ui copy)", () => {
       ).toBe(true);
     },
   );
+
+  it("does not replay a dispatched streaming POST through the buffered bridge", async () => {
+    capacitorState.pluginAvailable = true;
+    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
+    const streamFailure = new Error("stream response head was lost");
+    const call = vi.fn(async ({ method }: { method: string }) => {
+      if (method === "http_request_stream") throw streamFailure;
+      return {
+        result: {
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          body: "buffered replay",
+        },
+      };
+    });
+    const removeListeners = [vi.fn(), vi.fn(), vi.fn()];
+    let nextListener = 0;
+    const addListener = vi.fn(async () => ({
+      remove: removeListeners[nextListener++] ?? vi.fn(),
+    }));
+
+    const { iosInProcessAgentTransportForUrl, primeIosFullBunRuntime } =
+      await import("./ios-local-agent-transport");
+    primeIosFullBunRuntime({
+      start: vi.fn(async () => ({ ok: true })),
+      getStatus: vi.fn(async () => ({ ready: true, engine: "bun" })),
+      call,
+      addListener,
+    });
+    const nativeTransport = await iosInProcessAgentTransportForUrl(
+      "eliza-local-agent://ipc/api/conversations/c1/messages/stream",
+    );
+
+    await expect(
+      nativeTransport?.request(
+        "eliza-local-agent://ipc/api/conversations/c1/messages/stream",
+        {
+          method: "POST",
+          headers: {
+            accept: "text/event-stream",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ text: "charge once" }),
+        },
+      ),
+    ).rejects.toBe(streamFailure);
+
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(call).toHaveBeenCalledWith({
+      method: "http_request_stream",
+      args: expect.objectContaining({
+        method: "POST",
+        path: "/api/conversations/c1/messages/stream",
+        body: JSON.stringify({ text: "charge once" }),
+      }),
+    });
+    expect(addListener).toHaveBeenCalledTimes(3);
+    for (const remove of removeListeners) expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it("uses the buffered bridge before dispatch when streaming events are unavailable", async () => {
+    capacitorState.pluginAvailable = true;
+    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
+    const call = vi.fn(async () => ({
+      result: {
+        status: 200,
+        statusText: "OK",
+        headers: { "content-type": "application/json" },
+        body: '{"transport":"buffered"}',
+      },
+    }));
+
+    const { iosInProcessAgentTransportForUrl, primeIosFullBunRuntime } =
+      await import("./ios-local-agent-transport");
+    primeIosFullBunRuntime({
+      start: vi.fn(async () => ({ ok: true })),
+      getStatus: vi.fn(async () => ({ ready: true, engine: "bun" })),
+      call,
+    });
+    const nativeTransport = await iosInProcessAgentTransportForUrl(
+      "eliza-local-agent://ipc/api/conversations/c1/messages/stream",
+    );
+
+    const response = await nativeTransport?.request(
+      "eliza-local-agent://ipc/api/conversations/c1/messages/stream",
+      {
+        method: "POST",
+        headers: { accept: "text/event-stream" },
+        body: JSON.stringify({ text: "compatibility" }),
+      },
+    );
+
+    await expect(response?.json()).resolves.toEqual({
+      transport: "buffered",
+    });
+    expect(call).toHaveBeenCalledOnce();
+    expect(call).toHaveBeenCalledWith({
+      method: "http_request",
+      args: expect.objectContaining({
+        method: "POST",
+        path: "/api/conversations/c1/messages/stream",
+      }),
+    });
+  });
 });
