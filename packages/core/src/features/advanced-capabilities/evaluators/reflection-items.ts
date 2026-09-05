@@ -512,6 +512,7 @@ async function prepareFacts(
 					tableName: "facts",
 					roomId: message.roomId,
 					entityId: message.entityId,
+					authorEntityIds: [message.entityId],
 					unique: false,
 				})
 			: Promise.resolve([]),

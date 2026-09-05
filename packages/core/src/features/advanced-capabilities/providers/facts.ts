@@ -446,10 +446,16 @@ const factsProvider: Provider = {
 					worldId: message.worldId,
 					unique: false,
 				}),
+				// `entityId` is only the RLS principal; the author filter is what
+				// scopes the pool to this identity's own facts. Live 2026-09-05 on a
+				// database without RLS policies, the principal-only query returned
+				// the entire facts table (127 rows from every Discord channel) for
+				// each cluster member, and all of it rendered on every turn.
 				...relatedEntityIds.map((entityId) =>
 					runtime.getMemories({
 						tableName: "facts",
 						entityId,
+						authorEntityIds: [entityId],
 						unique: false,
 					}),
 				),

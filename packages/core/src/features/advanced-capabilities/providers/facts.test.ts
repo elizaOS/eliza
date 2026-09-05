@@ -1008,6 +1008,24 @@ describe("factsProvider room-pool currency", () => {
 		expect(data.currentFacts).toHaveLength(4);
 	});
 
+	it("scopes each identity pool to that identity's own facts, not just the RLS principal", async () => {
+		// Live 2026-09-05: with no RLS policies installed, a principal-only query
+		// returned the whole facts table per cluster member.
+		const runtime = makeRuntime({ roomFacts: [], entityFacts: [] });
+		await factsProvider.get(
+			runtime,
+			memory("msg-current", "anything new?", { source: "test" }),
+			{ values: {}, data: {}, text: "" },
+		);
+		expect(runtime.getMemories).toHaveBeenCalledWith(
+			expect.objectContaining({
+				tableName: "facts",
+				entityId,
+				authorEntityIds: [entityId],
+			}),
+		);
+	});
+
 	it("keeps room current facts with unreadable timestamps listed rather than lapsing them", async () => {
 		const unknownStamp = memory(
 			"room-unknown",
