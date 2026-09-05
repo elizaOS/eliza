@@ -7,6 +7,7 @@
  * fields (or receive them via onResult). The runtime constructs one
  * PromptBatcher singleton and feeds it messages via tick().
  */
+import { ElizaError } from "../../errors.ts";
 import type { Memory } from "../../types/memory";
 import type { GenerateTextParams } from "../../types/model";
 import {
@@ -85,6 +86,19 @@ export class PromptBatcher {
 	addSection(section: PromptSection): Promise<BatcherResult | null> {
 		if (this.disposed) {
 			return Promise.reject(new BatcherDisposedError());
+		}
+
+		if (
+			!section ||
+			typeof section.id !== "string" ||
+			section.id.trim().length === 0
+		) {
+			return Promise.reject(
+				new ElizaError("PromptSection id must be a non-empty string", {
+					code: "INVALID_SECTION_ID",
+					context: { id: section?.id },
+				}),
+			);
 		}
 
 		this._validateProviders(section.providers);
