@@ -31,6 +31,7 @@ function createMockCatalogModel(
     bucket: "small",
     blurb: `Curated model ${id}`,
     hiddenFromCatalog: false,
+    publishStatus: "published",
     ...overrides,
   };
 }
