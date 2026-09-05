@@ -4,8 +4,8 @@ import { canonicalCloudPathForLegacyDashboard } from "@elizaos/shared/elizacloud
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { savePersistedActiveServer } from "../../state/persistence";
 import { appModeNavigation } from "../app-mode/app-mode";
 import {
@@ -26,7 +26,8 @@ import {
  * /api/first-run/status probe throws the first-run onboarding chooser over the
  * console (the 2026-07-04 prod bug). The catch-all sends unauthenticated apex
  * visitors to /login and authenticated ones to the in-app /cloud view —
- * for EVERY path, not just the bare root — while all other hosts (per-agent
+ * except named app intents such as /chat, which hand off to the paired
+ * cloud-app origin preserving pathname + search. All other hosts (per-agent
  * subdomains, app.elizacloud.ai, localhost) fall through to the agent app
  * unchanged.
  */
@@ -50,18 +51,30 @@ function stewardToken(expSeconds: number): string {
 const FUTURE_EXP = Math.floor(Date.now() / 1000) + 3600;
 
 const realLocation = window.location;
+let locationReplace = vi.fn<(url: string) => void>();
+
 function setHostname(hostname: string): void {
+  locationReplace = vi.fn<(url: string) => void>();
   Object.defineProperty(window, "location", {
     configurable: true,
-    value: { ...realLocation, hostname },
+    value: {
+      ...realLocation,
+      hostname,
+      replace: locationReplace,
+    },
   });
+}
+
+function LoginPageProbe(): React.JSX.Element {
+  const location = useLocation();
+  return <div data-testid="login-page" data-search={location.search} />;
 }
 
 function renderCatchAll(initialPath = "/"): void {
   render(
     <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
-        <Route path="/login" element={<div data-testid="login-page" />} />
+        <Route path="/login" element={<LoginPageProbe />} />
         {/* The Cloud home target. The real app renders the management
             view here; the test just needs a marker to prove the apex
             catch-all redirected to it. */}
@@ -88,7 +101,7 @@ function renderCatchAllWithAppModeMarkers(initialPath = "/"): void {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
-          <Route path="/login" element={<div data-testid="login-page" />} />
+          <Route path="/login" element={<LoginPageProbe />} />
           <Route path="/cloud" element={<div data-testid="console-home" />} />
           <Route
             path="/cloud/agents"
@@ -181,6 +194,64 @@ describe("CloudRouterShell apex catch-all", () => {
     renderCatchAll("/settings");
     expect(screen.getByTestId("console-home")).toBeTruthy();
     expect(screen.queryByTestId("agent-app")).toBeNull();
+  });
+
+  it("sends an unauthenticated apex /chat visitor to login with returnTo=/chat", () => {
+    setHostname("staging.eliza.app");
+    renderCatchAll("/chat");
+    const login = screen.getByTestId("login-page");
+    expect(login).toBeTruthy();
+    expect(login.getAttribute("data-search")).toBe("?returnTo=%2Fchat");
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+    expect(screen.queryByTestId("console-home")).toBeNull();
+    expect(locationReplace).not.toHaveBeenCalled();
+  });
+
+  it("preserves query string on unauthenticated apex /chat login returnTo", () => {
+    setHostname("staging.eliza.app");
+    renderCatchAll("/chat?ref=nav");
+    expect(screen.getByTestId("login-page").getAttribute("data-search")).toBe(
+      "?returnTo=%2Fchat%3Fref%3Dnav",
+    );
+  });
+
+  it("hands an authenticated staging.eliza.app /chat visitor to the cloud app /chat, not /cloud", async () => {
+    setHostname("staging.eliza.app");
+    localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));
+    renderCatchAll("/chat");
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+    expect(screen.queryByTestId("console-home")).toBeNull();
+    expect(screen.queryByTestId("login-page")).toBeNull();
+    await waitFor(() => {
+      expect(locationReplace).toHaveBeenCalledWith(
+        "https://cloud-staging.eliza.app/chat",
+      );
+    });
+  });
+
+  it("preserves /chat search through the authenticated apex cloud-app handoff", async () => {
+    setHostname("staging.eliza.app");
+    localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));
+    renderCatchAll("/chat?ref=nav");
+    expect(screen.queryByTestId("console-home")).toBeNull();
+    await waitFor(() => {
+      expect(locationReplace).toHaveBeenCalledWith(
+        "https://cloud-staging.eliza.app/chat?ref=nav",
+      );
+    });
+  });
+
+  it("hands an authenticated legacy apex /chat visitor to the production cloud app /chat", async () => {
+    setHostname("elizacloud.ai");
+    localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));
+    renderCatchAll("/chat");
+    expect(screen.queryByTestId("console-home")).toBeNull();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+    await waitFor(() => {
+      expect(locationReplace).toHaveBeenCalledWith(
+        "https://cloud.eliza.app/chat",
+      );
+    });
   });
 
   it("redirects any other authenticated apex deep app path to the console home", () => {
