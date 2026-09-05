@@ -1505,12 +1505,15 @@ public class ElizaAgentService extends Service {
         // (raw tar → `Z_DATA_ERROR: incorrect header check` → PGlite crashloop).
         File vector = new File(filesDir, "vector.tar.gz");
         File fuzzy = new File(filesDir, "fuzzystrmatch.tar.gz");
+        File trigrams = new File(filesDir, "pg_trgm.tar.gz");
         if (forceRefreshTarballs) {
             if (vector.exists() && !vector.delete()) Log.w(TAG, "Could not delete stale vector.tar.gz");
             if (fuzzy.exists() && !fuzzy.delete()) Log.w(TAG, "Could not delete stale fuzzystrmatch.tar.gz");
+            if (trigrams.exists() && !trigrams.delete()) Log.w(TAG, "Could not delete stale pg_trgm.tar.gz");
         }
         copyAssetIfPresentAsGzipped(assets, "agent/vector.tar", vector);
         copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar", fuzzy);
+        copyAssetIfPresentAsGzipped(assets, "agent/pg_trgm.tar", trigrams);
 
         extractBundledEmbedding(assets, stateDir);
 

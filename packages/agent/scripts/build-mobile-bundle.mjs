@@ -46,7 +46,6 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
 // Pure data module (no imports) — safe to load in the build script. The
 // manifest's plugin lists are derived from it so they cannot drift from what
 // the runtime actually allow-lists on mobile (the hand-written copy silently
@@ -58,6 +57,7 @@ import {
   MOBILE_MODEL_PROVIDER_PLUGINS,
   MOBILE_VIEW_PLUGINS,
 } from "../src/runtime/core-plugins.ts";
+import { hasResolvableWorkspaceEntry } from "./mobile-workspace-entry.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentRoot = path.resolve(here, "..");
@@ -1296,21 +1296,12 @@ const workspaceSrcFallbackPlugin = {
         // (CLOUD_AUTH service start fails, every cloud turn → provider_issue).
         // Resolve from src so the class inlines into the single bundle.
         pkgName === "@elizaos/cloud-sdk";
-      if (existsSync(distDir) && !forceSourceResolution) {
-        if (!subpath) return undefined;
-        const cleanedDist = subpath.replace(/\.js$/, "");
-        const distCandidates = [
-          `${cleanedDist}.js`,
-          `${cleanedDist}/index.js`,
-          cleanedDist,
-        ];
-        if (
-          distCandidates.some((candidate) =>
-            existsSync(path.join(distDir, candidate)),
-          )
-        ) {
-          return undefined;
-        }
+      if (
+        existsSync(distDir) &&
+        !forceSourceResolution &&
+        hasResolvableWorkspaceEntry(args.path, pkgDir)
+      ) {
+        return undefined;
       }
 
       // Two layouts to handle: packages with a `src/` directory (the
@@ -1945,7 +1936,11 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
 // Copy contrib extension tarballs. They live one dir above the bundle on
 // device (Phase A handles placement); we surface them in dist-mobile/ so the
 // asset pipeline can pick them up.
-for (const asset of ["vector.tar.gz", "fuzzystrmatch.tar.gz"]) {
+for (const asset of [
+  "vector.tar.gz",
+  "fuzzystrmatch.tar.gz",
+  "pg_trgm.tar.gz",
+]) {
   const src = path.join(pgliteDist, asset);
   if (!existsSync(src)) {
     console.error(`[build-mobile] FATAL: missing ${asset} in ${pgliteDist}`);
@@ -1970,6 +1965,7 @@ const manifest = {
     initdb: "initdb.wasm",
     data: "pglite.data",
     extensions: {
+      pg_trgm: { file: "pg_trgm.tar.gz", expectedAt: "../pg_trgm.tar.gz" },
       vector: { file: "vector.tar.gz", expectedAt: "../vector.tar.gz" },
       fuzzystrmatch: {
         file: "fuzzystrmatch.tar.gz",

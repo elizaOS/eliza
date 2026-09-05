@@ -1199,6 +1199,45 @@ export function stageSeccompShimForAbi({
   return changes;
 }
 
+/** Stages database payloads and records their actual bytes in Android runtime provenance. */
+export function stageAndroidPgliteAssets({
+  distMobileDir,
+  assetsAgentDir,
+  androidMainDir,
+}) {
+  let stagedCount = 0;
+  const stagedFiles = [];
+  // PGlite runtime artifacts. They are optional because minimal mobile bundles
+  // can run without embedded database extensions.
+  const pgliteAssets = [
+    "pglite.wasm",
+    "initdb.wasm",
+    "pglite.data",
+    "vector.tar.gz",
+    "fuzzystrmatch.tar.gz",
+    "pg_trgm.tar.gz",
+    "plugins-manifest.json",
+  ];
+  for (const name of pgliteAssets) {
+    const src = path.join(distMobileDir, name);
+    if (!fs.existsSync(src)) continue;
+    const dst = path.join(assetsAgentDir, name);
+    if (copyIfDifferent(src, dst)) stagedCount += 1;
+    stagedFiles.push(
+      fileProvenanceEntry({
+        filePath: dst,
+        relativePath: path.relative(androidMainDir, dst),
+        source: {
+          kind: "mobile-agent-bundle",
+          path: src,
+        },
+      }),
+    );
+  }
+
+  return { stagedCount, stagedFiles };
+}
+
 /**
  * Download (if needed) and stage the on-device agent runtime into the
  * Android assets tree. Idempotent — safe to run on every gradle invocation.
@@ -1527,35 +1566,13 @@ export async function stageAndroidAgentRuntime({
     }),
   );
 
-  // PGlite runtime artifacts. They are optional because minimal mobile bundles
-  // can run without embedded database extensions.
-  const pgliteAssets = [
-    "pglite.wasm",
-    "initdb.wasm",
-    "pglite.data",
-    "vector.tar.gz",
-    "fuzzystrmatch.tar.gz",
-    "plugins-manifest.json",
-  ];
-  for (const name of pgliteAssets) {
-    const src = path.join(distMobileDir, name);
-    if (!fs.existsSync(src)) continue;
-    const dst = path.join(assetsAgentDir, name);
-    if (copyIfDifferent(src, dst)) stagedCount += 1;
-    stagedFiles.push(
-      fileProvenanceEntry({
-        filePath: dst,
-        relativePath: path.relative(
-          path.join(androidDir, "app", "src", "main"),
-          dst,
-        ),
-        source: {
-          kind: "mobile-agent-bundle",
-          path: src,
-        },
-      }),
-    );
-  }
+  const pgliteStage = stageAndroidPgliteAssets({
+    distMobileDir,
+    assetsAgentDir,
+    androidMainDir: path.join(androidDir, "app", "src", "main"),
+  });
+  stagedCount += pgliteStage.stagedCount;
+  stagedFiles.push(...pgliteStage.stagedFiles);
 
   const launchTarget = path.join(assetsAgentDir, "launch.sh");
   if (writeIfChanged(launchTarget, LAUNCH_SCRIPT)) stagedCount += 1;
