@@ -1,15 +1,23 @@
 /**
  * Executes stability attempts in independent OS process groups while one
  * leased synthetic-control session owns the exact mock manifest per attempt.
- * Child processes receive only explicit mock endpoints and, for live lanes,
- * one explicit model credential; ambient service credentials are never inherited.
+ * Child processes receive only explicit mock endpoints. For live lanes, the
+ * trusted attempt harness consumes secrets from a bounded bootstrap pipe that
+ * is closed before it starts any mock stack or scenario child.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
+import { isIP } from "node:net";
 import path from "node:path";
+import { Writable } from "node:stream";
 import { logger } from "@elizaos/core";
 import { canonicalJsonString } from "@elizaos/shared/canonical-json";
 import type {
@@ -27,6 +35,7 @@ import {
 import { openScenarioSyntheticWorld } from "./synthetic-control.ts";
 
 const MAX_STDERR_BYTES = 1024 * 1024;
+const MAX_REAL_MODEL_BOOTSTRAP_BYTES = 128 * 1024;
 const ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]*$/;
 const CREDENTIAL_NAME =
   /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIALS?|ACCESS_KEY(?:_ID)?|PRIVATE_KEY|CLIENT_SECRET|CONNECTION_STRING)$/;
@@ -34,6 +43,18 @@ const SERVICE_LOCATION_NAME = /(?:^|_)(?:URL|ENDPOINT|HOST)$/;
 const INTERNAL_CONTROL_ENV = new Set([
   "ELIZA_SYNTHETIC_CONTROL_TOKEN",
   "ELIZA_SYNTHETIC_CONTROL_URL",
+]);
+const METER_ATTESTATION_ENV = "ELIZA_STABILITY_METER_ATTESTATION_KEY";
+const REAL_MODEL_METER_FAILURE_CODES = new Set([
+  "STABILITY_MODEL_PRE_DISPATCH_REJECTED",
+  "STABILITY_MODEL_USAGE_MISSING",
+  "STABILITY_MODEL_USAGE_MALFORMED",
+  "STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED",
+  "STABILITY_MODEL_TOKEN_BUDGET_EXHAUSTED",
+  "STABILITY_MODEL_REQUEST_BUDGET_EXCEEDED",
+  "STABILITY_MODEL_PROVIDER_ERROR",
+  "STABILITY_MODEL_PROVIDER_TIMEOUT",
+  "STABILITY_MODEL_PROXY_ERROR",
 ]);
 
 export type ScenarioStabilityModelMode =
@@ -185,13 +206,52 @@ function canonicalSha256(value: unknown, source: string): string {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
+function canonicalAttestationPayload(receipt: Record<string, unknown>): string {
+  const { attestation: _attestation, ...payload } = receipt;
+  assertScenarioStabilityBoundedJson(payload, "real-model receipt attestation");
+  return canonicalJsonString(payload, {
+    maxDepth: 32,
+    maxNodes: 100_000,
+    maxOutputChars: SCENARIO_STABILITY_MAX_ATTEMPT_JSON_BYTES,
+    sparseArrayHoles: "null",
+    onUnbounded: () => {
+      throw new Error(
+        "real-model receipt attestation exceeds canonical JSON limits",
+      );
+    },
+  });
+}
+
+function verifyReceiptAttestation(
+  receipt: Record<string, unknown>,
+  key: string,
+): boolean {
+  if (
+    typeof receipt.attestation !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(receipt.attestation)
+  )
+    return false;
+  const expected = createHmac("sha256", key)
+    .update(canonicalAttestationPayload(receipt))
+    .digest();
+  const supplied = Buffer.from(receipt.attestation, "hex");
+  return (
+    supplied.byteLength === expected.byteLength &&
+    timingSafeEqual(supplied, expected)
+  );
+}
+
 function isLoopbackUrl(raw: string): boolean {
   const url = new URL(raw);
+  const hostname =
+    url.hostname.startsWith("[") && url.hostname.endsWith("]")
+      ? url.hostname.slice(1, -1)
+      : url.hostname;
   return (
     url.protocol === "http:" &&
-    (url.hostname === "localhost" ||
-      url.hostname === "[::1]" ||
-      url.hostname.startsWith("127.")) &&
+    (hostname === "localhost" ||
+      hostname === "::1" ||
+      (isIP(hostname) === 4 && hostname.split(".", 1)[0] === "127")) &&
     !url.username &&
     !url.password &&
     !url.search &&
@@ -204,6 +264,11 @@ function validateEnvironment(
   source: string,
 ): void {
   for (const [name, value] of Object.entries(values)) {
+    if (name === METER_ATTESTATION_ENV) {
+      throw new Error(
+        `${source} cannot override the internal meter attestation key`,
+      );
+    }
     if (!ENVIRONMENT_NAME.test(name)) {
       throw new Error(`${source} contains invalid environment name '${name}'`);
     }
@@ -289,6 +354,7 @@ function appendBounded(
 function sanitizedStderr(
   options: ScenarioStabilitySubprocessAdapterOptions,
   chunks: readonly Buffer[],
+  attestationKey?: string,
 ): Buffer {
   let text = new TextDecoder().decode(Buffer.concat(chunks));
   const secrets = [
@@ -296,6 +362,7 @@ function sanitizedStderr(
     ...(options.modelMode.kind === "real-llm"
       ? [options.modelMode.credentialValue]
       : []),
+    ...(attestationKey ? [attestationKey] : []),
   ];
   for (const secret of secrets) {
     if (secret.length > 0) text = text.replaceAll(secret, "[REDACTED_SECRET]");
@@ -408,9 +475,6 @@ function childEnvironment(
     TZ: process.env.TZ ?? "UTC",
     ...options.env,
     ...options.mockServiceUrls,
-    ...(mode.kind === "real-llm"
-      ? { [mode.credentialEnv]: mode.credentialValue }
-      : {}),
     ELIZA_STABILITY_MODEL_MODE: mode.kind,
     ...(mode.kind === "deterministic-mock"
       ? {
@@ -478,6 +542,22 @@ export class ScenarioStabilitySubprocessAdapter
     };
     this.#boundaries.set(input.attemptId, boundary);
     const initialStateHash = await authorityInitialStateHash(session);
+    const attestationKey =
+      this.options.modelMode.kind === "real-llm"
+        ? randomBytes(32).toString("hex")
+        : undefined;
+    const bootstrap =
+      this.options.modelMode.kind === "real-llm" && attestationKey
+        ? JSON.stringify({
+            version: 1,
+            credentialEnvironment: this.options.modelMode.credentialEnv,
+            credentialValue: this.options.modelMode.credentialValue,
+            meterAttestationKey: attestationKey,
+          })
+        : "";
+    if (Buffer.byteLength(bootstrap) > MAX_REAL_MODEL_BOOTSTRAP_BYTES) {
+      throw new Error("real-model bootstrap exceeds its byte limit");
+    }
     const child = spawn(
       this.options.command,
       this.options.args({
@@ -489,7 +569,7 @@ export class ScenarioStabilitySubprocessAdapter
         cwd: this.options.cwd,
         detached: true,
         shell: false,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "pipe", "pipe"],
         env: childEnvironment(this.options, input, session, initialStateHash),
       },
     );
@@ -514,6 +594,15 @@ export class ScenarioStabilitySubprocessAdapter
         );
       }
     };
+    const bootstrapPipe = child.stdio[3];
+    if (!(bootstrapPipe instanceof Writable)) {
+      stopForOutputFailure(
+        new Error("stability subprocess omitted its bootstrap pipe"),
+      );
+    } else {
+      bootstrapPipe.on("error", stopForOutputFailure);
+      bootstrapPipe.end(bootstrap);
+    }
     child.stdout?.on("data", (chunk: Buffer) => {
       try {
         stdoutBytes = appendBounded(
@@ -556,7 +645,7 @@ export class ScenarioStabilitySubprocessAdapter
     const stderrArtifact = await persistStderrArtifact(
       input.outputDir,
       outputIdentities,
-      sanitizedStderr(this.options, stderr),
+      sanitizedStderr(this.options, stderr, attestationKey),
     );
     if (outputFailure) throw outputFailure;
     if (exitCode !== 0) {
@@ -616,12 +705,180 @@ export class ScenarioStabilitySubprocessAdapter
         );
       });
       const receipt = receipts[0] as Record<string, unknown> | undefined;
+      const receiptAttestationValid = Boolean(
+        receipt &&
+          attestationKey &&
+          verifyReceiptAttestation(receipt, attestationKey),
+      );
+      const meteringFailures = Array.isArray(receipt?.meteringFailures)
+        ? receipt.meteringFailures
+        : null;
+      const meteringFailuresValid =
+        meteringFailures?.every((value) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) {
+            return false;
+          }
+          const failure = value as Record<string, unknown>;
+          return (
+            typeof failure.code === "string" &&
+            REAL_MODEL_METER_FAILURE_CODES.has(failure.code) &&
+            typeof failure.message === "string" &&
+            failure.message.trim().length > 0 &&
+            Number.isSafeInteger(failure.requestNumber) &&
+            (failure.requestNumber as number) > 0 &&
+            (failure.requestNumber as number) <=
+              (receipt && Number.isSafeInteger(receipt.requestCount)
+                ? (receipt.requestCount as number) + 1
+                : 0)
+          );
+        }) === true;
+      const lastMeteringFailure = meteringFailures?.at(-1) as
+        | Record<string, unknown>
+        | undefined;
+      const requestCount = receipt?.requestCount;
+      const requestEnvelopes = Array.isArray(receipt?.requestEnvelopes)
+        ? receipt.requestEnvelopes
+        : null;
+      const allowedRoutes =
+        input.target.model.provider === "openai"
+          ? new Set(["/v1/responses", "/v1/chat/completions"])
+          : new Set(["/v1/messages"]);
+      const acceptedEnvelopeKeys = new Set([
+        "requestNumber",
+        "method",
+        "route",
+        "bodyBytes",
+        "forwardedBodyBytes",
+        "forwardedBodySha256",
+        "observedModel",
+        "requestedMaxOutputTokens",
+        "effectiveMaxOutputTokens",
+        "inputBudgetCharge",
+        "accepted",
+      ]);
+      const rejectedEnvelopeKeys = new Set([
+        ...acceptedEnvelopeKeys,
+        "failureCode",
+      ]);
+      const requestEnvelopesValid =
+        requestEnvelopes !== null &&
+        requestEnvelopes.length <= 1_000 &&
+        requestEnvelopes.every((value) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) {
+            return false;
+          }
+          const envelope = value as Record<string, unknown>;
+          const requested = envelope.requestedMaxOutputTokens;
+          const effective = envelope.effectiveMaxOutputTokens;
+          const charge = envelope.inputBudgetCharge;
+          const failureCode = envelope.failureCode;
+          const forwardedBytes = envelope.forwardedBodyBytes;
+          const forwardedHash = envelope.forwardedBodySha256;
+          const expectedKeys =
+            envelope.accepted === true
+              ? acceptedEnvelopeKeys
+              : rejectedEnvelopeKeys;
+          return (
+            Object.keys(envelope).length === expectedKeys.size &&
+            Object.keys(envelope).every((key) => expectedKeys.has(key)) &&
+            Number.isSafeInteger(envelope.requestNumber) &&
+            (envelope.requestNumber as number) > 0 &&
+            (envelope.requestNumber as number) <=
+              (Number.isSafeInteger(requestCount)
+                ? (requestCount as number) + 1
+                : 0) &&
+            envelope.method === "POST" &&
+            typeof envelope.route === "string" &&
+            allowedRoutes.has(envelope.route) &&
+            Number.isSafeInteger(envelope.bodyBytes) &&
+            (envelope.bodyBytes as number) >= 0 &&
+            (envelope.observedModel === null ||
+              (typeof envelope.observedModel === "string" &&
+                envelope.observedModel.length > 0 &&
+                envelope.observedModel.length <= 512)) &&
+            (requested === null ||
+              (Number.isSafeInteger(requested) && (requested as number) > 0)) &&
+            (effective === null ||
+              (Number.isSafeInteger(effective) && (effective as number) > 0)) &&
+            (charge === null ||
+              (Number.isSafeInteger(charge) && (charge as number) > 0)) &&
+            typeof envelope.accepted === "boolean" &&
+            (envelope.accepted
+              ? envelope.observedModel === input.target.model.model &&
+                Number.isSafeInteger(forwardedBytes) &&
+                (forwardedBytes as number) > 0 &&
+                typeof forwardedHash === "string" &&
+                /^[a-f0-9]{64}$/u.test(forwardedHash) &&
+                effective !== null &&
+                (effective as number) <= input.budgets.maxOutputTokens &&
+                (requested === null ||
+                  (effective as number) <= (requested as number)) &&
+                charge !== null &&
+                (charge as number) ===
+                  Math.max(
+                    envelope.bodyBytes as number,
+                    forwardedBytes as number,
+                  ) +
+                    8_192 &&
+                (charge as number) <= input.budgets.maxInputTokens &&
+                failureCode === undefined
+              : forwardedBytes === null &&
+                forwardedHash === null &&
+                typeof failureCode === "string" &&
+                REAL_MODEL_METER_FAILURE_CODES.has(failureCode))
+          );
+        }) &&
+        requestEnvelopes?.every((value, index) => {
+          const envelope = value as Record<string, unknown>;
+          return index < (requestCount as number)
+            ? envelope.accepted === true && envelope.requestNumber === index + 1
+            : envelope.accepted === false &&
+                envelope.requestNumber === (requestCount as number) + 1;
+        }) === true;
+      const successMeteringValid =
+        execution.passed === false ||
+        (receipt?.liveModelInvoked === true &&
+          Number.isSafeInteger(requestCount) &&
+          (requestCount as number) > 0 &&
+          execution.inputTokens > 0 &&
+          meteringFailures?.length === 0);
+      const successEnvelopeBindingValid =
+        execution.passed === false ||
+        (requestEnvelopes?.length === requestCount &&
+          requestEnvelopes.every(
+            (value) =>
+              (value as Record<string, unknown>).accepted === true &&
+              (value as Record<string, unknown>).observedModel ===
+                input.target.model.model,
+          ));
+      const failedMeteringBindingValid =
+        execution.passed === true ||
+        (((Number.isSafeInteger(requestCount) &&
+          (requestCount as number) > 0) ||
+          (meteringFailures?.length ?? 0) > 0) &&
+          ((meteringFailures?.length ?? 0) === 0 ||
+            execution.error === lastMeteringFailure?.code));
       if (
         receipts.length !== 1 ||
         !receipt ||
+        !receiptAttestationValid ||
         receipt.provider !== input.target.model.provider ||
         receipt.model !== input.target.model.model ||
-        receipt.liveModelInvoked !== true ||
+        receipt.liveModelInvoked !==
+          (Number.isSafeInteger(requestCount) &&
+            (requestCount as number) > 0) ||
+        !Number.isSafeInteger(requestCount) ||
+        (requestCount as number) < 0 ||
+        !Number.isSafeInteger(input.budgets.maxModelRequests) ||
+        (input.budgets.maxModelRequests as number) <= 0 ||
+        (requestCount as number) > (input.budgets.maxModelRequests as number) ||
+        receipt.inputTokens !== execution.inputTokens ||
+        receipt.outputTokens !== execution.outputTokens ||
+        !meteringFailuresValid ||
+        !requestEnvelopesValid ||
+        !successMeteringValid ||
+        !successEnvelopeBindingValid ||
+        !failedMeteringBindingValid ||
         receipt.namespace !== session.manifest.namespace ||
         receipt.manifestId !== session.manifest.manifestId ||
         receipt.generation !== session.generation ||

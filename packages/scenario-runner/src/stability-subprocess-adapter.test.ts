@@ -14,20 +14,73 @@ import { executeScenarioStability } from "./stability-executor.ts";
 import { ScenarioStabilitySubprocessAdapter } from "./stability-subprocess-adapter.ts";
 
 const CHILD_SCRIPT = `
+const { createHmac } = require("node:crypto");
+const { closeSync, fstatSync, readFileSync, readSync } = require("node:fs");
+const { spawnSync } = require("node:child_process");
+let bootstrapIdentity;
+const readBootstrap = () => {
+  const bootstrapStat = fstatSync(3);
+  bootstrapIdentity = String(bootstrapStat.dev) + ":" + String(bootstrapStat.ino);
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const chunk = Buffer.alloc(16384);
+      const count = readSync(3, chunk, 0, chunk.length, null);
+      if (count === 0) break;
+      total += count;
+      if (total > 131072) process.exit(96);
+      chunks.push(chunk.subarray(0, count));
+    }
+  } finally {
+    closeSync(3);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+};
+const realBootstrap = process.env.ELIZA_STABILITY_MODEL_MODE === "real-llm" ? readBootstrap() : undefined;
+const meterAttestationKey = realBootstrap?.meterAttestationKey;
+if (process.platform === "linux" && realBootstrap) {
+  const initialEnvironment = readFileSync("/proc/self/environ");
+  if (initialEnvironment.includes(Buffer.from(realBootstrap.credentialValue)) || initialEnvironment.includes(Buffer.from(meterAttestationKey))) process.exit(97);
+}
+const canonical = (value) => {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
+  return "{" + Object.keys(value).sort().map((key) => JSON.stringify(key) + ":" + canonical(value[key])).join(",") + "}";
+};
+const attest = (receipt) => {
+  if (process.env.ELIZA_TEST_ACCEPTED_AFTER_REJECT === "1") {
+    receipt.requestEnvelopes = [{ ...receipt.requestEnvelopes[0], requestNumber: 2, forwardedBodyBytes: null, forwardedBodySha256: null, accepted: false, failureCode: "STABILITY_MODEL_REQUEST_BUDGET_EXCEEDED" }, receipt.requestEnvelopes[0]];
+  }
+  const key = process.env.ELIZA_TEST_WRONG_ATTESTATION_KEY === "1" ? "wrong-attestation-key" : meterAttestationKey;
+  const signed = { ...receipt, attestation: createHmac("sha256", key).update(canonical(receipt)).digest("hex") };
+  if (process.env.ELIZA_TEST_FORGE_AFTER_ATTESTATION === "1") signed.requestEnvelopes[0].forwardedBodySha256 = "b".repeat(64);
+  return signed;
+};
+if (process.env.ELIZA_STABILITY_METER_ATTESTATION_KEY || (process.env.ELIZA_STABILITY_MODEL_MODE === "real-llm" && process.env.OPENAI_API_KEY)) process.exit(93);
+if (process.env.ELIZA_TEST_INHERITANCE_PROBE === "1" && process.env.ELIZA_SYNTHETIC_GENERATION === "1") {
+  const inheritanceProbe = spawnSync(process.execPath, ["-e", "const fs=require('node:fs');if(process.env.OPENAI_API_KEY||process.env.ANTHROPIC_API_KEY||process.env.ELIZA_STABILITY_METER_ATTESTATION_KEY)process.exit(1);try{const stat=fs.fstatSync(3);if(String(stat.dev)+':'+String(stat.ino)===process.env.ELIZA_TEST_BOOTSTRAP_IDENTITY)process.exit(2)}catch{}process.exit(0)"], { env: { ...process.env, ELIZA_TEST_BOOTSTRAP_IDENTITY: bootstrapIdentity }, stdio: ["ignore", "pipe", "pipe"] });
+  if (inheritanceProbe.status !== 0) process.exit(94);
+}
 if (process.env.ELIZA_STABILITY_MODEL_MODE === "deterministic-mock" && process.env.OPENAI_API_KEY) {
   process.exit(91);
 }
 if (process.env.ELIZA_REQUIRE_MOCK_SERVICES !== "1") process.exit(92);
 if (process.env.ELIZA_TEST_PRINT_SECRETS === "1") {
-  process.stderr.write(String(process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN) + " " + String(process.env.OPENAI_API_KEY || ""));
+  process.stderr.write(String(process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN) + " " + String(realBootstrap?.credentialValue || "") + " " + String(meterAttestationKey || ""));
 }
 const hash = process.env.ELIZA_STABILITY_AUTHORITY_INITIAL_STATE_HASH;
+const meterFailureCode = process.env.ELIZA_TEST_METER_FAILURE;
+const preDispatchFailure = meterFailureCode === "STABILITY_MODEL_PRE_DISPATCH_REJECTED";
+const inputTokens = process.env.ELIZA_TEST_ZERO_REAL === "1" || preDispatchFailure || meterFailureCode === "STABILITY_MODEL_USAGE_MISSING" || meterFailureCode === "STABILITY_MODEL_USAGE_MALFORMED" ? 0 : meterFailureCode === "STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED" ? 12 : 4;
+const outputTokens = preDispatchFailure || meterFailureCode === "STABILITY_MODEL_USAGE_MISSING" || meterFailureCode === "STABILITY_MODEL_USAGE_MALFORMED" ? 0 : 2;
+const requestCount = process.env.ELIZA_TEST_OVER_CAP_REAL === "1" ? 3 : preDispatchFailure ? 0 : 1;
 process.stdout.write(JSON.stringify({
-  passed: true,
+  passed: !meterFailureCode,
   initialStateHash: hash,
   finalStateHash: "b".repeat(64),
-  inputTokens: 4,
-  outputTokens: 2,
+  inputTokens,
+  outputTokens,
   toolCalls: 1,
   evidence: {
     trajectory: [{ model: process.env.ELIZA_STABILITY_MODEL }],
@@ -47,20 +100,52 @@ process.stdout.write(JSON.stringify({
       ambiguousCalls: 0,
       unusedRequiredFixtures: 0,
       overconsumedFixtures: 1
-    }] : [])] : [{
+    }] : [])] : [attest({
       receiptType: "eliza.stability.real-llm.v1",
       provider: process.env.ELIZA_TEST_WRONG_REAL === "1" ? "wrong-provider" : process.env.ELIZA_STABILITY_PROVIDER,
       model: process.env.ELIZA_STABILITY_MODEL,
-      liveModelInvoked: true,
+      liveModelInvoked: requestCount > 0,
+      requestCount,
+      inputTokens,
+      outputTokens,
+      meteringFailures: meterFailureCode ? [{ code: meterFailureCode, message: meterFailureCode + " retained", requestNumber: 1 }] : [],
+      requestEnvelopes: preDispatchFailure ? [{
+        requestNumber: 1,
+        method: "POST",
+        route: "/v1/responses",
+        bodyBytes: 64,
+        forwardedBodyBytes: null,
+        forwardedBodySha256: null,
+        observedModel: process.env.ELIZA_STABILITY_MODEL,
+        requestedMaxOutputTokens: 1,
+        effectiveMaxOutputTokens: null,
+        inputBudgetCharge: 8256,
+        accepted: false,
+        failureCode: meterFailureCode
+      }] : Array.from({ length: requestCount }, (_, index) => ({
+        requestNumber: index + (process.env.ELIZA_TEST_BAD_ENVELOPE_SEQUENCE === "1" ? 2 : 1),
+        method: "POST",
+        route: "/v1/responses",
+        bodyBytes: 64,
+        forwardedBodyBytes: process.env.ELIZA_TEST_BAD_ENVELOPE_BYTES === "1" ? 65 : 64,
+        forwardedBodySha256: process.env.ELIZA_TEST_BAD_ENVELOPE_HASH === "1" ? "not-a-hash" : "a".repeat(64),
+        observedModel: process.env.ELIZA_TEST_WRONG_ENVELOPE_MODEL === "1" ? "wrong-model" : process.env.ELIZA_STABILITY_MODEL,
+        requestedMaxOutputTokens: 2,
+        effectiveMaxOutputTokens: 2,
+        inputBudgetCharge: 8256,
+        accepted: true,
+        ...(process.env.ELIZA_TEST_EXTRA_ENVELOPE_KEY === "1" ? { extra: true } : {})
+      })),
       namespace: process.env.ELIZA_SYNTHETIC_NAMESPACE,
       manifestId: process.env.ELIZA_SYNTHETIC_MANIFEST_ID,
       generation: Number(process.env.ELIZA_SYNTHETIC_GENERATION),
       unexpectedRealServiceCalls: 0,
       unexpectedNetworkCalls: 0
-    }],
+    })],
     judgeVerdicts: [{ passed: true }]
   },
-  stateDiff: { sent: true }
+  stateDiff: { sent: true },
+  ...(meterFailureCode ? { error: meterFailureCode } : {})
 }));
 `;
 
@@ -362,13 +447,26 @@ describe("scenario stability subprocess adapter", () => {
     ).toThrow("real credential seam");
   });
 
-  it("accepts one exact real-LLM receipt and rejects a wrong provider binding", async () => {
-    for (const wrong of [false, true]) {
+  it("accepts one metered real-LLM receipt and rejects wrong or zero metering", async () => {
+    for (const failure of [
+      "none",
+      "wrong-provider",
+      "wrong-envelope-model",
+      "bad-envelope-hash",
+      "bad-envelope-bytes",
+      "bad-envelope-sequence",
+      "extra-envelope-key",
+      "wrong-attestation-key",
+      "post-attestation-forgery",
+      "accepted-after-reject",
+      "zero-metering",
+      "over-request-cap",
+    ] as const) {
       const outputRoot = root();
       const manifest = {
         version: 1 as const,
-        namespace: `real-${wrong}`,
-        manifestId: `real-${wrong}-v1`,
+        namespace: `real-${failure}`,
+        manifestId: `real-${failure}-v1`,
         domains: {},
       };
       let generation = 0;
@@ -391,7 +489,38 @@ describe("scenario stability subprocess adapter", () => {
         },
         env: {
           ELIZA_TEST_PRINT_SECRETS: "1",
-          ...(wrong ? { ELIZA_TEST_WRONG_REAL: "1" } : {}),
+          ...(failure === "none" ? { ELIZA_TEST_INHERITANCE_PROBE: "1" } : {}),
+          ...(failure === "wrong-provider"
+            ? { ELIZA_TEST_WRONG_REAL: "1" }
+            : {}),
+          ...(failure === "wrong-envelope-model"
+            ? { ELIZA_TEST_WRONG_ENVELOPE_MODEL: "1" }
+            : {}),
+          ...(failure === "bad-envelope-hash"
+            ? { ELIZA_TEST_BAD_ENVELOPE_HASH: "1" }
+            : {}),
+          ...(failure === "bad-envelope-bytes"
+            ? { ELIZA_TEST_BAD_ENVELOPE_BYTES: "1" }
+            : {}),
+          ...(failure === "bad-envelope-sequence"
+            ? { ELIZA_TEST_BAD_ENVELOPE_SEQUENCE: "1" }
+            : {}),
+          ...(failure === "extra-envelope-key"
+            ? { ELIZA_TEST_EXTRA_ENVELOPE_KEY: "1" }
+            : {}),
+          ...(failure === "wrong-attestation-key"
+            ? { ELIZA_TEST_WRONG_ATTESTATION_KEY: "1" }
+            : {}),
+          ...(failure === "post-attestation-forgery"
+            ? { ELIZA_TEST_FORGE_AFTER_ATTESTATION: "1" }
+            : {}),
+          ...(failure === "accepted-after-reject"
+            ? { ELIZA_TEST_ACCEPTED_AFTER_REJECT: "1" }
+            : {}),
+          ...(failure === "zero-metering" ? { ELIZA_TEST_ZERO_REAL: "1" } : {}),
+          ...(failure === "over-request-cap"
+            ? { ELIZA_TEST_OVER_CAP_REAL: "1" }
+            : {}),
         },
         openSession: async () =>
           ({
@@ -405,7 +534,7 @@ describe("scenario stability subprocess adapter", () => {
       });
       const report = await executeScenarioStability({
         plan: createScenarioStabilityPlan({
-          runId: `real-${wrong}`,
+          runId: `real-${failure}`,
           outputRoot,
         }),
         targets: [
@@ -415,15 +544,21 @@ describe("scenario stability subprocess adapter", () => {
           },
         ],
         budgets: {
-          timeoutMs: 2_000,
-          maxInputTokens: 10,
+          timeoutMs: 10_000,
+          maxInputTokens: 10_000,
           maxOutputTokens: 10,
+          maxModelRequests: 2,
           maxToolCalls: 2,
         },
         adapter,
       });
-      expect(report.cells[0]?.tier).toBe(wrong ? "0/3" : "3/3");
-      if (!wrong) {
+      expect(
+        report.cells[0]?.tier,
+        JSON.stringify(
+          report.cells[0]?.attempts.map((attempt) => attempt.error),
+        ),
+      ).toBe(failure === "none" ? "3/3" : "0/3");
+      if (failure === "none") {
         for (const attempt of report.cells[0]?.attempts ?? []) {
           const stderr = readFileSync(
             path.join(attempt.outputDir, "subprocess.stderr.log"),
@@ -431,6 +566,7 @@ describe("scenario stability subprocess adapter", () => {
           );
           expect(stderr).not.toContain("dummy-model-key");
           expect(stderr).not.toContain("control-secret");
+          expect(stderr).not.toMatch(/[a-f0-9]{64}/u);
         }
       } else {
         expect(report.cells[0]?.attempts[0]?.error).toContain(
@@ -439,6 +575,104 @@ describe("scenario stability subprocess adapter", () => {
       }
     }
   });
+
+  it.each([
+    ["STABILITY_MODEL_PRE_DISPATCH_REJECTED", 0, 0, 0],
+    ["STABILITY_MODEL_USAGE_MISSING", 0, 0, 1],
+    ["STABILITY_MODEL_USAGE_MALFORMED", 0, 0, 1],
+    ["STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED", 12, 2, 1],
+  ] as const)(
+    "retains authentic failed real-model evidence for %s",
+    async (meterFailureCode, expectedInputTokens, expectedOutputTokens, expectedRequestCount) => {
+      const outputRoot = root();
+      const manifest = {
+        version: 1 as const,
+        namespace: `real-failure-${meterFailureCode}`,
+        manifestId: `real-failure-${meterFailureCode}-v1`,
+        domains: {},
+      };
+      let generation = 0;
+      const adapter = new ScenarioStabilitySubprocessAdapter({
+        command: process.execPath,
+        args: () => ["-e", CHILD_SCRIPT],
+        cwd: outputRoot,
+        modelMode: {
+          kind: "real-llm",
+          credentialEnv: "OPENAI_API_KEY",
+          credentialValue: "dummy-model-key",
+        },
+        syntheticControl: {
+          controlUrl: "http://127.0.0.1:43191",
+          controlToken: "control-secret",
+          manifest,
+        },
+        mockServiceUrls: {
+          ELIZA_MOCK_MESSAGES_URL: "http://127.0.0.1:43192/messages",
+        },
+        env: { ELIZA_TEST_METER_FAILURE: meterFailureCode },
+        openSession: async () =>
+          ({
+            manifest,
+            generation: ++generation,
+            async execute() {
+              return { ready: true };
+            },
+            async close() {},
+          }) as unknown as SyntheticControlSession,
+      });
+      const report = await executeScenarioStability({
+        plan: createScenarioStabilityPlan({
+          runId: `real-failure-${meterFailureCode}`,
+          outputRoot,
+        }),
+        targets: [
+          {
+            scenarioId: "live-failure",
+            model: { provider: "openai", model: "gpt-test" },
+          },
+        ],
+        budgets: {
+          timeoutMs: 2_000,
+          maxInputTokens: 10_000,
+          maxOutputTokens: 10,
+          maxModelRequests: 2,
+          maxToolCalls: 2,
+        },
+        adapter,
+      });
+
+      expect(report.cells[0]?.tier).toBe("0/3");
+      expect(report.focusList[0]?.failedAttemptIds).toHaveLength(3);
+      expect(report.failureClusters).toEqual([
+        expect.objectContaining({
+          occurrences: 3,
+          sample: meterFailureCode,
+        }),
+      ]);
+      for (const attempt of report.cells[0]?.attempts ?? []) {
+        expect(attempt).toMatchObject({
+          passed: false,
+          error: meterFailureCode,
+          inputTokens: expectedInputTokens,
+          outputTokens: expectedOutputTokens,
+        });
+        expect(
+          attempt.evidence.providerReceipts.find(
+            (receipt) =>
+              (receipt as { receiptType?: unknown }).receiptType ===
+              "eliza.stability.real-llm.v1",
+          ),
+        ).toMatchObject({
+          requestCount: expectedRequestCount,
+          inputTokens: expectedInputTokens,
+          outputTokens: expectedOutputTokens,
+          meteringFailures: [
+            expect.objectContaining({ code: meterFailureCode }),
+          ],
+        });
+      }
+    },
+  );
 
   it("allows one explicit model credential only in real-llm mode", () => {
     const outputRoot = root();
@@ -465,6 +699,35 @@ describe("scenario stability subprocess adapter", () => {
           },
           mockServiceUrls: {
             ELIZA_MOCK_MESSAGES_URL: "https://real-service.example/messages",
+          },
+        }),
+    ).toThrow("credential-free loopback HTTP URL");
+  });
+
+  it("rejects a mock service DNS name with a loopback-looking prefix", () => {
+    const outputRoot = root();
+    expect(
+      () =>
+        new ScenarioStabilitySubprocessAdapter({
+          command: process.execPath,
+          args: () => ["-e", CHILD_SCRIPT],
+          cwd: outputRoot,
+          modelMode: {
+            kind: "deterministic-mock",
+            fixtureManifestFingerprint: "f".repeat(64),
+          },
+          syntheticControl: {
+            controlUrl: "http://127.0.0.1:43191",
+            controlToken: "internal-control-token",
+            manifest: {
+              version: 1,
+              namespace: "loopback-prefix-test",
+              manifestId: "loopback-prefix-test-v1",
+              domains: {},
+            },
+          },
+          mockServiceUrls: {
+            ELIZA_MOCK_MESSAGES_URL: "http://127.attacker.invalid/messages",
           },
         }),
     ).toThrow("credential-free loopback HTTP URL");

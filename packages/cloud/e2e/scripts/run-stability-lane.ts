@@ -312,6 +312,7 @@ try {
     timeoutMs: 240_000,
     maxInputTokens: 100_000,
     maxOutputTokens: 50_000,
+    maxModelRequests: 16,
     maxToolCalls: 50,
   });
   const adapter = new ScenarioStabilitySubprocessAdapter({
@@ -325,6 +326,9 @@ try {
     env: {
       ELIZA_STABILITY_SCENARIO_FINGERPRINT: manifest.scenarioFingerprint,
       ELIZA_STABILITY_WORLD_FINGERPRINT: manifest.worldFingerprint,
+      ELIZA_STABILITY_MAX_INPUT_TOKENS: String(manifest.maxInputTokens),
+      ELIZA_STABILITY_MAX_OUTPUT_TOKENS: String(manifest.maxOutputTokens),
+      ELIZA_STABILITY_MAX_MODEL_REQUESTS: String(manifest.maxModelRequests),
     },
     syntheticControl: {
       controlUrl: authority.url,
