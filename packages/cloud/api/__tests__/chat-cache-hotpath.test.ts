@@ -5,6 +5,11 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+const admissionActual = {
+  ...(await import("@/lib/services/organization-inference-admission")),
+};
+const creditsActual = { ...(await import("@/lib/services/credits")) };
+
 const aiActual = require("ai") as Record<string, unknown>;
 const languageModelActual = await import("@/lib/providers/language-model");
 
@@ -153,6 +158,7 @@ const admitOrganizationInference = mock(
   },
 );
 mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...admissionActual,
   admitOrganizationInference,
 }));
 
@@ -176,6 +182,7 @@ const billUsage = mock(
 mock.module("@/lib/services/ai-billing", () => ({ billUsage }));
 
 mock.module("@/lib/services/credits", () => ({
+  ...creditsActual,
   creditsService: {
     createAnonymousReservation: mock(() => ({
       reservedAmount: 0,

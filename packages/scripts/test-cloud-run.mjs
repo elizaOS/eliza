@@ -44,7 +44,7 @@ export function walkTests(dir, excluded) {
     if (statSync(full).isDirectory()) out.push(...walkTests(full, excluded));
     else if (/\.(test|spec)\.tsx?$/.test(entry)) out.push(full);
   }
-  return out;
+  return out.sort();
 }
 
 // Batch size bounds per-process memory. Windows uses a smaller process lifetime

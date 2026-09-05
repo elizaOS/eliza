@@ -63,6 +63,8 @@ jobs:
         run: node packages/scripts/test-cloud-run-flush.self-test.mjs
       - name: Batch runner helper self-test
         run: node packages/scripts/test-cloud-run-helpers.self-test.mjs
+      - name: Batch runner shard execution self-test
+        run: node packages/scripts/test-cloud-run-shards.self-test.mjs
       - name: Batch runner unit tests
         run: bun test packages/scripts/__tests__/test-cloud-run.test.mjs
       # Guards the wall-clock watchdog (#17245): a wedged child and its

@@ -6,7 +6,7 @@
  * honest provider failure.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import type { CartesiaWebSocketFactory } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
 import {
   makeWorkersCartesiaWebSocketFactory,
@@ -15,7 +15,7 @@ import {
 } from "../cartesia-synthesis";
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  mock.restore();
 });
 
 /** In-memory Cartesia socket: on the generation request, replay frames+done. */
@@ -259,15 +259,15 @@ describe("makeWorkersCartesiaWebSocketFactory", () => {
       close() {},
       send() {},
     };
-    const fetchImpl = vi.fn(async () => {
+    const fetchImpl = mock(async () => {
       events.push("fetch");
       expect(events).toEqual(["callback:start", "callback:done", "fetch"]);
       return Object.assign(new Response(null), {
         webSocket: upstreamSocket,
       });
     });
-    vi.stubGlobal("fetch", fetchImpl);
-    const beforeProviderDispatch = vi.fn(async () => {
+    spyOn(globalThis, "fetch").mockImplementation(fetchImpl);
+    const beforeProviderDispatch = mock(async () => {
       events.push("callback:start");
       await Promise.resolve();
       events.push("callback:done");
@@ -291,9 +291,9 @@ describe("makeWorkersCartesiaWebSocketFactory", () => {
   });
 
   it("does not attempt the upgrade when the dispatch callback rejects", async () => {
-    const fetchImpl = vi.fn(async () => new Response(null));
-    vi.stubGlobal("fetch", fetchImpl);
-    const beforeProviderDispatch = vi.fn(async () => {
+    const fetchImpl = mock(async () => new Response(null));
+    spyOn(globalThis, "fetch").mockImplementation(fetchImpl);
+    const beforeProviderDispatch = mock(async () => {
       throw new Error("dispatch marker unavailable");
     });
     const factory = makeWorkersCartesiaWebSocketFactory(beforeProviderDispatch);
@@ -314,12 +314,12 @@ describe("makeWorkersCartesiaWebSocketFactory", () => {
 describe("synthesizeCartesiaBytes", () => {
   it("completes the dispatch callback exactly once before REST fetch", async () => {
     const events: string[] = [];
-    const fetchImpl = vi.fn(async () => {
+    const fetchImpl = mock(async () => {
       events.push("fetch");
       expect(events).toEqual(["callback:start", "callback:done", "fetch"]);
       return new Response(new Uint8Array([1]), { status: 200 });
     }) as unknown as typeof fetch;
-    const beforeProviderDispatch = vi.fn(async () => {
+    const beforeProviderDispatch = mock(async () => {
       events.push("callback:start");
       await Promise.resolve();
       events.push("callback:done");
@@ -338,10 +338,10 @@ describe("synthesizeCartesiaBytes", () => {
   });
 
   it("does not call REST fetch when the dispatch callback rejects", async () => {
-    const fetchImpl = vi.fn(
+    const fetchImpl = mock(
       async () => new Response(new Uint8Array([1])),
     ) as unknown as typeof fetch;
-    const beforeProviderDispatch = vi.fn(async () => {
+    const beforeProviderDispatch = mock(async () => {
       throw new Error("dispatch marker unavailable");
     });
 
