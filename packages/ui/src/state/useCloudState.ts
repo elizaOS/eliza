@@ -620,12 +620,12 @@ export function useCloudState({
       return lastElizaCloudPollConnectedRef.current;
     }
     const enabled = Boolean(cloudStatus.enabled ?? false);
-    const cloudVoiceProxyAvailable = Boolean(
+    let cloudVoiceProxyAvailable = Boolean(
       cloudStatus.cloudVoiceProxyAvailable ?? false,
     );
     const hasPersistedApiKey = Boolean(cloudStatus.hasApiKey);
-    // Trust `connected` from the server snapshot (it already folds in API key + CLOUD_AUTH).
-    const isConnected = Boolean(cloudStatus.connected);
+    // Key presence is provisional until the authenticated credits probe completes.
+    let isConnected = Boolean(cloudStatus.connected);
     if (isConnected && elizaCloudPreferDisconnectedUntilLoginRef.current) {
       publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
         apiConnected: isConnected,
@@ -640,14 +640,6 @@ export function useCloudState({
       elizaCloudPreferDisconnectedUntilLoginRef.current = false;
     }
     setElizaCloudEnabled(enabled);
-    setElizaCloudVoiceProxyAvailable(cloudVoiceProxyAvailable);
-    setElizaCloudConnected(isConnected);
-    publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
-      apiConnected: isConnected,
-      enabled,
-      cloudVoiceProxyAvailable,
-      hasPersistedApiKey,
-    });
     setElizaCloudUserId(cloudStatus.userId ?? null);
     setElizaCloudStatusReason(
       isConnected &&
@@ -679,6 +671,8 @@ export function useCloudState({
         return lastElizaCloudPollConnectedRef.current;
       }
       if (credits?.authRejected) {
+        isConnected = false;
+        cloudVoiceProxyAvailable = false;
         setElizaCloudAuthRejected(true);
         setElizaCloudCreditsError(null);
         setElizaCloudCredits(null);
@@ -715,6 +709,14 @@ export function useCloudState({
       setElizaCloudCreditsError(null);
       setElizaCloudStatusReason(null);
     }
+    setElizaCloudVoiceProxyAvailable(cloudVoiceProxyAvailable);
+    setElizaCloudConnected(isConnected);
+    publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
+      apiConnected: isConnected,
+      enabled,
+      cloudVoiceProxyAvailable,
+      hasPersistedApiKey,
+    });
     lastElizaCloudPollConnectedRef.current = isConnected;
     // Self-manage the recurring poll interval: start when connected, stop when not.
     // A build-pinned remote may verify a deliberate login against the Cloud
@@ -881,7 +883,20 @@ export function useCloudState({
         // resolve without opening a real sign-in, then reload into the same
         // rejected session. Drain only the canonical Cloud credential here;
         // `client` may hold the separate agent bearer needed by the proxy.
-        await clearStoredStewardToken();
+        try {
+          await clearStoredStewardToken();
+        } catch (error) {
+          // error-policy:J4 failed credential removal must leave sign-in retryable.
+          closePrePoppedWindow();
+          elizaCloudLoginBusyRef.current = false;
+          setElizaCloudLoginBusy(false);
+          setElizaCloudLoginError(
+            error instanceof Error
+              ? error.message
+              : "Could not clear the previous Cloud session. Try signing in again.",
+          );
+          throw error;
+        }
       }
       let resolveLoginCompletion: () => void = () => {};
       let loginCompletionResolved = false;
