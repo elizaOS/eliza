@@ -416,3 +416,18 @@ chmod 600 "$HOME/.android/eliza-debug.keystore"
 ```
 
 To keep it elsewhere, set `ELIZAOS_DEBUG_KEYSTORE_PATH` to the decoded keystore path. The fixed debug alias is `androiddebugkey`; store and key passwords are the conventional Android debug password, `android`. When the pinned file is absent, Gradle warns and falls back to its machine-local debug identity so unrelated Android workflows remain usable; those APKs are not guaranteed to upgrade CI artifacts in place.
+
+## Dedicated local embeddings
+
+Local-runtime APK builds stage the pinned GTE embedding model automatically.
+The model and its checksum manifest are included in the agent artifact inventory.
+On startup, the native service verifies the installed model and atomically
+replaces missing or stale bytes from the APK before starting the agent. A corrupt
+packaged model fails startup with an explicit error.
+
+The agent routes embeddings through the bionic host with a dedicated GTE
+context, preserving the resident chat model. Inputs exceeding the encoder's
+512-token context, or a smaller positive `ELIZA_EMBED_N_CTX`, are rejected before
+native encoding; callers must split the complete source explicitly. This model
+is separate from the selected chat model. The Cloud-only APK has no local runtime
+or embedding payload.

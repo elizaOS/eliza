@@ -45,6 +45,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stageAndroidEmbedding } from "./stage-android-embedding.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_CORE_ROOT = path.resolve(__dirname, "..", "..");
@@ -1600,6 +1601,21 @@ export async function stageAndroidAgentRuntime({
       },
     }),
   );
+
+  const embedding = await stageAndroidEmbedding(assetsAgentDir);
+  stagedCount += embedding.changed;
+  for (const filePath of [embedding.modelPath, embedding.manifestPath]) {
+    stagedFiles.push(
+      fileProvenanceEntry({
+        filePath,
+        relativePath: path.relative(
+          path.join(androidDir, "app", "src", "main"),
+          filePath,
+        ),
+        source: { kind: "pinned-embedding-artifact" },
+      }),
+    );
+  }
 
   const bunRiscv64VersionPath = path.resolve(
     process.env.ELIZAOS_OS_REPO_ROOT?.trim() ||

@@ -1512,6 +1512,8 @@ public class ElizaAgentService extends Service {
         copyAssetIfPresentAsGzipped(assets, "agent/vector.tar", vector);
         copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar", fuzzy);
 
+        extractBundledEmbedding(assets, stateDir);
+
         // Bundled default models (chat + embedding GGUF, staged by
         // scripts/elizaos/stage-default-models.mjs at AOSP build time). Land
         // them under $ELIZA_STATE_DIR/local-inference/models/ so the runtime's
@@ -1530,6 +1532,68 @@ public class ElizaAgentService extends Service {
                 copyAssetIfMissing(assets, modelsAssetDir + "/" + name, new File(modelsDest, name));
             }
             Log.i(TAG, "Extracted " + modelFiles.length + " bundled model file(s) to " + modelsDest);
+        }
+    }
+
+    /** Publishes the APK's verified GTE artifact at the runtime embedding path. */
+    private void extractBundledEmbedding(AssetManager assets, File stateDir) throws IOException {
+        final JSONObject manifest;
+        try (InputStream input = assets.open("agent/embedding/manifest.json")) {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);
+            manifest = new JSONObject(bytes.toString(StandardCharsets.UTF_8.name()));
+        } catch (JSONException error) {
+            // error-policy:J2 invalid packaged metadata prevents native startup.
+            throw new IOException("Bundled embedding manifest is invalid", error);
+        }
+        try {
+            final String name = manifest.getString("filename");
+            final long size = manifest.getLong("size");
+            final String sha256 = manifest.getString("sha256");
+            if (!"gte-small_fp16.gguf".equals(name) || size <= 0 || !sha256.matches("[a-f0-9]{64}"))
+                throw new IOException("Bundled embedding metadata is invalid");
+            File directory = new File(stateDir, "models");
+            if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Cannot create embedding model directory");
+            File target = new File(directory, name);
+            if (target.isFile() && target.length() == size && sha256.equals(embeddingSha256(target))) return;
+            File pending = File.createTempFile(".embedding-", ".pending", directory);
+            try {
+                try (InputStream input = assets.open("agent/embedding/" + name);
+                     FileOutputStream output = new FileOutputStream(pending)) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int count;
+                    while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                    output.getFD().sync();
+                }
+                if (pending.length() != size || !sha256.equals(embeddingSha256(pending)))
+                    throw new IOException("Bundled embedding bytes failed size/hash verification");
+                android.system.Os.rename(pending.getAbsolutePath(), target.getAbsolutePath());
+            } finally {
+                // error-policy:J6 a failed staging cleanup must not hide the original failure.
+                if (pending.exists() && !pending.delete()) Log.w(TAG, "Could not clean embedding staging file");
+            }
+        } catch (JSONException | android.system.ErrnoException error) {
+            // error-policy:J2 preserve the packaging/publication failure at startup.
+            throw new IOException("Could not publish bundled embedding model", error);
+        }
+    }
+
+    private static String embeddingSha256(File file) throws IOException {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            try (InputStream input = new FileInputStream(file)) {
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+                while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count);
+            }
+            StringBuilder hex = new StringBuilder();
+            for (byte value : digest.digest()) hex.append(String.format(java.util.Locale.ROOT, "%02x", value & 0xff));
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException error) {
+            // error-policy:J2 a host without SHA-256 cannot verify model artifacts.
+            throw new IOException("SHA-256 is unavailable", error);
         }
     }
 

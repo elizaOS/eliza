@@ -34,6 +34,8 @@ import {
 import net from "node:net";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
+import { DEFAULT_MODELS_DIR } from "../runtime/embedding-manager-support";
+import { resolveFusedEmbeddingBundleRoot } from "../runtime/fused-embedding-bundle";
 import type {
 	LocalInferenceLoadArgs,
 	LocalInferenceLoader,
@@ -156,6 +158,58 @@ export class BionicHostLoader implements LocalInferenceLoader {
 
 	currentModelPath(): string | null {
 		return this.modelPath;
+	}
+
+	async embed({
+		input,
+	}: {
+		input: string;
+	}): Promise<{ embedding: number[]; tokens: number }> {
+		const model =
+			process.env.LOCAL_EMBEDDING_MODEL?.trim() || "gte-small_fp16.gguf";
+		if (model !== "gte-small_fp16.gguf")
+			throw new ElizaError(
+				"Android dedicated embeddings require the bundled gte-small model",
+				{ code: "BIONIC_EMBEDDING_MODEL_UNSUPPORTED", context: { model } },
+			);
+		const bundleDir = resolveFusedEmbeddingBundleRoot({
+			modelsDir: process.env.MODELS_DIR?.trim() || DEFAULT_MODELS_DIR,
+			model,
+		});
+		if (!bundleDir)
+			throw new ElizaError(
+				"Android embedding model is missing; reinstall the current local-runtime APK",
+				{ code: "BIONIC_EMBEDDING_MODEL_MISSING" },
+			);
+		const response = await this.roundTrip<{
+			ok: boolean;
+			error?: string;
+			embedding?: number[];
+			tokens?: number;
+		}>({ op: "embedDedicated", bundleDir, text: input });
+		if (!response || typeof response !== "object")
+			throw new ElizaError("Android native embedding returned no response", {
+				code: "BIONIC_EMBEDDING_INVALID_RESPONSE",
+			});
+		if (!response.ok)
+			throw new ElizaError(
+				response.error || "Android native embedding failed",
+				{ code: "BIONIC_EMBEDDING_FAILED" },
+			);
+		if (
+			!Array.isArray(response.embedding) ||
+			response.embedding.length !== 384 ||
+			!response.embedding.every(Number.isFinite) ||
+			!response.embedding.some((value) => value !== 0) ||
+			typeof response.tokens !== "number" ||
+			!Number.isSafeInteger(response.tokens) ||
+			response.tokens < 0
+		)
+			throw new ElizaError(
+				"Android native embedding response is incomplete or invalid",
+				{ code: "BIONIC_EMBEDDING_INVALID_RESPONSE" },
+			);
+		return { embedding: response.embedding, tokens: response.tokens };
 	}
 
 	async generate(args: {

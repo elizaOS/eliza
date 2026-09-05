@@ -402,6 +402,9 @@ final class ElizaBionicInferenceServer {
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;
             }
+            if ("embedDedicated".equals(op)) {
+                return embedDedicated(req.getString("bundleDir"), req.getString("text"));
+            }
             if ("embed".equals(op)) {
                 return embed(bundleDir, req.optString("text", ""));
             }
@@ -805,6 +808,55 @@ final class ElizaBionicInferenceServer {
         if (applied > 0) {
             Log.i(TAG, "resident prefill reuse: kept " + applied + "/" + toks.length
                 + " prefix tokens, prefilled " + suffix.length + " delta");
+        }
+    }
+
+    /** Validates the operator override before the native ABI can clip an input. */
+    static int dedicatedEmbeddingContextLimit(String configured) {
+        if (configured == null || configured.trim().isEmpty()) return 512;
+        try {
+            final int parsed = Integer.parseInt(configured.trim());
+            if (parsed <= 0) throw new NumberFormatException("nonpositive context");
+            return Math.min(512, parsed);
+        } catch (NumberFormatException error) {
+            // error-policy:J2 An invalid native context setting must not silently change model input.
+            throw new IllegalArgumentException("ELIZA_EMBED_N_CTX must be a positive integer", error);
+        }
+    }
+
+    /** Computes a complete GTE embedding without replacing resident chat state. */
+    private String embedDedicated(String bundleDir, String text) throws org.json.JSONException {
+        synchronized (residentLock) {
+            final long context = ElizaVoiceNative.nativeContextCreate(bundleDir);
+            if (context == 0L) throw new IllegalStateException("Dedicated embedding context could not load");
+            try {
+                final int[] tokens = ElizaVoiceNative.nativeTokenize(context, text, true, false);
+                // Match the native context override as well as the packaged
+                // encoder boundary before calling the older clipping ABI.
+                final int contextLimit = dedicatedEmbeddingContextLimit(System.getenv("ELIZA_EMBED_N_CTX"));
+                if (tokens == null || tokens.length == 0)
+                    throw new IllegalStateException("Dedicated embedding tokenizer returned no tokens");
+                if (tokens.length > contextLimit)
+                    throw new IllegalArgumentException("EMBEDDING_INPUT_TOO_LARGE: input contains " + tokens.length
+                        + " tokens; configured GTE context supports " + contextLimit
+                        + ". Split the complete source into explicit chunks.");
+                final float[] embedding = ElizaVoiceNative.nativeEmbed(context, text, 1);
+                if (embedding.length != 384)
+                    throw new IllegalStateException("Dedicated GTE embedding has unexpected dimension " + embedding.length);
+                boolean nonzero = false;
+                final org.json.JSONArray values = new org.json.JSONArray();
+                for (float value : embedding) {
+                    if (!Float.isFinite(value)) throw new IllegalStateException("Embedding contains a non-finite value");
+                    nonzero |= value != 0f;
+                    values.put((double) value);
+                }
+                if (!nonzero) throw new IllegalStateException("Embedding contains only zeroes");
+                return new JSONObject().put("ok", true).put("embedding", values)
+                    .put("tokens", tokens.length).put("dim", embedding.length).toString();
+            } finally {
+                // This short-lived encoder never replaces the resident text context.
+                ElizaVoiceNative.nativeContextDestroy(context);
+            }
         }
     }
 

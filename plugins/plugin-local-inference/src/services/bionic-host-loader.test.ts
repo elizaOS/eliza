@@ -1,15 +1,15 @@
+/**
+ * Real-IPC test: stand up an actual abstract-namespace AF_UNIX server (the same
+ * transport ElizaBionicInferenceServer.java binds on the device) and drive the
+ * loader against it. No mocks — this exercises the real node:net framing.
+ */
+
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { BionicHostLoader, deriveBundleDir } from "./bionic-host-loader";
-
-/**
- * Real-IPC test: stand up an actual abstract-namespace AF_UNIX server (the same
- * transport ElizaBionicInferenceServer.java binds on the device) and drive the
- * loader against it. No mocks — this exercises the real node:net framing.
- */
 
 function frame(json: string): Buffer {
 	const payload = Buffer.from(json, "utf8");
@@ -42,7 +42,14 @@ function startHost(
 
 let host: net.Server | null = null;
 const tempDirs: string[] = [];
+const originalModelsDir = process.env.MODELS_DIR;
+const originalEmbeddingModel = process.env.LOCAL_EMBEDDING_MODEL;
 afterEach(() => {
+	if (originalModelsDir === undefined) delete process.env.MODELS_DIR;
+	else process.env.MODELS_DIR = originalModelsDir;
+	if (originalEmbeddingModel === undefined)
+		delete process.env.LOCAL_EMBEDDING_MODEL;
+	else process.env.LOCAL_EMBEDDING_MODEL = originalEmbeddingModel;
 	host?.close();
 	host = null;
 	for (const dir of tempDirs.splice(0)) {
@@ -509,5 +516,81 @@ describeLinuxOnly("BionicHostLoader streaming generate (#11913)", () => {
 				},
 			}),
 		).rejects.toThrow(/onTextChunk failed: consumer exploded/);
+	});
+});
+
+function embeddingFixture(): string {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bionic-embedding-"));
+	tempDirs.push(dir);
+	process.env.MODELS_DIR = dir;
+	process.env.LOCAL_EMBEDDING_MODEL = "gte-small_fp16.gguf";
+	fs.writeFileSync(path.join(dir, "gte-small_fp16.gguf"), "fixture-model");
+	return dir;
+}
+
+describe("Bionic embedding setup failures", () => {
+	it("rejects a missing model before attempting the native socket", async () => {
+		const dir = embeddingFixture();
+		fs.unlinkSync(path.join(dir, "gte-small_fp16.gguf"));
+		await expect(
+			new BionicHostLoader("unused").embed({ input: "complete source" }),
+		).rejects.toMatchObject({ code: "BIONIC_EMBEDDING_MODEL_MISSING" });
+	});
+	it("rejects an unsupported encoder rather than returning incompatible vectors", async () => {
+		embeddingFixture();
+		process.env.LOCAL_EMBEDDING_MODEL = "different.gguf";
+		await expect(
+			new BionicHostLoader("unused").embed({ input: "complete source" }),
+		).rejects.toMatchObject({ code: "BIONIC_EMBEDDING_MODEL_UNSUPPORTED" });
+	});
+});
+
+describeLinuxOnly("Bionic dedicated embedding transport", () => {
+	it("sends the complete source to the isolated encoder and retains the chat model", async () => {
+		const dir = embeddingFixture();
+		const input = "Complete Unicode source 🌊\n".repeat(100);
+		const vector = Array.from({ length: 384 }, (_, i) => (i - 192) / 384);
+		let request: Record<string, unknown> | undefined;
+		host = startHost(SOCK, (req) => {
+			request = req;
+			return JSON.stringify({ ok: true, embedding: vector, tokens: 301 });
+		});
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: "/chat/text/model.gguf" });
+		expect(await loader.embed({ input })).toEqual({
+			embedding: vector,
+			tokens: 301,
+		});
+		expect(request).toEqual({
+			op: "embedDedicated",
+			text: input,
+			bundleDir: path.join(dir, ".eliza-embed-bundle"),
+		});
+		expect(loader.currentModelPath()).toBe("/chat/text/model.gguf");
+	});
+	it.each([
+		null,
+		{ ok: true, embedding: [1], tokens: 1 },
+		{ ok: true, embedding: Array(384).fill(0), tokens: 1 },
+		{ ok: true, embedding: Array(384).fill(0.1), tokens: -1 },
+		{ ok: true, embedding: Array(384).fill(0.1) },
+	])("rejects malformed native embedding output %#", async (response) => {
+		embeddingFixture();
+		host = startHost(SOCK, () => JSON.stringify(response));
+		await expect(
+			new BionicHostLoader(SOCK).embed({ input: "source" }),
+		).rejects.toMatchObject({ code: "BIONIC_EMBEDDING_INVALID_RESPONSE" });
+	});
+	it("preserves the native oversized-input failure instead of returning a prefix vector", async () => {
+		embeddingFixture();
+		host = startHost(SOCK, () =>
+			JSON.stringify({
+				ok: false,
+				error: "EMBEDDING_INPUT_TOO_LARGE: source exceeds context",
+			}),
+		);
+		await expect(
+			new BionicHostLoader(SOCK).embed({ input: "full source".repeat(1000) }),
+		).rejects.toThrow("EMBEDDING_INPUT_TOO_LARGE");
 	});
 });
