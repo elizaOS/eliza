@@ -104,17 +104,16 @@ describe("managed-account manifest invariants", () => {
         spec.credentialSets.flat(),
       ),
     );
-    // POSIX ERE (git grep -E) has no \b; substring matches are fine because the
-    // names are long and distinctive, and -o reports the matched name itself.
-    const pattern = `(${[...enforcedVars].join("|")})`;
+    // Environment names are literals. Fixed patterns avoid compiling a large
+    // alternation while preserving the complete tracked-source search.
     const result = spawnSync(
       "git",
       [
         "grep",
         "-h",
         "-o",
-        "-E",
-        pattern,
+        "-F",
+        ...[...enforcedVars].flatMap((name) => ["-e", name]),
         "--",
         "packages/cloud",
         "plugins",

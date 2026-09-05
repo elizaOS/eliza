@@ -178,7 +178,9 @@ app.post("/", async (c) => {
     const definitions = requestResult.success
       ? requestedDefinition
         ? [requestedDefinition]
-        : requireDefaultVideoModelDefinitions()
+        : request?.model
+          ? []
+          : requireDefaultVideoModelDefinitions()
       : [];
     const apiKeys = collectVideoProviderApiKeys(c.env);
     const providerCandidates = getConfiguredVideoProviderCandidates(

@@ -223,6 +223,7 @@ describe("eliza sse bridge", () => {
 
   test("emits cancellable progress heartbeats while a provisional action waits", async () => {
     const progress: string[] = [];
+    const heartbeatsObserved = Promise.withResolvers<void>();
     const encoder = new TextEncoder();
     const fetchImpl = (async () => {
       const body = new ReadableStream<Uint8Array>({
@@ -232,7 +233,7 @@ describe("eliza sse bridge", () => {
               `data: ${JSON.stringify({ type: "token", text: "On it.", provisional: true })}\n\n`,
             ),
           );
-          await new Promise((resolve) => setTimeout(resolve, 28));
+          await heartbeatsObserved.promise;
           controller.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({ type: "token", fullText: "Bitcoin is $100." })}\n\n`,
@@ -257,7 +258,10 @@ describe("eliza sse bridge", () => {
         signal: new AbortController().signal,
         fetchImpl,
         progressIntervalMs: 10,
-        onProgress: (text) => progress.push(text),
+        onProgress: (text) => {
+          progress.push(text);
+          if (progress.length >= 2) heartbeatsObserved.resolve();
+        },
       },
       () => undefined,
     );
