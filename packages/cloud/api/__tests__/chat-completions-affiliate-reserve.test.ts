@@ -29,22 +29,20 @@ import {
   describe,
   expect,
   mock,
-  spyOn,
   test,
 } from "bun:test";
-import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
+import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
 
 // These purchased-credit fixtures have no paid subscription. Keep the real
 // funding selector and reservation path while supplying that repository state.
-let entitlementLookup: ReturnType<typeof spyOn>;
+let restoreEntitlementLookup: ReturnType<
+  typeof mockNonSubscriberEntitlementLookup
+>;
 beforeEach(() => {
-  entitlementLookup = spyOn(
-    subscriptionEntitlementsRepository,
-    "find",
-  ).mockResolvedValue(undefined);
+  restoreEntitlementLookup = mockNonSubscriberEntitlementLookup();
 });
 afterEach(() => {
-  entitlementLookup.mockRestore();
+  restoreEntitlementLookup();
 });
 
 import * as affiliatesActual from "@/db/repositories/affiliates";
@@ -57,9 +55,6 @@ import * as modelCatalogActual from "@/lib/services/model-catalog";
 import * as redeemableEarningsActual from "@/lib/services/redeemable-earnings";
 import * as teamPoolActual from "@/lib/services/team-credential-pool";
 import * as creditReservationActual from "@/lib/utils/credit-reservation";
-import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
-
-const restoreEntitlementRepository = mockNonSubscriberEntitlementLookup();
 
 process.env.DATABASE_URL ||= "pglite://memory";
 // Force the synchronous-reserve path (the one #12749 falls back to): optimistic
@@ -242,7 +237,6 @@ const { handleChatCompletionsPOST } = await import(
 );
 
 afterAll(() => {
-  restoreEntitlementRepository();
   // Leave the knob fail-safe BEFORE restoring the modules: bun's mock.module
   // can leave already-evaluated importers bound to these closures, which read
   // the knob by reference (see embeddings-optimistic-billing.test.ts).

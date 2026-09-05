@@ -1,27 +1,16 @@
-/** Keeps focused route tests on purchased-credit billing without querying subscription state. */
+/** Keeps purchased-credit route fixtures on the real funding selector with a per-test non-subscriber repository seam. */
 
-import { mock } from "bun:test";
-import * as entitlementRepositoryActual from "@/db/repositories/subscription-entitlements";
+import { spyOn } from "bun:test";
+import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
 
-/** Install the non-subscriber entitlement seam and return its module restore hook. */
+/** Install the repository lookup spy for one test and return its restore hook. */
 export function mockNonSubscriberEntitlementLookup(): () => void {
-  mock.module("@/db/repositories/subscription-entitlements", () => ({
-    ...entitlementRepositoryActual,
-    subscriptionEntitlementsRepository: new Proxy(
-      entitlementRepositoryActual.subscriptionEntitlementsRepository,
-      {
-        get: (target, property, receiver) =>
-          property === "find"
-            ? async () => undefined
-            : Reflect.get(target, property, receiver),
-      },
-    ),
-  }));
+  const entitlementLookup = spyOn(
+    subscriptionEntitlementsRepository,
+    "find",
+  ).mockResolvedValue(undefined);
 
   return () => {
-    mock.module(
-      "@/db/repositories/subscription-entitlements",
-      () => entitlementRepositoryActual,
-    );
+    entitlementLookup.mockRestore();
   };
 }

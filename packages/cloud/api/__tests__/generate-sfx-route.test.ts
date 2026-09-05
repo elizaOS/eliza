@@ -20,22 +20,20 @@ import {
   describe,
   expect,
   mock,
-  spyOn,
   test,
 } from "bun:test";
-import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
+import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
 
 // These purchased-credit fixtures have no paid subscription. Keep the real
 // funding selector and reservation path while supplying that repository state.
-let entitlementLookup: ReturnType<typeof spyOn>;
+let restoreEntitlementLookup: ReturnType<
+  typeof mockNonSubscriberEntitlementLookup
+>;
 beforeEach(() => {
-  entitlementLookup = spyOn(
-    subscriptionEntitlementsRepository,
-    "find",
-  ).mockResolvedValue(undefined);
+  restoreEntitlementLookup = mockNonSubscriberEntitlementLookup();
 });
 afterEach(() => {
-  entitlementLookup.mockRestore();
+  restoreEntitlementLookup();
 });
 
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
@@ -45,9 +43,6 @@ import * as aiPricingActual from "@/lib/services/ai-pricing";
 import * as contentSafetyActual from "@/lib/services/content-safety";
 import * as creditsActual from "@/lib/services/credits";
 import * as generationsActual from "@/lib/services/generations";
-import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
-
-const restoreEntitlementRepository = mockNonSubscriberEntitlementLookup();
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
@@ -103,7 +98,6 @@ mock.module("@/lib/providers/audio/registry", () => ({
 const sfxRoute = (await import("../v1/generate-sfx/route")).default;
 
 afterAll(() => {
-  restoreEntitlementRepository();
   mock.module("@/lib/auth/workers-hono-auth", () => workersHonoAuthActual);
   mock.module(
     "@/lib/middleware/rate-limit-hono-cloudflare",

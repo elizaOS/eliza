@@ -17,7 +17,6 @@ const admissionActual = {
 const creditsActual = { ...(await import("@/lib/services/credits")) };
 
 const aiActual = require("ai") as Record<string, unknown>;
-const creditsActual = await import("@/lib/services/credits");
 const languageModelActual = await import("@/lib/providers/language-model");
 
 const ORG = "00000000-0000-4000-8000-0000000000cc";
