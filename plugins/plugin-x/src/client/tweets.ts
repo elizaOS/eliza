@@ -988,7 +988,12 @@ export async function getTweetsWhere(
   const filtered = [];
 
   for await (const tweet of tweets) {
-    const matches = isCallback ? query(tweet) : checkTweetMatches(tweet, query);
+    // `TweetQuery` permits `Promise<boolean>`. Without the await an async
+    // predicate yields a Promise, which is always truthy, so the filter would
+    // silently return every tweet. `getTweetWhere` already awaits here.
+    const matches = isCallback
+      ? await query(tweet)
+      : checkTweetMatches(tweet, query);
 
     if (!matches) continue;
     filtered.push(tweet);
