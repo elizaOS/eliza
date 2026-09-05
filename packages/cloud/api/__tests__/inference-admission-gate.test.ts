@@ -1897,6 +1897,329 @@ describe("InferenceAdmissionGate", () => {
     ).toBe(409);
   });
 
+  test("atomically combines lease and provider dispatch in one Durable Object round-trip", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10);
+
+    const leaseRes = await post(gate, "/lease", {
+      requestId: "request-combined",
+      balanceUsd: 10,
+      balanceRevision: "1",
+      estimatedCostUsd: 3,
+      dispatch: true,
+      preProviderCancellationToken: "cancel-token-123",
+      recovery: organizationRecovery("request-combined"),
+    });
+    expect(leaseRes.status).toBe(200);
+    const leaseBody = (await leaseRes.json()) as Record<string, unknown>;
+    expect(leaseBody).toMatchObject({
+      admitted: true,
+      availableUsd: 7,
+      requiredUsd: 3,
+      dispatched: true,
+    });
+
+    const stored = storage.read<{
+      phase: string;
+      preProviderCancellationToken?: string;
+      estimatedCostUsd: number;
+    }>(storedLeaseKey("request-combined"));
+    expect(stored?.phase).toBe("leased");
+    expect(stored?.preProviderCancellationToken).toBe("cancel-token-123");
+    expect(stored?.estimatedCostUsd).toBe(3);
+    expect(storage.alarm).toBeNumber();
+
+    const replayRes = await post(gate, "/lease", {
+      requestId: "request-combined",
+      balanceUsd: 10,
+      balanceRevision: "1",
+      estimatedCostUsd: 3,
+      dispatch: true,
+      preProviderCancellationToken: "cancel-token-123",
+      recovery: organizationRecovery("request-combined"),
+    });
+    expect(replayRes.status).toBe(200);
+    const replayBody = (await replayRes.json()) as Record<string, unknown>;
+    expect(replayBody).toMatchObject({
+      admitted: true,
+      availableUsd: 7,
+      requiredUsd: 3,
+      dispatched: true,
+      duplicate: true,
+    });
+
+    const mismatchRes = await post(gate, "/release", {
+      requestId: "request-combined",
+      preProviderCancellationToken: "wrong-token",
+    });
+    expect(mismatchRes.status).toBe(409);
+
+    const noTokenRes = await post(gate, "/release", {
+      requestId: "request-combined",
+    });
+    expect(noTokenRes.status).toBe(409);
+
+    const releaseRes = await post(gate, "/release", {
+      requestId: "request-combined",
+      preProviderCancellationToken: "cancel-token-123",
+    });
+    expect(releaseRes.status).toBe(200);
+    const releaseBody = (await releaseRes.json()) as Record<string, unknown>;
+    expect(releaseBody).toMatchObject({ released: true });
+
+    const ledger = storage.read<{
+      availableUsd: number;
+      activeLeaseCount: number;
+    }>("ledger");
+    expect(ledger?.availableUsd).toBe(10);
+    expect(ledger?.activeLeaseCount).toBe(0);
+    expect(storage.read(storedLeaseKey("request-combined"))).toBeUndefined();
+  });
+
+  test("acquireInferenceAdmissionLease with dispatch: true stores token at lease time and flips phase at dispatch", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10);
+    let dispatchCalled = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: () => ({
+          fetch: async (req: Request) => {
+            const url = new URL(req.url);
+            if (url.pathname === "/dispatch") {
+              dispatchCalled++;
+            }
+            return await gate.fetch(req);
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "request-combined-client",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 4,
+        dispatch: true,
+        recovery: organizationRecovery("request-combined-client"),
+      });
+
+      expect(lease.providerDispatched).toBe(true);
+      expect(lease.preProviderCancellationToken).toBeDefined();
+
+      // The DO phase is still "leased" — markProviderDispatched calls /dispatch
+      // to flip it to "dispatched" right before the provider call.
+      await markInferenceAdmissionLeaseDispatched(lease);
+      expect(dispatchCalled).toBe(1);
+      expect(lease.preProviderCancellationToken).toBeUndefined();
+
+      await settleInferenceAdmissionLease(lease, 3, 3);
+    });
+
+    const ledger = storage.read<{
+      availableUsd: number;
+      activeLeaseCount: number;
+    }>("ledger");
+    expect(ledger?.activeLeaseCount).toBe(0);
+  });
+
+  test("combined dispatch lease abandoned before provider call releases free on alarm expiry", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10);
+
+      // Acquire a combined lease+dispatch — provider is never invoked.
+      const leaseRes = await post(gate, "/lease", {
+        requestId: "request-abandoned",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 8,
+        dispatch: true,
+        preProviderCancellationToken: "cancel-abandoned",
+        recovery: organizationRecovery("request-abandoned"),
+      });
+      expect(leaseRes.status).toBe(200);
+      expect(
+        ((await leaseRes.json()) as Record<string, unknown>).dispatched,
+      ).toBe(true);
+
+      const stored = storage.read<{
+        phase: string;
+        preProviderCancellationToken?: string;
+      }>(storedLeaseKey("request-abandoned"));
+      expect(stored?.phase).toBe("leased");
+      expect(stored?.preProviderCancellationToken).toBe("cancel-abandoned");
+
+      // Advance time past expiry (MAX_LEASE_AGE_MS = 20 * 60_000 = 1_200_000).
+      clock.mockReturnValue(1_300_000);
+      storage.clearAlarm();
+      await gate.alarm();
+
+      // The lease must be released free — no recovery charge.
+      expect(recoverExpiredLease).not.toHaveBeenCalled();
+      const ledger = storage.read<{
+        availableUsd: number;
+        activeLeaseCount: number;
+      }>("ledger");
+      expect(ledger?.activeLeaseCount).toBe(0);
+      expect(ledger?.availableUsd).toBe(10);
+      expect(storage.read(storedLeaseKey("request-abandoned"))).toBeUndefined();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("confirmed dispatch lease charges via recovery on alarm expiry", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10);
+
+      // Acquire a combined lease (phase stays "leased", token stored).
+      expect(
+        (
+          await post(gate, "/lease", {
+            requestId: "request-confirmed",
+            balanceUsd: 10,
+            balanceRevision: "1",
+            estimatedCostUsd: 5,
+            dispatch: true,
+            preProviderCancellationToken: "cancel-confirmed",
+            recovery: organizationRecovery("request-confirmed"),
+          })
+        ).status,
+      ).toBe(200);
+
+      // markProviderDispatched calls /dispatch to flip to "dispatched".
+      clock.mockReturnValue(2_000);
+      const dispatchRes = await post(gate, "/dispatch", {
+        requestId: "request-confirmed",
+        preProviderCancellationToken: "cancel-confirmed",
+      });
+      expect(dispatchRes.status).toBe(200);
+
+      const stored = storage.read<{
+        phase: string;
+      }>(storedLeaseKey("request-confirmed"));
+      expect(stored?.phase).toBe("dispatched");
+
+      // Advance time past expiry.
+      clock.mockReturnValue(1_300_000);
+      storage.clearAlarm();
+      recoverExpiredLease.mockResolvedValueOnce({
+        balanceUsd: 5,
+        balanceRevision: "2",
+        collectedUsd: 5,
+        gateConsumedUsd: 5,
+      });
+      await gate.alarm();
+
+      // Recovery MUST be invoked for confirmed dispatched leases.
+      expect(recoverExpiredLease).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("combined dispatch via /lease-authorized with credential covers the production path", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10);
+
+    const credential = {
+      organizationId: "org-a",
+      kind: "api_key",
+      credentialId: "key-a",
+      userId: "user-a",
+    } as const;
+    const leaseRes = await post(gate, "/lease-authorized", {
+      requestId: "request-auth-combined",
+      balanceUsd: 10,
+      balanceRevision: "1",
+      estimatedCostUsd: 4,
+      dispatch: true,
+      preProviderCancellationToken: "cancel-auth-token",
+      credential,
+      recovery: organizationRecovery("request-auth-combined"),
+    });
+    expect(leaseRes.status).toBe(200);
+    const leaseBody = (await leaseRes.json()) as Record<string, unknown>;
+    expect(leaseBody).toMatchObject({
+      admitted: true,
+      availableUsd: 6,
+      requiredUsd: 4,
+      dispatched: true,
+    });
+
+    const stored = storage.read<{
+      phase: string;
+      preProviderCancellationToken?: string;
+    }>(storedLeaseKey("request-auth-combined"));
+    expect(stored?.phase).toBe("leased");
+    expect(stored?.preProviderCancellationToken).toBe("cancel-auth-token");
+
+    // Release via cancellation token.
+    const releaseRes = await post(gate, "/release", {
+      requestId: "request-auth-combined",
+      preProviderCancellationToken: "cancel-auth-token",
+    });
+    expect(releaseRes.status).toBe(200);
+    expect(
+      storage.read<{ availableUsd: number }>("ledger")?.availableUsd,
+    ).toBe(10);
+  });
+
+  test("combined dispatch replay does not extend expiresAt", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10);
+
+      await post(gate, "/lease", {
+        requestId: "request-replay-expiry",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 3,
+        dispatch: true,
+        preProviderCancellationToken: "cancel-replay",
+        recovery: organizationRecovery("request-replay-expiry"),
+      });
+
+      const originalLease = storage.read<{ expiresAt: number }>(
+        storedLeaseKey("request-replay-expiry"),
+      );
+      const originalExpiry = originalLease?.expiresAt;
+      expect(originalExpiry).toBeDefined();
+
+      // Advance time and replay the same combined lease request.
+      clock.mockReturnValue(600_000);
+      await post(gate, "/lease", {
+        requestId: "request-replay-expiry",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 3,
+        dispatch: true,
+        preProviderCancellationToken: "cancel-replay",
+        recovery: organizationRecovery("request-replay-expiry"),
+      });
+
+      const replayedLease = storage.read<{ expiresAt: number }>(
+        storedLeaseKey("request-replay-expiry"),
+      );
+      // expiresAt must NOT be extended by the replay.
+      expect(replayedLease?.expiresAt).toBe(originalExpiry);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("persists a lower rejected hint across Durable Object eviction", async () => {
     const storage = new TestStorage();
     const first = createGate(storage);

@@ -41,6 +41,7 @@ interface LeaseResponse {
   admitted: boolean;
   availableUsd: number;
   requiredUsd: number;
+  dispatched?: boolean;
 }
 
 interface SettleResponse {
@@ -560,6 +561,7 @@ export async function acquireInferenceAdmissionLease(params: {
   recovery: InferenceAdmissionRecoveryContext;
   /** Strong standing proof fused into the lease transaction when supplied. */
   credential?: InferenceCredentialCheck;
+  dispatch?: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }): Promise<InferenceAdmissionLease> {
   const balanceUsd = finiteNonNegative(params.balanceUsd, "balanceUsd");
@@ -577,6 +579,7 @@ export async function acquireInferenceAdmissionLease(params: {
 
   const stub = gateStub(params.organizationId);
   const path = params.credential ? "/lease-authorized" : "/lease";
+  const preProviderCancellationToken = crypto.randomUUID();
   const body = {
     organizationId: params.organizationId,
     requestId: params.requestId,
@@ -584,6 +587,10 @@ export async function acquireInferenceAdmissionLease(params: {
     balanceRevision: params.balanceRevision,
     estimatedCostUsd,
     recovery: params.recovery,
+    ...(params.dispatch && {
+      dispatch: true,
+      preProviderCancellationToken,
+    }),
     ...(params.credential
       ? {
           credential: {
@@ -648,8 +655,8 @@ export async function acquireInferenceAdmissionLease(params: {
     requestId: params.requestId,
     estimatedCostUsd,
     gate: stub,
-    providerDispatched: false,
-    preProviderCancellationToken: crypto.randomUUID(),
+    providerDispatched: Boolean(payload.dispatched),
+    preProviderCancellationToken,
   };
 }
 
@@ -696,7 +703,6 @@ export function inferenceSettlementAmounts(
 export async function markInferenceAdmissionLeaseDispatched(
   lease: InferenceAdmissionLease,
 ): Promise<void> {
-  if (lease.providerDispatched) return;
   const cancellationToken = lease.preProviderCancellationToken;
   if (!cancellationToken) {
     throw new InferenceAdmissionDispatchMarkError(
@@ -757,7 +763,7 @@ export async function markInferenceAdmissionLeaseDispatched(
 export async function releaseInferenceAdmissionLease(
   lease: InferenceAdmissionLease,
 ): Promise<void> {
-  if (lease.providerDispatched) {
+  if (lease.providerDispatched && !lease.preProviderCancellationToken) {
     throw new InferenceAdmissionGateUnavailableError(
       "Dispatched inference work cannot be released without accounting",
     );
@@ -799,6 +805,10 @@ export async function settleInferenceAdmissionLease(
     throw new InferenceAdmissionGateUnavailableError(
       "Gate consumption cannot be lower than balance-backed collection",
     );
+  }
+  if (balanceBackedUsd === 0 && gateConsumedUsd === 0 && lease.preProviderCancellationToken) {
+    await releaseInferenceAdmissionLease(lease);
+    return;
   }
   if (!lease.providerDispatched) {
     if (balanceBackedUsd === 0 && gateConsumedUsd === 0) {

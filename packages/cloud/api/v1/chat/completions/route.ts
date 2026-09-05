@@ -1887,6 +1887,7 @@ export async function handleChatCompletionsPOST(
           executionCtx: options.executionCtx,
           admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
+          dispatch: true,
         });
         settleReservation = admission.settle;
         settleUnknown = admission.settleUnknown;

@@ -60,6 +60,8 @@ interface LeaseRequest {
   balanceRevision: string;
   estimatedCostUsd: number;
   recovery: InferenceAdmissionRecoveryContext;
+  dispatch?: boolean;
+  preProviderCancellationToken?: string;
 }
 
 interface AuthorizedLeaseRequest extends LeaseRequest {
@@ -776,7 +778,9 @@ export class InferenceAdmissionGate {
         request.recovery,
         request.requestId,
         request.organizationId,
-      )
+      ) ||
+      (request.preProviderCancellationToken !== undefined &&
+        !validTrimmedId(request.preProviderCancellationToken))
     ) {
       return jsonError("Invalid inference admission lease", 400);
     }
@@ -815,11 +819,55 @@ export class InferenceAdmissionGate {
           409,
         );
       }
+      if (request.dispatch) {
+        if (
+          prior.preProviderCancellationToken !== undefined &&
+          request.preProviderCancellationToken !== undefined &&
+          prior.preProviderCancellationToken !==
+            request.preProviderCancellationToken
+        ) {
+          await this.save(ledger);
+          return jsonError(
+            "Inference admission dispatch capability does not match",
+            409,
+          );
+        }
+        const refreshed: ActiveLease = {
+          ...prior,
+          ...(request.preProviderCancellationToken !== undefined
+            ? {
+                preProviderCancellationToken:
+                  request.preProviderCancellationToken,
+              }
+            : prior.preProviderCancellationToken !== undefined
+              ? {
+                  preProviderCancellationToken:
+                    prior.preProviderCancellationToken,
+                }
+              : {}),
+        };
+        await this.save(ledger, {
+          delete: [{ requestId: request.requestId, lease: prior }],
+          put: [{ requestId: request.requestId, lease: refreshed }],
+        });
+        return Response.json({
+          admitted: true,
+          availableUsd: ledger.availableUsd,
+          requiredUsd: request.estimatedCostUsd,
+          dispatched: true,
+          ...(prior.preProviderCancellationToken !== undefined && {
+            duplicate: true,
+          }),
+        });
+      }
       await this.save(ledger);
       return Response.json({
         admitted: true,
         availableUsd: ledger.availableUsd,
         requiredUsd: request.estimatedCostUsd,
+        dispatched:
+          prior.phase === "dispatched" ||
+          prior.preProviderCancellationToken !== undefined,
       });
     }
     if (ledger.settledRequestIds.includes(request.requestId)) {
@@ -850,6 +898,9 @@ export class InferenceAdmissionGate {
       createdAt: now,
       expiresAt: now + MAX_LEASE_AGE_MS,
       phase: "leased",
+      ...(request.preProviderCancellationToken !== undefined && {
+        preProviderCancellationToken: request.preProviderCancellationToken,
+      }),
       recovery: structuredClone(request.recovery),
     };
     ledger.activeLeaseCount++;
@@ -865,6 +916,7 @@ export class InferenceAdmissionGate {
       admitted: true,
       availableUsd: ledger.availableUsd,
       requiredUsd: request.estimatedCostUsd,
+      dispatched: Boolean(request.dispatch),
     });
   }
 
@@ -1041,13 +1093,15 @@ export class InferenceAdmissionGate {
       );
     }
     if (
-      lease.phase === "dispatched" &&
+      lease.preProviderCancellationToken !== undefined &&
       (!request.preProviderCancellationToken ||
         lease.preProviderCancellationToken !==
           request.preProviderCancellationToken)
     ) {
       return jsonError(
-        "Dispatched inference work requires authoritative settlement",
+        lease.phase === "dispatched"
+          ? "Dispatched inference work requires authoritative settlement"
+          : "Inference admission lease release requires its cancellation capability",
         409,
       );
     }
