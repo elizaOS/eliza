@@ -131,7 +131,7 @@ async function hydrateAuthoritativeDecision(params: {
   if (!user.organization.is_active) {
     return rejection(params.stewardUserId, 403, "organization_inactive");
   }
-  if (await adminService.shouldBlockUser(user.id)) {
+  if (await adminService.shouldBlockUserConsistent(user.id)) {
     return {
       v: INFERENCE_AUTH_CONTEXT_VERSION,
       cachedAt: Date.now(),
@@ -328,7 +328,7 @@ export async function resolveInferenceSessionAuthContext(
     if (!user?.organization_id || !user.organization) {
       return { kind: "rejected", status: 401 };
     }
-    if (await adminService.shouldBlockUser(user.id)) {
+    if (await adminService.shouldBlockUserConsistent(user.id)) {
       return { kind: "suspended", userId: user.id };
     }
     return await enforceStrongSessionBoundary(
