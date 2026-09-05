@@ -6302,6 +6302,7 @@
   "localinference.tabSearch": "Search",
   "localinference.tabDownloads": "Downloads",
   "localinference.devicesTitle": "Local runtime devices",
+  "localinference.voiceModelUpdates": "Voice model updates",
   "localinference.assignmentsTitle": "Local model assignments",
   "localinference.discoveredTooltip": "{{appName}} can load these models without re-downloading.",
   "localinference.discoveredTitle": "Discovered from other tools",
