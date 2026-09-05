@@ -1,4 +1,5 @@
 /** Implements fal.ai video submission, queue polling, and status reconciliation. */
+import { ElizaError } from "@elizaos/core";
 import { ApiError, createFalClient } from "@fal-ai/client";
 import { getAiProviderConfigurationError } from "../language-model";
 import {
@@ -104,6 +105,12 @@ export function buildFalVideoInput(request: VideoGenerationRequest): Record<stri
   const input: Record<string, unknown> = { prompt: request.prompt };
   const isSeedance25 = request.model.startsWith("bytedance/seedance-2.5/");
   const isH3MaxImageToVideo = request.model === "minimax/h3-max/image-to-video";
+  if (isH3MaxImageToVideo && (request.audio === false || request.voiceControl !== undefined)) {
+    throw new ElizaError("MiniMax H3 Max does not support the requested audio controls", {
+      code: "VIDEO_CONTROLS_UNSUPPORTED",
+      context: { model: request.model, audio: request.audio, voiceControl: request.voiceControl },
+    });
+  }
   if (request.referenceUrl) {
     input.image_url = request.referenceUrl;
   }
@@ -206,6 +213,9 @@ export async function generateFalVideo(request: VideoGenerationRequest): Promise
   } catch (error) {
     // error-policy:J1 the provider adapter translates submission/poll outcomes
     // into the typed states required by route billing and reconciliation.
+    if (error instanceof ElizaError && error.code === "VIDEO_CONTROLS_UNSUPPORTED") {
+      throw new VideoGenerationTerminalError(error.message, error);
+    }
     if (!requestId) {
       // The client only raises ApiError from a real HTTP error response, and
       // fal issues a request_id only inside a 2xx submit body, so ANY error

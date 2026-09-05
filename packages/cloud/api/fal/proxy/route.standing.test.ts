@@ -57,11 +57,21 @@ mock.module("@fal-ai/server-proxy/hono", () => ({
 }));
 mock.module("@/lib/services/ai-pricing", () => ({
   ...aiPricingActual,
-  calculateVideoGenerationCostFromCatalog: async () => ({
-    totalCost: 0.1,
-    baseTotalCost: 0.1,
-    platformMarkup: 0,
-  }),
+  calculateVideoGenerationCostFromCatalog: async ({
+    model,
+    dimensions,
+  }: {
+    model: string;
+    dimensions?: Record<string, unknown>;
+  }) => {
+    if (
+      model === "minimax/h3-max/image-to-video" &&
+      dimensions?.resolution !== "768P"
+    ) {
+      throw new Error("Pricing unavailable for the requested resolution");
+    }
+    return { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 };
+  },
 }));
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   admitFlatGenerativeOperation,
@@ -208,5 +218,37 @@ test("fal dispatch receipt failure releases before provider invocation", async (
   expect(response.status).toBe(500);
   expect(invokeFalProxy).not.toHaveBeenCalled();
   expect(settle).toHaveBeenCalledWith(0);
+  expect(settleUnknown).not.toHaveBeenCalled();
+});
+
+test("H3 Max proxy submission preserves the provider resolution used for billing", async () => {
+  routeCallerError = null;
+  admissionError = null;
+  admissionEnabled = true;
+  dispatchReceiptError = null;
+  falProxyError = null;
+  falResponseStatus = 200;
+  invokeFalProxy.mockClear();
+  settle.mockClear();
+  settleUnknown.mockClear();
+  markProviderDispatched.mockClear();
+
+  const response = await app.request("/fal/proxy", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-fal-target-url": "minimax/h3-max/image-to-video",
+    },
+    body: JSON.stringify({
+      prompt: "a neon cat",
+      resolution: "768P",
+      duration: 5,
+    }),
+  });
+
+  expect(response.status).toBe(200);
+  expect(await response.text()).toBe("upstream");
+  expect(invokeFalProxy).toHaveBeenCalledTimes(1);
+  expect(settle).toHaveBeenCalledWith(0.1);
   expect(settleUnknown).not.toHaveBeenCalled();
 });

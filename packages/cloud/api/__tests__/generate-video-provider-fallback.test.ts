@@ -84,6 +84,12 @@ mock.module("@/lib/services/ai-pricing", () => ({
   }),
 }));
 
+// This provider failover fixture uses prepaid credits; subscription funding
+// is exercised by the billing authority integration suite.
+mock.module("@/db/repositories/subscription-entitlements", () => ({
+  subscriptionEntitlementsRepository: { find: async () => undefined },
+}));
+
 const reserve = mock();
 mock.module("@/lib/services/credits", () => ({
   ...creditsActual,
@@ -232,10 +238,10 @@ beforeEach(() => {
 });
 
 describe("generate-video — default provider fallback", () => {
-  test("requires an image for the image-to-video default chain", async () => {
+  test("requires an image for an explicitly image-only model", async () => {
     const response = await post(
       { FAL_KEY: "fal-key", ATLASCLOUD_API_KEY: "atlas-key" },
-      { prompt: "a neon cat" },
+      { model: ATLAS_MODEL, prompt: "a neon cat" },
     );
 
     expect(response.status).toBe(400);
@@ -248,6 +254,99 @@ describe("generate-video — default provider fallback", () => {
     expect(subscribe).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  test("generates a prompt-only request with H3 Max without fabricating an image", async () => {
+    const ledger = makeLedgerReservation(100, FAL_COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    subscribe.mockResolvedValue({
+      data: { video: { url: "https://fal.media/video.mp4" } },
+      requestId: "fal-text-request",
+    });
+
+    const response = await post(
+      { FAL_KEY: "fal-key" },
+      { prompt: "a neon cat" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    expect(subscribe.mock.calls[0]?.[0]).toBe(FAL_MODEL);
+    expect(subscribe.mock.calls[0]?.[1]?.input).toMatchObject({
+      prompt: "a neon cat",
+      prompt_expansion_mode: "balanced",
+    });
+    expect(subscribe.mock.calls[0]?.[1]?.input).not.toHaveProperty("image_url");
+    expect(ledger.lastActual).toBeCloseTo(FAL_COST, 10);
+    expect(generationsCreate.mock.calls[0]?.[0]).toMatchObject({
+      model: FAL_MODEL,
+      storage_url: "https://fal.media/video.mp4",
+    });
+  });
+
+  test("retains a text-to-video fallback for prompt-only requests", async () => {
+    const ledger = makeLedgerReservation(100, ATLAS_COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    fetchMock.mockResolvedValue(atlasSuccess());
+
+    const response = await post(
+      { ATLASCLOUD_API_KEY: "atlas-key" },
+      { prompt: "a neon cat" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(generationsCreate.mock.calls[0]?.[0]).toMatchObject({
+      model: "vidu/q3-turbo/text-to-video",
+      provider: "vidu",
+      storage_url: "https://atlas.media/video.mp4",
+    });
+    expect(ledger.lastActual).toBeCloseTo(ATLAS_COST, 10);
+  });
+
+  test("preserves silent default requests with a model that supports audio controls", async () => {
+    const ledger = makeLedgerReservation(100, ATLAS_COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    subscribe.mockResolvedValue({
+      data: { video: { url: "https://fal.media/silent.mp4" } },
+      requestId: "fal-silent-request",
+    });
+
+    const response = await post(
+      { FAL_KEY: "fal-key" },
+      {
+        prompt: "a neon cat",
+        audio: false,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(subscribe.mock.calls[0]?.[0]).toBe("fal-ai/veo3");
+    expect(subscribe.mock.calls[0]?.[1]?.input).toMatchObject({
+      audio: false,
+      generate_audio: false,
+    });
+    expect(ledger.lastActual).toBeCloseTo(ATLAS_COST, 10);
+  });
+
+  test.each([{ audio: false }, { voiceControl: true }])(
+    "rejects unsupported explicit controls %j before pricing or billing",
+    async (controls) => {
+      const response = await post(
+        { FAL_KEY: "fal-key" },
+        {
+          model: FAL_MODEL,
+          prompt: "a neon cat",
+          ...controls,
+        },
+      );
+
+      expect(response.status).toBe(400);
+      expect(calculateVideoGenerationCostFromCatalog).not.toHaveBeenCalled();
+      expect(reserve).not.toHaveBeenCalled();
+      expect(subscribe).not.toHaveBeenCalled();
+    },
+  );
 
   test("rejects an unconfigured default chain before pricing or credit work", async () => {
     const response = await post({});

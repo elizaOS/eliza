@@ -118,7 +118,7 @@ function readString(body: unknown, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = (body as Record<string, unknown>)[key];
     if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim().toLowerCase();
+      return value.trim();
     }
   }
 
