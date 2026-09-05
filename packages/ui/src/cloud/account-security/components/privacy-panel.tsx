@@ -4,10 +4,11 @@
  *   - trajectory logging toggle (local consent store)
  *
  * Account deletion renders the Worker's read-only lifecycle admission state.
- * Data export remains visible but unavailable until its export job ships.
+ * Data export is not shown as a peer-level row while the export job is
+ * unavailable; SecuritySurface consolidates it into one availability notice.
  */
 
-import { Camera, Download, ScrollText, Trash2 } from "lucide-react";
+import { Camera, ScrollText, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SettingsSwitchRow } from "../../../components/settings/settings-agent-rows";
 import {
@@ -15,7 +16,6 @@ import {
   SettingsRow,
   SettingsStack,
 } from "../../../components/settings/settings-layout";
-import { Button } from "../../../components/ui/button";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { emitAuditEvent } from "../data/audit-client";
 import {
@@ -88,31 +88,6 @@ export function PrivacyPanel() {
           })}
           checked={trajectory}
           onCheckedChange={onTrajectoryChange}
-        />
-        <SettingsRow
-          icon={Download}
-          label={t("cloud.privacyPanel.downloadTitle", {
-            defaultValue: "Download my data",
-          })}
-          description={t("cloud.privacyPanel.downloadDescription", {
-            defaultValue:
-              "Bundle your conversations, agents, and connector data into a portable archive (GDPR / CCPA right-to-export).",
-          })}
-          control={
-            <Button
-              size="sm"
-              variant="outline"
-              disabled
-              title={t("cloud.privacyPanel.exportComingSoon", {
-                defaultValue:
-                  "Data export is coming soon — not yet available on this server.",
-              })}
-            >
-              {t("cloud.privacyPanel.exportUnavailable", {
-                defaultValue: "Export unavailable",
-              })}
-            </Button>
-          }
         />
         <SettingsRow
           icon={Trash2}
