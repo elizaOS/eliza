@@ -129,6 +129,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
   const accountVersionRef = useRef(new Map<string, number>());
   const stateVersionRef = useRef(0);
   const listRequestIdRef = useRef(0);
+  const activeListAbortRef = useRef<AbortController | null>(null);
   const dataRef = useRef(data);
   dataRef.current = data;
 
@@ -160,10 +161,27 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
           replaceAccount(previous, created.providerId, created.account),
         );
       }
+      activeListAbortRef.current?.abort();
+      const abortController = new AbortController();
+      activeListAbortRef.current = abortController;
       const requestId = ++listRequestIdRef.current;
       const stateVersion = stateVersionRef.current;
       try {
-        const next = await client.listAccounts();
+        // StrictMode replaces an effect before the next microtask. Defer the
+        // inventory GET until then so the discarded lifecycle can be aborted
+        // before it reaches the account store; canceling after dispatch still
+        // leaves that server-side read competing with its successor.
+        await Promise.resolve();
+        if (
+          abortController.signal.aborted ||
+          activeListAbortRef.current !== abortController ||
+          !mountedRef.current ||
+          listRequestIdRef.current !== requestId
+        )
+          return;
+        const next = await client.listAccounts({
+          signal: abortController.signal,
+        });
         if (
           !mountedRef.current ||
           listRequestIdRef.current !== requestId ||
@@ -173,6 +191,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
         setData(next);
         setError(null);
       } catch (err) {
+        if (abortController.signal.aborted) return;
         if (
           !mountedRef.current ||
           listRequestIdRef.current !== requestId ||
@@ -182,7 +201,10 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
         setError(describeError("Failed to load accounts", err));
         notify("Failed to load accounts", err);
       } finally {
-        if (mountedRef.current) setLoading(false);
+        if (activeListAbortRef.current === abortController) {
+          activeListAbortRef.current = null;
+          if (mountedRef.current) setLoading(false);
+        }
       }
     },
     [notify],
@@ -420,6 +442,8 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     void refresh();
     return () => {
       mountedRef.current = false;
+      activeListAbortRef.current?.abort();
+      activeListAbortRef.current = null;
     };
   }, [refresh]);
 
