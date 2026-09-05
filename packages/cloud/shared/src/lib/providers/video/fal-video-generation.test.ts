@@ -444,3 +444,19 @@ describe("generateFalVideo — post-enqueue failures never present as refundable
     expect(queueStatus).not.toHaveBeenCalled();
   });
 });
+
+test.each([{ audio: false }, { voiceControl: true }, { voiceControl: false }])(
+  "rejects unsupported H3 Max controls %j before a billable provider submission",
+  async (controls) => {
+    subscribe.mockClear();
+    await expect(
+      generateFalVideo({
+        model: "minimax/h3-max/image-to-video",
+        prompt: "a silent city timelapse",
+        ...controls,
+        apiKeys: { FAL_KEY: "fal-key" },
+      }),
+    ).rejects.toBeInstanceOf(VideoGenerationTerminalError);
+    expect(subscribe).not.toHaveBeenCalled();
+  },
+);
