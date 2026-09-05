@@ -17,6 +17,8 @@ import {
   actorFromAccessContext,
   advanceWorldMetadataRevision,
   appendWorldMetadataRoleAudit,
+  assertCasValue,
+  CACHE_CAS_FAILED_CODE,
   ChannelType,
   type Component,
   type ConnectorAccountAuditEventRecord,
@@ -5142,6 +5144,77 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         // success, so false here masked a real write failure.
         throw new ElizaError("setCache failed", {
           code: "DB_UPSERT_FAILED",
+          cause: error,
+          context: { table: "cache", agentId: this.agentId, key },
+        });
+      }
+    });
+  }
+
+  /**
+   * Atomic conditional write for one cache key, expressed as exactly one SQL
+   * statement per branch (each individually atomic — no transaction needed).
+   *
+   * `expected === undefined` (insert-only-if-absent):
+   *   INSERT ... ON CONFLICT (key, agent_id) DO NOTHING RETURNING key
+   *   — PG's speculative insertion lets exactly one of N racing inserters win.
+   *
+   * `expected` present (replace-if-equal):
+   *   UPDATE cache SET value = $replacement::jsonb
+   *   WHERE key = $key AND agent_id = $agentId AND value = $expected::jsonb
+   *   RETURNING key
+   *   — the row lock serializes racers; under READ COMMITTED the loser's WHERE
+   *   is re-evaluated against the committed winner (EvalPlanQual), so zero
+   *   returned rows correctly covers BOTH conflict cases (value mismatch and
+   *   row-absent-while-expected-supplied).
+   *
+   * `expected`/`replacement` are bound as JSON text and cast `::jsonb` on BOTH
+   * sides of the comparison, so equality is canonical jsonb equality
+   * (order-insensitive keys, numeric scale collapsed) — comparing serialized
+   * JS text against `value::text` would false-conflict on key order/numeric
+   * scale. A combined INSERT ... ON CONFLICT DO UPDATE ... WHERE form would be
+   * WRONG here: its plain-INSERT arm reports success when the row is absent,
+   * conflating "created" with "replaced what was expected".
+   */
+  async compareAndSetCache<T>(key: string, expected: unknown, replacement: T): Promise<boolean> {
+    assertCasValue(expected, "expected");
+    assertCasValue(replacement, "replacement");
+    const replacementJson = JSON.stringify(replacement);
+    return this.withDatabase(async () => {
+      try {
+        if (expected === undefined) {
+          const inserted = await this.db
+            .insert(cacheTable)
+            .values({
+              key: key,
+              agentId: this.agentId,
+              value: sql`${replacementJson}::jsonb`,
+            })
+            .onConflictDoNothing({
+              target: [cacheTable.key, cacheTable.agentId],
+            })
+            .returning();
+          return inserted.length > 0;
+        }
+        const expectedJson = JSON.stringify(expected);
+        const replaced = await this.db
+          .update(cacheTable)
+          .set({ value: sql`${replacementJson}::jsonb` })
+          .where(
+            and(
+              eq(cacheTable.agentId, this.agentId),
+              eq(cacheTable.key, key),
+              sql`${cacheTable.value} = ${expectedJson}::jsonb`
+            )
+          )
+          .returning();
+        return replaced.length > 0;
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow — `false` is reserved
+        // exclusively for conflicts; a failed statement is a storage failure
+        // and must not masquerade as one.
+        throw new ElizaError("compareAndSetCache failed", {
+          code: CACHE_CAS_FAILED_CODE,
           cause: error,
           context: { table: "cache", agentId: this.agentId, key },
         });

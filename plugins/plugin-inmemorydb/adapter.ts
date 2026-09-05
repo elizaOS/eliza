@@ -19,6 +19,8 @@ import {
   type Agent,
   advanceWorldMetadataRevision,
   appendWorldMetadataRoleAudit,
+  assertCasValue,
+  CACHE_CAS_FAILED_CODE,
   type Component,
   type Content,
   canRequesterManageDocumentDirectGrants,
@@ -46,6 +48,7 @@ import {
   initializeWorldMetadataRevision,
   isDocumentVisibleToRequester,
   type JsonValue,
+  jsonValueEquals,
   type Log,
   type LogBody,
   logger,
@@ -88,6 +91,15 @@ import {
 import { dataContainsFilter } from "./data-contains-filter";
 import { EphemeralHNSW } from "./hnsw";
 import { COLLECTIONS, type IStorage } from "./types";
+
+/**
+ * `IStorage` extended with the optional storage-level serialized lane that
+ * `MemoryStorage` provides. Adapters detect it structurally so a custom
+ * `IStorage` keeps working (serialized per-adapter instead).
+ */
+interface MemoryStorageLike extends IStorage {
+  runSerialized?<T>(operation: () => Promise<T>): Promise<T>;
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Internal stored shapes
@@ -2244,19 +2256,106 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean> {
-    for (const { key, value } of entries) {
-      await this.storage.set(COLLECTIONS.CACHE, key, { value });
-    }
-    return true;
+    // Route through the shared storage-level lane when available: an
+    // unconditional cache write landing between a CAS's compare and its write
+    // would break the conditional write's atomicity guarantee (one storage
+    // instance can be shared by several adapters). Custom IStorage without the
+    // lane still gets per-adapter ordering via this.cacheCasFallback.
+    const run = async (): Promise<boolean> => {
+      for (const { key, value } of entries) {
+        await this.storage.set(COLLECTIONS.CACHE, key, { value });
+      }
+      return true;
+    };
+    const serialized = (this.storage as MemoryStorageLike).runSerialized?.bind(this.storage);
+    return serialized ? serialized(run) : this.cacheCasFallback(run);
+  }
+
+  /**
+   * Serialized tail for cache compare-and-set. The async `IStorage` API has an
+   * await between the compare and the write, so two concurrent CAS calls could
+   * interleave without this queue — each CAS runs strictly after the previous
+   * one settles, restoring atomicity within this adapter instance.
+   */
+  private cacheCasTail: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Atomic conditional write against the async storage. The compare and the
+   * write run inside ONE storage-level serialized lane
+   * (`MemoryStorage.runSerialized`), so they cannot interleave with another
+   * conditional write on ANY adapter sharing this storage instance — the
+   * per-adapter queue alone would leave a two-adapter window. Presence
+   * matches what a subsequent `getCaches` would observe: an expired row
+   * counts as absent (and is purged), mirroring the read path. Equality is
+   * order-insensitive deep equality over parsed values (see core
+   * `jsonValueEquals`). Storage failures throw the typed
+   * {@link CACHE_CAS_FAILED_CODE} error; `false` stays conflict-only.
+   */
+  async compareAndSetCache<T>(key: string, expected: unknown, replacement: T): Promise<boolean> {
+    assertCasValue(expected, "expected");
+    assertCasValue(replacement, "replacement");
+    const serialized = (this.storage as MemoryStorageLike).runSerialized?.bind(this.storage);
+    const run = async (): Promise<boolean> => {
+      try {
+        const entry = await this.storage.get<StoredCacheEntry<unknown>>(COLLECTIONS.CACHE, key);
+        let stored: unknown;
+        if (entry) {
+          if (entry.expiresAt && Date.now() > entry.expiresAt) {
+            await this.storage.delete(COLLECTIONS.CACHE, key);
+          } else {
+            stored = entry.value;
+          }
+        }
+        const matches =
+          expected === undefined
+            ? stored === undefined
+            : stored !== undefined && jsonValueEquals(stored, expected);
+        if (!matches) return false;
+        await this.storage.set(COLLECTIONS.CACHE, key, { value: replacement });
+        return true;
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow — a failed storage op is a
+        // storage failure; `false` is reserved exclusively for conflicts.
+        throw new ElizaError("compareAndSetCache failed", {
+          code: CACHE_CAS_FAILED_CODE,
+          cause: error,
+          context: { adapter: "InMemoryDatabaseAdapter", key },
+        });
+      }
+    };
+    return serialized
+      ? serialized(run)
+      : // A custom IStorage without the serialized lane: serialize at least
+        // within this adapter so the invariants above still hold per instance.
+        this.cacheCasFallback(run);
+  }
+
+  /** Per-adapter fallback lane for custom IStorage implementations. */
+  private cacheCasFallback<T>(operation: () => Promise<T>): Promise<T> {
+    const attempt = this.cacheCasTail.then(operation);
+    // Keep the tail recoverable: a rejected CAS must not poison later CASes.
+    // error-policy:J5 the caller observes `attempt`; this recovery only
+    // unblocks the queue.
+    this.cacheCasTail = attempt.then(
+      () => undefined,
+      () => undefined
+    );
+    return attempt;
   }
 
   async deleteCaches(keys: string[]): Promise<boolean> {
-    let removed = false;
-    for (const key of keys) {
-      const ok = await this.storage.delete(COLLECTIONS.CACHE, key);
-      if (ok) removed = true;
-    }
-    return removed;
+    // Same lane discipline as setCaches: a delete between a CAS's compare and
+    // write must not be able to interleave.
+    const run = async (): Promise<boolean> => {
+      let removed = false;
+      for (const key of keys) {
+        const ok = await this.storage.delete(COLLECTIONS.CACHE, key);
+        if (ok) removed = true;
+      }
+      return removed;
+    };
+    const serialized = (this.storage as MemoryStorageLike).runSerialized?.bind(this.storage);
+    return serialized ? serialized(run) : this.cacheCasFallback(run);
   }
 
   // ── Task CRUD ─────────────────────────────────────────────────────────
