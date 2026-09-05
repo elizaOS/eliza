@@ -41,7 +41,10 @@ const getModelsConfig = vi.hoisted(() =>
   })),
 );
 
-const voiceState = vi.hoisted(() => ({ provider: "local-inference" }));
+const voiceState = vi.hoisted(() => ({
+  provider: "local-inference",
+  proxyAvailable: true,
+}));
 vi.mock("../../voice/useVoiceConfig", () => ({
   useVoiceConfig: () => ({
     voiceConfig: {
@@ -82,6 +85,7 @@ vi.mock("../../state", () => ({
       t: (key: string, vars?: Record<string, unknown>) =>
         String(vars?.defaultValue ?? key),
       plugins: [],
+      elizaCloudVoiceProxyAvailable: voiceState.proxyAvailable,
       setActionNotice: vi.fn(),
       // The serving-axes summary reads the runtime axis from these; the real
       // store always supplies startupCoordinator, so the stub must too.
@@ -215,6 +219,7 @@ describe("ProviderSwitcher", () => {
     selection.visibleProviderPanelId = "__local__";
     selection.cloudRuntimeLocked = false;
     voiceState.provider = "local-inference";
+    voiceState.proxyAvailable = true;
   });
 
   it("updates the playback summary when Cloud replaces a saved browser voice after sign-in", () => {
@@ -228,6 +233,12 @@ describe("ProviderSwitcher", () => {
     rerender(<ProviderSwitcher elizaCloudConnected />);
     expect(row()?.textContent).toContain("Eliza Cloud");
     expect(row()?.textContent).not.toContain("Unconfirmed");
+    voiceState.proxyAvailable = false;
+    rerender(<ProviderSwitcher elizaCloudConnected />);
+    expect(row()?.textContent).not.toContain("Eliza Cloud");
+    voiceState.proxyAvailable = true;
+    rerender(<ProviderSwitcher elizaCloudConnected />);
+    expect(row()?.textContent).toContain("Eliza Cloud");
   });
 
   it("states both serving axes above the intelligence tiles", async () => {
