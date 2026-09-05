@@ -89,6 +89,86 @@ describe("applyCors", () => {
     expect(allowedHeaders).toContain("X-ElizaOS-Turn-Attempt");
   });
 
+  /**
+   * `CORS_ALLOWED_HEADERS` is a pre-joined string emitted verbatim as
+   * `Access-Control-Allow-Headers`. The preflight assertions above compare the
+   * response header against that same constant, so they hold for any contents
+   * — including a repeated name, which is how `X-Server-Token` came to be
+   * listed twice. These assertions look at the contents instead.
+   */
+  describe("CORS_ALLOWED_HEADERS contents", () => {
+    const names = CORS_ALLOWED_HEADERS.split(",").map((header) =>
+      header.trim(),
+    );
+
+    it("lists no header twice", () => {
+      expect([...new Set(names)]).toEqual(names);
+    });
+
+    it("advertises exactly the intended header set", () => {
+      expect(names).toEqual([
+        "Content-Type",
+        "Authorization",
+        "X-API-Token",
+        "X-Api-Key",
+        "X-Eliza-Token",
+        "X-ElizaOS-Token",
+        "X-Server-Token",
+        "X-Waifu-Chat-Access-Token",
+        "X-Eliza-Export-Token",
+        "X-Eliza-Client-Id",
+        "X-ElizaOS-Client-Id",
+        "X-Eliza-Terminal-Token",
+        "X-Eliza-Platform",
+        "X-Eliza-UI-Language",
+        "X-ElizaOS-UI-Language",
+        "X-Browser-Bridge-Companion-Id",
+        "X-Eliza-Browser-Companion-Id",
+        "X-Eliza-CSRF",
+        "X-ElizaOS-Turn-Correlation",
+        "X-ElizaOS-Turn-Attempt",
+        "X-Eliza-Trace-Id",
+      ]);
+    });
+
+    /**
+     * Three headers exist in both a legacy `X-Eliza-*` and a canonical
+     * `X-ElizaOS-*` spelling. A dedicated agent serves clients of both
+     * vintages, so dropping either half silently breaks one of them — and the
+     * pair is easy to prune as an apparent duplicate.
+     */
+    it.each([
+      ["X-Eliza-Token", "X-ElizaOS-Token"],
+      ["X-Eliza-Client-Id", "X-ElizaOS-Client-Id"],
+      ["X-Eliza-UI-Language", "X-ElizaOS-UI-Language"],
+    ])("keeps both the %s and %s spellings", (legacy, canonical) => {
+      expect(names).toContain(legacy);
+      expect(names).toContain(canonical);
+    });
+
+    /**
+     * Every header `packages/ui/src/api/client-base.ts` sends to an agent's
+     * REST surface must be advertised, or the credentialed preflight from the
+     * Capacitor WebView rejects the request.
+     */
+    it.each([
+      "X-ElizaOS-Client-Id",
+      "X-ElizaOS-UI-Language",
+      "X-ElizaOS-Turn-Correlation",
+      "X-ElizaOS-Turn-Attempt",
+      "X-Eliza-Trace-Id",
+    ])("advertises %s, which the UI client sends", (header) => {
+      expect(names).toContain(header);
+    });
+
+    it("advertises a header for every name the emitted string carries", () => {
+      expect(names).toHaveLength(21);
+      expect(
+        names.every((header) => /^[A-Za-z][A-Za-z0-9-]*$/.test(header)),
+      ).toBe(true);
+    });
+  });
+
   it("never enables ambient browser credentials for reflected cloud origins", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     const res = new HeaderCapture();
