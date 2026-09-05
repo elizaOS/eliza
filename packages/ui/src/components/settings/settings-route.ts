@@ -23,6 +23,9 @@ const SETTINGS_HASH_ALIASES: Readonly<Record<string, string>> = {
   providers: "ai-model",
   billing: "cloud-billing",
   "api-keys": "cloud-api-keys",
+  shortcuts: "desktop-integration",
+  hotkeys: "desktop-integration",
+  keyboard: "desktop-integration",
   // Legacy aliases that still appear in bookmarks / deep links.
   twitter: "x",
 };
