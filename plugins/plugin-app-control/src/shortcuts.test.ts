@@ -31,7 +31,9 @@ describe("viewNavigationShortcuts (#8791)", () => {
 	});
 
 	it("lets a model-selected VIEWS action open the Browser surface without advertising VIEWS for browser retrieval", () => {
-		const views = appControlPlugin.actions?.find((action) => action.name === "VIEWS");
+		const views = appControlPlugin.actions?.find(
+			(action) => action.name === "VIEWS",
+		);
 		expect(views?.contexts).not.toContain("browser");
 		expect(views?.contextGate?.anyOf).toContain("browser");
 	});
