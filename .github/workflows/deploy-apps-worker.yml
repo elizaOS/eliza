@@ -280,6 +280,18 @@ jobs:
 
             # The daemon runs under Node/tsx, which resolves linked workspace
             # packages through their built `node` exports — refresh dist files.
+            # Core's build excludes prompts because its full build generates
+            # action docs back into core. Build only the package artifact and
+            # replace any stale installed copy masking the workspace link.
+            mkdir -p packages/core/node_modules/@elizaos
+            rm -rf packages/core/node_modules/@elizaos/prompts
+            ln -s ../../../prompts packages/core/node_modules/@elizaos/prompts
+            test "$(realpath packages/core/node_modules/@elizaos/prompts)" = \
+              /opt/eliza/packages/prompts
+            bun run --cwd packages/prompts build:package
+            timeout --signal=TERM --kill-after=5s 30s \
+              node --import tsx --input-type=module \
+              -e 'await import("./packages/core/src/prompts.ts")'
             bun run build:core
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
