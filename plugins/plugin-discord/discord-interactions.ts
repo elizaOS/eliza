@@ -28,7 +28,6 @@ import {
 	type GuildMember,
 	type Interaction,
 	type MessageComponentInteraction,
-	PermissionsBitField,
 	type TextChannel,
 } from "discord.js";
 import { registerCatalogSlashCommands } from "./catalog-commands";
@@ -75,6 +74,15 @@ export interface InteractionServiceInternals {
 	getChannelType(channel: Channel): Promise<ChannelType>;
 	registerSlashCommands(commands: DiscordSlashCommand[]): Promise<void>;
 	refreshOwnerDiscordUserIds(client: DiscordClient): Promise<void>;
+	/**
+	 * Canonical membership evidence hook (#24365): publish the ready-path
+	 * roster snapshot for one guild into the MembershipService authority.
+	 * Optional so hosts without the service can omit it.
+	 */
+	publishGuildMembershipEvidence?(
+		accountId: string,
+		guild: import("discord.js").Guild,
+	): Promise<void>;
 }
 
 /**
@@ -381,35 +389,12 @@ export async function buildStandardizedRooms(
 					channelType = ChannelType.GROUP;
 			}
 
-			let participants: UUID[] = [];
-
-			if (
-				guild.memberCount < 1000 &&
-				channel.type === DiscordChannelType.GuildText
-			) {
-				try {
-					participants = Array.from(guild.members.cache.values())
-						.filter((member: GuildMember) =>
-							channel
-								.permissionsFor(member)
-								?.has(PermissionsBitField.Flags.ViewChannel),
-						)
-						.map((member: GuildMember) =>
-							service.resolveDiscordEntityId(member.id),
-						);
-				} catch (error) {
-					service.runtime.logger.warn(
-						{
-							src: "plugin:discord",
-							agentId: service.runtime.agentId,
-							channelId: channel.id,
-							error: error instanceof Error ? error.message : String(error),
-						},
-						"Failed to get participants for channel",
-					);
-				}
-			}
-
+			// Room rosters are deliberately NOT populated here: a partial
+			// member cache or a permission-check failure would publish a
+			// false-empty `participants` list that consumers could mistake
+			// for a healthy empty channel (#24365). Channel membership
+			// evidence lives in the canonical MembershipService authority,
+			// published per scope with honest completeness.
 			rooms.push({
 				id: roomId,
 				name: channel.name,
@@ -426,7 +411,6 @@ export async function buildStandardizedRooms(
 					accountId,
 					topic:
 						"topic" in channel ? (channel as TextChannel).topic : undefined,
-					participants,
 				},
 			});
 		}
@@ -710,6 +694,21 @@ export async function onReady(
 					source: "discord",
 					accountId,
 				};
+
+				// Canonical membership evidence (#24365): publish the observable
+				// roster snapshot into the MembershipService authority BEFORE
+				// the world-connected events so subscribers never observe a
+				// healthy world whose authority scopes have no evidence yet.
+				// The optional facade hook keeps this path testable and lets
+				// hosts without the authority skip it silently.
+				if (typeof service.publishGuildMembershipEvidence === "function") {
+					try {
+						await service.publishGuildMembershipEvidence(accountId, fullGuild);
+					} catch {
+						// error-policy:J4 the hook already degrades internally; a
+						// throw here must not break world connection.
+					}
+				}
 
 				service.runtime.emitEvent([DiscordEventTypes.WORLD_CONNECTED], {
 					runtime: service.runtime,

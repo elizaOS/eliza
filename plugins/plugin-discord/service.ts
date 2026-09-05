@@ -169,6 +169,14 @@ import {
 	resolveElizaOwnerEntityId,
 } from "./identity";
 import { buildDiscordReplyPayload } from "./interactions";
+import { DiscordMembershipPublisher } from "./membership";
+import {
+	asMemberLike,
+	memberLikeOf,
+	membershipChannelsOf,
+} from "./membership-adapters";
+import type { ChannelLike, GuildMemberLike } from "./membership-bridge";
+import { channelCanView, DiscordMembershipBridge } from "./membership-bridge";
 import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
@@ -760,6 +768,300 @@ export class DiscordService extends Service implements IDiscordService {
 	public slashCommands: DiscordSlashCommand[] = [];
 	private commandRegistrationQueue: Promise<void> = Promise.resolve();
 	public allowAllSlashCommands: Set<string> = new Set();
+
+	/**
+	 * Canonical membership evidence publisher for #24365: publishes the
+	 * observable guild roster into the core MembershipService authority
+	 * (complete snapshots for small fully-chunked guilds, honest unavailable
+	 * reports otherwise, ordered deltas and sender renewals). Degrade-only:
+	 * every hook swallows its own failures so gateway flow never breaks.
+	 * Lazy: the service constructor may run before the runtime is bound.
+	 */
+	private membershipPublisherInstance?: DiscordMembershipPublisher;
+	private membershipBridgeInstance?: DiscordMembershipBridge;
+
+	private membershipPublisher(): DiscordMembershipPublisher | null {
+		this.membershipPublisherInstance ??= new DiscordMembershipPublisher(
+			this.runtime,
+		);
+		return this.membershipPublisherInstance;
+	}
+
+	private membershipBridge(): DiscordMembershipBridge | null {
+		if (!this.membershipBridgeInstance) {
+			const publisher = this.membershipPublisher();
+			if (!publisher) {
+				return null;
+			}
+			this.membershipBridgeInstance = new DiscordMembershipBridge(publisher, {
+				resolveDiscordEntityId: (userId) => this.resolveDiscordEntityId(userId),
+				worldIdForGuild: (guildId) => createUniqueUuid(this.runtime, guildId),
+				roomIdForChannel: (channelId) =>
+					createUniqueUuid(this.runtime, channelId),
+			});
+		}
+		return this.membershipBridgeInstance;
+	}
+
+	/**
+	 * Publish ready-path membership evidence for one guild (account-scoped).
+	 * Degrade-only (#24365): failures log and never break the ready path.
+	 */
+	async publishGuildMembershipEvidence(
+		accountId: string,
+		guild: Guild,
+	): Promise<void> {
+		const bridge = this.membershipBridge();
+		if (!bridge) {
+			return;
+		}
+		try {
+			await bridge.publishGuildSnapshot({
+				accountKey: accountId,
+				membersIntentEnabled: this.membersIntentEnabled(
+					this.getClient(accountId),
+				),
+				guild: {
+					id: guild.id,
+					name: guild.name,
+					memberCount: guild.memberCount,
+					members: [...guild.members.cache.values()].map(memberLikeOf),
+					channels: membershipChannelsOf(guild),
+				},
+			});
+		} catch (error) {
+			// error-policy:J4 membership evidence is a degrade-only side
+			// surface of the ready path; log and continue.
+			this.runtime.logger.warn(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					guildId: guild.id,
+					accountId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Discord membership snapshot publish failed",
+			);
+		}
+	}
+
+	/**
+	 * Publish a member delta (join/leave/kick/ban/permission change) across
+	 * the guild's membership channels. Degrade-only (#24365).
+	 */
+	async publishMemberMembershipDelta(options: {
+		accountId: string;
+		guild: Guild;
+		member: GuildMember | GuildMemberLike;
+		membershipState: "active" | "revoked";
+		reason:
+			| "joined"
+			| "left"
+			| "kicked"
+			| "banned"
+			| "permission_restored"
+			| "permission_lost";
+		eventId?: string;
+	}): Promise<void> {
+		const bridge = this.membershipBridge();
+		if (!bridge) {
+			return;
+		}
+		try {
+			await bridge.publishMemberDelta({
+				accountKey: options.accountId,
+				guild: {
+					id: options.guild.id,
+					name: options.guild.name,
+					channels: membershipChannelsOf(options.guild),
+				},
+				member: asMemberLike(options.member),
+				membershipState: options.membershipState,
+				reason: options.reason,
+				eventId: options.eventId,
+			});
+		} catch (error) {
+			// error-policy:J4 degrade-only membership side surface.
+			this.runtime.logger.debug(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					guildId: options.guild.id,
+					accountId: options.accountId,
+					reason: options.reason,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Discord membership delta publish failed",
+			);
+		}
+	}
+
+	/**
+	 * Publish a permission-transition delta (role/overwrite change) for one
+	 * member. Computes view transitions per channel from old/new structural
+	 * member shapes; accepts live GuildMembers or pre-mapped bridge shapes
+	 * (synthesized old/new views for role-permission transitions).
+	 * `oldChannelOverwrites` (channel id -> pre-change overwrites) lets a
+	 * channelUpdate diff visibility against the channel's prior state
+	 * instead of comparing identical post-change state. Degrade-only
+	 * (#24365).
+	 */
+	async publishMemberPermissionDelta(options: {
+		accountId: string;
+		guild: Guild;
+		oldMember: GuildMember | GuildMemberLike;
+		newMember: GuildMember | GuildMemberLike;
+		eventId?: string;
+		oldChannelOverwrites?: Map<string, ChannelLike["overwrites"]>;
+	}): Promise<void> {
+		const bridge = this.membershipBridge();
+		if (!bridge) {
+			return;
+		}
+		try {
+			const channels = membershipChannelsOf(options.guild);
+			const oldLike = asMemberLike(options.oldMember);
+			const newLike = asMemberLike(options.newMember);
+			const canView: string[] = [];
+			const cannotView: string[] = [];
+			for (const channel of channels) {
+				const previousOverwrites = options.oldChannelOverwrites?.get(
+					channel.id,
+				);
+				const before =
+					previousOverwrites === undefined
+						? channelCanView(channel, oldLike)
+						: channelCanView(
+								{ ...channel, overwrites: previousOverwrites },
+								newLike,
+							);
+				const after = channelCanView(channel, newLike);
+				if (!before && after) {
+					canView.push(channel.id);
+				} else if (before && !after) {
+					cannotView.push(channel.id);
+				}
+			}
+			if (canView.length === 0 && cannotView.length === 0) {
+				return;
+			}
+			await bridge.publishPermissionDelta({
+				accountKey: options.accountId,
+				guild: {
+					id: options.guild.id,
+					name: options.guild.name,
+					channels,
+				},
+				member: newLike,
+				canViewChannelIds: canView,
+				cannotViewChannelIds: cannotView,
+				eventId: options.eventId,
+			});
+		} catch (error) {
+			// error-policy:J4 degrade-only membership side surface.
+			this.runtime.logger.debug(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					guildId: options.guild.id,
+					accountId: options.accountId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Discord membership permission delta publish failed",
+			);
+		}
+	}
+
+	/**
+	 * Degrade all membership scopes of one account after a gateway
+	 * disconnect so authorization fails closed until the resnapshot on the
+	 * next ready. Degrade-only (#24365).
+	 */
+	async degradeMembershipForAccount(
+		accountId: string,
+		reason: string,
+		worldIds?: string[],
+	): Promise<void> {
+		const publisher = this.membershipPublisher();
+		if (!publisher) {
+			return;
+		}
+		try {
+			await publisher.degradeAllForAccount({
+				accountKey: accountId,
+				health: "stale",
+				reason,
+				worldIds,
+			});
+		} catch (error) {
+			// error-policy:J4 degrade-only membership side surface.
+			this.runtime.logger.debug(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					accountId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Discord membership account degrade failed",
+			);
+		}
+	}
+
+	/**
+	 * Renew the membership evidence of an inbound guild-message sender for
+	 * that channel scope. Degrade-only (#24365).
+	 */
+	async renewSenderMembershipEvidence(options: {
+		accountId: string;
+		guildId: string;
+		channelId: string;
+		authorId: string;
+		member?: GuildMember | null;
+		messageId: string;
+	}): Promise<void> {
+		const bridge = this.membershipBridge();
+		if (!bridge) {
+			return;
+		}
+		try {
+			await bridge.renewMessageSender({
+				accountKey: options.accountId,
+				guildId: options.guildId,
+				channelId: options.channelId,
+				authorId: options.authorId,
+				member: options.member ? memberLikeOf(options.member) : undefined,
+				messageId: options.messageId,
+			});
+		} catch (error) {
+			// error-policy:J4 degrade-only membership side surface.
+			this.runtime.logger.debug(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					guildId: options.guildId,
+					channelId: options.channelId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Discord membership sender renewal failed",
+			);
+		}
+	}
+
+	/** True when this client holds the GuildMembers gateway intent. */
+	private membersIntentEnabled(client: DiscordJsClient | null): boolean {
+		const options = (client as unknown as { options?: { intents?: unknown } })
+			?.options;
+		const intents = options?.intents;
+		const bitfield =
+			typeof intents === "object" && intents !== null && "bitfield" in intents
+				? (intents as { bitfield?: unknown }).bitfield
+				: intents;
+		const GUILD_MEMBERS = 1n << 1n;
+		return (
+			typeof bitfield === "bigint" &&
+			(bitfield & GUILD_MEMBERS) === GUILD_MEMBERS
+		);
+	}
 
 	/**
 	 * Resolves Discord IDs that should alias to the canonical owner entity.
@@ -1499,6 +1801,39 @@ export class DiscordService extends Service implements IDiscordService {
 			},
 			admitInboundMessage: (messageId: string, channelId: string) =>
 				parent.admitInboundMessage(messageId, channelId, accountId()),
+			// Canonical membership evidence (#24365): forward the membership
+			// hooks to the per-account publisher surface. Without these
+			// forwards the facade passes DiscordServiceInternals' optional
+			// membership guards as undefined and multi-account clients
+			// silently never publish membership evidence (RP r5 finding 2).
+			publishGuildMembershipEvidence: (acctId: string, guild: Guild) =>
+				parent.publishGuildMembershipEvidence(acctId, guild),
+			publishMemberMembershipDelta: (
+				options: Parameters<DiscordService["publishMemberMembershipDelta"]>[0],
+			) =>
+				parent.publishMemberMembershipDelta({
+					...options,
+					accountId: state?.accountId ?? options.accountId,
+				}),
+			publishMemberPermissionDelta: (
+				options: Parameters<DiscordService["publishMemberPermissionDelta"]>[0],
+			) =>
+				parent.publishMemberPermissionDelta({
+					...options,
+					accountId: state?.accountId ?? options.accountId,
+				}),
+			degradeMembershipForAccount: (
+				acctId: string,
+				reason: string,
+				worldIds?: string[],
+			) => parent.degradeMembershipForAccount(acctId, reason, worldIds),
+			renewSenderMembershipEvidence: (
+				options: Parameters<DiscordService["renewSenderMembershipEvidence"]>[0],
+			) =>
+				parent.renewSenderMembershipEvidence({
+					...options,
+					accountId: state?.accountId ?? options.accountId,
+				}),
 			accountToken: state?.account.token,
 		};
 		return facade;
