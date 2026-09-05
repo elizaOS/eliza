@@ -319,9 +319,24 @@ async function fileDiff(
   workdir: string,
   base: string,
   file: string,
+  trackedFiles: readonly string[],
 ): Promise<string> {
-  const tracked = await git(workdir, ["diff", base, "--", file]);
+  const tracked = await git(workdir, [
+    "diff",
+    base,
+    "--",
+    `:(literal)${file}`,
+    `:(exclude,literal)${file}/`,
+  ]);
   if (tracked) return tracked;
+  const absolute = resolve(workdir, file);
+  // Directory tool targets retain their inventory entry. Descendant patches
+  // belong to their exact file entries, including when the directory was deleted.
+  if (
+    trackedFiles.some((path) => path.startsWith(`${file}/`)) ||
+    (existsSync(absolute) && statSync(absolute).isDirectory())
+  )
+    return "";
   const args = ["diff", "--no-index", "--", "/dev/null", file];
   const created = await gitResult(workdir, args);
   if (created.status === 1) return created.stdout;
@@ -380,9 +395,10 @@ export async function captureChangeSet(
   const dirtyAtSpawn = new Set(
     baselineDirty.filter((file) => !agentWrittenSet.has(file)),
   );
-  const tracked = parseNameStatus(
+  const allTracked = parseNameStatus(
     await git(workdir, ["diff", "--name-status", "-z", base]),
-  ).filter((file) => !dirtyAtSpawn.has(file));
+  );
+  const tracked = allTracked.filter((file) => !dirtyAtSpawn.has(file));
   const agentWritten = [...agentWrittenSet];
 
   // On an unborn HEAD only: include untracked files so shell-driven creates
@@ -409,27 +425,15 @@ export async function captureChangeSet(
   ];
   if (changedFiles.length === 0) return undefined;
 
-  // Real stat from git for the same filtered file set rendered to the user.
-  // This avoids counting files that were already dirty at spawn and excluded
-  // from `changedFiles`. Falls back to a file count for gitignored/untracked
-  // tool-written files.
-  const shortstat = (
-    await git(workdir, ["diff", "--shortstat", base, "--", ...changedFiles])
-  ).trim();
-  const diffStat =
-    shortstat && shortstat.length > 0
-      ? shortstat
-      : `${changedFiles.length} file(s) changed`;
-
   const fileDiffs: Array<{ path: string; diff: string }> = [];
   for (const file of changedFiles) {
-    const fd = await fileDiff(workdir, base, file);
+    const fd = await fileDiff(workdir, base, file, allTracked);
     fileDiffs.push({ path: file, diff: fd });
   }
 
   return {
     changedFiles,
-    diffStat,
+    diffStat: summarizeChangeSetFiles(changedFiles),
     diff: joinFileDiffs(fileDiffs),
     fileDiffs,
     truncated: false,
@@ -478,7 +482,7 @@ function captureToolPathOnlyChangeSet(
 
   return {
     changedFiles,
-    diffStat: `${changedFiles.length} file(s) changed`,
+    diffStat: summarizeChangeSetFiles(changedFiles),
     diff: joinFileDiffs(fileDiffs),
     fileDiffs,
     truncated: false,
@@ -588,6 +592,11 @@ export function summarizeChangeSet(
       : ` (UNVERIFIED: missing ${verification.missingFiles.join(", ")})`
     : "";
   return `Changed ${count} ${noun}: ${shown}${verifiedSuffix}`;
+}
+
+/** Describe the same retained inventory as the patch, without reinterpreting paths through Git selectors. */
+function summarizeChangeSetFiles(files: readonly string[]): string {
+  return `${files.length} ${files.length === 1 ? "file" : "files"} changed: ${files.map((path) => JSON.stringify(path)).join(", ")}`;
 }
 
 function joinFileDiffs(
@@ -732,9 +741,7 @@ export function subtractChangeSetBaseline(
     ...changeSet,
     changedFiles,
     diff: joinFileDiffs(fileDiffs),
-    // The original aggregate shortstat includes removed files; only the
-    // retained inventory is available without rerunning Git at another time.
-    diffStat: `${changedFiles.length} file(s) changed: ${changedFiles.map((path) => JSON.stringify(path)).join(", ")}`,
+    diffStat: summarizeChangeSetFiles(changedFiles),
     fileDiffs,
   };
 }

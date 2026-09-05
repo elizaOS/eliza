@@ -208,4 +208,71 @@ describe("complete path evidence", () => {
       }),
     );
   });
+
+  it.each(["[ab].txt", "*.txt", ":(glob)*.txt"])(
+    "captures %s as a literal path without its matching baseline neighbor",
+    async (literalPath) => {
+      for (const path of [literalPath, "a.txt"])
+        writeFileSync(join(dir, path), "before\n");
+      git("add", ".");
+      git("commit", "-q", "-m", "files");
+      writeFileSync(join(dir, literalPath), "LITERAL_PATH_MARKER\n");
+      writeFileSync(join(dir, "a.txt"), "BASELINE_NEIGHBOR_MARKER\n");
+      const captured = await captureChangeSet(dir);
+      if (!captured) throw new Error("Expected captured Git evidence");
+      const retained = subtractChangeSetBaseline(captured, ["a.txt"]);
+      expect(retained.changedFiles).toEqual([literalPath]);
+      expect(retained.diff).toContain("LITERAL_PATH_MARKER");
+      expect(retained.diff).not.toContain("BASELINE_NEIGHBOR_MARKER");
+      const scoped = await captureChangeSet(dir, undefined, [], ["a.txt"]);
+      expect(scoped?.changedFiles).toEqual([literalPath]);
+      expect(scoped?.diff).toContain("LITERAL_PATH_MARKER");
+      expect(scoped?.diff).not.toContain("BASELINE_NEIGHBOR_MARKER");
+      expect(scoped?.diffStat).toContain(JSON.stringify(literalPath));
+      expect(scoped?.diffStat).not.toContain(JSON.stringify("a.txt"));
+    },
+  );
+
+  it.each([false, true])(
+    "keeps directory child ownership separate when removed=%s",
+    async (removed) => {
+      mkdirSync(join(dir, "folder"));
+      for (const name of ["own.txt", "baseline.txt"])
+        writeFileSync(join(dir, "folder", name), `BEFORE_${name}\n`);
+      git("add", ".");
+      git("commit", "-q", "-m", "files");
+      if (removed) rmSync(join(dir, "folder"), { recursive: true });
+      else {
+        writeFileSync(join(dir, "folder/own.txt"), "OWN_CHILD_MARKER\n");
+        writeFileSync(
+          join(dir, "folder/baseline.txt"),
+          "BASELINE_CHILD_MARKER\n",
+        );
+      }
+      const captured = await captureChangeSet(dir, undefined, ["folder"]);
+      if (!captured) throw new Error("Expected directory operation capture");
+      expect(
+        captured.fileDiffs?.find((entry) => entry.path === "folder")?.diff,
+      ).toBe("");
+      const retained = subtractChangeSetBaseline(captured, [
+        "folder/baseline.txt",
+      ]);
+      expect(retained.diff).toContain(
+        removed ? "-BEFORE_own.txt" : "+OWN_CHILD_MARKER",
+      );
+      expect(retained.diff).not.toContain(
+        removed ? "BEFORE_baseline.txt" : "BASELINE_CHILD_MARKER",
+      );
+      const scoped = await captureChangeSet(
+        dir,
+        undefined,
+        ["folder"],
+        ["folder/baseline.txt"],
+      );
+      expect(scoped?.diff).not.toContain(
+        removed ? "BEFORE_baseline.txt" : "BASELINE_CHILD_MARKER",
+      );
+      expect(scoped?.diffStat).not.toContain("baseline.txt");
+    },
+  );
 });

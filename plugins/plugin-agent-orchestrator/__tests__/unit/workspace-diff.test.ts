@@ -68,7 +68,8 @@ describe("workspace-diff — real git capture", () => {
       const cs = await captureChangeSet(plain, undefined, ["deploy.txt"]);
       expect(cs).toBeDefined();
       expect(cs?.changedFiles).toEqual(["deploy.txt"]);
-      expect(cs?.diffStat).toBe("1 file(s) changed");
+      expect(cs?.diffStat).toMatch(/1 file changed/);
+      expect(cs?.diffStat).toContain("deploy.txt");
       expect(cs?.diff).toContain("deployed");
     } finally {
       rmSync(plain, { recursive: true, force: true });
@@ -207,7 +208,8 @@ describe("workspace-diff — real git capture", () => {
     expect(cs).toBeDefined();
     expect(cs?.changedFiles).toContain("new.html");
     expect(cs?.changedFiles).not.toContain("index.html"); // pre-existing dirty
-    expect(cs?.diffStat).toBe("1 file(s) changed");
+    expect(cs?.diffStat).toMatch(/1 file changed/);
+    expect(cs?.diffStat).not.toContain("index.html");
   });
 
   it("keeps a pre-existing-dirty file if the agent DID write it this session", async () => {
