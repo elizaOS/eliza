@@ -682,9 +682,7 @@ export async function signOutFromSsoBridgedHost(
           ...(stewardToken ? { Authorization: `Bearer ${stewardToken}` } : {}),
         },
       })
-    : // error-policy:J6 best-effort server teardown — the local marker is
-      // already set and the local scrub below always runs.
-      Promise.resolve(undefined);
+    : Promise.resolve(undefined);
   const response = await serverLogout;
   if (response && !response.ok) {
     throw new ElizaError(
