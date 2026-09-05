@@ -86,12 +86,25 @@ describe("provisioning worker deployment contract", () => {
 
   it("resolves one immutable SHA and deploys exactly that snapshot", () => {
     expect(workflow).toContain('deployment_sha="$PUSH_SHA"');
-    expect(workflow).toContain(
-      '"repos/$' + '{GITHUB_REPOSITORY}/git/ref/heads/$' + '{BRANCH}"',
-    );
-    expect(workflow).not.toContain(
-      'git ls-remote "https://github.com/$' + '{GITHUB_REPOSITORY}.git"',
-    );
+    // #30329 moved every repository read behind the authenticated API. Two
+    // properties carry that, and neither survives a substring assertion:
+    //
+    // 1. No anonymous fetch of this repository is left ANYWHERE. Naming one
+    //    spelling of the URL is not enough — dropping the braces from
+    //    ${GITHUB_REPOSITORY} walks straight past it. Matching `git ls-remote`
+    //    instead would fail on the clean tree, because the deploy job
+    //    legitimately reads `git ls-remote origin` from its checkout; the
+    //    anonymous https://github.com/ URL is what distinguishes the two.
+    // 2. BOTH branch-head resolutions go through that API — the `else` branch
+    //    that picks the snapshot, and the reconciled freshness read that
+    //    compares the branch against it. A `toContain` is satisfied by
+    //    whichever of the two sites was left alone, so count them.
+    expect(workflow).not.toMatch(/https:\/\/github\.com\//);
+    expect(
+      workflow.match(
+        /"repos\/\$\{GITHUB_REPOSITORY\}\/git\/ref\/heads\/\$\{BRANCH\}"/g,
+      ),
+    ).toHaveLength(2);
     expect(workflow).toContain(
       'git fetch --no-tags --depth=2048 origin \\\n            "$DEPLOY_SHA" "$deployed_sha"',
     );
@@ -115,7 +128,7 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain('[ "$TARGET_ENVIRONMENT" = "staging" ] || {');
     expect(workflow).toContain('[[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {');
     expect(workflow).toContain(
-      '"repos/$' + '{GITHUB_REPOSITORY}/commits/$' + '{REQUESTED_SHA}"',
+      '"repos/$' + "{GITHUB_REPOSITORY}/commits/$" + '{REQUESTED_SHA}"',
     );
     expect(workflow).toContain("GH_TOKEN: $" + "{{ github.token }}");
     expect(workflow).toContain('[ "$deployment_sha" = "$REQUESTED_SHA" ] || {');
