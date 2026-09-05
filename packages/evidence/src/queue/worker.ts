@@ -252,7 +252,15 @@ export async function runQueueWorker(
   let state = createWorkerState();
 
   while (!options.signal?.aborted) {
-    const claimed = deps.queue.claim();
+    const claimed = deps.queue.claim((result) => {
+      counts.failed += 1;
+      emit({
+        type: "processed",
+        id: result.id,
+        action: "failed",
+        reason: result.reason,
+      });
+    });
     if (!claimed) {
       emit({ type: "idle" });
       // When draining, a requeued job is the only thing that could reappear; if
