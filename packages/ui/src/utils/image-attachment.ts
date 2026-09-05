@@ -2,6 +2,7 @@
  * Validation and limits for chat image/media attachments: mime allowlist, base64/
  * raw size caps, name length, and attachment count.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   CHAT_IMAGE_MIME_TYPE_SET,
   CHAT_UPLOAD_MIME_TYPE_SET,
@@ -11,6 +12,17 @@ import {
   MAX_CHAT_UPLOAD_ATTACHMENTS,
 } from "@elizaos/shared";
 import type { ImageAttachment } from "../api/client-types-chat";
+
+/**
+ * Clamp a raw attachment name to the server's length cap without creating a
+ * lone surrogate: sanitize malformed input with U+FFFD, then back off the
+ * truncation boundary when it would split an emoji surrogate pair so the
+ * JSON payload remains well-formed (strict parsers reject lone surrogates).
+ */
+export function clampAttachmentName(raw: string): string {
+  const wellFormed = toWellFormedUnicode(raw || "attachment");
+  return truncateWellFormed(wellFormed, MAX_CHAT_ATTACHMENT_NAME_LENGTH);
+}
 
 /**
  * Per-message attachment count cap. Sourced from the SAME shared constant the
@@ -359,7 +371,7 @@ async function fileToChatAttachment(file: File): Promise<ImageAttachment> {
     mimeType,
     // The server requires a non-empty name under its length cap; a clipboard
     // paste can arrive nameless and a download can exceed 255 chars.
-    name: (file.name || "attachment").slice(0, MAX_CHAT_ATTACHMENT_NAME_LENGTH),
+    name: clampAttachmentName(file.name || "attachment"),
     ...(thumbnail ? { thumbnail } : {}),
   };
 }
