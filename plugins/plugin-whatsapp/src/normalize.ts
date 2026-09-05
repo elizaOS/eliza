@@ -339,7 +339,8 @@ export function resolveWhatsAppSystemLocation(params: {
   chatName?: string;
 }): string {
   const { chatType, chatId, chatName } = params;
-  const name = chatName || chatId.slice(0, 8);
+  const name =
+    chatName || truncateWellFormed(toWellFormedUnicode(chatId), 8);
   return `WhatsApp ${chatType}:${name}`;
 }
 
