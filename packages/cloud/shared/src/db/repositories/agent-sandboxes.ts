@@ -1737,6 +1737,11 @@ export class AgentSandboxesRepository {
             isNull(agentSandboxes.pool_status),
             isNull(agentSandboxes.deleted_at),
             isNull(agentSandboxes.deletion_attempt_id),
+            // A created replacement can be reachable before restoration. Its
+            // owner must publish it; a health probe cannot settle that work.
+            isNull(agentSandboxes.replacement_cleanup_sandbox_id),
+            isNull(agentSandboxes.replacement_cleanup_attempt_id),
+            isNull(agentSandboxes.replacement_cleanup_container_id),
             hasNoProvisioningStatusOwnerJob(),
           ),
         )
