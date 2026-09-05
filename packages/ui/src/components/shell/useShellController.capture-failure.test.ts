@@ -55,7 +55,24 @@ describe("describeCaptureFailure", () => {
     ).toBe(true);
   });
 
+  it("recognizes structured silence without relying on provider prose", () => {
+    expect(
+      isNoSpeechCaptureFailure({
+        code: "no_speech",
+        message: "Recognition ended",
+      }),
+    ).toBe(true);
+    expect(
+      isNoSpeechCaptureFailure(
+        new Error("No matching transcription model is configured"),
+      ),
+    ).toBe(false);
+  });
+
   it("keeps actionable capture failures visible", () => {
+    expect(isNoSpeechCaptureFailure({ status: 503, code: "no_speech" })).toBe(
+      false,
+    );
     expect(
       isNoSpeechCaptureFailure(
         new DOMException("Permission denied", "NotAllowedError"),

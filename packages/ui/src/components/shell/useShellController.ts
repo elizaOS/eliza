@@ -388,7 +388,7 @@ export function describeCaptureFailure(err: unknown): string {
     haystack.includes("transcri") ||
     haystack.includes("empty transcript")
   ) {
-    return "Didn't catch that — voice transcription failed. Try again.";
+    return "Voice transcription is unavailable. Try again in a moment.";
   }
   return "Could not start the microphone. Check your microphone permissions and try again.";
 }
@@ -399,6 +399,31 @@ export function describeCaptureFailure(err: unknown): string {
  * visible, but let an empty recording/transcript return quietly to idle.
  */
 export function isNoSpeechCaptureFailure(err: unknown): boolean {
+  if (isMicPermissionDenialError(err)) return false;
+  // An outage or rejected request is not evidence that the user was silent.
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "status" in err &&
+    typeof err.status === "number" &&
+    (err.status >= 500 || [401, 403, 429].includes(err.status))
+  )
+    return false;
+  const code =
+    typeof err === "object" && err !== null && "code" in err
+      ? String(err.code).toLowerCase()
+      : "";
+  if (
+    [
+      "no-speech",
+      "no_speech",
+      "no_match",
+      "speech_timeout",
+      "empty_transcript",
+    ].includes(code)
+  ) {
+    return true;
+  }
   const message = err instanceof Error ? err.message : String(err ?? "");
   const normalized = message.toLowerCase();
   return (
@@ -406,7 +431,6 @@ export function isNoSpeechCaptureFailure(err: unknown): boolean {
     normalized.includes("empty transcript") ||
     normalized.includes("no-speech") ||
     normalized.includes("no_match") ||
-    normalized.includes("no match") ||
     normalized.includes("speech_timeout") ||
     normalized.includes("speech timeout")
   );
