@@ -223,22 +223,26 @@ async function __hono_POST(c: AppContext) {
 
   try {
     const decodedRawBody = await decodeRequestJson(request);
-    let pendingResponse: Response | undefined;
+    // Built lazily, not eagerly: this response is held until AFTER
+    // `requireGenerativeRouteCaller` so an unauthenticated caller never learns
+    // the validation outcome (#30265). A `Response` built here would snapshot
+    // `timings` while `authMs` is still unset, silently dropping the
+    // `Server-Timing` observability header from every deferred 4xx.
+    let pendingResponse: (() => Response) | undefined;
     let body: z.infer<typeof TtsBody> | undefined;
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is an explicit invalid request.
-      pendingResponse = Response.json(
-        { error: "Invalid JSON body" },
-        { status: 400 },
-      );
+      pendingResponse = () =>
+        Response.json({ error: "Invalid JSON body" }, { status: 400 });
     } else {
       const parsed = TtsBody.safeParse(decodedRawBody.value);
       if (parsed.success) body = parsed.data;
       else {
-        pendingResponse = Response.json(
-          { error: "Invalid request body", details: parsed.error.flatten() },
-          { status: 400 },
-        );
+        pendingResponse = () =>
+          Response.json(
+            { error: "Invalid request body", details: parsed.error.flatten() },
+            { status: 400 },
+          );
       }
     }
     const kokoroBaseUrl = env.KOKORO_TTS_URL?.trim();
@@ -252,41 +256,39 @@ async function __hono_POST(c: AppContext) {
         })
       : undefined;
     if (body && !body.text) {
-      pendingResponse = Response.json(
-        { error: "No text provided" },
-        { status: 400 },
-      );
+      pendingResponse = () =>
+        Response.json({ error: "No text provided" }, { status: 400 });
     } else if (body && body.text.length === 0) {
-      pendingResponse = Response.json(
-        { error: "Text cannot be empty" },
-        { status: 400 },
-      );
+      pendingResponse = () =>
+        Response.json({ error: "Text cannot be empty" }, { status: 400 });
     } else if (body && body.text.length > MAX_TEXT_LENGTH) {
-      pendingResponse = Response.json(
-        {
-          error: `Text too long. Maximum length is ${MAX_TEXT_LENGTH} characters`,
-        },
-        { status: 400 },
-      );
+      pendingResponse = () =>
+        Response.json(
+          {
+            error: `Text too long. Maximum length is ${MAX_TEXT_LENGTH} characters`,
+          },
+          { status: 400 },
+        );
     } else if (providerSelection && !providerSelection.ok) {
       logger.warn?.("[Voice TTS API] TTS provider selection failed", {
         provider: providerSelection.provider,
         fallbackReason: providerSelection.fallbackReason,
         code: providerSelection.code,
       });
-      pendingResponse = Response.json(
-        {
-          error: providerSelection.error,
-          code: providerSelection.code,
-        },
-        {
-          status: providerSelection.status,
-          headers: buildTtsObservabilityHeaders(
-            providerSelection.provider,
-            timings,
-          ),
-        },
-      );
+      pendingResponse = () =>
+        Response.json(
+          {
+            error: providerSelection.error,
+            code: providerSelection.code,
+          },
+          {
+            status: providerSelection.status,
+            headers: buildTtsObservabilityHeaders(
+              providerSelection.provider,
+              timings,
+            ),
+          },
+        );
     }
 
     const willAdmit =
@@ -308,7 +310,14 @@ async function __hono_POST(c: AppContext) {
     settlementUserId = user.id;
     timings.authMs = Date.now() - requestStart;
     const admissionStart = Date.now();
-    if (pendingResponse) return pendingResponse;
+    if (pendingResponse) {
+      // #30265 fused credential and balance admission into the auth call
+      // above, so the post-auth admission phase is empty for a deferred
+      // rejection. Record it anyway: every response that reached admission
+      // reports the same `Server-Timing` shape, rejections included.
+      timings.admissionMs = Date.now() - admissionStart;
+      return pendingResponse();
+    }
     if (!body || !providerSelection?.ok) {
       throw new Error("Validated TTS request was not retained");
     }
