@@ -349,10 +349,8 @@ export async function createVoiceSessionPlayback(
     } catch (error) {
       // error-policy:J7 Browser diagnostics must warn without interrupting playback.
       logger.warn(
+        { error },
         "[VoiceSessionPlayback] Playback statistics callback failed",
-        {
-          error,
-        },
       );
     }
   };
