@@ -4,7 +4,6 @@
  * Also invalidates Redis caches to ensure immediate token invalidation.
  */
 
-import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 import { deleteCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
@@ -85,26 +84,27 @@ app.post("/", async (c) => {
           token !== null && tokens.indexOf(token) === index,
       );
       for (const candidate of candidates) {
-        const claims = await verifyStewardTokenCached(c.env, candidate);
+        const claims = await verifyStewardTokenCached(c.env, candidate, {
+          throwOnUnavailable: true,
+        });
         if (claims) {
           verifiedStewardToken = candidate;
           verifiedClaims = claims;
           break;
         }
       }
-      if (!verifiedClaims) {
-        throw new ElizaError("Presented Steward token could not be verified", {
-          code: "LOGOUT_CREDENTIAL_UNVERIFIED",
-        });
+      // Rejected credentials have no authenticated identity to revoke. Allow
+      // cookie/local cleanup; only verification infrastructure failures retry.
+      if (verifiedClaims) {
+        try {
+          await markSsoBridgeLogout(verifiedClaims.userId);
+        } catch {
+          // error-policy:J6 one bounded teardown retry; the outer boundary
+          // preserves credentials if persistence remains unavailable.
+          await markSsoBridgeLogout(verifiedClaims.userId);
+        }
+        logger.debug("[Logout] Stamped SSO bridge logout marker");
       }
-      try {
-        await markSsoBridgeLogout(verifiedClaims.userId);
-      } catch {
-        // error-policy:J6 single bounded retry of best-effort teardown; the
-        // definitive failure is handled (loudly) by the outer catch.
-        await markSsoBridgeLogout(verifiedClaims.userId);
-      }
-      logger.debug("[Logout] Stamped SSO bridge logout marker");
     } catch (error) {
       // error-policy:J1 preserve retry credentials and return a failure until
       // the cross-host barrier has been durably confirmed.

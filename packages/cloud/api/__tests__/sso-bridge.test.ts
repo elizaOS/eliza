@@ -543,6 +543,40 @@ describe("cache independence — the guarantees may not depend on atomic cache o
 });
 
 describe("logout stays logged out (cross-host)", () => {
+  test("expired credentials finish logout while an unavailable verifier preserves retry authority", async () => {
+    const { default: logout } = await import("../auth/logout/route");
+    const token = await mintToken("expired-logout-user", {
+      iatOffsetSec: -7200,
+    });
+    const request = (env: typeof ENV) =>
+      logout.request(
+        "/",
+        {
+          method: "POST",
+          headers: {
+            host: "api.eliza.app",
+            origin: "https://eliza.app",
+            authorization: `Bearer ${token}`,
+            cookie: `steward-token-test=${token}`,
+          },
+        },
+        env,
+      );
+    const unavailable = await request({ ...ENV, STEWARD_SESSION_SECRET: "" });
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.headers.getSetCookie()).toEqual([]);
+    const completed = await request(ENV);
+    expect(completed.status).toBe(200);
+    expect(
+      completed.headers
+        .getSetCookie()
+        .some(
+          (value) =>
+            value.startsWith("steward-token-test=") && /Max-Age=0/i.test(value),
+        ),
+    ).toBe(true);
+  });
+
   test("logout retries survive a real marker-store outage and then block the paired host", async () => {
     const { sql } = await import("drizzle-orm");
     const { dbWrite } = await import("@/db/client");

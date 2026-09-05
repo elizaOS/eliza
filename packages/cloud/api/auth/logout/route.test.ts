@@ -112,6 +112,7 @@ describe("POST /api/auth/logout cookie clearing", () => {
     expect(verifyStewardTokenMock).toHaveBeenCalledWith(
       expect.anything(),
       "header.payload.signature",
+      { throwOnUnavailable: true },
     );
     expect(markSsoBridgeLogoutMock).toHaveBeenCalledWith("steward-1");
   });
@@ -143,7 +144,7 @@ describe("POST /api/auth/logout cookie clearing", () => {
     });
   });
 
-  test("refuses logout success when the presented token cannot be verified", async () => {
+  test("completes local logout when the presented credential is rejected", async () => {
     readStewardSessionTokenMock.mockReturnValue("header.payload.signature");
     verifyStewardTokenMock.mockResolvedValue(null);
 
@@ -160,11 +161,11 @@ describe("POST /api/auth/logout cookie clearing", () => {
       { ENVIRONMENT: "staging", NODE_ENV: "production" },
     );
 
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(200);
     expect(markSsoBridgeLogoutMock).not.toHaveBeenCalled();
     expect((await res.json()) as unknown).toEqual({
-      error: "Logout revocation is temporarily unavailable",
-      code: "logout_revocation_unavailable",
+      success: true,
+      message: "Logged out successfully",
     });
   });
 
@@ -201,11 +202,13 @@ describe("POST /api/auth/logout cookie clearing", () => {
       1,
       expect.anything(),
       "stale.bearer.signature",
+      { throwOnUnavailable: true },
     );
     expect(verifyStewardTokenMock).toHaveBeenNthCalledWith(
       2,
       expect.anything(),
       "valid.cookie.signature",
+      { throwOnUnavailable: true },
     );
     expect(markSsoBridgeLogoutMock).toHaveBeenCalledWith("cookie-user");
     expect(getCurrentUserMock).toHaveBeenCalledWith(
