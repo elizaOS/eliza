@@ -1923,8 +1923,12 @@ public class ElizaAgentService extends Service {
             }
 
             String abi = resolveRuntimeAbi();
+            final String canonicalStateDir;
+            final String canonicalAppDataDir;
             try {
                 extractAssetsIfNeeded(abi);
+                canonicalStateDir = agentStateDir().getCanonicalPath();
+                canonicalAppDataDir = getDataDir().getCanonicalPath();
             } catch (IOException error) {
                 Log.e(TAG, "Failed to extract agent assets for abi=" + abi, error);
                 currentStatus = "extract-failed";
@@ -2087,7 +2091,7 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET", LOCAL_AGENT_SOCKET_NAME);
             // Context can expose files/ via /data/data while getDataDir() uses
             // /data/user/0. Export both identity paths in the same namespace.
-            agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getCanonicalPath());
+            agentEnv.put("ELIZA_STATE_DIR", canonicalStateDir);
             agentEnv.put("ELIZA_PLATFORM", "android");
             // Android SELinux permits the app to stat platform-owned ancestors
             // such as / and /data, but deliberately denies opening directory
@@ -2097,7 +2101,7 @@ public class ElizaAgentService extends Service {
             // forbidden platform ancestor opens.
             agentEnv.put(
                 "ELIZA_ANDROID_APP_DATA_DIR",
-                getDataDir().getCanonicalPath()
+                canonicalAppDataDir
             );
             agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
             agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());
