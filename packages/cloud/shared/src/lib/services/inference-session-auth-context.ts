@@ -107,13 +107,18 @@ function rejection(
   };
 }
 
-async function hydrateAuthoritativeDecision(params: {
-  stewardUserId: string;
-  email?: string;
-  walletAddress?: string;
-  walletChain?: "ethereum" | "solana";
-}): Promise<InferenceSessionAuthDecision> {
+async function hydrateAuthoritativeDecision(
+  params: {
+    stewardUserId: string;
+    email?: string;
+    walletAddress?: string;
+    walletChain?: "ethereum" | "solana";
+  },
+  persistDecision: boolean,
+): Promise<InferenceSessionAuthDecision> {
+  const primaryReadStartedAt = Date.now();
   let user = await usersRepository.findByStewardIdWithOrganizationForWrite(params.stewardUserId);
+  const existingPrimaryUser = user;
   if (!user) {
     const { syncUserFromSteward } = await import("../steward-sync");
     user = await syncUserFromSteward({
@@ -148,6 +153,16 @@ async function hydrateAuthoritativeDecision(params: {
     orgId: user.organization_id,
     apiKeyId: null,
     stewardUserId: params.stewardUserId,
+    ...(persistDecision
+      ? {
+          admission: await loadInferenceAdmissionSnapshot(
+            user.organization_id,
+            existingPrimaryUser
+              ? { organization: user.organization, startedAt: primaryReadStartedAt }
+              : undefined,
+          ),
+        }
+      : {}),
   };
 }
 
@@ -202,13 +217,7 @@ async function hydrateDecision(
   },
   persistDecision: boolean,
 ): Promise<InferenceSessionAuthDecision> {
-  const authoritative = await hydrateAuthoritativeDecision(params);
-  return persistDecision && "apiKeyId" in authoritative
-    ? {
-        ...authoritative,
-        admission: await loadInferenceAdmissionSnapshot(authoritative.orgId),
-      }
-    : authoritative;
+  return await hydrateAuthoritativeDecision(params, persistDecision);
 }
 
 // Coalesced by subject only: `persistDecision` derives from the env flag, which
@@ -321,6 +330,7 @@ export async function resolveInferenceSessionAuthContext(
   if (claims.stagingSessionBinding) {
     // QA bindings are continuously primary-store-authorized and must never be
     // translated through the Steward-subject inference cache or JIT hydration.
+    const primaryReadStartedAt = Date.now();
     const user = await loadVerifiedStagingSessionUser({
       binding: claims.stagingSessionBinding,
       stewardUserId: claims.userId,
@@ -339,7 +349,10 @@ export async function resolveInferenceSessionAuthContext(
         orgId: user.organization_id,
         apiKeyId: null,
         stewardUserId: claims.userId,
-        admission: await loadInferenceAdmissionSnapshot(user.organization_id),
+        admission: await loadInferenceAdmissionSnapshot(user.organization_id, {
+          organization: user.organization,
+          startedAt: primaryReadStartedAt,
+        }),
       },
       claims.userId,
       claims.issuedAt,

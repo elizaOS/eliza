@@ -25,6 +25,11 @@ let getUser:
     }>)
   | undefined;
 let userReads = 0;
+let synchronizedUser: Awaited<ReturnType<NonNullable<typeof getUser>>> | undefined;
+const admissionLoads: Array<{
+  organizationId: string;
+  primaryRead: { organization: { is_active: boolean }; startedAt: number } | undefined;
+}> = [];
 let moderationReads = 0;
 let assertSessionActive: () => Promise<void>;
 const strongCredentialChecks: Array<Record<string, unknown>> = [];
@@ -62,11 +67,17 @@ mock.module("./admin", () => ({
 }));
 
 mock.module("../steward-sync", () => ({
-  syncUserFromSteward: async () => undefined,
+  syncUserFromSteward: async () => synchronizedUser,
 }));
 
 mock.module("./inference-admission-snapshot", () => ({
-  loadInferenceAdmissionSnapshot: async () => ADMISSION,
+  loadInferenceAdmissionSnapshot: async (
+    organizationId: string,
+    primaryRead?: (typeof admissionLoads)[number]["primaryRead"],
+  ) => {
+    admissionLoads.push({ organizationId, primaryRead });
+    return ADMISSION;
+  },
 }));
 mock.module("./inference-credential-revocation", () => ({
   isInferenceStrongRevocationEnabled: () =>
@@ -119,6 +130,8 @@ beforeEach(async () => {
     issuedAt: Math.floor(Date.now() / 1000),
   };
   userReads = 0;
+  synchronizedUser = undefined;
+  admissionLoads.length = 0;
   moderationReads = 0;
   strongCredentialChecks.length = 0;
   assertSessionActive = async () => undefined;
@@ -132,6 +145,35 @@ beforeEach(async () => {
 });
 
 describe("resolveInferenceSessionAuthContext", () => {
+  test("existing primary identity carries its balance observation into hydration", async () => {
+    const user = {
+      id: "user-1",
+      is_active: true,
+      organization_id: "org-1",
+      organization: { id: "org-1", is_active: true, credit_balance: "8.5", balance_revision: 24 },
+    };
+    let observedAt = 0;
+    getUser = async () => {
+      observedAt = Date.now();
+      return user;
+    };
+    const result = await resolveInferenceSessionAuthContext(request(), { useAuthCache: true });
+    expect(result.kind).toBe("authorized");
+    expect(admissionLoads).toHaveLength(1);
+    expect(admissionLoads[0].organizationId).toBe(user.organization_id);
+    expect(admissionLoads[0].primaryRead?.organization).toBe(user.organization);
+    expect(admissionLoads[0].primaryRead?.startedAt).toBeGreaterThan(0);
+    expect(admissionLoads[0].primaryRead?.startedAt).toBeLessThanOrEqual(observedAt);
+  });
+
+  test("first-time identity synchronization retains an authoritative balance lookup", async () => {
+    synchronizedUser = await getUser?.();
+    getUser = undefined;
+    const result = await resolveInferenceSessionAuthContext(request(), { useAuthCache: true });
+    expect(result.kind).toBe("authorized");
+    expect(admissionLoads).toEqual([{ organizationId: "org-1", primaryRead: undefined }]);
+  });
+
   test("cold Worker request returns warming without joining authoritative hydration", async () => {
     let releaseUser = (): void => {};
     getUser = async () =>
