@@ -163,7 +163,7 @@ export function applyServerEvent(
         // UI in "Transcribing" until the first LLM token makes a completed EOT
         // look late by the entire model TTFT and leaves the mic surface claiming
         // it is still listening while the request is already in flight.
-        phase: "thinking",
+        phase: state.phase === "speaking" ? "speaking" : "thinking",
         traceId: event.traceId,
         finalTranscript: event.text,
         interimTranscript: "",
@@ -191,6 +191,15 @@ export function applyServerEvent(
       };
     case "usage":
       // Settlement telemetry; no client phase impact.
+      return { ...state, traceId: event.traceId };
+    case "assistant_playing":
+    case "human_double_talk":
+    case "echo_rejected":
+    case "user_eos":
+    case "next_reply_ready":
+    case "handoff_requested":
+    case "handoff_completed":
+      // Payload-free overlap diagnostics; playback owns the audible transition.
       return { ...state, traceId: event.traceId };
     default: {
       // Exhaustiveness guard — an unhandled server type is a no-op, never a
