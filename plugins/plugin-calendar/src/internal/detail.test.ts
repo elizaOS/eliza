@@ -8,7 +8,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { sanitizeCalendarId, sanitizeWindowPreset } from "./detail.js";
+import {
+  detailString,
+  isPlaceholderDetailValue,
+  sanitizeCalendarId,
+  sanitizeWindowPreset,
+} from "./detail.js";
 
 describe("sanitizeCalendarId", () => {
   it("passes real calendar ids through untouched", () => {
@@ -63,5 +68,34 @@ describe("sanitizeWindowPreset", () => {
     }
     expect(sanitizeWindowPreset(undefined)).toBeUndefined();
     expect(sanitizeWindowPreset("   ")).toBeUndefined();
+  });
+});
+
+describe("detailString placeholder filtering", () => {
+  it("treats model placeholder values as unset", () => {
+    // The live regression: every travel/location key filled with the key
+    // echoed back as "<field>_missing", then "n/a" on the retry — non-empty
+    // strings that resolved a travel intent and failed the create closed.
+    const details = {
+      location: "location_missing",
+      travelOriginAddress: "traveloriginaddress_missing",
+      departure_address: "n/a",
+      description: "None",
+      title: "Gym session",
+    };
+    expect(detailString(details, "location")).toBeUndefined();
+    expect(detailString(details, "travelOriginAddress")).toBeUndefined();
+    expect(detailString(details, "departure_address")).toBeUndefined();
+    expect(detailString(details, "description")).toBeUndefined();
+    expect(detailString(details, "title")).toBe("Gym session");
+  });
+
+  it("keeps real values that merely contain placeholder words", () => {
+    expect(isPlaceholderDetailValue("Missing Persons rehearsal")).toBe(false);
+    expect(isPlaceholderDetailValue("Nana's house")).toBe(false);
+    expect(isPlaceholderDetailValue("unknown_missing")).toBe(true);
+    expect(detailString({ location: "  Golden Gate Park  " }, "location")).toBe(
+      "Golden Gate Park",
+    );
   });
 });

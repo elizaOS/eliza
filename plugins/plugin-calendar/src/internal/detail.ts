@@ -21,14 +21,51 @@ export function messageText(message: Memory): string {
   return typeof text === "string" ? text : "";
 }
 
+/**
+ * Planner-authored detail records fill every schema key, and when a field has
+ * no real source the model writes a placeholder instead of leaving it empty:
+ * "n/a", "none", "unknown", or the key echoed back as "<field>_missing"
+ * (observed live: location/travel origin details all set to
+ * "traveloriginaddress_missing", then "n/a" on retry — non-empty, so the
+ * handler resolved a travel intent and the create failed closed on the
+ * unconfigured Routes API). These carry no user information for any string
+ * field, so the boundary treats them as unset.
+ */
+const PLACEHOLDER_DETAIL_VALUES = new Set([
+  "n/a",
+  "na",
+  "none",
+  "null",
+  "undefined",
+  "unknown",
+  "unset",
+  "missing",
+  "not specified",
+  "not provided",
+  "tbd",
+  "placeholder",
+]);
+const PLACEHOLDER_DETAIL_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*_missing$/i;
+
+export function isPlaceholderDetailValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    PLACEHOLDER_DETAIL_VALUES.has(normalized) ||
+    PLACEHOLDER_DETAIL_PATTERN.test(normalized)
+  );
+}
+
 export function detailString(
   details: Record<string, unknown> | undefined,
   key: string,
 ): string | undefined {
   const value = details?.[key];
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || isPlaceholderDetailValue(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
 }
 
 export type PlannerCalendarWindow = {
