@@ -435,7 +435,7 @@ describe("runPollingBackend", () => {
     });
   });
 
-  it("routes a DEV-UI-shell (port 2138) same-origin proxy outage to offline first-run instead of waiting for timeout", async () => {
+  it("preserves an established DEV-UI runtime during a same-origin proxy outage", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
     (globalThis as { window?: unknown }).window = {
@@ -466,8 +466,8 @@ describe("runPollingBackend", () => {
       dispatch,
       {
         supportsLocalRuntime: false,
-        backendTimeoutMs: 1000,
-        agentReadyTimeoutMs: 1000,
+        backendTimeoutMs: 50,
+        agentReadyTimeoutMs: 50,
         probeForExistingInstall: false,
         defaultTarget: null,
       },
@@ -483,20 +483,13 @@ describe("runPollingBackend", () => {
       { current: null },
     );
 
-    expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
-    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
-    expect(deps.setFirstRunOptions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providers: expect.any(Array),
-        models: expect.any(Object),
-      }),
-    );
-    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(false);
-    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
-    expect(dispatch).toHaveBeenCalledWith({
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalledWith(null);
+    expect(deps.setFirstRunComplete).not.toHaveBeenCalledWith(false);
+    expect(dispatch).not.toHaveBeenCalledWith({
       type: "BACKEND_UNAVAILABLE_FIRST_RUN",
     });
-    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
 
   it("does NOT eject an established hosted-web user to first-run on a transient same-origin 5xx", async () => {

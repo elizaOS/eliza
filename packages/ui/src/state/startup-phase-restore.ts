@@ -52,7 +52,6 @@ import {
   isOnboardingReplayRequested,
   wasForceFreshResetApplied,
 } from "../platform";
-import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import {
   buildCloudSharedAgentApiBase,
   buildDedicatedCloudAgentApiBase,
@@ -901,7 +900,7 @@ export async function runRestoringSession(
     (isAndroid || isIOS) &&
     isCommittedOnDeviceMobileRuntimeMode(readPersistedMobileRuntimeMode());
   const shouldProbeExistingInstall =
-    !forceFreshFirstRun && !persistedActiveServer && !isViteDevUiShell();
+    !forceFreshFirstRun && !persistedActiveServer;
   let probed: ExistingFirstRunProbeResult | null = null;
   if (shouldProbeExistingInstall) {
     try {
