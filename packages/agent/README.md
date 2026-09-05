@@ -122,3 +122,16 @@ Git installs report the cloned commit.
 Paid routes set `x402` on a `Route`. The middleware returns **402** with payment options and accepts on-chain proofs, facilitator payment IDs, or standard payment payloads (`PAYMENT-SIGNATURE` / `X-Payment`), then verifies and settles through a facilitator before running the handler.
 
 For environment variables, events, replay protection, and buyer guidance, use the linked docs above.
+
+## Android runtime identity
+
+The Android host makes its private files directory owner-only before starting
+the agent. Identity validation compares the app directory inode across Android's
+`/data/data` and `/data/user/0` mount aliases and retains both path chains for
+race checks.
+
+On devices that prohibit hard links, a new identity is published as the complete,
+fsynced `runtime-installation-id.android/identity` directory entry. Concurrent
+creators converge through a nonempty-directory rename, without exposing a
+partially written UUID. Existing `runtime-installation-id` files keep their
+identity. Missing, redirected, or incomplete publications fail validation.

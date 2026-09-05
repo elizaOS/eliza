@@ -87,13 +87,99 @@ describe("runtime installation identity", () => {
           "ai.elizaos.app",
           "files",
           "agent-state",
-          "runtime-installation-id",
+          "runtime-installation-id.android",
+          "identity",
         ),
         "utf8",
       ),
     ).toBe(`${id}\n`);
   });
 
+  it("converges across independent Android processes without hard-link publication", async () => {
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "runtime-android-processes-")),
+    );
+    cleanup.push(root);
+    const state = path.join(root, "files", "state");
+    await fs.mkdir(path.dirname(state), { recursive: true, mode: 0o700 });
+    const modulePath = path.join(
+      import.meta.dirname,
+      "runtime-installation-id.ts",
+    );
+    const script = `const { loadOrCreateRuntimeInstallationId } = await import(${JSON.stringify(modulePath)}); console.log(await loadOrCreateRuntimeInstallationId(${JSON.stringify(state)}));`;
+    const options = {
+      env: {
+        ...process.env,
+        ELIZA_PLATFORM: "android",
+        ELIZA_ANDROID_APP_DATA_DIR: root,
+      },
+      timeout: 60000,
+    };
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        execFileAsync(
+          "bun",
+          ["--conditions=eliza-source", "--eval", script],
+          options,
+        ),
+      ),
+    );
+    const identities = results.map((result) => result.stdout.trim());
+    expect(new Set(identities).size).toBe(1);
+    expect(identities[0]).toMatch(/^[a-f0-9-]{36}$/);
+    expect(
+      await fs.readFile(
+        path.join(state, "runtime-installation-id.android", "identity"),
+        "utf8",
+      ),
+    ).toBe(`${identities[0]}\n`);
+    const restarted = await execFileAsync(
+      "bun",
+      ["--conditions=eliza-source", "--eval", script],
+      options,
+    );
+    expect(restarted.stdout.trim()).toBe(identities[0]);
+    expect(
+      (await fs.readdir(state)).filter((name) => name.endsWith(".tmp")),
+    ).toEqual([]);
+  }, 90000);
+
+  it("rejects incomplete and redirected Android identity publications", async () => {
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "runtime-android-invalid-")),
+    );
+    cleanup.push(root);
+    const state = path.join(root, "state");
+    const publication = path.join(state, "runtime-installation-id.android");
+    await fs.mkdir(publication, { recursive: true, mode: 0o700 });
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_ANDROID_APP_DATA_DIR = root;
+    await expect(loadOrCreateRuntimeInstallationId(state)).rejects.toThrow(
+      "publication is incomplete",
+    );
+    await fs.rmdir(publication);
+    const outside = path.join(root, "outside");
+    await fs.mkdir(outside, { mode: 0o700 });
+    await fs.symlink(outside, publication);
+    await expect(loadOrCreateRuntimeInstallationId(state)).rejects.toThrow(
+      "must be a real directory",
+    );
+    expect(await fs.readdir(outside)).toEqual([]);
+  });
+  it("preserves a previously published Android file identity", async () => {
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "runtime-android-legacy-")),
+    );
+    cleanup.push(root);
+    const state = path.join(root, "state");
+    const original = await loadOrCreateRuntimeInstallationId(state);
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_ANDROID_APP_DATA_DIR = root;
+    expect(await loadOrCreateRuntimeInstallationId(state)).toBe(original);
+    await expect(
+      fs.access(path.join(state, "runtime-installation-id.android")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
   it("rejects an aliased app boundary and a state redirect outside that boundary", async () => {
     const root = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), "runtime-id-android-escape-")),

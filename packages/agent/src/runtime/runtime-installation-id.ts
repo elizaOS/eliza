@@ -623,6 +623,141 @@ async function cleanupCandidate(
   }
 }
 
+/** Android forbids hard links; publish a complete nonempty directory atomically. */
+async function loadOrCreateAndroidInstallationId(
+  stateDirectory: string,
+  trusted: TrustedDirectory,
+): Promise<UUID> {
+  const publishedDirectory = path.join(
+    stateDirectory,
+    `${INSTALLATION_ID_FILENAME}.android`,
+  );
+  const readPublished = async (): Promise<UUID | null> => {
+    let stat: FileStat;
+    try {
+      stat = await fs.lstat(publishedDirectory);
+    } catch (error) {
+      // error-policy:J3 only an absent publication is a valid uninitialized state.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+    assertTrustedDirectoryStat(stat);
+    const handle = await fs.open(
+      publishedDirectory,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    );
+    try {
+      if (!sameIdentity(stat, await handle.stat()))
+        throw new Error(
+          "Android identity directory changed during validation.",
+        );
+      const parent: TrustedParentDirectory = {
+        path: stateDirectory,
+        stat: trusted.stat,
+        handle: trusted.handle,
+        validation: "descriptor",
+      };
+      const identityDirectory: TrustedDirectory = {
+        ...trusted,
+        handle,
+        stat,
+        parent,
+        ancestors: [...trusted.ancestors, parent],
+      };
+      const identity = await readInstallationId(
+        path.join(publishedDirectory, "identity"),
+        publishedDirectory,
+        identityDirectory,
+      );
+      if (!identity)
+        throw new Error(
+          "Android installation identity publication is incomplete.",
+        );
+      return identity;
+    } finally {
+      await handle.close();
+    }
+  };
+  const existing = await readPublished();
+  if (existing) return existing;
+  const candidate = randomUUID() as UUID;
+  const candidateDirectory = path.join(
+    stateDirectory,
+    `.${INSTALLATION_ID_FILENAME}.android.${randomUUID()}.tmp`,
+  );
+  await fs.mkdir(candidateDirectory, { mode: 0o700 });
+  const directoryStat = await fs.lstat(candidateDirectory);
+  const identityPath = path.join(candidateDirectory, "identity");
+  let fileStat: FileStat | undefined;
+  let published = false;
+  try {
+    const file = await fs.open(identityPath, "wx", 0o600);
+    try {
+      fileStat = await file.stat();
+      await file.writeFile(`${candidate}\n`, "utf8");
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    const directory = await fs.open(
+      candidateDirectory,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    );
+    try {
+      if (!sameIdentity(directoryStat, await directory.stat()))
+        throw new Error("Android identity candidate directory changed.");
+      await directory.sync();
+    } finally {
+      await directory.close();
+    }
+    await revalidateDirectoryPath(stateDirectory, trusted);
+    await revalidateAncestorChain(trusted.ancestors);
+    await revalidateLexicalChain(trusted.lexicalAncestors);
+    if (
+      !sameIdentity(directoryStat, await fs.lstat(candidateDirectory)) ||
+      !sameIdentity(fileStat, await fs.lstat(identityPath))
+    ) {
+      throw new Error("Android identity candidate changed before publication.");
+    }
+    try {
+      // A valid winner always contains its fsynced identity file. POSIX rename
+      // cannot replace that nonempty directory, so concurrent creators converge
+      // without exposing an empty or partly written identity.
+      await fs.rename(candidateDirectory, publishedDirectory);
+      published = true;
+    } catch (error) {
+      // error-policy:J3 a concurrent nonempty publication is read and validated below.
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST" && code !== "ENOTEMPTY") throw error;
+    }
+    await syncStateDirectory(trusted);
+    const identity = await readPublished();
+    if (!identity)
+      throw new Error("Android installation identity was not published.");
+    return identity;
+  } finally {
+    if (!published) {
+      if (!sameIdentity(directoryStat, await fs.lstat(candidateDirectory))) {
+        throw new RuntimeInstallationIdentityRecoveryError(
+          "Android identity candidate cleanup is ambiguous.",
+          { cause: new Error("Candidate directory was replaced") },
+        );
+      }
+      if (fileStat) {
+        const current = await fs.lstat(identityPath);
+        if (!sameIdentity(fileStat, current))
+          throw new RuntimeInstallationIdentityRecoveryError(
+            "Android identity candidate cleanup is ambiguous.",
+            { cause: new Error("Candidate file was replaced") },
+          );
+        await fs.unlink(identityPath);
+      }
+      await fs.rmdir(candidateDirectory);
+      await syncStateDirectory(trusted);
+    }
+  }
+}
+
 /** Loads one durable UUID per trusted state directory without following links. */
 async function loadOrCreateRuntimeInstallationIdImpl(
   stateDirectory: string,
@@ -694,6 +829,12 @@ async function loadOrCreateRuntimeInstallationIdImpl(
       trustedDirectory,
     );
     if (existing) return existing;
+    if (configuredAndroidBoundary) {
+      return loadOrCreateAndroidInstallationId(
+        resolvedStateDirectory,
+        trustedDirectory,
+      );
+    }
 
     await revalidateDirectoryPath(resolvedStateDirectory, trustedDirectory);
     await revalidateAncestorChain(trustedDirectory.ancestors);
