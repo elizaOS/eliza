@@ -405,7 +405,13 @@ export function LocalInferencePanel() {
         />
       )}
 
-      <VoiceModelUpdatesSection />
+      <AdvancedSettingsDisclosure
+        title={t("localinference.voiceModelUpdates", {
+          defaultValue: "Voice model updates",
+        })}
+      >
+        <VoiceModelUpdatesSection />
+      </AdvancedSettingsDisclosure>
 
       <AdvancedSettingsDisclosure
         title={t("localinference.devicesTitle", {
