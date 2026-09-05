@@ -7,6 +7,8 @@ import {
 	createUniqueUuid,
 	type EventPayload,
 	EventType,
+	toWellFormedUnicode,
+	truncateWellFormed,
 	type World,
 } from "@elizaos/core";
 import type {
@@ -53,9 +55,10 @@ const INTEGRATION_USER_INSTALL = 1;
 const DISCORD_DESCRIPTION_MAX = 100;
 
 function clampDescription(description: string): string {
-	return description.length > DISCORD_DESCRIPTION_MAX
-		? `${description.slice(0, DISCORD_DESCRIPTION_MAX - 1)}…`
-		: description;
+	const wellFormed = toWellFormedUnicode(description);
+	return wellFormed.length > DISCORD_DESCRIPTION_MAX
+		? `${truncateWellFormed(wellFormed, DISCORD_DESCRIPTION_MAX - 1)}…`
+		: wellFormed;
 }
 
 export function transformCommandToDiscordApi(

@@ -4,8 +4,10 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mapOption } from "../catalog-commands";
+import { transformCommandToDiscordApi } from "../discord-commands";
+import type { DiscordSlashCommand } from "../types";
 import {
 	buildCommandArgCustomId,
 	buildCommandArgMenu,
@@ -241,5 +243,17 @@ describe("Discord command projection Unicode safety", () => {
 				code: "DISCORD_COMMAND_CUSTOM_ID_TOO_LONG",
 			}),
 		);
+	});
+
+	it("preserves well-formed Unicode when clamping overlong command descriptions containing surrogate pairs", () => {
+		const longDesc = "a".repeat(98) + "🚀" + "tail";
+		const cmd: DiscordSlashCommand = {
+			name: "test-cmd",
+			description: longDesc,
+			execute: vi.fn() as never,
+		};
+		const transformed = transformCommandToDiscordApi(cmd) as { description: string };
+		expect(transformed.description.isWellFormed()).toBe(true);
+		expect(transformed.description.endsWith("…")).toBe(true);
 	});
 });
