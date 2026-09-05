@@ -4199,7 +4199,7 @@
   "nodeCatalog.showingXofY": "Showing {{shown}} of {{total}}",
   "nodeCatalog.subtitle": "Everything your agent can do — actions, integrations, triggers, and context providers.",
   "nodeCatalog.viewAll": "View all {{count}} nodes →",
-  "notice.elizaCloudAuthRejected": "Eliza Cloud rejected your API key, so model calls will fail. Open Settings → Cloud and sign in again or paste a new key from cloud.eliza.app.",
+  "notice.elizaCloudAuthRejected": "Eliza Cloud rejected the saved API key. Reconnect in Settings → Models & Providers to use Cloud services.",
   "pairingcommandhint.copied": "Pairing command copied.",
   "pairingcommandhint.copy": "Copy",
   "pairingcommandhint.copyFailed": "Could not copy pairing command.",
