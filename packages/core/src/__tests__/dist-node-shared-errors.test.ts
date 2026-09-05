@@ -1,11 +1,7 @@
 /**
- * Guards the shared-errors identity contract of the built Node distribution:
- * every `dist/node` bundle (the root barrel and the narrow leaves such as
- * documents) must resolve `ElizaError` to the single `dist/node/errors.js`
- * artifact, so an error thrown inside a leaf passes `instanceof` checks
- * against the class imported from the root entrypoint. Real artifacts — the
- * suite imports the emitted bundles directly and requires a prior
- * `bun run build` (CI's core gate builds before this lane runs).
+ * Imports real Node, document, and edge artifacts to verify typed errors survive
+ * package boundaries and host normalization. A prior full core build is required;
+ * source aliases would hide the independent-bundle regression under test.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -18,6 +14,7 @@ const bundles = {
 	root: join(distNode, "index.node.js"),
 	errors: join(distNode, "errors.js"),
 	documents: join(distNode, "documents.js"),
+	edge: join(packageRoot, "dist/edge/index.edge.js"),
 } as const;
 
 type ErrorsModule = {
@@ -26,6 +23,7 @@ type ErrorsModule = {
 		options: { code: string; context?: Record<string, unknown> },
 	) => Error;
 	isElizaError: (value: unknown) => boolean;
+	toElizaError: (value: unknown) => Error;
 };
 
 type DocumentsModule = {
@@ -75,6 +73,37 @@ describe("dist/node shared errors module identity", () => {
 		await expect(failure).rejects.toBeInstanceOf(root.ElizaError);
 		await expect(failure).rejects.toMatchObject({
 			code: "DOCUMENT_ROLE_LOOKUP_FAILED",
+		});
+	});
+
+	it("preserves edge error classification when a Node host normalizes it", async () => {
+		const root = await importBundle<ErrorsModule>(bundles.root);
+		const edge = await importBundle<{
+			assertModelOutputComplete: (input: {
+				finishReason: string;
+				model: string;
+				provider: string;
+			}) => void;
+		}>(bundles.edge);
+		let thrown: unknown;
+		try {
+			edge.assertModelOutputComplete({
+				finishReason: "length",
+				model: "fixture",
+				provider: "fixture",
+			});
+		} catch (error) {
+			thrown = error;
+		}
+		expect(thrown).toBeInstanceOf(root.ElizaError);
+		expect(root.toElizaError(thrown)).toBe(thrown);
+		expect(thrown).toMatchObject({
+			code: "MODEL_OUTPUT_INCOMPLETE",
+			context: {
+				finishReason: "length",
+				model: "fixture",
+				provider: "fixture",
+			},
 		});
 	});
 

@@ -790,8 +790,8 @@ const edgeRuntimeSourcesPlugin: BunPlugin = {
 // Node-specific externals (native modules and node-specific packages)
 const nodeExternals = ["dotenv", "sharp", "zod", "@hapi/shot"];
 
-// `dist/node` emits several independent bundles (the root barrel plus narrow
-// leaves such as documents). With code splitting off, each bundle
+// Runtime targets and public leaves emit independent bundles. With code
+// splitting off, each bundle
 // would inline its own copy of `src/errors.ts`, so an `ElizaError` thrown by a
 // leaf would fail `instanceof` against the root barrel's class. The plugin
 // keeps every internal import of the errors module external behind a bare
@@ -832,7 +832,7 @@ const sharedErrorsModulePlugin: BunPlugin = {
 async function rewriteSharedErrorsImports(outdir: string): Promise<void> {
 	const fs = await import("node:fs/promises");
 	const path = await import("node:path");
-	const errorsArtifact = join(process.cwd(), outdir, "errors.js");
+	const errorsArtifact = join(process.cwd(), "dist/node/errors.js");
 	const walk = async (dir: string): Promise<string[]> => {
 		const out: string[] = [];
 		let entries: Awaited<ReturnType<typeof fs.readdir>>;
@@ -880,6 +880,42 @@ const sharedConfig = {
 /**
  * Build for Node.js environment
  */
+const canonicalErrorBuilds = new WeakMap<
+	typeof createBuildRunner,
+	Promise<void>
+>();
+
+/** Builds the dependency-free error class once for concurrent target builds. */
+function buildCanonicalErrors(
+	runnerFactory: typeof createBuildRunner,
+): Promise<void> {
+	const existing = canonicalErrorBuilds.get(runnerFactory);
+	if (existing) return existing;
+	const run = runnerFactory({
+		...sharedConfig,
+		buildOptions: {
+			entrypoints: [`${TS_SRC}/errors.ts`],
+			outdir: "dist/node",
+			target: "node",
+			format: "esm",
+			external: nodeExternals,
+			sourcemap: true,
+			minify: false,
+			generateDts: false,
+			skipClean: true,
+			selfPackageName: "@elizaos/core",
+		},
+	});
+	const pending = run()
+		.then(() => undefined)
+		.finally(() => {
+			if (canonicalErrorBuilds.get(runnerFactory) === pending)
+				canonicalErrorBuilds.delete(runnerFactory);
+		});
+	canonicalErrorBuilds.set(runnerFactory, pending);
+	return pending;
+}
+
 export async function buildNode(
 	runnerFactory: typeof createBuildRunner = createBuildRunner,
 ) {
@@ -929,27 +965,12 @@ export async function buildNode(
 		},
 	});
 
-	// The canonical shared errors artifact builds alone, without the sharing
-	// plugin, so it keeps the real module body every other bundle points at.
-	const runNodeErrors = runnerFactory({
-		...sharedConfig,
-		buildOptions: {
-			entrypoints: [`${TS_SRC}/errors.ts`],
-			outdir: "dist/node",
-			target: "node",
-			format: "esm",
-			external: nodeExternals,
-			sourcemap: true,
-			minify: false,
-			generateDts: false,
-			skipClean: true,
-			selfPackageName: "@elizaos/core",
-		},
-	});
+	await Promise.all([
+		runNode(),
+		runNodeLeaves(),
+		buildCanonicalErrors(runnerFactory),
+	]);
 
-	// The main build owns output cleanup; leaves may write only after it finishes.
-	await runNode();
-	await Promise.all([runNodeLeaves(), runNodeErrors()]);
 	await rewriteSharedErrorsImports("dist/node");
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -987,12 +1008,13 @@ export async function buildBrowser(
 			minify: false,
 			generateDts: false, // Use the same .d.ts files from Node build
 			skipClean: true,
-			plugins: [],
+			plugins: [sharedErrorsModulePlugin],
 			selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
 		},
 	});
 
-	await runBrowser();
+	await Promise.all([runBrowser(), buildCanonicalErrors(runnerFactory)]);
+	await rewriteSharedErrorsImports("dist/browser");
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ Browser build complete in ${duration}s`);
@@ -1027,12 +1049,12 @@ export async function buildEdge(
 			minify: false,
 			generateDts: false,
 			skipClean: true,
-			plugins: [edgeRuntimeSourcesPlugin],
+			plugins: [edgeRuntimeSourcesPlugin, sharedErrorsModulePlugin],
 			selfPackageName: "@elizaos/core",
 		},
 	});
 
-	await runEdge();
+	await Promise.all([runEdge(), buildCanonicalErrors(runnerFactory)]);
 
 	// Bun's CJS-interop preamble is `createRequire(import.meta.url)` at module
 	// scope. workerd rejects it at import time because its module URLs are not
@@ -1055,6 +1077,10 @@ export async function buildEdge(
 	const fsp = edgeBundleIo ?? (await import("node:fs/promises"));
 	const edgeBundlePath = "dist/edge/index.edge.js";
 	let edgeBundle = await fsp.readFile(edgeBundlePath, "utf8");
+	edgeBundle = edgeBundle.replaceAll(
+		JSON.stringify(CORE_ERRORS_SENTINEL),
+		JSON.stringify("../node/errors.js"),
+	);
 	const shimLine =
 		"var __require = /* @__PURE__ */ createRequire(import.meta.url);";
 	if (edgeBundle.includes(shimLine)) {
@@ -1160,11 +1186,13 @@ export async function buildTesting(
 			minify: false,
 			generateDts: false,
 			skipClean: true,
+			plugins: [sharedErrorsModulePlugin],
 			selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
 		},
 	});
 
-	await runTesting();
+	await Promise.all([runTesting(), buildCanonicalErrors(runnerFactory)]);
+	await rewriteSharedErrorsImports("dist/testing");
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ Testing module build complete in ${duration}s`);
