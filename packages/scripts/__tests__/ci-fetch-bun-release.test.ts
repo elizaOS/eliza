@@ -5,6 +5,7 @@
 import { describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -13,10 +14,12 @@ import {
 } from "../ci-await-bun-release-server.mjs";
 import {
   bunReleaseUrls,
+  DEFAULT_FETCH_TIMEOUT_MS,
   detectLinuxAvx2,
   ensureBunReleaseZip,
   resolveBunAsset,
   serveBunZip,
+  validateTimeoutMs,
   writeStoredZip,
 } from "../ci-fetch-bun-release.mjs";
 
@@ -177,6 +180,127 @@ describe("ensureBunReleaseZip", () => {
     expect(zip[0]).toBe(0x50);
     expect(zip[1]).toBe(0x4b);
     expect(zip.includes(Buffer.from("bun-linux-x64/bun"))).toBe(true);
+  });
+
+  it("rejects invalid timeoutMs before executing requests", async () => {
+    const outDir = mkdtempSync(join(tmpdir(), "bun-zip-bad-timeout-"));
+    const calls: string[] = [];
+    await expect(
+      ensureBunReleaseZip({
+        outDir,
+        host: { platform: "linux", arch: "x64", hasAvx2: true },
+        timeoutMs: 0,
+        fetchImpl: async (url) => {
+          calls.push(String(url));
+          return { ok: true, arrayBuffer: async () => fakeZip() };
+        },
+      }),
+    ).rejects.toThrow("positive safe integer");
+    expect(calls).toEqual([]);
+  });
+
+  it("aborts hung fetch attempts after timeout and falls back to npm mirror", async () => {
+    const outDir = mkdtempSync(join(tmpdir(), "bun-zip-hung-"));
+    const seen: string[] = [];
+    const result = await ensureBunReleaseZip({
+      outDir,
+      host: { platform: "linux", arch: "x64", hasAvx2: true },
+      attempts: 2,
+      retryDelayMs: 5,
+      timeoutMs: 50,
+      fetchImpl: async (url, options) => {
+        seen.push(String(url));
+        if (String(url).includes("github.com")) {
+          return new Promise((_resolve, reject) => {
+            const signal = options?.signal;
+            if (signal) {
+              signal.addEventListener("abort", () => {
+                reject(signal.reason ?? new Error("aborted"));
+              });
+            }
+          });
+        }
+        return { ok: true, arrayBuffer: async () => fakeZip() };
+      },
+    });
+    expect(result.cacheHit).toBe(false);
+    expect(result.source).toContain("registry.npmjs.org/@oven/bun-linux-x64");
+    expect(seen.length).toBe(3);
+  });
+
+  it("times out a stalled response body from a real loopback server and recovers via npm mirror", async () => {
+    const outDir = mkdtempSync(join(tmpdir(), "bun-zip-stall-"));
+    let serverSockets: import("node:net").Socket[] = [];
+
+    const stallServer = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/zip" });
+      res.write(Buffer.from("PK"));
+    });
+
+    stallServer.on("connection", (socket) => {
+      serverSockets.push(socket);
+      socket.on("close", () => {
+        serverSockets = serverSockets.filter((s) => s !== socket);
+      });
+    });
+
+    await new Promise<void>((resolve) => {
+      stallServer.listen(0, "127.0.0.1", () => resolve());
+    });
+
+    const port = (stallServer.address() as import("node:net").AddressInfo).port;
+    const stallUrl = `http://127.0.0.1:${port}/bun-linux-x64.zip`;
+
+    try {
+      const result = await ensureBunReleaseZip({
+        outDir,
+        host: { platform: "linux", arch: "x64", hasAvx2: true },
+        attempts: 1,
+        retryDelayMs: 5,
+        timeoutMs: 150,
+        fetchImpl: async (url, options) => {
+          if (String(url).includes("github.com")) {
+            return globalThis.fetch(stallUrl, options);
+          }
+          return { ok: true, arrayBuffer: async () => fakeZip() };
+        },
+      });
+
+      expect(result.cacheHit).toBe(false);
+      expect(result.source).toContain("registry.npmjs.org/@oven/bun-linux-x64");
+      const zip = readFileSync(result.zipPath);
+      expect(zip[0]).toBe(0x50);
+      expect(zip[1]).toBe(0x4b);
+    } finally {
+      for (const socket of serverSockets) {
+        socket.destroy();
+      }
+      await new Promise<void>((resolve) => {
+        stallServer.close(() => resolve());
+      });
+    }
+  });
+});
+
+describe("validateTimeoutMs", () => {
+  it("accepts valid positive safe integers", () => {
+    expect(() => validateTimeoutMs(1000)).not.toThrow();
+    expect(() => validateTimeoutMs(DEFAULT_FETCH_TIMEOUT_MS)).not.toThrow();
+    expect(() => validateTimeoutMs(2_147_483_647)).not.toThrow();
+  });
+
+  it.each([
+    ["zero", 0],
+    ["negative", -500],
+    ["fractional", 1.5],
+    ["NaN", Number.NaN],
+    ["string", "5000"],
+    ["null", null],
+    ["undefined", undefined],
+    ["overflowing signed 32-bit", 2_147_483_648],
+    ["unsafe integer", Number.MAX_SAFE_INTEGER + 1],
+  ])("rejects %s timeout value", (_name, value) => {
+    expect(() => validateTimeoutMs(value)).toThrow("positive safe integer");
   });
 });
 
