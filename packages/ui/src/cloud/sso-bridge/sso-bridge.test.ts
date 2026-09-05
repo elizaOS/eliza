@@ -513,14 +513,13 @@ describe("performSsoExchange", () => {
 });
 
 describe("burnSsoBridgeCode", () => {
-  it("fires a verifier-less exchange POST that destroys the code server-side", () => {
-    const { fn, calls } = fetchStub(() => json(401, { error: "invalid_code" }));
-    burnSsoBridgeCode(CODE, "cloud.eliza.app", fn);
+  it("fires a keepalive destruction-only POST from either bridge origin", () => {
+    const { fn, calls } = fetchStub(() => new Response(null, { status: 204 }));
+    burnSsoBridgeCode(CODE, "eliza.app", fn);
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe(
-      "https://cloud.eliza.app/api/auth/sso-bridge/exchange",
-    );
+    expect(calls[0].url).toBe("https://eliza.app/api/auth/sso-bridge/burn");
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ code: CODE });
+    expect(calls[0].init?.keepalive).toBe(true);
   });
 
   it("is inert for malformed codes and unmapped hosts", () => {
