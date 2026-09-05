@@ -7,6 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  captureCompletedActionNavigationFence,
   dispatchCompletedActionNavigation,
   markCompletedActionNavigationHandled,
   resetCompletedActionNavigationForTests,
@@ -44,6 +45,23 @@ function websocketDelivery(
 describe("completed action navigation", () => {
   beforeEach(() => window.history.replaceState(null, "", "/chat"));
   afterEach(() => resetCompletedActionNavigationForTests());
+
+  it("captures the request route before any receipt and rejects navigation away and back", () => {
+    const isCurrent = captureCompletedActionNavigationFence();
+    expect(isCurrent()).toBe(true);
+    window.history.pushState(null, "", "/notes");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.history.pushState(null, "", "/chat");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(isCurrent()).toBe(false);
+    expect(captureCompletedActionNavigationFence()()).toBe(true);
+  });
+
+  it("also rejects a changed path without a history event", () => {
+    const isCurrent = captureCompletedActionNavigationFence();
+    window.history.replaceState(null, "", "/notes");
+    expect(isCurrent()).toBe(false);
+  });
 
   it.each([
     ["WebSocket-first", websocketDelivery, terminalDelivery],
