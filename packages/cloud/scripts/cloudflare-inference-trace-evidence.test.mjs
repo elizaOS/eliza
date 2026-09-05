@@ -369,7 +369,9 @@ test("sanitizer emits only phase, coarse colo, rounded duration, and coverage in
   );
   assert.deepEqual(sample, {
     sample: 1,
+    ingressColo: "ORD",
     workerColo: "ORD",
+    workerWallMs: 185,
     phases: {
       rate: {
         phase: "rate",
@@ -581,6 +583,17 @@ test("API failures never copy private response content into errors", async () =>
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("trace placement uses the Worker span rather than the ingress Ray colo", () => {
+  const { references } = pairedGatewayTraceWindow(pairedRecords());
+  const events = completeTraceEvents();
+  events[0].$metadata.region = "SJC";
+  const sample = sanitizeTraceEvents(events, references);
+  assert.equal(sample.ingressColo, "ORD");
+  assert.equal(sample.workerColo, "SJC");
+  delete events[0].$metadata.region;
+  assert.equal(sanitizeTraceEvents(events, references), null);
 });
 
 test("collector follows event cursors and rejects incomplete or repeated pages", async () => {

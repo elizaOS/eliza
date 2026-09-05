@@ -453,6 +453,17 @@ export function sanitizeTraceEvents(rawEvents, references) {
   }
   if (matchedReferences.size !== 1) return null;
   const [reference] = matchedReferences;
+  const workerRoots = rayRoots.filter((event) => {
+    const metadata = requireMetadata(event);
+    return (
+      metadata.rayId.toLowerCase() === reference.rayId &&
+      metadata.spanName === "fetch" &&
+      object(event.$workers)?.executionModel === "stateless"
+    );
+  });
+  if (workerRoots.length !== 1) return null;
+  const workerColo = coarseColo(requireMetadata(workerRoots[0]).region);
+  if (!workerColo) return null;
   const subrequests = events
     .map((event) => ({ event, phase: phaseForEvent(event) }))
     .filter((candidate) => candidate.phase !== null);
@@ -467,7 +478,12 @@ export function sanitizeTraceEvents(rawEvents, references) {
   if (phases.some((phase) => phase === null)) return null;
   return {
     sample: reference.sequence,
-    workerColo: reference.workerColo,
+    ingressColo: reference.workerColo,
+    workerColo,
+    workerWallMs: roundDuration(
+      requireMetadata(workerRoots[0]).duration,
+      "Worker root duration",
+    ),
     phases: Object.fromEntries(phases.map((phase) => [phase.phase, phase])),
   };
 }
