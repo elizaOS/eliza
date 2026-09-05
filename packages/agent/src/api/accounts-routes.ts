@@ -1571,8 +1571,13 @@ async function handleDeleteAccount(
   if (accountProvider) {
     deleteAccount(accountProvider, accountId, storagePolicy);
   }
-  await pool.deleteMetadata(providerId, accountId);
-  await syncDirectProviderCredentials(ctx, providerId);
+  try {
+    await pool.deleteMetadata(providerId, accountId);
+  } finally {
+    // Credential removal is already durable; a metadata write failure must
+    // still retract its authority from the running model provider.
+    await syncDirectProviderCredentials(ctx, providerId);
+  }
   json(res, { deleted: true });
   return true;
 }
