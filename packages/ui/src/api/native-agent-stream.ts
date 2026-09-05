@@ -13,6 +13,7 @@
  */
 
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
+import { abortableResponse } from "./abortable-request";
 
 export interface NativeStreamAgentRequestOptions {
   method?: string;
@@ -304,29 +305,31 @@ export async function createNativeStreamingResponse(
   if (signal?.aborted) onAbort();
   else signal?.addEventListener("abort", onAbort, { once: true });
 
-  if (detached) return head;
-
-  try {
-    for (const [eventName, listener] of [
-      ["agentStreamResponse", onResponse],
-      ["agentStreamChunk", onChunk],
-      ["agentStreamComplete", onComplete],
-    ] as const) {
-      if (detached) break;
-      trackHandle(await agent.addListener(eventName, listener));
+  if (!detached) {
+    try {
+      for (const [eventName, listener] of [
+        ["agentStreamResponse", onResponse],
+        ["agentStreamChunk", onChunk],
+        ["agentStreamComplete", onComplete],
+      ] as const) {
+        if (detached) break;
+        trackHandle(await agent.addListener(eventName, listener));
+      }
+    } catch (error) {
+      // error-policy:J1 stream setup failure rejects the head and releases acquired listeners.
+      failStream(error);
     }
-  } catch (error) {
-    // error-policy:J1 stream setup failure rejects the head and releases acquired listeners.
-    failStream(error);
   }
 
-  // Head deadline: if no response arrives in time, fail the head so the caller's
-  // try/catch falls back to the buffered request instead of hanging.
+  // A missing head fails the dispatched request; the caller owns retry policy.
   if (!detached) {
     headTimer = setTimeout(() => {
       if (!headSettled) failStream(new Error("native stream head timeout"));
     }, HEAD_TIMEOUT_MS);
   }
 
-  return head;
+  const response = await head;
+  // Native completion releases bridge listeners, but queued body bytes remain
+  // cancellable until the caller consumes or cancels the response.
+  return signal ? abortableResponse(response, signal) : response;
 }

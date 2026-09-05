@@ -34,7 +34,7 @@ export function runAbortableRequest<T>(
   });
 }
 
-/** Keep buffered native response reads cancellable after headers arrive. */
+/** Keep native response reads cancellable through complete body consumption. */
 export function abortableResponse(
   response: Response,
   signal: AbortSignal,
@@ -52,7 +52,9 @@ export function abortableResponse(
     finish();
     controller.error(signal.reason);
     void reader.cancel(signal.reason).catch((error: unknown) => {
-      // error-policy:J6 cancellation has already reached the caller; report teardown failure.
+      // error-policy:J5 the underlying stream already reports this same abort.
+      if (signal.aborted && error === signal.reason) return;
+      // error-policy:J6 cancellation has reached the caller; report other teardown failures.
       reportRendererDiagnostic({
         scope: "native-response.cancel",
         severity: "warning",
