@@ -121,9 +121,12 @@ function queryAgent(agentId: string): HTMLElement | null {
 }
 
 async function selectStatus(label: string): Promise<void> {
-  HTMLElement.prototype.scrollIntoView = vi.fn();
-  fireEvent.keyDown(agent("goal-status-filter"), { key: "Enter" });
-  fireEvent.click(await screen.findByRole("option", { name: label }));
+  const option = await screen.findByRole<HTMLOptionElement>("option", {
+    name: label,
+  });
+  fireEvent.change(agent("goal-status-filter"), {
+    target: { value: option.value },
+  });
 }
 
 afterEach(() => {
