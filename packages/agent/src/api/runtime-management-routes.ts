@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type http from "node:http";
 import {
   isRuntimeManagementOperation,
+  RUNTIME_MANAGEMENT_OWNER_APPROVAL_EXEMPT_OPERATIONS,
   type RuntimeManagementRequest,
   type RuntimeManagementResult,
   readJsonBody,
@@ -21,10 +22,9 @@ const PROPOSAL_TIMEOUT_MS = 5 * 60_000;
 const pending = new PendingRequestMap();
 const claims = new Map<string, { token: string | null; expiresAt: number }>();
 let defaultProposalStore: RuntimeManagementProposalStore | undefined;
-const READ_ONLY_OPERATIONS = new Set<RuntimeManagementRequest["op"]>([
-  "list",
-  "inspect_ssh",
-]);
+const READ_ONLY_OPERATIONS = new Set<RuntimeManagementRequest["op"]>(
+  RUNTIME_MANAGEMENT_OWNER_APPROVAL_EXEMPT_OPERATIONS,
+);
 
 export interface RuntimeManagementRouteContext {
   req: http.IncomingMessage;
