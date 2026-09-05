@@ -774,7 +774,7 @@ async function terminalizeBridgeTrajectory(
 }
 
 // ---------------------------------------------------------------------------
-// appendLlmCall / appendProviderAccess
+// appendLlmCall / appendProviderAccesses
 // ---------------------------------------------------------------------------
 
 function nextTrajectoryUpdatedAt(
@@ -1109,20 +1109,81 @@ async function appendLlmCall(
   }
 }
 
-async function appendProviderAccess(
+type PendingProviderCapture = {
+  params: Record<string, unknown>;
+  recordId: string;
+  timestamp: number;
+};
+
+const pendingProviderBatches = new WeakMap<
+  object,
+  Map<
+    string,
+    {
+      owner: object;
+      stepId: string;
+      captures: PendingProviderCapture[];
+      write: Promise<void>;
+    }
+  >
+>();
+
+/** Coalesce only adjacent, not-yet-started writes on the existing owner queue. */
+function enqueueProviderAccess(
   runtime: IAgentRuntime,
+  owner: object,
   trajectoryId: string,
   stepId: string,
   params: Record<string, unknown>,
-  retryState?: ActiveCaptureRetryState,
+  isEnabled: () => boolean,
 ): Promise<void> {
-  const now =
-    retryState?.timestamp ??
-    (typeof params.timestamp === "number" ? params.timestamp : Date.now());
-  const providerId =
-    retryState?.recordId ??
-    (typeof params.providerId === "string" ? params.providerId : randomUUID());
-  const attempt = retryState?.attempt ?? 0;
+  let batches = pendingProviderBatches.get(runtime);
+  if (!batches) {
+    batches = new Map();
+    pendingProviderBatches.set(runtime, batches);
+  }
+  const capture = {
+    params,
+    recordId:
+      typeof params.providerId === "string" ? params.providerId : randomUUID(),
+    timestamp:
+      typeof params.timestamp === "number" ? params.timestamp : Date.now(),
+  };
+  const pending = batches.get(trajectoryId);
+  if (
+    pending?.owner === owner &&
+    pending.stepId === stepId &&
+    stepWriteQueues.get(runtime)?.get(trajectoryId) === pending.write
+  ) {
+    pending.captures.push(capture);
+    return pending.write;
+  }
+
+  const captures = [capture];
+  const write = enqueueStepWrite(runtime, trajectoryId, async () => {
+    // Once execution starts, new captures need their own queued batch. Do not
+    // remove a newer batch that followed an intervening LLM/lifecycle write.
+    if (batches.get(trajectoryId)?.write === write) {
+      batches.delete(trajectoryId);
+      if (batches.size === 0) pendingProviderBatches.delete(runtime);
+    }
+    if (!isEnabled()) return;
+    const tableReady = await ensureTrajectoriesTable(runtime);
+    if (!tableReady) return;
+    await appendProviderAccesses(runtime, trajectoryId, stepId, captures);
+  });
+  batches.set(trajectoryId, { owner, stepId, captures, write });
+  return write;
+}
+
+async function appendProviderAccesses(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  stepId: string,
+  captures: readonly PendingProviderCapture[],
+  attempt = 0,
+): Promise<void> {
+  if (captures.length === 0) return;
   const persisted = await loadTrajectoryByStepId(runtime, trajectoryId);
   if (!persisted && trajectoryId !== stepId) {
     throw new ElizaError(
@@ -1135,91 +1196,99 @@ async function appendProviderAccess(
   }
   if (persisted && persisted.status !== "active") {
     releaseTrajectoryBridgeState(runtime, persisted.id);
-    reportLateTrajectoryCapture(runtime, stepId, "provider");
+    for (let index = 0; index < captures.length; index++) {
+      reportLateTrajectoryCapture(runtime, stepId, "provider");
+    }
     return;
   }
   const trajectory =
-    persisted ?? createBaseTrajectory(trajectoryId, now, runtime.agentId);
+    persisted ??
+    createBaseTrajectory(trajectoryId, captures[0].timestamp, runtime.agentId);
   const expectedUpdatedAt = trajectory.updatedAt;
 
-  if (
-    trajectory.steps.some((candidate) =>
-      candidate.providerAccesses.some(
-        (candidateAccess) => candidateAccess.providerId === providerId,
-      ),
-    )
-  ) {
-    return;
-  }
+  const seenIds = new Set(
+    trajectory.steps.flatMap((step) =>
+      step.providerAccesses.map((access) => access.providerId),
+    ),
+  );
+  let changed = false;
 
   trajectory.source = trajectory.source || "runtime";
   trajectory.status =
     trajectory.status === "active" ? "active" : trajectory.status;
 
-  const step = ensureStep(trajectory, stepId, now);
-  const access: PersistedProviderAccess = {
-    providerId,
-    providerName: params.providerName as string,
-    timestamp: now,
-    ...(typeof params.startedAt === "number"
-      ? { startedAt: params.startedAt }
-      : {}),
-    ...(typeof params.endedAt === "number" ? { endedAt: params.endedAt } : {}),
-    ...(typeof params.durationMs === "number"
-      ? { durationMs: params.durationMs }
-      : {}),
-    ...(Array.isArray(params.overlapsWith)
-      ? {
-          overlapsWith: params.overlapsWith.map((entry) => {
-            const record = asRecord(entry) as {
-              providerName: string;
-              overlapMs: number;
-            };
-            return {
-              providerName: record.providerName,
-              overlapMs: record.overlapMs,
-            };
-          }),
-        }
-      : {}),
-    data: normalizeJsonRecord(params.data, "providerData"),
-    query: (() => {
-      if (params.query === undefined) return undefined;
-      return normalizeJsonRecord(params.query, "providerQuery");
-    })(),
-    purpose: params.purpose as string,
-  };
-  if (typeof params.runId === "string") {
-    access.runId = params.runId;
-  }
-  if (typeof params.roomId === "string") {
-    access.roomId = params.roomId;
-  }
-  if (typeof params.messageId === "string") {
-    access.messageId = params.messageId;
-  }
-  if (typeof params.executionTraceId === "string") {
-    access.executionTraceId = params.executionTraceId;
-  }
-  if (typeof params.createdAt === "string") {
-    access.createdAt = params.createdAt;
-  }
-  if (typeof params.sha256 === "string") {
-    access.sha256 = params.sha256;
-  }
-  for (const field of [
-    "tokenCount",
-    "position",
-    "spanStart",
-    "spanEnd",
-  ] as const) {
-    if (typeof params[field] === "number") access[field] = params[field];
-  }
+  for (const { params, recordId: providerId, timestamp: now } of captures) {
+    if (seenIds.has(providerId)) continue;
+    const step = ensureStep(trajectory, stepId, now);
+    const access: PersistedProviderAccess = {
+      providerId,
+      providerName: params.providerName as string,
+      timestamp: now,
+      ...(typeof params.startedAt === "number"
+        ? { startedAt: params.startedAt }
+        : {}),
+      ...(typeof params.endedAt === "number"
+        ? { endedAt: params.endedAt }
+        : {}),
+      ...(typeof params.durationMs === "number"
+        ? { durationMs: params.durationMs }
+        : {}),
+      ...(Array.isArray(params.overlapsWith)
+        ? {
+            overlapsWith: params.overlapsWith.map((entry) => {
+              const record = asRecord(entry) as {
+                providerName: string;
+                overlapMs: number;
+              };
+              return {
+                providerName: record.providerName,
+                overlapMs: record.overlapMs,
+              };
+            }),
+          }
+        : {}),
+      data: normalizeJsonRecord(params.data, "providerData"),
+      query: (() => {
+        if (params.query === undefined) return undefined;
+        return normalizeJsonRecord(params.query, "providerQuery");
+      })(),
+      purpose: params.purpose as string,
+    };
+    if (typeof params.runId === "string") {
+      access.runId = params.runId;
+    }
+    if (typeof params.roomId === "string") {
+      access.roomId = params.roomId;
+    }
+    if (typeof params.messageId === "string") {
+      access.messageId = params.messageId;
+    }
+    if (typeof params.executionTraceId === "string") {
+      access.executionTraceId = params.executionTraceId;
+    }
+    if (typeof params.createdAt === "string") {
+      access.createdAt = params.createdAt;
+    }
+    if (typeof params.sha256 === "string") {
+      access.sha256 = params.sha256;
+    }
+    for (const field of [
+      "tokenCount",
+      "position",
+      "spanStart",
+      "spanEnd",
+    ] as const) {
+      if (typeof params[field] === "number") access[field] = params[field];
+    }
 
-  step.providerAccesses.push(access);
-  trajectory.startTime = Math.min(trajectory.startTime, now);
-  trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
-  trajectory.updatedAt = nextTrajectoryUpdatedAt(expectedUpdatedAt, now);
+    step.providerAccesses.push(access);
+    seenIds.add(providerId);
+    changed = true;
+    trajectory.startTime = Math.min(trajectory.startTime, now);
+    trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
+    trajectory.updatedAt = nextTrajectoryUpdatedAt(trajectory.updatedAt, now);
+  }
+  if (!changed) return;
 
   const saveResult = await saveActiveTrajectoryCapture(
     runtime,
@@ -1228,6 +1297,13 @@ async function appendProviderAccess(
     "provider",
     expectedUpdatedAt,
   );
+  if (saveResult === "closed") {
+    // The save boundary reported the first rejected record; retain the
+    // per-record diagnostic count for the rest of this batch as well.
+    for (let index = 1; index < captures.length; index++) {
+      reportLateTrajectoryCapture(runtime, stepId, "provider");
+    }
+  }
   if (saveResult !== "conflict") return;
   if (attempt + 1 >= MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS) {
     throw new ElizaError("Trajectory changed during provider capture", {
@@ -1240,11 +1316,13 @@ async function appendProviderAccess(
     });
   }
   await yieldTrajectoryWriteRetry();
-  await appendProviderAccess(runtime, trajectoryId, stepId, params, {
-    attempt: attempt + 1,
-    recordId: providerId,
-    timestamp: now,
-  });
+  await appendProviderAccesses(
+    runtime,
+    trajectoryId,
+    stepId,
+    captures,
+    attempt + 1,
+  );
 }
 
 /**
@@ -1773,17 +1851,14 @@ export async function installDatabaseTrajectoryLogger(
       return;
     const trajectoryId = resolveBridgeTrajectoryId(runtime, normalized.stepId);
 
-    const writePromise = enqueueStepWrite(runtime, trajectoryId, async () => {
-      if (!bridgeIsEnabled()) return;
-      const tableReady = await ensureTrajectoriesTable(runtime);
-      if (!tableReady) return;
-      await appendProviderAccess(
-        runtime,
-        trajectoryId,
-        normalized.stepId,
-        normalized.params,
-      );
-    });
+    const writePromise = enqueueProviderAccess(
+      runtime,
+      logger,
+      trajectoryId,
+      normalized.stepId,
+      normalized.params,
+      bridgeIsEnabled,
+    );
     const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
   };
@@ -2977,20 +3052,13 @@ export class DatabaseTrajectoryLogger extends Service {
       normalized.stepId,
     );
 
-    const writePromise = enqueueStepWrite(
+    const writePromise = enqueueProviderAccess(
       this.runtime,
+      this,
       trajectoryId,
-      async () => {
-        if (!this.enabled) return;
-        const tableReady = await ensureTrajectoriesTable(this.runtime);
-        if (!tableReady) return;
-        await appendProviderAccess(
-          this.runtime,
-          trajectoryId,
-          normalized.stepId,
-          normalized.params,
-        );
-      },
+      normalized.stepId,
+      normalized.params,
+      () => this.enabled,
     );
     const runtimeKey = this.runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);

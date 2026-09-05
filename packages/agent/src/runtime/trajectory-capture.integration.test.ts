@@ -466,6 +466,246 @@ afterAll(async () => {
 });
 
 describe("trajectory capture -> DB -> viewer", () => {
+  it.each(["public", "installed"] as const)(
+    "%s logger keeps in-flight batches separate and retries them against concurrent writes",
+    async (mode) => {
+      const agentId = crypto.randomUUID();
+      const gated = transactionGatedRuntime(agentId);
+      const first = await databaseLogger(mode, agentId, gated.runtime);
+      const second = await databaseLogger(mode, agentId);
+      const ids = Array.from({ length: 5 }, () => crypto.randomUUID());
+      try {
+        const trajectoryId = await first.logger.startTrajectory(agentId, {
+          source: "batch-race",
+        });
+        const stepId = first.logger.startStep(trajectoryId);
+        await flushTrajectoryWrites(first.runtime, trajectoryId);
+        const capture = (providerId: string) => ({
+          stepId,
+          providerId,
+          providerName: "batch-race",
+          purpose: "context",
+          data: { text: providerId },
+        });
+        gated.gate.arm();
+        first.logger.logProviderAccess(capture(ids[0]));
+        first.logger.logProviderAccess(capture(ids[1]));
+        await gated.gate.entered;
+        // These arrivals must not mutate a batch already inside persistence.
+        first.logger.logProviderAccess(capture(ids[2]));
+        first.logger.logProviderAccess(capture(ids[3]));
+        second.logger.logProviderAccess(capture(ids[4]));
+        await flushTrajectoryWrites(second.runtime);
+        gated.gate.release();
+        await flushTrajectoryWrites(first.runtime);
+        const detail = await first.logger.getTrajectoryDetail(trajectoryId);
+        expect(
+          detail?.steps
+            ?.flatMap((step) => step.providerAccesses ?? [])
+            .map((access) => access.providerId),
+        ).toEqual([ids[4], ...ids.slice(0, 4)]);
+        await first.logger.endTrajectory(trajectoryId, "completed");
+      } finally {
+        gated.gate.release();
+        await second.logger.stop();
+        await first.logger.stop();
+      }
+    },
+  );
+
+  it.each(["public", "installed"] as const)(
+    "%s logger exposes batch rollback and accepts a complete explicit retry",
+    async (mode) => {
+      const batchRuntime = sharedDatabaseRuntime(crypto.randomUUID());
+      const baseDb = (
+        batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }
+      ).adapter.db;
+      let failNext = false;
+      const failure = new Error("batch transaction failure");
+      (batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }).adapter =
+        {
+          db: {
+            execute: baseDb.execute.bind(baseDb),
+            transaction: <T>(callback: (tx: TestSqlExecutor) => Promise<T>) =>
+              baseDb.transaction(async (tx) => {
+                const result = await callback(tx);
+                if (failNext) {
+                  failNext = false;
+                  throw failure;
+                }
+                return result;
+              }),
+          },
+        };
+      const { logger } = await databaseLogger(
+        mode,
+        batchRuntime.agentId,
+        batchRuntime,
+      );
+      try {
+        const trajectoryId = await logger.startTrajectory(
+          batchRuntime.agentId,
+          { source: "batch-rollback" },
+        );
+        const stepId = logger.startStep(trajectoryId);
+        await flushTrajectoryWrites(batchRuntime, trajectoryId);
+        const captures = Array.from({ length: 3 }, () => ({
+          stepId,
+          providerId: crypto.randomUUID(),
+          providerName: "batch-rollback",
+          purpose: "context",
+          data: { text: "Keep the entire batch." },
+        }));
+        failNext = true;
+        for (const capture of captures) logger.logProviderAccess(capture);
+        await expect(
+          flushTrajectoryWrites(batchRuntime, trajectoryId),
+        ).rejects.toMatchObject({
+          code: "TRAJECTORY_SAVE_FAILED",
+          cause: failure,
+        });
+        const rolledBack = await loadTrajectoryById(batchRuntime, trajectoryId);
+        expect(
+          rolledBack?.steps.flatMap((step) => step.providerAccesses),
+        ).toHaveLength(0);
+        expect(batchRuntime.reportError).toHaveBeenCalledWith(
+          "TrajectoryStorage.write",
+          expect.objectContaining({
+            code: "TRAJECTORY_SAVE_FAILED",
+            cause: failure,
+          }),
+          expect.objectContaining({ diagnosticOnly: true }),
+        );
+        for (const capture of captures) logger.logProviderAccess(capture);
+        await flushTrajectoryWrites(batchRuntime, trajectoryId);
+        const retried = await loadTrajectoryById(batchRuntime, trajectoryId);
+        expect(
+          retried?.steps
+            .flatMap((step) => step.providerAccesses)
+            .map((access) => access.providerId),
+        ).toEqual(captures.map((capture) => capture.providerId));
+        await logger.endTrajectory(trajectoryId, "completed");
+      } finally {
+        await logger.stop();
+      }
+    },
+  );
+
+  it.each(["public", "installed"] as const)(
+    "%s logger batches adjacent providers without crossing another capture",
+    async (mode) => {
+      const batchRuntime = sharedDatabaseRuntime(crypto.randomUUID());
+      const baseDb = (
+        batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }
+      ).adapter.db;
+      const transaction = vi.fn();
+      (batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }).adapter =
+        {
+          db: {
+            execute: baseDb.execute.bind(baseDb),
+            transaction: <T>(callback: (tx: TestSqlExecutor) => Promise<T>) => {
+              transaction();
+              return baseDb.transaction(callback);
+            },
+          },
+        };
+      const { logger } = await databaseLogger(
+        mode,
+        batchRuntime.agentId,
+        batchRuntime,
+      );
+      const trajectoryId = await logger.startTrajectory(batchRuntime.agentId, {
+        source: "test",
+      });
+      const stepId = logger.startStep(trajectoryId);
+      await flushTrajectoryWrites(batchRuntime, trajectoryId);
+      transaction.mockClear();
+
+      const timestamp = Date.now();
+      const ids = Array.from({ length: 40 }, () => crypto.randomUUID());
+      const text = "  Repeated provider evidence must remain exact.\n".repeat(
+        200,
+      );
+      for (const providerId of ids) {
+        logger.logProviderAccess({
+          stepId,
+          providerId,
+          timestamp,
+          providerName: "same-provider",
+          purpose: "context",
+          data: { text },
+        });
+      }
+      await flushTrajectoryWrites(batchRuntime, trajectoryId);
+      expect(transaction).toHaveBeenCalledTimes(1);
+      const detail = await logger.getTrajectoryDetail(trajectoryId);
+      const accesses = detail?.steps?.flatMap(
+        (step) => step.providerAccesses ?? [],
+      );
+      expect(accesses?.map((access) => access.providerId)).toEqual(ids);
+      expect(
+        accesses?.every(
+          (access) =>
+            access.timestamp === timestamp && access.data?.text === text,
+        ),
+      ).toBe(true);
+      expect(
+        (await loadTrajectoryById(batchRuntime, trajectoryId))?.steps.reduce(
+          (sum, step) => sum + step.providerAccesses.length,
+          0,
+        ),
+      ).toBe(40);
+
+      transaction.mockClear();
+      const firstId = crypto.randomUUID();
+      const lastId = crypto.randomUUID();
+      logger.logProviderAccess({
+        stepId,
+        providerId: firstId,
+        providerName: "before-llm",
+        purpose: "context",
+        data: {},
+      });
+      logger.logLlmCall(
+        llmCall(stepId, "test", "barrier", "Preserve this model result."),
+      );
+      logger.logProviderAccess({
+        stepId,
+        providerId: lastId,
+        providerName: "after-llm",
+        purpose: "context",
+        data: {},
+      });
+      await flushTrajectoryWrites(batchRuntime, trajectoryId);
+      expect(transaction).toHaveBeenCalledTimes(3);
+      const after = await logger.getTrajectoryDetail(trajectoryId);
+      expect(
+        after?.steps
+          ?.flatMap((step) => step.providerAccesses ?? [])
+          .map((access) => access.providerId),
+      ).toEqual([...ids, firstId, lastId]);
+      expect(after?.steps?.flatMap((step) => step.llmCalls ?? [])).toHaveLength(
+        1,
+      );
+
+      transaction.mockClear();
+      for (const providerId of ids) {
+        logger.logProviderAccess({
+          stepId,
+          providerId,
+          timestamp,
+          providerName: "same-provider",
+          purpose: "context",
+          data: { text },
+        });
+      }
+      await flushTrajectoryWrites(batchRuntime, trajectoryId);
+      expect(transaction).not.toHaveBeenCalled();
+      await logger.endTrajectory(trajectoryId, "completed");
+      await logger.stop();
+    },
+  );
+
   it("retains required provider fields after bounded SQL persistence", async () => {
     const logger = runtime.getService(
       "trajectories",
