@@ -25,7 +25,7 @@
  * live discord.js `Guild` to it.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { ChannelType, PermissionsBitField } from "discord.js";
 import {
 	BUILT_IN_GUILD_TEMPLATES,
@@ -668,7 +668,7 @@ function auditReason(
 ): string {
 	const prefix = context.reasonPrefix ?? "eliza guild management";
 	const extra = request.reason?.trim();
-	return extra ? `${prefix}: ${extra}`.slice(0, 512) : prefix;
+	return extra ? truncateWellFormed(toWellFormedUnicode(`${prefix}: ${extra}`), 512) : prefix;
 }
 
 async function authorizeMutation(
