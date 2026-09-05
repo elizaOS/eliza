@@ -85,6 +85,7 @@ import {
   inspectAndroidAppBundle,
   resolveAndroidArtifactKind,
 } from "./lib/android-cloud-artifact-audit.mjs";
+import { injectAndroidRuntimeBytePreservation } from "./lib/android-runtime-packaging.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { artifactStaleness } from "./lib/artifact-staleness.mjs";
 import {
@@ -4327,6 +4328,7 @@ function patchAndroidGradle({ cloudBuild = false } = {}) {
     patched = injectAndroidSmsGatewayBuildConfigFields(patched);
     patched = injectNoCompressTarGz(patched);
     patched = injectNativeLibLegacyPackaging(patched);
+    patched = injectAndroidRuntimeBytePreservation(patched);
     patched = injectAospAssetThinning(patched);
     patched = injectCopyForkLlamaLibTask(patched);
     patched = injectAndroidBackgroundRunnerAarFlatDir(patched);
