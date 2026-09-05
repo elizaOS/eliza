@@ -5,7 +5,7 @@
  * zero. A missing row is a source failure, never an implicit healthy zero.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 export type AccountBillingAggregateSource =
   | "cloud_characters"

@@ -13,7 +13,7 @@
  * - agent_restore: Restore from backup
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   and,
   desc,

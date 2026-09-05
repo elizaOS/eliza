@@ -6,7 +6,7 @@
  * `organizations` is the sole billing authority.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   type ActiveBillableResource,

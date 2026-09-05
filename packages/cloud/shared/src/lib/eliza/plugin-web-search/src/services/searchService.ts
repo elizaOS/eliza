@@ -1,5 +1,5 @@
 // Wires hosted Eliza agent searchService behavior for cloud runtime services.
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core/edge";
 import type { HostedSearchResult } from "../../../../services/google-search";
 import type { IWebSearchService, SearchOptions, SearchResponse } from "../types";
 import { executeKeylessMcpSearch } from "./keyless-search";

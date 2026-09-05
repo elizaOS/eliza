@@ -10,7 +10,7 @@
  * or repo directly.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { logger } from "../utils/logger";
 import type { AppContainerProvider } from "./app-container-provider";
 import type { AppContainerNodeSlotClaim } from "./app-container-store-queries";

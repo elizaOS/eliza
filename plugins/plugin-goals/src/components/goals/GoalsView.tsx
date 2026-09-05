@@ -23,6 +23,7 @@
  */
 
 import { client } from "@elizaos/ui/api";
+import { fetchWithDeadline } from "@elizaos/ui/utils";
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -86,15 +87,17 @@ export async function getGoalsJsonWithFetch<T>(
   timeoutMs: number = GOALS_VIEW_JSON_TIMEOUT_MS,
   callerSignal?: AbortSignal,
 ): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(`Goals request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
+  return fetchWithDeadline(
+    url,
+    { method: "GET" },
+    async (response) => {
+      if (!response.ok) {
+        throw new Error(`Goals request failed (${response.status})`);
+      }
+      return (await response.json()) as T;
+    },
+    { timeoutMs, fetchImpl, ...(callerSignal ? { signal: callerSignal } : {}) },
+  );
 }
 
 async function getGoals(signal?: AbortSignal): Promise<GoalsWire> {

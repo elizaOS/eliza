@@ -5,7 +5,7 @@
  * Injects {{appSystemPrefix}}, {{appSystemSuffix}}, and {{appResponseStyle}} template variables.
  */
 
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core/edge";
 import {
   buildAppSystemContext,
   getPresetFromEnv,

@@ -1,6 +1,6 @@
 // Coordinates cloud service seo behavior behind route handlers.
 import { Buffer } from "node:buffer";
-import { assertModelOutputComplete } from "@elizaos/core";
+import { assertModelOutputComplete } from "@elizaos/core/edge";
 import { generateText } from "ai";
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client";

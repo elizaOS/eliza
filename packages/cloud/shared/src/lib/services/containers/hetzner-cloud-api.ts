@@ -12,7 +12,7 @@
  * `ssh2` elsewhere, but this module itself has no Node-only imports.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import { containersEnv } from "../../config/containers-env";
 import { logger } from "../../utils/logger";
 import type {

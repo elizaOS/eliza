@@ -1,5 +1,6 @@
 /** Sends APNs alerts from Workerd with provider-token authentication and typed rejection results. */
 
+import { bytesToBase64Url, sha256Base64Url, stringToBase64Url } from "../crypto/worker";
 import { logger } from "../utils/logger";
 import type { MobilePushDeliveryResult, MobilePushMessage } from "./types";
 
@@ -51,10 +52,7 @@ interface CachedProviderToken {
 }
 
 function base64url(value: Uint8Array | string): string {
-  const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  return typeof value === "string" ? stringToBase64Url(value) : bytesToBase64Url(value);
 }
 
 function pkcs8Bytes(pem: string): Uint8Array {
@@ -200,13 +198,7 @@ export class CloudApnsProvider {
         payloadBytes,
       );
     }
-    const collapseId = message.collapseKey
-      ? base64url(
-          new Uint8Array(
-            await crypto.subtle.digest("SHA-256", new TextEncoder().encode(message.collapseKey)),
-          ),
-        )
-      : undefined;
+    const collapseId = message.collapseKey ? await sha256Base64Url(message.collapseKey) : undefined;
     const response = await this.request(`${origin}/3/device/${encodeURIComponent(token)}`, {
       method: "POST",
       headers: {

@@ -24,6 +24,7 @@ import type {
   FrontendFileEntry,
   FrontendManifest,
 } from "../../db/schemas/app-frontend-deployments";
+import { sha256Hex as workerSha256Hex } from "../crypto/worker";
 import { ObjectNamespaces } from "../storage/object-namespace";
 import { getRuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { serializeInlineScriptValue } from "../utils/html";
@@ -171,10 +172,7 @@ function toBytes(file: FrontendUploadFile): Uint8Array<ArrayBuffer> {
 }
 
 export async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return workerSha256Hex(bytes);
 }
 
 /** Deterministic content hash over the file set + serve config (change detection). */

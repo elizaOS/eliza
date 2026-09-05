@@ -20,7 +20,7 @@
  * prompt-integrity rule.
  */
 
-import { ElizaError, isModelOutputLimitFinishReason } from "@elizaos/core";
+import { ElizaError, isModelOutputLimitFinishReason } from "@elizaos/core/edge";
 import { generateText } from "ai";
 import type { Bindings } from "../../../types/cloud-worker-env";
 import { getLanguageModel, ProviderConfigurationError } from "../../providers/language-model";

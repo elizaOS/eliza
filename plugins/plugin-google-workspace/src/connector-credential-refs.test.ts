@@ -126,6 +126,9 @@ function createDurableStoreService(vaultEntries: Map<string, string>) {
 /** Vault-shaped durable service (`set`/`get`), as registered under vault names. */
 function createDurableVaultService(vaultEntries: Map<string, string>) {
   return {
+    async has(key: string): Promise<boolean> {
+      return vaultEntries.has(key);
+    },
     async set(key: string, value: string): Promise<void> {
       vaultEntries.set(key, value);
     },

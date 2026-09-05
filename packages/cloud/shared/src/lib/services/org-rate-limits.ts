@@ -7,7 +7,7 @@
  * #23019; selector keys such as `paid` are not subscription labels.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, eq, sql } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { orgRateLimitOverridesRepository } from "../../db/repositories/org-rate-limit-overrides";

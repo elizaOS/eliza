@@ -15,7 +15,7 @@ import {
   logger,
   type Memory,
   type State,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { oauthService } from "../../../services/oauth";
 import { type OAuthConnectionRole } from "../../../services/oauth/types";
 import { type ActionWithParams, defineActionParameters } from "../../plugin-cloud-bootstrap/types";

@@ -17,7 +17,7 @@
  * secret. PLAID_SECRET remains an active-environment compatibility alias.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import { z } from "zod";
 
 const PLAID_DEFAULT_HOST = "https://sandbox.plaid.com";

@@ -1,6 +1,6 @@
 /** Builds bounded, non-PII lifecycle context for personal Eliza phone calls. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;

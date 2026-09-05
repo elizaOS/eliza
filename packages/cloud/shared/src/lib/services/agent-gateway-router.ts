@@ -1,5 +1,5 @@
 /** Routes connector messages to their owning Cloud agent and returns transport-ready replies. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { createHash, randomUUID } from "crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/client";

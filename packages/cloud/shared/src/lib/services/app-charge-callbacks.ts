@@ -1,5 +1,5 @@
 /** Coordinates app-charge callback delivery and authorized room-message projection. */
-import { MemoryType, stringToUuid } from "@elizaos/core";
+import { MemoryType, stringToUuid } from "@elizaos/core/edge";
 import { randomUUID } from "crypto";
 import Decimal from "decimal.js";
 import { and, eq, lte, or } from "drizzle-orm";

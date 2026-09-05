@@ -2,7 +2,7 @@
  * Service for managing app earnings and revenue tracking.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   type AppEarningsTransaction,
   appEarningsRepository,

@@ -5,7 +5,7 @@
  * Provides retrieval by runId and access to the most recent trace.
  */
 
-import type { UUID } from "@elizaos/core";
+import type { UUID } from "@elizaos/core/edge";
 import type { DebugTrace } from "./types";
 
 // ============================================================================

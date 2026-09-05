@@ -14,6 +14,6 @@ import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.j
   type: "json",
 };
 
-export { isConnectorConfigured, isWechatConfigured } from "@elizaos/core";
+export { isConnectorConfigured, isWechatConfigured } from "@elizaos/core/edge";
 
 export const CONNECTOR_PLUGINS: Record<string, string> = channelPluginMap;

@@ -6,7 +6,7 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import { discordChannelsRepository } from "../../../db/repositories/discord-channels";
 import { discordGuildsRepository } from "../../../db/repositories/discord-guilds";
 import { discordFetch } from "../../utils/discord-api";

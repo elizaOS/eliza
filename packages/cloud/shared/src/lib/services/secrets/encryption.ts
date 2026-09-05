@@ -1,6 +1,6 @@
 /** Coordinates Cloud service encryption behavior behind route handlers. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";

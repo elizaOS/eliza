@@ -1,5 +1,5 @@
 // Coordinates cloud service discord behavior behind route handlers.
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import { logger } from "../utils/logger";
 
 const DISCORD_API = "https://discord.com/api/v10";

@@ -12,7 +12,7 @@
  *  4. cleanupContainerVPN(nodeName) — removes the VPN node when the container dies
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { logger } from "../utils/logger";
 import { HeadscaleClient, type HeadscaleNode, headscaleClient } from "./headscale-client";
 

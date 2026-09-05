@@ -2,7 +2,7 @@
  * Resolves trusted X DM senders to tenant-safe personal accounts and links a
  * verified owner OAuth identity without merging accounts implicitly.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, eq, or, sql } from "drizzle-orm";
 import { dbWrite } from "../../../db/helpers";
 import { identityLinks } from "../../../db/schemas/identity-links";

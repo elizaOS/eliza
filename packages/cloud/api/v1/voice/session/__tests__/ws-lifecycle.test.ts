@@ -10,9 +10,9 @@
  */
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import * as workerCoreStub from "@elizaos/core/edge";
 import { decode, encode } from "@msgpack/msgpack";
 import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
-import * as workerCoreStub from "../../../../src/stubs/elizaos-core";
 import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 // Break the logger -> @elizaos/core transitive import chain (repo-standard
@@ -24,6 +24,7 @@ class MockElizaError extends Error {}
 mock.module("@/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/cloud-shared/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/core", () => ({
+  ...coreTestContract,
   canRequesterMutateDocument: coreTestContract.canRequesterMutateDocument,
   ChannelType: coreTestContract.ChannelType,
   DatabaseAdapter: coreTestContract.DatabaseAdapter,

@@ -4,7 +4,7 @@
  * admission layers, so callers do not recalculate window state after mutation.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";

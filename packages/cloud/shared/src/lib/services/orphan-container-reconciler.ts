@@ -6,7 +6,7 @@
  * adapters supply their name parser, status vocabulary, and ownership query.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { logger } from "../utils/logger";
 import { shellQuote } from "./docker-sandbox-utils";

@@ -5,7 +5,7 @@ export {
   type ModelProvider,
 } from "./base";
 
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core/edge";
 import type { ModelInfo, ModelProvider } from "./base";
 import { AnthropicMcpCompatibility } from "./providers/anthropic";
 import { GoogleMcpCompatibility } from "./providers/google";

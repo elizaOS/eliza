@@ -1,5 +1,5 @@
 // Wires hosted Eliza agent native planner guards behavior for cloud runtime services.
-import { parseJSONObjectFromText } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/core/edge";
 import type { ParsedNativePlannerDecision } from "../types";
 
 const BUILT_IN_RESPONSE_ACTIONS = new Set(["REPLY", "NONE"]);

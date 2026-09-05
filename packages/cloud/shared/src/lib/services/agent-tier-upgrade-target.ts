@@ -40,7 +40,7 @@
  * and identity-copy inputs before calling in.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, asc, desc, eq, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";

@@ -5,7 +5,7 @@
  * an isolated real PostgreSQL-compatible engine.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";

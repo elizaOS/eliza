@@ -1,39 +1,222 @@
 /**
  * Shared system permission contracts.
  *
- * `PermissionId` is the canonical union covering OS integrations across
- * macOS / win32 / linux / iOS / Android / web.
+ * The catalog owns platform-neutral metadata once. Shells provide explicit
+ * platform projections for what they implement or display.
  */
 
-export type PermissionId =
-  | "screen-recording"
-  | "accessibility"
-  | "reminders"
-  | "calendar"
-  | "health"
-  | "screentime"
-  | "contacts"
-  | "notes"
-  | "microphone"
-  | "camera"
-  | "location"
-  | "shell"
-  | "website-blocking"
-  | "notifications"
-  | "full-disk"
-  | "automation"
-  | "speech-recognition"
-  | "photos"
-  | "phone"
-  | "messages"
-  | "wifi"
-  | "bluetooth"
-  | "app-blocking"
-  | "usage-access"
-  | "overlay"
-  | "write-settings"
-  | "local-network"
-  | "battery-optimization";
+export type Platform = "darwin" | "win32" | "linux" | "ios" | "android" | "web";
+
+/** Canonical metadata independent of any shell's implementation support. */
+export const PERMISSION_DEFINITIONS = [
+  {
+    id: "accessibility",
+    name: "Accessibility",
+    description:
+      "Control mouse, keyboard, and interact with other applications",
+    icon: "cursor",
+    requiredForFeatures: ["computeruse", "browser"],
+  },
+  {
+    id: "screen-recording",
+    name: "Screen Recording",
+    description: "Capture screen content for screenshots and vision",
+    icon: "monitor",
+    requiredForFeatures: ["computeruse", "vision"],
+  },
+  {
+    id: "microphone",
+    name: "Microphone",
+    description: "Voice input for talk mode and speech recognition",
+    icon: "mic",
+    requiredForFeatures: ["talkmode", "voice"],
+  },
+  {
+    id: "camera",
+    name: "Camera",
+    description: "Video input for vision and video capture",
+    icon: "camera",
+    requiredForFeatures: ["camera", "vision"],
+  },
+  {
+    id: "shell",
+    name: "Shell Access",
+    description: "Execute terminal commands and scripts",
+    icon: "terminal",
+    requiredForFeatures: ["shell"],
+  },
+  {
+    id: "website-blocking",
+    name: "Website Blocking",
+    description:
+      "Edit the system hosts file to block distracting websites. This may require admin/root approval each time.",
+    icon: "shield-ban",
+    requiredForFeatures: ["website-blocker"],
+  },
+  {
+    id: "location",
+    name: "Location",
+    description:
+      "Read the device's current location for travel-time, time-zone, and place-aware planning. Mobile uses GPS; desktop falls back to coarse IP geolocation.",
+    icon: "map-pin",
+    requiredForFeatures: ["travel-time", "location"],
+  },
+  {
+    id: "reminders",
+    name: "Apple Reminders",
+    description: "Create and update Apple Reminders for LifeOps tasks",
+    icon: "list-todo",
+    requiredForFeatures: ["lifeops", "reminders"],
+  },
+  {
+    id: "calendar",
+    name: "Apple Calendar",
+    description: "Read and update Apple Calendar events for LifeOps scheduling",
+    icon: "calendar",
+    requiredForFeatures: ["lifeops", "calendar"],
+  },
+  {
+    id: "health",
+    name: "Apple Health",
+    description:
+      "Read HealthKit data such as sleep and wellness signals from paired devices",
+    icon: "heart-pulse",
+    requiredForFeatures: ["lifeops", "health", "sleep"],
+  },
+  {
+    id: "screentime",
+    name: "Screen Time",
+    description: "Read Screen Time and app-usage signals",
+    icon: "hourglass",
+    requiredForFeatures: ["lifeops", "screentime"],
+  },
+  {
+    id: "contacts",
+    name: "Contacts",
+    description: "Read and edit Apple Contacts for message name resolution",
+    icon: "contact",
+    requiredForFeatures: ["imessage", "contacts"],
+  },
+  {
+    id: "notes",
+    name: "Apple Notes",
+    description: "Read and create Apple Notes through user-approved automation",
+    icon: "notebook-tabs",
+    requiredForFeatures: ["lifeops", "notes"],
+  },
+  {
+    id: "notifications",
+    name: "Notifications",
+    description:
+      "Show system notifications for reminders and background results",
+    icon: "bell",
+    requiredForFeatures: ["notifications", "lifeops"],
+  },
+  {
+    id: "full-disk",
+    name: "Full Disk Access",
+    description:
+      "Read protected local app data such as Messages databases when explicitly enabled",
+    icon: "hard-drive",
+    requiredForFeatures: ["imessage", "local-data"],
+  },
+  {
+    id: "automation",
+    name: "Automation",
+    description: "Control other macOS apps through Apple Events",
+    icon: "workflow",
+    requiredForFeatures: ["messages", "notes", "automation"],
+  },
+  {
+    id: "speech-recognition",
+    name: "Speech Recognition",
+    description: "Transcribe speech through the platform speech recognizer",
+    icon: "audio-lines",
+    requiredForFeatures: ["talkmode", "voice", "swabble"],
+  },
+  {
+    id: "photos",
+    name: "Photos",
+    description: "Read or save photos and videos when capturing media",
+    icon: "image",
+    requiredForFeatures: ["camera", "media"],
+  },
+  {
+    id: "phone",
+    name: "Phone",
+    description: "Place calls and read recent call history on Android",
+    icon: "phone",
+    requiredForFeatures: ["phone", "dialer"],
+  },
+  {
+    id: "messages",
+    name: "Messages",
+    description: "Send SMS and read message threads on Android",
+    icon: "message-square",
+    requiredForFeatures: ["messages", "sms"],
+  },
+  {
+    id: "wifi",
+    name: "Wi-Fi Scans",
+    description:
+      "Scan nearby Wi-Fi networks; Android gates scan results behind Location",
+    icon: "wifi",
+    requiredForFeatures: ["wifi", "gateway"],
+  },
+  {
+    id: "bluetooth",
+    name: "Bluetooth",
+    description: "Discover and connect to nearby Bluetooth accessories",
+    icon: "bluetooth",
+    requiredForFeatures: ["gateway"],
+  },
+  {
+    id: "app-blocking",
+    name: "App Blocking",
+    description:
+      "Select and block distracting apps with Screen Time or Android usage controls",
+    icon: "shield-ban",
+    requiredForFeatures: ["app-blocker", "lifeops"],
+  },
+  {
+    id: "usage-access",
+    name: "Usage Access",
+    description: "Read Android app usage for Screen Time and app blocking",
+    icon: "hourglass",
+    requiredForFeatures: ["screentime", "app-blocker"],
+  },
+  {
+    id: "overlay",
+    name: "Draw Over Apps",
+    description: "Show Android blocking overlays above distracting apps",
+    icon: "app-window",
+    requiredForFeatures: ["app-blocker"],
+  },
+  {
+    id: "write-settings",
+    name: "Write Settings",
+    description: "Change Android system brightness and related device settings",
+    icon: "settings",
+    requiredForFeatures: ["device-settings"],
+  },
+  {
+    id: "local-network",
+    name: "Local Network",
+    description: "Discover nearby gateways and devices on the local network",
+    icon: "network",
+    requiredForFeatures: ["gateway", "device-discovery"],
+  },
+  {
+    id: "battery-optimization",
+    name: "Battery Optimization",
+    description:
+      "Allow background monitoring to keep LifeOps and device signals current",
+    icon: "battery",
+    requiredForFeatures: ["lifeops", "mobile-signals"],
+  },
+] as const;
+
+export type PermissionId = (typeof PERMISSION_DEFINITIONS)[number]["id"];
 
 /** Legacy narrow alias for older dashboard callers. New code should use PermissionId. */
 export type SystemPermissionId =
@@ -45,36 +228,8 @@ export type SystemPermissionId =
   | "website-blocking"
   | "location";
 
-export const PERMISSION_IDS: readonly PermissionId[] = [
-  "screen-recording",
-  "accessibility",
-  "reminders",
-  "calendar",
-  "health",
-  "screentime",
-  "contacts",
-  "notes",
-  "microphone",
-  "camera",
-  "location",
-  "shell",
-  "website-blocking",
-  "notifications",
-  "full-disk",
-  "automation",
-  "speech-recognition",
-  "photos",
-  "phone",
-  "messages",
-  "wifi",
-  "bluetooth",
-  "app-blocking",
-  "usage-access",
-  "overlay",
-  "write-settings",
-  "local-network",
-  "battery-optimization",
-] as const;
+export const PERMISSION_IDS: readonly PermissionId[] =
+  PERMISSION_DEFINITIONS.map(({ id }) => id);
 
 export function isPermissionId(value: unknown): value is PermissionId {
   return (
@@ -100,8 +255,6 @@ export type PermissionRestrictedReason =
   | "platform_unsupported"
   | "os_policy";
 
-export type Platform = "darwin" | "win32" | "linux" | "ios" | "android" | "web";
-
 /**
  * Feature reference attached to permission requests/blocks. Structured form
  * is the wire format; the dotted `<app>.<area>.<action>` string is the
@@ -124,8 +277,23 @@ export interface SystemPermissionDefinition {
   name: string;
   description: string;
   icon: string;
-  platforms: Platform[];
-  requiredForFeatures: string[];
+  platforms: readonly Platform[];
+  requiredForFeatures: readonly string[];
+}
+
+/** Complete platform projection for one consumer surface. */
+export type PermissionPlatformProjection = Readonly<
+  Record<PermissionId, readonly Platform[]>
+>;
+
+/** Joins canonical metadata to a consumer-owned support/display projection. */
+export function projectPermissionDefinitions(
+  projection: PermissionPlatformProjection,
+): readonly SystemPermissionDefinition[] {
+  return PERMISSION_DEFINITIONS.map((definition) => ({
+    ...definition,
+    platforms: projection[definition.id],
+  }));
 }
 
 export interface PermissionState {

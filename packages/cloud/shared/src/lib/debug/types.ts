@@ -4,7 +4,7 @@
  * Comprehensive type definitions for execution tracing across cloud chat runs.
  */
 
-import type { UUID } from "@elizaos/core";
+import type { UUID } from "@elizaos/core/edge";
 
 // ============================================================================
 // Debug Event Types (using 'debug:' prefix convention)

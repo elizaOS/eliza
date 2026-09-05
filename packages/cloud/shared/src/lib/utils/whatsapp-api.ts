@@ -5,7 +5,7 @@
  * Handles webhook signature verification, message sending, and payload parsing.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import crypto from "crypto";
 import { z } from "zod";
 import { logger } from "./logger";

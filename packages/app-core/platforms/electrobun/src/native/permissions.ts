@@ -17,8 +17,8 @@ import {
 } from "./mac-window-effects";
 import type {
   AllPermissionsState,
+  PermissionId,
   PermissionState,
-  SystemPermissionId,
 } from "./permissions-shared";
 import {
   isPermissionApplicable,
@@ -33,7 +33,7 @@ const NOTIFICATION_AUTHORIZATION_REQUEST_TIMEOUT_MS = 30_000;
 const NATIVE_NOTIFICATION_QUERY_PENDING = -2;
 
 interface DesktopPermissionProber {
-  id: SystemPermissionId;
+  id: PermissionId;
   check(): Promise<PermissionState>;
   request(options: { reason: string }): Promise<PermissionState>;
 }
@@ -43,10 +43,10 @@ type PermissionProbersModule = {
 };
 
 let probersByIdPromise: Promise<
-  Map<SystemPermissionId, DesktopPermissionProber>
+  Map<PermissionId, DesktopPermissionProber>
 > | null = null;
 
-function isKnownPermissionId(value: unknown): value is SystemPermissionId {
+function isKnownPermissionId(value: unknown): value is PermissionId {
   return (
     typeof value === "string" &&
     SYSTEM_PERMISSIONS.some((permission) => permission.id === value)
@@ -114,7 +114,7 @@ async function importPermissionProbersModule(): Promise<PermissionProbersModule>
 }
 
 async function getProbersById(): Promise<
-  Map<SystemPermissionId, DesktopPermissionProber>
+  Map<PermissionId, DesktopPermissionProber>
 > {
   probersByIdPromise ??= importPermissionProbersModule().then(
     ({ ALL_PROBERS }) =>
@@ -124,7 +124,7 @@ async function getProbersById(): Promise<
 }
 
 function buildPermissionState(
-  id: SystemPermissionId,
+  id: PermissionId,
   status: PermissionState["status"],
   options: Partial<Omit<PermissionState, "id" | "status">> = {},
 ): PermissionState {
@@ -305,14 +305,14 @@ export async function runSettingsCommand(
 }
 
 export function buildPermissionSettingsCommand(
-  id: SystemPermissionId,
+  id: PermissionId,
   targetPlatform: typeof platform = platform,
 ): string[] | null {
   if (targetPlatform === "darwin") {
     return ["open", getMacPermissionDeepLink(id)];
   }
   if (targetPlatform === "win32") {
-    const settingsMap: Partial<Record<SystemPermissionId, string>> = {
+    const settingsMap: Partial<Record<PermissionId, string>> = {
       microphone: "ms-settings:privacy-microphone",
       camera: "ms-settings:privacy-webcam",
       location: "ms-settings:privacy-location",
@@ -322,7 +322,7 @@ export function buildPermissionSettingsCommand(
     return uri ? ["cmd", "/c", "start", "", uri] : null;
   }
 
-  const settingsMap: Partial<Record<SystemPermissionId, string>> = {
+  const settingsMap: Partial<Record<PermissionId, string>> = {
     microphone: "privacy",
     camera: "privacy",
     location: "privacy",
@@ -342,7 +342,7 @@ export function buildPermissionSettingsCommand(
   ];
 }
 
-async function openPermissionSettings(id: SystemPermissionId): Promise<void> {
+async function openPermissionSettings(id: PermissionId): Promise<void> {
   if (platform === "darwin") {
     try {
       const command = buildPermissionSettingsCommand(id, platform);
@@ -373,7 +373,7 @@ async function openPermissionSettings(id: SystemPermissionId): Promise<void> {
 
 export class PermissionManager {
   private sendToWebview: SendToWebview | null = null;
-  private cache: Map<SystemPermissionId, PermissionState> = new Map();
+  private cache: Map<PermissionId, PermissionState> = new Map();
   private cacheTimeoutMs = DEFAULT_CACHE_TIMEOUT_MS;
   private shellEnabled = true;
 
@@ -391,7 +391,7 @@ export class PermissionManager {
     return this.shellEnabled;
   }
 
-  private getFromCache(id: SystemPermissionId): PermissionState | null {
+  private getFromCache(id: PermissionId): PermissionState | null {
     const cached = this.cache.get(id);
     if (!cached) return null;
     if (Date.now() - cached.lastChecked >= this.cacheTimeoutMs) return null;
@@ -403,7 +403,7 @@ export class PermissionManager {
   }
 
   async checkPermission(
-    id: SystemPermissionId,
+    id: PermissionId,
     forceRefresh = false,
   ): Promise<PermissionState> {
     if (!isPermissionApplicable(id, platform)) {
@@ -459,7 +459,7 @@ export class PermissionManager {
     }, {} as AllPermissionsState);
   }
 
-  async requestPermission(id: SystemPermissionId): Promise<PermissionState> {
+  async requestPermission(id: PermissionId): Promise<PermissionState> {
     if (!isPermissionApplicable(id, platform)) {
       return buildPermissionState(id, "not-applicable", {
         canRequest: false,
@@ -501,13 +501,13 @@ export class PermissionManager {
     return state;
   }
 
-  async openSettings(id: SystemPermissionId): Promise<void> {
+  async openSettings(id: PermissionId): Promise<void> {
     await openPermissionSettings(id);
   }
 
   async checkFeaturePermissions(
     featureId: string,
-  ): Promise<{ granted: boolean; missing: SystemPermissionId[] }> {
+  ): Promise<{ granted: boolean; missing: PermissionId[] }> {
     const requiredPerms = SYSTEM_PERMISSIONS.filter((p) =>
       p.requiredForFeatures.includes(featureId),
     ).map((p) => p.id);

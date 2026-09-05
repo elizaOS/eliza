@@ -333,6 +333,16 @@
       "import": "./dist/contracts/remote-control.js",
       "default": "./dist/contracts/remote-control.js"
     },
+    "./contracts/cloud-agent-lifecycle": {
+      "types": "./dist/contracts/cloud-agent-lifecycle.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/cloud-agent-lifecycle.ts",
+        "import": "./src/contracts/cloud-agent-lifecycle.ts",
+        "default": "./src/contracts/cloud-agent-lifecycle.ts"
+      },
+      "import": "./dist/contracts/cloud-agent-lifecycle.js",
+      "default": "./dist/contracts/cloud-agent-lifecycle.js"
+    },
     "./contracts/scheduled-task-execution": {
       "types": "./dist/contracts/scheduled-task-execution.d.ts",
       "eliza-source": {

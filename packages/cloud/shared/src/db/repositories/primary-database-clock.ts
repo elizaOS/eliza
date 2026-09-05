@@ -1,6 +1,6 @@
 /** Post-lock primary-database clock authority for lease decisions. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";

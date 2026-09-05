@@ -16,7 +16,7 @@ import {
   stringToUuid,
   type UUID,
   type World,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { v4 as uuidv4 } from "uuid";
 import { roomsRepository } from "../../db/repositories";
 import { connectionCache } from "../cache/connection-cache";

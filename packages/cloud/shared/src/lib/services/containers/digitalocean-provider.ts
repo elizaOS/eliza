@@ -36,7 +36,7 @@
  * only throws `missing_token` when it actually fires.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import { logger } from "../../utils/logger";
 import type {
   ComputeAction,

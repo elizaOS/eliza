@@ -14,7 +14,7 @@
  * trusted internal multi-agent callers pass no cap and stay uncapped.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 export type AgentSandboxLimitSource = "organizations.credit_balance" | "default_free_tier";
 

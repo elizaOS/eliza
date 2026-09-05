@@ -1,6 +1,7 @@
 // Coordinates cloud service app auth codes behavior behind route handlers.
 import { cache } from "../cache/client";
 import { CacheKeys } from "../cache/keys";
+import { sha256Hex } from "../crypto/worker";
 
 export const APP_AUTH_CODE_TTL_SECONDS = 5 * 60;
 const APP_AUTH_CODE_PREFIX = "eac_";
@@ -15,14 +16,6 @@ export interface AppAuthCodeRecord {
 function createOpaqueCode(): string {
   const random = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll("-", "");
   return `${APP_AUTH_CODE_PREFIX}${random}`;
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 async function codeCacheKey(code: string): Promise<string> {

@@ -5,7 +5,7 @@
  * and handles sending responses back through the correct channel.
  */
 
-import { ElizaError, isElizaError } from "@elizaos/core";
+import { ElizaError, isElizaError } from "@elizaos/core/edge";
 import { createHash } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { dbWrite } from "../../../db/client";

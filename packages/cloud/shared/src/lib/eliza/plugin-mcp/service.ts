@@ -1,5 +1,5 @@
 /** Connects hosted Eliza runtimes to configured MCP servers and exposes their permitted tools. */
-import { type Action, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type Action, type IAgentRuntime, logger, Service } from "@elizaos/core/edge";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";

@@ -10,7 +10,7 @@ import {
   type RunEventPayload,
   recentMessagesProvider,
   Service,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { oauthAction } from "../plugin-oauth/actions/oauth";
 import { userAuthStatusProvider } from "../plugin-oauth/providers/user-auth-status";
 import { appConfigProvider } from "../shared/providers/app-config";

@@ -4,7 +4,7 @@
  * Shared constants and helpers for Twilio SMS/MMS/Voice API interactions.
  */
 
-import { ElizaError, isElizaError } from "@elizaos/core";
+import { ElizaError, isElizaError } from "@elizaos/core/edge";
 import crypto from "crypto";
 import { z } from "zod";
 import { ownedBoundedFetch } from "./owned-bounded-fetch";

@@ -13,6 +13,7 @@ import {
   platformCredentialTypeEnum,
 } from "../../../../db/schemas/platform-credentials";
 import { cache } from "../../../cache/client";
+import { bytesToBase64Url, sha256Base64Url } from "../../../crypto/worker";
 import { getCloudAwareEnv } from "../../../runtime/cloud-bindings";
 import { logger } from "../../../utils/logger";
 import { secretsService } from "../../secrets";
@@ -62,11 +63,8 @@ async function generatePKCE(): Promise<{
 }> {
   // Generate 32 random bytes → 43-char base64url string
   const bytes = crypto.getRandomValues(new Uint8Array(32));
-  const codeVerifier = Buffer.from(bytes).toString("base64url");
-
-  // SHA-256 hash of verifier → base64url encoded
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
-  const codeChallenge = Buffer.from(digest).toString("base64url");
+  const codeVerifier = bytesToBase64Url(bytes);
+  const codeChallenge = await sha256Base64Url(codeVerifier);
 
   return { codeVerifier, codeChallenge };
 }

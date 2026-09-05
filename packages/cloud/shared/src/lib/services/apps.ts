@@ -2,7 +2,7 @@
  * Service for managing apps and app-related operations.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import crypto from "crypto";
 import { writeTransaction } from "../../db/helpers";
 import {

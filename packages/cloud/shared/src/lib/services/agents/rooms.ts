@@ -3,7 +3,7 @@
  * Uses direct DB access via repositories instead of spinning up runtime
  */
 
-import type { Memory } from "@elizaos/core";
+import type { Memory } from "@elizaos/core/edge";
 import { v4 as uuidv4 } from "uuid";
 import { dbWrite } from "../../../db/client";
 import {

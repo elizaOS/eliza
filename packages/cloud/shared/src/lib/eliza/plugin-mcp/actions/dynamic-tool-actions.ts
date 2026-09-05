@@ -9,7 +9,7 @@ import {
   type Memory,
   type State,
   toWellFormedUnicode,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MCP_SERVICE_NAME } from "../types";
 import { generateSimiles, makeUniqueActionName } from "../utils/action-naming";

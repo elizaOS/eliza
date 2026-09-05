@@ -7,7 +7,7 @@
 /**
  * Re-exported core types from elizaOS.
  */
-export type { Entity, Memory, Participant } from "@elizaos/core";
+export type { Entity, Memory, Participant } from "@elizaos/core/edge";
 export type { AgentInfo } from "./agents";
 export { agentsRepository } from "./agents";
 export type { CreateEntityInput } from "./entities";

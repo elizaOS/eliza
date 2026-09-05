@@ -11,22 +11,16 @@
 
 import { randomBytes } from "node:crypto";
 import { writeFile } from "node:fs/promises";
+import {
+  type AgentExecutionTier,
+  isAgentExecutionTier,
+} from "@elizaos/shared/contracts/cloud-agent-lifecycle";
 import { classifyBridgeReply } from "./bridge-reply-verdict";
 import { SMOKE_AGENT_PLUGINS } from "./smoke-agent-plugins";
 
 type JsonObject = Record<string, unknown>;
 type Fetch = typeof globalThis.fetch;
-type AgentExecutionTier =
-  | "shared"
-  | "dedicated-lazy"
-  | "dedicated-always"
-  | "custom";
-type PrivacySafeObservedTier =
-  | "shared"
-  | "dedicated-lazy"
-  | "dedicated-always"
-  | "custom"
-  | "other";
+type PrivacySafeObservedTier = AgentExecutionTier | "other";
 
 const STAGING_BASE_URL = "https://api-staging.eliza.app";
 const CANARY_NAME_PREFIX = "managed-dedicated-canary-";
@@ -257,7 +251,9 @@ function classifyConditionalDeleteConflict(body: JsonObject): string {
   if (message === "warm-claim credential handoff is still in progress") {
     return "warm_claim_handoff_in_progress";
   }
-  if (message === "agent deletion changed while recording state-loss authority") {
+  if (
+    message === "agent deletion changed while recording state-loss authority"
+  ) {
     return "delete_authority_changed";
   }
   return "unexpected_http_409";
@@ -300,20 +296,6 @@ function classifyProvisioningJobFailure(data: JsonObject | null): string {
     return "provisioning_runtime_failed";
   }
   return "provisioning_unclassified";
-}
-
-function isAgentExecutionTier(
-  value: string | null,
-): value is AgentExecutionTier {
-  switch (value) {
-    case "shared":
-    case "dedicated-lazy":
-    case "dedicated-always":
-    case "custom":
-      return true;
-    default:
-      return false;
-  }
 }
 
 function privacySafeObservedTier(

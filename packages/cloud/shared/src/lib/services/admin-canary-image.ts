@@ -6,6 +6,7 @@
 
 import { imageRepo } from "../../db/utils/docker-image-ref";
 import { ValidationError } from "../api/cloud-worker-errors";
+import { sha256Hex } from "../crypto/worker";
 
 export const ADMIN_CANARY_MAX_TARGETS = 5;
 export const ADMIN_CANARY_MAX_RUNNING_JOBS = 3;
@@ -319,12 +320,7 @@ function canonicalPlannedTarget(target: AdminCanaryPlannedTarget): Record<string
 }
 
 async function sha256Fingerprint(domain: string, payload: unknown): Promise<string> {
-  const encoded = new TextEncoder().encode(`${domain}\0${JSON.stringify(payload)}`);
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
-  const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(
-    "",
-  );
-  return `sha256:${hex}`;
+  return `sha256:${await sha256Hex(`${domain}\0${JSON.stringify(payload)}`)}`;
 }
 
 export async function hashAdminCanaryRequest(

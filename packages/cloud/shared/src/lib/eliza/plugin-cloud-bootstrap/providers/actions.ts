@@ -1,6 +1,6 @@
 /** ACTIONS Provider - Provides available actions with parameter schemas to the LLM. */
-import type { Action, IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { addHeader, logger } from "@elizaos/core";
+import type { Action, IAgentRuntime, Memory, Provider, State } from "@elizaos/core/edge";
+import { addHeader, logger } from "@elizaos/core/edge";
 import { filterActionsByRouting, getContextRoutingFromMessage } from "../utils/context-routing";
 
 const HIDDEN_NATIVE_PLANNER_ACTIONS = new Set(["FINISH", "REPLY", "NONE"]);

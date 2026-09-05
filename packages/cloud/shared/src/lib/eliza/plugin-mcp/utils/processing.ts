@@ -8,7 +8,7 @@ import {
   type Media,
   type Memory,
   ModelType,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { resourceAnalysisTemplate } from "../templates/resourceAnalysisTemplate";
 import { createMcpMemory } from "./mcp";
 

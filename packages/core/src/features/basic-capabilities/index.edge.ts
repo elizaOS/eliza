@@ -40,7 +40,7 @@ export type {
 	CapabilitySettingFlags,
 	ExplicitCapabilityOptions,
 };
-export { resolveCapabilityConfig };
+export { recentMessagesProvider, resolveCapabilityConfig };
 
 const unsupportedCapabilityKeys = [
 	"enableExtended",

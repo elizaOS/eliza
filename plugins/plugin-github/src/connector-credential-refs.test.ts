@@ -174,8 +174,16 @@ describe("GitHub connector credential refs", () => {
     const runtime = createRuntime({
       agentId: "agent 1",
       services: {
-        connector_credential_store: { putSecret },
-        vault: { set: vaultSet },
+        connector_credential_store: {
+          putSecret,
+          has: async () => false,
+          remove: async () => undefined,
+        },
+        vault: {
+          set: vaultSet,
+          has: async () => false,
+          remove: async () => undefined,
+        },
       },
       adapter: { setCredentialRef: adapterWriter },
     });
@@ -233,7 +241,11 @@ describe("GitHub connector credential refs", () => {
   it("refuses to persist credentials when no durable account id is available", async () => {
     const runtime = createRuntime({
       services: {
-        vault: { set: vi.fn(async () => undefined) },
+        vault: {
+          set: vi.fn(async () => undefined),
+          has: async () => false,
+          remove: async () => undefined,
+        },
       },
     });
 

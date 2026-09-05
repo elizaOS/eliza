@@ -13,7 +13,7 @@
  * still happens in one allocation, so it takes the larger
  * `SOCIAL_MEDIA_VIDEO_MAX_BYTES` rather than no bound at all.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 import { safeFetch } from "../../security/safe-fetch";
 import { SOCIAL_MEDIA_MEDIA_MAX_BYTES } from "../../types/social-media";

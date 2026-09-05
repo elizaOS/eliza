@@ -1,5 +1,5 @@
 /** Atomically commits app-charge status and its durable callback delivery intent. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import Decimal from "decimal.js";
 import { eq } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";

@@ -165,8 +165,8 @@ export function smokeStoryModules(
           // (above) and mounting it must not error. There is intentionally no
           // "produced DOM" assertion — null/empty renders are valid in this jsdom
           // lane. Many stories are empty-by-design (Closed/Disabled/Empty states)
-          // or render nothing without the full app runtime (browser-status,
-          // ShortcutsOverlay/Open, …). Blank-render detection that needs that
+          // or render nothing without the full app runtime (ShortcutsOverlay/Open,
+          // …). Blank-render detection that needs that
           // runtime lives in the browser story gate (its needs-runtime path) and
           // the live audit:app — not this fast offline smoke.
           const caughtErrors: unknown[] = [];

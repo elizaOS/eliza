@@ -8,7 +8,7 @@ import {
   type MediaGenerationResponse,
   ModelType,
   ServiceType,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 
 type ImageResultLike =
   | string

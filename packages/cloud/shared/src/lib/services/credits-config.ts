@@ -1,6 +1,6 @@
 /** Validates operator configuration used to size credit reservations. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 const DEFAULT_COST_BUFFER = 1.5;
 /** 1 = no buffer at all. Anything below underflows `estimatedCost * COST_BUFFER`

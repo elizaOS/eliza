@@ -1,5 +1,5 @@
 // Coordinates cloud service sensitive request authorization behavior behind route handlers.
-import type { SensitiveRequestActorPolicy, SensitiveRequestPolicy } from "@elizaos/core";
+import type { SensitiveRequestActorPolicy, SensitiveRequestPolicy } from "@elizaos/core/edge";
 import { and, eq } from "drizzle-orm";
 import { dbRead } from "../../db/client";
 import { identityLinksRepository } from "../../db/repositories/identity-links";

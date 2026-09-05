@@ -1,5 +1,10 @@
-/** Implements Electrobun desktop permissions shared ts behavior for app-core shell integration. */
+/**
+ * Projects the shared permission catalog onto capabilities implemented by the
+ * Electrobun desktop shell; metadata remains owned by @elizaos/shared.
+ */
+
 export type {
+  AllPermissionsState,
   PermissionCheckResult,
   PermissionId,
   PermissionState,
@@ -8,264 +13,60 @@ export type {
   SystemPermissionDefinition,
 } from "@elizaos/shared";
 
-import type {
-  PermissionId,
-  PermissionState,
-  Platform,
-  SystemPermissionDefinition,
+import {
+  type PermissionId,
+  type PermissionPlatformProjection,
+  type Platform,
+  projectPermissionDefinitions,
 } from "@elizaos/shared";
 
-export type SystemPermissionId = PermissionId;
+const DESKTOP = ["darwin", "win32", "linux"] as const;
+const MACOS = ["darwin"] as const;
+const UNSUPPORTED = [] as const;
 
-/** Local variant keeps a loose index signature for legacy Electrobun RPC code. */
-export interface AllPermissionsState {
-  [key: string]: PermissionState;
-}
+/** OS implementations reachable from the Electrobun main process. */
+export const ELECTROBUN_PERMISSION_SUPPORT = {
+  accessibility: MACOS,
+  "screen-recording": MACOS,
+  microphone: DESKTOP,
+  camera: DESKTOP,
+  shell: DESKTOP,
+  "website-blocking": DESKTOP,
+  location: DESKTOP,
+  reminders: MACOS,
+  calendar: MACOS,
+  health: MACOS,
+  screentime: MACOS,
+  contacts: MACOS,
+  notes: MACOS,
+  notifications: DESKTOP,
+  "full-disk": MACOS,
+  automation: MACOS,
+  "speech-recognition": UNSUPPORTED,
+  photos: UNSUPPORTED,
+  phone: UNSUPPORTED,
+  messages: UNSUPPORTED,
+  wifi: UNSUPPORTED,
+  bluetooth: UNSUPPORTED,
+  "app-blocking": UNSUPPORTED,
+  "usage-access": UNSUPPORTED,
+  overlay: UNSUPPORTED,
+  "write-settings": UNSUPPORTED,
+  "local-network": UNSUPPORTED,
+  "battery-optimization": UNSUPPORTED,
+} as const satisfies PermissionPlatformProjection;
 
-export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
-  {
-    id: "accessibility",
-    name: "Accessibility",
-    description:
-      "Control mouse, keyboard, and interact with other applications",
-    icon: "cursor",
-    platforms: ["darwin"],
-    requiredForFeatures: ["computeruse", "browser"],
-  },
-  {
-    id: "screen-recording",
-    name: "Screen Recording",
-    description: "Capture screen content for screenshots and vision",
-    icon: "monitor",
-    platforms: ["darwin"],
-    requiredForFeatures: ["computeruse", "vision"],
-  },
-  {
-    id: "microphone",
-    name: "Microphone",
-    description: "Voice input for talk mode and speech recognition",
-    icon: "mic",
-    platforms: ["darwin", "win32", "linux"],
-    requiredForFeatures: ["talkmode", "voice"],
-  },
-  {
-    id: "camera",
-    name: "Camera",
-    description: "Video input for vision and video capture",
-    icon: "camera",
-    platforms: ["darwin", "win32", "linux"],
-    requiredForFeatures: ["camera", "vision"],
-  },
-  {
-    id: "shell",
-    name: "Shell Access",
-    description: "Execute terminal commands and scripts",
-    icon: "terminal",
-    platforms: ["darwin", "win32", "linux"],
-    requiredForFeatures: ["shell"],
-  },
-  {
-    id: "website-blocking",
-    name: "Website Blocking",
-    description:
-      "Edit the system hosts file to block distracting websites. This may require admin/root approval each time.",
-    icon: "shield-ban",
-    platforms: ["darwin", "win32", "linux"],
-    requiredForFeatures: ["website-blocker"],
-  },
-  {
-    id: "location",
-    name: "Location",
-    description:
-      "Read the device's current location for travel-time, time-zone, and place-aware planning. Mobile uses GPS; desktop falls back to coarse IP geolocation.",
-    icon: "map-pin",
-    platforms: ["darwin", "win32", "linux"],
-    requiredForFeatures: ["travel-time", "location"],
-  },
-  {
-    id: "reminders",
-    name: "Apple Reminders",
-    description: "Create and update Apple Reminders for LifeOps tasks",
-    icon: "list-todo",
-    platforms: ["darwin"],
-    requiredForFeatures: ["lifeops", "reminders"],
-  },
-  {
-    id: "calendar",
-    name: "Apple Calendar",
-    description: "Read and update Apple Calendar events for LifeOps scheduling",
-    icon: "calendar",
-    platforms: ["darwin"],
-    requiredForFeatures: ["lifeops", "calendar"],
-  },
-  {
-    id: "health",
-    name: "Apple Health",
-    description:
-      "Read HealthKit data such as sleep and wellness signals from paired devices",
-    icon: "heart-pulse",
-    platforms: ["darwin"],
-    requiredForFeatures: ["lifeops", "health", "sleep"],
-  },
-  {
-    id: "screentime",
-    name: "Screen Time",
-    description: "Read Screen Time and app-usage signals",
-    icon: "hourglass",
-    platforms: ["darwin"],
-    requiredForFeatures: ["lifeops", "screentime"],
-  },
-  {
-    id: "contacts",
-    name: "Contacts",
-    description: "Read and edit Apple Contacts for message name resolution",
-    icon: "contact",
-    platforms: ["darwin"],
-    requiredForFeatures: ["imessage", "contacts"],
-  },
-  {
-    id: "notes",
-    name: "Apple Notes",
-    description: "Read and create Apple Notes through user-approved automation",
-    icon: "notebook-tabs",
-    platforms: ["darwin"],
-    requiredForFeatures: ["lifeops", "notes"],
-  },
-  {
-    id: "notifications",
-    name: "Notifications",
-    description:
-      "Show system notifications for reminders and background results",
-    icon: "bell",
-    platforms: ["darwin", "win32", "linux"],
-    requiredForFeatures: ["notifications", "lifeops"],
-  },
-  {
-    id: "full-disk",
-    name: "Full Disk Access",
-    description:
-      "Read protected local app data such as Messages databases when explicitly enabled",
-    icon: "hard-drive",
-    platforms: ["darwin"],
-    requiredForFeatures: ["imessage", "local-data"],
-  },
-  {
-    id: "automation",
-    name: "Automation",
-    description: "Control other macOS apps through Apple Events",
-    icon: "workflow",
-    platforms: ["darwin"],
-    requiredForFeatures: ["messages", "notes", "automation"],
-  },
-  {
-    id: "speech-recognition",
-    name: "Speech Recognition",
-    description: "Transcribe speech through the platform speech recognizer",
-    icon: "audio-lines",
-    platforms: ["ios", "web"],
-    requiredForFeatures: ["talkmode", "voice", "swabble"],
-  },
-  {
-    id: "photos",
-    name: "Photos",
-    description: "Read or save photos and videos when capturing media",
-    icon: "image",
-    platforms: ["ios", "android", "web"],
-    requiredForFeatures: ["camera", "media"],
-  },
-  {
-    id: "phone",
-    name: "Phone",
-    description: "Place calls and read recent call history on Android",
-    icon: "phone",
-    platforms: ["android"],
-    requiredForFeatures: ["phone", "dialer"],
-  },
-  {
-    id: "messages",
-    name: "Messages",
-    description: "Send SMS and read message threads on Android",
-    icon: "message-square",
-    platforms: ["android"],
-    requiredForFeatures: ["messages", "sms"],
-  },
-  {
-    id: "wifi",
-    name: "Wi-Fi Scans",
-    description:
-      "Scan nearby Wi-Fi networks; Android gates scan results behind Location",
-    icon: "wifi",
-    platforms: ["android"],
-    requiredForFeatures: ["wifi", "gateway"],
-  },
-  {
-    id: "bluetooth",
-    name: "Bluetooth",
-    description: "Discover and connect to nearby Bluetooth accessories",
-    icon: "bluetooth",
-    platforms: ["ios", "android"],
-    requiredForFeatures: ["gateway"],
-  },
-  {
-    id: "app-blocking",
-    name: "App Blocking",
-    description:
-      "Select and block distracting apps with Screen Time or Android usage controls",
-    icon: "shield-ban",
-    platforms: ["ios", "android"],
-    requiredForFeatures: ["app-blocker", "lifeops"],
-  },
-  {
-    id: "usage-access",
-    name: "Usage Access",
-    description: "Read Android app usage for Screen Time and app blocking",
-    icon: "hourglass",
-    platforms: ["android"],
-    requiredForFeatures: ["screentime", "app-blocker"],
-  },
-  {
-    id: "overlay",
-    name: "Draw Over Apps",
-    description: "Show Android blocking overlays above distracting apps",
-    icon: "app-window",
-    platforms: ["android"],
-    requiredForFeatures: ["app-blocker"],
-  },
-  {
-    id: "write-settings",
-    name: "Write Settings",
-    description: "Change Android system brightness and related device settings",
-    icon: "settings",
-    platforms: ["android"],
-    requiredForFeatures: ["device-settings"],
-  },
-  {
-    id: "local-network",
-    name: "Local Network",
-    description: "Discover nearby gateways and devices on the local network",
-    icon: "network",
-    platforms: ["ios", "android"],
-    requiredForFeatures: ["gateway", "device-discovery"],
-  },
-  {
-    id: "battery-optimization",
-    name: "Battery Optimization",
-    description:
-      "Allow background monitoring to keep LifeOps and device signals current",
-    icon: "battery",
-    platforms: ["android"],
-    requiredForFeatures: ["lifeops", "mobile-signals"],
-  },
-];
+export const SYSTEM_PERMISSIONS = projectPermissionDefinitions(
+  ELECTROBUN_PERMISSION_SUPPORT,
+);
 
-const PERMISSION_MAP = new Map<SystemPermissionId, SystemPermissionDefinition>(
-  SYSTEM_PERMISSIONS.map((p) => [p.id, p]),
+const PERMISSION_MAP = new Map(
+  SYSTEM_PERMISSIONS.map((permission) => [permission.id, permission]),
 );
 
 export function isPermissionApplicable(
-  id: SystemPermissionId,
+  id: PermissionId,
   platform: Platform,
 ): boolean {
-  const def = PERMISSION_MAP.get(id);
-  return def ? def.platforms.includes(platform) : false;
+  return PERMISSION_MAP.get(id)?.platforms.includes(platform) ?? false;
 }

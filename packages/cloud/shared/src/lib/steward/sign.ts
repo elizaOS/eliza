@@ -14,21 +14,18 @@
  * this list identical to `buildStewardCanonicalRequest` in `embedded.ts`.
  */
 
+import { bytesToHex, sha256Hex as workerSha256Hex } from "../crypto/worker";
+
 // Matches embedded.ts: a short freshness window for the X-Steward-Request-*
 // header, well inside Steward's ±5min skew/TTL tolerance.
 const REQUEST_TTL_SECONDS = 60;
 
-function bytesToHex(bytes: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 1) {
-    out += bytes[i].toString(16).padStart(2, "0");
-  }
-  return out;
-}
-
 async function sha256Hex(input: BufferSource): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", input);
-  return bytesToHex(new Uint8Array(digest));
+  const bytes =
+    input instanceof ArrayBuffer
+      ? new Uint8Array(input)
+      : new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  return workerSha256Hex(bytes);
 }
 
 async function sha256TextHex(value: string): Promise<string> {

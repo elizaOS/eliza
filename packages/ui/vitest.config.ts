@@ -111,6 +111,10 @@ export default defineConfig({
         replacement: resolve(coreSrc, "index.node.ts"),
       },
       {
+        find: /^@elizaos\/core\/edge$/,
+        replacement: resolve(coreSrc, "index.edge.ts"),
+      },
+      {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: resolve(coreSrc, "$1"),
       },

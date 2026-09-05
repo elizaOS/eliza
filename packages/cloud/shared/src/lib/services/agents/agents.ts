@@ -19,7 +19,7 @@
  * - When you deploy a character, it becomes an agent
  */
 
-import { ContentType, type Media } from "@elizaos/core";
+import { ContentType, type Media } from "@elizaos/core/edge";
 import { memoriesRepository, participantsRepository } from "../../../db/repositories";
 import { type AgentInfo, agentsRepository } from "../../../db/repositories/agents";
 import { agentStateCache, type RoomContext } from "../../cache/agent-state-cache";

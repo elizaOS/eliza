@@ -12,6 +12,7 @@
  */
 
 import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "../../../db/schemas/payment-requests";
+import { bytesToHex, constantTimeEqualUtf8 } from "../../crypto/worker";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { isOxaPayConfigured, OxaPayApiError, oxaPayService } from "../oxapay";
@@ -35,18 +36,7 @@ async function hmacSha512Hex(secret: string, message: string): Promise<string> {
     ["sign"],
   );
   const sig = await crypto.subtle.sign("HMAC", key, enc.encode(message));
-  return Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function constantTimeEqualHex(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
+  return bytesToHex(new Uint8Array(sig));
 }
 
 function payloadString(payload: Record<string, unknown>, ...keys: string[]): string | undefined {
@@ -155,7 +145,7 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
         throw new Error("OXAPAY_MERCHANT_API_KEY not configured; cannot verify OxaPay webhook");
       }
       const expected = await hmacSha512Hex(secret, rawBody);
-      if (!signature || !constantTimeEqualHex(signature, expected)) {
+      if (!signature || !constantTimeEqualUtf8(signature, expected)) {
         throw new Error("Invalid OxaPay webhook signature");
       }
 

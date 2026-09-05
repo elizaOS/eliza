@@ -14,7 +14,7 @@
  * differ only in case.
  */
 
-import { ElizaError, isElizaError } from "@elizaos/core";
+import { ElizaError, isElizaError } from "@elizaos/core/edge";
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { normalizeWallet } from "../db/crypto/field-crypto";
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";

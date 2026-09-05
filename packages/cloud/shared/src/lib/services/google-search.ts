@@ -1,5 +1,5 @@
 // Coordinates cloud service google search behavior behind route handlers.
-import { assertModelOutputComplete } from "@elizaos/core";
+import { assertModelOutputComplete } from "@elizaos/core/edge";
 import { calculateCost, estimateRequestCost, normalizeModelName } from "../pricing";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../pricing-constants";
 import { logger } from "../utils/logger";

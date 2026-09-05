@@ -20,6 +20,7 @@ import type {
   SecretBallotParticipant,
   SecretBallotTallyResult,
 } from "../../db/schemas/secret-ballots";
+import { bytesToBase64Url, sha256Hex } from "../crypto/worker";
 import { logger } from "../utils/logger";
 
 export type {
@@ -143,12 +144,6 @@ export interface SecretBallotsServiceDeps {
   sha256Hex?: (input: string) => Promise<string>;
 }
 
-function bytesToBase64Url(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
-}
-
 function defaultGenerateToken(): string {
   const bytes = new Uint8Array(TOKEN_BYTES);
   crypto.getRandomValues(bytes);
@@ -156,10 +151,7 @@ function defaultGenerateToken(): string {
 }
 
 async function defaultSha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return sha256Hex(value);
 }
 
 function encodePlaintextValue(value: string): string {

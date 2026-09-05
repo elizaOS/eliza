@@ -24,7 +24,7 @@ import {
   stripAugmentationForPersistence,
   truncateToCompleteSentence,
   type UUID,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { v4 } from "uuid";
 import { createPerfTrace } from "../../../../utils/perf-trace";
 import { invalidateActionValidationCache } from "../../providers/actions";

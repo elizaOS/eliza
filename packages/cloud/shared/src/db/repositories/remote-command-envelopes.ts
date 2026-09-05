@@ -5,7 +5,7 @@
  * `execution_ambiguous` and is never returned to the queue.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   canonicalizeRemoteControlValue,
   type EncryptedRemoteCommandEnvelope,

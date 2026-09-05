@@ -1,5 +1,5 @@
 /** Validates exact OxaPay invoice and inquiry contracts for crypto settlement callers. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import Decimal from "decimal.js";
 import { logger } from "../utils/logger";
 

@@ -38,6 +38,10 @@ function makeHarness(settings: Record<string, string>): Harness {
           vault.set(key, value);
         },
         get: (key: string) => vault.get(key) ?? null,
+        has: (key: string) => vault.has(key),
+        remove: (key: string) => {
+          vault.delete(key);
+        },
       },
     ],
     [

@@ -2,7 +2,7 @@
  * Projects settled provider payments into tenant-bound purchase receipts.
  * Exact retries return the existing row; any changed settlement authority fails.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, eq, or } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import {

@@ -4,6 +4,7 @@
  * The harness uses temporary files and injected build runners; it does not run
  * a compiler or import generated product code.
  */
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import {
 	mkdir,
 	mkdtemp,
@@ -13,7 +14,8 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -113,6 +115,37 @@ describe("core flat package entrypoints", () => {
 		);
 	});
 
+	it("keeps public leaf artifacts when the main runner asynchronously clears output", async () => {
+		const output = join(await makeTemporaryRoot(), "dist");
+		await buildNodeOnly({
+			argv: ["bun", "build.ts", "--node-only", "--skip-testing"],
+			runnerFactory:
+				({ buildOptions }) =>
+				async () => {
+					if (!buildOptions.skipClean) {
+						await Promise.resolve();
+						rmSync(output, { recursive: true, force: true });
+						mkdirSync(output, { recursive: true });
+						return;
+					}
+					mkdirSync(output, { recursive: true });
+					const entry = buildOptions.entrypoints?.[0];
+					if (!entry) throw new Error("Expected a public leaf compiler input");
+					writeFileSync(
+						join(output, basename(entry, ".ts") + ".mjs"),
+						"export default () => 42;\n",
+					);
+				},
+			generateDeclarations: async () => undefined,
+		});
+		for (const leaf of ["documents", "errors"]) {
+			const artifact = await import(
+				pathToFileURL(join(output, leaf + ".mjs")).href
+			);
+			expect(artifact.default()).toBe(42);
+		}
+	});
+
 	it("does not build or validate the testing target with --skip-testing", async () => {
 		const outdirs: string[] = [];
 		const declarationOptions: Array<{ skipTesting?: boolean } | undefined> = [];
@@ -128,7 +161,9 @@ describe("core flat package entrypoints", () => {
 			},
 		});
 
-		expect(outdirs).toEqual(["dist/node"]);
+		// Three dist/node builds: the barrel + nested entries, the flat public
+		// leaves (documents), and the canonical shared errors artifact.
+		expect(outdirs).toEqual(["dist/node", "dist/node", "dist/node"]);
 		expect(declarationOptions).toEqual([{ skipTesting: true }]);
 	});
 });

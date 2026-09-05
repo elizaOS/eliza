@@ -2,7 +2,7 @@
  * Owns cloud blob URL validation, bounded remote ingestion, and R2 persistence
  * for backend service consumers.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 import { safeFetch } from "./security/safe-fetch";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./storage/r2-runtime-binding";

@@ -1,6 +1,6 @@
 /** Serializes external provider dispatch with irreversible organization lifecycle fencing. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, eq, isNull } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { organizations } from "../../db/schemas/organizations";

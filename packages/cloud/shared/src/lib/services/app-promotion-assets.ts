@@ -1,5 +1,5 @@
 // Coordinates cloud service app promotion assets behavior behind route handlers.
-import { assertModelOutputComplete } from "@elizaos/core";
+import { assertModelOutputComplete } from "@elizaos/core/edge";
 import { generateText } from "ai";
 import { z } from "zod";
 import type { App } from "../../db/repositories";

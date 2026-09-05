@@ -39,6 +39,8 @@
  *     and the row becomes ready only after that revocation succeeds.
  */
 
+import { sha256Hex } from "../crypto/worker";
+
 export const WARM_CLAIM_KEY_PUSH_TIMEOUT_MS = 10_000;
 export const WARM_CLAIM_RECOVERY_FAILURE_PREFIX = "Warm-claim credential recovery failed:";
 
@@ -138,9 +140,5 @@ export const WARM_CLAIM_KEY_FINGERPRINT_HEX_LEN = 16;
  * Uses Web Crypto so the same function runs on Workers, Node, and Bun.
  */
 export async function warmClaimKeyFingerprint(apiKey: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, WARM_CLAIM_KEY_FINGERPRINT_HEX_LEN);
+  return (await sha256Hex(apiKey)).slice(0, WARM_CLAIM_KEY_FINGERPRINT_HEX_LEN);
 }

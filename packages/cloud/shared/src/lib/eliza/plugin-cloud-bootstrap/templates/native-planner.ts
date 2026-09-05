@@ -3,7 +3,7 @@
  * toolCalls for actions, messageToUser for terminal replies.
  */
 
-import { groupResponsePrecedencePolicy, registerResponsePolicy } from "@elizaos/core";
+import { groupResponsePrecedencePolicy, registerResponsePolicy } from "@elizaos/core/edge";
 
 export const nativePlannerTemplate = `# Role
 Select and execute actions to fulfill the user's request.

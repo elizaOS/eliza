@@ -6,7 +6,7 @@
  * falling through is never treated as permission to cascade or retain data.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import * as schema from "./schemas";
 

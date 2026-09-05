@@ -24,7 +24,7 @@
  * without spending money on real registrations.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { shouldBlockRegistrarStub } from "../config/deployment-environment";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { CloudflareApiError, cloudflareApiRequest } from "../utils/cloudflare-api";

@@ -147,12 +147,29 @@ When the skill is installed outside this monorepo, invoke `node <skill-directory
 
 If any material suggests a live vulnerability, exposed credential, exploit path, or embargoed dependency issue, stop public work and follow `packages/docs/security.md`. Do not quote sensitive details into an issue, PR, log, or report.
 
+## Reuse before implementation
+
+Before writing a new component, helper, type, service, schema, or harness,
+search the owning package, its public exports, and the full repository for the
+same responsibility. Include dynamic imports, plugin manifests, registries,
+generated inventories, and stories. Prefer extending the canonical owner and
+migrating callers over adding a parallel implementation. In particular,
+plugin views consume generic primitives, layouts, and state presentations from
+`@elizaos/ui`; framework contracts come from `@elizaos/core`; cross-product
+utilities and wire contracts come from `@elizaos/shared`.
+
+Treat similarity tools as candidate finders. Confirm matching authorization,
+failure, runtime, storage, and protocol semantics before consolidating. When
+the semantics differ, keep the implementations separate and record why. When
+they match, leave one maintained authority and use a deliberate compatibility
+re-export or deprecation path for public consumers.
+
 ## Mode A: finish a scoped issue
 
 1. Inspect the issue, linked tracker or design doc, Project fields, dependencies, recent comments, and related PRs. Select a non-bot, unclaimed issue with testable acceptance criteria. Ask for scope clarification rather than silently expanding it.
 2. Claim it publicly with `CLAIMING: <precise scope>`. Set `Claimed by` to the same lane or agent tag and move `Status` from `Claimed` to `In progress` as work begins. Claim any shared production lever separately before using it.
 3. Fetch and rebase on `origin/develop`, then create a correctly prefixed branch. Read root and package-local `AGENTS.md` or `CLAUDE.md` before editing each package.
-4. Implement the complete scoped behavior. Preserve repository architecture, surface failures at designed boundaries, and add real tests for success, error, edge, permission, and concurrency paths that the change can exercise. Do not substitute mocks for the system under test.
+4. Record the reuse/caller/export search and ownership decision, then implement the complete scoped behavior. Preserve repository architecture, surface failures at designed boundaries, and add real tests for success, error, edge, permission, and concurrency paths that the change can exercise. Do not substitute mocks for the system under test.
 5. Run focused checks, then the repository-required verification. Fix failures caused by the change; record exact unrelated blockers without presenting them as success.
 6. Rebase on the latest `origin/develop` again before final proof. Re-run checks after sync.
 7. Capture every applicable artifact in the rubric, then open and manually inspect every trajectory, log, screenshot, recording, and domain artifact. Re-capture proof if the rebase changed behavior.

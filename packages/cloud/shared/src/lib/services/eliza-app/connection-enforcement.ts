@@ -6,7 +6,7 @@
  * fails closed until it is routed through the admitted generative boundary.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { cache } from "../../cache/client";
 import { logger } from "../../utils/logger";
 import { oauthService } from "../oauth";

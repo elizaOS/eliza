@@ -10,7 +10,7 @@ import {
   stringToUuid,
   type UUID,
   type World,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { doorDashPlugin } from "@elizaos/plugin-doordash";
 import { edgeRuntimeCache, getStaticEmbeddingDimension } from "../../cache/edge-runtime-cache";
 import "@/lib/polyfills/dom-polyfills";

@@ -18,6 +18,13 @@ This repository is an **elizaOS application**: a local-first assistant with CLI,
 - Prefer `packages/agent/` for agent providers, services, and runtime glue around elizaOS.
 - Prefer `packages/app/` for UI work and `packages/app-core/platforms/electrobun/` for the Electrobun native shell.
 - Treat `packages/cloud/` as the Eliza Cloud product and backend surface.
+- Before creating UI, search `@elizaos/ui` exports, layouts, state components,
+  registries, and existing plugin views. Consume the canonical primitives and
+  extend them when the product semantics match; keep only domain composition
+  in the app or plugin.
+- Before creating a utility or contract, search `@elizaos/core`,
+  `@elizaos/shared`, and the domain owner. Fix a missing export or dependency
+  direction instead of maintaining an app-local copy.
 
 ## Hard Constraints
 

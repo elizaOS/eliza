@@ -12,6 +12,8 @@
  * Token format: `v1.<expiresAtEpochSeconds>.<hmacHex>`.
  */
 
+import { bytesToHex, constantTimeEqualUtf8 } from "../crypto/worker";
+
 const AD_TAG_CANONICAL_PREFIX = "eliza-ad-tag-v1";
 /** Default token lifetime: ad tags are embedded in published app surfaces. */
 const DEFAULT_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
@@ -31,22 +33,11 @@ async function hmacHex(secret: string, message: string): Promise<string> {
     ["sign"],
   );
   const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
-  return Array.from(new Uint8Array(signature))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return bytesToHex(new Uint8Array(signature));
 }
 
 function canonicalMessage(slotId: string, appId: string, expiresAt: number): string {
   return `${AD_TAG_CANONICAL_PREFIX}\n${slotId}\n${appId}\n${expiresAt}`;
-}
-
-function timingSafeEqualHex(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
 }
 
 /**
@@ -83,5 +74,5 @@ export async function verifyAdTagToken(
   if (!Number.isSafeInteger(expiresAt) || expiresAt <= 0) return false;
   if (expiresAt * 1000 < Date.now()) return false;
   const expected = await hmacHex(secret, canonicalMessage(input.slotId, input.appId, expiresAt));
-  return timingSafeEqualHex(parts[2], expected);
+  return constantTimeEqualUtf8(parts[2], expected);
 }

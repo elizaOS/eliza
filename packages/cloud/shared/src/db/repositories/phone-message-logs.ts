@@ -5,7 +5,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { parsePhoneJsonLosslessly } from "../../lib/services/phone-lossless-json";
 import {

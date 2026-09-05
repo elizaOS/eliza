@@ -13,7 +13,7 @@
  * `scripts/verify-apps-ingress-routing.sh`.
  */
 
-import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import {
   type AppRouteInput,
   buildCaddyAddRouteUrl,

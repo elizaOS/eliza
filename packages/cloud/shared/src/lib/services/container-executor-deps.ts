@@ -17,7 +17,7 @@
  */
 
 import { Buffer } from "node:buffer";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { dbRead, dbWrite } from "../../db/helpers";
 import { containersRepository } from "../../db/repositories/containers";
 import { containersEnv } from "../config/containers-env";

@@ -5,9 +5,9 @@
 import { describe, expect, it } from "vitest";
 import {
   isPermissionApplicable,
+  type PermissionId,
   type Platform,
   SYSTEM_PERMISSIONS,
-  type SystemPermissionId,
 } from "./permissions-shared";
 
 const ALL_PLATFORMS: Platform[] = [
@@ -32,24 +32,16 @@ describe("isPermissionApplicable", () => {
 
   it("returns false for a missing permission id", () => {
     expect(
-      isPermissionApplicable(
-        "not-a-permission" as SystemPermissionId,
-        "darwin",
-      ),
+      isPermissionApplicable("not-a-permission" as PermissionId, "darwin"),
     ).toBe(false);
   });
 
   it("returns false for an empty-string id treated as a missing catalog entry", () => {
-    expect(isPermissionApplicable("" as SystemPermissionId, "android")).toBe(
-      false,
-    );
+    expect(isPermissionApplicable("" as PermissionId, "android")).toBe(false);
   });
 
-  it("treats a single-platform android permission as inapplicable elsewhere", () => {
-    expect(isPermissionApplicable("phone", "android")).toBe(true);
-    for (const platform of ALL_PLATFORMS.filter(
-      (value) => value !== "android",
-    )) {
+  it("does not claim mobile permissions in the desktop implementation", () => {
+    for (const platform of ALL_PLATFORMS) {
       expect(isPermissionApplicable("phone", platform)).toBe(false);
     }
   });
@@ -72,29 +64,19 @@ describe("isPermissionApplicable", () => {
     expect(isPermissionApplicable("microphone", "web")).toBe(false);
   });
 
-  it("treats speech-recognition as applicable on ios and web only", () => {
-    expect(isPermissionApplicable("speech-recognition", "ios")).toBe(true);
-    expect(isPermissionApplicable("speech-recognition", "web")).toBe(true);
-    expect(isPermissionApplicable("speech-recognition", "darwin")).toBe(false);
-    expect(isPermissionApplicable("speech-recognition", "win32")).toBe(false);
-    expect(isPermissionApplicable("speech-recognition", "linux")).toBe(false);
-    expect(isPermissionApplicable("speech-recognition", "android")).toBe(false);
-  });
-
-  it("treats photos as applicable on ios, android, and web", () => {
-    expect(isPermissionApplicable("photos", "ios")).toBe(true);
-    expect(isPermissionApplicable("photos", "android")).toBe(true);
-    expect(isPermissionApplicable("photos", "web")).toBe(true);
-    expect(isPermissionApplicable("photos", "darwin")).toBe(false);
-    expect(isPermissionApplicable("photos", "win32")).toBe(false);
-    expect(isPermissionApplicable("photos", "linux")).toBe(false);
+  it("does not project mobile and web-only integrations into Electrobun", () => {
+    for (const id of ["speech-recognition", "photos"] as const) {
+      for (const platform of ALL_PLATFORMS) {
+        expect(isPermissionApplicable(id, platform)).toBe(false);
+      }
+    }
   });
 
   it("looks up the last catalog entry independently of array position", () => {
     const last = SYSTEM_PERMISSIONS.at(-1);
     expect(last?.id).toBe("battery-optimization");
     expect(isPermissionApplicable("battery-optimization", "android")).toBe(
-      true,
+      false,
     );
     expect(isPermissionApplicable("battery-optimization", "darwin")).toBe(
       false,

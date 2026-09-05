@@ -1,5 +1,5 @@
 // Wires hosted Eliza agent mcp service wait behavior for cloud runtime services.
-import { type AgentRuntime, elizaLogger, type Plugin } from "@elizaos/core";
+import { type AgentRuntime, elizaLogger, type Plugin } from "@elizaos/core/edge";
 
 type McpService = {
   waitForInitialization?: () => Promise<void>;

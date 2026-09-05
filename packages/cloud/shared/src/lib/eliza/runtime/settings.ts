@@ -1,6 +1,6 @@
 // Wires hosted Eliza agent settings behavior for cloud runtime services.
 import { createHash } from "node:crypto";
-import type { AgentRuntime, Character } from "@elizaos/core";
+import type { AgentRuntime, Character } from "@elizaos/core/edge";
 import { getStaticEmbeddingDimension } from "../../cache/edge-runtime-cache";
 import { DEFAULT_IMAGE_MODEL } from "../../models";
 import { buildElevenLabsSettings, getDefaultModels, getElizaCloudApiUrl } from "../config";

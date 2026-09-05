@@ -11,6 +11,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import type { AgentExecutionTier } from "@elizaos/shared/contracts/cloud-agent-lifecycle";
 import * as authActual from "@/lib/auth";
 import * as redisFactoryActual from "@/lib/cache/redis-factory";
 import * as billingGateActual from "@/lib/services/agent-billing-gate";
@@ -22,11 +23,6 @@ import type { AppContext } from "@/types/cloud-worker-env";
 const requireAuth = mock(async () => ({
   user: { id: "user-1", organization_id: "org-1" },
 }));
-type AgentExecutionTier =
-  | "shared"
-  | "dedicated-lazy"
-  | "dedicated-always"
-  | "custom";
 type AgentFixture = {
   id: string;
   execution_tier: AgentExecutionTier;

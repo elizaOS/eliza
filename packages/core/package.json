@@ -135,6 +135,16 @@
 			"import": "./dist/node/errors.js",
 			"default": "./dist/node/errors.js"
 		},
+		"./documents": {
+			"types": "./dist/features/documents/index.d.ts",
+			"eliza-source": {
+				"types": "./src/documents.ts",
+				"import": "./src/documents.ts",
+				"default": "./src/documents.ts"
+			},
+			"import": "./dist/node/documents.js",
+			"default": "./dist/node/documents.js"
+		},
 		"./security/kms": {
 			"types": "./dist/security/kms/index.d.ts",
 			"eliza-source": {

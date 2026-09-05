@@ -6,7 +6,7 @@
  */
 
 import { isIP } from "node:net";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import type { AgentBackupManifestV3 } from "@elizaos/shared";
 import { and, eq, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";

@@ -5,7 +5,7 @@
  * change restore lock ordering.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { orgKey } from "@elizaos/core/security/kms";
 import { and, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";

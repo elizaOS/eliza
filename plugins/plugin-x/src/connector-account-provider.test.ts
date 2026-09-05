@@ -33,6 +33,11 @@ describe("X connector account OAuth", () => {
               set: async (key: string, value: string) => {
                 vault.set(key, value);
               },
+              has: async (key: string) => vault.has(key),
+              get: async (key: string) => vault.get(key),
+              remove: async (key: string) => {
+                vault.delete(key);
+              },
             }
           : null,
     });
@@ -260,6 +265,11 @@ describe("X OAuth request deadlines", () => {
           ? {
               set: async (key: string, value: string) => {
                 vault.set(key, value);
+              },
+              has: async (key: string) => vault.has(key),
+              get: async (key: string) => vault.get(key),
+              remove: async (key: string) => {
+                vault.delete(key);
               },
             }
           : null,

@@ -14,6 +14,7 @@
 import { getAddress, verifyMessage } from "viem";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
+import { sha256Hex } from "../crypto/worker";
 import { findOrCreateUserByWalletAddress } from "../services/wallet-signup";
 import type { UserWithOrganization } from "../types";
 
@@ -31,13 +32,6 @@ export function canonicalWalletAuthQuery(url: URL): string {
     )
     .map(([key, value]) => `${key}=${value}`)
     .join("&");
-}
-
-async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 export async function verifyWalletSignature(

@@ -6,7 +6,7 @@
  * provisioning and handoff memory copy.
  */
 
-import { isElizaError } from "@elizaos/core";
+import { isElizaError } from "@elizaos/core/edge";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { providerForPlatform, usersRepository } from "@/db/repositories/users";

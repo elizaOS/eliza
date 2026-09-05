@@ -9,7 +9,7 @@
  * with credentials stored in the secrets service.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import crypto from "crypto";
 import { timingSafeEqualSecret } from "../../auth/cron";
 import { cache } from "../../cache/client";

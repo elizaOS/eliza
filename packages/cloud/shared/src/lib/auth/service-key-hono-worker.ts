@@ -9,13 +9,14 @@
 
 import type { AppContext, Bindings } from "../../types/cloud-worker-env";
 import { ApiError, AuthenticationError } from "../api/cloud-worker-errors";
+import { constantTimeEqualBytes } from "../crypto/worker";
 
 export interface ServiceKeyIdentity {
   organizationId: string;
   userId: string;
 }
 
-async function constantTimeEqual(a: string, b: string): Promise<boolean> {
+async function constantTimeEqualHmacDigest(a: string, b: string): Promise<boolean> {
   const salt = crypto.getRandomValues(new Uint8Array(32));
   const key = await crypto.subtle.importKey("raw", salt, { name: "HMAC", hash: "SHA-256" }, false, [
     "sign",
@@ -23,9 +24,7 @@ async function constantTimeEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
   const da = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(a)));
   const db = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(b)));
-  let diff = 0;
-  for (let i = 0; i < da.length; i++) diff |= da[i] ^ db[i];
-  return diff === 0;
+  return constantTimeEqualBytes(da, db);
 }
 
 export async function validateServiceKey(c: AppContext): Promise<ServiceKeyIdentity | null> {
@@ -40,7 +39,7 @@ export async function validateServiceKey(c: AppContext): Promise<ServiceKeyIdent
   const expected = (env.WAIFU_SERVICE_KEY || "").trim();
   if (!expected) return null;
 
-  const ok = await constantTimeEqual(header, expected);
+  const ok = await constantTimeEqualHmacDigest(header, expected);
   if (!ok) return null;
 
   const orgId = env.WAIFU_SERVICE_ORG_ID?.trim();

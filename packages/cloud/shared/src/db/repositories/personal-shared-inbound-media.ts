@@ -9,7 +9,7 @@
  * row readback. The injectable database keeps the production queries testable
  * against an isolated PostgreSQL-compatible engine.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, eq, sql } from "drizzle-orm";
 import type { Database, DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";

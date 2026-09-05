@@ -3,6 +3,7 @@
  * them to the assigned agent server. When no compatible runtime is assigned,
  * callers receive a typed dedicated-upgrade or retryable-unavailable response.
  */
+import type { AgentExecutionTier } from "@elizaos/shared/contracts/cloud-agent-lifecycle";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
@@ -27,15 +28,9 @@ const DEDICATED_LAZY_INACTIVE_STATUSES = new Set([
   "disconnected",
 ]);
 
-type WorkflowAgentExecutionTier =
-  | "shared"
-  | "dedicated-lazy"
-  | "dedicated-always"
-  | "custom";
-
 export function workflowRuntimeUnavailableResponse(
   agentId: string,
-  executionTier: WorkflowAgentExecutionTier,
+  executionTier: AgentExecutionTier,
 ): Response {
   if (executionTier === "shared") {
     return Response.json(
@@ -188,7 +183,7 @@ async function forwardWorkflowToAgentServer(params: {
   agentId: string;
   suffix: string;
   user: { id: string; organization_id: string };
-  executionTier: WorkflowAgentExecutionTier;
+  executionTier: AgentExecutionTier;
   runtimeStatus: string;
   canWakeRuntime: boolean;
 }): Promise<Response> {

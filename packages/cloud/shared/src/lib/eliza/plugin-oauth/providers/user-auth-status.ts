@@ -9,7 +9,7 @@ import {
   type Provider,
   type ProviderResult,
   type State,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { usersRepository } from "../../../../db/repositories/users";
 import { oauthService } from "../../../services/oauth";
 import { capitalize, formatConnectionIdentifier } from "../utils";

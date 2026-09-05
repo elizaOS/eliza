@@ -1,5 +1,5 @@
 /** Extracts and validates complete JSON model outputs for cloud services. */
-import { ElizaError, toWellFormedUnicode } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode } from "@elizaos/core/edge";
 import type { z } from "zod";
 
 function extractJsonFromAiResponse(text: string): string {

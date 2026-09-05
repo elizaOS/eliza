@@ -6,7 +6,7 @@
  * only after cache invalidation. Monetary inputs and outputs remain exact
  * integer cents or canonical Postgres decimal strings throughout this module.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, notExists, or, sql } from "drizzle-orm";
 import { dbWrite } from "../client";
 import {

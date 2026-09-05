@@ -40,6 +40,7 @@ export * from "./connection";
 export * from "./connectors/account-manager";
 export * from "./connectors/attachments";
 export * from "./connectors/connector-config";
+export * from "./connectors/credential-refs";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
 export * from "./connectors.ts";

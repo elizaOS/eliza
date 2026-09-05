@@ -3,7 +3,7 @@ import {
   redactSensitiveRequestMetadata,
   type SensitiveRequestEvent,
   type SensitiveRequestPolicy,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import {
   authorizeSensitiveRequestActor,
   createCloudSensitiveRequestAuthorizationAdapter,

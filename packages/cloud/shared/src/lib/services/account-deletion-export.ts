@@ -1,7 +1,7 @@
 /** Builds, encrypts, verifies, and generation-fences recovery-window exports. */
 
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { sql } from "drizzle-orm";
 import {
   ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256,

@@ -3,7 +3,7 @@
  * organization-credit purchase. The durable webhook row is also the callback
  * outbox; process-local listeners never decide whether money was fulfilled.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import Decimal from "decimal.js";
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { writeTransaction } from "../../db/helpers";
@@ -15,6 +15,7 @@ import {
   paymentRequestEvents,
   paymentRequests,
 } from "../../db/schemas/payment-requests";
+import { sha256Hex as workerSha256Hex } from "../crypto/worker";
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
@@ -710,6 +711,5 @@ export async function dispatchPaymentCallbacks(input?: {
 }
 
 export async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return workerSha256Hex(value);
 }

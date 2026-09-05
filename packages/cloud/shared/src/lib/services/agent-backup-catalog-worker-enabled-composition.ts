@@ -6,7 +6,7 @@
  */
 
 import path from "node:path";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   createKmsClient,
   KmsAeadOperationKeyBundleProvider,

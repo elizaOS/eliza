@@ -9,9 +9,13 @@
  * `credentialRefRecordsFromMetadata` is the read side used by the resolver.
  */
 import {
-  CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
+  CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
+  CONNECTOR_VAULT_SERVICE_TYPES,
   type ConnectorAccountManager,
+  type ConnectorCredentialInput,
+  type ConnectorCredentialRefMetadata,
   type IAgentRuntime,
+  persistConnectorCredentialRefs,
 } from "@elizaos/core";
 
 type JsonValue =
@@ -24,21 +28,7 @@ type JsonValue =
   | { readonly [key: string]: JsonValue };
 type JsonRecord = Record<string, JsonValue>;
 
-const CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES = [
-  "connector_credential_store",
-  "CONNECTOR_CREDENTIAL_STORE",
-  "connectorCredentialStore",
-  "credential_store",
-] as const;
-
-const CONNECTOR_VAULT_SERVICE_TYPES = ["vault", "VAULT"] as const;
-
-export interface SpotifyCredentialRefMetadata extends JsonRecord {
-  credentialType: string;
-  vaultRef: string;
-  expiresAt?: number;
-  metadata?: JsonRecord;
-}
+export type SpotifyCredentialRefMetadata = ConnectorCredentialRefMetadata;
 
 export interface SpotifyCredentialRefRecordLike {
   credentialType: string;
@@ -47,31 +37,14 @@ export interface SpotifyCredentialRefRecordLike {
   expiresAt?: number | string | Date | null;
 }
 
-interface CredentialInput {
-  credentialType: string;
-  value: string;
-  expiresAt?: number;
-  metadata?: JsonRecord;
-}
-
 interface PersistParams {
   runtime: IAgentRuntime;
   manager?: ConnectorAccountManager;
   provider: string;
   accountId: string;
-  credentials: CredentialInput[];
+  credentials: ConnectorCredentialInput[];
   caller: string;
 }
-
-type VaultWriter = {
-  name: string;
-  write: (vaultRef: string, credential: CredentialInput) => Promise<string>;
-};
-
-type CredentialRefWriter = {
-  name: string;
-  write: (ref: SpotifyCredentialRefMetadata) => Promise<void>;
-};
 
 export interface SpotifyCredentialPersistResult {
   refs: SpotifyCredentialRefMetadata[];
@@ -80,36 +53,15 @@ export interface SpotifyCredentialPersistResult {
 export async function persistSpotifyCredentialRefs(
   params: PersistParams
 ): Promise<SpotifyCredentialPersistResult> {
-  const vaultWriters = resolveVaultWriters(params.runtime, params);
-  if (vaultWriters.length === 0) {
-    throw new Error(
-      `No durable connector credential store or vault writer is available for ${params.provider} account ${params.accountId}. Refusing to mark OAuth account connected without persisted credentials.`
-    );
-  }
-  const refWriters = resolveCredentialRefWriters(params.runtime, params.manager, params.accountId);
-  if (refWriters.length === 0) {
-    throw new Error(
-      `No durable connector credential ref writer is available for ${params.provider} account ${params.accountId}. Refusing to mark OAuth account connected without persisted credential refs.`
-    );
-  }
-
-  const refs: SpotifyCredentialRefMetadata[] = [];
-  for (const credential of params.credentials) {
-    const plannedRef = buildVaultRef({
-      agentId: nonEmptyString(params.runtime.agentId) ?? "agent",
-      provider: params.provider,
-      accountId: params.accountId,
-      credentialType: credential.credentialType,
-    });
-    const vaultRef = await writeWithFirstAvailableVault(vaultWriters, plannedRef, credential);
-    refs.push({
-      credentialType: credential.credentialType,
-      vaultRef,
-      ...(credential.expiresAt !== undefined ? { expiresAt: credential.expiresAt } : {}),
-      ...(credential.metadata ? { metadata: credential.metadata } : {}),
-    });
-  }
-  await writeRefsToStorage(refWriters, refs);
+  const { refs } = await persistConnectorCredentialRefs({
+    runtime: params.runtime,
+    manager: params.manager,
+    provider: params.provider,
+    accountIdForRef: params.accountId,
+    storageAccountId: params.accountId,
+    credentials: params.credentials,
+    caller: params.caller,
+  });
   return { refs };
 }
 
@@ -181,162 +133,6 @@ function credentialRefFromRecord(
     metadata: asRecord(record.metadata) ?? null,
     expiresAt: record.expiresAt as SpotifyCredentialRefRecordLike["expiresAt"],
   };
-}
-
-function resolveVaultWriters(runtime: IAgentRuntime, params: PersistParams): VaultWriter[] {
-  const writers: VaultWriter[] = [];
-  const credentialStore = getFirstService(runtime, CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES) as {
-    putSecret?: (params: {
-      vaultRef?: string;
-      agentId: string;
-      provider: string;
-      accountId: string;
-      credentialType: string;
-      value: string;
-      caller?: string;
-    }) => Promise<string> | string;
-  } | null;
-  if (typeof credentialStore?.putSecret === "function") {
-    writers.push({
-      name: "connector_credential_store",
-      write: async (vaultRef, credential) =>
-        credentialStore.putSecret?.({
-          vaultRef,
-          agentId: nonEmptyString(runtime.agentId) ?? "agent",
-          provider: params.provider,
-          accountId: params.accountId,
-          credentialType: credential.credentialType,
-          value: credential.value,
-          caller: params.caller,
-        }) ?? vaultRef,
-    });
-  }
-  const vault = getFirstService(runtime, CONNECTOR_VAULT_SERVICE_TYPES) as {
-    set?: (
-      key: string,
-      value: string,
-      options?: { sensitive?: boolean; caller?: string }
-    ) => Promise<void> | void;
-  } | null;
-  if (typeof vault?.set === "function") {
-    writers.push({
-      name: "vault",
-      write: async (vaultRef, credential) => {
-        await vault.set?.(vaultRef, credential.value, { sensitive: true, caller: params.caller });
-        return vaultRef;
-      },
-    });
-  }
-  return writers;
-}
-
-function resolveCredentialRefWriters(
-  runtime: IAgentRuntime,
-  manager: ConnectorAccountManager | undefined,
-  accountId: string
-): CredentialRefWriter[] {
-  const candidates = [
-    manager?.getStorage?.(),
-    getService(runtime, CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE),
-    (runtime as { adapter?: unknown }).adapter,
-  ].filter(Boolean);
-  const writers: CredentialRefWriter[] = [];
-  for (const candidate of candidates) {
-    const writer = candidate as {
-      setConnectorAccountCredentialRef?: (params: {
-        accountId: string;
-        credentialType: string;
-        vaultRef: string;
-        metadata?: JsonRecord;
-        expiresAt?: number;
-      }) => Promise<unknown> | unknown;
-      setCredentialRef?: (params: {
-        accountId: string;
-        credentialType: string;
-        vaultRef: string;
-        metadata?: JsonRecord;
-        expiresAt?: number;
-      }) => Promise<unknown> | unknown;
-    };
-    const fn = writer.setConnectorAccountCredentialRef ?? writer.setCredentialRef;
-    if (typeof fn === "function") {
-      writers.push({
-        name:
-          typeof writer.setConnectorAccountCredentialRef === "function"
-            ? "setConnectorAccountCredentialRef"
-            : "setCredentialRef",
-        write: async (ref) => {
-          await fn.call(writer, {
-            accountId,
-            credentialType: ref.credentialType,
-            vaultRef: ref.vaultRef,
-            ...(ref.metadata ? { metadata: ref.metadata } : {}),
-            ...(ref.expiresAt !== undefined ? { expiresAt: ref.expiresAt } : {}),
-          });
-        },
-      });
-    }
-  }
-  return writers;
-}
-
-async function writeWithFirstAvailableVault(
-  writers: VaultWriter[],
-  plannedRef: string,
-  credential: CredentialInput
-): Promise<string> {
-  const errors: string[] = [];
-  for (const writer of writers) {
-    try {
-      return await writer.write(plannedRef, credential);
-    } catch (error) {
-      // error-policy:J2 collect per-writer failures; the aggregate rethrows below.
-      errors.push(`${writer.name}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  throw new Error(`Failed to persist connector credential ref ${plannedRef}: ${errors.join("; ")}`);
-}
-
-async function writeRefsToStorage(
-  writers: CredentialRefWriter[],
-  refs: SpotifyCredentialRefMetadata[]
-): Promise<void> {
-  const errors: string[] = [];
-  for (const writer of writers) {
-    try {
-      for (const ref of refs) {
-        await writer.write(ref);
-      }
-      return;
-    } catch (error) {
-      // error-policy:J2 collect per-writer failures; the aggregate rethrows below.
-      errors.push(`${writer.name}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  throw new Error(`Failed to persist connector credential refs: ${errors.join("; ")}`);
-}
-
-function buildVaultRef(params: {
-  agentId: string;
-  provider: string;
-  accountId: string;
-  credentialType: string;
-}): string {
-  return [
-    "connector",
-    normalizeVaultSegment(params.agentId),
-    normalizeVaultSegment(params.provider),
-    normalizeVaultSegment(params.accountId),
-    normalizeVaultSegment(params.credentialType),
-  ].join(".");
-}
-
-function normalizeVaultSegment(value: string): string {
-  const normalized = value
-    .trim()
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return (normalized || "unknown").slice(0, 64);
 }
 
 function getFirstService(runtime: IAgentRuntime, serviceTypes: readonly string[]): unknown {

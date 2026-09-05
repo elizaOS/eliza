@@ -10,6 +10,7 @@
 
 import { ssoBridgeRepository } from "../../db/repositories/sso-bridge";
 import type { StewardTokenClaims } from "../auth/steward-client";
+import { bytesToHex, sha256Hex } from "../crypto/worker";
 
 export const STAGING_SESSION_CODE_TTL_SECONDS = 60;
 const STAGING_SESSION_CODE_PREFIX = "esqa_";
@@ -27,17 +28,7 @@ export interface StagingSessionCodeRecord {
 function createOpaqueHex(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return bytesToHex(bytes);
 }
 
 async function storeKey(code: string): Promise<string> {

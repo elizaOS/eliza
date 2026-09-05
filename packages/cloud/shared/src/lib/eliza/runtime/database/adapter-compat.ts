@@ -11,7 +11,7 @@ import {
   type Task,
   type UUID,
   type World,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { stableSerialize } from "../stable-serialize";
 
 // Uses any[] for args because defineCompatMethod passes concrete implementations

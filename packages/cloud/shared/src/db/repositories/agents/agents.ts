@@ -8,7 +8,7 @@
  * Write operations → dbWrite (primary)
  */
 
-import type { Agent } from "@elizaos/core";
+import type { Agent } from "@elizaos/core/edge";
 import { eq, inArray } from "drizzle-orm";
 import { logger } from "../../../lib/utils/logger";
 import type { DbTransaction } from "../../client";

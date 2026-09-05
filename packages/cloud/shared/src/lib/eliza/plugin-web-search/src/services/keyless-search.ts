@@ -3,7 +3,7 @@
 // agent without a Google/Gemini key still has working web search instead of a
 // service that throws at initialize. Plain fetch (Worker-compatible), bounded
 // response reads, and no query text in logs.
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/core/edge";
 
 const PARALLEL_MCP_URL = "https://search.parallel.ai/mcp";
 const EXA_MCP_URL = "https://mcp.exa.ai/mcp";

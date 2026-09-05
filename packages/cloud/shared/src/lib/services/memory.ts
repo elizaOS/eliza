@@ -1,6 +1,6 @@
 // Coordinates cloud service memory behavior behind route handlers.
-import type { AgentRuntime, Content, Memory, UUID } from "@elizaos/core";
-import { assertModelOutputComplete, ChannelType, stringToUuid } from "@elizaos/core";
+import type { AgentRuntime, Content, Memory, UUID } from "@elizaos/core/edge";
+import { assertModelOutputComplete, ChannelType, stringToUuid } from "@elizaos/core/edge";
 import { streamText } from "ai";
 import { createHash } from "crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";

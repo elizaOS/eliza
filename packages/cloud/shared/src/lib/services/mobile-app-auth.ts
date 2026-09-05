@@ -10,7 +10,7 @@
  * of finer route-level permission enforcement.
  */
 import crypto from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { decryptApiKey, encryptApiKey } from "../../db/crypto/api-keys";
 import { buildMobileAppAuthCredentialProvenance } from "../../db/mobile-app-auth-credential-policy";
 import {

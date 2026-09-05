@@ -4,7 +4,7 @@
  * while the worker executor may retry cache deletion until it succeeds.
  */
 
-import { ElizaError, redactSensitiveText } from "@elizaos/core";
+import { ElizaError, redactSensitiveText } from "@elizaos/core/edge";
 import { eq } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 import type { DbTransaction } from "../../db/client";

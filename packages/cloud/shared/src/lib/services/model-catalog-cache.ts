@@ -4,7 +4,7 @@
  * cache key, failures enter a bounded cooldown, and only successful loads can
  * replace the last-good shared-cache entry.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import type { CatalogModel } from "../models";
 
 export const MODEL_CATALOG_FAILURE_BACKOFF_BASE_MS = 30_000;

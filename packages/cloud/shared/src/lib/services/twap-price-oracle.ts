@@ -31,7 +31,7 @@
  *    - Mitigation: Multi-source validation + TWAP smoothing
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { elizaTokenPrices } from "../../db/schemas/token-redemptions";

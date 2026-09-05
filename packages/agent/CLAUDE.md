@@ -68,7 +68,7 @@ src/
   security/               access.ts and audit-log.ts; network and MCP policy live in @elizaos/core
   awareness/              Re-exports AwarenessRegistry from @elizaos/shared
   hooks/                  loadHooks() / triggerHook() — workspace hook discovery + dispatch
-  contracts/awareness.ts  Re-exports awareness contracts from @elizaos/shared
+  contracts/awareness.ts  Compatibility re-export of shared awareness contracts
   diagnostics/            integration-observability.ts
   shared/                 workspace-resolution.ts (resolveDefaultAgentWorkspaceDir)
 scripts/                  build/package helpers, deterministic Vitest batching, mobile bundling, live sandbox smoke, and the hardware-free TEE policy harness

@@ -6,8 +6,8 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from "@elizaos/core";
-import { addHeader, ChannelType, logger, toWellFormedUnicode } from "@elizaos/core";
+} from "@elizaos/core/edge";
+import { addHeader, ChannelType, logger, toWellFormedUnicode } from "@elizaos/core/edge";
 
 /** Alternate grouped shape used by some editors (`examples[]`). `Character.messageExamples` is `MessageExample[][]`. */
 type MessageExampleGroup = { examples: MessageExample[] };

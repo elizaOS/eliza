@@ -17,7 +17,7 @@
  * deliberately not implemented.
  */
 
-import type { LinkedAccountHealthDetail, LinkedAccountUsage } from "@elizaos/core";
+import type { LinkedAccountHealthDetail, LinkedAccountUsage } from "@elizaos/core/edge";
 import {
   type PooledCredential,
   type PooledCredentialWithContributor,

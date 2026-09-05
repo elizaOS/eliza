@@ -9,11 +9,11 @@
  * projection, so a handle minted for another organization cannot resolve.
  */
 
-import type { ConnectedAccount, ConnectedAccountMode } from "@elizaos/core";
+import type { ConnectedAccount, ConnectedAccountMode } from "@elizaos/core/edge";
 import { type ConnectedCapabilitySourceRows, projectConnectedAccounts } from "./projection";
 
-export type { ConnectedAccount, ConnectedAccountMode } from "@elizaos/core";
-export { CONNECTED_ACCOUNT_MODES } from "@elizaos/core";
+export type { ConnectedAccount, ConnectedAccountMode } from "@elizaos/core/edge";
+export { CONNECTED_ACCOUNT_MODES } from "@elizaos/core/edge";
 export type {
   ConnectedCapabilitySourceRows,
   DiscordConnectionRow,

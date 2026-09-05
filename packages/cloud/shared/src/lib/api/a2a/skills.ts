@@ -10,7 +10,7 @@
  * the A2A protocol which only provides user/org context, not agent personality.
  */
 
-import { assertModelOutputComplete } from "@elizaos/core";
+import { assertModelOutputComplete } from "@elizaos/core/edge";
 import { streamText } from "ai";
 import { SAVE_MEMORY_PRICE_USD } from "../../../billing/organization-credits";
 import { BITROUTER_DEFAULT_TEXT_MODEL } from "../../models/catalog";
