@@ -234,7 +234,41 @@ async function renderGroundedActionReplyText(
       },
     );
   }
+  if (invertsNegativeFallback(args.scenario, args.fallback, result)) {
+    throw new ElizaError(
+      "Grounded reply model output contradicts the negative canonical fallback",
+      {
+        code: "GROUNDED_REPLY_OUTPUT_INVALID",
+        context: { invalidShape: "negation-inverted", scenario: args.scenario },
+      },
+    );
+  }
   return result;
+}
+
+const FAILURE_SCENARIO_PATTERN =
+  /not_found|failed|failure|error|unavailable|denied|rejected|missing|no_match/i;
+const NEGATION_CUE_PATTERN =
+  /\b(?:couldn't|could not|can't|cannot|didn't|did not|wasn't|was not|isn't|is not|aren't|are not|won't|don't|doesn't|no|not|nothing|none|never|unable|failed|missing|without)\b/i;
+
+/**
+ * A failure scenario's canonical fallback states what did NOT happen. The model
+ * may rephrase it but may not drop the negation: live, "i couldn't find an event
+ * matching 'Gym session …'" (delete_event_not_found, receipt outcome noop) came
+ * back as "The Gym session Tuesday at 7 AM (Sep 8) is gone." — a false success
+ * claim about a mutation that never ran. Only failure-shaped scenarios are
+ * screened so a positive read ("nothing on Tuesday" → "Tuesday's clear") is
+ * never rejected.
+ */
+function invertsNegativeFallback(
+  scenario: string,
+  fallback: string,
+  reply: string,
+): boolean {
+  if (!FAILURE_SCENARIO_PATTERN.test(scenario)) return false;
+  const normalize = (value: string) => value.replace(/[\u2018\u2019]/g, "'");
+  if (!NEGATION_CUE_PATTERN.test(normalize(fallback))) return false;
+  return !NEGATION_CUE_PATTERN.test(normalize(reply));
 }
 
 /**
