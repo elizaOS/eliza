@@ -1099,11 +1099,9 @@ function nativeResultToResponse(
 }
 
 /**
- * Try to serve the request as an incremental token stream over the full-Bun
- * runtime's `http_request_stream` bridge (#12354). Returns `null` when the
- * request is not an SSE stream, the runtime is unavailable, or the stream head
- * never arrives — the caller then falls back to the buffered path (which fakes a
- * single-frame SSE), so a streaming failure never drops the chat reply.
+ * Serve an incremental response through the full-Bun streaming bridge. A
+ * missing runtime or event capability returns null before dispatch, allowing
+ * buffered compatibility. Once dispatched, failure must not replay the request.
  */
 async function tryFullBunStreamingResponse(
   options: IosLocalAgentNativeRequestOptions,
@@ -1158,17 +1156,8 @@ async function dispatchIosRequest(
   // Accept: text/event-stream request) through the streaming bridge so tokens
   // render incrementally instead of the buffered single-frame fallback.
   if (isStreamingRequest(request.url, request.headers)) {
-    try {
-      const streamed = await tryFullBunStreamingResponse(
-        options,
-        request.signal,
-      );
-      if (streamed) return streamed;
-    } catch {
-      // error-policy:J4 a stream startup failure may use buffered transport;
-      // caller cancellation must never dispatch a second native operation.
-      request.signal.throwIfAborted();
-    }
+    const streamed = await tryFullBunStreamingResponse(options, request.signal);
+    if (streamed) return streamed;
   }
 
   const response = nativeResultToResponse(

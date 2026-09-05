@@ -97,9 +97,9 @@ export async function createNativeStreamingResponse(
   // body is streaming each chunk must arrive within IDLE_TIMEOUT_MS. Without
   // these a dropped head/terminal event (agent crash, killed loopback, lost
   // Capacitor event) would hang the reply forever — Android's `requestStream`
-  // carries no `completion` safety net, so the transport's try/catch fallback
-  // never fires. On timeout the head rejects (caller falls back to the buffered
-  // request) or the body errors, and `detach()` clears both timers.
+  // carries no `completion` safety net. On timeout the head rejects or the body
+  // errors, and `detach()` clears both timers. The caller owns retry policy;
+  // a missing head does not prove that a dispatched request had no side effects.
   const HEAD_TIMEOUT_MS = options.timeoutMs ?? 30000;
   const IDLE_TIMEOUT_MS = options.timeoutMs ?? 30000;
   let headTimer: ReturnType<typeof setTimeout> | null = null;

@@ -358,3 +358,5 @@ fetch interception, boot progress and watchdog restart state. App-core's
 Do not introduce another transport singleton or watchdog listener in the host.
 The fetch boundary applies standard RequestInit overrides and observes caller
 cancellation; cancellation cannot undo native side effects already dispatched.
+Native stream failures propagate without replay. Buffered compatibility is
+selected only before dispatch when streaming events are unavailable.

@@ -210,3 +210,36 @@ it.each([false, true])(
     completion.resolve({ result: null });
   },
 );
+
+it("does not replay a failed native streaming POST through buffered transport", async () => {
+  await install();
+  const failure = new Error("Native stream failed after accepting the message");
+  native.call.mockRejectedValueOnce(failure);
+  await expect(
+    fetch(endpoint, {
+      method: "POST",
+      headers: { accept: "text/event-stream" },
+      body: "one message",
+    }),
+  ).rejects.toBe(failure);
+  expect(native.call).toHaveBeenCalledTimes(1);
+  expect(native.call.mock.calls[0][0].method).toBe("http_request_stream");
+  expect(native.listeners.size).toBe(0);
+});
+
+it("uses buffered compatibility before dispatch when stream events are unavailable", async () => {
+  await install();
+  primeIosFullBunRuntime({
+    start: async () => ({ ok: true }),
+    getStatus: async () => ({ ready: true, engine: "bun" }),
+    call: native.call,
+  });
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { accept: "text/event-stream" },
+    body: "one message",
+  });
+  expect(await response.text()).toBe("native response");
+  expect(native.call).toHaveBeenCalledTimes(1);
+  expect(native.call.mock.calls[0][0].method).toBe("http_request");
+});
