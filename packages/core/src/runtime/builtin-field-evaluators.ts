@@ -27,6 +27,7 @@
  */
 
 import { SHOULD_RESPOND_SCHEMA_DESCRIPTION } from "../actions/to-tool";
+import type { ReplyEffectStatus } from "../types/components";
 import type { JSONSchema } from "../types/model";
 import { trimEndCharacters } from "../utils/string-boundaries";
 import { stripJsonStructuralJunkReply } from "./json-output";
@@ -236,29 +237,33 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 // Semantic safety signal for indirect, vague, or non-English completion text.
 // ---------------------------------------------------------------------------
 
-export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<
-	"none" | "applied" | "non_applied"
-> = {
-	name: "replyEffectStatus",
-	description:
-		'Classify what replyText says about an external change (save, send, schedule, create, update, delete, payment, booking, device action, delegated task). "applied" when it says or clearly implies the change already happened, including vague/indirect/non-English wording such as "it is ready", "on the books", "you will get a nudge", or "quedó listo". "non_applied" when it explicitly says previewed, pending, failed, cancelled, unavailable, or not done. "none" when it makes no claim about an external change. A future promise or brief work-in-progress acknowledgement is non_applied.',
-	descriptionCompressed:
-		"Semantic status of external change claimed by replyText: applied, non_applied, or none; classify vague and non-English implications.",
-	priority: 25,
-	schema: {
-		type: "string",
-		enum: ["none", "applied", "non_applied"],
+/** Normalize the same effect contract in field-registry and fallback parsing. */
+export function normalizeReplyEffectStatus(value: unknown): ReplyEffectStatus {
+	const normalized =
+		typeof value === "string" ? value.trim().toLowerCase() : "";
+	return normalized === "applied" ||
+		normalized === "non_applied" ||
+		normalized === "pending"
+		? normalized
+		: "none";
+}
+
+export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<ReplyEffectStatus> =
+	{
+		name: "replyEffectStatus",
 		description:
-			"Whether replyText claims an external change already happened, explicitly says it did not, or makes no such claim.",
-	},
-	parse(value) {
-		const normalized =
-			typeof value === "string" ? value.trim().toLowerCase() : "";
-		return normalized === "applied" || normalized === "non_applied"
-			? normalized
-			: "none";
-	},
-};
+			'Classify the work described by replyText, regardless of wording or language. "pending" means work is promised, in progress, or not yet completed, including current-information lookup and UI navigation even beside an answered memory question. "applied" means an external change already happened (save, send, schedule, payment, booking, device action, delegated task), including indirect claims such as "on the books" or "quedó listo"; this is not execution proof. "non_applied" means a terminal failed, unavailable, cancelled, declined, or preview-only outcome with no promised work remaining. "none" means an answer, explanation, question, or conditional offer without a work claim. A promise to look up a price or open Home is pending, not non_applied.',
+		descriptionCompressed:
+			"Semantic work status in replyText: pending work (including lookup/navigation), applied change, terminal non_applied outcome, or none; wording and language do not determine routing.",
+		priority: 25,
+		schema: {
+			type: "string",
+			enum: ["none", "applied", "non_applied", "pending"],
+			description:
+				"pending=promised unfinished work, including lookup/navigation beside an answer; applied=claimed completed change; non_applied=terminal failed/unavailable/cancelled/declined/preview outcome; none=answer, explanation, question, or conditional offer without a work claim.",
+		},
+		parse: normalizeReplyEffectStatus,
+	};
 
 // ---------------------------------------------------------------------------
 // facts — priority 80. Memory pipeline.

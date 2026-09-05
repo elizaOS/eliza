@@ -487,11 +487,28 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).not.toContain("SEND_EMAIL");
 	});
 
-	it("starts app turns from the model-selected action instead of unrelated focused-view tools", async () => {
+	it("executes the model-selected app action while retaining authorized focused-view tools", async () => {
+		const notesHandler = vi.fn(async () => ({
+			success: true,
+			text: "Unrelated Notes content.",
+		}));
+		const emailHandler = vi.fn(async () => ({
+			success: true,
+			text: "Latest email: Dana — Renewal call moved to Thursday.",
+			data: {
+				actionName: "MESSAGE",
+				messages: [
+					{ sender: "Dana", subject: "Renewal call moved to Thursday" },
+				],
+			},
+		}));
+		const answer =
+			"Your latest email is from Dana: the renewal call moved to Thursday.";
 		const notes = makeAction({
 			name: "NOTES",
 			description: "Read or update the notes shown in the open Notes view.",
 			contexts: ["notes" as AgentContext, "general"],
+			handler: notesHandler,
 		});
 		const views = makeAction({
 			name: "VIEWS",
@@ -502,6 +519,7 @@ describe("v5 tiered action surface", () => {
 			name: "MESSAGE",
 			description: "Read or send email.",
 			contexts: ["general"],
+			handler: emailHandler,
 		});
 		const runtime = makeRuntime({
 			actions: [notes, views, email],
@@ -511,11 +529,11 @@ describe("v5 tiered action surface", () => {
 					candidateActionNames: ["MESSAGE"],
 				}),
 				plannerToolResponse("MESSAGE"),
-				finishEvaluatorResponse("Checked email."),
+				finishEvaluatorResponse(answer),
 			],
 		});
 
-		await runV5MessageRuntimeStage1({
+		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage("check my email from here", "test", {
 				uiView: "notes",
@@ -531,10 +549,27 @@ describe("v5 tiered action surface", () => {
 		});
 
 		const tools = plannerToolNames(runtime);
-		expect(tools).not.toContain("NOTES");
+		expect(tools).toContain("NOTES");
 		expect(tools).not.toContain("VIEWS");
-		// Stage 1 expands beyond the open view when the user explicitly asks.
 		expect(tools).toContain("MESSAGE");
+		expect(emailHandler).toHaveBeenCalledTimes(1);
+		expect(notesHandler).not.toHaveBeenCalled();
+		const calls = getCalls(runtime);
+		expect(calls.map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(JSON.stringify(calls[2]?.params)).toContain(
+			"Renewal call moved to Thursday",
+		);
+		expect(JSON.stringify(calls[2]?.params)).not.toContain(
+			"Unrelated Notes content.",
+		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(answer);
+		}
 	});
 
 	it("keeps an app planner turn on the model-selected focused-view action", async () => {

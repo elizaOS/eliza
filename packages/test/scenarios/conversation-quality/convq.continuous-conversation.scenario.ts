@@ -51,6 +51,16 @@ export default scenario({
       room: "main",
       name: "share-preference-and-plan",
       text: "My favorite tea is rooibos; please remember that. I'm making two sandwiches per guest for six guests on Saturday. Keep this casual and brief, and don't create any notes, events, or reminders.",
+      responseExcludes: [
+        /\bexperienceId\b/,
+        /\bSEARCH_EXPERIENCES\b/,
+        /\bvalid UUID\b/i,
+      ],
+      responseJudge: {
+        minimumScore: 0.8,
+        rubric:
+          "Respond briefly and naturally to the tea preference and Saturday plan. Do not expose tool names, parameter validation, or raw action errors. Do not claim to have created an unrequested note, event, or reminder. If something failed, explain it naturally without pretending it succeeded.",
+      },
     },
     {
       kind: "message",
@@ -91,7 +101,7 @@ export default scenario({
       responseJudge: {
         minimumScore: 0.8,
         rubric:
-          "Recall the owner's blue preference from durable storage and give its Spanish name, azul. The user never supplied the color in these conversation turns. No memory/database/retrieval narration is needed.",
+          "The reference preference is blue, whose Spanish name is azul. Grade whether the reply gives this answer directly and naturally without memory/database/retrieval narration. Do not require an explicit retrieval tool call: the runtime's FACTS provider supplies durable facts as model context, which is not included in the action trace shown to this judge.",
       },
     },
     {
@@ -150,6 +160,7 @@ export default scenario({
         const messages = await runtime.getMemories({
           tableName: "messages",
           entityId: ctx.primaryUserId as UUID,
+          authorEntityIds: [ctx.primaryUserId as UUID],
           unique: false,
         });
         if (messages.length < 7) return "Owner turns are missing from storage";

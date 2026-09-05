@@ -188,7 +188,7 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 		await loader.loadModel({ modelPath: "/models/flat-model.gguf" });
 		await loader.generate({ prompt: "hi" });
 		expect((seen as { bundleDir?: string } | null)?.bundleDir).toBe("");
-		expect(seen).toHaveProperty("maxTokens", 256);
+		expect(seen).not.toHaveProperty("maxTokens");
 		expect(
 			(seen as { stopSequences?: string[] } | null)?.stopSequences,
 		).toEqual(["<end_of_turn>", "<start_of_turn>", "<endoftext>"]);

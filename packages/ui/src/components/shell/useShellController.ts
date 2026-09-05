@@ -474,10 +474,10 @@ const selectShellController = (s: AppContextValue) => ({
   elizaCloudConnected: s.elizaCloudConnected,
   elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
   handleNewConversation: s.handleNewConversation,
+  ensureActiveConversation: s.ensureActiveConversation,
   handleSelectConversation: s.handleSelectConversation,
   activeConversationId: s.activeConversationId,
   conversations: s.conversations,
-  startupCoordinatorPhase: s.startupCoordinator.phase,
   setTab: s.setTab,
   handleChatStop: s.handleChatStop,
   setActionNotice: s.setActionNotice,
@@ -498,10 +498,10 @@ export function useShellController(): ShellController {
     elizaCloudConnected,
     elizaCloudVoiceProxyAvailable,
     handleNewConversation,
+    ensureActiveConversation,
     handleSelectConversation,
     activeConversationId,
     conversations,
-    startupCoordinatorPhase,
     setTab,
     handleChatStop,
     setActionNotice,
@@ -669,82 +669,40 @@ export function useShellController(): ShellController {
   const stopRealtimeVoiceRef = React.useRef<() => void>(() => {});
   const [realtimeVoiceBoundaryError, setRealtimeVoiceBoundaryError] =
     React.useState<string | null>(null);
-  const [conversationCreationEpoch, setConversationCreationEpoch] =
-    React.useState(0);
-  const conversationCreationEpochRef = React.useRef(0);
-  conversationCreationEpochRef.current = conversationCreationEpoch;
-  const conversationCreationTaskRef = React.useRef<Promise<void> | null>(null);
   const conversationIdentityWaitersRef = React.useRef(
     new Set<{
-      epoch: number;
+      conversationId: string;
       resolve: (conversationId: string | null) => void;
     }>(),
   );
 
-  const beginConversationCreationForVoice = React.useCallback(() => {
-    if (conversationCreationTaskRef.current) return;
-    const creationTask = handleNewConversation();
-    conversationCreationTaskRef.current = creationTask;
-    const finishCreation = () => {
-      if (conversationCreationTaskRef.current === creationTask) {
-        conversationCreationTaskRef.current = null;
-      }
-      setConversationCreationEpoch((current) => current + 1);
-    };
-    void creationTask.then(
-      finishCreation,
-      // error-policy:J4 The identity waiter converts creation failure into the
-      // shell's visible retryable Cartesia error rather than rejecting unseen.
-      finishCreation,
-    );
-  }, [handleNewConversation]);
-
-  const ensureActiveConversationForVoice = React.useCallback(() => {
-    const existingId = activeConversationIdRef.current?.trim();
-    if (existingId) return Promise.resolve(existingId);
-
-    const waiterEpoch = conversationCreationEpochRef.current;
-    const identityPromise = new Promise<string | null>((resolve) => {
+  const ensureActiveConversationForVoice = React.useCallback(async () => {
+    // Startup can publish a provisional id before discovering the saved real
+    // history. Text and voice must both wait for that selection to settle.
+    const conversationId = await ensureActiveConversation();
+    if (!conversationId || !realtimeVoiceWantedRef.current) return null;
+    if (activeConversationIdRef.current?.trim() === conversationId) {
+      return conversationId;
+    }
+    return new Promise<string | null>((resolve) => {
       conversationIdentityWaitersRef.current.add({
-        epoch: waiterEpoch,
+        conversationId,
         resolve,
       });
     });
-    // The shell paints while startup is still restoring chat history. Starting
-    // a second create during that authoritative hydration races its epoch guard:
-    // the server row is created, but activation is correctly discarded as stale.
-    // Let hydration publish its conversation first; only a settled ready shell
-    // with no identity owns the fallback create.
-    if (startupCoordinatorPhase === "ready") {
-      beginConversationCreationForVoice();
-    }
-    return identityPromise;
-  }, [beginConversationCreationForVoice, startupCoordinatorPhase]);
+  }, [ensureActiveConversation]);
 
-  // Conversation creation publishes the new id before its greeting request
-  // finishes. Resolve voice waiters from this committed render so the realtime
-  // hook's own idsRef has the same UUID, without polling or an arbitrary delay.
+  // A restored id must also reach the realtime hook's committed render before
+  // mint/start reads it. A different committed selection cancels this gesture.
   React.useEffect(() => {
     const committedId = activeConversationId?.trim() || null;
     for (const waiter of conversationIdentityWaitersRef.current) {
-      if (committedId || conversationCreationEpoch > waiter.epoch) {
-        conversationIdentityWaitersRef.current.delete(waiter);
-        waiter.resolve(committedId);
-      }
+      conversationIdentityWaitersRef.current.delete(waiter);
+      waiter.resolve(
+        committedId === waiter.conversationId ? committedId : null,
+      );
     }
-    if (
-      !committedId &&
-      startupCoordinatorPhase === "ready" &&
-      conversationIdentityWaitersRef.current.size > 0
-    ) {
-      beginConversationCreationForVoice();
-    }
-  }, [
-    activeConversationId,
-    beginConversationCreationForVoice,
-    conversationCreationEpoch,
-    startupCoordinatorPhase,
-  ]);
+  }, [activeConversationId]);
 
   React.useEffect(
     () => () => {
@@ -2069,11 +2027,8 @@ export function useShellController(): ShellController {
     setIsOpen(true);
     if (captureRef.current) stopCapture();
 
-    let conversationId = activeConversationIdRef.current?.trim() || null;
-    if (!conversationId) {
-      conversationId = await ensureActiveConversationForVoice();
-      if (authGateRef.current.gated || !realtimeVoiceWantedRef.current) return;
-    }
+    const conversationId = await ensureActiveConversationForVoice();
+    if (authGateRef.current.gated || !realtimeVoiceWantedRef.current) return;
     if (!conversationId) {
       const message =
         "Cartesia voice needs an active conversation. Tap Talk to retry.";

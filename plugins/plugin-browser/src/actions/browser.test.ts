@@ -90,6 +90,106 @@ describe("BROWSER action", () => {
     ).toBe(false);
   });
 
+  it.each(["navigate", "snapshot", "back", "forward", "scroll"])(
+    "dispatches %s when the model leaves the optional direction empty",
+    async (action) => {
+      const validation = validateToolArgs(browserAction, {
+        action,
+        target: "workspace",
+        id: "btab_1",
+        url: "https://example.com",
+        direction: "",
+        tabAction: "",
+      });
+      expect(validation.valid).toBe(true);
+      expect(validation.args).not.toHaveProperty("direction");
+      expect(validation.args).not.toHaveProperty("tabAction");
+      const { service, result } = await runBrowserAction({
+        parameters: validation.args,
+      });
+      expect(service?.execute).toHaveBeenCalledTimes(1);
+      expect(service?.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subaction: action,
+          id: "btab_1",
+          direction: undefined,
+        }),
+        "workspace",
+      );
+      expect(result?.success).toBe(true);
+      if (action === "scroll") expect(result?.text).toContain("Scrolled down");
+    },
+  );
+
+  it("omits declared optional sentinels without dropping empty text", async () => {
+    const validation = validateToolArgs(browserAction, {
+      action: "fill",
+      selector: "#query",
+      text: "",
+      target: "",
+      direction: "",
+      tabAction: "",
+    });
+    expect(validation.valid).toBe(true);
+    expect(validation.args).toMatchObject({ text: "" });
+    for (const name of ["target", "direction", "tabAction"]) {
+      expect(validation.args).not.toHaveProperty(name);
+    }
+    const { service } = await runBrowserAction({ parameters: validation.args });
+    expect(service?.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subaction: "fill",
+        selector: "#query",
+        text: "",
+      }),
+      undefined,
+    );
+  });
+
+  it.each(["down", "left", "right", "up"])(
+    "preserves explicit scroll direction %s through validation and dispatch",
+    async (direction) => {
+      const validation = validateToolArgs(browserAction, {
+        action: "scroll",
+        direction,
+        pixels: 480,
+      });
+      expect(validation.valid).toBe(true);
+      const { service } = await runBrowserAction({
+        parameters: validation.args,
+      });
+      expect(service?.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subaction: "scroll",
+          direction,
+          pixels: 480,
+        }),
+        undefined,
+      );
+    },
+  );
+
+  it.each(["back", "forward", "diagonal", "null"])(
+    "rejects non-scroll direction %s rather than treating it as omitted",
+    (direction) => {
+      const validation = validateToolArgs(browserAction, {
+        action: "scroll",
+        direction,
+      });
+      expect(validation.valid).toBe(false);
+      expect(validation.args).toBeUndefined();
+      expect(validation.invalidParameterNames).toEqual(["direction"]);
+    },
+  );
+
+  it("still rejects an empty or unsupported operation selector", () => {
+    for (const action of ["", "erase-everything"]) {
+      const validation = validateToolArgs(browserAction, { action });
+      expect(validation.valid).toBe(false);
+      expect(validation.invalidParameterNames).toEqual(["action"]);
+    }
+  });
+
   it.each([
     { action: "snapshot", selector: undefined },
     { action: "get", selector: "h1" },

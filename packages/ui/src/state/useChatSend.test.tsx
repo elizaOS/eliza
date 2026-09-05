@@ -27,6 +27,7 @@ import {
 import { CLOUD_HANDOFF_PHASE_EVENT, NAVIGATE_VIEW_EVENT } from "../events";
 import { onViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
+import { readChatDraft, writeChatDraft } from "./ChatComposerContext.hooks";
 import type { LoadConversationMessagesResult } from "./internal";
 import { listPendingChatTurns } from "./pending-chat-turns";
 import {
@@ -349,7 +350,7 @@ describe("useChatSend stop handling", () => {
       completed: true,
     });
     const deps = makeDeps() as UseChatSendDeps & {
-      settleConversationHydrationForSend: () => Promise<void>;
+      settleConversationHydrationForSend: () => Promise<boolean>;
     };
     deps.settleConversationHydrationForSend = vi.fn(async () => {
       await hydration.promise;
@@ -357,6 +358,7 @@ describe("useChatSend stop handling", () => {
       deps.conversationsRef.current = [
         conversation("conv-restored", "room-restored"),
       ];
+      return true;
     });
     const { result } = renderHook(() => useChatSend(deps));
 
@@ -381,6 +383,92 @@ describe("useChatSend stop handling", () => {
     expect(
       mocks.client.sendConversationMessageStream.mock.calls[0]?.slice(0, 2),
     ).toEqual(["conv-restored", "hello"]);
+  });
+
+  it("preserves the draft, attachments and reply when recovery is unavailable", async () => {
+    const deps: UseChatSendDeps = makeDeps({ activeConversationId: "conv-1" });
+    deps.settleConversationHydrationForSend = vi.fn(async () => false);
+    deps.chatInputRef.current = "Keep this draft";
+    const images: ImageAttachment[] = [
+      {
+        data: "aGVsbG8=",
+        mimeType: "image/png",
+        name: "draft.png",
+      },
+    ];
+    deps.chatPendingImagesRef.current = images;
+    deps.chatReplyTargetRef.current = {
+      messageId: "earlier-message",
+      snippet: "Earlier",
+      senderName: "Eliza",
+    };
+    writeChatDraft("conv-1", "Keep this draft");
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.handleChatSend();
+    });
+
+    expect(deps.chatInputRef.current).toBe("Keep this draft");
+    expect(readChatDraft("conv-1")).toBe("Keep this draft");
+    expect(deps.chatPendingImagesRef.current).toBe(images);
+    expect(deps.chatReplyTargetRef.current?.messageId).toBe("earlier-message");
+    expect(deps.setChatInput).not.toHaveBeenCalled();
+    expect(deps.setChatPendingImages).not.toHaveBeenCalled();
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+  });
+
+  it("keeps text and action sends unsent when recovery cannot identify a conversation", async () => {
+    const deps: UseChatSendDeps = makeDeps();
+    deps.settleConversationHydrationForSend = vi.fn(async () => false);
+    const { result } = renderHook(() => useChatSend(deps));
+    await act(async () => {
+      await result.current.sendChatText("Remember this");
+      await result.current.sendActionMessage("Continue that action");
+    });
+    expect(deps.conversationMessagesRef.current).toEqual([]);
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+  });
+
+  it("claims a waiting composer draft once and enqueues it without another recovery gap", async () => {
+    const deps: UseChatSendDeps = makeDeps({ activeConversationId: "conv-1" });
+    const hydration = deferred<boolean>();
+    deps.settleConversationHydrationForSend = vi.fn(() => hydration.promise);
+    deps.chatInputRef.current = "Send this once";
+    const images: ImageAttachment[] = [
+      {
+        data: "aGVsbG8=",
+        mimeType: "image/png",
+        name: "draft.png",
+      },
+    ];
+    deps.chatPendingImagesRef.current = images;
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Received",
+      completed: true,
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.handleChatSend();
+      second = result.current.handleChatSend();
+    });
+    expect(deps.chatInputRef.current).toBe("Send this once");
+    expect(deps.chatPendingImagesRef.current).toBe(images);
+    await act(async () => {
+      hydration.resolve(true);
+      await Promise.all([first, second]);
+    });
+    expect(deps.settleConversationHydrationForSend).toHaveBeenCalledTimes(2);
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.client.sendConversationMessageStream.mock.calls[0]?.slice(0, 2),
+    ).toEqual(["conv-1", "Send this once"]);
+    expect(deps.chatInputRef.current).toBe("");
+    expect(deps.chatPendingImagesRef.current).toEqual([]);
   });
 
   it("does NOT surface an error notice when the send is aborted by the user", async () => {

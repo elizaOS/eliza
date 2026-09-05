@@ -33,6 +33,33 @@ describe("message handler retrieval hint output", () => {
 		expect(replyEffectStatusFieldEvaluator.parse("maybe")).toBe("none");
 	});
 
+	it.each(["pending", "applied", "non_applied", "none"])(
+		"preserves %s reply status through JSON and transcript parsing",
+		(replyEffectStatus) => {
+			const replyText = "The requested work has this model-declared status.";
+			const json = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					contexts: ["simple"],
+					replyText,
+					replyEffectStatus,
+				}),
+			);
+			const transcript = parseMessageHandlerOutput(
+				[
+					"shouldRespond: RESPOND",
+					"contexts: simple",
+					`replyText: ${replyText}`,
+					`replyEffectStatus: ${replyEffectStatus}`,
+				].join("\n"),
+			);
+			for (const parsed of [json, transcript]) {
+				expect(parsed?.plan.replyEffectStatus).toBe(replyEffectStatus);
+				expect(parsed?.plan.reply).toBe(replyText);
+			}
+		},
+	);
+
 	it("strips leaked model tool-call markup out of replyText", () => {
 		// Weak models emit their native tool-call serialization as plain text;
 		// it must never reach the user. Cover closed, truncated-open, and
@@ -165,7 +192,7 @@ describe("message handler retrieval hint output", () => {
 			replyText: { type: "string" },
 			replyEffectStatus: {
 				type: "string",
-				enum: ["none", "applied", "non_applied"],
+				enum: ["none", "applied", "non_applied", "pending"],
 			},
 			candidateActionNames: { type: "array" },
 			facts: { type: "array" },

@@ -86,6 +86,7 @@ import type { ConversationMessageStateMutation } from "./useDataLoaders";
 // ── Types ────────────────────────────────────────────────────────────
 
 const CHAT_SEND_IDENTITY_OVERRIDE = Symbol("chat-send-identity-override");
+const CHAT_SEND_HYDRATION_SETTLED = Symbol("chat-send-hydration-settled");
 type ConversationStreamResult = Awaited<
   ReturnType<typeof client.sendConversationMessageStream>
 >;
@@ -339,6 +340,7 @@ export interface ChatSendTextOptions {
 }
 
 interface ChatSendTextInternalOptions extends ChatSendTextOptions {
+  [CHAT_SEND_HYDRATION_SETTLED]?: true;
   [CHAT_SEND_IDENTITY_OVERRIDE]?: {
     clientMessageId: string;
     optimisticTurn: QueuedChatSend["optimisticTurn"];
@@ -499,7 +501,7 @@ export interface UseChatSendDeps {
    * claims conversation ownership. Callers without startup hydration may omit
    * this dependency.
    */
-  settleConversationHydrationForSend?: () => Promise<void>;
+  settleConversationHydrationForSend?: () => Promise<boolean>;
 
   // Cloud state
   elizaCloudEnabled: boolean;
@@ -2646,7 +2648,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       // the background. Let that restore choose the active conversation before
       // this turn snapshots the target or paints optimistically; otherwise the
       // late restore can replace the just-sent turn with stale history.
-      await settleConversationHydrationForSend?.();
+      if (
+        !options?.[CHAT_SEND_HYDRATION_SETTLED] &&
+        (await settleConversationHydrationForSend?.()) === false
+      )
+        return;
 
       // Claim + clear the active reply target here — the single chokepoint every
       // real user turn (composer send + overlay/voice send()) funnels through —
@@ -2755,6 +2761,15 @@ export function useChatSend(deps: UseChatSendDeps) {
         metadata?: Record<string, unknown>;
       },
     ) => {
+      if (
+        !chatInputRef.current.trim() &&
+        chatPendingImagesRef.current.length === 0
+      )
+        return;
+      // Keep the draft, attachments and reply target intact until restore has
+      // established the destination. Concurrent clicks then claim the draft
+      // only once, after this shared barrier settles.
+      if ((await settleConversationHydrationForSend?.()) === false) return;
       const claimedInput = chatInputRef.current;
       const imagesToSend = chatPendingImagesRef.current.length
         ? [...chatPendingImagesRef.current]
@@ -2776,7 +2791,10 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       // The reply target (if any) is attached + cleared inside sendChatText, the
       // single chokepoint both this and the overlay's send() funnel through.
-      await sendChatText(claimedInput, {
+      // Enqueue immediately after claiming the draft. A second asynchronous
+      // restore barrier here could reject after the draft has been cleared.
+      await sendChatTextInternal(claimedInput, {
+        [CHAT_SEND_HYDRATION_SETTLED]: true,
         channelType,
         conversationId: activeConversationIdRef.current,
         images: imagesToSend,
@@ -2787,7 +2805,8 @@ export function useChatSend(deps: UseChatSendDeps) {
       activeConversationIdRef,
       chatInputRef,
       chatPendingImagesRef,
-      sendChatText,
+      sendChatTextInternal,
+      settleConversationHydrationForSend,
       setChatInput,
       setChatPendingImages,
     ],
@@ -2799,10 +2818,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       const trimmed = text.trim();
       if (!trimmed) return;
       // Actions can be fired from shell surfaces while startup hydration is
-      // still choosing the initial conversation. Use the same bounded barrier
-      // as composer sends so a cold action cannot create A and then be hidden
-      // by the late hydration claim of H (or vice versa).
-      await settleConversationHydrationForSend?.();
+      // still choosing the initial conversation. An unavailable restore leaves
+      // the action unsent instead of allocating a competing conversation.
+      if ((await settleConversationHydrationForSend?.()) === false) return;
       if (chatSendBusyRef.current) return;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;

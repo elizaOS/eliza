@@ -1143,6 +1143,7 @@ export const browserAction: Action = {
       name: "direction",
       description: "Scroll direction for action=scroll. Default down.",
       required: false,
+      modelOmissionSentinels: [""],
       schema: {
         type: "string" as const,
         enum: ["down", "left", "right", "up"],

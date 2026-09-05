@@ -43,7 +43,7 @@ const MESSAGE_USER_SUFFIX_BOUNDARY =
 const MESSAGE_USER_BLOCK_MARKER = /(?:^|\n\n)message:user:\n/g;
 
 type JsonObjectKeyInspection = {
-	hasDuplicateKeys: boolean;
+	hasDuplicateRootKeys: boolean;
 	topLevelKeys: Set<string>;
 };
 
@@ -91,24 +91,22 @@ function extractExternalContent(value: string): string | null {
 }
 
 /**
- * Inspect JSON object keys before JSON.parse can collapse duplicate members.
+ * Inspect root envelope keys before JSON.parse can collapse duplicate members.
  * Decoding each string token also normalizes escaped spellings such as
  * `"te\\u0078t"` to the same semantic key as `"text"`.
+ * Nested metadata is not an alternate envelope and cannot change its text.
  */
 function inspectJsonObjectKeys(value: string): JsonObjectKeyInspection {
-	type Container =
-		| { kind: "array" }
-		| { kind: "object"; keys: Set<string>; topLevel: boolean };
+	type Container = { kind: "array" } | { kind: "object"; topLevel: boolean };
 	const containers: Container[] = [];
 	const topLevelKeys = new Set<string>();
-	let hasDuplicateKeys = false;
+	let hasDuplicateRootKeys = false;
 
 	for (let index = 0; index < value.length; index++) {
 		const character = value[index];
 		if (character === "{") {
 			containers.push({
 				kind: "object",
-				keys: new Set<string>(),
 				topLevel: containers.length === 0,
 			});
 			continue;
@@ -136,22 +134,26 @@ function inspectJsonObjectKeys(value: string): JsonObjectKeyInspection {
 		let afterString = end + 1;
 		while (/\s/.test(value[afterString] ?? "")) afterString++;
 		const container = containers.at(-1);
-		if (value[afterString] === ":" && container?.kind === "object") {
+		if (
+			value[afterString] === ":" &&
+			container?.kind === "object" &&
+			container.topLevel
+		) {
 			try {
 				const key = JSON.parse(value.slice(index, end + 1));
 				if (typeof key === "string") {
-					if (container.keys.has(key)) hasDuplicateKeys = true;
-					container.keys.add(key);
-					if (container.topLevel) topLevelKeys.add(key);
+					if (topLevelKeys.has(key)) hasDuplicateRootKeys = true;
+					topLevelKeys.add(key);
 				}
 			} catch {
-				// JSON.parse below remains the canonical syntax validator.
+				// error-policy:J3 JSON.parse below validates the complete input;
+				// malformed string tokens cannot identify an envelope key.
 			}
 		}
 		index = end;
 	}
 
-	return { hasDuplicateKeys, topLevelKeys };
+	return { hasDuplicateRootKeys, topLevelKeys };
 }
 
 function decodeStage1JsonMessageEnvelope(value: string): string | null {
@@ -168,7 +170,7 @@ function decodeStage1JsonMessageEnvelope(value: string): string | null {
 	} catch {
 		// error-policy:J3 Stage-1 fixture input is an untrusted JSON boundary;
 		// reject malformed modern envelopes without reclassifying legacy JSON text.
-		return keyInspection.topLevelKeys.has("source") &&
+		return keyInspection.topLevelKeys.has("source") ||
 			keyInspection.topLevelKeys.has("channelType")
 			? null
 			: trimmed;
@@ -181,7 +183,7 @@ function decodeStage1JsonMessageEnvelope(value: string): string | null {
 	const hasSource = Object.hasOwn(record, "source");
 	const hasChannelType = Object.hasOwn(record, "channelType");
 	if (!hasSource && !hasChannelType) return trimmed;
-	if (keyInspection.hasDuplicateKeys) return null;
+	if (keyInspection.hasDuplicateRootKeys) return null;
 	if (
 		!hasSource ||
 		!hasChannelType ||
