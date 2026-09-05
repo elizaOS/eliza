@@ -6,12 +6,23 @@
  * session-not-ready loading spinner instead of the real analytics/earnings
  * tab. Keeping one source of truth avoids drift between the two specs.
  */
+import { isDeepStrictEqual } from "node:util";
 import {
   STEWARD_ACTIVE_SCOPE_KEY,
   STEWARD_TOKEN_KEY,
   STEWARD_TOKEN_SCOPE_KEY,
 } from "@elizaos/shared/steward-session-client";
-import type { Page, Route } from "@playwright/test";
+import type { Page, Request, Route } from "@playwright/test";
+
+function requestBodyMatches(request: Request, expected: object): boolean {
+  try {
+    const body: unknown = request.postDataJSON();
+    return isDeepStrictEqual(body, expected);
+  } catch {
+    // error-policy:J3 Malformed request JSON is an explicit fixture rejection.
+    return false;
+  }
+}
 
 function makeJwt(payload: Record<string, unknown>): string {
   const encode = (value: object) =>
@@ -1186,11 +1197,11 @@ export async function installCloudApiStubs(
     }
 
     if (method === "POST" && pathname === upgradePath) {
-      const expectedBody = JSON.stringify({
+      const expectedBody = {
         action: "activate_dedicated",
         quoteId: DEDICATED_QUOTE_ID,
-      });
-      if (request.postData() !== expectedBody) {
+      };
+      if (!requestBodyMatches(request, expectedBody)) {
         await fulfill(route, 400, {
           success: false,
           error: "Activation request did not match the quoted action.",
@@ -1230,10 +1241,10 @@ export async function installCloudApiStubs(
     }
 
     if (method === "POST" && pathname === cutoverPath) {
-      const expectedBody = JSON.stringify({
+      const expectedBody = {
         dedicatedAgentId: CLOUD_AUDIT_DEDICATED_AGENT_ID,
-      });
-      if (request.postData() !== expectedBody) {
+      };
+      if (!requestBodyMatches(request, expectedBody)) {
         await fulfill(route, 400, {
           success: false,
           error: "Cutover request did not name the Dedicated target.",
