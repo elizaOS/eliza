@@ -179,7 +179,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const handleCloudSignIn = useCallback(() => {
     // Keep the popup user-activation alive across the async login start.
     claimCloudLoginWindow();
-    void handleInteractiveCloudLogin?.().catch((error: unknown) => {
+    void handleInteractiveCloudLogin?.({
+      forceReauth: true,
+    }).catch((error: unknown) => {
       // error-policy:J4 Login failed; keep Settings usable and show the notice.
       setActionNotice?.(
         error instanceof Error ? error.message : "Could not start Cloud login.",
@@ -261,8 +263,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               "Managed models through your Eliza Cloud account. No setup — sign in and it works.",
           })
         : t("providerswitcher.cloudTileUnsignedDescription", {
-            defaultValue:
-              "Sign in to use managed models. Chat replies use Local until then.",
+            defaultValue: "Sign in to use managed models.",
           })
       : t("providerswitcher.localTileDescription", {
           defaultValue:
