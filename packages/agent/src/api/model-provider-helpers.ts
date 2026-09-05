@@ -281,6 +281,10 @@ const PROVIDER_ENV_KEYS: Record<
     altEnvKeys: ["KIMI_API_KEY"],
     baseUrl: "https://api.moonshot.ai/v1",
   },
+  atlascloud: {
+    envKey: "ATLASCLOUD_API_KEY",
+    baseUrl: "https://api.atlascloud.ai/v1",
+  },
   "google-genai": {
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
     altEnvKeys: ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
@@ -704,6 +708,12 @@ export async function fetchProviderModels(
         providerId,
         apiKey,
         baseUrl ?? "https://api.moonshot.ai/v1",
+      );
+    case "atlascloud":
+      return fetchModelsREST(
+        providerId,
+        apiKey,
+        baseUrl ?? "https://api.atlascloud.ai/v1",
       );
     default:
       return [];
