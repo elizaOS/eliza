@@ -5,6 +5,7 @@
  * sender's local time. Text comes from the centralized provider specification.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import { getConfiguredOwnerEntityIds } from "../../../roles.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -57,6 +58,18 @@ export function resolveMessageTimeZone(
 }
 
 export type CurrentTimeZoneOrigin = "device" | "agent-setting" | "host";
+
+/**
+ * The configured TIMEZONE is the operator's zone, so it is the user's zone
+ * only when the sender is a configured owner. Other senders in a group room
+ * may live anywhere; for them the setting stays a reference clock.
+ */
+function senderIsConfiguredOwner(
+	runtime: IAgentRuntime,
+	message: Memory,
+): boolean {
+	return getConfiguredOwnerEntityIds(runtime).includes(message.entityId);
+}
 
 function resolveCurrentTimeZone(
 	runtime: IAgentRuntime,
@@ -119,22 +132,23 @@ export const currentTimeProvider: Provider = {
 - User timezone: ${timeZone} (from the active device)
 - ISO (UTC): ${isoTimestamp}
 The local time above is already the user's wall-clock time. State it as-is; do not perform timezone arithmetic.`
-				: origin === "agent-setting"
-					? // The operator configured TIMEZONE for this agent: it is the owner's
-						// zone. Live 2026-09-05 the "unknown" wording made the planner emit
-						// UTC day bounds and "Z" instants for a Pacific owner's calendar.
+				: origin === "agent-setting" &&
+						senderIsConfiguredOwner(runtime, message)
+					? // The operator configured TIMEZONE for this agent and the sender is
+						// that owner. Live 2026-09-05 the "unknown" wording made the planner
+						// emit UTC day bounds and "Z" instants for a Pacific owner's calendar.
 						`# Current Time
 - User local time: ${humanReadable}
 - Date: ${dateOnly}
 - Time: ${timeOnly} ${timeZone}
 - Day: ${dayOfWeek}
-- User timezone: ${timeZone} (the agent's configured timezone; treat it as the user's zone unless the user states another)
+- User timezone: ${timeZone} (the owner's configured timezone; treat it as the user's zone unless the user states another)
 - ISO (UTC): ${isoTimestamp}
 The local time above is the user's wall-clock time in that zone. State it as-is; do not perform timezone arithmetic.`
 					: `# Current Time
 - User timezone: unknown (do not guess; ask when the user's local time matters)
-- Server time: ${humanReadable}
-- Server timezone: ${timeZone}
+- ${origin === "agent-setting" ? "Agent reference" : "Server"} time: ${humanReadable}
+- ${origin === "agent-setting" ? "Agent" : "Server"} timezone: ${timeZone}
 - ISO (UTC): ${isoTimestamp}
 The reference clock above is not the user's local time. Do not present it as user-local or perform timezone arithmetic.`;
 

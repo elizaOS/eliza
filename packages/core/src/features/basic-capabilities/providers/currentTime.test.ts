@@ -6,14 +6,25 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory } from "../../../types/index.ts";
 import { currentTimeProvider, resolveMessageTimeZone } from "./currentTime.ts";
 
-function runtime(timeZone?: string): IAgentRuntime {
+const OWNER_ENTITY_ID = "00000000-0000-0000-0000-0000000000a1";
+const GUEST_ENTITY_ID = "00000000-0000-0000-0000-0000000000b2";
+
+function runtime(timeZone?: string, ownerEntityId?: string): IAgentRuntime {
 	return {
-		getSetting: (key: string) => (key === "TIMEZONE" ? timeZone : null),
+		getSetting: (key: string) => {
+			if (key === "TIMEZONE") return timeZone;
+			if (key === "ELIZA_ADMIN_ENTITY_ID") return ownerEntityId ?? null;
+			return null;
+		},
 	} as IAgentRuntime;
 }
 
-function message(uiTimeZone?: unknown): Memory {
+function message(
+	uiTimeZone?: unknown,
+	entityId: string = OWNER_ENTITY_ID,
+): Memory {
 	return {
+		entityId,
 		content: {
 			text: "what time is it for me?",
 			...(uiTimeZone !== undefined ? { metadata: { uiTimeZone } } : {}),
@@ -60,12 +71,12 @@ describe("currentTimeProvider", () => {
 		});
 	});
 
-	it("presents the agent's configured TIMEZONE as the user's zone when no device zone exists", async () => {
+	it("presents the configured TIMEZONE as the owner's zone when the owner sends without a device zone", async () => {
 		// Live 2026-09-05: "User timezone: unknown" made the planner emit UTC
 		// day bounds and "Z" instants for a Pacific owner's calendar even though
-		// TIMEZONE=America/Los_Angeles was configured.
+		// TIMEZONE=America/Los_Angeles was configured by that owner.
 		const result = await currentTimeProvider.get(
-			runtime("Europe/Paris"),
+			runtime("Europe/Paris", OWNER_ENTITY_ID),
 			message(),
 			{} as never,
 		);
@@ -76,10 +87,28 @@ describe("currentTimeProvider", () => {
 			timeZoneOrigin: "agent-setting",
 		});
 		expect(result.text).toContain("User timezone: Europe/Paris");
-		expect(result.text).toContain("configured timezone");
+		expect(result.text).toContain("owner's configured timezone");
 		expect(result.text).toContain("User local time:");
 		expect(result.text).not.toContain("User timezone: unknown");
 		expect(result.text).not.toContain("Agent reference time:");
+	});
+
+	it("keeps the configured TIMEZONE as a reference clock for a sender who is not the owner", async () => {
+		// A group-room participant may live anywhere; the operator's zone is not
+		// evidence of theirs.
+		const result = await currentTimeProvider.get(
+			runtime("Europe/Paris", OWNER_ENTITY_ID),
+			message(undefined, GUEST_ENTITY_ID),
+			{} as never,
+		);
+		expect(result.data).toMatchObject({
+			timeZone: "Europe/Paris",
+			userTimeZone: null,
+			timeZoneOrigin: "agent-setting",
+		});
+		expect(result.text).toContain("User timezone: unknown");
+		expect(result.text).toContain("Agent reference time:");
+		expect(result.text).not.toContain("User local time:");
 	});
 
 	it("labels the host clock as server time when no trusted sender zone exists", async () => {
