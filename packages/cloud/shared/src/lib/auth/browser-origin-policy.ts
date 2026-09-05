@@ -72,7 +72,13 @@ export function checkElizaMutatingRequestOrigin(
 ): BrowserOriginCheck {
   const origin = browserOriginHost(req.header("origin"));
   const referer = browserOriginHost(req.header("referer"));
-  const requestHost = (req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
+  const rawHost = req.header("host") ?? "";
+  let requestHost = "";
+  try {
+    requestHost = new URL(`http://${rawHost.trim()}`).hostname.toLowerCase();
+  } catch {
+    requestHost = (rawHost.split(":")[0]?.toLowerCase() ?? "").trim();
+  }
   if (!origin && !referer) {
     return { ok: false, reason: "missing_origin_and_referer" };
   }
