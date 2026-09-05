@@ -45,6 +45,7 @@ import {
   type LanguageModelUsage,
   type ModelMessage,
   Output,
+  RetryError,
   streamText,
   type ToolChoice,
   type ToolSet,
@@ -2070,6 +2071,10 @@ function isSpuriousToolPairingRejection(error: unknown): boolean {
 }
 
 function isTransientProviderError(error: unknown): boolean {
+  // The SDK already owns HTTP retries. Re-entering it after exhaustion
+  // multiplies its budget (up to 18 requests for one streamed model call).
+  // Keep this outer lane for provider failures the SDK does not retry.
+  if (RetryError.isInstance(error)) return false;
   const e = error as
     | { statusCode?: number; status?: number; message?: string; data?: unknown }
     | undefined;
@@ -2330,6 +2335,9 @@ async function consumeStreamWithTransientRetry(
         onChunk?.(chunk);
         text += chunk;
       }
+      // Read the transport failure before lazy companion getters can replace
+      // it with NoOutputGeneratedError and hide the provider's real cause.
+      if (capturedError) throw capturedError;
       const toolCalls = await result.toolCalls;
       const usage = await result.usage;
       const finishReason = (await result.finishReason) as string | undefined;

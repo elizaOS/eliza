@@ -25,7 +25,7 @@ interface CapturedRequest {
 const captured: CapturedRequest[] = [];
 let server: Server;
 let baseUrl: string;
-let rateLimitNextRequest = false;
+let rateLimitRequestsRemaining = 0;
 
 function startCaptureServer(): Promise<string> {
   server = createServer((request, response) => {
@@ -34,8 +34,8 @@ function startCaptureServer(): Promise<string> {
     request.on("end", () => {
       const raw = Buffer.concat(chunks).toString("utf8");
       captured.push({ url: request.url ?? "", bytes: Buffer.from(raw, "utf8") });
-      if (rateLimitNextRequest) {
-        rateLimitNextRequest = false;
+      if (rateLimitRequestsRemaining > 0) {
+        rateLimitRequestsRemaining--;
         response.writeHead(429, { "content-type": "application/json", "retry-after": "0.001" });
         response.end(
           JSON.stringify({ error: { message: "test rate limit", type: "rate_limit_error" } })
@@ -108,7 +108,7 @@ afterAll(() => {
 
 beforeEach(() => {
   captured.length = 0;
-  rateLimitNextRequest = false;
+  rateLimitRequestsRemaining = 0;
   vi.stubEnv("OPENAI_API_KEY", "test-key");
   vi.stubEnv("OPENAI_BASE_URL", baseUrl);
   vi.stubEnv("OPENAI_SMALL_MODEL", "test-model");
@@ -121,7 +121,7 @@ describe("#18025: request bodies are well-formed strict JSON", () => {
   it("observes SDK-internal rate-limit retries without logging prompts or credentials", async () => {
     const warn = vi.spyOn(logger, "warn");
     const debug = vi.spyOn(logger, "debug");
-    rateLimitNextRequest = true;
+    rateLimitRequestsRemaining = 1;
     try {
       const result = await handleTextSmall(buildRuntime(), {
         prompt: "private-prompt-marker",
@@ -142,6 +142,31 @@ describe("#18025: request bodies are well-formed strict JSON", () => {
       debug.mockRestore();
     }
   });
+
+  it.each(["generate", "live-stream", "buffered-stream"])(
+    "%s preserves the SDK's exhausted HTTP retry budget",
+    async (lane) => {
+      rateLimitRequestsRemaining = Number.POSITIVE_INFINITY;
+      vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", lane === "buffered-stream" ? "1" : "0");
+      const request = async () => {
+        const result = await handleTextSmall(buildRuntime(), {
+          prompt: "retry budget probe",
+          stream: lane !== "generate",
+        });
+        if (typeof result !== "string" && "textStream" in result) {
+          for await (const _chunk of result.textStream) {
+            // Consume the real SDK stream so transport failure reaches its caller.
+          }
+        }
+      };
+      await expect(request()).rejects.toMatchObject({
+        name: "AI_RetryError",
+        reason: "maxRetriesExceeded",
+      });
+      expect(captured).toHaveLength(3);
+    },
+    20_000
+  );
 
   it("sends JSON mode for Cerebras evaluator schemas without requiring a duplicate format flag", async () => {
     vi.stubEnv("ELIZA_PROVIDER", "cerebras");

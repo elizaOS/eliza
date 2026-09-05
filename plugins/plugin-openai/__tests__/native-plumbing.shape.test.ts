@@ -54,7 +54,8 @@ beforeEach(() => {
   }
 });
 
-vi.mock("ai", () => ({
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("ai")>()),
   generateText: aiMocks.generateText,
   streamText: aiMocks.streamText,
   // Mirror AI SDK v6's accessor-backed schema wrapper. The provider transport
