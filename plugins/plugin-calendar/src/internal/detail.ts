@@ -21,14 +21,51 @@ export function messageText(message: Memory): string {
   return typeof text === "string" ? text : "";
 }
 
+/**
+ * Planner-authored detail records fill every schema key, and when a field has
+ * no real source the model writes a placeholder instead of leaving it empty:
+ * "n/a", "none", "unknown", or the key echoed back as "<field>_missing"
+ * (observed live: location/travel origin details all set to
+ * "traveloriginaddress_missing", then "n/a" on retry — non-empty, so the
+ * handler resolved a travel intent and the create failed closed on the
+ * unconfigured Routes API). These carry no user information for any string
+ * field, so the boundary treats them as unset.
+ */
+const PLACEHOLDER_DETAIL_VALUES = new Set([
+  "n/a",
+  "na",
+  "none",
+  "null",
+  "undefined",
+  "unknown",
+  "unset",
+  "missing",
+  "not specified",
+  "not provided",
+  "tbd",
+  "placeholder",
+]);
+const PLACEHOLDER_DETAIL_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*_missing$/i;
+
+export function isPlaceholderDetailValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    PLACEHOLDER_DETAIL_VALUES.has(normalized) ||
+    PLACEHOLDER_DETAIL_PATTERN.test(normalized)
+  );
+}
+
 export function detailString(
   details: Record<string, unknown> | undefined,
   key: string,
 ): string | undefined {
   const value = details?.[key];
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || isPlaceholderDetailValue(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
 }
 
 export type PlannerCalendarWindow = {
@@ -172,4 +209,33 @@ export function sanitizeCalendarId(
   return CALENDAR_ID_PLACEHOLDER_TOKENS.has(trimmed.toLowerCase())
     ? undefined
     : trimmed;
+}
+
+const CALENDAR_WINDOW_PRESETS = new Set([
+  "tomorrow_morning",
+  "tomorrow_afternoon",
+  "tomorrow_evening",
+]);
+
+export type CalendarWindowPreset =
+  | "tomorrow_morning"
+  | "tomorrow_afternoon"
+  | "tomorrow_evening";
+
+/**
+ * Planner-authored `windowPreset` is junk-prone: models invent values such as
+ * "tuesday_morning" for arbitrary dates, and CalendarService rejects them with
+ * a hard 400 that aborted the whole create ("the calendar hit a snag",
+ * observed live for "gym session tuesday at 7am"). Only the declared presets
+ * pass; anything else resolves to unset so an explicit or extracted startAt —
+ * or the normal timestamp re-extraction — decides the time instead.
+ */
+export function sanitizeWindowPreset(
+  value: string | undefined,
+): CalendarWindowPreset | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  return CALENDAR_WINDOW_PRESETS.has(normalized)
+    ? (normalized as CalendarWindowPreset)
+    : undefined;
 }

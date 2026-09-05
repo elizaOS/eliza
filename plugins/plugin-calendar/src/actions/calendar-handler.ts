@@ -59,6 +59,7 @@ import {
   normalizePlannerCalendarWindow,
   parseCalendarJsonRecord,
   sanitizeCalendarId,
+  sanitizeWindowPreset,
   toActionData,
 } from "../internal/detail.js";
 import {
@@ -2966,21 +2967,14 @@ export function buildCreateEventRequest(
 
   const explicitStartAt = detailString(args.details, "startAt");
   const explicitEndAt = detailString(args.details, "endAt");
-  const explicitWindowPreset = detailString(args.details, "windowPreset") as
-    | "tomorrow_morning"
-    | "tomorrow_afternoon"
-    | "tomorrow_evening"
-    | undefined;
+  const explicitWindowPreset = sanitizeWindowPreset(
+    detailString(args.details, "windowPreset"),
+  );
   const extractedStartAt = detailString(args.extractedDetails, "startAt");
   const extractedEndAt = detailString(args.extractedDetails, "endAt");
-  const extractedWindowPreset = detailString(
-    args.extractedDetails,
-    "windowPreset",
-  ) as
-    | "tomorrow_morning"
-    | "tomorrow_afternoon"
-    | "tomorrow_evening"
-    | undefined;
+  const extractedWindowPreset = sanitizeWindowPreset(
+    detailString(args.extractedDetails, "windowPreset"),
+  );
 
   let resolvedStartAt: string | undefined;
   let resolvedWindowPreset:
