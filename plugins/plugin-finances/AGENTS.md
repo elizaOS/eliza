@@ -179,9 +179,9 @@ bun run --cwd plugins/plugin-finances clean        # rm -rf dist
 - **No import of `@elizaos/plugin-personal-assistant`.** Cross-domain capability
   the finance back-end needs (Gmail, browser bridge) is accessed via runtime-service
   seams, not PA internals.
-- **`src/db/sql.ts` is a self-contained copy** of PA's raw-SQL helpers (so the
-  back-end carries no PA dependency). Keep it in sync only if a correctness fix
-  applies to both; do not add PA-specific logic.
+- **`src/db/sql.ts` delegates common SQL primitives to `@elizaos/shared/db/raw-sql`.**
+  Runtime database lookup and finance transaction requirements stay local.
+  Invalid adapter results fail explicitly; no PA dependency is introduced.
 - See the root `CLAUDE.md` for repo-wide architecture rules, logger
   requirements, ESM/module standards, and git workflow.
 
