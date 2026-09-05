@@ -70,4 +70,23 @@ describe("findTaskRegions", () => {
     expect(regions[0].title.length).toBe(MAX_TASK_TITLE_LEN);
     expect(regions[0].title.endsWith("…")).toBe(true);
   });
+
+  it("preserves well-formed Unicode when truncating title at surrogate boundary", () => {
+    const fox = String.fromCodePoint(0x1f98a);
+    const long = "a".repeat(MAX_TASK_TITLE_LEN - 2) + fox + "x".repeat(50);
+    const id = "0123abcd-1234-5678-9abc-deadbeefcafe";
+    const regions = findTaskRegions(`[TASK:${id}]${long}[/TASK]`);
+    const title = regions[0].title;
+    expect(title.endsWith("…")).toBe(true);
+    expect(title.length).toBeLessThanOrEqual(MAX_TASK_TITLE_LEN);
+    // well-formed: no lone surrogate at end
+    for (let i = 0; i < title.length; i++) {
+      const c = title.charCodeAt(i);
+      if (c >= 0xd800 && c <= 0xdbff) {
+        expect(title.charCodeAt(i + 1)).toBeGreaterThanOrEqual(0xdc00);
+        expect(title.charCodeAt(i + 1)).toBeLessThanOrEqual(0xdfff);
+      }
+    }
+    expect(() => JSON.stringify(title)).not.toThrow();
+  });
 });

@@ -7,6 +7,7 @@
  * inline trigger.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { AlertTriangle, Brain, ChevronDown, Search, X } from "lucide-react";
 import {
   memo,
@@ -229,8 +230,9 @@ function typeFilterCacheKey(selected: readonly string[]): string {
 }
 
 function truncateText(text: string, max = 200): string {
-  if (text.length <= max) return text;
-  return `${text.slice(0, max)}…`;
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length <= max) return wellFormed;
+  return `${truncateWellFormed(wellFormed, max)}…`;
 }
 
 function memoryCopy(

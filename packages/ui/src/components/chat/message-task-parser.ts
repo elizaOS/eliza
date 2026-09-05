@@ -22,6 +22,8 @@
  *     ignored entirely (no half-rendered widget).
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 const TASK_BLOCK_RE =
   /\[[ \t]*TASK[ \t]*:[ \t]*([a-f0-9-]{8,64})[ \t]*\]([\s\S]*?)\[[ \t]*\/[ \t]*TASK[ \t]*\]/g;
 
@@ -51,10 +53,11 @@ export function findTaskRegions(text: string): TaskRegion[] {
     const threadId = match[1];
     const rawTitle = (match[2] ?? "").trim();
     if (threadId && rawTitle) {
+      const wellFormed = toWellFormedUnicode(rawTitle);
       const title =
-        rawTitle.length > MAX_TASK_TITLE_LEN
-          ? `${rawTitle.slice(0, MAX_TASK_TITLE_LEN - 1)}…`
-          : rawTitle;
+        wellFormed.length > MAX_TASK_TITLE_LEN
+          ? `${truncateWellFormed(wellFormed, MAX_TASK_TITLE_LEN - 1)}…`
+          : wellFormed;
       regions.push({
         start: match.index,
         end: match.index + match[0].length,
