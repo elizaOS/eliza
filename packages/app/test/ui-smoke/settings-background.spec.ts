@@ -598,7 +598,9 @@ test.describe("settings shares the unified app background (#9143)", () => {
       await openAppPath(page, "/settings?shell=settings#voice");
       const voice = page.getByRole("combobox", { name: "Voice", exact: true });
       await voice.click();
+      await screenshot(page, `voice-selector-menu-${viewport.width}`);
       await page.getByRole("option", { name: /Rachel/ }).click();
+      await screenshot(page, `voice-selector-selected-${viewport.width}`);
       const preview = page.getByRole("button", {
         name: "Preview Voice",
         exact: true,
