@@ -841,35 +841,25 @@ export async function resolveInferenceAuthContext(
           credentialId: cached.ctx.apiKeyId,
           userId: cached.ctx.userId,
         };
-        if (deferStrongCredentialCheck) {
-          observeInferenceApiKeyUsage(
-            { kind: "authorized", ctx: cached.ctx, source: "cache" },
-            options.executionCtx,
-          );
-          trace.result = "authorized_cache";
-          return {
-            kind: "authorized",
-            ctx: cached.ctx,
-            source: "cache",
-            credential,
-          };
-        }
-        try {
-          await assertInferenceCredentialActive(cached.ctx.orgId, credential);
-        } catch (error) {
-          if (error instanceof InferenceCredentialRevokedError) {
-            trace.result = error.reason === "credential_revoked" ? "rejected" : "suspended";
-            const reason = inferenceCredentialRevocationReason(error.reason);
-            logStandingDenial({
-              status: error.reason === "credential_revoked" ? 401 : 403,
-              reason,
-              source: "authoritative",
-            });
-            return error.reason === "credential_revoked"
-              ? { kind: "rejected", status: 401, reason }
-              : { kind: "suspended", userId: cached.ctx.userId, reason };
+        if (!deferStrongCredentialCheck) {
+          try {
+            await assertInferenceCredentialActive(cached.ctx.orgId, credential);
+          } catch (error) {
+            // error-policy:J1 translate a strong credential denial at the auth boundary.
+            if (error instanceof InferenceCredentialRevokedError) {
+              trace.result = error.reason === "credential_revoked" ? "rejected" : "suspended";
+              const reason = inferenceCredentialRevocationReason(error.reason);
+              logStandingDenial({
+                status: error.reason === "credential_revoked" ? 401 : 403,
+                reason,
+                source: "authoritative",
+              });
+              return error.reason === "credential_revoked"
+                ? { kind: "rejected", status: 401, reason }
+                : { kind: "suspended", userId: cached.ctx.userId, reason };
+            }
+            throw error;
           }
-          throw error;
         }
         observeInferenceApiKeyUsage(
           { kind: "authorized", ctx: cached.ctx, source: "cache" },
@@ -886,7 +876,12 @@ export async function resolveInferenceAuthContext(
           }
         }
         trace.result = "authorized_cache";
-        return { kind: "authorized", ctx: cached.ctx, source: "cache" };
+        return {
+          kind: "authorized",
+          ctx: cached.ctx,
+          source: "cache",
+          ...(deferStrongCredentialCheck ? { credential } : {}),
+        };
       }
       if (cached.kind === "rejected") {
         trace.result = cached.decision === "suspended" ? "suspended" : "rejected";

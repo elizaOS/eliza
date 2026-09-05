@@ -620,6 +620,97 @@ describe("resolveInferenceAuthContext", () => {
     expect(strongChecks).toBe(2);
   });
 
+  test("aged deferred cache hits coalesce refresh without waiting or counting hydration as usage", async () => {
+    await writeInferenceAuthContext({
+      v: 3,
+      cachedAt: Date.now() - 31_000,
+      userId: "user-1",
+      orgId: "org-1",
+      apiKeyId: "key-1",
+      keyHash: hashApiKey(KEY),
+      appScopeId: null,
+      admission: ADMISSION,
+    });
+    const gate = Promise.withResolvers<void>();
+    let originCalls = 0;
+    let strongChecks = 0;
+    authImpl = async () => {
+      originCalls++;
+      await gate.promise;
+      return {
+        user: { id: "user-1", organization_id: "org-1" },
+        apiKey: { id: "key-1" },
+      };
+    };
+    assertCredentialActive = async () => {
+      strongChecks++;
+    };
+    const retained: Promise<unknown>[] = [];
+    const options = {
+      cacheOnly: true,
+      deferStrongCredentialCheck: true,
+      executionCtx: { waitUntil: (promise: Promise<unknown>) => retained.push(promise) },
+    };
+    const cacheRead = spyOn(cache, "getWithOutcome");
+    try {
+      const results = await Promise.all([
+        resolveInferenceAuthContext(reqWithApiKey(), options),
+        resolveInferenceAuthContext(reqWithApiKey(), options),
+      ]);
+      for (const result of results) {
+        expect(result).toMatchObject({
+          kind: "authorized",
+          source: "cache",
+          credential: { kind: "api_key", credentialId: "key-1" },
+        });
+      }
+      expect(cacheRead).toHaveBeenCalledTimes(2);
+      expect(originCalls).toBe(1);
+      expect(strongChecks).toBe(0);
+      expect(incrementUsageCalls).toEqual(["key-1", "key-1"]);
+    } finally {
+      gate.resolve();
+      await Promise.all(retained);
+      cacheRead.mockRestore();
+    }
+    expect(strongChecks).toBe(1);
+    expect(incrementUsageCalls).toEqual(["key-1", "key-1"]);
+  });
+
+  test("deferred-hit refresh projects negative standing instead of renewing a positive decision", async () => {
+    await writeInferenceAuthContext({
+      v: 3,
+      cachedAt: Date.now() - 31_000,
+      userId: "user-1",
+      orgId: "org-1",
+      apiKeyId: "key-1",
+      keyHash: hashApiKey(KEY),
+      appScopeId: null,
+      admission: ADMISSION,
+    });
+    shouldBlock = async () => true;
+    const retained: Promise<unknown>[] = [];
+    const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+      deferStrongCredentialCheck: true,
+      executionCtx: { waitUntil: (promise) => retained.push(promise) },
+    });
+    expect(result).toMatchObject({
+      kind: "authorized",
+      source: "cache",
+      credential: { kind: "api_key" },
+    });
+    await Promise.all(retained);
+    expect(await readInferenceAuthContext(hashApiKey(KEY))).toBeNull();
+    const next = await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+      deferStrongCredentialCheck: true,
+    });
+    expect(next).toMatchObject({ kind: "suspended", reason: "moderation_blocked" });
+    expect(authBoundaryCalls).toHaveLength(1);
+    expect(incrementUsageCalls).toEqual(["key-1"]);
+  });
+
   test("a cold request safely joins a refresh-created flight and retains its lease credential", async () => {
     const info = spyOn(logger, "audit").mockImplementation(() => undefined);
     await writeInferenceAuthContext({
