@@ -14,7 +14,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import os from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	getActiveProject,
@@ -40,6 +40,24 @@ describe("project-registry", () => {
 		rmSync(stateDir, { recursive: true, force: true });
 	});
 
+	/**
+	 * A canonical, guaranteed-absent path under this test's own temp dir, for
+	 * fixtures that flow through `canonicalizeLocalPath`.
+	 *
+	 * WHY not a `/tmp/<leaf>` literal: `canonicalizeLocalPath` realpaths a path
+	 * that exists and falls back to `resolve()` only when it does not, and
+	 * `resolve()` is not the canonical spelling when an ancestor is a symlink
+	 * (`/tmp` -> `/private/tmp` on macOS, `/var` -> `/private/var`). So
+	 * `upsertProject({ localPath: "/tmp/a" })` stores `/tmp/a` or
+	 * `/private/tmp/a` depending on whether something unrelated on the machine
+	 * happens to occupy `/tmp/a` — a unit test must not depend on that. Rooting
+	 * fixtures at `realpathSync(stateDir)` and never creating the leaf makes the
+	 * stored canonical form equal to the fixture path itself on every OS,
+	 * including Windows.
+	 */
+	const fixturePath = (leaf: string): string =>
+		join(realpathSync(stateDir), leaf);
+
 	it("returns null when no registry and no legacy config exists", () => {
 		expect(readProjectRegistry(env)).toBeNull();
 		expect(getActiveProject(env)).toBeNull();
@@ -47,14 +65,18 @@ describe("project-registry", () => {
 
 	it("upserts a project keyed by localPath, preserving id/createdAt on re-upsert", () => {
 		const first = upsertProject(
-			{ name: "repo-a", localPath: "/tmp/repo-a" },
+			{ name: "repo-a", localPath: fixturePath("repo-a") },
 			env,
 		);
 		expect(first.id).toBeTruthy();
 		expect(first.createdAt).toBe(first.lastOpenedAt);
 
 		const second = upsertProject(
-			{ name: "repo-a-renamed", localPath: "/tmp/repo-a", repoUrl: "git@x:a" },
+			{
+				name: "repo-a-renamed",
+				localPath: fixturePath("repo-a"),
+				repoUrl: "git@x:a",
+			},
 			env,
 		);
 		expect(second.id).toBe(first.id);
@@ -67,13 +89,13 @@ describe("project-registry", () => {
 	});
 
 	it("adds a distinct project for a distinct localPath", () => {
-		upsertProject({ name: "a", localPath: "/tmp/a" }, env);
-		upsertProject({ name: "b", localPath: "/tmp/b" }, env);
+		upsertProject({ name: "a", localPath: fixturePath("a") }, env);
+		upsertProject({ name: "b", localPath: fixturePath("b") }, env);
 		expect(readProjectRegistry(env)?.projects).toHaveLength(2);
 	});
 
 	it("setActiveProject marks active and stamps lastOpenedAt; unknown id is a no-op returning null", () => {
-		const p = upsertProject({ name: "a", localPath: "/tmp/a" }, env);
+		const p = upsertProject({ name: "a", localPath: fixturePath("a") }, env);
 		expect(getActiveProject(env)).toBeNull();
 
 		const active = setActiveProject(p.id, env);
@@ -86,12 +108,12 @@ describe("project-registry", () => {
 	});
 
 	it("getProjectById returns the record or null", () => {
-		const p = upsertProject({ name: "a", localPath: "/tmp/a" }, env);
-		// upsert canonicalizes localPath to an absolute path (resolve → realpath);
-		// for a non-existent dir that is `resolve("/tmp/a")` — `/tmp/a` on POSIX,
-		// `<drive>:\tmp\a` on Windows. Assert the platform-canonical form, not the
-		// bare POSIX spelling, so the round-trip holds on every OS.
-		expect(getProjectById(p.id, env)?.localPath).toBe(resolve("/tmp/a"));
+		// The leaf is never created, so this exercises canonicalizeLocalPath's
+		// realpath-failure fallback: the stored value is `resolve(localPath)`,
+		// which for an already-canonical absolute path is the path itself.
+		const localPath = fixturePath("a");
+		const p = upsertProject({ name: "a", localPath }, env);
+		expect(getProjectById(p.id, env)?.localPath).toBe(localPath);
 		expect(getProjectById("nope", env)).toBeNull();
 	});
 
@@ -110,20 +132,18 @@ describe("project-registry", () => {
 	});
 
 	it("synthesizes an in-memory active project from legacy workspace-folder.json WITHOUT writing projects.json", () => {
-		writeWorkspaceFolderConfig(
-			{ path: "/tmp/legacy-folder", bookmark: "bm" },
-			env,
-		);
+		const legacyPath = fixturePath("legacy-folder");
+		writeWorkspaceFolderConfig({ path: legacyPath, bookmark: "bm" }, env);
 
 		const reg = readProjectRegistry(env);
 		expect(reg?.projects).toHaveLength(1);
-		expect(reg?.projects[0]?.localPath).toBe("/tmp/legacy-folder");
+		expect(reg?.projects[0]?.localPath).toBe(legacyPath);
 		expect(reg?.projects[0]?.bookmark).toBe("bm");
 		expect(reg?.activeProjectId).toBe(reg?.projects[0]?.id);
 		const projectId = reg?.projects[0]?.id;
 		expect(readProjectRegistry(env)?.projects[0]?.id).toBe(projectId);
 		expect(readProjectRegistry(env)?.activeProjectId).toBe(projectId);
-		expect(getActiveProject(env)?.localPath).toBe("/tmp/legacy-folder");
+		expect(getActiveProject(env)?.localPath).toBe(legacyPath);
 		expect(getActiveProject(env)?.id).toBe(projectId);
 
 		// No projects.json was written by the read.
@@ -135,10 +155,8 @@ describe("project-registry", () => {
 	});
 
 	it("synthesized legacy project keeps a stable id across reads and across the first real upsert", () => {
-		writeWorkspaceFolderConfig(
-			{ path: "/tmp/legacy-folder", bookmark: null },
-			env,
-		);
+		const legacyPath = fixturePath("legacy-folder");
+		writeWorkspaceFolderConfig({ path: legacyPath, bookmark: null }, env);
 
 		// The synthesized registry is re-minted per read; the id must not change,
 		// or a task bound during the migration window could never resolve its
@@ -152,25 +170,27 @@ describe("project-registry", () => {
 		// so bindings minted during the migration window survive the switch to
 		// projects.json.
 		const persisted = upsertProject(
-			{ name: "legacy-folder", localPath: "/tmp/legacy-folder" },
+			{ name: "legacy-folder", localPath: legacyPath },
 			env,
 		);
 		expect(persisted.id).toBe(first);
-		// The upsert persists the canonical (resolve'd) localPath, which differs
-		// from the bare POSIX spelling on Windows (`<drive>:\tmp\legacy-folder`).
-		expect(getProjectById(persisted.id, env)?.localPath).toBe(
-			resolve("/tmp/legacy-folder"),
-		);
+		// The upsert persists the canonical localPath. The leaf is never created,
+		// so canonicalizeLocalPath falls back to `resolve(localPath)`, which for
+		// an already-canonical absolute path is the path itself.
+		expect(getProjectById(persisted.id, env)?.localPath).toBe(legacyPath);
 	});
 
 	it("persists and preserves worldId across re-upsert", () => {
 		const first = upsertProject(
-			{ name: "a", localPath: "/tmp/world-a", worldId: "w-123" },
+			{ name: "a", localPath: fixturePath("world-a"), worldId: "w-123" },
 			env,
 		);
 		expect(first.worldId).toBe("w-123");
 		// A re-upsert that omits worldId keeps the stored one, not undefined.
-		const second = upsertProject({ name: "a", localPath: "/tmp/world-a" }, env);
+		const second = upsertProject(
+			{ name: "a", localPath: fixturePath("world-a") },
+			env,
+		);
 		expect(second.worldId).toBe("w-123");
 		expect(getProjectById(first.id, env)?.worldId).toBe("w-123");
 	});
@@ -209,7 +229,7 @@ describe("project-registry", () => {
 			"utf8",
 		);
 		expect(() =>
-			upsertProject({ name: "a", localPath: "/tmp/a" }, env),
+			upsertProject({ name: "a", localPath: fixturePath("a") }, env),
 		).toThrow(/refusing to overwrite/);
 		// The v2 file is untouched.
 		const onDisk = JSON.parse(readFileSync(projectRegistryPath(env), "utf8"));
@@ -226,7 +246,7 @@ describe("project-registry", () => {
 					{
 						id: "p1",
 						name: "a",
-						localPath: "/tmp/a",
+						localPath: fixturePath("a"),
 						createdAt: "2026-01-01T00:00:00.000Z",
 						lastOpenedAt: "2026-01-01T00:00:00.000Z",
 					},
