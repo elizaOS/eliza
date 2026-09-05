@@ -35,6 +35,11 @@ export type YtDlpRunner = (
   opts?: object,
 ) => Promise<unknown>;
 
+type FetchImpl = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
 interface YtDlpFactory {
   create: (binaryPath: string) => YtDlpRunner;
 }
@@ -99,7 +104,7 @@ const EXTRACTOR_BROKEN_PATTERNS: readonly RegExp[] = [
 export interface BinaryResolverOptions {
   binariesDir?: string;
   releaseUrl?: string;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: FetchImpl;
   now?: () => number;
   disableAutoUpdate?: boolean;
   preferSystemPath?: boolean;
@@ -123,7 +128,7 @@ export class BinaryResolver {
 
   private readonly binariesDir: string;
   private readonly releaseUrl: string;
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl: FetchImpl;
   private readonly now: () => number;
   private readonly disableAutoUpdate: boolean;
   private readonly preferSystemPath: boolean;
@@ -501,7 +506,7 @@ export class BinaryResolver {
       );
     }
     const nodeStream = Readable.fromWeb(
-      res.body as Parameters<typeof Readable.fromWeb>[0],
+      res.body as unknown as Parameters<typeof Readable.fromWeb>[0],
     );
     await pipeline(nodeStream, createWriteStream(dest));
   }
