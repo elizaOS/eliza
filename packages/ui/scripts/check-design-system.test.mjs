@@ -2,6 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   analyzeTokenRoleClasses,
   applyExceptions,
@@ -18,6 +19,7 @@ import {
   findUnderusedButtonAxes,
   findUnderusedCardVariants,
   indexPaintedCssClasses,
+  isGovernedSource,
   RULES,
   renderComplianceMarkdown,
   resolvesToCanonical,
@@ -28,6 +30,61 @@ import {
   validateExceptions,
   validatePublicCardVariantCompatibility,
 } from "./check-design-system.mjs";
+
+test("generated mobile platform bundles and staging roots are outside governed source", () => {
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL(
+          "../../agent/dist-mobile-ios/agent-bundle.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL(
+          "../../app/ios/App/App/public/agent/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL(
+          "../../app/android/app/src/main/assets/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL("../../app/electrobun/src/Widget.tsx", import.meta.url),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL(
+          "../../app-core/platforms/electrobun/src/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    true,
+  );
+});
 
 test("atomic consolidation ledger survives relabel, deletion, and reintroduction", () => {
   const componentId = "packages/ui/src/example.tsx:ExampleButton";

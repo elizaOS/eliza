@@ -5,6 +5,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   ATOMS,
   buildInventory,
@@ -33,6 +34,61 @@ test("local Eliza runtime artifacts are outside maintained source", () => {
       ).pathname,
     ),
     false,
+  );
+});
+
+test("generated mobile platform bundles and staging roots are outside maintained source", () => {
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL(
+          "../../agent/dist-mobile-ios/agent-bundle.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL(
+          "../../app/ios/App/App/public/agent/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL(
+          "../../app/android/app/src/main/assets/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL("../../app/electrobun/src/Widget.tsx", import.meta.url),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL(
+          "../../app-core/platforms/electrobun/src/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    true,
   );
 });
 
