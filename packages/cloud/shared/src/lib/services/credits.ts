@@ -30,7 +30,14 @@ import type { PricingBillingSource } from "./ai-pricing-definitions";
 import { assertCreditRefundReservationPresent } from "./credit-reconciliation-invariants";
 import { resolveCostBuffer } from "./credits-config";
 import { emailService } from "./email";
+import {
+  type OrganizationBalanceSnapshot,
+  parseOrganizationBalanceSnapshot,
+} from "./organization-balance-snapshot";
 import { organizationsService } from "./organizations";
+
+export type { OrganizationBalanceSnapshot } from "./organization-balance-snapshot";
+
 import { userSessionsService } from "./user-sessions";
 import {
   classifyCreditBalance,
@@ -214,11 +221,6 @@ export interface CreditReconciliationResult {
   reservationTransactionId?: string | null;
   settlementTransactionIds: string[];
   adjustmentType: "none" | "refund" | "overage" | "uncollected_overage";
-}
-
-export interface OrganizationBalanceSnapshot {
-  balanceUsd: number;
-  revision: string;
 }
 
 /**
@@ -697,14 +699,7 @@ export class CreditsService {
     const org = await organizationsRepository.findBalanceSnapshotForWrite(organizationId);
     // error-policy:J6 missing org → 0 is the documented fail-safe (gate slow-paths).
     if (!org) return { balanceUsd: 0, revision: "0" };
-    const revision = String(org.balance_revision);
-    if (!/^(0|[1-9]\d*)$/.test(revision)) {
-      throw new Error("[CreditsService] Invalid organization balance revision");
-    }
-    return {
-      balanceUsd: parseNumeric(org.credit_balance, "credit_balance"),
-      revision,
-    };
+    return parseOrganizationBalanceSnapshot(org);
   }
 
   async getOrganizationBalanceUsd(organizationId: string): Promise<number> {

@@ -1000,6 +1000,8 @@ export async function resolveInferenceAuthContext(
 
     trace.authoritative = "error";
     trace.result = "error";
+    // A conservative read-start bound must survive later moderation/tier work.
+    const primaryIdentityReadAt = Date.now();
     const { user, apiKey } = await requireInferenceApiKeyWithOrg(credential.rawKey, {
       timing: {
         keyLookup: (durationMs) => {
@@ -1036,7 +1038,10 @@ export async function resolveInferenceAuthContext(
 
     const [admission, appScopeId] = authCacheEnabled
       ? await Promise.all([
-          loadInferenceAdmissionSnapshot(user.organization_id),
+          loadInferenceAdmissionSnapshot(user.organization_id, {
+            organization: user.organization,
+            startedAt: primaryIdentityReadAt,
+          }),
           loadInferenceAppKeyScope(apiKey.id),
         ])
       : [undefined, null];

@@ -15,7 +15,11 @@ import { redactLogArgs } from "@elizaos/core";
 
 // --- Controllable seams -----------------------------------------------------
 type AuthImpl = () => Promise<{
-  user: { id: string; organization_id: string };
+  user: {
+    id: string;
+    organization_id: string;
+    organization?: { id: string; credit_balance: string; balance_revision: number };
+  };
   apiKey?: { id: string } | null;
 }>;
 
@@ -31,6 +35,13 @@ let incrementUsage: (id: string) => Promise<void>;
 const authBoundaryCalls: string[] = [];
 const moderationBypassCacheCalls: boolean[] = [];
 const moderationMemoCalls: string[] = [];
+const admissionPrimaryReads: Array<{
+  organizationId: string;
+  primaryRead: {
+    organization: { id: string; credit_balance: string; balance_revision: number };
+    startedAt: number;
+  };
+}> = [];
 const ADMISSION = {
   subscriptionFunded: false,
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
@@ -81,7 +92,13 @@ mock.module("./api-keys", () => ({
   isMobileApiKeySecret: (value: string) => /^eliza_mobile_[0-9a-f]{64}$/.test(value),
 }));
 mock.module("./inference-admission-snapshot", () => ({
-  loadInferenceAdmissionSnapshot: async () => ADMISSION,
+  loadInferenceAdmissionSnapshot: async (
+    organizationId: string,
+    primaryRead: (typeof admissionPrimaryReads)[number]["primaryRead"],
+  ) => {
+    admissionPrimaryReads.push({ organizationId, primaryRead });
+    return ADMISSION;
+  },
 }));
 mock.module("./inference-app-key-scope", () => ({
   loadInferenceAppKeyScope: async () => null,
@@ -158,6 +175,7 @@ beforeEach(async () => {
   authBoundaryCalls.length = 0;
   moderationBypassCacheCalls.length = 0;
   moderationMemoCalls.length = 0;
+  admissionPrimaryReads.length = 0;
   __clearInferenceApiKeyHydrations();
   // Clear any cached entry from a prior test.
   await invalidateInferenceAuthContextByKeyHash(hashApiKey(KEY));
@@ -244,6 +262,30 @@ describe("extractApiKeyCredential", () => {
 });
 
 describe("resolveInferenceAuthContext", () => {
+  test("cold authorization carries its primary balance with the original read-start bound", async () => {
+    const organization = { id: "org-1", credit_balance: "8.125", balance_revision: 23 };
+    let identityObservedAt = 0;
+    authImpl = async () => {
+      identityObservedAt = Date.now();
+      return {
+        user: { id: "user-1", organization_id: organization.id, organization },
+        apiKey: { id: "key-1" },
+      };
+    };
+    const retained: Promise<unknown>[] = [];
+    const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+      forceAuthoritative: true,
+      executionCtx: { waitUntil: (promise) => retained.push(promise) },
+    });
+    expect(result.kind).toBe("authorized");
+    expect(admissionPrimaryReads).toHaveLength(1);
+    expect(admissionPrimaryReads[0].organizationId).toBe(organization.id);
+    expect(admissionPrimaryReads[0].primaryRead.organization).toBe(organization);
+    expect(admissionPrimaryReads[0].primaryRead.startedAt).toBeGreaterThan(0);
+    expect(admissionPrimaryReads[0].primaryRead.startedAt).toBeLessThanOrEqual(identityObservedAt);
+    await Promise.all(retained);
+  });
+
   test("non-API-key request -> slow_path", async () => {
     const res = await resolveInferenceAuthContext(new Request("https://x/"));
     expect(res.kind).toBe("slow_path");

@@ -4,7 +4,9 @@
  * Worker lifetime; warm requests consume the projection from their single KV read.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { subscriptionEntitlementsRepository } from "../../db/repositories/subscription-entitlements";
+import type { Organization } from "../../db/schemas/organizations";
 import { cache } from "../cache/client";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -16,6 +18,7 @@ import {
   type OrgRateLimitConfig,
   readOrgTierFromSources,
 } from "./org-rate-limits";
+import { parseOrganizationBalanceSnapshot } from "./organization-balance-snapshot";
 
 const admissionMemoryCache = new InMemoryLRUCache<InferenceAdmissionSnapshot>(1_000, 5_000);
 
@@ -47,10 +50,29 @@ export function inferenceRateLimitConfig(
 
 export async function loadInferenceAdmissionSnapshot(
   organizationId: string,
+  primaryRead?: {
+    organization: Pick<Organization, "id" | "credit_balance" | "balance_revision">;
+    startedAt: number;
+  },
 ): Promise<InferenceAdmissionSnapshot> {
-  const balanceAt = Date.now();
+  const now = Date.now();
+  if (
+    primaryRead &&
+    (primaryRead.organization.id !== organizationId ||
+      !Number.isFinite(primaryRead.startedAt) ||
+      primaryRead.startedAt <= 0 ||
+      primaryRead.startedAt > now)
+  ) {
+    throw new ElizaError("[inference-admission] Invalid primary balance observation", {
+      code: "INVALID_PRIMARY_BALANCE_OBSERVATION",
+    });
+  }
+  const balanceAt = primaryRead ? primaryRead.startedAt : now;
+  const primaryBalance = primaryRead
+    ? parseOrganizationBalanceSnapshot(primaryRead.organization)
+    : undefined;
   const [balance, tier, entitlement] = await Promise.all([
-    creditsService.getOrganizationBalanceSnapshot(organizationId),
+    primaryBalance ?? creditsService.getOrganizationBalanceSnapshot(organizationId),
     readOrgTierFromSources(organizationId),
     subscriptionEntitlementsRepository.find(organizationId),
   ]);

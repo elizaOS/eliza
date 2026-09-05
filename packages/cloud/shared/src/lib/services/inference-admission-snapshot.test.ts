@@ -51,6 +51,7 @@ mock.module("../utils/logger", () => ({
 
 const {
   getInferenceAdmissionSnapshotCacheOnly,
+  loadInferenceAdmissionSnapshot,
   InferenceAdmissionSnapshotCacheWarmingError,
   resetInferenceAdmissionMemoryCacheForTests,
 } = await import("./inference-admission-snapshot");
@@ -65,6 +66,53 @@ beforeEach(() => {
   recalculateOrgTier.mockClear();
   resetInferenceAdmissionMemoryCacheForTests();
 });
+
+test("primary identity balance avoids a duplicate read and retains its observation time", async () => {
+  const startedAt = Date.now() - 1000;
+  const result = await loadInferenceAdmissionSnapshot("org-1", {
+    organization: { id: "org-1", credit_balance: "7.250001", balance_revision: 19 },
+    startedAt,
+  });
+  expect(result.balance).toEqual({
+    balanceUsd: 7.250001,
+    balanceRevision: "19",
+    balanceAt: startedAt,
+  });
+  expect(getOrganizationBalanceSnapshot).not.toHaveBeenCalled();
+  expect(readOrgTierFromSources).toHaveBeenCalledTimes(1);
+  expect(findSubscriptionEntitlement).toHaveBeenCalledTimes(1);
+  expect(cacheSet).not.toHaveBeenCalled();
+});
+
+test.each([
+  { id: "another-org", credit_balance: "7", balance_revision: 19 },
+  { id: "org-1", credit_balance: "not-a-balance", balance_revision: 19 },
+  { id: "org-1", credit_balance: "7", balance_revision: -1 },
+])("invalid primary balance cannot produce an admission projection", async (organization) => {
+  await expect(
+    loadInferenceAdmissionSnapshot("org-1", {
+      organization,
+      startedAt: Date.now() - 1000,
+    }),
+  ).rejects.toThrow();
+  expect(getOrganizationBalanceSnapshot).not.toHaveBeenCalled();
+  expect(readOrgTierFromSources).not.toHaveBeenCalled();
+  expect(cacheSet).not.toHaveBeenCalled();
+});
+
+test.each([NaN, 0, Infinity, Date.now() + 3600000])(
+  "invalid observation time cannot be relabeled as a fresh balance",
+  async (startedAt) => {
+    await expect(
+      loadInferenceAdmissionSnapshot("org-1", {
+        organization: { id: "org-1", credit_balance: "7", balance_revision: 19 },
+        startedAt,
+      }),
+    ).rejects.toThrow();
+    expect(getOrganizationBalanceSnapshot).not.toHaveBeenCalled();
+    expect(cacheSet).not.toHaveBeenCalled();
+  },
+);
 
 test("one remote read serves the projection and later isolate hits are local", async () => {
   cached = snapshot;
