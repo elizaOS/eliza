@@ -11,7 +11,7 @@ import {
   System,
   type SystemStatus,
 } from "@elizaos/capacitor-system";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 
 export type ThreadSummary = {
   id: string;

@@ -8,7 +8,7 @@ import {
   Contacts,
   type CreateContactOptions,
 } from "@elizaos/capacitor-contacts";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 import type { ContactsViewCapabilityId } from "../view-capabilities";
 import { matchesQuery } from "./ContactsAppView.helpers";
 

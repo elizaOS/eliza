@@ -6,7 +6,7 @@
 
 import type { CallLogEntry } from "@elizaos/capacitor-phone";
 import { Phone } from "@elizaos/capacitor-phone";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 
 const DEFAULT_CALL_LOG_LIMIT = 50;
 const MAX_CALL_LOG_LIMIT = 200;

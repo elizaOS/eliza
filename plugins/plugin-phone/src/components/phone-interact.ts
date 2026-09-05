@@ -5,7 +5,7 @@
  */
 
 import { Phone } from "@elizaos/capacitor-phone";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 import type { PhoneViewCapabilityId } from "../view-capabilities.ts";
 import {
   COMPLETE_CALL_LOG_READ_LIMIT,

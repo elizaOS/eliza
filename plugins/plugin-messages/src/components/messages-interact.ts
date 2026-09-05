@@ -6,7 +6,7 @@
 
 import { Messages } from "@elizaos/capacitor-messages";
 import { System } from "@elizaos/capacitor-system";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 import type { MessagesViewCapabilityId } from "../view-capabilities.ts";
 import { loadMessagesState } from "./messages-view-helpers.ts";
 
