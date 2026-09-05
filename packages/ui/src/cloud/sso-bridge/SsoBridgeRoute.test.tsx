@@ -31,10 +31,10 @@ function base64url(value: unknown): string {
     .replace(/=+$/, "");
 }
 
-function liveToken(): string {
+function liveToken(userId = "u1"): string {
   return [
     base64url({ alg: "none", typ: "JWT" }),
-    base64url({ userId: "u1", exp: Math.floor(Date.now() / 1000) + 3600 }),
+    base64url({ userId, exp: Math.floor(Date.now() / 1000) + 3600 }),
     "sig",
   ].join(".");
 }
@@ -91,6 +91,10 @@ function renderBridge(hostname: string, search: string): void {
     <MemoryRouter initialEntries={[`/auth/bridge${search}`]}>
       <Routes>
         <Route path="/login" element={<LocationProbe id="login-page" />} />
+        <Route
+          path="/auth/error"
+          element={<LocationProbe id="auth-error-page" />}
+        />
         <Route path="/" element={<LocationProbe id="home-page" />} />
         <Route
           path="/auth/bridge"
@@ -411,6 +415,72 @@ describe("SsoBridgeRoute — mint leg (eliza.app auth host)", () => {
     ).toHaveLength(1);
     expect(JSON.parse(String(fetchLog[1].init?.body))).toEqual({ code: CODE });
   });
+
+  it("burns once and exposes an unexpected handoff failure distinctly", async () => {
+    setReferrer("https://cloud.eliza.app/");
+    localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
+    stubNetwork((url) =>
+      url.endsWith("/api/auth/sso-bridge/mint")
+        ? json(200, { ok: true, code: CODE })
+        : new Response(null, { status: 204 }),
+    );
+    appModeNavigation.replace = (url: string) => {
+      replacedUrls.push(url);
+      throw new Error("Unexpected navigation adapter failure");
+    };
+
+    renderBridge("eliza.app", MINT_QS);
+
+    expect((await screen.findByTestId("auth-error-page")).textContent).toBe(
+      "/auth/error?reason=auth_failed&returnTo=%2Fchat",
+    );
+    expect(
+      fetchLog.filter(({ url }) => url.endsWith("/sso-bridge/burn")),
+    ).toHaveLength(1);
+    expect(JSON.parse(String(fetchLog[1].init?.body))).toEqual({ code: CODE });
+  });
+
+  it.each(["removed", "replaced"])(
+    "burns the issued code if the minting session is %s while mint is pending",
+    async (mutation) => {
+      setReferrer("https://cloud.eliza.app/");
+      const originalToken = liveToken();
+      localStorage.setItem(STEWARD_TOKEN_KEY, originalToken);
+      let resolveMint!: (response: Response) => void;
+      const pendingMint = new Promise<Response>((resolve) => {
+        resolveMint = resolve;
+      });
+      fetchLog = [];
+      replacedUrls = [];
+      globalThis.fetch = vi.fn(
+        (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          fetchLog.push({ url, init });
+          return url.endsWith("/mint")
+            ? pendingMint
+            : Promise.resolve(new Response(null, { status: 204 }));
+        },
+      ) as typeof fetch;
+      appModeNavigation.replace = (url) => replacedUrls.push(url);
+      renderBridge("eliza.app", MINT_QS);
+      await waitFor(() => expect(fetchLog).toHaveLength(1));
+
+      const nextToken = mutation === "replaced" ? liveToken("new-user") : null;
+      if (nextToken) localStorage.setItem(STEWARD_TOKEN_KEY, nextToken);
+      else localStorage.removeItem(STEWARD_TOKEN_KEY);
+      await act(async () => resolveMint(json(200, { code: CODE })));
+
+      await waitFor(() =>
+        expect(replacedUrls).toEqual([
+          "https://cloud.eliza.app/login?returnTo=%2Fchat",
+        ]),
+      );
+      const burns = fetchLog.filter(({ url }) => url.endsWith("/burn"));
+      expect(burns).toHaveLength(1);
+      expect(JSON.parse(String(burns[0].init?.body))).toEqual({ code: CODE });
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(nextToken);
+    },
+  );
 
   it("mint failure → the app host's own login, never a loop back here", async () => {
     setReferrer("https://cloud.eliza.app/");

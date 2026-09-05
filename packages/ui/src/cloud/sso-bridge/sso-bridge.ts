@@ -51,6 +51,7 @@ import {
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { shellLocalStorage } from "../../surface-realm-channel";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { appModeNavigation } from "../app-mode/app-mode";
 import { decodeJwtPayload } from "../lib/jwt";
 import { invalidateStewardServerCookieSyncMarker } from "../lib/steward-session-cookie-sync-marker";
@@ -146,6 +147,39 @@ export function sanitizeBridgeReturnTo(
   const path = value.split(/[?#]/, 1)[0];
   if (path === SSO_BRIDGE_PATH) return "/";
   return value;
+}
+
+/**
+ * Local recovery URL for an unexpected bridge failure. Keep the original
+ * same-origin destination so retrying authentication does not discard a deep
+ * link such as `/chat`, while applying the same open-redirect and loop guards
+ * as the cross-origin handshake itself.
+ */
+export function buildSsoBridgeErrorUrl(
+  reason: "auth_failed" | "sync_failed",
+  returnTo: string,
+): string {
+  const params = new URLSearchParams({
+    reason,
+    returnTo: sanitizeBridgeReturnTo(returnTo),
+  });
+  return `/auth/error?${params.toString()}`;
+}
+
+/**
+ * Recovery from a mint-host error must restart on the paired app host. A
+ * same-origin `/login` on the marketing host cannot restore app-only paths
+ * such as `/chat`: its authenticated catch-all intentionally hands users to
+ * `/cloud` instead. The hostname is resolved only through the fixed bridge
+ * pair allowlist, and the destination remains a sanitized app-local path.
+ */
+export function pairedAppLoginUrlForMintHost(
+  hostname: string,
+  returnTo: string,
+): string | null {
+  const appOrigin = pairedAppOrigin(hostname);
+  if (!appOrigin) return null;
+  return `${appOrigin}/login?returnTo=${encodeURIComponent(sanitizeBridgeReturnTo(returnTo))}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -579,16 +613,31 @@ export function burnSsoBridgeCode(
 ): void {
   const base = apiBaseForHostname(hostname);
   if (!base || !isWellFormedSsoCode(code)) return;
-  void fetchFn(`${base}/api/auth/sso-bridge/burn`, {
-    method: "POST",
-    credentials: "include",
-    keepalive: true,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
-  }).catch(() => {
-    // error-policy:J6 best-effort destruction of an already-abandoned code;
-    // the code still dies on its own 60s TTL.
-  });
+  try {
+    void fetchFn(`${base}/api/auth/sso-bridge/burn`, {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    }).catch((error) => {
+      // error-policy:J6 best-effort destruction of an already-abandoned code;
+      // report the failure while the code's 60s TTL remains the final boundary.
+      reportRendererDiagnostic({
+        scope: "steward.sso-bridge.code-burn",
+        error,
+        severity: "warning",
+      });
+    });
+  } catch (error) {
+    // error-policy:J6 a fetch adapter may reject synchronously during teardown;
+    // report it and rely on the same short server-side expiry boundary.
+    reportRendererDiagnostic({
+      scope: "steward.sso-bridge.code-burn",
+      error,
+      severity: "warning",
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------

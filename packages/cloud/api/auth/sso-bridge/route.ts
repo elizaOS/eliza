@@ -232,10 +232,20 @@ app.post("/burn", async (c) => {
       return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
     }
 
-    const body = (await c.req.json().catch(() => ({}))) as {
-      code?: unknown;
-    };
-    const code = typeof body.code === "string" ? body.code : null;
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J3 malformed JSON is an explicit invalid request, not an
+      // empty object that could be mistaken for a successfully parsed body.
+      return c.json(errorBody("Code required", "missing_code"), 400);
+    }
+    const code =
+      body && typeof body === "object" && "code" in body
+        ? typeof body.code === "string"
+          ? body.code
+          : null
+        : null;
     if (!looksLikeSsoBridgeCode(code)) {
       return c.json(errorBody("Code required", "missing_code"), 400);
     }

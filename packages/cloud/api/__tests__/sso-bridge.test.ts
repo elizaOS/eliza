@@ -269,6 +269,25 @@ describe("origin gating", () => {
     expect((await burn(code, "https://eliza.app")).status).toBe(204);
     expect((await burn(code, "https://cloud.eliza.app")).status).toBe(204);
   });
+  test("burn treats malformed JSON as explicit invalid input", async () => {
+    ipCounter += 1;
+    const res = await app.request(
+      "/burn",
+      {
+        method: "POST",
+        headers: {
+          origin: "https://eliza.app",
+          "content-type": "application/json",
+          "x-forwarded-for": `10.0.${Math.floor(ipCounter / 250)}.${ipCounter % 250}`,
+        },
+        body: "{",
+      },
+      ENV,
+    );
+
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe("missing_code");
+  });
 });
 
 describe("mint authentication", () => {
