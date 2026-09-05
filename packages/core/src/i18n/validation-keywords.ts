@@ -114,19 +114,100 @@ export function textIncludesKeywordTerm(text: string, term: string): boolean {
 	return normalizedText.includes(normalizedTerm);
 }
 
-export function collectKeywordTermMatches(
-	texts: readonly string[],
+/**
+ * A keyword term with its per-term work (normalization, word-boundary pattern)
+ * done once. `term` is the raw string exactly as supplied, because match sets
+ * are keyed by the raw term.
+ */
+export interface PreparedKeywordTerm {
+	term: string;
+	normalized: string;
+	/** Word-boundary pattern for ASCII terms; null for terms matched by inclusion. */
+	pattern: RegExp | null;
+}
+
+const NON_ASCII_PATTERN = /[\u0080-\uffff]/;
+
+/**
+ * Prepare a term list for repeated matching. Duplicate raw terms collapse to
+ * one entry and terms that normalize to nothing are dropped; both are exactly
+ * the entries that can never add a member to a match set, so
+ * {@link collectPreparedKeywordTermMatches} returns the same set as
+ * {@link collectKeywordTermMatches} over the unprepared list.
+ */
+export function prepareKeywordTerms(
 	terms: readonly string[],
+): PreparedKeywordTerm[] {
+	const seen = new Set<string>();
+	const prepared: PreparedKeywordTerm[] = [];
+	for (const term of terms) {
+		if (seen.has(term)) continue;
+		seen.add(term);
+		const normalized = normalizeKeywordMatchText(term);
+		if (!normalized) continue;
+		prepared.push({
+			term,
+			normalized,
+			pattern: usesAsciiWordBoundaries(normalized)
+				? new RegExp(
+						`\\b${escapePattern(normalized).replace(/\\ /g, "\\s+")}\\b`,
+						"i",
+					)
+				: null,
+		});
+	}
+	return prepared;
+}
+
+/**
+ * Same predicate as {@link textIncludesKeywordTerm} applied over every
+ * (text, term) pair, with the per-text normalization and non-ASCII scan done
+ * once per text and the per-term work taken from the prepared list. Retrieval
+ * ran the unprepared form over ~16K terms × every recent-conversation text per
+ * turn (0.7 s median, 9.5 s worst, synchronous on the event loop).
+ */
+export function collectPreparedKeywordTermMatches(
+	texts: readonly string[],
+	prepared: readonly PreparedKeywordTerm[],
 ): Set<string> {
 	const matches = new Set<string>();
+	if (prepared.length === 0) return matches;
+	const preparedTexts: Array<{
+		text: string;
+		normalized: string;
+		hasNonAscii: boolean;
+	}> = [];
 	for (const text of texts) {
-		for (const term of terms) {
-			if (textIncludesKeywordTerm(text, term)) {
-				matches.add(term);
+		const normalized = normalizeKeywordMatchText(text);
+		if (!normalized) continue;
+		preparedTexts.push({
+			text,
+			normalized,
+			hasNonAscii: NON_ASCII_PATTERN.test(text),
+		});
+	}
+	if (preparedTexts.length === 0) return matches;
+	for (const entry of prepared) {
+		for (const candidate of preparedTexts) {
+			const hit = entry.pattern
+				? entry.pattern.test(candidate.text) ||
+					(candidate.hasNonAscii &&
+						candidate.normalized.includes(entry.normalized))
+				: candidate.normalized.includes(entry.normalized);
+			if (hit) {
+				matches.add(entry.term);
+				break;
 			}
 		}
 	}
 	return matches;
+}
+
+export function collectKeywordTermMatches(
+	texts: readonly string[],
+	terms: readonly string[],
+): Set<string> {
+	return collectPreparedKeywordTermMatches(texts, prepareKeywordTerms(terms));
 }
 
 export function findKeywordTermMatch(

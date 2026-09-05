@@ -4,7 +4,11 @@
  * context-match signals, then fuses the per-stage rankings with reciprocal-rank
  * fusion into a complete relevance-ranked catalog.
  */
-import { countActionSearchKeywordMatches } from "../i18n/action-search-keywords";
+import {
+	collectPreparedKeywordTermMatches,
+	type PreparedKeywordTerm,
+	prepareKeywordTerms,
+} from "../i18n/validation-keywords";
 import { logger } from "../logger";
 import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
 import { normalizeActionName } from "./action-catalog";
@@ -1033,6 +1037,32 @@ function scoreBm25(
 	return scores;
 }
 
+// Per-parent prepared keyword terms, memoized by parent object identity like
+// parentScoringCache: keywordText is static for a catalog build, and the
+// prepared form (deduped raw terms with compiled patterns) is a pure function
+// of it. Recomputed only when the catalog rebuilds; collected with it.
+const preparedKeywordTermsCache = new WeakMap<
+	ActionCatalogParent,
+	PreparedKeywordTerm[]
+>();
+
+function getPreparedKeywordTerms(
+	parent: ActionCatalogParent,
+): PreparedKeywordTerm[] {
+	const cached = preparedKeywordTermsCache.get(parent);
+	if (cached) {
+		return cached;
+	}
+	const prepared = prepareKeywordTerms(
+		parent.keywordText
+			.split(/\n+/)
+			.map((term) => term.trim())
+			.filter(Boolean),
+	);
+	preparedKeywordTermsCache.set(parent, prepared);
+	return prepared;
+}
+
 function scoreKeywordMatches(
 	parents: ActionCatalogParent[],
 	queryTexts: readonly string[],
@@ -1041,16 +1071,20 @@ function scoreKeywordMatches(
 	if (parents.length === 0 || queryTexts.length === 0) {
 		return scores;
 	}
+	// The keyword score is the size of a term set, so a text repeated in the
+	// query (continuation turns fold the whole recent conversation in, with
+	// identical lines) cannot change it and is matched once.
+	const distinctTexts = [...new Set(queryTexts)];
 
 	for (const parent of parents) {
-		const terms = parent.keywordText
-			.split(/\n+/)
-			.map((term) => term.trim())
-			.filter(Boolean);
-		if (terms.length === 0) {
+		const prepared = getPreparedKeywordTerms(parent);
+		if (prepared.length === 0) {
 			continue;
 		}
-		const score = countActionSearchKeywordMatches(queryTexts, terms);
+		const score = collectPreparedKeywordTermMatches(
+			distinctTexts,
+			prepared,
+		).size;
 		if (score > 0) {
 			scores.set(parent.normalizedName, score);
 		}
