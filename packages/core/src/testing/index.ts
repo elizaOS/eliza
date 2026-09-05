@@ -49,8 +49,11 @@ export {
 } from "./deterministic-action-fixtures";
 export {
 	applyDeterministicModelFixtureBehavior,
+	createDeterministicEmbedding,
 	createDeterministicModelFixtureRegistry,
 	createDeterministicModelPlugin,
+	DETERMINISTIC_EMBEDDING_DIMENSION,
+	type DeterministicEmbeddingOptions,
 	type DeterministicModelCall,
 	type DeterministicModelCallDiagnostic,
 	type DeterministicModelDiagnostics,
@@ -66,6 +69,7 @@ export {
 	type DeterministicModelResponse,
 	type DeterministicSchemaMatcher,
 	type DeterministicTextMatcher,
+	normalizeDeterministicEmbeddingText,
 } from "./deterministic-model-plugin";
 // Package path resolution for monorepo tests
 export {

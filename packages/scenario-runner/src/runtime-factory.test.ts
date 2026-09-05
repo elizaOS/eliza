@@ -20,12 +20,14 @@ import {
   deterministicScheduledDispatchRenderText,
   disableScenarioEmbeddingCapability,
   disposeScenarioProviderPlugin,
+  enableScenarioDeterministicEmbeddingCapability,
   isPostTurnEvaluationPrompt,
   isScheduledDispatchRenderPrompt,
   loadScenarioTestMocksForTests,
   resolveScenarioDeterministicModelCall,
   resolveScenarioProviderConfig,
   scenarioLiveProviderPreflightProblems,
+  shouldUseDeterministicEmbeddings,
   shouldUseDeterministicModel,
 } from "./runtime-factory";
 
@@ -197,6 +199,35 @@ describe("scenario embedding capability", () => {
       false,
       false,
     );
+  });
+
+  it("can enable the canonical embedding capability for deterministic embeddings", () => {
+    const setSetting = vi.fn();
+
+    enableScenarioDeterministicEmbeddingCapability({ setSetting } as never);
+
+    expect(setSetting).toHaveBeenCalledWith(
+      "ELIZA_CANONICAL_EMBEDDINGS_ENABLED",
+      true,
+      false,
+    );
+  });
+
+  it("keeps keyword-only as the default and opts into deterministic embeddings", () => {
+    expect(shouldUseDeterministicEmbeddings({}, {})).toBe(false);
+    expect(
+      shouldUseDeterministicEmbeddings(
+        { useDeterministicEmbeddings: true },
+        {},
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    "SCENARIO_USE_DETERMINISTIC_EMBEDDINGS",
+    "ELIZA_SCENARIO_USE_DETERMINISTIC_EMBEDDINGS",
+  ])("can enable deterministic embeddings by %s", (name) => {
+    expect(shouldUseDeterministicEmbeddings({}, { [name]: "1" })).toBe(true);
   });
 });
 

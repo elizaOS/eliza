@@ -26,7 +26,9 @@ export interface DeterministicModelCall {
 export type DeterministicModelResponse =
 	| string
 	| GenerateTextResult
-	| Record<string, JsonValue>;
+	| Record<string, JsonValue>
+	| number[]
+	| number[][];
 
 export type DeterministicTextMatcher =
 	| string
@@ -137,6 +139,16 @@ export interface DeterministicModelPlugin extends Plugin {
 	getFixtureDiagnostics(): DeterministicModelDiagnostics;
 }
 
+export interface DeterministicEmbeddingOptions {
+	/** Fixed output width. Defaults to {@link DETERMINISTIC_EMBEDDING_DIMENSION}. */
+	dimension?: number;
+	/**
+	 * When true, unmatched embedding calls fail instead of hashing. Invalid
+	 * fixture vectors always fail.
+	 */
+	strict?: boolean;
+}
+
 export interface DeterministicModelPluginOptions {
 	fixtures?: DeterministicModelFixture[];
 	fixtureRegistry?: DeterministicModelFixtureRegistry;
@@ -149,6 +161,53 @@ export interface DeterministicModelPluginOptions {
 		intervalMs: number;
 		modelTypes?: ModelTypeName[];
 	};
+	/**
+	 * Opt-in deterministic TEXT_EMBEDDING / TEXT_EMBEDDING_BATCH handlers.
+	 * Default plugin construction stays text-only so keyword-only hosts remain
+	 * an explicit capability-unavailable mode.
+	 */
+	embeddings?: boolean | DeterministicEmbeddingOptions;
+}
+
+/** Fixed width used by scenario-owned deterministic embeddings. */
+export const DETERMINISTIC_EMBEDDING_DIMENSION = 384;
+
+export function normalizeDeterministicEmbeddingText(text: string): string {
+	return text.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+export function createDeterministicEmbedding(
+	text: string,
+	dimension: number = DETERMINISTIC_EMBEDDING_DIMENSION,
+): number[] {
+	if (!Number.isSafeInteger(dimension) || dimension <= 0) {
+		throw new Error(
+			"deterministic embedding dimension must be a positive integer",
+		);
+	}
+	const normalized = normalizeDeterministicEmbeddingText(text);
+	const values = new Float64Array(dimension);
+	let offset = 0;
+	let counter = 0;
+	while (offset < dimension) {
+		const digest = createHash("sha256")
+			.update(`${counter}\0${normalized}`)
+			.digest();
+		for (let i = 0; i + 3 < digest.length && offset < dimension; i += 4) {
+			const unsigned = digest.readUInt32BE(i);
+			values[offset++] = (unsigned + 0.5) / 4_294_967_296;
+		}
+		counter += 1;
+	}
+	let sumSquares = 0;
+	for (const value of values) sumSquares += value * value;
+	const norm = Math.sqrt(sumSquares);
+	if (norm === 0) {
+		values[0] = 1;
+	} else {
+		for (let i = 0; i < values.length; i++) values[i] /= norm;
+	}
+	return Array.from(values);
 }
 
 interface RegisteredFixture extends DeterministicModelFixture {
@@ -292,6 +351,29 @@ export function createDeterministicModelPlugin(
 		}) as never;
 	}
 
+	const embeddingConfig = resolveEmbeddingConfig(options.embeddings);
+	if (embeddingConfig) {
+		const embedOne = async (params: unknown) =>
+			resolveDeterministicEmbeddingVector({
+				fixtures,
+				fallback: options.resolve,
+				params,
+				dimension: embeddingConfig.dimension,
+				strict: embeddingConfig.strict,
+				signal: embeddingSignal(params),
+			});
+		models[ModelType.TEXT_EMBEDDING] = (async (_runtime, params) =>
+			embedOne(params)) as never;
+		models[ModelType.TEXT_EMBEDDING_BATCH] = (async (_runtime, params) => {
+			const texts = extractBatchEmbeddingTexts(params);
+			const vectors: number[][] = [];
+			for (const text of texts) {
+				vectors.push(await embedOne({ text }));
+			}
+			return vectors;
+		}) as never;
+	}
+
 	return {
 		name: "deterministic-model-provider",
 		description: "Fixture-driven model provider for real-runtime tests.",
@@ -415,13 +497,150 @@ function fixtureDiagnostic(
 	};
 }
 
+function resolveEmbeddingConfig(
+	embeddings: DeterministicModelPluginOptions["embeddings"],
+): { dimension: number; strict: boolean } | null {
+	if (!embeddings) return null;
+	const options = embeddings === true ? {} : embeddings;
+	const dimension = options.dimension ?? DETERMINISTIC_EMBEDDING_DIMENSION;
+	if (!Number.isSafeInteger(dimension) || dimension <= 0) {
+		throw new Error(
+			"deterministic embedding dimension must be a positive integer",
+		);
+	}
+	return { dimension, strict: options.strict === true };
+}
+
+function extractEmbeddingText(params: unknown): string | null {
+	if (params == null) return null;
+	if (typeof params === "string") return params;
+	if (typeof params === "object" && "text" in params) {
+		const text = (params as { text?: unknown }).text;
+		return typeof text === "string" ? text : null;
+	}
+	return null;
+}
+
+function extractBatchEmbeddingTexts(params: unknown): string[] {
+	if (params !== null && typeof params === "object" && "texts" in params) {
+		const texts = (params as { texts?: unknown }).texts;
+		if (
+			Array.isArray(texts) &&
+			texts.every((text) => typeof text === "string")
+		) {
+			return texts;
+		}
+	}
+	throw new Error(
+		"deterministic TEXT_EMBEDDING_BATCH requires params.texts: string[]",
+	);
+}
+
+function embeddingSignal(params: unknown): AbortSignal | undefined {
+	if (params !== null && typeof params === "object" && "signal" in params) {
+		const signal = (params as { signal?: unknown }).signal;
+		if (signal instanceof AbortSignal) return signal;
+	}
+	return undefined;
+}
+
+function parseEmbeddingResponse(response: DeterministicModelResponse): unknown {
+	if (Array.isArray(response)) return response;
+	if (typeof response === "string") {
+		try {
+			return JSON.parse(response);
+		} catch {
+			return response;
+		}
+	}
+	return response;
+}
+
+function assertEmbeddingVector(
+	value: unknown,
+	dimension: number,
+	label: string,
+): number[] {
+	if (
+		!Array.isArray(value) ||
+		value.length !== dimension ||
+		!value.every((entry) => typeof entry === "number" && Number.isFinite(entry))
+	) {
+		throw new Error(
+			`deterministic embedding fixture "${label}" returned an invalid embedding vector; expected ${dimension} finite numbers`,
+		);
+	}
+	return value;
+}
+
+async function resolveDeterministicEmbeddingVector(args: {
+	fixtures: DeterministicModelFixtureRegistry;
+	fallback?: DeterministicModelPluginOptions["resolve"];
+	params: unknown;
+	dimension: number;
+	strict: boolean;
+	signal?: AbortSignal;
+}): Promise<number[]> {
+	const text = extractEmbeddingText(args.params);
+	if (text === null) {
+		return new Array(args.dimension).fill(0);
+	}
+	const normalized = normalizeDeterministicEmbeddingText(text);
+	const call: DeterministicModelCall = {
+		modelType: ModelType.TEXT_EMBEDDING,
+		params: { prompt: normalized },
+		latestUserText: normalized,
+		toolNames: [],
+	};
+	let resolved: DeterministicModelFixtureResolution;
+	try {
+		resolved = args.fixtures.resolve(call);
+	} catch (error) {
+		if (
+			!(error instanceof DeterministicModelMatchError) ||
+			error.kind !== "unmatched"
+		) {
+			throw error;
+		}
+		if (args.fallback) {
+			const fallbackResponse = args.fallback(call);
+			if (fallbackResponse !== null && fallbackResponse !== undefined) {
+				registryUnmatchedRollbacks.get(args.fixtures)?.();
+				return assertEmbeddingVector(
+					parseEmbeddingResponse(fallbackResponse),
+					args.dimension,
+					"explicit-fallback-resolver",
+				);
+			}
+		}
+		if (args.strict) throw error;
+		registryUnmatchedRollbacks.get(args.fixtures)?.();
+		return createDeterministicEmbedding(normalized, args.dimension);
+	}
+	await applyDeterministicModelFixtureBehavior(resolved.behavior, args.signal);
+	return assertEmbeddingVector(
+		parseEmbeddingResponse(resolved.rawResponse),
+		args.dimension,
+		resolved.fixtureName,
+	);
+}
+
+function isEmbeddingModelType(modelType: ModelTypeName): boolean {
+	return (
+		modelType === ModelType.TEXT_EMBEDDING ||
+		modelType === ModelType.TEXT_EMBEDDING_BATCH
+	);
+}
+
 function matchesFixture(
 	fixture: RegisteredFixture,
 	call: DeterministicModelCall,
 ): boolean {
-	if (!fixture.match) return true;
 	if (typeof fixture.match === "function") return fixture.match(call);
+	const embeddingCall = isEmbeddingModelType(call.modelType);
+	if (!fixture.match) return !embeddingCall;
 	const match = fixture.match;
+	if (embeddingCall && !match.modelType) return false;
 	if (match.modelType) {
 		const expected = Array.isArray(match.modelType)
 			? match.modelType
