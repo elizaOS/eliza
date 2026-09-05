@@ -457,43 +457,53 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    // applyDrawOptions() runs ctx.save() as its first statement, then mutates
+    // ctx (transform, globalAlpha, blendMode, shadow). Keeping that call and
+    // the draw body inside one try/finally means any throw after save() — a
+    // malformed gradient fill (negative radius, out-of-range color-stop
+    // offset, unparseable color) from createFillStyle, or a bad shadow color
+    // inside applyDrawOptions — is unwound by ctx.restore() instead of leaking
+    // the save() frame and the mutated draw-option state onto every later draw
+    // on this canvas. save() is the first statement of applyDrawOptions, so
+    // the finally never fires ctx.restore() on an unpushed frame.
+    try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+      ctx.beginPath();
 
-    ctx.beginPath();
+      if (options.cornerRadius && options.cornerRadius > 0) {
+        const r = options.cornerRadius;
+        const { x, y, width, height } = options.rect;
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + width - r, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+        ctx.lineTo(x + width, y + height - r);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+        ctx.lineTo(x + r, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      } else {
+        ctx.rect(
+          options.rect.x,
+          options.rect.y,
+          options.rect.width,
+          options.rect.height,
+        );
+      }
 
-    if (options.cornerRadius && options.cornerRadius > 0) {
-      const r = options.cornerRadius;
-      const { x, y, width, height } = options.rect;
-      ctx.moveTo(x + r, y);
-      ctx.lineTo(x + width - r, y);
-      ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-      ctx.lineTo(x + width, y + height - r);
-      ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-      ctx.lineTo(x + r, y + height);
-      ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-      ctx.lineTo(x, y + r);
-      ctx.quadraticCurveTo(x, y, x + r, y);
-      ctx.closePath();
-    } else {
-      ctx.rect(
-        options.rect.x,
-        options.rect.y,
-        options.rect.width,
-        options.rect.height,
-      );
+      if (options.fill) {
+        ctx.fillStyle = this.createFillStyle(ctx, options.fill);
+        ctx.fill();
+      }
+
+      if (options.stroke) {
+        this.applyStrokeStyle(ctx, options.stroke);
+        ctx.stroke();
+      }
+    } finally {
+      ctx.restore();
     }
-
-    if (options.fill) {
-      ctx.fillStyle = this.createFillStyle(ctx, options.fill);
-      ctx.fill();
-    }
-
-    if (options.stroke) {
-      this.applyStrokeStyle(ctx, options.stroke);
-      ctx.stroke();
-    }
-
-    ctx.restore();
   }
 
   async drawEllipse(options: {
@@ -507,30 +517,33 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    // See drawRect: applyDrawOptions() (which owns ctx.save()) and the draw
+    // body share one try/finally, so a throw after save() stays balanced.
+    try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+      ctx.beginPath();
+      ctx.ellipse(
+        options.center.x,
+        options.center.y,
+        options.radiusX,
+        options.radiusY,
+        0,
+        0,
+        Math.PI * 2,
+      );
 
-    ctx.beginPath();
-    ctx.ellipse(
-      options.center.x,
-      options.center.y,
-      options.radiusX,
-      options.radiusY,
-      0,
-      0,
-      Math.PI * 2,
-    );
+      if (options.fill) {
+        ctx.fillStyle = this.createFillStyle(ctx, options.fill);
+        ctx.fill();
+      }
 
-    if (options.fill) {
-      ctx.fillStyle = this.createFillStyle(ctx, options.fill);
-      ctx.fill();
+      if (options.stroke) {
+        this.applyStrokeStyle(ctx, options.stroke);
+        ctx.stroke();
+      }
+    } finally {
+      ctx.restore();
     }
-
-    if (options.stroke) {
-      this.applyStrokeStyle(ctx, options.stroke);
-      ctx.stroke();
-    }
-
-    ctx.restore();
   }
 
   async drawLine(options: {
@@ -542,15 +555,19 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
-    this.applyStrokeStyle(ctx, options.stroke);
+    // See drawRect: applyDrawOptions() (which owns ctx.save()) and the draw
+    // body share one try/finally, so a throw after save() stays balanced.
+    try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+      this.applyStrokeStyle(ctx, options.stroke);
 
-    ctx.beginPath();
-    ctx.moveTo(options.from.x, options.from.y);
-    ctx.lineTo(options.to.x, options.to.y);
-    ctx.stroke();
-
-    ctx.restore();
+      ctx.beginPath();
+      ctx.moveTo(options.from.x, options.from.y);
+      ctx.lineTo(options.to.x, options.to.y);
+      ctx.stroke();
+    } finally {
+      ctx.restore();
+    }
   }
 
   async drawPath(options: {
@@ -562,87 +579,90 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    // See drawRect: applyDrawOptions() (which owns ctx.save()) and the draw
+    // body share one try/finally, so a throw after save() stays balanced.
+    try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+      ctx.beginPath();
 
-    ctx.beginPath();
-
-    for (const cmd of options.path.commands) {
-      switch (cmd.type) {
-        case "moveTo":
-          ctx.moveTo(cmd.args[0], cmd.args[1]);
-          break;
-        case "lineTo":
-          ctx.lineTo(cmd.args[0], cmd.args[1]);
-          break;
-        case "quadraticCurveTo":
-          ctx.quadraticCurveTo(
-            cmd.args[0],
-            cmd.args[1],
-            cmd.args[2],
-            cmd.args[3],
-          );
-          break;
-        case "bezierCurveTo":
-          ctx.bezierCurveTo(
-            cmd.args[0],
-            cmd.args[1],
-            cmd.args[2],
-            cmd.args[3],
-            cmd.args[4],
-            cmd.args[5],
-          );
-          break;
-        case "arcTo":
-          ctx.arcTo(
-            cmd.args[0],
-            cmd.args[1],
-            cmd.args[2],
-            cmd.args[3],
-            cmd.args[4],
-          );
-          break;
-        case "arc":
-          ctx.arc(
-            cmd.args[0],
-            cmd.args[1],
-            cmd.args[2],
-            cmd.args[3],
-            cmd.args[4],
-            cmd.args[5] === 1,
-          );
-          break;
-        case "ellipse":
-          ctx.ellipse(
-            cmd.args[0],
-            cmd.args[1],
-            cmd.args[2],
-            cmd.args[3],
-            cmd.args[4],
-            cmd.args[5],
-            cmd.args[6],
-            cmd.args[7] === 1,
-          );
-          break;
-        case "rect":
-          ctx.rect(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
-          break;
-        case "closePath":
-          ctx.closePath();
-          break;
+      for (const cmd of options.path.commands) {
+        switch (cmd.type) {
+          case "moveTo":
+            ctx.moveTo(cmd.args[0], cmd.args[1]);
+            break;
+          case "lineTo":
+            ctx.lineTo(cmd.args[0], cmd.args[1]);
+            break;
+          case "quadraticCurveTo":
+            ctx.quadraticCurveTo(
+              cmd.args[0],
+              cmd.args[1],
+              cmd.args[2],
+              cmd.args[3],
+            );
+            break;
+          case "bezierCurveTo":
+            ctx.bezierCurveTo(
+              cmd.args[0],
+              cmd.args[1],
+              cmd.args[2],
+              cmd.args[3],
+              cmd.args[4],
+              cmd.args[5],
+            );
+            break;
+          case "arcTo":
+            ctx.arcTo(
+              cmd.args[0],
+              cmd.args[1],
+              cmd.args[2],
+              cmd.args[3],
+              cmd.args[4],
+            );
+            break;
+          case "arc":
+            ctx.arc(
+              cmd.args[0],
+              cmd.args[1],
+              cmd.args[2],
+              cmd.args[3],
+              cmd.args[4],
+              cmd.args[5] === 1,
+            );
+            break;
+          case "ellipse":
+            ctx.ellipse(
+              cmd.args[0],
+              cmd.args[1],
+              cmd.args[2],
+              cmd.args[3],
+              cmd.args[4],
+              cmd.args[5],
+              cmd.args[6],
+              cmd.args[7] === 1,
+            );
+            break;
+          case "rect":
+            ctx.rect(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
+            break;
+          case "closePath":
+            ctx.closePath();
+            break;
+        }
       }
-    }
 
-    if (options.fill) {
-      ctx.fillStyle = this.createFillStyle(ctx, options.fill);
-      ctx.fill();
-    }
+      if (options.fill) {
+        ctx.fillStyle = this.createFillStyle(ctx, options.fill);
+        ctx.fill();
+      }
 
-    if (options.stroke) {
-      this.applyStrokeStyle(ctx, options.stroke);
-      ctx.stroke();
+      if (options.stroke) {
+        this.applyStrokeStyle(ctx, options.stroke);
+        ctx.stroke();
+      }
+    } finally {
+      ctx.restore();
     }
-
-    ctx.restore();
   }
 
   async drawText(options: {
@@ -654,26 +674,29 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    // See drawRect: applyDrawOptions() (which owns ctx.save()) and the draw
+    // body share one try/finally, so a throw after save() stays balanced.
+    try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+      ctx.font = `${options.style.size}px ${options.style.font}`;
+      ctx.fillStyle = this.colorToString(options.style.color);
+      ctx.textAlign = options.style.align || "left";
+      ctx.textBaseline = (options.style.baseline ||
+        "alphabetic") as CanvasTextBaseline;
 
-    ctx.font = `${options.style.size}px ${options.style.font}`;
-    ctx.fillStyle = this.colorToString(options.style.color);
-    ctx.textAlign = options.style.align || "left";
-    ctx.textBaseline = (options.style.baseline ||
-      "alphabetic") as CanvasTextBaseline;
-
-    if (options.style.maxWidth) {
-      ctx.fillText(
-        options.text,
-        options.position.x,
-        options.position.y,
-        options.style.maxWidth,
-      );
-    } else {
-      ctx.fillText(options.text, options.position.x, options.position.y);
+      if (options.style.maxWidth) {
+        ctx.fillText(
+          options.text,
+          options.position.x,
+          options.position.y,
+          options.style.maxWidth,
+        );
+      } else {
+        ctx.fillText(options.text, options.position.x, options.position.y);
+      }
+    } finally {
+      ctx.restore();
     }
-
-    ctx.restore();
   }
 
   async drawImage(options: {
@@ -693,43 +716,46 @@ export class CanvasWeb extends WebPlugin {
       img.src = `data:image/${options.image.format};base64,${options.image.base64}`;
     }
 
-    // Resolve the image load BEFORE pushing any save()/draw-option state.
-    // applyDrawOptions() runs ctx.save() and mutates ctx (globalAlpha,
-    // blendMode, shadow, transform); holding that frame across the await
-    // would leak the mutated state onto every subsequent draw whenever the
-    // load rejects (bad URL/base64, network, CORS — all normal runtime
-    // conditions). Applying draw options only after a successful load keeps
-    // save()/restore() balanced on both the success and failure paths.
+    // Resolve the image load BEFORE pushing any save()/draw-option state so a
+    // load rejection (bad URL/base64, network, CORS — all normal runtime
+    // conditions) never leaks a save() frame. Once loaded, applyDrawOptions()
+    // (which owns ctx.save()) and the drawImage() call run inside one
+    // try/finally, so a throw after save() — a bad shadow color inside
+    // applyDrawOptions, or drawImage() itself — is still unwound by
+    // ctx.restore() instead of corrupting later draws. This is the same
+    // save()/restore() balance the synchronous draw methods hold.
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve();
       img.onerror = () => reject(new Error("Failed to load image"));
     });
 
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
 
-    if (options.srcRect) {
-      ctx.drawImage(
-        img,
-        options.srcRect.x,
-        options.srcRect.y,
-        options.srcRect.width,
-        options.srcRect.height,
-        options.destRect.x,
-        options.destRect.y,
-        options.destRect.width,
-        options.destRect.height,
-      );
-    } else {
-      ctx.drawImage(
-        img,
-        options.destRect.x,
-        options.destRect.y,
-        options.destRect.width,
-        options.destRect.height,
-      );
+      if (options.srcRect) {
+        ctx.drawImage(
+          img,
+          options.srcRect.x,
+          options.srcRect.y,
+          options.srcRect.width,
+          options.srcRect.height,
+          options.destRect.x,
+          options.destRect.y,
+          options.destRect.width,
+          options.destRect.height,
+        );
+      } else {
+        ctx.drawImage(
+          img,
+          options.destRect.x,
+          options.destRect.y,
+          options.destRect.width,
+          options.destRect.height,
+        );
+      }
+    } finally {
+      ctx.restore();
     }
-
-    ctx.restore();
   }
 
   async drawBatch(options: {
