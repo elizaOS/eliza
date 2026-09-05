@@ -388,6 +388,31 @@ interface AgentRuntime {
 
 // ─── Main entry ─────────────────────────────────────────────────────────
 
+export async function _readBodyForTesting(
+  req: import("node:http").IncomingMessage,
+  maxBytes = 1_048_576,
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    req.on("data", (chunk: Buffer | string) => {
+      const buf =
+        typeof chunk === "string" ? Buffer.from(chunk, "utf-8") : chunk;
+      totalBytes += buf.byteLength;
+      if (maxBytes > 0 && totalBytes > maxBytes) {
+        req.destroy();
+        reject(new Error("Request body too large"));
+        return;
+      }
+      chunks.push(buf);
+    });
+    req.on("end", () =>
+      resolve(chunks.length > 0 ? Buffer.concat(chunks).toString("utf-8") : ""),
+    );
+    req.on("error", reject);
+  });
+}
+
 export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
   const PORT = userConfig.port ?? Number(process.env.PORT ?? "2138");
   const BRIDGE_PORT =
@@ -418,18 +443,24 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
 
   function readBody(req: http.IncomingMessage): Promise<string> {
     return new Promise<string>((resolve, reject) => {
-      let body = "";
+      const chunks: Buffer[] = [];
       let totalBytes = 0;
-      req.on("data", (chunk: Buffer) => {
-        totalBytes += chunk.length;
+      req.on("data", (chunk: Buffer | string) => {
+        const buf =
+          typeof chunk === "string" ? Buffer.from(chunk, "utf-8") : chunk;
+        totalBytes += buf.byteLength;
         if (MAX_BODY_BYTES > 0 && totalBytes > MAX_BODY_BYTES) {
           req.destroy();
           reject(new Error("Request body too large"));
           return;
         }
-        body += chunk;
+        chunks.push(buf);
       });
-      req.on("end", () => resolve(body));
+      req.on("end", () =>
+        resolve(
+          chunks.length > 0 ? Buffer.concat(chunks).toString("utf-8") : "",
+        ),
+      );
       req.on("error", reject);
     });
   }
