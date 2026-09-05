@@ -85,6 +85,11 @@ import {
 } from "../services/vision/image-input";
 import type { VisionImageInput } from "../services/vision/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
+import {
+	ELIZA_POOLING_CLS,
+	ELIZA_POOLING_LAST,
+	ELIZA_POOLING_MEAN,
+} from "../services/voice/ffi-bindings";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import {
@@ -798,10 +803,16 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 		}
 		return null;
 	}
-	// gte-small / BERT bi-encoders use MEAN pooling; a decoder-as-embedder
-	// (`--pooling last`) is selected via ELIZA_EMBED_POOLING=last.
+	// Pooling is part of the vector space: BGE uses CLS, GTE uses MEAN.
+	// Retain the legacy default for existing stores until explicitly migrated.
+	const requestedPooling =
+		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase();
 	const pooling =
-		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase() === "last" ? 3 : 1;
+		requestedPooling === "cls"
+			? ELIZA_POOLING_CLS
+			: requestedPooling === "last"
+				? ELIZA_POOLING_LAST
+				: ELIZA_POOLING_MEAN;
 	return {
 		embed: (text: string) => handle.embed({ ctx: handle.ctx, text, pooling }),
 	};

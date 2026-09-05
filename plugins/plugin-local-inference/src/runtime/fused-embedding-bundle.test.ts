@@ -7,6 +7,7 @@ import {
 	linkSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	statSync,
@@ -42,7 +43,9 @@ describe("resolveFusedEmbeddingBundleRoot", () => {
 		const root = resolveFusedEmbeddingBundleRoot({ modelsDir, model });
 		const staged = path.join(root ?? "", "text", model);
 
-		expect(root).toBe(path.join(modelsDir, ".eliza-embed-bundle"));
+		expect(path.dirname(root ?? "")).toBe(
+			path.join(modelsDir, ".eliza-embed-bundle"),
+		);
 		expect(readFileSync(staged, "utf8")).toBe("current-model");
 		expect(statSync(staged).ino).toBe(statSync(source).ino);
 	});
@@ -52,9 +55,10 @@ describe("resolveFusedEmbeddingBundleRoot", () => {
 		const model = "gte-small.gguf";
 		const source = path.join(modelsDir, model);
 		writeFileSync(source, "truncated");
-		const root = path.join(modelsDir, ".eliza-embed-bundle");
+		const root = resolveFusedEmbeddingBundleRoot({ modelsDir, model });
+		if (!root) throw new Error("Expected the model bundle to be staged");
 		const staged = path.join(root, "text", model);
-		mkdirSync(path.dirname(staged), { recursive: true });
+		unlinkSync(staged);
 		linkSync(source, staged);
 		const obsoleteInode = statSync(staged).ino;
 
@@ -65,6 +69,25 @@ describe("resolveFusedEmbeddingBundleRoot", () => {
 		expect(resolveFusedEmbeddingBundleRoot({ modelsDir, model })).toBe(root);
 		expect(readFileSync(staged, "utf8")).toBe("complete-model-artifact");
 		expect(statSync(staged).ino).toBe(statSync(source).ino);
+	});
+
+	it("keeps old and new same-dimension models in separate bundles", () => {
+		const modelsDir = temporaryRoot();
+		const oldModel = "gte-small.gguf";
+		const newModel = "bge-small.gguf";
+		writeFileSync(path.join(modelsDir, oldModel), "old-vectors");
+		writeFileSync(path.join(modelsDir, newModel), "new-vectors");
+		const oldRoot = resolveFusedEmbeddingBundleRoot({
+			modelsDir,
+			model: oldModel,
+		});
+		const newRoot = resolveFusedEmbeddingBundleRoot({
+			modelsDir,
+			model: newModel,
+		});
+		expect(oldRoot).not.toBe(newRoot);
+		expect(readdirSync(path.join(oldRoot ?? "", "text"))).toEqual([oldModel]);
+		expect(readdirSync(path.join(newRoot ?? "", "text"))).toEqual([newModel]);
 	});
 
 	it("honors an explicit native bundle root without staging another model", () => {
