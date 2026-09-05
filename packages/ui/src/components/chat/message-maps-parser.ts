@@ -79,13 +79,14 @@ function finiteNumber(value: unknown, min: number, max: number): number | null {
 
 /** Handoff links may only target the system geo handler or known map origins. */
 export function isAllowedMapsUri(uri: string): boolean {
-  if (/^geo:-?\d/.test(uri)) return true;
+  if (/^geo:[+-]?\d/.test(uri)) return true;
   try {
     const url = new URL(uri);
     return (
       url.protocol === "https:" &&
       (url.hostname === "maps.apple.com" ||
-        url.hostname === "www.openstreetmap.org")
+        url.hostname === "www.openstreetmap.org" ||
+        url.hostname === "openstreetmap.org")
     );
   } catch {
     // error-policy:J3 unparseable URI in untrusted card payload — reject
