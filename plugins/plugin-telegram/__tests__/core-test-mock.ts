@@ -34,6 +34,13 @@ vi.mock("@elizaos/core", async () => {
   );
   const { ElizaError } = await import("../../../packages/core/src/errors");
 
+  // The canonical env-truthiness contract (1/true/yes/y/on/enabled, trimmed
+  // and case-insensitive) is pure string logic; the gate's strict-mode branch
+  // must use the real implementation, so delegate rather than re-stub.
+  const { isTruthyEnvValue } = await import(
+    "../../../packages/core/src/env-utils"
+  );
+
   // The pairing integration is a pure service lookup plus reply formatting
   // over a duck-typed PairingService; the DM-policy suites exercise its real
   // fail-closed behavior (missing service, queue cap, reply claims), so it is
@@ -139,6 +146,7 @@ vi.mock("@elizaos/core", async () => {
     ChannelType,
     CommandRegistryService,
     ElizaError,
+    isTruthyEnvValue,
     EventType,
     checkPairingAllowed,
     getConfiguredOwnerEntityIds: () => [],
