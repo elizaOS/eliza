@@ -349,3 +349,14 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+### iOS local-agent transport ownership
+
+`@elizaos/ui/api/ios-local-agent-transport` owns the shared native runtime,
+fetch interception, boot progress and watchdog restart state. App-core's
+`./api/ios-local-agent-transport` subpath re-exports that owner for compatibility.
+Do not introduce another transport singleton or watchdog listener in the host.
+The fetch boundary applies standard RequestInit overrides and observes caller
+cancellation; cancellation cannot undo native side effects already dispatched.
+Native stream failures propagate without replay. Buffered compatibility is
+selected only before dispatch when streaming events are unavailable.

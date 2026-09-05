@@ -429,7 +429,7 @@ export function isGovernedSource(file) {
   return (
     /^(packages|plugins)\//.test(rel) &&
     /\.[jt]sx?$/.test(rel) &&
-    !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile-[^/]+)(\/|$)/.test(
+    !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
       rel,
     ) &&
     !/(^|\/)packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) &&
@@ -450,6 +450,7 @@ function* walk(directory) {
         "build",
         "coverage",
         "generated",
+        "dist-mobile",
         "test-results",
         ".git",
       ].includes(entry.name) ||
@@ -500,6 +501,7 @@ function* walkStylesheets(directory) {
         "build",
         "coverage",
         "generated",
+        "dist-mobile",
         "test-results",
         ".git",
         "stories",

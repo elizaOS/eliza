@@ -118,7 +118,7 @@ export function isMaintainedSource(file) {
     /^(packages|plugins)\//.test(rel) &&
     /\.[jt]sx?$/.test(rel) &&
     !/(^|\/)\.eliza(\/|$)/.test(rel) &&
-    !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile-[^/]+)(\/|$)/.test(
+    !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
       rel,
     ) &&
     !/(^|\/)packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) &&
@@ -149,6 +149,7 @@ function* walk(directory) {
         "build",
         "coverage",
         "generated",
+        "dist-mobile",
         ".git",
       ].includes(entry.name) ||
       entry.name.startsWith("dist-mobile-") ||

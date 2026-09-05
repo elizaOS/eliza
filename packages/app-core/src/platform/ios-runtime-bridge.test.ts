@@ -5,6 +5,7 @@
  * storage, and HTTP boundaries. The route sequence and model replies are real
  * contract shapes; only the simulator/Bun process boundary is substituted.
  */
+import { abortableResponse } from "@elizaos/ui/api/abortable-request";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const harness = vi.hoisted(() => {
@@ -95,10 +96,20 @@ const PROVEN_MODEL_REPLY = "The iOS full Bun local backend is running.";
 function installHappyFetch({ messageReply = PROVEN_MODEL_REPLY } = {}) {
   const fetchMock = vi.fn(
     async (input: string | URL | Request, init?: RequestInit) => {
-      const route = String(input);
-      const method = init?.method ?? "GET";
+      const request = new Request(
+        input instanceof Request
+          ? input
+          : new URL(String(input), "http://localhost"),
+        init,
+      );
+      request.signal.throwIfAborted();
+      const route = new URL(request.url).pathname;
+      const method = request.method;
       if (route === "/api/health") {
-        return jsonResponse({ ready: true, runtime: "ok" });
+        return abortableResponse(
+          Response.json({ ready: true, runtime: "ok" }),
+          request.signal,
+        );
       }
       if (route === "/api/local-inference/hub") {
         return jsonResponse({
