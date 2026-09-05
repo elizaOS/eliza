@@ -15,6 +15,7 @@ import {
   setChatOverlayHotkey,
   useChatOverlayHotkey,
 } from "../../state/useChatOverlayHotkey";
+import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow } from "./settings-layout";
@@ -162,12 +163,9 @@ export function ChatHotkeySettingsGroup() {
         }
       />
       {error && (
-        <div
-          className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
-          role="alert"
-        >
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
     </SettingsGroup>
   );
