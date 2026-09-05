@@ -5976,6 +5976,69 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
     }
   });
 
+  test("prepareAgentDelete refuses an acknowledged absent-bridge waiver once a bridge is back under the lock", async () => {
+    // The acknowledged absent-bridge path deletes a data-bearing container with
+    // no capture at all, so the generation revalidation under the lifecycle lock
+    // is its only remaining protection: the capture decision is made before the
+    // lock, and a re-provision in that window gives the agent a reachable bridge
+    // again. Deleting on the stale waiver would destroy state that is capturable
+    // by the time the lock is held. The sibling case above proves the matching
+    // generation is accepted; this one proves a moved generation is refused.
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const captured = {
+      ...customSandbox(),
+      status: "deletion_failed" as const,
+      bridge_url: null,
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
+    };
+    // Re-provisioned between the capture decision and the lock.
+    const live = {
+      ...captured,
+      bridge_url: "https://bridge.invalid/agent",
+      environment_revision: captured.environment_revision + 1,
+    };
+    const lockLifecycle = spyOn(spyTarget, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(spyTarget, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(spyTarget, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(spyTarget, "hasActiveReplacementJobTx").mockResolvedValue(
+      false,
+    );
+    const persist = spyOn(spyTarget, "persistSnapshotWithinTransaction");
+    const set = mock(() => ({
+      where: mock(() => ({ returning: mock(async () => []) })),
+    }));
+    const update = mock(() => ({ set }));
+    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+    try {
+      const result = (await (
+        svc as unknown as {
+          prepareAgentDelete: (...args: unknown[]) => Promise<{ ok: boolean; error?: string }>;
+        }
+      ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
+        snapshot: null,
+        captureAuthority: captured,
+        captureWaiverGeneration: {
+          bridgeUrl: null,
+          environmentRevision: captured.environment_revision,
+          sandboxId: captured.sandbox_id,
+        },
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      })) as { ok: boolean; error?: string };
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("lifecycle generation moved");
+      expect(persist).not.toHaveBeenCalled();
+      expect(set).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+      persist.mockRestore();
+    }
+  });
   test("prepareAgentDelete revalidates an unlocked backup candidate under the lifecycle lock", async () => {
     const { svc, spyTarget } = await makeCaptureSvc();
     const deletionAttemptId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
