@@ -31,7 +31,14 @@ import {
   type Route,
 } from "@lifi/sdk";
 
-import { type Address, encodeFunctionData, type Hex, parseAbi, parseUnits } from "viem";
+import {
+  type Address,
+  encodeFunctionData,
+  formatUnits,
+  type Hex,
+  parseAbi,
+  parseUnits,
+} from "viem";
 import { runIntentModel } from "../../../utils/intent-trajectory";
 import {
   BEBOP_CHAIN_MAP,
@@ -811,7 +818,18 @@ export async function buildSwapDetails(
   const amount =
     amountMode === "absolute"
       ? String(parsedResponse.amount ?? "")
-      : resolveRelativeAmount(amountMode, parsedResponse.amountPercent, chainBalance);
+      : resolveRelativeAmount(
+          amountMode,
+          parsedResponse.amountPercent,
+          chainBalance,
+          // Decimals are only meaningful for a balance that exists; when the
+          // balance is undefined resolveRelativeAmount throws before using
+          // them, and the config lookup must not run for a chain the model
+          // may have invented.
+          chainBalance === undefined
+            ? 0
+            : wp.getChainConfigs(chain as SupportedChain).nativeCurrency.decimals
+        );
 
   const swapDetails = parseSwapParams({
     fromToken: String(parsedResponse.inputToken ?? ""),
@@ -838,15 +856,23 @@ function resolveAmountMode(value: unknown): AmountMode {
 }
 
 /**
- * Resolve a relative swap size ("half"/"max"/"percent") into an absolute,
- * human-readable amount string from the connected chain's native balance.
- * `max` keeps a 10% gas reserve (0.9 * balance). Throws INVALID_PARAMS when the
- * balance for the chain is unknown or a percentage is out of the 1-100 range.
+ * Resolve a relative native-asset swap size ("half"/"max"/"percent") into an
+ * absolute, human-readable amount string from the connected chain's native
+ * balance. `max` keeps a 10% gas reserve (0.9 * balance). Throws
+ * INVALID_PARAMS when the balance for the chain is unknown or a percentage is
+ * out of the 1-100 range.
+ *
+ * The arithmetic runs in `bigint` on the parsed wei value so dust balances
+ * never round-trip through `Number.prototype.toString`, which switches to
+ * exponential notation (`"5e-8"`) below ~1e-6 — a form `parseUnits` rejects
+ * with a raw viem decimal-format error. Formatting happens exactly once via
+ * `formatUnits`.
  */
 function resolveRelativeAmount(
   mode: Exclude<AmountMode, "absolute">,
   rawPercent: unknown,
-  balance: string | undefined
+  balance: string | undefined,
+  decimals: number
 ): string {
   if (balance === undefined) {
     throw new EVMError(
@@ -855,13 +881,14 @@ function resolveRelativeAmount(
     );
   }
 
-  const balanceNum = parseFloat(balance);
+  const raw = parseUnits(balance, decimals);
 
   if (mode === "half") {
-    return (balanceNum / 2).toString();
+    return formatUnits(raw / 2n, decimals);
   }
   if (mode === "max") {
-    return (balanceNum * 0.9).toString();
+    // (raw * 9n) / 10n preserves the existing 10% gas reserve exactly.
+    return formatUnits((raw * 9n) / 10n, decimals);
   }
 
   const percent = Number(rawPercent);
@@ -871,7 +898,11 @@ function resolveRelativeAmount(
       `Swap percentage must be between 1 and 100, received: ${String(rawPercent)}`
     );
   }
-  return ((balanceNum * percent) / 100).toString();
+  // Scale the percent to an integer basis-of-a-million so a fractional percent
+  // stays representable while the (possibly huge) balance keeps every wei; the
+  // division by 100_000_000 then yields `raw * percent / 100` in pure bigint.
+  const scaledPercent = BigInt(Math.round(percent * 1_000_000));
+  return formatUnits((raw * scaledPercent) / 100_000_000n, decimals);
 }
 
 export const swapAction = {
