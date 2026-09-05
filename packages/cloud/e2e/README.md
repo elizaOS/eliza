@@ -84,7 +84,11 @@ attempt, runs a real `AgentRuntime`, and requires attempts 1, 2, and 3 to pass.
 The scenario sends a real owner message, executes `OWNER_REMINDERS`, fires the
 production scheduler through a retained notification sink, and proves
 authenticated Hetzner mock create/read/delete effects through an audit proxy.
-Strict deterministic fixtures are the only model in the PR lane.
+Strict deterministic fixtures are the only model in the keyless lane.
+The Cloud Agent Stability workflow runs by explicit dispatch with mode
+`deterministic-mock` (default) or `real-llm`; the latter selects OpenAI or
+Anthropic. Automatic validation remains owned by PR Static Smoke and Develop
+Full under the repository workflow policy.
 
 `stability:real -- --provider openai|anthropic` runs the identical scenario,
 world, plugins, services, and mock endpoints while replacing only the model.

@@ -1,17 +1,14 @@
 name: Cloud Agent Stability
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/cloud-stability.yml"
-      - "packages/cloud/e2e/**"
-      - "packages/cloud/test-mocks/**"
-      - "packages/scenario-runner/**"
-      - "packages/shared/src/synthetic-control/**"
-  schedule:
-    - cron: "17 6 * * *"
   workflow_dispatch:
     inputs:
+      mode:
+        description: Stability lane; real-llm uses the selected provider credential
+        required: true
+        default: deterministic-mock
+        type: choice
+        options: [deterministic-mock, real-llm]
       provider:
         description: Production model provider; all service providers remain mock-backed
         required: true
@@ -28,11 +25,11 @@ permissions:
 
 concurrency:
   group: cloud-stability-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   deterministic-keyless:
-    if: github.event_name == 'pull_request'
+    if: inputs.mode == 'deterministic-mock'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -82,7 +79,7 @@ jobs:
           if-no-files-found: error
 
   real-model-mock-services:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: inputs.mode == 'real-llm'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -114,9 +111,9 @@ jobs:
         run: bun run --cwd packages/cloud/e2e test:containment
       - name: Run exact-three real-model scenario over mock services
         env:
-          OPENAI_API_KEY: ${{ (github.event_name == 'schedule' || inputs.provider == 'openai') && secrets.OPENAI_API_KEY || '' }}
+          OPENAI_API_KEY: ${{ inputs.provider == 'openai' && secrets.OPENAI_API_KEY || '' }}
           ANTHROPIC_API_KEY: ${{ inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
-          STABILITY_PROVIDER: ${{ github.event_name == 'schedule' && 'openai' || inputs.provider }}
+          STABILITY_PROVIDER: ${{ inputs.provider }}
           STABILITY_INPUT_MODEL: ${{ inputs.model || '' }}
           STABILITY_RUN_ID: cloud-real-${{ github.run_id }}-${{ github.run_attempt }}
           STABILITY_OUTPUT: ${{ github.workspace }}/artifacts/cloud-stability/real
