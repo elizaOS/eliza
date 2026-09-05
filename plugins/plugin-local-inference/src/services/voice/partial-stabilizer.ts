@@ -1,3 +1,4 @@
+import { toWellFormedUnicode } from "@elizaos/core";
 /**
  * A2 — LocalAgreement-n streaming-ASR partial stabilizer.
  *
@@ -61,6 +62,12 @@ function commonPrefixLength(a: string, b: string): number {
 	const n = Math.min(a.length, b.length);
 	let i = 0;
 	while (i < n && a.charCodeAt(i) === b.charCodeAt(i)) i++;
+	if (i > 0) {
+		const code = a.charCodeAt(i - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			i -= 1;
+		}
+	}
 	return i;
 }
 
@@ -92,7 +99,8 @@ export class PartialStabilizer {
 	 * later partial briefly disagrees (the ASR will catch up; rolling back
 	 * would cause downstream stutter).
 	 */
-	feed(partial: string): StabilizerOutput {
+	feed(rawPartial: string): StabilizerOutput {
+		const partial = toWellFormedUnicode(rawPartial);
 		this.history.push(partial);
 		if (this.history.length > this.agreementCount) {
 			this.history.shift();
