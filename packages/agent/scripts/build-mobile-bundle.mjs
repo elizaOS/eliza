@@ -57,7 +57,7 @@ import {
   MOBILE_MODEL_PROVIDER_PLUGINS,
   MOBILE_VIEW_PLUGINS,
 } from "../src/runtime/core-plugins.ts";
-import { hasResolvableWorkspaceEntry } from "./mobile-workspace-entry.mjs";
+import { canUseWorkspaceEntry } from "./mobile-workspace-entry.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentRoot = path.resolve(here, "..");
@@ -1299,7 +1299,11 @@ const workspaceSrcFallbackPlugin = {
       if (
         existsSync(distDir) &&
         !forceSourceResolution &&
-        hasResolvableWorkspaceEntry(args.path, pkgDir)
+        canUseWorkspaceEntry(
+          args.path,
+          pkgDir,
+          TARGET === "ios-jsc" ? "browser" : "bun",
+        )
       ) {
         return undefined;
       }
