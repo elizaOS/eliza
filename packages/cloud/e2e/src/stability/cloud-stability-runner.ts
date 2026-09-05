@@ -442,6 +442,7 @@ function parseExecutionBudgets(
     "maxInputTokens",
     "maxOutputTokens",
     "maxToolCalls",
+    "maxModelRequests",
   ]);
   return {
     timeoutMs: positiveInteger(record.timeoutMs, "report timeoutMs"),
@@ -452,6 +453,10 @@ function parseExecutionBudgets(
     maxOutputTokens: positiveInteger(
       record.maxOutputTokens,
       "report maxOutputTokens",
+    ),
+    maxModelRequests: positiveInteger(
+      record.maxModelRequests,
+      "report maxModelRequests",
     ),
     maxToolCalls: nonNegativeInteger(
       record.maxToolCalls,
@@ -714,6 +719,7 @@ function parseCloudStabilityExecutionReport(
     budgets.maxInputTokens !== manifest.maxInputTokens ||
     budgets.maxOutputTokens !== manifest.maxOutputTokens ||
     budgets.maxToolCalls !== manifest.maxToolCalls ||
+    budgets.maxModelRequests !== manifest.maxModelRequests ||
     planFingerprint !== scenarioStabilityExecutionPlanFingerprint(plan) ||
     cell.attempts.some((attempt, index) => {
       const expected = expectedAttemptIdentities[index];

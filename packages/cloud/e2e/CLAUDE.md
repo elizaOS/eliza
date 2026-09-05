@@ -88,10 +88,19 @@ SHA-256; rejected requests retain structural evidence without a forwarded hash.
 The trusted attempt harness signs the complete real-model receipt with the
 parent-owned, per-attempt HMAC key; the outer adapter verifies that attestation
 before accepting it.
-This blocks direct secret inheritance into the harness and scenario child, but
-does not claim isolation from generic same-UID process inspection or raw network
-transports. The credentialed lane is not certifiable against a hostile child
-until #26821 supplies the OS/user/process sandbox for those boundaries.
+On Linux the scenario runs as a fresh per-attempt unprivileged host UID, mapped
+to UID 0 only inside a new user namespace, with capabilities initially dropped, a new PID and
+`/proc` namespace, a read-only repository, bounded resources,
+AF_INET/AF_INET6-only seccomp, and owner-scoped firewall rules admitting only
+declared loopback proxy ports. The root launcher clears its environment and
+consumes a strict caller-owned environment file from a private temporary
+directory outside uploaded artifacts, then deletes both. Kernel seccomp and
+namespace ownership enforce the boundary even if a nested user namespace
+regains capabilities. The
+pinned-Bun preload remains application-level diagnostics; private `/run`,
+`/tmp`, and `/var/tmp` mounts plus syscall denial for `socketpair` and all
+io_uring entry points close host AF_UNIX delegation paths. The kernel boundary
+also rejects direct TCP, UDP, DNS, and raw-socket bypasses.
 
 Attempts retain trajectories, tool receipts, transitions, bounded logs,
 network and mock-service ledgers, and authority hashes. The aggregate retains
