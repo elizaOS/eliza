@@ -977,12 +977,35 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			"Identify the current open view. Reply with the view name and exact nonce CEREBRAS-E1F-20260826-0952. Do not use tools or change anything.",
 			"identify the current active view",
 			"name the open panel",
+			// Postpositive read-only forms (#29531): the inspection verb
+			// follows the view noun ("which view is open"), which the
+			// original heuristic missed and promoted to a full planner call.
+			"Reply in one short sentence and say which view is open. Do not use tools or change anything.",
+			"which view is open? don't switch anything",
+			"which window is active",
+			"which screen is open",
 		]) {
 			expect(
 				inferDirectCurrentRequestCandidateInference([viewsAction], message),
 			).toEqual({ names: [], kind: null });
 		}
 	});
+
+	it.each([
+		"the window is open",
+		"this screen remains active",
+		"the current view stays open",
+		"if the window is open, leave it alone",
+		'preserve the text "the window is open"',
+		"the window is open; switch to settings",
+	])(
+		"does not mistake declarative view state for inspection: %s",
+		(message) => {
+			expect(
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
+			).toEqual({ names: ["VIEWS"], kind: "view-surface" });
+		},
+	);
 
 	it.each([
 		[
