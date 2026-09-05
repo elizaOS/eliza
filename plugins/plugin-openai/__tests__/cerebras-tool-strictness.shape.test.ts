@@ -37,6 +37,44 @@ function expectUniformStrictness(tools: Record<string, WireTool>, expected: bool
 }
 
 describe("Cerebras native tool strictness", () => {
+  it.each([true, undefined])(
+    "keeps optional map fields and record values optional (strict=%s)",
+    (strict) => {
+      const tools = normalizeForCerebras([
+        {
+          name: "record",
+          strict,
+          parameters: {
+            type: "object",
+            properties: { label: { type: "string" } },
+            additionalProperties: {
+              type: "object",
+              properties: { value: { type: "string" }, optional: { type: "string" } },
+              required: ["value"],
+              additionalProperties: false,
+            },
+          },
+        },
+      ]);
+      expect(tools.record.inputSchema.jsonSchema).toMatchObject({
+        type: "object",
+        required: ["__eliza_record_entries"],
+        additionalProperties: false,
+        properties: {
+          label: { type: "string" },
+          __eliza_record_entries: {
+            items: {
+              required: ["key", "value"],
+              properties: {
+                value: { required: ["value"], additionalProperties: false },
+              },
+            },
+          },
+        },
+      });
+    }
+  );
+
   it("keeps every tool strict only when every declaration is explicitly strict", () => {
     const tools = normalizeForCerebras([
       { name: "first", strict: true, parameters: populatedSchema() },

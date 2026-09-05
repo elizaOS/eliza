@@ -535,13 +535,10 @@ function buildStructuredOutput(
   const preparedSchema = prepareResponseFormatSchema(schemaOptions.schema, modelType);
   if (cerebrasResponseSchema && preparedSchema.transform) return undefined;
   const compatibility = cerebrasResponseSchema ? { preservesShape: true } : undefined;
-  const sanitizedSchema = sanitizeJsonSchema(
-    preparedSchema.schema,
-    true,
-    "$",
-    undefined,
-    compatibility
-  );
+  const sanitizedSchema = sanitizeJsonSchema(preparedSchema.schema, true, "$", undefined, {
+    preserveOptional: cerebrasResponseSchema,
+    responseCompatibility: compatibility,
+  });
   // Keep the existing JSON-mode contract when strict normalization would
   // change the returned shape or require an unsupported grammar construct.
   if (compatibility && !compatibility.preservesShape) return undefined;
@@ -892,7 +889,9 @@ function normalizeNativeToolsForCall(
       }
       inputSchema = rawSchema as JSONSchema7;
     } else {
-      inputSchema = sanitizeJsonSchema(rawSchema, true, "$", recordArgTransforms);
+      inputSchema = sanitizeJsonSchema(rawSchema, true, "$", recordArgTransforms, {
+        preserveOptional: options.cerebrasMode,
+      });
     }
     if (options.cerebrasMode) {
       // User-supplied schemas may still contain empty-properties subobjects
@@ -1512,7 +1511,8 @@ function chooseRecordEntriesKey(properties: Record<string, unknown>): string {
 function strictSafeRecordValueSchema(
   additionalProperties: unknown,
   transforms?: RecordArgTransform[],
-  path = "$"
+  path = "$",
+  options?: Parameters<typeof sanitizeJsonSchema>[4]
 ): {
   schema: JSONSchema7;
   mode: RecordArgValueMode;
@@ -1529,7 +1529,7 @@ function strictSafeRecordValueSchema(
   }
   return {
     mode: "schema",
-    schema: sanitizeJsonSchema(additionalProperties, false, `${path}.*`, transforms),
+    schema: sanitizeJsonSchema(additionalProperties, false, `${path}.*`, transforms, options),
   };
 }
 
@@ -1562,8 +1562,12 @@ function sanitizeJsonSchema(
   isRoot = false,
   path = "$",
   transforms?: RecordArgTransform[],
-  responseCompatibility?: { preservesShape: boolean }
+  options: {
+    preserveOptional?: boolean;
+    responseCompatibility?: { preservesShape: boolean };
+  } = {}
 ): JSONSchema7 {
+  const { responseCompatibility } = options;
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     if (responseCompatibility) responseCompatibility.preservesShape = false;
     // Bare-object fallback. In Cerebras mode `normalizeSchemaForCerebras`
@@ -1627,13 +1631,7 @@ function sanitizeJsonSchema(
   ) {
     const properties: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(sanitized.properties as Record<string, unknown>)) {
-      properties[key] = sanitizeJsonSchema(
-        value,
-        false,
-        `${path}.${key}`,
-        transforms,
-        responseCompatibility
-      );
+      properties[key] = sanitizeJsonSchema(value, false, `${path}.${key}`, transforms, options);
     }
     sanitized.properties = properties;
 
@@ -1641,9 +1639,10 @@ function sanitizeJsonSchema(
     const existingRequired = Array.isArray(sanitized.required)
       ? sanitized.required.filter((key): key is string => typeof key === "string")
       : [];
-    // Cerebras Qwen strict responses support genuinely optional fields. Other
-    // provider/tool paths retain their existing all-properties-required rule.
-    if (!responseCompatibility) {
+    // Cerebras supports optional fields in strict tools as well as responses.
+    // Requiring unused arguments invents values that fail runtime validation.
+    // Retain the all-properties-required rule for other strict providers.
+    if (!options.preserveOptional) {
       sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
     }
   }
@@ -1676,7 +1675,8 @@ function sanitizeJsonSchema(
       const { schema: valueSchema, mode } = strictSafeRecordValueSchema(
         sanitized.additionalProperties,
         transforms,
-        path
+        path,
+        options
       );
       properties[entriesKey] = strictSafeRecordEntriesSchema(valueSchema);
       sanitized.properties = properties;
@@ -1685,7 +1685,7 @@ function sanitizeJsonSchema(
           ...(Array.isArray(sanitized.required)
             ? sanitized.required.filter((key): key is string => typeof key === "string")
             : []),
-          ...Object.keys(properties),
+          ...(options.preserveOptional ? [entriesKey] : Object.keys(properties)),
         ]),
       ];
       transforms.push({ path, entriesKey, valueMode: mode });
@@ -1708,15 +1708,9 @@ function sanitizeJsonSchema(
   if (sanitized.items) {
     sanitized.items = Array.isArray(sanitized.items)
       ? sanitized.items.map((item, i) =>
-          sanitizeJsonSchema(item, false, `${path}.items[${i}]`, transforms, responseCompatibility)
+          sanitizeJsonSchema(item, false, `${path}.items[${i}]`, transforms, options)
         )
-      : sanitizeJsonSchema(
-          sanitized.items,
-          false,
-          `${path}.items`,
-          transforms,
-          responseCompatibility
-        );
+      : sanitizeJsonSchema(sanitized.items, false, `${path}.items`, transforms, options);
   }
 
   for (const arrayKey of JSON_SCHEMA_ARRAY_KEYWORDS) {
@@ -1731,7 +1725,7 @@ function sanitizeJsonSchema(
           false,
           arrayKey === "prefixItems" ? `${path}.items[${index}]` : path,
           transforms,
-          responseCompatibility
+          options
         )
       );
     }
@@ -1757,13 +1751,7 @@ function sanitizeJsonSchema(
           : singleKey === "unevaluatedProperties"
             ? `${path}.*`
             : path;
-      sanitized[singleKey] = sanitizeJsonSchema(
-        value,
-        false,
-        childPath,
-        transforms,
-        responseCompatibility
-      );
+      sanitized[singleKey] = sanitizeJsonSchema(value, false, childPath, transforms, options);
     }
   }
   for (const mapKey of JSON_SCHEMA_MAP_KEYWORDS) {
@@ -1779,7 +1767,7 @@ function sanitizeJsonSchema(
             : mapKey === "patternProperties"
               ? `${path}.*`
               : `${path}.${mapKey}.${key}`;
-        walked[key] = sanitizeJsonSchema(sub, false, childPath, transforms, responseCompatibility);
+        walked[key] = sanitizeJsonSchema(sub, false, childPath, transforms, options);
       }
       sanitized[mapKey] = walked;
     }
@@ -1793,7 +1781,7 @@ function sanitizeJsonSchema(
       walked[key] =
         !sub || typeof sub !== "object" || Array.isArray(sub)
           ? sub
-          : sanitizeJsonSchema(sub, false, path, transforms, responseCompatibility);
+          : sanitizeJsonSchema(sub, false, path, transforms, options);
     }
     sanitized[mixedMapKey] = walked;
   }

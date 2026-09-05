@@ -156,6 +156,58 @@ async function invoke(options: {
 }
 
 describe("Qwen3.8 response-schema wire contract", () => {
+  it.each(["cerebras", "openai"])(
+    "preserves native-tool optional arguments only for the supported %s contract",
+    async (provider) => {
+      vi.stubEnv("ELIZA_PROVIDER", provider);
+      const parameters = {
+        type: "object",
+        properties: {
+          action: { type: "string" },
+          text: { type: "string" },
+          snapshot: { type: "string", pattern: "^[0-9a-f]{64}$" },
+          detail: {
+            type: "object",
+            properties: { label: { type: "string" }, optional: { type: "string" } },
+            required: ["label"],
+            additionalProperties: false,
+          },
+        },
+        required: ["action"],
+        additionalProperties: false,
+      };
+      const original = structuredClone(parameters);
+      await invoke({
+        tools: [{ name: "MEMORY", description: "Manage memory", strict: true, parameters }],
+      });
+      expect(requests).toHaveLength(1);
+      expect(requests[0].tools).toEqual([
+        expect.objectContaining({
+          function: expect.objectContaining({
+            name: "MEMORY",
+            strict: true,
+            parameters: {
+              ...parameters,
+              required: provider === "cerebras" ? ["action"] : Object.keys(parameters.properties),
+              properties: {
+                ...parameters.properties,
+                snapshot: {
+                  type: "string",
+                  description: expect.stringContaining("^[0-9a-f]{64}$"),
+                },
+                detail: {
+                  ...parameters.properties.detail,
+                  required: provider === "cerebras" ? ["label"] : ["label", "optional"],
+                },
+              },
+            },
+          }),
+        }),
+      ]);
+      expect(parameters).toEqual(original);
+    }
+  );
+
   it.each([false, true])(
     "preserves explicit sampling independently, including zero and omission (stream=%s)",
     async (stream) => {
