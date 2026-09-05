@@ -39,6 +39,7 @@ export {
 } from "./constants";
 export * from "./contracts/computer-use";
 export * from "./database";
+export * from "./database/cas-values";
 export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
