@@ -434,6 +434,23 @@ describe("createContainer — placement and cleanup authority", () => {
     expect(completeCreatePlacement).not.toHaveBeenCalled();
   });
 
+  test("quiescent create without a candidate preserves a pre-existing container", async () => {
+    createWithProjectIntentAndQuotaCheck.mockResolvedValue({ container: ROW, created: true });
+    execStdinMock.mockRejectedValue(new Error("create rejected before a candidate was produced"));
+    let existingContainerPresent = true;
+    execMock.mockImplementation(async (command) => {
+      if (command.includes("attempt_cancelled"))
+        return `${getReplacementSecretArtifactsCleanupReceipt(ROW.id)}\n${getReplacementDockerCreateQuiescentReceipt(ROW.id)}\n`;
+      if (command.includes("docker rm -f")) existingContainerPresent = false;
+      return "";
+    });
+    await expect(getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT)).rejects.toThrow(
+      "create rejected before a candidate was produced",
+    );
+    expect(existingContainerPresent).toBe(true);
+    expect(settleCreateFailure.mock.calls[0]?.[4]).toBe(true);
+  });
+
   test("lost removal acknowledgement settles through explicit Docker absence", async () => {
     createWithProjectIntentAndQuotaCheck.mockResolvedValue({ container: ROW, created: true });
     execStdinMock.mockRejectedValue(
@@ -441,7 +458,7 @@ describe("createContainer — placement and cleanup authority", () => {
     );
     execMock.mockImplementation(async (command) => {
       if (command.includes("attempt_cancelled"))
-        return `${getReplacementSecretArtifactsCleanupReceipt(ROW.id)}\n${getReplacementDockerCreateQuiescentReceipt(ROW.id)}\n`;
+        return `${getReplacementSecretArtifactsCleanupReceipt(ROW.id)}\n${getReplacementCandidateObservedReceipt(ROW.id, "a".repeat(64))}\n`;
       if (command.includes("docker rm -f")) throw new Error("SSH response lost");
       if (command.includes("docker inspect --format"))
         throw new Error(
