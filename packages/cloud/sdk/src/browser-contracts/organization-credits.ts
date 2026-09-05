@@ -54,6 +54,43 @@ export const ORGANIZATION_CREDIT_PRICING = Object.freeze({
   usdPerCredit: USD_PER_ORGANIZATION_CREDIT,
 });
 
+/**
+ * Authoritative one-off credit purchase bounds, in whole USD. Both checkout
+ * seams (interactive `create-checkout-session` and service-key `v1
+ * /credits/checkout`) and every advertisement surface (the credits summary,
+ * docs, and UI fallbacks) must derive their values from this contract instead
+ * of restating the range locally. Auto-top-up keeps its own limits object
+ * (`AUTO_TOP_UP_LIMITS`) because its thresholds are a separate product
+ * policy that only coincidentally shares these bounds today.
+ */
+export const ORGANIZATION_CREDIT_CHECKOUT_LIMITS = Object.freeze({
+  /** Smallest custom top-up amount the checkout seams accept, in USD. */
+  minAmountUsd: 1 as const,
+  /** Largest custom top-up amount the checkout seams accept, in USD. */
+  maxAmountUsd: 1000 as const,
+});
+
+/**
+ * Convert a checkout amount in USD to exact whole cents, decimal-safely.
+ *
+ * `amount * 100` is unsafe for currency: binary floating-point renders
+ * `1.15 * 100` as `114.99999999999999`, so a safe-integer guard alone would
+ * reject valid card amounts. The amount is valid exactly when its shortest
+ * round-trip decimal representation carries at most two fractional digits;
+ * cents are then derived by rounding on that decimal representation. Returns
+ * `null` for sub-cent amounts, wrong-shaped floats, and non-finite input —
+ * callers translate `null` into their boundary's validation error (#22963).
+ */
+export function checkoutAmountUsdToCents(amountUsd: number): number | null {
+  if (!Number.isFinite(amountUsd)) return null;
+  const decimal = String(amountUsd);
+  const match = /^-?(\d+)(?:\.(\d+))?$/.exec(decimal);
+  if (!match?.[1]) return null;
+  const fraction = match[2] ?? "";
+  if (fraction.length > 2) return null;
+  return Math.round(amountUsd * 100);
+}
+
 function assertFiniteNonNegative(value: number, field: string): void {
   if (!Number.isFinite(value) || value < 0) {
     throw new RangeError(`${field} must be a finite non-negative number`);

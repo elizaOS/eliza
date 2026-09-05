@@ -5,6 +5,7 @@
  * Discord/GitHub OAuth callback-URL consumers. No React, no network: the view
  * owns the `client` calls; this module keeps the derivation out of the component.
  */
+
 import type {
   CloudBillingCheckoutResponse,
   CloudBillingSettings,
@@ -380,16 +381,22 @@ export type AutoTopUpFormAction =
   | { type: "setThreshold"; value: string };
 
 export function buildAutoTopUpFormState(
-  billingSummary: CloudBillingSummary | null,
   billingSettings: CloudBillingSettings | null,
 ): AutoTopUpFormState {
   const autoTopUp = getBillingAutoTopUp(billingSettings);
-  const minimumTopUp =
-    readNumber(
-      (billingSummary as Record<string, unknown> | null)?.minimumTopUp,
-    ) ?? 1;
+  // Auto top-up policy keeps its own bounds (AUTO_TOP_UP_LIMITS surfaced via
+  // billing settings); the one-off checkout contract's advertised minimum is a
+  // different policy and must not be borrowed as a fallback (#22963).
+  const advertisedMinimum =
+    readNumber(getBillingLimits(billingSettings).minAmount) ?? null;
   const enabled = readBoolean(autoTopUp.enabled) ?? false;
-  const amount = String(readNumber(autoTopUp.amount) ?? minimumTopUp);
+  const savedAmount = readNumber(autoTopUp.amount);
+  const amount =
+    savedAmount !== null
+      ? String(savedAmount)
+      : advertisedMinimum !== null
+        ? String(advertisedMinimum)
+        : "";
   const threshold = String(readNumber(autoTopUp.threshold) ?? 5);
   return {
     amount,

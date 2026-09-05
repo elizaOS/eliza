@@ -9,6 +9,8 @@
  * Locks itself out when the mobile runtime is Cloud-locked
  * (`isElizaCloudRuntimeLocked`).
  */
+
+import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-sdk/browser-contracts";
 import {
   ArrowLeft,
   CreditCard,
@@ -117,7 +119,7 @@ export function CloudDashboard() {
   const [billingAmount, setBillingAmount] = useState("25");
   const [autoTopUpForm, dispatchAutoTopUpForm] = useReducer(
     autoTopUpFormReducer,
-    buildAutoTopUpFormState(null, null),
+    buildAutoTopUpFormState(null),
   );
   const cloudRuntimeLocked =
     branding.cloudOnly === true || isElizaCloudRuntimeLocked();
@@ -246,9 +248,9 @@ export function CloudDashboard() {
   useEffect(() => {
     dispatchAutoTopUpForm({
       type: "hydrate",
-      next: buildAutoTopUpFormState(billingSummary, billingSettings),
+      next: buildAutoTopUpFormState(billingSettings),
     });
-  }, [billingSettings, billingSummary]);
+  }, [billingSettings]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -328,7 +330,7 @@ export function CloudDashboard() {
       setBillingSettings(normalizedSettings);
       dispatchAutoTopUpForm({
         type: "hydrate",
-        next: buildAutoTopUpFormState(billingSummary, normalizedSettings),
+        next: buildAutoTopUpFormState(normalizedSettings),
         force: true,
       });
       await fetchBillingData();
@@ -364,13 +366,29 @@ export function CloudDashboard() {
   ]);
 
   const handleStartCheckout = useCallback(async () => {
-    const minimumTopUp = readNumber(billingSummary?.minimumTopUp) ?? 1;
+    const minimumTopUp =
+      readNumber(billingSummary?.minimumTopUp) ??
+      ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd;
+    const maximumTopUp =
+      readNumber(billingSummary?.maximumTopUp) ??
+      ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd;
     const amountUsd = Number(billingAmount);
     if (!Number.isFinite(amountUsd) || amountUsd < minimumTopUp) {
       setActionNotice(
         t("elizaclouddashboard.EnterTopUpAmountMinimum", {
           defaultValue: "Enter a top-up amount of at least $" + "{{amount}}.",
           amount: minimumTopUp,
+        }),
+        "error",
+        3200,
+      );
+      return;
+    }
+    if (amountUsd > maximumTopUp) {
+      setActionNotice(
+        t("elizaclouddashboard.EnterTopUpAmountMaximum", {
+          defaultValue: "Top-up amounts cannot exceed $" + "{{amount}}.",
+          amount: maximumTopUp,
         }),
         "error",
         3200,
@@ -477,7 +495,7 @@ export function CloudDashboard() {
     setCheckoutDialogOpen(false);
     dispatchAutoTopUpForm({
       type: "hydrate",
-      next: buildAutoTopUpFormState(null, null),
+      next: buildAutoTopUpFormState(null),
       force: true,
     });
   }, [elizaCloudConnected]);
@@ -575,7 +593,9 @@ export function CloudDashboard() {
   const cloudCurrency = billingSummary?.currency ?? "USD";
   const fallbackBillingUrl =
     billingSummary?.topUpUrl ?? elizaCloudTopUpUrl ?? null;
-  const minimumTopUp = readNumber(billingSummary?.minimumTopUp) ?? 1;
+  const minimumTopUp =
+    readNumber(billingSummary?.minimumTopUp) ??
+    ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd;
   const billingAutoTopUp = getBillingAutoTopUp(billingSettings);
   const billingLimits = getBillingLimits(billingSettings);
   const autoTopUpHasPaymentMethod =
@@ -583,10 +603,14 @@ export function CloudDashboard() {
     readBoolean(billingSummary?.hasPaymentMethod) ??
     false;
   const autoTopUpMinAmount =
-    readNumber(billingLimits.minAmount) ?? minimumTopUp;
-  const autoTopUpMaxAmount = readNumber(billingLimits.maxAmount) ?? 1000;
+    // Auto top-up policy keeps its own bounds (AUTO_TOP_UP_LIMITS on the
+    // server); when the server has not advertised them there is no defensible
+    // fallback — borrowing the one-off checkout contract's range would couple
+    // two independently-evolving policies (#22963).
+    readNumber(billingLimits.minAmount) ?? null;
+  const autoTopUpMaxAmount = readNumber(billingLimits.maxAmount) ?? null;
   const autoTopUpMinThreshold = readNumber(billingLimits.minThreshold) ?? 0;
-  const autoTopUpMaxThreshold = readNumber(billingLimits.maxThreshold) ?? 1000;
+  const autoTopUpMaxThreshold = readNumber(billingLimits.maxThreshold) ?? null;
   const creditStatusTone = elizaCloudAuthRejected
     ? t("notice.elizaCloudAuthRejected")
     : summaryCritical
