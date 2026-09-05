@@ -914,6 +914,7 @@ jobs:
             'failureKind', (SELECT CASE
               WHEN error_storage = 'r2' THEN 'external_error'
               WHEN error IS NULL THEN 'none'
+              WHEN error ~ 'VPN_REGISTRATION_TIMEOUT_MS must be' THEN 'vpn_registration_budget_invalid'
               WHEN error ~ 'Account lifecycle fenced provisioning job' THEN 'account_preparation_fenced'
               WHEN error ~ 'Account lifecycle fenced provider admission' THEN 'account_provider_fenced'
               WHEN error ~ 'Agent lifecycle resource generation is already owned' THEN 'resource_generation_owned'
@@ -942,17 +943,17 @@ jobs:
             ) FROM latest_job),
             'errorTerms', ARRAY(
               SELECT DISTINCT term[1] FROM latest_job,
-                regexp_matches(lower(split_part(error, E'\n', 1)), '(timeout|timed|query|connection|connect|handshake|socket|pool|database|postgres|acquire|client|read|write|fetch|abort|aborted|operation|exceeded|trying|response|request|statement|health|sandbox|docker|ssh|vpn|headscale|backup|restore|revocation|lock|lease|body|headers|control|preflight|capacity|admission|fence|fenced|account|lifecycle|generation|owned|current|conflicting|revision|stale|steward|kms|crypto|encryption|decryption|redis|s3|r2|tls|certificate|auth|credential|token|key|econnreset|etimedout|econnrefused)', 'g') AS term
+                regexp_matches(lower(split_part(error, E'\n', 1)), '(timeout|timed|query|connection|connect|handshake|socket|pool|database|postgres|acquire|client|read|write|fetch|abort|aborted|operation|exceeded|trying|response|request|statement|health|sandbox|docker|ssh|vpn|headscale|backup|restore|revocation|lock|lease|body|headers|control|preflight|capacity|admission|fence|fenced|account|lifecycle|generation|owned|current|conflicting|revision|stale|steward|kms|crypto|encryption|decryption|encrypt|decrypt|redis|s3|r2|tls|certificate|auth|credential|token|key|dns|network|econnreset|etimedout|econnrefused)', 'g') AS term
               ORDER BY term[1]
             ),
             'stackFrames', ARRAY(
               SELECT DISTINCT frame[1] FROM latest_job,
-                regexp_matches(error, '((?:provisioning-jobs|provisioning-account-lifecycle-fence|account-lifecycle-authority|provider-admission|eliza-sandbox|managed-eliza-config|with-timeout|agent-env-crypto|agent-tier-upgrade-target|kms-client|steward-client|api-keys)\.ts:[0-9]+(?::[0-9]+)?)', 'g') AS frame
+                regexp_matches(error, '((?:provisioning-jobs|provisioning-account-lifecycle-fence|account-lifecycle-authority|provider-admission|eliza-sandbox|docker-sandbox-provider|docker-node-manager|docker-ssh|headscale-client|headscale-integration|socket-redis|field-crypto|managed-eliza-env|managed-eliza-config|with-timeout|agent-env-crypto|agent-tier-upgrade-target|kms-client|steward-client|api-keys)\.ts:[0-9]+(?::[0-9]+)?)', 'g') AS frame
               ORDER BY frame[1]
             ),
             'stackModules', ARRAY(
               SELECT DISTINCT module[1] FROM latest_job,
-                regexp_matches(error, '(pg-pool/index\.js|pg/lib/client\.js|postgres/src/connection\.js|docker-ssh-client\.ts|eliza-sandbox\.ts|provisioning-jobs\.ts|managed-eliza-config\.ts|with-timeout\.ts|agent-env-crypto\.ts|agent-tier-upgrade-target\.ts|kms-client\.ts|steward-client\.ts|api-keys\.ts)', 'g') AS module
+                regexp_matches(error, '(pg-pool/index\.js|pg/lib/client\.js|postgres/src/connection\.js|docker-ssh-client\.ts|docker-ssh\.ts|docker-sandbox-provider\.ts|docker-node-manager\.ts|headscale-client\.ts|headscale-integration\.ts|socket-redis\.ts|field-crypto\.ts|managed-eliza-env\.ts|eliza-sandbox\.ts|provisioning-jobs\.ts|managed-eliza-config\.ts|with-timeout\.ts|agent-env-crypto\.ts|agent-tier-upgrade-target\.ts|kms-client\.ts|steward-client\.ts|api-keys\.ts)', 'g') AS module
               ORDER BY module[1]
             )
           );

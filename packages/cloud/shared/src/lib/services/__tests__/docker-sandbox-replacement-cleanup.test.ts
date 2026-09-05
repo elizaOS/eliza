@@ -1739,7 +1739,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const ssh = {
       disconnect: mock(async () => {}),
       exec: mock(async (command: string, timeoutMs: number) => {
-        if (!command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4")) return "";
+        if (!command.endsWith("tailscale --socket=/tmp/tailscaled.sock ip -4")) return "";
         tailnetReadDeadline?.(timeoutMs);
         if (transientEmptyTailnetReads > 0) {
           transientEmptyTailnetReads -= 1;

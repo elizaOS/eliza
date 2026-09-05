@@ -85,7 +85,7 @@ test("reads only the bound owner's latest provision error and emits closed terms
     });
 
     await db.query("UPDATE jobs SET error = $1 WHERE id = 'current'", [
-      "Error: UND_ERR_CONNECT_TIMEOUT (RequestTimeoutError)",
+      "Error: UND_ERR_CONNECT_TIMEOUT (RequestTimeoutError)\n at /private/path/headscale-client.ts:555:10",
     ]);
     const machineCode = await db.query<{
       json_build_object: Record<string, unknown>;
@@ -93,6 +93,19 @@ test("reads only the bound owner's latest provision error and emits closed terms
     expect(machineCode.rows[0].json_build_object).toMatchObject({
       failureKind: "timeout",
       errorTerms: ["connect", "request", "timeout"],
+      stackFrames: ["headscale-client.ts:555:10"],
+      stackModules: ["headscale-client.ts"],
+    });
+
+    await db.query("UPDATE jobs SET error = $1 WHERE id = 'current'", [
+      "Error: VPN_REGISTRATION_TIMEOUT_MS must be at least 360000",
+    ]);
+    const configurationFailure = await db.query<{
+      json_build_object: Record<string, unknown>;
+    }>(query, ["r33717318238a1"]);
+    expect(configurationFailure.rows[0].json_build_object).toMatchObject({
+      failureKind: "vpn_registration_budget_invalid",
+      errorTerms: ["timeout", "vpn"],
     });
 
     await db.exec(`

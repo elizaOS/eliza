@@ -28,14 +28,14 @@ import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 // longer touches `allocated_count` at all, so no database is involved in the
 // stop path (#17185).
 let nextExecError: Error = new Error("unset");
-let execBehavior: () => Promise<string> = async () => {
+let execBehavior: (command: string) => Promise<string> = async () => {
   throw nextExecError;
 };
 let disconnectCalls = 0;
 mock.module("../docker-ssh", () => ({
   DockerSSHClient: {
     createDedicated: () => ({
-      exec: async () => execBehavior(),
+      exec: async (command: string) => execBehavior(command),
       disconnect: async () => {
         disconnectCalls += 1;
       },
@@ -89,12 +89,13 @@ describe("DockerSandboxProvider deletion policy on unreachable node", () => {
   });
 
   test("reconnects before rm when the graceful stop loses its SSH transport", async () => {
-    let calls = 0;
-    execBehavior = async () => {
-      calls += 1;
-      if (calls === 1) {
+    let disconnectsBeforeRemove: number | undefined;
+    execBehavior = async (command) => {
+      if (command.startsWith("sh -lc")) return "present";
+      if (command.startsWith("docker stop")) {
         throw new Error("[docker-ssh] Command timed out after 25000ms on host: docker [redacted]");
       }
+      if (command.startsWith("docker rm")) disconnectsBeforeRemove = disconnectCalls;
       return "";
     };
     const provider = new DockerSandboxProvider();
@@ -103,7 +104,7 @@ describe("DockerSandboxProvider deletion policy on unreachable node", () => {
     await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
       kind: "not-running-proven",
     });
-    expect(calls).toBe(2);
+    expect(disconnectsBeforeRemove).toBe(1);
     expect(disconnectCalls).toBe(2);
   });
 
