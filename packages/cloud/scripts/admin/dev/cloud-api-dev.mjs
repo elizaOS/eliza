@@ -26,6 +26,7 @@ const port = Number.parseInt(
   10,
 );
 const apiPort = process.env.API_DEV_PORT || "8787";
+const inspectorPort = process.env.DEV_CLOUD_INSPECTOR_PORT;
 const maxConnections = process.env.PGLITE_MAX_CONNECTIONS || "16";
 const startupTimeoutMs = Number.parseInt(
   process.env.DEV_CLOUD_STARTUP_TIMEOUT_MS || "120000",
@@ -309,6 +310,20 @@ async function main() {
     return value ? ["--var", `${key}:${value}`] : [];
   });
 
+  const inspectorArgs = inspectorPort
+    ? ["--inspector-ip", "127.0.0.1", "--inspector-port", inspectorPort]
+    : [];
+  if (
+    inspectorPort &&
+    (!/^\d+$/u.test(inspectorPort) ||
+      Number(inspectorPort) < 1 ||
+      Number(inspectorPort) > 65_535)
+  ) {
+    throw new Error(
+      `DEV_CLOUD_INSPECTOR_PORT must be an integer from 1 to 65535; received ${JSON.stringify(inspectorPort)}`,
+    );
+  }
+
   const wranglerArgs =
     args.length > 0
       ? args
@@ -318,6 +333,7 @@ async function main() {
           "127.0.0.1",
           "--port",
           apiPort,
+          ...inspectorArgs,
           "--local",
           ...testModeVars,
           ...stripeE2EDevVars,

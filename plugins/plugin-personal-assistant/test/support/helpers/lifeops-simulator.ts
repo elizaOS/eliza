@@ -43,6 +43,7 @@ interface WhatsAppMockService {
   phoneNumber: string;
   handleWebhook(payload: Record<string, unknown>): Promise<void>;
   fetchConnectorMessages(limit?: number): Promise<Memory[]>;
+  stop(): Promise<void>;
 }
 
 interface BrowserWorkspaceTab {
@@ -108,6 +109,7 @@ function installWhatsAppMockService(runtime: AgentRuntime): Cleanup {
     async fetchConnectorMessages(_limit = 25) {
       return [];
     },
+    async stop() {},
   };
   services.set("whatsapp", [whatsappService]);
   return () => {

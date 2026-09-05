@@ -79,6 +79,7 @@ export {
 	type SubactionHandlerMap,
 	type SubactionParameters,
 } from "./actions/subaction-dispatch";
+export { CORE_PLANNER_TERMINALS } from "./actions/to-tool";
 export { testSchemaPattern } from "./actions/validate-tool-args";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
