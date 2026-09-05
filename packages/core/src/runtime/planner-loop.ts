@@ -18,7 +18,11 @@ import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
-import { plannerSchema, plannerTemplate } from "../prompts/planner";
+import {
+	plannerBatchScopeDescription,
+	plannerSchema,
+	plannerTemplate,
+} from "../prompts/planner";
 import {
 	composeToolDiagnosticRedactor,
 	projectCompleteToolArgsForModel,
@@ -2551,11 +2555,7 @@ export const TURN_SCOPE_MORE_WORK_PENDING = "more_work_pending";
 const TURN_SCOPE_ARG_SCHEMA: JSONSchema = {
 	type: "string",
 	enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
-	description:
-		"Does another non-terminal action batch need these results? Use the same value on every call: " +
-		`"${TURN_SCOPE_FINAL}" if no later actions are needed; the evaluator verifies these results and writes the answer, including read-dependent details. ` +
-		`"${TURN_SCOPE_MORE_WORK_PENDING}" only if results must ground later actions, such as a lookup before an update. ` +
-		"Queued calls and composing a reply do not require another batch. Stripped before execution.",
+	description: `${plannerBatchScopeDescription} Use the same scope on every call. Stripped before execution.`,
 };
 
 /**

@@ -8,7 +8,11 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
-import { plannerTemplate } from "../../prompts/planner";
+import {
+	plannerBatchScopeDescription,
+	plannerSchema,
+	plannerTemplate,
+} from "../../prompts/planner";
 import { ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
@@ -5362,7 +5366,16 @@ describe("v5 planner loop skeleton", () => {
 		).toMatchObject({
 			type: "string",
 			enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
+			description: expect.stringContaining(plannerBatchScopeDescription),
 		});
+		// JSON and native planning must agree: verifying this queue's results
+		// is not a request for a later action batch. Contradictory instructions
+		// caused a live read + navigation to repeat planning after both finished.
+		expect(plannerTemplate).toContain(plannerBatchScopeDescription);
+		expect(plannerSchema.properties?.completed).toMatchObject({
+			description: expect.stringContaining(plannerBatchScopeDescription),
+		});
+		expect(plannerTemplate).not.toContain("verification pending");
 		// The scope arg is REQUIRED: optional args are exactly what small
 		// planner models omit, and an omitted scope let a lookup end the turn
 		// before the asked-for write ran (live 2026-08-10). Absent values
