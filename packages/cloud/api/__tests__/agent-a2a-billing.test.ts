@@ -92,6 +92,9 @@ const inferenceCredential = {
   credentialId: "key-1",
   userId: USER_ID,
 };
+let routeExecutionCtx:
+  | { waitUntil(promise: Promise<unknown>): void }
+  | undefined;
 const requireGenerativeRouteCaller = mock(
   async (
     _c?: unknown,
@@ -126,7 +129,7 @@ mock.module("@/lib/services/organization-inference-admission", () => ({
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   asGenerativeCacheApiError: (error: unknown) =>
     error instanceof ApiError ? error : null,
-  getGenerativeExecutionContext: () => undefined,
+  getGenerativeExecutionContext: () => routeExecutionCtx,
   resolveInferenceCredentialAdmissionDenial: () => null,
   requireGenerativeRouteCaller,
 }));
@@ -136,7 +139,13 @@ mock.module("@/lib/services/inference-credential-revocation", () => ({
 }));
 
 mock.module("@/lib/services/characters/characters", () => ({
-  charactersService: { getById: charactersGetById },
+  charactersService: {
+    getById: charactersGetById,
+    getByIdCacheOnly: async (id: string) => ({
+      kind: "ready" as const,
+      character: await charactersGetById(id),
+    }),
+  },
 }));
 
 const requireUserOrApiKeyWithOrg = mock();
@@ -229,6 +238,7 @@ function callChat(
 }
 
 beforeEach(() => {
+  routeExecutionCtx = undefined;
   getLanguageModel.mockClear();
   streamText.mockReset();
   resolveAnthropicThinkingBudgetTokens.mockReset();
@@ -426,6 +436,27 @@ describe("Agent A2A billing", () => {
     expect(body.result?.content).toBe("hello from model");
   });
 
+  test("Worker chat opts into atomic admission at the provider boundary", async () => {
+    const retained: Promise<unknown>[] = [];
+    routeExecutionCtx = {
+      waitUntil(promise) {
+        retained.push(Promise.resolve(promise));
+      },
+    };
+    makeReservation({ adjustmentType: "none" });
+
+    const response = await callChat();
+
+    expect(response.status).toBe(200);
+    expect(admitOrganizationInference).toHaveBeenCalledWith(
+      expect.objectContaining({
+        executionCtx: routeExecutionCtx,
+        atomicProviderBoundary: true,
+      }),
+    );
+    await Promise.all(retained);
+  });
+
   // Billing uses a conservative estimate without turning that estimate into a
   // provider cap. Final usage is reconciled separately.
   test.each([
@@ -563,6 +594,25 @@ describe("Agent A2A billing", () => {
     expect(reconcile).toHaveBeenCalledWith(0);
     expect(streamText).not.toHaveBeenCalled();
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test("a typed late dispatch denial remains a retryable JSON-RPC admission failure", async () => {
+    const reconcile = makeReservation({ adjustmentType: "refund" });
+    markProviderDispatched.mockRejectedValue(
+      new ApiError(
+        503,
+        "service_unavailable",
+        "dispatch admission unavailable",
+      ),
+    );
+
+    const response = await callChat();
+    const body = (await response.json()) as { error?: { code: number } };
+
+    expect(response.status).toBe(503);
+    expect(body.error?.code).toBe(-32004);
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(streamText).not.toHaveBeenCalled();
   });
 
   // Regression for #10266 (A2A side).

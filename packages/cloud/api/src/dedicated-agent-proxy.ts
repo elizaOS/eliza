@@ -440,6 +440,7 @@ async function proxyToOrigin(
   headers.delete("host");
   stripCloudOnlyCredentials(headers);
   sanitizeDedicatedTraceHeaders(headers);
+  const traceId = headers.get("x-eliza-trace-id");
   headers.set("x-forwarded-host", url.host);
   headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
   if (injectBearer) {
@@ -498,6 +499,7 @@ async function proxyToOrigin(
       host: targetUrl.hostname,
       path: targetUrl.pathname,
       timeoutMs,
+      ...(traceId ? { traceId } : {}),
     });
     const response = Response.json(
       {
@@ -1113,6 +1115,8 @@ async function proxyDedicatedAgent(
   agentId: string,
   timing: DedicatedProxyTiming,
 ): Promise<Response> {
+  const rawTraceId = request.headers.get("x-eliza-trace-id");
+  const traceId = isInferenceTraceId(rawTraceId) ? rawTraceId : undefined;
   const queryCredentials = readRealtimeQueryCredentials(url);
   const headerCarriesCredential = Boolean(
     request.headers.get("authorization") || request.headers.get("x-api-key"),
@@ -1302,6 +1306,7 @@ async function proxyDedicatedAgent(
     logger.error("[dedicated-proxy] owner credential resolution failed", {
       agentId,
       orgId,
+      ...(traceId ? { traceId } : {}),
       error: error instanceof Error ? error.message : String(error),
     });
     return Response.json(

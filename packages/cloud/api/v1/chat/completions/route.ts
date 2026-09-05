@@ -100,7 +100,6 @@ import type {
   CreditReconciliationResult,
   CreditReservation,
 } from "@/lib/services/credits";
-import { isInferenceAdmissionDispatchMarkError } from "@/lib/services/inference-admission-gate";
 import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import {
@@ -1850,6 +1849,7 @@ export async function handleChatCompletionsPOST(
             executionCtx: options.executionCtx,
             admissionSnapshot,
             credential: credentialGuard.credentialForAdmission(),
+            atomicProviderBoundary: true,
           });
           settleReservation = admission.settle;
           settleUnknown = admission.settleUnknown;
@@ -1887,6 +1887,7 @@ export async function handleChatCompletionsPOST(
           executionCtx: options.executionCtx,
           admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: Boolean(options.executionCtx),
         });
         settleReservation = admission.settle;
         settleUnknown = admission.settleUnknown;
@@ -2196,6 +2197,43 @@ export async function handleChatCompletionsPOST(
               },
             },
             { status: credentialDenial.status },
+          ),
+        ),
+      );
+    }
+    if (
+      error instanceof InferenceAdmissionUnavailableError ||
+      error instanceof InferenceBalanceCacheWarmingError
+    ) {
+      logger.error(
+        "[Chat Completions] provider-boundary admission failed closed",
+        {
+          traceId,
+          requestId,
+          model,
+          phase: "provider_dispatch",
+          errorName: error.name,
+          error: error.message,
+          cause:
+            error.cause instanceof Error
+              ? `${error.cause.name}: ${error.cause.message}`
+              : error.cause === undefined
+                ? undefined
+                : String(error.cause),
+        },
+      );
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message:
+                  "Inference admission is temporarily unavailable. Retry shortly.",
+                type: "service_unavailable",
+                code: "inference_admission_unavailable",
+              },
+            },
+            { status: 503, headers: { "Retry-After": "1" } },
           ),
         ),
       );
@@ -2686,24 +2724,30 @@ async function tryPassthroughStreamingRequest(params: {
       () => fetch(upstream.url, upstreamInit),
     );
   } catch (error) {
-    // A failed dispatch marker proves this Worker never called the provider,
-    // even when the Durable Object committed but every acknowledgement was
-    // lost. Once fetch starts, transport failure remains ambiguous.
+    if (upstreamFetchStartedAt === 0) {
+      // The combined admission failed before fetch. Preserve its typed
+      // standing, balance, or transport decision for the route boundary; the
+      // outer zero settlement cancels any acknowledgement-ambiguous commit.
+      throw error;
+    }
+    // Once fetch starts, transport failure is ambiguous and retains the
+    // estimate. Admission failures returned above are handled by the route's
+    // zero-settlement path because the provider boundary was never crossed.
     await settleOffResponsePath(params.executionCtx, async () => {
-      if (isInferenceAdmissionDispatchMarkError(error)) {
-        await params.settleReservation(0);
-      } else {
-        await params.settleUnknown();
-      }
+      await params.settleUnknown();
     });
     logger.error("[Chat Completions] Passthrough upstream fetch failed", {
       model,
       provider: upstream.providerId,
+      traceId: params.traceId,
       error: error instanceof Error ? error.message : String(error),
     });
     return passthroughErrorResponse(503, "upstream provider request failed");
   }
 
+  const providerRequestId = sanitizeProviderRequestId(
+    upstreamResponse.headers.get("x-request-id"),
+  );
   if (!upstreamResponse.ok) {
     await settleOffResponsePath(params.executionCtx, async () => {
       if (isKnownUnacceptedProviderStatus(upstreamResponse.status)) {
@@ -2738,6 +2782,8 @@ async function tryPassthroughStreamingRequest(params: {
     logger.error("[Chat Completions] Passthrough upstream error status", {
       model,
       provider: upstream.providerId,
+      traceId: params.traceId,
+      ...(providerRequestId ? { providerRequestId } : {}),
       upstreamStatus: upstreamResponse.status,
       mappedStatus: status,
     });
@@ -2749,7 +2795,12 @@ async function tryPassthroughStreamingRequest(params: {
     });
     logger.error(
       "[Chat Completions] Passthrough upstream returned an accepted response without a stream body",
-      { model, provider: upstream.providerId },
+      {
+        model,
+        provider: upstream.providerId,
+        traceId: params.traceId,
+        ...(providerRequestId ? { providerRequestId } : {}),
+      },
     );
     return passthroughErrorResponse(
       503,
@@ -2762,9 +2813,6 @@ async function tryPassthroughStreamingRequest(params: {
   // arbitrary upstream header content (same character policy as Server-Timing
   // descriptions).
   const upstreamHeadersMs = round2(performance.now() - upstreamFetchStartedAt);
-  const providerRequestId = sanitizeProviderRequestId(
-    upstreamResponse.headers.get("x-request-id"),
-  );
   // Single-reader fan-out (#20032 defect 4): the client stream is the ONLY
   // consumer of the upstream body, and the meter observes each chunk
   // synchronously as it is forwarded. Upstream pulling is therefore bounded

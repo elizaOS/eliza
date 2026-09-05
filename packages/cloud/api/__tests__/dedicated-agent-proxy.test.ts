@@ -32,6 +32,7 @@ let authResult:
   | "forbidden"
   | "unexpected" = "throw";
 let sandboxResult: Record<string, unknown> | null = null;
+let sandboxLookupError: Error | null = null;
 let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
   allowed: true,
   balance: 100,
@@ -56,6 +57,7 @@ const authRequests: Request[] = [];
 const authDbCacheContexts: boolean[] = [];
 const sandboxDbCacheContexts: boolean[] = [];
 const warnCalls: Array<{ message: string; context: unknown }> = [];
+const errorCalls: Array<{ message: string; context: unknown }> = [];
 
 mock.module("@/lib/runtime/cloud-bindings", () => ({
   ...cloudBindingsActual,
@@ -78,6 +80,7 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
     ...agentSandboxesActual.agentSandboxesRepository,
     findByIdAndOrg: async () => {
       sandboxDbCacheContexts.push(hasDbCacheContext());
+      if (sandboxLookupError) throw sandboxLookupError;
       return sandboxResult;
     },
   },
@@ -123,7 +126,9 @@ mock.module("@/lib/utils/logger", () => ({
     warn(message: string, context?: unknown) {
       warnCalls.push({ message, context });
     },
-    error() {},
+    error(message: string, context?: unknown) {
+      errorCalls.push({ message, context });
+    },
     info() {},
     debug() {},
   },
@@ -249,6 +254,7 @@ beforeEach(() => {
   fetchImpl = null;
   authResult = "throw";
   sandboxResult = null;
+  sandboxLookupError = null;
   creditGateResult = { allowed: true, balance: 100 };
   enqueueCalls = 0;
   browserClaimResult = { status: "invalid" };
@@ -258,6 +264,7 @@ beforeEach(() => {
   authDbCacheContexts.length = 0;
   sandboxDbCacheContexts.length = 0;
   warnCalls.length = 0;
+  errorCalls.length = 0;
   rateLimitResult = { success: true };
   rateLimitError = null;
   rateLimitKeys.length = 0;
@@ -1280,6 +1287,29 @@ describe("dedicated-agent-proxy — unified auth", () => {
     expect(captured).toBeNull();
   });
 
+  test("owner credential lookup failure logs the validated trace", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxLookupError = new Error("sandbox lookup failed");
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const r = makeRequest("cloud-token", undefined, {
+      "X-Eliza-Trace-Id": traceId,
+    });
+
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(res.status).toBe(503);
+    expect(errorCalls).toContainEqual({
+      message: "[dedicated-proxy] owner credential resolution failed",
+      context: {
+        agentId: AGENT,
+        orgId: "org1",
+        traceId,
+        error: "sandbox lookup failed",
+      },
+    });
+    expect(captured).toBeNull();
+  });
+
   test("owner of a NON-RUNNING agent → 202 resume, does NOT proxy to the container", async () => {
     authResult = { user: { id: "u1", organization_id: "org1" } };
     sandboxResult = { ...runningDedicated, status: "stopped" };
@@ -1759,7 +1789,10 @@ describe("dedicated-agent-proxy — stream-aware origin timeout", () => {
         );
       });
 
-    const r = makeRequest("cloud-token", ORIGIN);
+    const traceId = "0123456789abcdef0123456789abcdef";
+    const r = makeRequest("cloud-token", ORIGIN, {
+      "X-Eliza-Trace-Id": traceId,
+    });
     // Old behavior: this await THROWS (client saw CF 1101 / empty body).
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
 
@@ -1770,6 +1803,15 @@ describe("dedicated-agent-proxy — stream-aware origin timeout", () => {
     const body = (await res.json()) as { code?: string; success?: boolean };
     expect(body.success).toBe(false);
     expect(body.code).toBe("agent_timeout");
+    expect(warnCalls).toContainEqual({
+      message: "[dedicated-proxy] origin did not respond within timeout",
+      context: {
+        host: "cp.example.test",
+        path: "/api/status",
+        timeoutMs: 20,
+        traceId,
+      },
+    });
   });
 
   test("non-timeout fetch failures still propagate (fail-closed pass-through untouched)", async () => {

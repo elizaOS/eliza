@@ -116,6 +116,7 @@ async function admitFlatCost(
         return credential ? { credential } : {};
       })(),
       executionCtx: context.executionCtx,
+      atomicProviderBoundary: true,
     });
   } catch (error) {
     if (typeof error === "object" && error !== null) admissionErrors.add(error);

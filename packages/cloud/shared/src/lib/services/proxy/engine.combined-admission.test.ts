@@ -141,11 +141,47 @@ test("combined admission orders mark before dispatch and returns before settleme
   expect(admit.mock.calls[0]?.[0].apiKeyId).toBe("key-1");
   expect(admit.mock.calls[0]?.[0].admissionSnapshot).toBe(snapshot);
   expect(admit.mock.calls[0]?.[0].credential).toBe(credential);
+  expect(admit.mock.calls[0]?.[0].atomicProviderBoundary).toBe(true);
   expect(settle).toHaveBeenCalledTimes(1);
   expect(proxyCacheGet).not.toHaveBeenCalled();
   expect(proxyCacheSet).not.toHaveBeenCalled();
   expect(retained).toHaveLength(1);
   finishSettlement?.();
+  await Promise.all(retained);
+});
+
+test("late combined dispatch denial settles zero and never invokes the provider", async () => {
+  const settle = mock(async () => null);
+  const settleUnknown = mock(async () => null);
+  admit.mockResolvedValue({
+    mode: "durable_object_debit",
+    markProviderDispatched: async () => {
+      throw new TestInsufficientCreditsError(0.25, 0);
+    },
+    settle,
+    settleUnknown,
+  });
+  const retained: Promise<unknown>[] = [];
+  const work = mock(async () => ({ response: Response.json({ ok: true }) }));
+  const handler = createHandler(config, work, {
+    mode: "combined",
+    auth: { user: { id: "user-1", organization_id: "org-1" } },
+    admissionSnapshot: snapshot,
+    executionCtx: { waitUntil: (promise) => retained.push(promise) },
+    requestId: "rpc-late-denial",
+  });
+
+  const response = await handler(
+    new Request("https://api.test/api/v1/rpc/ethereum", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", id: 1 }),
+    }),
+  );
+
+  expect(response.status).toBe(402);
+  expect(work).not.toHaveBeenCalled();
+  expect(settle).toHaveBeenCalledWith(0);
+  expect(settleUnknown).not.toHaveBeenCalled();
   await Promise.all(retained);
 });
 
