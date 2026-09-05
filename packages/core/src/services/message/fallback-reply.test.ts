@@ -292,6 +292,31 @@ describe("fallback-reply", () => {
 			).toBe(false);
 		});
 
+		it("fails over on the typed openai missing-credential error (incident #27268)", () => {
+			// A keyless plugin-openai surfaces OPENAI_CREDENTIAL_UNAVAILABLE so an
+			// Anthropic->OpenAI failover can advance to a pooled openai-codex
+			// RESPONSE_HANDLER instead of stranding the brain on the bare
+			// "OPENAI_API_KEY is required" throw.
+			expect(
+				isModelProviderFallbackError({
+					code: "OPENAI_CREDENTIAL_UNAVAILABLE",
+					message: "OPENAI_API_KEY is required.",
+				}),
+			).toBe(true);
+			// Text-only condition: TTS still fails closed (voice never rotates).
+			expect(
+				isModelProviderFallbackError(
+					{ code: "OPENAI_CREDENTIAL_UNAVAILABLE" },
+					ModelType.TEXT_TO_SPEECH,
+				),
+			).toBe(false);
+			// Pre-fix shape: the SAME message as a bare untyped Error is NOT
+			// fallback-class — proving the typed code, not the text, unblocks failover.
+			expect(
+				isModelProviderFallbackError(new Error("OPENAI_API_KEY is required.")),
+			).toBe(false);
+		});
+
 		it("fails over on structural 529 and inherited rate limits", () => {
 			expect(isModelProviderFallbackError({ statusCode: 529 })).toBe(true);
 			expect(isModelProviderFallbackError({ statusCode: 429 })).toBe(true);
