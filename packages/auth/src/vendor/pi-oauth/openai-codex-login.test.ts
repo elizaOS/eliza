@@ -80,7 +80,83 @@ describe("refreshOpenAICodexToken", () => {
       /Failed to extract accountId from token/,
     );
   });
+
+  it("fails when the refresh endpoint returns non-OK with an otherwise-valid body", async () => {
+    // The body is fully valid so only the !response.ok branch can reject;
+    // mutating that check to always-accept must fail this test.
+    mockTokenResponse(
+      {
+        access_token: fakeAccessToken(),
+        refresh_token: "rt-new",
+        expires_in: 3600,
+      },
+      false,
+    );
+    await expect(refreshOpenAICodexToken("rt-old")).rejects.toThrow(
+      /Failed to refresh OpenAI Codex token/,
+    );
+  });
 });
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Loopback binding probe: sandboxed runners forbid listen() entirely, in
+ * which case the port-dependent tests below skip loudly instead of failing.
+ */
+async function canBindLoopback(): Promise<boolean> {
+  const net = await import("node:net");
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once("error", () => resolve(false));
+    probe.listen(0, "127.0.0.1", () => {
+      probe.close(() => resolve(true));
+    });
+  });
+}
+
+/** Occupy :1455 so startLocalOAuthServer takes the bind-failure fallback. */
+async function occupyCallbackPort() {
+  const http = await import("node:http");
+  const blocker = http.createServer((_req, res) => {
+    res.statusCode = 404;
+    res.end();
+  });
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        blocker.once("error", reject);
+        blocker.listen(1455, "127.0.0.1", () => resolve());
+      });
+      return blocker;
+    } catch (err) {
+      if (attempt >= 5) throw err;
+      await sleep(100);
+    }
+  }
+}
+
+async function closeServer(server: { close: (cb?: () => void) => void }) {
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+}
+
+/** Real HTTP against the loopback server (global fetch is stubbed in-suite). */
+async function getCallback(path: string) {
+  const http = await import("node:http");
+  return new Promise<{ status: number; text: string }>((resolve, reject) => {
+    http
+      .get(`http://127.0.0.1:1455${path}`, (res) => {
+        let data = "";
+        res.on("data", (chunk: string) => {
+          data += chunk;
+        });
+        res.on("end", () =>
+          resolve({ status: res.statusCode ?? 0, text: data }),
+        );
+      })
+      .on("error", reject);
+  });
+}
 
 describe("loginOpenAICodex", () => {
   afterEach(() => {
@@ -237,5 +313,126 @@ describe("loginOpenAICodex", () => {
         },
       }),
     ).rejects.toThrow(/Failed to extract accountId from token/);
+  });
+
+  it("serves the real local callback: wrong state is rejected, correct state completes login", async (ctx) => {
+    if (!(await canBindLoopback())) {
+      ctx.skip();
+      return;
+    }
+    mockTokenResponse({
+      access_token: fakeAccessToken("acct-callback"),
+      refresh_token: "rt-callback",
+      expires_in: 3600,
+    });
+
+    let emittedUrl = "";
+    const loginPromise = loginOpenAICodex({
+      onAuth: (info) => {
+        emittedUrl = info.url;
+      },
+      onPrompt: () => {
+        throw new Error("must not fall back to prompt on the live server");
+      },
+    });
+    // onAuth fires after the server binds; the state check below is the
+    // callback-server branch, not the manual-input one.
+    while (!emittedUrl) await sleep(10);
+    const state = new URL(emittedUrl).searchParams.get("state") ?? "";
+
+    const bad = await getCallback(
+      `/auth/callback?code=attacker-code&state=wrong-state`,
+    );
+    expect(bad.status).toBe(400);
+    expect(bad.text).toBe("State mismatch");
+
+    await getCallback(`/auth/callback?code=callback-code-1&state=${state}`);
+    const creds = await loginPromise;
+    expect(creds.accountId).toBe("acct-callback");
+  });
+
+  it("rejects mismatched state when the port-bound fallback resolves manual input late", async (ctx) => {
+    if (!(await canBindLoopback())) {
+      ctx.skip();
+      return;
+    }
+    const blocker = await occupyCallbackPort();
+    try {
+      mockTokenResponse({
+        access_token: fakeAccessToken(),
+        refresh_token: "rt-new",
+        expires_in: 3600,
+      });
+
+      // The failed bind resolves waitForCode before the delayed manual input
+      // arrives, so this exercises the second state comparison, not the first.
+      await expect(
+        loginOpenAICodex({
+          onAuth: () => {},
+          onPrompt: vi.fn(async () => ""),
+          onManualCodeInput: async () => {
+            await sleep(50);
+            return "http://localhost:1455/auth/callback?code=abc&state=wrong-state";
+          },
+        }),
+      ).rejects.toThrow(/State mismatch/);
+    } finally {
+      await closeServer(blocker);
+    }
+  });
+
+  it("rejects mismatched state from the onPrompt fallback when no callback arrives", async (ctx) => {
+    if (!(await canBindLoopback())) {
+      ctx.skip();
+      return;
+    }
+    const blocker = await occupyCallbackPort();
+    try {
+      mockTokenResponse({
+        access_token: fakeAccessToken(),
+        refresh_token: "rt-new",
+        expires_in: 3600,
+      });
+
+      await expect(
+        loginOpenAICodex({
+          onAuth: () => {},
+          onPrompt: async () =>
+            "http://localhost:1455/auth/callback?code=abc&state=wrong-state",
+        }),
+      ).rejects.toThrow(/State mismatch/);
+    } finally {
+      await closeServer(blocker);
+    }
+  });
+
+  it("emits fresh unpredictable state per authorization flow", async () => {
+    mockTokenResponse({
+      access_token: fakeAccessToken(),
+      refresh_token: "rt-new",
+      expires_in: 3600,
+    });
+
+    const states: string[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      let emittedUrl = "";
+      await loginOpenAICodex({
+        onAuth: (info) => {
+          emittedUrl = info.url;
+        },
+        onPrompt: vi.fn(async () => ""),
+        onManualCodeInput: async () => {
+          const state =
+            new URL(emittedUrl).searchParams.get("state") ?? "";
+          return `code-entropy-${i}#${state}`;
+        },
+      });
+      states.push(new URL(emittedUrl).searchParams.get("state") ?? "");
+    }
+
+    // 16 random bytes hex-encoded; a constant or short state fails both.
+    expect(states[0]).toMatch(/^[0-9a-f]{32}$/);
+    expect(states[1]).toMatch(/^[0-9a-f]{32}$/);
+    expect(states[0]).not.toBe(states[1]);
   });
 });
