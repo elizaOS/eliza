@@ -75,3 +75,30 @@ bridge**.
 - Selected account is **observable** (session metadata + structured log + dashboard), never assumed.
 - Subscription tokens and coding-plan keys only flow to a supported coding subprocess, never into runtime `process.env`; coding-plan routes retain their explicit supported-tool policy metadata.
 - Per-agent credential precedence is enforced: a selected Claude subscription drops `ANTHROPIC_API_KEY`; a selected Codex subscription (per-account `CODEX_HOME`) drops a forwarded `OPENAI_API_KEY` — so the chosen account always authenticates.
+
+### Pi installation and model catalog compatibility
+
+Use an explicit `ELIZA_PI_AGENT_ACP_COMMAND` for the installed ACP adapter.
+The default command name `pi-agent` is not the `pi` CLI supplied by the official
+Pi package. The reviewed toolchain is `@earendil-works/pi-coding-agent@0.85.1`
+(`pi`) with `pi-acp@0.0.33` (`pi-acp`); install exact versions in the host's
+managed tool directory and point the command override to its `pi-acp` executable.
+Its PATH must contain the matching `pi` executable.
+
+Z.AI routes default to `glm-5.3` and xAI defaults to `grok-4.6`. Pi 0.85.1's
+built-in catalog does not contain the former defaults `glm-5.1` and
+`grok-build-0.1`, although both remain provider-documented models. Explicit
+model overrides remain available and must exist in the installed Pi catalog.
+The Z.AI coding-plan and API endpoints remain distinct; these model changes do
+not convert plan billing to PAYG.
+
+At the provider's published API rates, GLM-5.3 and GLM-5.1 both cost $1.40 input,
+$0.26 cached input, and $4.40 output per million tokens. Grok-4.6 costs $2 input,
+$0.50 cached input, and $6 output, versus Grok Build 0.1's $1, $0.20, and $2;
+higher-context rates also differ. Grok-4.6 exposes a 500,000-token context
+versus Grok Build 0.1's 256,000-token context. Consult the provider's current
+[Z.AI pricing](https://docs.z.ai/guides/overview/pricing),
+[xAI pricing](https://docs.x.ai/developers/pricing), and
+[Grok-4.6 model contract](https://docs.x.ai/developers/models/grok-4.6).
+Installed configuration and ACP session creation do not certify live provider
+responses or account billing; those require the real-provider matrix.

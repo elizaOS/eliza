@@ -470,7 +470,7 @@ describe("multi-account coding-agent spawn", () => {
         piProvider: {
           accountProviderId: "zai-api",
           piProviderId: "zai",
-          model: "glm-5.1",
+          model: "glm-5.3",
         },
       });
       expect(JSON.stringify(session?.metadata)).not.toContain(
