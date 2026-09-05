@@ -65,3 +65,5 @@ The build produces three outputs: `dist/index.js` (main ESM bundle), `dist/views
 - `@capacitor/haptics` — Haptic feedback on companion navigation transitions.
 - `@capacitor/preferences` — Navigation stack persistence for the companion.
 - `@capacitor/barcode-scanner` — QR pairing scan in the companion Pairing view.
+
+The app-shell registration and the remote view bundle use the same semantic capability catalog. Both renderer paths enforce human-only declarations before invoking an interaction handler; named agent reads do not grant generic DOM control.

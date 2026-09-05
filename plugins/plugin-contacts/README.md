@@ -60,3 +60,5 @@ These are requested by `@elizaos/capacitor-contacts` at runtime.
 - **Android only.** The native Contacts API is not available on iOS, web, or desktop.
 - **Read-mostly.** The native layer does not expose contact update or delete. The detail view is read-only; create and import (vCard) are the only write operations.
 - **Prompt integrity.** Planner-facing reads request the native maximum and reject when the result reaches that boundary, because the bridge has no continuation contract. A potentially truncated contact list is never returned as complete context.
+
+The app-shell registration and the remote view bundle use the same semantic capability catalog. Both renderer paths enforce human-only declarations before invoking an interaction handler; named agent reads do not grant generic DOM control.

@@ -70,3 +70,5 @@ bun run --cwd plugins/plugin-messages build
 ```
 
 This runs `build:js` (tsup library bundle), `build:views` (vite view bundle at `dist/views/bundle.js`), and `build:types` (TypeScript declarations).
+
+The app-shell registration and the remote view bundle use the same semantic capability catalog. Both renderer paths enforce human-only declarations before invoking an interaction handler; named agent reads do not grant generic DOM control.

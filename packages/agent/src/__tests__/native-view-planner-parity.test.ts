@@ -9,7 +9,12 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ChannelType, type Memory, type RoleGateRole } from "@elizaos/core";
+import {
+  ChannelType,
+  type Memory,
+  type RoleGateRole,
+  resolveSurfaceManifest,
+} from "@elizaos/core";
 import {
   afterAll,
   beforeAll,
@@ -74,6 +79,7 @@ import { interact as interactMessages } from "../../../../plugins/plugin-message
 import { appMessagesPlugin } from "../../../../plugins/plugin-messages/src/plugin.ts";
 import { interact as interactPhone } from "../../../../plugins/plugin-phone/src/components/phone-interact.ts";
 import { appPhonePlugin } from "../../../../plugins/plugin-phone/src/plugin.ts";
+import { brokerViewInteract } from "../../../ui/src/components/views/view-capability-broker";
 import {
   registerPluginViews,
   unregisterPluginViews,
@@ -148,7 +154,17 @@ function startViewsServer(): Promise<http.Server> {
             return 0;
           }
           const viewId = frame.viewId as keyof typeof VIEW_INTERACTORS;
-          void VIEW_INTERACTORS[viewId](frame.capability, frame.params).then(
+          const declaration = PLUGINS.flatMap(
+            (plugin) => plugin.views ?? [],
+          ).find((view) => view.id === viewId);
+          if (!declaration) throw new Error(`Missing native view ${viewId}`);
+          const interact = brokerViewInteract(
+            viewId,
+            resolveSurfaceManifest(declaration),
+            VIEW_INTERACTORS[viewId],
+            declaration.capabilities,
+          );
+          void interact(frame.capability, frame.params).then(
             (result) => {
               dispatched.push({
                 viewId,
