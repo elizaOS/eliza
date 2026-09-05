@@ -31,8 +31,9 @@ import { republishOrgBalanceHint } from "./inference-auth-cache";
  * not a slow read. Every settled turn therefore armed a guaranteed failure for
  * the following turn (observed on staging as a strict 200/503 alternation).
  *
- * `lowerOrgBalanceHint` cannot repair this: it is lower-only and bails when no
- * entry exists, so after the delete it is always a no-op.
+ * A lower-only writer cannot repair this: it would bail when no entry exists,
+ * so after the delete it is always a no-op. That is why this republishes
+ * unconditionally rather than clamping to the cached value.
  *
  * The debit statement returns both the committed balance and trigger-advanced
  * revision. Passing that atomic result here avoids a post-debit primary read

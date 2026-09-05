@@ -97,18 +97,7 @@ export function isPendingInferenceCharge(value: unknown): value is PendingInfere
   );
 }
 
-/**
- * Read the gate balance for an org, stale-while-revalidate. Serves the KV hint
- * whenever one exists; if it is older than the `orgBalance` freshness window it
- * is still returned immediately and an authoritative refresh is scheduled in the
- * background. Only a full miss (no hint within the physical `orgBalanceStale`
- * lifetime) blocks on the authoritative read. This keeps the human-paced first
- * call of each turn off the ~200-500ms balance re-read that a hard 15s TTL
- * forced, without widening the over-admit window: every optimistic charge still
- * lands in the durable pending-charge ledger, the debit settler lowers the hint
- * after each settle, and top-ups invalidate it — so a drained org is corrected
- * on its first settle exactly as before, not after the stale window.
- */
+/** Options for {@link getGateBalanceHint} and {@link getGateBalanceUsd}. */
 export interface GateBalanceReadOptions {
   /**
    * Worker lifetime hook for stale/full-miss revalidation. Supplying this keeps
@@ -193,6 +182,21 @@ export function scheduleOrgBalanceHintHydration(
   );
 }
 
+/**
+ * Read the gate balance for an org, stale-while-revalidate. Serves the KV hint
+ * whenever one exists; if it is older than the `orgBalance` freshness window it
+ * is still returned immediately and an authoritative refresh is scheduled in the
+ * background. Only a full miss (no hint within the physical `orgBalanceStale`
+ * lifetime) blocks on the authoritative read — or, under `cacheOnly`, fails
+ * closed with {@link InferenceBalanceCacheWarmingError}. This keeps the
+ * human-paced first call of each turn off the ~200-500ms balance re-read that a
+ * hard 15s TTL forced, without widening the over-admit window: every optimistic
+ * charge still lands in the durable pending-charge ledger, each settle
+ * republishes the committed balance and revision over the hint
+ * (`republishOrgBalanceHintAfterDebit`), and every other credit mutation evicts
+ * it — so a drained org is corrected on its first settle exactly as before, not
+ * after the stale window.
+ */
 export async function getGateBalanceHint(
   organizationId: string,
   options: GateBalanceReadOptions = {},

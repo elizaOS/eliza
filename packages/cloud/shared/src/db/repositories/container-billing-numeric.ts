@@ -17,8 +17,8 @@
  *                       undiagnosable at the point it matters.
  *   - `credit_balance` → the returned `newBalance` becomes `NaN` and is
  *                        surfaced verbatim to the caller: the low-balance email
- *                        renders `$NaN`, `lowerOrgBalanceHint`/logs record a
- *                        garbage balance — a fabricated (nonsense) money figure
+ *                        renders `$NaN`, and the cached balance hint and logs
+ *                        record a garbage balance — a fabricated money figure
  *                        shown to the user instead of a fail-closed error.
  *
  * Failing closed here surfaces the corruption with a field-named error BEFORE
