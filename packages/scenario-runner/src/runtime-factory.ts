@@ -72,6 +72,7 @@ async function loadTestMocks() {
       benchmarkFixtures.seedBenchmarkLifeOpsFixtures,
     seedGoogleConnectorGrant: grants.seedGoogleConnectorGrant,
     seedXConnectorGrant: grants.seedXConnectorGrant,
+    SIMULATED_OWNER_GOOGLE_GRANT_ID: grants.SIMULATED_OWNER_GOOGLE_GRANT_ID,
   };
 }
 
@@ -1178,7 +1179,10 @@ export async function createScenarioRuntime(
       ? await mockedEnvironment.applyRuntimeFixtures?.(runtime)
       : undefined;
   if (executionProfile === "simulated" && testMocks) {
-    await testMocks.seedGoogleConnectorGrant(runtime);
+    await testMocks.seedGoogleConnectorGrant(runtime, {
+      grantId: testMocks.SIMULATED_OWNER_GOOGLE_GRANT_ID,
+      email: "owner@example.test",
+    });
     await testMocks.seedXConnectorGrant(runtime);
     await testMocks.seedBenchmarkLifeOpsFixtures(runtime);
     await testMocks.seedLifeOpsSimulatorRuntime(runtime);

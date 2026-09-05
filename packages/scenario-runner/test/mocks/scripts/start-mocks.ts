@@ -29,10 +29,12 @@ import { loadCorpusGmailMockOptions } from "./google-gmail-corpus.ts";
 import {
   createGoogleMockState,
   type GmailRequestLedgerMetadata,
+  type GoogleAuthLedgerMetadata,
   type GoogleGmailFaultInjection,
   type GoogleGmailFaultMode,
   type GoogleMockState,
   googleDynamicFixture,
+  resetGoogleMockState,
   setGoogleGmailFaultInjection,
 } from "./google-gmail-state.ts";
 import { MockHttpError } from "./mock-http-error.ts";
@@ -134,6 +136,8 @@ export interface MockRequestLedgerEntry {
   body: RequestBody;
   createdAt: string;
   runId?: string;
+  statusCode?: number;
+  googleAuth?: GoogleAuthLedgerMetadata;
   gmail?: GmailRequestLedgerMetadata;
   calendar?: GoogleCalendarRequestLedgerMetadata;
   x?: XRequestLedgerMetadata;
@@ -3504,6 +3508,29 @@ function readGoogleGmailFaultInjection(
   };
 }
 
+function handleGoogleResetControl(
+  provider: DynamicProviderState,
+  method: string,
+  pathname: string,
+  ledgerEntry: MockRequestLedgerEntry,
+): DynamicFixtureResponse | null {
+  if (provider?.kind !== "google" || pathname !== "/__mock/google/reset") {
+    return null;
+  }
+  if (method !== "POST" && method !== "DELETE") {
+    throw new MockHttpError(405, "Unsupported Google mock reset method");
+  }
+  const resetGeneration = resetGoogleMockState(provider.state);
+  ledgerEntry.googleAuth = {
+    action: "reset",
+    authStatus: "reset",
+    resetGeneration,
+    statusCode: 200,
+  };
+  ledgerEntry.statusCode = 200;
+  return { statusCode: 200, body: { ok: true, resetGeneration } };
+}
+
 function handleGoogleGmailFaultControl(
   provider: DynamicProviderState,
   method: string,
@@ -3802,6 +3829,20 @@ async function startFixtureServer(
           : {}),
       };
       requests.push(ledgerEntry);
+      const googleReset = handleGoogleResetControl(
+        dynamicProvider,
+        method,
+        requestUrl.pathname,
+        ledgerEntry,
+      );
+      if (googleReset) {
+        res.writeHead(googleReset.statusCode, {
+          "Content-Type": "application/json",
+          ...(googleReset.headers ?? {}),
+        });
+        res.end(JSON.stringify(googleReset.body));
+        return;
+      }
       if (
         isLifeOpsPresenceActiveEnvironment &&
         method === "GET" &&
@@ -4015,6 +4056,16 @@ async function startFixtureServer(
         ledgerEntry,
       });
       if (dynamicResponse) {
+        ledgerEntry.statusCode = dynamicResponse.statusCode;
+        if (
+          ledgerEntry.googleAuth &&
+          ledgerEntry.googleAuth.statusCode == null
+        ) {
+          ledgerEntry.googleAuth = {
+            ...ledgerEntry.googleAuth,
+            statusCode: dynamicResponse.statusCode,
+          };
+        }
         res.writeHead(dynamicResponse.statusCode, {
           "Content-Type": "application/json",
           ...(dynamicResponse.headers ?? {}),

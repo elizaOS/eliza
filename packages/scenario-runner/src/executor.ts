@@ -54,6 +54,7 @@ import {
 } from "@elizaos/scenario-runner/schema";
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
+import { unexpectedGoogleMockAuthorizationFailure } from "./google-mock-auth.ts";
 import { attachInterceptor } from "./interceptor.ts";
 import { judgeTextWithLlm } from "./judge.ts";
 import {
@@ -3336,6 +3337,15 @@ export async function runScenario(
     }
     actionScope.restore();
     report.durationMs = Date.now() - startedAt;
+  }
+
+  const googleAuthFailure = await unexpectedGoogleMockAuthorizationFailure();
+  if (googleAuthFailure) {
+    report.status = "failed";
+    report.failedAssertions.push({
+      label: "googleMockAuthorization",
+      detail: googleAuthFailure,
+    });
   }
 
   if (judgeScores.length > 0) {
