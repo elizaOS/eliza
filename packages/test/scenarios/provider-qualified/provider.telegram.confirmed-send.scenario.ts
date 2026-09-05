@@ -1,0 +1,17 @@
+/** Defines the operator-manifest-gated Telegram send canary. */
+import { buildProviderCanary } from "./_provider-canary-factory.ts";
+export default buildProviderCanary({
+  lane: "live-only",
+  executionProfile: "provider-qualified",
+  evidenceScope: "provider-certification",
+  isolation: "per-scenario",
+  id: "provider.telegram.confirmed-send",
+  title: "Provider-qualified Telegram confirmed-send canary",
+  provider: "telegram",
+  connectorProvider: "telegram",
+  operation: "message-send",
+  plugins: ["@elizaos/plugin-personal-assistant", "@elizaos/plugin-telegram"],
+  effectLabel: "message send",
+  targetLabel: "private Telegram bot canary chat",
+  payload: "Telegram provider canary delivery",
+});

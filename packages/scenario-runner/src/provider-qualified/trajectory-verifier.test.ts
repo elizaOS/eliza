@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { canonicalSha256 } from "./manifest.ts";
+import { createProviderOperationBinding } from "./operation-binding.ts";
 import {
   validateVerifiedScenarioTrajectorySet,
   verifyScenarioTrajectories,
@@ -95,6 +96,42 @@ function fixture() {
 }
 
 describe("verifyScenarioTrajectories", () => {
+  it("correlates a recorded tool input with its signed operation binding", () => {
+    const { trajectory, filePath, input } = fixture();
+    const operationInput = {
+      title: "School pickup",
+      start: "2026-05-23T01:00:00.000Z",
+      end: "2026-05-23T01:30:00.000Z",
+      timeZone: "UTC",
+      attendees: [],
+      location: null,
+      description: null,
+      createMeetLink: false,
+      sendUpdates: "none",
+      recurrence: [],
+      idempotencyKey: "calendar-create-1",
+    };
+    const binding = createProviderOperationBinding({
+      kind: "google-calendar.event-create",
+      providerTarget: { calendarId: "primary" },
+      operationInput,
+    });
+    trajectory.stages[0].tool.args = operationInput;
+    writeFileSync(filePath, `${JSON.stringify(trajectory)}\n`);
+
+    const verified = verifyScenarioTrajectories(input);
+    expect(verified.trajectories[0].stages[0].tool?.argsSha256).toBe(
+      binding.operationInputSha256,
+    );
+
+    trajectory.stages[0].tool.args.title = "Unapproved substitute";
+    writeFileSync(filePath, `${JSON.stringify(trajectory)}\n`);
+    const substituted = verifyScenarioTrajectories(input);
+    expect(substituted.trajectories[0].stages[0].tool?.argsSha256).not.toBe(
+      binding.operationInputSha256,
+    );
+  });
+
   it("recomputes exact artifact bytes and canonical stage bytes", () => {
     const { trajectory, bytes, input } = fixture();
     const result = verifyScenarioTrajectories(input);
@@ -106,6 +143,18 @@ describe("verifyScenarioTrajectories", () => {
     expect(result.trajectories[0]?.stages[0]?.sha256).toBe(
       canonicalSha256(trajectory.stages[0], "stage"),
     );
+    expect(result.trajectories[0]?.stages[0]?.tool).toEqual({
+      name: "CREATE_CALENDAR_EVENT",
+      argsSha256: canonicalSha256(
+        trajectory.stages[0].tool.args,
+        "trajectory[0].stages[0].tool.args",
+      ),
+      resultSha256: canonicalSha256(
+        trajectory.stages[0].tool.result,
+        "trajectory[0].stages[0].tool.result",
+      ),
+      success: true,
+    });
     expect(result.setSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(
       validateVerifiedScenarioTrajectorySet(JSON.parse(JSON.stringify(result))),
