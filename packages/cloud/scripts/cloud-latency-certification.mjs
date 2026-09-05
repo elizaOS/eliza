@@ -312,6 +312,7 @@ async function runCommandToFile({
   stderrPath,
   env,
   label,
+  boundedFailurePrefix,
 }) {
   const stdout = await open(stdoutPath, "wx", 0o600);
   const stderr = await open(stderrPath, "wx", 0o600);
@@ -332,11 +333,36 @@ async function runCommandToFile({
         resolvePromise(code ?? 1);
       });
     });
-    if (exitCode !== 0)
-      throw new Error(`${label} failed with exit ${exitCode}`);
+    if (exitCode !== 0) {
+      const boundedFailure = boundedFailurePrefix
+        ? extractBoundedChildFailure(
+            await readFile(stderrPath, "utf8"),
+            boundedFailurePrefix,
+          )
+        : null;
+      throw new Error(
+        `${label} failed with exit ${exitCode}${boundedFailure ? `: ${boundedFailure}` : ""}`,
+      );
+    }
   } finally {
     await Promise.all([stdout.close(), stderr.close()]);
   }
+}
+
+/**
+ * Retain only the deliberately bounded category emitted by a trusted child
+ * CLI. Arbitrary stderr, response bodies, headers, and nested causes remain
+ * private even when a provider or transport failure includes their contents.
+ */
+export function extractBoundedChildFailure(stderrText, expectedPrefix) {
+  const marker = `[${expectedPrefix}] `;
+  const matchingLine = stderrText
+    .split(/\r?\n/)
+    .findLast((line) => line.startsWith(marker));
+  if (!matchingLine || matchingLine.length > 256) return null;
+  const message = matchingLine.slice(marker.length);
+  if (!/^[A-Za-z0-9][A-Za-z0-9 .,:;_()/-]*$/.test(message)) return null;
+  return matchingLine;
 }
 
 async function startPrivateTail(directory, env) {
@@ -520,6 +546,7 @@ async function runAuth({ deploySha, outputDir, env, runSuspended }) {
           stderrPath,
           env,
           label: "Inference auth probe",
+          boundedFailurePrefix: "inference-auth-latency",
         }),
       );
       const validation = validateAuthEvidence(

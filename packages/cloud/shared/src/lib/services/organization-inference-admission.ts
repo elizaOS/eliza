@@ -1,13 +1,12 @@
 /**
  * Cache-gated admission for organization-funded inference.
  *
- * Admission reads current subscription authority before refusal state so a
- * newly funded subscriber cannot be trapped by a stale purchased-credit
- * refusal or any optimistic purchased-credit-only lane. Non-subscribers then
+ * Admission reads current subscription authority first. Non-subscribers then
  * use pricing, affiliate-policy, and balance caches before acquiring a Durable
- * Object lease. Post-provider accounting replays one deterministic debit
- * identity; the lease alarm is the durable backstop when a response-side task
- * disappears.
+ * Object lease. The revision-aware lease, not isolate-local cache projection
+ * state, is the dispatch fence. Post-provider accounting replays one
+ * deterministic debit identity; the lease alarm is the durable backstop when
+ * a response-side task disappears.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -47,7 +46,7 @@ import {
   getCachedInferenceAffiliateAttribution,
 } from "./inference-affiliate-cache";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
-import { isDeferredAdmissionEnabled, isOrgAdmissionRefused } from "./inference-billing-deferred";
+import { isDeferredAdmissionEnabled } from "./inference-billing-deferred";
 import {
   createOptimisticDebitSettler,
   debitInferenceCost,
@@ -58,7 +57,6 @@ import {
   isOptimisticBillingEnabled,
   isOptimisticEligible,
   resolveSafeBalanceThresholdUsd,
-  scheduleOrgBalanceHintHydration,
   writePendingInferenceCharge,
 } from "./inference-billing-fast-path";
 import {
@@ -288,14 +286,6 @@ export async function admitOrganizationInference(
     (await isSubscriptionFundedOrganization(params.context.organizationId));
   if (subscriptionFunded) {
     return await reserveSynchronously(params, true);
-  }
-  if (workerHotPath && executionCtx && isOrgAdmissionRefused(params.context.organizationId)) {
-    // A prior deferred write or fallback charge was refused. Its settler
-    // invalidated the balance hint, so a later retry will hydrate authoritative
-    // state under waitUntil; this request must not bypass the refusal with a
-    // synchronous database reserve on the model hot path.
-    scheduleOrgBalanceHintHydration(params.context.organizationId, executionCtx);
-    throw admissionUnavailable(params);
   }
   if (!workerHotPath && affiliateMarked) {
     return await reserveSynchronously(params, false);

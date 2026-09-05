@@ -651,6 +651,9 @@ describe("GET/POST adopt-existing Dedicated", () => {
 
       const response = await confirm(quoteBody.data.quoteId);
       expect(response.status).toBe(202);
+      expect(response.headers.get("x-eliza-trace-id")).toMatch(
+        /^[a-f0-9]{32}$/,
+      );
       const body = (await response.json()) as {
         data: { dedicatedAgentId: string; jobId: string; runtime: string };
       };
