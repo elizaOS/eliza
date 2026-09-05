@@ -161,6 +161,7 @@ import {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   formatError,
   getFirstRunProviderOption,
+  isAndroidMobile,
   isElizaSettingsDebugEnabled,
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
@@ -4938,6 +4939,7 @@ export async function startEliza(
   let runtime = await constructWithRuntimeInstallationIdentity({
     stateDirectory: resolveStateDir(),
     abortSignal: opts?.abortSignal,
+    ...(isAndroidMobile() ? { runtimeBoundary: "android" as const } : {}),
     construct: (runtimeInstanceId) =>
       new AgentRuntime({
         character,
