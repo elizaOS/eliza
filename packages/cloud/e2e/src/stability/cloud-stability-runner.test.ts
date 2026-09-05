@@ -131,6 +131,7 @@ describe("Cloud stability manifest", () => {
         async execute() {
           throw new Error("pre-admission failure");
         },
+        async terminate() {},
       },
     });
     await cp(original, downloaded, { recursive: true });

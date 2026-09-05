@@ -404,7 +404,12 @@ console.log(JSON.stringify({
       const result = JSON.parse(stdout.trim()) as Record<string, unknown>;
       expect(result.uid).toBe(0);
       expect(result.hostUid).not.toBe(process.getuid?.());
-      expect({ ...result, uid: undefined, hostUid: undefined }).toEqual({
+      const capabilityResult: Record<string, unknown> = {
+        ...result,
+        uid: undefined,
+        hostUid: undefined,
+      };
+      expect(capabilityResult).toEqual({
         secretPresent: false,
         procReadable: false,
         fdSecretReadable: false,
@@ -729,7 +734,8 @@ setInterval(() => {}, 1000);
       ]);
       expect(closed).toBe(true);
       const retainedStat = await stat(readyPath);
-      expect(retainedStat.uid).toBe(process.getuid?.());
+      if (!process.getuid) throw new Error("Linux requires process.getuid");
+      expect(retainedStat.uid).toBe(process.getuid());
       expect(retainedStat.gid).toBe((await stat(directory)).gid);
       expect(
         spawnSync("pgrep", ["-u", String(ready.hostUid)], {

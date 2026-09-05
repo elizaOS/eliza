@@ -186,6 +186,8 @@ test.each([
       },
     });
     try {
+      if (target.port === undefined)
+        throw new Error("TCP listener has no port");
       const ledger = path.join(directory, "ledger.jsonl");
       const guard = path.resolve(
         import.meta.dirname,

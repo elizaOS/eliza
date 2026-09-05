@@ -11,6 +11,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Writable } from "node:stream";
+import { text } from "node:stream/consumers";
 import { pathToFileURL } from "node:url";
 import { MAX_REAL_MODEL_BOOTSTRAP_BYTES } from "./real-model-bootstrap.ts";
 
@@ -40,8 +41,10 @@ async function startParserProcess() {
       stdio: ["ignore", "pipe", "pipe", "pipe"],
     },
   );
-  const stdout = new Response(child.stdout).text();
-  const stderr = new Response(child.stderr).text();
+  if (!child.stdout || !child.stderr)
+    throw new Error("Parser output pipes were not created");
+  const stdout = text(child.stdout);
+  const stderr = text(child.stderr);
   const bootstrapPipe = child.stdio[3] as Writable;
   bootstrapPipe.on("error", () => {
     // error-policy:J5 child exit is observed below; EPIPE is expected on rejection.

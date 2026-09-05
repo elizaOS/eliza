@@ -844,7 +844,8 @@ export class ScenarioStabilitySubprocessAdapter
           meteringFailures?.length === 0);
       const successEnvelopeBindingValid =
         execution.passed === false ||
-        (requestEnvelopes?.length === requestCount &&
+        (requestEnvelopes !== null &&
+          requestEnvelopes.length === requestCount &&
           requestEnvelopes.every(
             (value) =>
               (value as Record<string, unknown>).accepted === true &&

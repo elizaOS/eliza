@@ -1270,7 +1270,7 @@ export async function startLiveModelEgressProxy(options: {
           upstream = await fetchUpstream(`${origin}${request.url ?? "/"}`, {
             method: request.method,
             headers: upstreamHeaders,
-            body: forwardBody,
+            body: new Uint8Array(forwardBody),
             signal: AbortSignal.timeout(timeoutMs),
             redirect: "manual",
           });
