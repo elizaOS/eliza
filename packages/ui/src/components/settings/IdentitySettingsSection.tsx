@@ -360,7 +360,6 @@ export function VoicePresetSettingsContent() {
             })),
           }))}
           onValueChange={handleVoiceSelect}
-          contentClassName="border-border/60 bg-bg/92"
           trailing={
             <SettingsActionButton
               agentId="identity-voice-preview"
