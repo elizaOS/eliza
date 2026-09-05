@@ -122,7 +122,12 @@ namespace ownership enforce the boundary even if a nested user namespace
 regains capabilities. Cleanup transfers retained artifact ownership to the
 caller before removing the sandbox identity. If processes survive or ownership
 cannot be transferred, the identity and its restrictions remain and the run
-fails for operator cleanup. The
+fails for operator cleanup. Caller-owned repository and output ancestors may
+receive a temporary search-only ACL for that UID; existing group access is
+preserved and the exact original ACL is restored during cleanup. Ancestors
+owned by another identity or carrying existing extended ACLs are rejected.
+Credential paths already inaccessible to the UID stay inaccessible without
+grants into their private directories. The
 pinned-Bun preload remains application-level diagnostics; private `/run`,
 `/tmp`, and `/var/tmp` mounts plus syscall denial for `socketpair` and all
 io_uring entry points close host AF_UNIX delegation paths. The kernel boundary

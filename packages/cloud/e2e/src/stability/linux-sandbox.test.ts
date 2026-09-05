@@ -539,8 +539,8 @@ test.skipIf(!hostedLinux)(
       outputRoot,
       outputRootAcl,
     } = await createPrivateAttempt("cloud-sandbox-early-failure-");
-    const fakeBwrapPath = path.join(directory, "failing-bwrap");
-    await writeFile(fakeBwrapPath, "#!/bin/sh\n/bin/sleep 1\nexit 91\n", {
+    const failingRuntimePath = path.join(directory, "missing-interpreter");
+    await writeFile(failingRuntimePath, "#!/eliza-missing-interpreter\n", {
       mode: 0o755,
     });
     const environmentPath = await writeSandboxEnvironment(
@@ -555,33 +555,18 @@ test.skipIf(!hostedLinux)(
       environmentPath,
       callerHome: process.env.HOME ?? "",
       callerUid: process.getuid?.() ?? 0,
-      runtime: "/bin/true",
+      runtime: failingRuntimePath,
       args: [],
     });
-    const child = spawn(
-      launch.command,
-      [
-        "-n",
-        "/usr/bin/bwrap",
-        "--bind",
-        "/",
-        "/",
-        "--dev-bind",
-        "/dev",
-        "/dev",
-        "--proc",
-        "/proc",
-        "--ro-bind",
-        fakeBwrapPath,
-        "/usr/bin/bwrap",
-        ...launch.args.slice(1),
-      ],
-      {
-        cwd: repoRoot,
-        env: { PATH: process.env.PATH },
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
+    const child = spawn(launch.command, launch.args, {
+      cwd: repoRoot,
+      env: { PATH: process.env.PATH },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const exit = new Promise<number | null>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", resolve);
+    });
     let stdout = "";
     let stderr = "";
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -602,14 +587,12 @@ test.skipIf(!hostedLinux)(
         if (record) sandboxUid = Number(record.split(":")[2]);
         if (sandboxUid === undefined) await Bun.sleep(10);
       }
-      const code = await new Promise<number | null>((resolve, reject) => {
-        child.once("error", reject);
-        child.once("close", resolve);
-      });
+      const code = await exit;
       expect(Number.isSafeInteger(sandboxUid)).toBe(true);
       expect(stdout).toBe("");
       expect(stderr).not.toContain("unbound variable");
-      expect(code, stderr).toBe(91);
+      expect(code, stderr).toBe(1);
+      expect(stderr).toContain("execvp");
       expect(existsSync(environmentPath)).toBe(false);
       expect(
         spawnSync("pgrep", ["-u", String(sandboxUid)], {
@@ -780,6 +763,75 @@ setInterval(() => {}, 1000);
     }
   },
   30_000,
+);
+
+test.skipIf(!hostedLinux)(
+  "repository search grants preserve private data and restore existing group access",
+  async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "sandbox-repo-search-"),
+    );
+    const launcher = path.join(
+      repoRoot,
+      "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+    );
+    const script = `
+source "$1"
+directory="$2"
+caller_uid="$3"
+name="eliza-search-${process.pid}-$RANDOM"
+cleanup_fixture() {
+  /usr/sbin/userdel "$name" 2>/dev/null || true
+}
+/usr/sbin/useradd --system --no-create-home --shell /usr/sbin/nologin "$name"
+trap cleanup_fixture EXIT
+SANDBOX_USER="$name"
+SANDBOX_UID="$(/usr/bin/id -u "$name")"
+SANDBOX_GID="$(/usr/bin/id -g "$name")"
+SANDBOX_CALLER_UID="$caller_uid"
+SANDBOX_CLEANED=0
+/bin/chmod 0750 "$directory"
+/bin/mkdir "$directory/repo"
+/bin/chown "$caller_uid" "$directory/repo"
+/bin/chmod 0700 "$directory/repo"
+/bin/echo private > "$directory/secret"
+/bin/chmod 0600 "$directory/secret"
+before="$(/usr/bin/getfacl -cpn "$directory")"
+repo_before="$(/usr/bin/getfacl -cpn "$directory/repo")"
+grant_search_acls "$directory/repo"
+grant_search_acls "$directory/repo"
+/usr/bin/setpriv --reuid "$SANDBOX_UID" --regid "$SANDBOX_GID" --clear-groups -- /usr/bin/test -x "$directory/repo"
+if /usr/bin/setpriv --reuid "$SANDBOX_UID" --regid "$SANDBOX_GID" --clear-groups -- /usr/bin/test -r "$directory/repo"; then exit 91; fi
+if /usr/bin/setpriv --reuid "$SANDBOX_UID" --regid "$SANDBOX_GID" --clear-groups -- /bin/cat "$directory/secret"; then exit 92; fi
+/usr/bin/getfacl -cpn "$directory" | /usr/bin/grep -qx 'group::r-x'
+sandbox_cleanup
+[ "$(/usr/bin/getfacl -cpn "$directory")" = "$before" ]
+[ "$(/usr/bin/getfacl -cpn "$directory/repo")" = "$repo_before" ]
+if /usr/bin/getent passwd "$name" >/dev/null; then exit 93; fi
+echo restored
+`;
+    try {
+      const result = spawnSync(
+        "sudo",
+        [
+          "-n",
+          "/bin/bash",
+          "-c",
+          script,
+          "repository-search-test",
+          launcher,
+          directory,
+          String(process.getuid?.()),
+        ],
+        { encoding: "utf8", timeout: 15_000 },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout.trim()).toBe("restored");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  20_000,
 );
 
 test.skipIf(!hostedLinux)(

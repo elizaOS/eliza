@@ -29,10 +29,9 @@ SANDBOX_CLEANUP_STATUS=0
 declare -a SANDBOX_SEARCH_ACL_PATHS=()
 declare -a SANDBOX_SEARCH_ACL_SNAPSHOTS=()
 
-grant_output_search_acls() {
-  local current candidate acl_state granted_acl
+grant_search_acls() {
+  local current="$1" candidate acl_state granted_acl group_permissions search_mask
   local -a ancestors=()
-  current="$(/usr/bin/dirname -- "$SANDBOX_OUTPUT_DIR")"
   while true; do
     ancestors+=("$current")
     [ "$current" = "/" ] && break
@@ -46,22 +45,24 @@ grant_output_search_acls() {
     fi
     acl_state="$(/usr/bin/getfacl -cpn "$candidate")" || return 1
     if [ "$(/usr/bin/stat -c %u "$candidate")" != "$SANDBOX_CALLER_UID" ] ||
-      /usr/bin/grep -Eq '^(user:[^:]|group:[^:]|mask:)' <<<"$acl_state" ||
-      ! /usr/bin/grep -qx 'group::---' <<<"$acl_state" ||
-      ! /usr/bin/grep -qx 'other::---' <<<"$acl_state"; then
-      echo "[cloud-stability-sandbox] refusing to modify non-private output ancestor: $candidate" >&2
+      /usr/bin/grep -Eq '^(user:[^:]|group:[^:]|mask:)' <<<"$acl_state"; then
+      echo "[cloud-stability-sandbox] refusing to modify unowned or extended-ACL search ancestor: $candidate" >&2
       return 1
     fi
     SANDBOX_SEARCH_ACL_PATHS+=("$candidate")
     SANDBOX_SEARCH_ACL_SNAPSHOTS+=("$acl_state")
-    /usr/bin/setfacl -n -m "u:${SANDBOX_UID}:--x,m::--x" "$candidate" || return 1
+    # Preserve the existing group permissions when introducing an ACL mask;
+    # only this launch's reserved UID gains directory traversal.
+    group_permissions="$(/usr/bin/sed -n 's/^group:://p' <<<"$acl_state")"
+    [[ "$group_permissions" =~ ^[r-][w-][x-]$ ]] || return 1
+    search_mask="${group_permissions:0:2}x"
+    /usr/bin/setfacl -n -m "u:${SANDBOX_UID}:--x,m::${search_mask}" "$candidate" || return 1
     granted_acl="$(/usr/bin/getfacl -cpn "$candidate")" || return 1
     /usr/bin/grep -qx "user:${SANDBOX_UID}:--x" <<<"$granted_acl" || return 1
-    /usr/bin/grep -qx 'group::---' <<<"$granted_acl" || return 1
-    /usr/bin/grep -qx 'mask::--x' <<<"$granted_acl" || return 1
-    /usr/bin/grep -qx 'other::---' <<<"$granted_acl" || return 1
+    /usr/bin/grep -qx "group::${group_permissions}" <<<"$granted_acl" || return 1
+    /usr/bin/grep -qx "mask::${search_mask}" <<<"$granted_acl" || return 1
     if ! /usr/bin/setpriv --reuid "$SANDBOX_UID" --regid "$SANDBOX_GID" --clear-groups -- /usr/bin/test -x "$candidate"; then
-      echo "[cloud-stability-sandbox] output ancestor search ACL was ineffective: $candidate" >&2
+      echo "[cloud-stability-sandbox] directory search ACL was ineffective: $candidate" >&2
       return 1
     fi
   done
@@ -262,7 +263,8 @@ run() {
   SANDBOX_OUTPUT_ACL_SNAPSHOT="$(/usr/bin/getfacl -cpn "$output_dir")" || die "failed to snapshot output ACL"
   SANDBOX_OUTPUT_ACL_CAPTURED=1
   /usr/bin/setfacl -m "u:${uid}:rwx" -m "d:u:${uid}:rwx" -m "d:u:${caller_uid}:rwx" "$output_dir"
-  grant_output_search_acls
+  grant_search_acls "$(/usr/bin/dirname -- "$output_dir")"
+  grant_search_acls "$repo_root"
   sandbox_root="$(/usr/bin/mktemp -d /var/tmp/eliza-stability-sandbox.XXXXXX)"
   SANDBOX_ROOT="$sandbox_root"
   /bin/chown "$uid:$gid" "$sandbox_root"
@@ -290,8 +292,14 @@ PY
   local candidate
   for candidate in "$repo_root/.git" "$caller_home/.gitconfig" "$caller_home/.npmrc" "$caller_home/.config/gh" "$caller_home/.ssh" "$caller_home/.docker"; do
     [ -n "$candidate" ] || continue
-    if [ -d "$candidate" ]; then masks+=(--tmpfs "$candidate"); fi
-    if [ -f "$candidate" ]; then masks+=(--ro-bind /dev/null "$candidate"); fi
+    # Inaccessible paths already reject this UID. Do not grant traversal into
+    # private credential directories merely to mount another denial over them.
+    if [ -d "$candidate" ] && /usr/bin/setpriv --reuid "$uid" --regid "$gid" --clear-groups -- /usr/bin/test -x "$candidate"; then
+      masks+=(--tmpfs "$candidate")
+    fi
+    if [ -f "$candidate" ] && /usr/bin/setpriv --reuid "$uid" --regid "$gid" --clear-groups -- /usr/bin/test -r "$candidate"; then
+      masks+=(--ro-bind /dev/null "$candidate")
+    fi
   done
 
   local execution_status cleanup_status
