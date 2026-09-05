@@ -795,6 +795,7 @@ trap 'cleanup_fixture "$1" "$2"' EXIT
 acl="$(/usr/bin/getfacl -cpn "$2")"
 SANDBOX_USER="$name"
 SANDBOX_UID="$uid"
+SANDBOX_CALLER_UID="$(/usr/bin/stat -c %u "$2")"
 SANDBOX_OUTPUT_DIR="$2"
 SANDBOX_CHAIN="$chain"
 SANDBOX_IPV4_CHAIN=1
