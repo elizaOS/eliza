@@ -14,6 +14,8 @@ import {
   synthesizeCartesiaWav,
 } from "../cartesia-synthesis";
 
+const originalFetch = globalThis.fetch;
+
 afterEach(() => {
   mock.restore();
 });
@@ -266,7 +268,9 @@ describe("makeWorkersCartesiaWebSocketFactory", () => {
         webSocket: upstreamSocket,
       });
     });
-    spyOn(globalThis, "fetch").mockImplementation(fetchImpl);
+    spyOn(globalThis, "fetch").mockImplementation(
+      Object.assign(fetchImpl, { preconnect: originalFetch.preconnect }),
+    );
     const beforeProviderDispatch = mock(async () => {
       events.push("callback:start");
       await Promise.resolve();
@@ -292,7 +296,9 @@ describe("makeWorkersCartesiaWebSocketFactory", () => {
 
   it("does not attempt the upgrade when the dispatch callback rejects", async () => {
     const fetchImpl = mock(async () => new Response(null));
-    spyOn(globalThis, "fetch").mockImplementation(fetchImpl);
+    spyOn(globalThis, "fetch").mockImplementation(
+      Object.assign(fetchImpl, { preconnect: originalFetch.preconnect }),
+    );
     const beforeProviderDispatch = mock(async () => {
       throw new Error("dispatch marker unavailable");
     });
