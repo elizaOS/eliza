@@ -113,7 +113,7 @@ export interface CodingAgentSelection {
 	providerId: string;
 	accountId: string;
 	label: string;
-	source: "oauth" | "api-key";
+	source: "oauth" | "api-key" | "coding-plan-key";
 	strategy: string;
 	usage?: CodingAccountUsage;
 	/** Secrets injected into the spawned subprocess env; never persisted. */

@@ -175,6 +175,14 @@ function providerDisplayName(
       return t("accounts.provider.cerebrasApi", {
         defaultValue: "Cerebras API",
       });
+    case "openrouter-api":
+      return t("accounts.provider.openrouterApi", {
+        defaultValue: "OpenRouter credits / BYOK",
+      });
+    case "xai-api":
+      return t("accounts.provider.xaiApi", {
+        defaultValue: "xAI API (metered)",
+      });
     default:
       return providerId;
   }
@@ -595,6 +603,7 @@ export function AddAccountDialog({
             ? { replaceAccountId: credentialRepairAccount.id }
             : {}),
         });
+        setApiKey("");
         onCreated(account);
         onClose();
       } catch (err) {
@@ -688,7 +697,7 @@ export function AddAccountDialog({
     : !activeProviderId
       ? t("accounts.add.chooseDescription", {
           defaultValue:
-            "Choose the provider you want to connect. Chat providers use API keys; coding subscriptions use first-party login or dedicated plan credentials.",
+            "Choose an API key or coding subscription. Each provider shows the runtime surfaces its credential can use.",
         })
       : subscriptionAddMode === "oauth"
         ? t("accounts.add.subscriptionDescription", {

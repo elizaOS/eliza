@@ -30,7 +30,9 @@ export type CodingProviderAuthMode =
 export type CodingProviderBillingMode =
   | "subscription-coding-plan"
   | "subscription-coding-cli"
-  | "usage";
+  | "usage"
+  | "api-payg"
+  | "api-credits-or-byok";
 export type CodingProviderSubscriptionAuthMode =
   | "oauth"
   | "external-cli"
@@ -210,8 +212,8 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "subscription-coding-plan",
     true,
     true,
+    "pi-agent",
     null,
-    "The z.ai coding credential can serve model inference, but no supported coding-agent spawn backend consumes it.",
   ),
   "kimi-coding": descriptor(
     "kimi-coding",
@@ -220,8 +222,8 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "subscription-coding-plan",
     true,
     true,
+    "pi-agent",
     null,
-    "The saved Kimi coding-plan key can serve API inference, but the Kimi ACP backend uses its official CLI OAuth session and does not consume that key.",
   ),
   "deepseek-coding": descriptor(
     "deepseek-coding",
@@ -260,8 +262,8 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "usage",
     true,
     true,
+    "pi-agent",
     null,
-    "The DeepSeek API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
   ),
   "zai-api": descriptor(
     "zai-api",
@@ -270,8 +272,8 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "usage",
     true,
     true,
+    "pi-agent",
     null,
-    "The z.ai API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
   ),
   "moonshot-api": descriptor(
     "moonshot-api",
@@ -280,8 +282,8 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "usage",
     true,
     true,
+    "pi-agent",
     null,
-    "The Kimi / Moonshot API account can serve direct API inference, but the Kimi ACP backend uses its official CLI OAuth session and does not consume that key.",
   ),
   "cerebras-api": descriptor(
     "cerebras-api",
@@ -292,6 +294,26 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     true,
     null,
     "Cerebras API keys can serve model inference, but no supported coding-agent spawn backend consumes them.",
+  ),
+  "openrouter-api": descriptor(
+    "openrouter-api",
+    "api-key",
+    "direct-api-key",
+    "api-credits-or-byok",
+    true,
+    true,
+    "pi-agent",
+    null,
+  ),
+  "xai-api": descriptor(
+    "xai-api",
+    "api-key",
+    "direct-api-key",
+    "api-payg",
+    true,
+    true,
+    "pi-agent",
+    null,
   ),
 } as const satisfies Readonly<
   Record<LinkedAccountProviderId, CodingProviderDescriptor>

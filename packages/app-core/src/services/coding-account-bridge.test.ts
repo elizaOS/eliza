@@ -556,19 +556,44 @@ describe("coding-account-bridge", () => {
     expect(cfg).toContain('cli_auth_credentials_store = "file"');
   });
 
-  it("fails closed for direct API accounts and unknown adapters", async () => {
-    writeAccount("openai-api", "direct", "openai-direct-key");
-    writeAccount("cerebras-api", "cerebras", "cerebras-direct-key");
+  it("routes supported direct API accounts only through Pi", async () => {
+    writeAccount("deepseek-api", "deepseek", "deepseek-direct-key");
     getDefaultAccountPool();
     const bridge = getCodingAgentSelectorBridge();
 
-    expect(await bridge?.select("codex")).toBeNull();
     expect(await bridge?.select("unknown-adapter")).toBeNull();
+    expect(await bridge?.select("pi-agent")).toMatchObject({
+      providerId: "deepseek-api",
+      accountId: "deepseek",
+      source: "api-key",
+      envPatch: { DEEPSEEK_API_KEY: "deepseek-direct-key" },
+    });
     expect(Object.keys(bridge?.describe() ?? {}).sort()).toEqual([
       "claude",
       "codex",
+      "pi-agent",
     ]);
   });
+
+  it.each([
+    ["zai-coding", "ZAI_API_KEY"],
+    ["kimi-coding", "KIMI_API_KEY"],
+  ] as const)(
+    "keeps the %s coding-plan key child-only and typed",
+    async (providerId, envKey) => {
+      const before = process.env[envKey];
+      writeAccount(providerId, "plan", `${providerId}-plan-key`);
+      const selection = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("pi-agent");
+      expect(selection).toMatchObject({
+        providerId,
+        source: "coding-plan-key",
+        envPatch: { [envKey]: `${providerId}-plan-key` },
+      });
+      expect(process.env[envKey]).toBe(before);
+    },
+  );
 
   it("attributes recorded usage to the serving account (per-account delta)", async () => {
     writeAccount("anthropic-subscription", "acct", "sk-ant-oat-acct");

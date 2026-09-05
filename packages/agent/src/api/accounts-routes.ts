@@ -55,12 +55,13 @@ import {
   type DirectAccountProvider,
   isAccountCredentialProvider,
   isCodingPlanKeySubscriptionProvider,
+  isDirectAccountProvider,
   isOAuthSubscriptionProvider,
   isSubscriptionProvider,
   isUnavailableSubscriptionProvider,
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
-import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
+import type { AccountPoolBrokerSnapshot, IAgentRuntime } from "@elizaos/core";
 import {
   ElizaError,
   logger,
@@ -79,6 +80,7 @@ import {
   type LinkedAccountProviderId,
   type ProviderRuntimeCapability,
   type ProviderRuntimeEligibility,
+  resolveServiceRoutingInConfig,
   type ServiceRouteAccountStrategy,
 } from "@elizaos/shared";
 import * as zod from "zod";
@@ -800,7 +802,10 @@ function preserveTerminalCredentialHealth(
 // ─── Route handler ──────────────────────────────────────────────────
 
 export interface AccountsRouteContext extends RouteRequestContext {
-  state: { config: ElizaConfig };
+  state: {
+    config: ElizaConfig;
+    runtime?: Pick<IAgentRuntime, "setSetting"> | null;
+  };
   saveConfig: (config: ElizaConfig) => void;
 }
 
@@ -841,6 +846,7 @@ export async function handleAccountsRoutes(
     }
     writeAccountStrategy(ctx.state.config, providerId, parsed.data.strategy);
     ctx.saveConfig(ctx.state.config);
+    await syncDirectProviderCredentials(ctx, providerId);
     json(res, { providerId, strategy: parsed.data.strategy });
     return true;
   }
@@ -1051,7 +1057,17 @@ async function handleCreateApiKeyAccount(
     return true;
   }
 
-  if (replaceAccountId) {
+  // Replacement keys always re-prove their route. OpenRouter and xAI keys are
+  // also proven on first enrollment: AccountPool selects only `health: "ok"`,
+  // and their adapters never see the key before the pool does, so an unverified
+  // key would sit idle under account authority with no other signal that it is
+  // wrong. Other direct providers keep their established unverified first
+  // enrollment so offline and air-gapped setups are unchanged.
+  const mustProbe =
+    Boolean(replaceAccountId) ||
+    accountProvider === "openrouter-api" ||
+    accountProvider === "xai-api";
+  if (mustProbe) {
     const probe =
       accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
         ? await probeDirectApiKey(
@@ -1064,7 +1080,10 @@ async function handleCreateApiKeyAccount(
     if (!probe?.ok) {
       error(
         res,
-        probe?.error ?? "Replacement credential could not be verified",
+        probe?.error ??
+          (replaceAccountId
+            ? "Replacement credential could not be verified"
+            : "Credential could not be verified against its provider"),
         400,
       );
       return true;
@@ -1126,19 +1145,52 @@ async function handleCreateApiKeyAccount(
     });
   }
 
-  const envKey =
-    accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
-      ? DIRECT_ACCOUNT_PROVIDER_ENV[accountProvider as DirectAccountProvider]
-      : null;
-  if (envKey) {
-    process.env[envKey] = parsed.data.apiKey;
-    if (accountProvider === "zai-api") {
-      process.env.Z_AI_API_KEY ??= parsed.data.apiKey;
-    }
-  }
+  await syncDirectProviderCredentials(ctx, accountProvider);
 
   json(res, linkedConfig, replacementTarget ? 200 : 201);
   return true;
+}
+
+/**
+ * Re-run the host's pool-to-environment export after a direct-provider account
+ * mutation. The export pass is the same one boot runs, so a newly linked,
+ * replaced, re-enabled, re-prioritized, disabled, or deleted account changes
+ * the live provider credential (and the OpenAI-compatible route for the active
+ * backend) without a process restart, and a pool that rejects every account
+ * retracts the previously exported value. No route writes provider keys
+ * directly.
+ */
+export async function syncDirectProviderCredentials(
+  ctx: Pick<AccountsRouteContext, "state">,
+  providerId: string,
+): Promise<void> {
+  if (!isDirectAccountProvider(providerId)) return;
+  const config = ctx.state.config as Record<string, unknown>;
+  const serviceRouting = resolveServiceRoutingInConfig(config);
+  const accountStrategies = config.accountStrategies;
+  await getAgentHostBridge().applyAccountPoolApiCredentials({
+    activeBackend: serviceRouting?.llmText?.backend,
+    accountStrategies:
+      accountStrategies && typeof accountStrategies === "object"
+        ? (accountStrategies as Record<string, unknown>)
+        : undefined,
+    serviceRouting,
+  });
+  const runtime = ctx.state.runtime;
+  if (!runtime) return;
+  const secretKeys = new Set([
+    ...Object.values(DIRECT_ACCOUNT_PROVIDER_ENV),
+    "Z_AI_API_KEY",
+    "KIMI_API_KEY",
+    "OPENAI_API_KEY",
+  ]);
+  for (const key of secretKeys) {
+    runtime.setSetting(key, process.env[key]?.trim() || null, true);
+  }
+  runtime.setSetting(
+    "OPENAI_BASE_URL",
+    process.env.OPENAI_BASE_URL?.trim() || null,
+  );
 }
 
 async function handleOAuthRoutes(
@@ -1490,6 +1542,9 @@ async function handlePatchAccount(
       }
     }
   }
+  if (parsed.data.enabled !== undefined || parsed.data.priority !== undefined) {
+    await syncDirectProviderCredentials(ctx, providerId);
+  }
 
   json(res, next);
   return true;
@@ -1510,6 +1565,7 @@ async function handleDeleteAccount(
     deleteAccount(accountProvider, accountId, storagePolicy);
   }
   await pool.deleteMetadata(providerId, accountId);
+  await syncDirectProviderCredentials(ctx, providerId);
   json(res, { deleted: true });
   return true;
 }
@@ -1562,7 +1618,16 @@ async function handleTestAccount(
     return true;
   }
   if (probe.ok) {
-    json(res, { ok: true, latencyMs: probe.latencyMs, status: probe.status });
+    json(res, {
+      ok: true,
+      latencyMs: probe.latencyMs,
+      status: probe.status,
+      ...(probe.modelIds ? { modelIds: probe.modelIds } : {}),
+      ...(probe.modelCatalogTruncated ? { modelCatalogTruncated: true } : {}),
+      ...(probe.modelCatalogUnavailable
+        ? { modelCatalogUnavailable: true }
+        : {}),
+    });
   } else {
     json(res, {
       ok: false,
@@ -1604,7 +1669,7 @@ async function handleRefreshUsage(
 
   if (direct) {
     const probe = await probeDirectApiKey(direct, accessToken);
-    const next = preserveTerminalCredentialHealth(linked, {
+    const next: LinkedAccountConfig = {
       ...linked,
       health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
       healthDetail: {
@@ -1617,8 +1682,9 @@ async function handleRefreshUsage(
         ...(linked.usage ?? {}),
         refreshedAt: Date.now(),
       },
-    });
+    };
     await pool.upsert(next);
+    await syncDirectProviderCredentials(ctx, direct);
     json(res, { account: next, probe, source: "direct-probe" });
     return true;
   }
