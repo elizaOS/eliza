@@ -45,4 +45,25 @@ describe("isDiscordDmSenderAllowed", () => {
     expect(isDiscordDmSenderAllowed(metadata, OWNER)).toBe(true);
     expect(isDiscordDmSenderAllowed(metadata, FRIEND)).toBe(false);
   });
+
+  test("safely handles null metadata and non-string or empty authorId", () => {
+    expect(
+      isDiscordDmSenderAllowed(
+        null as unknown as Parameters<typeof isDiscordDmSenderAllowed>[0],
+        STRANGER,
+      ),
+    ).toBe(true);
+    expect(
+      isDiscordDmSenderAllowed(
+        { dmPolicy: "allowlist", ownerDiscordUserId: OWNER },
+        null as unknown as string,
+      ),
+    ).toBe(false);
+    expect(
+      isDiscordDmSenderAllowed(
+        { dmPolicy: "allowlist", ownerDiscordUserId: OWNER },
+        "",
+      ),
+    ).toBe(false);
+  });
 });

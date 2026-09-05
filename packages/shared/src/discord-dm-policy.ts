@@ -14,14 +14,24 @@ export function isDiscordDmSenderAllowed(
   metadata: DiscordDmPolicyMetadata,
   authorId: string,
 ): boolean {
+  if (!metadata || typeof metadata !== "object") return true;
+  if (typeof authorId !== "string" || !authorId) return false;
   const dmPolicy = metadata.dmPolicy ?? "open";
   if (dmPolicy === "open") return true;
   if (dmPolicy === "disabled") return false;
 
-  const allowed = new Set<string>(metadata.ownerDiscordUserIds ?? []);
-  if (metadata.ownerDiscordUserId) allowed.add(metadata.ownerDiscordUserId);
-  if (dmPolicy === "allowlist") {
-    for (const id of metadata.dmAllowFrom ?? []) allowed.add(id);
+  const allowed = new Set<string>(
+    Array.isArray(metadata.ownerDiscordUserIds)
+      ? metadata.ownerDiscordUserIds.filter((id) => typeof id === "string")
+      : [],
+  );
+  if (typeof metadata.ownerDiscordUserId === "string") {
+    allowed.add(metadata.ownerDiscordUserId);
+  }
+  if (dmPolicy === "allowlist" && Array.isArray(metadata.dmAllowFrom)) {
+    for (const id of metadata.dmAllowFrom) {
+      if (typeof id === "string") allowed.add(id);
+    }
   }
   return allowed.has(authorId);
 }
