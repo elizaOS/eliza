@@ -9,6 +9,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = path.resolve(
@@ -329,16 +330,18 @@ async function main() {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  const stdoutDecoder = new StringDecoder("utf8");
+  const stderrDecoder = new StringDecoder("utf8");
   let stdout = "";
   let stderr = "";
   child.stdout.on("data", (chunk) => {
-    const text = chunk.toString();
+    const text = typeof chunk === "string" ? chunk : stdoutDecoder.write(chunk);
     stdout += text;
     process.stdout.write(text);
     events.push({ type: "stdout", timestamp: new Date().toISOString(), text });
   });
   child.stderr.on("data", (chunk) => {
-    const text = chunk.toString();
+    const text = typeof chunk === "string" ? chunk : stderrDecoder.write(chunk);
     stderr += text;
     process.stderr.write(text);
     events.push({ type: "stderr", timestamp: new Date().toISOString(), text });
@@ -405,6 +408,24 @@ async function main() {
       });
     });
     child.on("close", (code, signal) => {
+      const remainingStdout = stdoutDecoder.end();
+      if (remainingStdout) {
+        stdout += remainingStdout;
+        events.push({
+          type: "stdout",
+          timestamp: new Date().toISOString(),
+          text: remainingStdout,
+        });
+      }
+      const remainingStderr = stderrDecoder.end();
+      if (remainingStderr) {
+        stderr += remainingStderr;
+        events.push({
+          type: "stderr",
+          timestamp: new Date().toISOString(),
+          text: remainingStderr,
+        });
+      }
       if (timer) clearTimeout(timer);
       if (escalationTimer) clearTimeout(escalationTimer);
       for (const [parentSignal, handler] of parentSignalHandlers) {

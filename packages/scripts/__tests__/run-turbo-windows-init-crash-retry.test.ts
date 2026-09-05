@@ -23,7 +23,7 @@ const tempDirs: string[] = [];
  * 0xC0000142 failure line Turbo emits and exits 1, "fail" exits 1 with an
  * ordinary error line, "ok" exits 0.
  */
-async function fixture(behaviors: Array<"crash" | "fail" | "ok">) {
+async function fixture(behaviors: Array<"crash" | "fail" | "ok" | "split-crash">) {
   const dir = await mkdtemp(join(tmpdir(), "run-turbo-init-crash-"));
   tempDirs.push(dir);
   const attemptsFile = join(dir, "attempts.txt");
@@ -43,9 +43,19 @@ async function fixture(behaviors: Array<"crash" | "fail" | "ok">) {
       "}",
       'if (behavior === "fail") {',
       '  console.log("@elizaos/plugin-example#build:  ERROR  command failed: real compile error");',
-      "  process.exit(1);",
+      '  process.exit(1);',
       "}",
-      "process.exit(0);",
+      'if (behavior === "split-crash") {',
+      '  const line = "@elizaos/plugin-example#build:  ERROR  command (D:/a/eliza) bun.exe run build exited (-1073741502)\\n";',
+      "  const bytes = Buffer.from(line, 'utf8');",
+      "  // Split *inside* the 20-char crash marker so neither pipe chunk",
+      "  // contains the signature on its own; only the scan carry reunites it.",
+      '  const cut = bytes.indexOf("exited") + 5;',
+      "  process.stdout.write(bytes.subarray(0, cut));",
+      '  setTimeout(() => { process.stdout.write(bytes.subarray(cut)); setTimeout(() => process.exit(1), 50); }, 100);',
+      "} else if (behavior !== undefined) {",
+      "  process.exit(0);",
+      "}",
     ].join("\n"),
   );
   return { fakeTurbo, attemptsFile };
@@ -171,5 +181,20 @@ describe("run-turbo Windows init-crash retry", () => {
       expect(child.exitCode).toBe(1);
       expect(await attempts(attemptsFile)).toBe(1);
     }
+  }, 30_000);
+});
+
+describe("run-turbo split signature", () => {
+  test("detects the crash marker straddling two pipe chunks and still retries", async () => {
+    const { fakeTurbo, attemptsFile } = await fixture(["split-crash", "ok"]);
+
+    const result = await invoke(fakeTurbo);
+
+    // Retry happened, so the marker was detected even though the fake turbo
+    // emitted it as two delay-separated writes; without the scan carry the
+    // split signature is missed and no retry occurs.
+    expect(result.exitCode).toBe(0);
+    expect(await attempts(attemptsFile)).toBe(2);
+    expect(result.stderr).toContain("Retrying once");
   }, 30_000);
 });

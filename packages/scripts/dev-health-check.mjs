@@ -30,6 +30,7 @@ import {
 import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 
 const DEFAULT_SECONDS = 90;
@@ -327,7 +328,7 @@ function formatLogChunk(source, at, text) {
 }
 
 function appendLog(logChunks, logStream, source, chunk) {
-  const text = chunk.toString();
+  const text = typeof chunk === "string" ? chunk : String(chunk);
   const clean = stripAnsi(text);
   const at = Date.now();
   logChunks.push({
@@ -336,6 +337,35 @@ function appendLog(logChunks, logStream, source, chunk) {
     text: clean,
   });
   logStream.write(formatLogChunk(source, at, clean));
+}
+
+/**
+ * Production decode wiring for one supervised child. Kept standalone so tests
+ * can drive it with a real child over real pipes: split multibyte bytes
+ * across `data` events must reassemble without U+FFFD before reaching the
+ * log sinks.
+ */
+export function attachDecodedChildOutput(child, { onStdoutText, onStderrText }) {
+  const stdoutDecoder = new StringDecoder("utf8");
+  const stderrDecoder = new StringDecoder("utf8");
+  child.stdout.on("data", (chunk) => {
+    const text = typeof chunk === "string" ? chunk : stdoutDecoder.write(chunk);
+    if (!text) return;
+    onStdoutText(text);
+  });
+  child.stderr.on("data", (chunk) => {
+    const text = typeof chunk === "string" ? chunk : stderrDecoder.write(chunk);
+    if (!text) return;
+    onStderrText(text);
+  });
+  child.stdout.on("end", () => {
+    const remaining = stdoutDecoder.end();
+    if (remaining) onStdoutText(remaining);
+  });
+  child.stderr.on("end", () => {
+    const remaining = stderrDecoder.end();
+    if (remaining) onStderrText(remaining);
+  });
 }
 
 function allLogText(logChunks) {
@@ -697,12 +727,10 @@ async function run() {
 
   let childExit = null;
   child.stdin?.on("error", () => {});
-  child.stdout.on("data", (chunk) =>
-    appendLog(logChunks, logStream, "stdout", chunk),
-  );
-  child.stderr.on("data", (chunk) =>
-    appendLog(logChunks, logStream, "stderr", chunk),
-  );
+  attachDecodedChildOutput(child, {
+    onStdoutText: (text) => appendLog(logChunks, logStream, "stdout", text),
+    onStderrText: (text) => appendLog(logChunks, logStream, "stderr", text),
+  });
   child.on("error", (error) => {
     childExit = {
       code: null,

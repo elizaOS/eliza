@@ -46,7 +46,11 @@ export function appendCapturedTestOutput(capture, chunk, source = "combined") {
     return;
   }
 
-  const omittedNow = next.length - MAX_CAPTURED_OUTPUT_CHARS;
+  let omittedNow = next.length - MAX_CAPTURED_OUTPUT_CHARS;
+  const firstCode = next.charCodeAt(omittedNow);
+  if (firstCode >= 0xdc00 && firstCode <= 0xdfff) {
+    omittedNow += 1;
+  }
   capture.omittedChars += omittedNow;
   capture.retained = next.slice(omittedNow);
 }

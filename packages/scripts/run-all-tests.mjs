@@ -84,6 +84,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import {
   appendCapturedTestOutput,
@@ -1238,25 +1239,26 @@ function runScript(
       canSkipWhenOutputHasNoTests(scriptName, scripts) &&
       !hasLocalTestFiles(cwd);
 
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
+
     child.stdout?.on("data", (chunk) => {
       if (stream) {
         process.stdout.write(chunk);
       }
-      appendCapturedTestOutput(
-        capturedOutput,
-        chunk.toString("utf8"),
-        "stdout",
-      );
+      const text = stdoutDecoder.write(chunk);
+      if (text) {
+        appendCapturedTestOutput(capturedOutput, text, "stdout");
+      }
     });
     child.stderr?.on("data", (chunk) => {
       if (stream) {
         process.stderr.write(chunk);
       }
-      appendCapturedTestOutput(
-        capturedOutput,
-        chunk.toString("utf8"),
-        "stderr",
-      );
+      const text = stderrDecoder.write(chunk);
+      if (text) {
+        appendCapturedTestOutput(capturedOutput, text, "stderr");
+      }
     });
 
     // Armed timeout: a hung child is killed and recorded as a timeout FAILURE.
@@ -1282,8 +1284,23 @@ function runScript(
     };
 
     child.on("error", reject);
-    child.on("exit", (code, signal) => {
+    // `exit` fires when the process ends, but stdio data can still be in
+    // flight: ending the decoders here would corrupt a split multibyte
+    // sequence delivered after the flush (write-after-end). So `exit` only
+    // stops the timer; the flush and settlement run on `close`, after the
+    // streams have ended and every `data` handler has run.
+    child.on("exit", () => {
       if (timeoutTimer) clearTimeout(timeoutTimer);
+    });
+    child.on("close", (code, signal) => {
+      const trailingStdout = stdoutDecoder.end();
+      if (trailingStdout) {
+        appendCapturedTestOutput(capturedOutput, trailingStdout, "stdout");
+      }
+      const trailingStderr = stderrDecoder.end();
+      if (trailingStderr) {
+        appendCapturedTestOutput(capturedOutput, trailingStderr, "stderr");
+      }
       if (timedOut) {
         if (!stream && capturedOutput) {
           process.stdout.write(

@@ -9,6 +9,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(
@@ -273,22 +274,36 @@ function runTurboOnce() {
     }
 
     let sawInitCrash = false;
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
     // The signature could straddle a chunk boundary; carry a tail shorter than
     // the marker across writes.
-    const scan = (carry, chunk) => {
-      const text = carry + chunk.toString("utf8");
-      if (text.includes(WINDOWS_PROCESS_INIT_CRASH)) sawInitCrash = true;
-      return text.slice(-WINDOWS_PROCESS_INIT_CRASH.length);
+    const scan = (carry, text) => {
+      const combined = carry + text;
+      if (combined.includes(WINDOWS_PROCESS_INIT_CRASH)) sawInitCrash = true;
+      return combined.slice(-WINDOWS_PROCESS_INIT_CRASH.length);
     };
     let outCarry = "";
     let errCarry = "";
     child.stdout.on("data", (chunk) => {
-      outCarry = scan(outCarry, chunk);
+      const text =
+        typeof chunk === "string" ? chunk : stdoutDecoder.write(chunk);
+      if (text) outCarry = scan(outCarry, text);
       process.stdout.write(chunk);
     });
     child.stderr.on("data", (chunk) => {
-      errCarry = scan(errCarry, chunk);
+      const text =
+        typeof chunk === "string" ? chunk : stderrDecoder.write(chunk);
+      if (text) errCarry = scan(errCarry, text);
       process.stderr.write(chunk);
+    });
+    child.stdout.on("end", () => {
+      const remaining = stdoutDecoder.end();
+      if (remaining) outCarry = scan(outCarry, remaining);
+    });
+    child.stderr.on("end", () => {
+      const remaining = stderrDecoder.end();
+      if (remaining) errCarry = scan(errCarry, remaining);
     });
 
     child.on("exit", (code, signal) => {
