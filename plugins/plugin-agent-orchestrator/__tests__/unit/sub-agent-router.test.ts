@@ -1314,9 +1314,10 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: `Done — the app is live at ${DEAD_URL}`,
       });
-      await new Promise((r) => setTimeout(r, 1000));
 
-      expect(spawnSession).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(spawnSession).toHaveBeenCalledTimes(1);
+      });
       const arg = spawnSession.mock.calls[0]?.[0] as {
         initialTask?: string;
         metadata?: Record<string, unknown>;
@@ -1342,10 +1343,13 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: `Done — local check failed at ${DEAD_URL}`,
       });
-      await new Promise((r) => setTimeout(r, 200));
+
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
+
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).not.toContain("127.0.0.1");
       expect(posted?.content?.text).not.toContain("localhost");
@@ -1363,12 +1367,14 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: `Done — the app is live at ${DEAD_URL}`,
       });
-      await new Promise((r) => setTimeout(r, 1000));
+      await vi.waitFor(() => {
+        expect(spawnSession).toHaveBeenCalledTimes(1);
+      });
       acp.emit(SESSION_ID, "error", {
         message: '"Method not found": session/cancel',
       });
-      await new Promise((r) => setTimeout(r, 200));
 
+      await new Promise((r) => setTimeout(r, 200));
       expect(spawnSession).toHaveBeenCalledTimes(1);
       expect(handleMessage).not.toHaveBeenCalled();
     });
@@ -1421,9 +1427,10 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "error", {
         message: "build failed: GET /api returned 405 method not found",
       });
-      await new Promise((r) => setTimeout(r, 200));
 
-      expect(handleMessage).toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalled();
+      });
     });
 
     it("does surface a build error mentioning a non-ACP path like fs/promises", async () => {
@@ -1440,9 +1447,10 @@ describe("SubAgentRouter", () => {
         message:
           "build failed at node:fs/promises:42 — TypeError: method not found",
       });
-      await new Promise((r) => setTimeout(r, 200));
 
-      expect(handleMessage).toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalled();
+      });
     });
 
     it("does not suppress a -32601 on session/prompt (the task cannot run)", async () => {
@@ -1457,9 +1465,10 @@ describe("SubAgentRouter", () => {
         message: "session/prompt failed",
         code: -32601,
       });
-      await new Promise((r) => setTimeout(r, 200));
 
-      expect(handleMessage).toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalled();
+      });
     });
 
     it("stops retrying once the budget is exhausted and posts honestly", async () => {
@@ -1474,11 +1483,14 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: `Done — live at ${DEAD_URL}`,
       });
-      await new Promise((r) => setTimeout(r, 1000));
+
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       expect(spawnSession).not.toHaveBeenCalled();
       // Budget exhausted → the honest "build incomplete" report IS posted.
-      expect(handleMessage).toHaveBeenCalledTimes(1);
+
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).toContain("NOT reachable");
     });
@@ -1526,10 +1538,13 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: "Done — live at https://example.test/apps/x/",
       });
-      await new Promise((r) => setTimeout(r, 200));
+
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
+
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).not.toContain("[verification:");
     });
@@ -1552,11 +1567,14 @@ describe("SubAgentRouter", () => {
         response:
           '[tool output: Read packages/core/package.json]\n{"name":"@elizaos/core","homepage":"https://github.com/elizaOS/eliza","repository":{"type":"git","url":"git+https://github.com/elizaOS/eliza.git","directory":"packages/core"}}\n[/tool output]\n@elizaos/core',
       });
-      await new Promise((r) => setTimeout(r, 200));
+
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       expect(fetchMock).not.toHaveBeenCalled();
       expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
+
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).toContain("@elizaos/core");
       expect(posted?.content?.text).not.toContain("[verification:");
@@ -1594,14 +1612,17 @@ describe("SubAgentRouter", () => {
         response:
           "Route note: verify https://example.test/apps/<slug>/. Built and verified https://example.test/apps/counter/",
       });
-      await new Promise((r) => setTimeout(r, 200));
+
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       expect(fetchMock).not.toHaveBeenCalledWith(
         "https://example.test/apps/",
         expect.anything(),
       );
       expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
+
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).not.toContain("[verification:");
     });
@@ -1625,10 +1646,13 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: "Created the app directory and files.",
       });
-      await new Promise((r) => setTimeout(r, 200));
+
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
+
       const posted = handleMessage.mock.calls[0]?.[1];
       const metadata = posted?.content?.metadata as
         | Record<string, unknown>
@@ -1657,10 +1681,13 @@ describe("SubAgentRouter", () => {
         response:
           "[tool output: Write file]\nWrote file successfully.\n[/tool output]",
       });
-      await new Promise((r) => setTimeout(r, 200));
+
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
+
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).toContain(appBase);
       expect(posted?.content?.text).not.toContain("[tool output:");
@@ -1790,10 +1817,13 @@ describe("SubAgentRouter", () => {
         response:
           "DECISION: task complete — reporting the fetched value.\n\n**64223**",
       });
-      await new Promise((r) => setTimeout(r, 300));
+
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
+
       const posted = handleMessage.mock.calls[0]?.[1];
       const text = posted?.content?.text ?? "";
       // The real answer is preserved; no stray URL leaks into the reply.
@@ -1839,9 +1869,10 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: `Done — live at ${appUrl}`,
       });
-      await new Promise((r) => setTimeout(r, 200));
 
-      expect(spawnSession).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(spawnSession).toHaveBeenCalledTimes(1);
+      });
       const retryTask = String(spawnSession.mock.calls[0]?.[0]?.initialTask);
       expect(retryTask).toContain("--- VERIFICATION FEEDBACK");
       expect(retryTask).toContain(imageUrl);
@@ -1881,10 +1912,13 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: `Done — live at ${appUrl}`,
       });
-      await new Promise((r) => setTimeout(r, 200));
+
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
+
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).toContain(appUrl);
       expect(posted?.content?.text).toContain("[verification note:");
@@ -2059,10 +2093,13 @@ describe("SubAgentRouter", () => {
         acp.emit(SESSION_ID, "task_complete", {
           response: `Wrote apps/compliance-candy/index.html. Public URL ${appUrl}`,
         });
-        await new Promise((r) => setTimeout(r, 200));
+
+        await vi.waitFor(() => {
+          expect(handleMessage).toHaveBeenCalledTimes(1);
+        });
 
         expect(spawnSession).not.toHaveBeenCalled();
-        expect(handleMessage).toHaveBeenCalledTimes(1);
+
         const posted = handleMessage.mock.calls[0]?.[1];
         expect(posted?.content?.text).toContain(
           "mapped local target missing or empty",
@@ -2125,7 +2162,10 @@ describe("SubAgentRouter", () => {
           response:
             "Done — local: http://127.0.0.1:6900/apps/asset-check/, mirror: https://wrong.example.test/apps/asset-check/, public: https://example.test/apps/asset-check/",
         });
-        await new Promise((r) => setTimeout(r, 200));
+
+        await vi.waitFor(() => {
+          expect(handleMessage).toHaveBeenCalledTimes(1);
+        });
 
         const fetched = fetchMock.mock.calls.map(([url]) => String(url));
         expect(fetched).toContain("http://127.0.0.1:6900/apps/asset-check/");
@@ -2134,7 +2174,7 @@ describe("SubAgentRouter", () => {
           "https://wrong.example.test/apps/asset-check/",
         );
         expect(spawnSession).not.toHaveBeenCalled();
-        expect(handleMessage).toHaveBeenCalledTimes(1);
+
         const posted = handleMessage.mock.calls[0]?.[1];
         expect(posted?.content?.text).not.toContain("[verification:");
       } finally {
@@ -2251,12 +2291,15 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: `Header noise ${telemetryUrl}; stale context ${unrelatedUrl}; fixed assets ${styleUrl} ${scriptUrl}`,
       });
-      await new Promise((r) => setTimeout(r, 200));
+
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       const fetched = fetchMock.mock.calls.map(([url]) => String(url));
       expect(fetched).toEqual([styleUrl, scriptUrl]);
       expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
+
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).not.toContain("[verification:");
     });
@@ -2294,9 +2337,10 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: `Done — live at ${assetUrl}`,
       });
-      await new Promise((r) => setTimeout(r, 200));
 
-      expect(spawnSession).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(spawnSession).toHaveBeenCalledTimes(1);
+      });
       const fetched = fetchMock.mock.calls.map(([url]) => String(url));
       expect(fetched.some((url) => url.startsWith(`${assetUrl}?`))).toBe(true);
       const retryTask = String(spawnSession.mock.calls[0]?.[0]?.initialTask);
@@ -2338,9 +2382,10 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: `Done — live at ${assetUrl}`,
       });
-      await new Promise((r) => setTimeout(r, 200));
 
-      expect(spawnSession).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(spawnSession).toHaveBeenCalledTimes(1);
+      });
       const fetched = fetchMock.mock.calls.map(([url]) => String(url));
       expect(fetched).toContain(assetUrl);
       expect(fetched.some((url) => url.startsWith(`${assetUrl}?`))).toBe(true);
@@ -2406,10 +2451,12 @@ describe("SubAgentRouter", () => {
       acp.emit(SESSION_ID, "task_complete", {
         response: `Done — live at ${DEAD_URL}`,
       });
-      await new Promise((r) => setTimeout(r, 1000));
+
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
     });
   });
 });
@@ -2851,11 +2898,13 @@ describe("SubAgentRouter — change-set narration (GAP C)", () => {
         },
       });
       const acp = makeAcpService(session);
-      const { runtime } = makeRuntime({ acp: acp.service });
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
       await SubAgentRouter.start(runtime);
 
       acp.emit(SESSION_ID, "task_complete", { response: "Nothing to change." });
-      await new Promise((r) => setTimeout(r, 200));
+      await vi.waitFor(() => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+      });
 
       // No change => no lastChangeSet persisted. The provider selects the
       // most-recently-active session and finds no change set, so an older
