@@ -108,6 +108,12 @@ async function expectRouteReady(
 }
 
 test.describe("browser history navigation", () => {
+  test.afterEach(async ({ page }) => {
+    // Asset fetch/fulfill handlers must settle before Playwright disposes the
+    // request context that owns their responses. Preserve handler failures.
+    await page.unrouteAll({ behavior: "wait" });
+  });
+
   test("preserves route state across back and forward navigation", async ({
     page,
   }) => {

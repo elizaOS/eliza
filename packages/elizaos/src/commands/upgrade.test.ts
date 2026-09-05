@@ -284,7 +284,7 @@ describe("upgrade applies the rendered template", () => {
     expect(onDisk.cliVersion).toBe(getCliVersion());
     expect(onDisk.values).toEqual(PLUGIN_VALUES);
     expect(console.log).not.toHaveBeenCalledWith(
-      "Skipped files with local changes:",
+      expect.stringContaining("Skipped files with local changes:"),
     );
   });
 
@@ -367,7 +367,7 @@ describe("upgrade applies the rendered template", () => {
       "Upgrade result",
     );
     expect(console.log).toHaveBeenCalledWith(
-      "Skipped files with local changes:",
+      expect.stringContaining("Skipped files with local changes:"),
     );
     expect(console.log).toHaveBeenCalledWith(`  - ${target}`);
   });
