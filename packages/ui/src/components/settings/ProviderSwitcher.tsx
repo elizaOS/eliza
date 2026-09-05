@@ -17,6 +17,7 @@ import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { VOICE_PROVIDERS } from "../../voice/types";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
 import { resolveEffectiveVoiceConfig } from "../../voice/voice-chat-types";
+import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import { AccountManagementPanel } from "../accounts/AccountManagementPanel";
 import { ProvidersList } from "../local-inference/ProvidersList";
 import { RoutingMatrix } from "../local-inference/RoutingMatrix";
@@ -59,6 +60,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     t: s.t,
     uiLanguage: s.uiLanguage,
     elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
     plugins: s.plugins,
     pluginSaving: s.pluginSaving,
     pluginSaveSuccess: s.pluginSaveSuccess,
@@ -72,7 +74,10 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const elizaCloudConnected =
     props.elizaCloudConnected ?? Boolean(app.elizaCloudConnected);
   const effectiveVoiceConfig = resolveEffectiveVoiceConfig(voiceConfig, {
-    cloudConnected: elizaCloudConnected,
+    cloudConnected: isCloudVoiceRunnable({
+      connected: elizaCloudConnected,
+      proxyAvailable: app.elizaCloudVoiceProxyAvailable,
+    }),
   });
   const voiceProvider = VOICE_PROVIDERS.find(
     (provider) => provider.id === effectiveVoiceConfig?.provider,
