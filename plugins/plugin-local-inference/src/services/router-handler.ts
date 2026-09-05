@@ -63,7 +63,10 @@
 
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import {
+	type GenerateTextParams,
 	logger,
+	MODEL_PROVIDER_ATTEMPTS,
+	type ModelProviderAttempt,
 	ModelType,
 	NoModelProviderConfiguredError,
 } from "@elizaos/core";
@@ -316,6 +319,17 @@ export async function filterUnavailableLocalInference(
 
 function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 	return async (runtime, params) => {
+		const providerAttempts =
+			(params == null
+				? undefined
+				: (params as GenerateTextParams)[MODEL_PROVIDER_ATTEMPTS]) ?? [];
+		const registrationAttempted = (candidate: RoutableCandidate): boolean =>
+			providerAttempts.some(
+				(attempt) =>
+					attempt.modelType === candidate.modelType &&
+					attempt.provider === candidate.provider &&
+					attempt.handler === candidate.handler,
+			);
 		const modelType = slotToModelType(slot);
 		if (!modelType) {
 			throw new Error(`[router] Unknown agent slot: ${slot}`);
@@ -380,12 +394,38 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 			}
 		}
 
-		const failedProviders = new Set<string>();
+		const exhaustedManualPreference =
+			policy === "manual" &&
+			preferred !== null &&
+			candidates.some((candidate) => candidate.provider === preferred) &&
+			candidates.every(
+				(candidate) =>
+					candidate.provider !== preferred || registrationAttempted(candidate),
+			);
 		let lastError: unknown = null;
+		for (let index = providerAttempts.length - 1; index >= 0; index--) {
+			const attempt = providerAttempts[index];
+			if (exhaustedManualPreference && attempt.provider !== preferred) continue;
+			if (
+				attempt.error !== undefined &&
+				candidates.some(
+					(candidate) =>
+						attempt.modelType === candidate.modelType &&
+						attempt.provider === candidate.provider &&
+						attempt.handler === candidate.handler,
+				)
+			) {
+				// An exhausted configured preference is not a missing preference:
+				// preserve the manual router's original error instead of replacing it.
+				if (exhaustedManualPreference) throw attempt.error;
+				lastError = attempt.error;
+				break;
+			}
+		}
 
 		while (true) {
 			const remaining = candidates.filter(
-				(candidate) => !failedProviders.has(candidate.provider),
+				(candidate) => !registrationAttempted(candidate),
 			);
 			const pick = policyEngine.pickProvider({
 				modelType,
@@ -409,6 +449,11 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 
 			policyEngine.recordPick(pick.provider, modelType);
 			const start = Date.now();
+			const providerAttempt: ModelProviderAttempt = {
+				modelType,
+				provider: pick.provider,
+				handler: pick.handler,
+			};
 			try {
 				// The outer AgentRuntime owns TextStreamResult consumption and SSE
 				// delivery. Only providers that explicitly declare handler-callback
@@ -426,6 +471,9 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 								const { onStreamChunk: _outerStreamOwner, ...rest } = params;
 								return rest;
 							})();
+				// Record dispatch, not just rejection: a returned lazy stream may fail
+				// later in the runtime's existing stream owner, outside this catch.
+				providerAttempts.push(providerAttempt);
 				const result = await pick.handler(runtime, providerParams);
 				policyEngine.recordLatency(
 					pick.provider,
@@ -434,6 +482,7 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				);
 				return result;
 			} catch (err) {
+				providerAttempt.error = err;
 				// Record the timing even on failure so "fastest" doesn't silently
 				// prefer providers that error out fast.
 				policyEngine.recordLatency(
@@ -480,7 +529,6 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 					throw err;
 				}
 
-				failedProviders.add(pick.provider);
 				lastError = err;
 				logger.info(
 					`[router] Provider ${pick.provider} failed for ${slot}; trying fallback provider (${err instanceof Error ? err.message : String(err)})`,

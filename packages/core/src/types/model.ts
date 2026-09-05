@@ -532,6 +532,8 @@ export interface SpanSamplerPlan {
  * request still works, just without forcing.
  */
 export interface GenerateTextParams {
+	/** Non-enumerable runtime metadata; never part of the provider request body. */
+	[MODEL_PROVIDER_ATTEMPTS]?: ModelProviderAttempt[];
 	/** Runtime-only hook used to prepare request content for each resolved model attempt. */
 	prepareModelAttempt?: (
 		attempt: ModelAttemptContext,
@@ -710,6 +712,19 @@ export interface GenerateTextParams {
 	 *           via the `x-eliza-span-samplers` header.
 	 */
 	spanSamplerPlan?: SpanSamplerPlan;
+}
+
+/** Shared only by dispatches within one useModel call, including router delegates. */
+export const MODEL_PROVIDER_ATTEMPTS: unique symbol = Symbol.for(
+	"eliza.modelProviderAttempts",
+);
+
+/** Exact dispatched registration, not a provider-wide or cross-call blacklist. */
+export interface ModelProviderAttempt {
+	modelType: string;
+	provider: string;
+	handler: object;
+	error?: unknown;
 }
 
 /** Exact registration identity selected for one runtime model attempt. */

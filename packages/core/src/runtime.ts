@@ -240,9 +240,11 @@ import {
 	type MessageConnectorRegistration,
 	type MessageSearchHit,
 	type Metadata,
+	MODEL_PROVIDER_ATTEMPTS,
 	type ModelAttemptContext,
 	type ModelHandler,
 	type ModelParamsMap,
+	type ModelProviderAttempt,
 	type ModelRegistrationInfo,
 	type ModelRegistrationMetadata,
 	type ModelResultMap,
@@ -7038,6 +7040,16 @@ export class AgentRuntime implements IAgentRuntime {
 		let lastModelError: unknown;
 		let providerAttemptStartedOutput = false;
 		const providersWithExhaustedWarmingBudget = new Set<string>();
+		const providerAttempts: ModelProviderAttempt[] = [];
+		const registrationAttempted = (
+			candidate: ResolvedModelRegistration,
+		): boolean =>
+			providerAttempts.some(
+				(attempt) =>
+					attempt.modelType === candidate.modelKey &&
+					attempt.provider === candidate.provider &&
+					attempt.handler === candidate.handler,
+			);
 		for (
 			let resolvedIndex = 0;
 			resolvedIndex < resolvedModels.length;
@@ -7047,7 +7059,10 @@ export class AgentRuntime implements IAgentRuntime {
 			if (!resolvedModel) {
 				continue;
 			}
-			if (providersWithExhaustedWarmingBudget.has(resolvedModel.provider)) {
+			if (
+				providersWithExhaustedWarmingBudget.has(resolvedModel.provider) ||
+				registrationAttempted(resolvedModel)
+			) {
 				continue;
 			}
 			const resolvedModelKey = resolvedModel.modelKey;
@@ -7060,6 +7075,7 @@ export class AgentRuntime implements IAgentRuntime {
 			};
 			const preprocessingStartedAt = Date.now();
 			let handlerStartedAt: number | null = null;
+			let providerAttempt: ModelProviderAttempt | undefined;
 			if (resolvedIndex === 0) {
 				recordInferenceSpan(
 					`model-routing:${String(modelType)}`,
@@ -7560,6 +7576,14 @@ export class AgentRuntime implements IAgentRuntime {
 				// typed zero-dispatch rejection records the same complete request.
 				modelParamsRef = modelParams;
 				promptContentRef = promptContent;
+				// Attach only to this attempt's fresh request, before admission freezes
+				// it. Symbols are not enumerated, measured, serialized, or deep-frozen.
+				if (isPlainObject(modelParams)) {
+					Object.defineProperty(modelParams, MODEL_PROVIDER_ATTEMPTS, {
+						value: providerAttempts,
+						enumerable: false,
+					});
+				}
 
 				if (TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey))) {
 					let finalBudget = this.buildFinalModelInputBudget(
@@ -7677,6 +7701,12 @@ export class AgentRuntime implements IAgentRuntime {
 					attemptMeta,
 				);
 				handlerStartedAt = Date.now();
+				providerAttempt = {
+					modelType: resolvedModelKey,
+					provider: resolvedModel.provider,
+					handler,
+				};
+				providerAttempts.push(providerAttempt);
 				const { result: handlerResult, recordingState } =
 					await runWithModelCallRecordingScope(() =>
 						handler(this, modelParams as Record<string, JsonValue | object>),
@@ -8216,13 +8246,15 @@ export class AgentRuntime implements IAgentRuntime {
 					});
 				}
 				lastModelError = error;
+				if (providerAttempt) providerAttempt.error = error;
 				if (isElizaCloudGatewayWarmingExhaustedError(error)) {
 					providersWithExhaustedWarmingBudget.add(resolvedModel.provider);
 				}
 				const nextModelIndex = resolvedModels.findIndex(
 					(candidate, candidateIndex) =>
 						candidateIndex > resolvedIndex &&
-						!providersWithExhaustedWarmingBudget.has(candidate.provider),
+						!providersWithExhaustedWarmingBudget.has(candidate.provider) &&
+						!registrationAttempted(candidate),
 				);
 				const nextModel =
 					nextModelIndex >= 0 ? resolvedModels[nextModelIndex] : undefined;
