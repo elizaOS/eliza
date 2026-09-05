@@ -4,7 +4,69 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { hasResolvableWorkspaceEntry } from "./mobile-workspace-entry.mjs";
+import { canUseWorkspaceEntry } from "./mobile-workspace-entry.mjs";
+
+test("browser builds retain their browser export when Node output is absent", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mobile-browser-entry-"));
+  try {
+    const packageDir = path.join(root, "node_modules/@elizaos/browser-fixture");
+    await mkdir(path.join(packageDir, "dist/browser"), { recursive: true });
+    await mkdir(path.join(packageDir, "src"));
+    await writeFile(
+      path.join(packageDir, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/browser-fixture",
+        type: "module",
+        exports: {
+          ".": {
+            browser: "./dist/browser/index.js",
+            node: "./dist/node/index.js",
+            default: "./dist/node/index.js",
+          },
+        },
+      }),
+    );
+    await writeFile(
+      path.join(packageDir, "dist/browser/index.js"),
+      'export const result = "browser";',
+    );
+    await writeFile(
+      path.join(packageDir, "src/index.node.ts"),
+      'throw new Error("Node-only source entered browser bundle");',
+    );
+    const entry = path.join(root, "entry.ts");
+    await writeFile(
+      entry,
+      'import {result} from "@elizaos/browser-fixture"; console.log(result);',
+    );
+    const output = await Bun.build({
+      entrypoints: [entry],
+      target: "browser",
+      plugins: [
+        {
+          name: "workspace-entry",
+          setup(build) {
+            build.onResolve(
+              { filter: /^@elizaos\/browser-fixture$/ },
+              (args) =>
+                canUseWorkspaceEntry(args.path, packageDir, "browser")
+                  ? undefined
+                  : { path: path.join(packageDir, "src/index.node.ts") },
+            );
+          },
+        },
+      ],
+    });
+    assert.equal(output.success, true, output.logs.map(String).join("\n"));
+    const artifact = path.join(root, "bundle.mjs");
+    await writeFile(artifact, await output.outputs[0].text());
+    const execution = Bun.spawnSync([process.execPath, artifact]);
+    assert.equal(execution.exitCode, 0, execution.stderr.toString());
+    assert.equal(execution.stdout.toString().trim(), "browser");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 for (const built of [false, true]) {
   test(`mobile import uses ${built ? "exported output" : "source when only a view bundle exists"}`, async () => {
@@ -47,7 +109,7 @@ for (const built of [false, true]) {
         'import { answer } from "@elizaos/entry-fixture"; export default answer;',
       );
       assert.equal(
-        hasResolvableWorkspaceEntry("@elizaos/entry-fixture", packageDir),
+        canUseWorkspaceEntry("@elizaos/entry-fixture", packageDir),
         built,
       );
       const output = await Bun.build({
@@ -60,7 +122,7 @@ for (const built of [false, true]) {
               build.onResolve(
                 { filter: /^@elizaos\/entry-fixture$/ },
                 (args) =>
-                  hasResolvableWorkspaceEntry(args.path, packageDir)
+                  canUseWorkspaceEntry(args.path, packageDir)
                     ? undefined
                     : { path: path.join(packageDir, "src/index.node.ts") },
               );
