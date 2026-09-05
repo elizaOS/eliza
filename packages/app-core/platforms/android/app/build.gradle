@@ -621,3 +621,6 @@ afterEvaluate {
         }
     }
 }
+
+// Preserve the exact native runtime bytes bound by APK provenance.
+android.packaging.jniLibs.keepDebugSymbols += ["**/libeliza_*.so", "**/libsigsys-handler.so"]
