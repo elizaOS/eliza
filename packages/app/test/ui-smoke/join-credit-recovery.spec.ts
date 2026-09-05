@@ -107,6 +107,10 @@ for (const viewport of [
       .toBe(dedicatedId);
     expect(identityReads).toBeGreaterThanOrEqual(2);
     await expect(addCredits).toHaveCount(0);
+    await expect(page.getByTestId("chat-pill")).toBeVisible({
+      timeout: 60_000,
+    });
+    await page.evaluate(() => document.fonts.ready);
     await page.screenshot({
       path: testInfo.outputPath(`${viewport.name}-credit-reconnected.jpg`),
       fullPage: true,
