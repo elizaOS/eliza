@@ -291,4 +291,48 @@ describe("sanitizeJsonObject", () => {
     expect(() => sanitizeJsonObject(value)).toThrowError(ElizaError);
     expect(calls).toBe(0);
   });
+
+  it("preserves shared non-cyclic object references across sibling branches (diamond)", () => {
+    const shared = { v: 1, nested: { x: 2 } };
+    const diamond = { a: shared, b: shared };
+    const sanitized = sanitizeJsonObject(diamond) as { a: { v: number }; b: { v: number } };
+    expect(sanitized.a).toEqual({ v: 1, nested: { x: 2 } });
+    expect(sanitized.b).toEqual({ v: 1, nested: { x: 2 } });
+    expect(JSON.stringify(sanitized)).toBe(JSON.stringify(diamond));
+    // Ensure the output copies are not the same reference (since we clone), but both are equal
+    expect(sanitized.a).not.toBe(sanitized.b);
+  });
+
+  it("preserves repeated array elements that are the same object", () => {
+    const shared = { v: 2 };
+    const arr = [shared, shared];
+    const sanitized = sanitizeJsonObject(arr) as Array<{ v: number }>;
+    expect(sanitized).toEqual([{ v: 2 }, { v: 2 }]);
+    expect(sanitized[0]).toEqual(sanitized[1]);
+    expect(sanitized[0]).not.toBe(sanitized[1]);
+  });
+
+  it("preserves shared Date instances across sibling branches", () => {
+    const sharedDate = new Date("2026-08-26T00:00:00.000Z");
+    const obj = { primary: sharedDate, mirror: sharedDate };
+    const sanitized = sanitizeJsonObject(obj) as { primary: string; mirror: string };
+    expect(sanitized.primary).toBe("2026-08-26T00:00:00.000Z");
+    expect(sanitized.mirror).toBe("2026-08-26T00:00:00.000Z");
+  });
+
+  it("still breaks true circular references", () => {
+    const circular: Record<string, unknown> = { name: "loop" };
+    circular.self = circular;
+    const sanitized = sanitizeJsonObject(circular) as Record<string, unknown>;
+    expect(sanitized.self).toBeNull();
+  });
+
+  it("still breaks ancestor-cycle via nested object", () => {
+    const parent: Record<string, unknown> = { child: null };
+    const child: Record<string, unknown> = { parent };
+    parent.child = child;
+    const sanitized = sanitizeJsonObject(parent) as Record<string, unknown>;
+    const sanitizedChild = sanitized.child as Record<string, unknown>;
+    expect(sanitizedChild.parent).toBeNull();
+  });
 });
