@@ -1079,7 +1079,7 @@ describe("live model usage meter", () => {
       expectedModel: EXPECTED_MODEL,
       budgets: { maxInputTokens: 20_000, maxOutputTokens: 5, maxRequests: 2 },
       fetchUpstream: async (_url, init) => {
-        const rawBody = String(init.body);
+        const rawBody = await new Response(init.body).text();
         forwardedBodies.push(rawBody);
         const body = JSON.parse(rawBody) as {
           max_output_tokens: number;
@@ -1202,7 +1202,9 @@ describe("live model usage meter", () => {
           maxRequests: 1,
         },
         fetchUpstream: async (_url, init) => {
-          forwarded = JSON.parse(String(init.body)) as Record<string, unknown>;
+          forwarded = JSON.parse(
+            await new Response(init.body).text(),
+          ) as Record<string, unknown>;
           return Response.json({
             usage:
               provider === "openai"

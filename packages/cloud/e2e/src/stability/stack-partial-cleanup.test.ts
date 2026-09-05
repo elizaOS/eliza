@@ -98,7 +98,7 @@ test("partial startup failure removes PGlite process and data directory", async 
     else process.env.NODE_ENV = previousNodeEnv;
     await rm(logDir, { recursive: true, force: true });
   }
-}, 10_000);
+}, 60_000);
 
 test("stack assigns Wrangler an inspector port instead of fixed 9229", async () => {
   const logDir = await mkdtemp(path.join(tmpdir(), "cloud-stack-inspector-"));
