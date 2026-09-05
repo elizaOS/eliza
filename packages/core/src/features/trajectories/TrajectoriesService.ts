@@ -6,6 +6,7 @@
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { ElizaError } from "../../errors";
+import { truncateWellFormed } from "../../utils/well-formed";
 import { logger } from "../../logger";
 import { serializeTrajectoryExport } from "../../services/trajectory-export";
 import {
@@ -3388,7 +3389,7 @@ export class TrajectoriesService extends Service {
 
 	private sanitizeZipFolderName(value: string): string {
 		const trimmed = value.trim();
-		const safe = trimmed.length > 256 ? trimmed.slice(0, 256) : trimmed;
+		const safe = trimmed.length > 256 ? truncateWellFormed(trimmed, 256) : trimmed;
 		const sanitized = safe
 			.replace(/[^a-zA-Z0-9._-]+/g, "_")
 			.replace(/^_+|_+$/g, "");
