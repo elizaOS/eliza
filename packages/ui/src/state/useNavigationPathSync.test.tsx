@@ -6,7 +6,7 @@
  * preserving the browser path that names the exact owning page.
  */
 
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
 import type { Tab } from "../navigation";
@@ -14,6 +14,7 @@ import { resetUiRegistryHostForTests } from "../registry-host";
 import { useNavigationPathSync } from "./useAppProviderEffects";
 
 afterEach(() => {
+  cleanup();
   resetUiRegistryHostForTests();
   window.history.replaceState(null, "", "/");
 });
@@ -90,6 +91,51 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
     );
 
     // routeTab === tab, so no redundant reconciliation is dispatched.
+    expect(setTabRaw).not.toHaveBeenCalled();
+  });
+
+  it("reconciles the active tab when browser history changes", () => {
+    window.history.replaceState(null, "", "/settings");
+    const setTabRaw = vi.fn();
+
+    renderHook(() =>
+      useNavigationPathSync({ tab: "settings" as Tab, setTabRaw }),
+    );
+
+    act(() => {
+      window.history.pushState(null, "", "/views");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    expect(setTabRaw).toHaveBeenCalledTimes(1);
+    expect(setTabRaw).toHaveBeenCalledWith("views");
+  });
+
+  it("reconciles app-window hash navigation", () => {
+    window.history.replaceState(null, "", "/index.html?appWindow=1#/settings");
+    const setTabRaw = vi.fn();
+    renderHook(() =>
+      useNavigationPathSync({ tab: "settings" as Tab, setTabRaw }),
+    );
+    act(() => {
+      window.history.replaceState(null, "", "/index.html?appWindow=1#/views");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    expect(setTabRaw).toHaveBeenCalledWith("views");
+  });
+
+  it("stops reconciling browser events after unmount", () => {
+    window.history.replaceState(null, "", "/settings");
+    const setTabRaw = vi.fn();
+    const view = renderHook(() =>
+      useNavigationPathSync({ tab: "settings" as Tab, setTabRaw }),
+    );
+    view.unmount();
+    act(() => {
+      window.history.replaceState(null, "", "/views");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
     expect(setTabRaw).not.toHaveBeenCalled();
   });
 
