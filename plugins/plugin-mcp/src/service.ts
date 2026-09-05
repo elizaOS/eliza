@@ -274,6 +274,7 @@ export class McpService extends Service {
       status: "connecting",
       reconnectAttempts: carriedReconnectAttempts,
       consecutivePingFailures: 0,
+      config: JSON.stringify(config),
     };
     this.connectionStates.set(name, state);
 
@@ -433,18 +434,21 @@ export class McpService extends Service {
     const delay = INITIAL_RETRY_DELAY * BACKOFF_MULTIPLIER ** state.reconnectAttempts;
     state.reconnectTimeout = setTimeout(async () => {
       state.reconnectAttempts++;
-      const connection = this.connections.get(name);
-      const config = connection?.server?.config;
-      if (config) {
-        try {
-          await this.initializeConnection(name, JSON.parse(config), {
-            preserveReconnectAttempts: true,
-          });
-        } catch (err) {
-          // error-policy:J5 background reconnect; failure is observed in
-          // handleDisconnection, which records lastError and backs off (capped).
-          this.handleDisconnection(name, err);
-        }
+      // Reconnect from the config persisted on the ConnectionState, never from
+      // `this.connections.get(name)`: `initializeConnection` begins by calling
+      // `deleteConnection`, which removes the live McpConnection. When a retry's
+      // transport build throws before the connection is re-added, the map entry
+      // stays gone, so a map lookup would read undefined and the ladder would
+      // silently die after a single failed attempt instead of climbing to
+      // MAX_RECONNECT_ATTEMPTS.
+      try {
+        await this.initializeConnection(name, JSON.parse(state.config), {
+          preserveReconnectAttempts: true,
+        });
+      } catch (err) {
+        // error-policy:J5 background reconnect; failure is observed in
+        // handleDisconnection, which records lastError and backs off (capped).
+        this.handleDisconnection(name, err);
       }
     }, delay);
   }
