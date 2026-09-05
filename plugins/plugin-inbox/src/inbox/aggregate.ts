@@ -25,7 +25,7 @@
  *     (declared in `message-fetcher.ts`), implemented by the host's connector
  *     projections.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   type GetLifeOpsInboxRequest,
   LIFEOPS_INBOX_CHANNELS,
@@ -59,24 +59,8 @@ const PHONE_BACKED_INBOX_CHANNELS = new Set<LifeOpsInboxChannel>([
 ]);
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
-const INVALID_INBOX_TIMESTAMP_ISO = new Date(0).toISOString();
 
 export type InboxChatType = "dm" | "group" | "channel";
-
-/**
- * Project the inbound epoch-millisecond contract onto the wire ISO timestamp.
- * Invalid producer data sorts at the documented epoch fallback instead of
- * throwing while the inbox DTO is being built.
- */
-function normalizeInboxReceivedAt(timestamp: unknown): string {
-  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
-    return INVALID_INBOX_TIMESTAMP_ISO;
-  }
-  const date = new Date(timestamp);
-  return Number.isFinite(date.getTime())
-    ? date.toISOString()
-    : INVALID_INBOX_TIMESTAMP_ISO;
-}
 
 function stripSubjectReplyPrefixes(value: string): string {
   let cursor = 0;
@@ -178,7 +162,26 @@ export function toInboxMessage(
     channel === "gmail"
       ? (message.gmailMessageId ?? message.id)
       : (message.entityId ?? message.roomId ?? message.id);
-  const receivedAt = normalizeInboxReceivedAt(message.timestamp);
+  if (!Number.isFinite(message.timestamp)) {
+    throw new ElizaError(
+      "Inbox message timestamp must be a finite epoch value",
+      {
+        code: "INBOX_MESSAGE_TIMESTAMP_INVALID",
+        context: { messageId: message.id, source: message.source },
+      },
+    );
+  }
+  const receivedDate = new Date(message.timestamp);
+  if (!Number.isFinite(receivedDate.getTime())) {
+    throw new ElizaError(
+      "Inbox message timestamp is outside the supported date range",
+      {
+        code: "INBOX_MESSAGE_TIMESTAMP_INVALID",
+        context: { messageId: message.id, source: message.source },
+      },
+    );
+  }
+  const receivedAt = receivedDate.toISOString();
   const subject =
     channel === "gmail"
       ? message.channelName.startsWith("Email from ")
