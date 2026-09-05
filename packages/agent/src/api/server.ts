@@ -10,6 +10,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
+import { registerInProcessApi } from "./in-process-api.ts";
 
 function tokenMatches(expected: string, provided: string): boolean {
   const expectedBuf = Buffer.from(expected);
@@ -4005,6 +4006,7 @@ export async function startApiServer(opts?: {
           onRestart,
           onRuntimeActivated,
           onRuntimeSwapped: () => {
+            bindInProcessApi();
             bindRuntimeStreams(state.runtime);
             wireModelRegistrationBroadcast(state.runtime);
             void wireCoordinatorBridgesWhenReady(state, {
@@ -4031,6 +4033,14 @@ export async function startApiServer(opts?: {
       error(res, msg, 500);
     },
   });
+  let unregisterInProcessApi: (() => void) | undefined;
+  const bindInProcessApi = () => {
+    unregisterInProcessApi?.();
+    unregisterInProcessApi = opts?.skipListen && state.runtime
+      ? registerInProcessApi(state.runtime, routeKernel)
+      : undefined;
+  };
+  bindInProcessApi();
   const server = http.createServer((req, res) => routeKernel.handle(req, res));
   await opts?.configureServer?.(server);
   // W9-AGENT-01: the WS upgrade handler delegates the device-bridge path to
@@ -5168,6 +5178,7 @@ export async function startApiServer(opts?: {
       );
     });
     state.runtime = rt;
+    bindInProcessApi();
     state.chatConnectionReady = null;
     state.chatConnectionPromise = null;
     bindRuntimeStreams(rt);
@@ -5349,7 +5360,10 @@ export async function startApiServer(opts?: {
   ]) {
     serverResources.add(resource);
   }
-  const stopServerSideResources = (): Promise<void> => serverResources.close();
+  const stopServerSideResources = (): Promise<void> => {
+    unregisterInProcessApi?.();
+    return serverResources.close();
+  };
   // Local-agent IPC mode: skip binding a TCP listener entirely. Routes and the
   // in-process dispatchRoute kernel are already wired (server built above), so
   // an IPC transport (stdio bridge / Capacitor / Electrobun RPC) can drive them

@@ -214,6 +214,7 @@ const baseConfigure = [
   `-DCMAKE_TOOLCHAIN_FILE=${toolchain}`,
   `-DANDROID_ABI=${abi}`,
   `-DANDROID_PLATFORM=${platform}`,
+  "-DANDROID_STL=c++_shared",
   "-DCMAKE_BUILD_TYPE=Release",
   "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
   "-DGGML_NATIVE=OFF",
@@ -343,6 +344,20 @@ for (const name of toStage) {
   run(strip, ["--strip-unneeded", src, "-o", dst]);
   staged.push(dst);
 }
+
+// Every shared native component uses the same C++ runtime. Multiple static
+// libc++ copies can disagree on locale/type state during backend initialization.
+const cxxRuntime = path.join(
+  ndk,
+  "toolchains/llvm/prebuilt",
+  process.platform === "darwin" ? "darwin-x86_64" : "linux-x86_64",
+  "sysroot/usr/lib",
+  abi === "x86_64" ? "x86_64-linux-android" : "aarch64-linux-android",
+  "libc++_shared.so",
+);
+const stagedCxxRuntime = path.join(jniDir, "libc++_shared.so");
+run(strip, ["--strip-unneeded", cxxRuntime, "-o", stagedCxxRuntime]);
+staged.push(stagedCxxRuntime);
 
 // Verify the engine .so is bionic arm64, exports the FFI symbols, and has no
 // musl deps. For the Vulkan variant its backends are NEEDED siblings (resolved

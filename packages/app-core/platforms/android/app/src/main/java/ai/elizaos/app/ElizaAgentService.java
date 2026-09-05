@@ -2140,13 +2140,10 @@ public class ElizaAgentService extends Service {
                 Log.i(TAG, "Hybrid cloud inference enabled: ELIZAOS_CLOUD_API_KEY"
                     + " injected from prefs (len=" + cloudInferenceKey.length() + ")");
             }
-            // Abstract UDS requests stay process-confined and passwordless so
-            // the WebView cannot dead-end at cold start waiting for its bearer.
-            // The debug/e2e TCP opt-in shares Android's loopback namespace with
-            // other apps, so it must retain bearer auth even though it never
-            // binds off-device. The Agent plugin exposes the per-boot token to
-            // the harness without weakening the normal port-free path.
-            agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", exposeAgentApiPort ? "1" : "0");
+            // The native request proxy injects the per-boot bearer before
+            // forwarding. Enforce it for socket IPC as well as debug TCP:
+            // an abstract socket name is not an authentication boundary.
+            agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", "1");
             agentEnv.put("ELIZA_API_TOKEN", token);
             agentEnv.put("ELIZA_TERMINAL_RUN_TOKEN", terminalToken);
             // The Capacitor APK always hosts @elizaos/capacitor-llama in the

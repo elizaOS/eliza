@@ -102,7 +102,7 @@ async function loadAgentModule(): Promise<AndroidAgentModule> {
 	// `Cannot find module '@elizaos/agent'` (no node_modules on device).
 	const mod = (await import(/* @vite-ignore */ "@elizaos/agent")) as {
 		startEliza: StartEliza;
-		dispatchRoute: AndroidDispatchRoute;
+		dispatchApiRoute: AndroidDispatchRoute;
 		configFileExists: AndroidCoreRouteDeps["configFileExists"];
 		loadElizaConfig: AndroidCoreRouteDeps["loadElizaConfig"];
 		saveElizaConfig: AndroidCoreRouteDeps["saveElizaConfig"];
@@ -110,7 +110,7 @@ async function loadAgentModule(): Promise<AndroidAgentModule> {
 	};
 	return {
 		startEliza: mod.startEliza,
-		dispatchRoute: mod.dispatchRoute,
+		dispatchRoute: mod.dispatchApiRoute,
 		coreRoutes: {
 			configFileExists: mod.configFileExists,
 			loadElizaConfig: mod.loadElizaConfig,
