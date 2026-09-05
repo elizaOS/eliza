@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Pure form model and constants for the Triggers feature: the trigger form
  * state shape and empty default, duration-unit math (best-fit unit, ms
@@ -217,7 +218,7 @@ export function railMonogram(label: string): string {
     .slice(0, 2)
     .map((word) => word[0]?.toUpperCase() ?? "")
     .join("");
-  return (initials || label.slice(0, 1).toUpperCase() || "?").slice(0, 2);
+  return truncateWellFormed(toWellFormedUnicode(initials || label.slice(0, 1).toUpperCase() || "?"), 2);
 }
 
 export { parsePositiveInteger };

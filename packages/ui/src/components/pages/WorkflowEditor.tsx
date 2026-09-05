@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Native Smithers workflow studio for source authoring, visual structure,
  * widgets, revisions, and live run inspection through elizaOS Cloud APIs.
@@ -701,7 +702,7 @@ export function WorkflowEditor({
                     <span className="sr-only">{execution.status}</span>
                   </span>
                   <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
-                    {execution.id.slice(0, 12)}
+                    {truncateWellFormed(toWellFormedUnicode(execution.id), 12)}
                   </span>
                   <span className="text-2xs text-muted-foreground/70">
                     {new Date(execution.startedAt).toLocaleTimeString([], {
@@ -733,7 +734,7 @@ export function WorkflowEditor({
                     <span className="sr-only">{selectedRun.status}</span>
                   </span>
                   <span className="font-mono text-xs text-muted-foreground">
-                    {selectedRun.id.slice(0, 12)}
+                    {truncateWellFormed(toWellFormedUnicode(selectedRun.id), 12)}
                   </span>
                   <div className="flex-1" />
                   {!terminal(selectedRun.status) ? (
