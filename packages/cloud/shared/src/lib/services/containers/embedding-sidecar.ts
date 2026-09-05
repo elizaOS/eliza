@@ -69,6 +69,10 @@ function assertShellSafe(value: string, label: string): string {
 export interface EmbeddingSidecarConfig {
   image: string;
   modelId: string;
+  /** Hugging Face revision to pin (`--revision`); null leaves TEI on the model's default branch. */
+  modelRevision: string | null;
+  /** TEI pooling override (`--pooling`); null lets TEI read the model's own pooling config. */
+  pooling: string | null;
   hostPort: number;
   network: string;
 }
@@ -78,6 +82,8 @@ export function resolveEmbeddingSidecarConfig(): EmbeddingSidecarConfig {
   return {
     image: containersEnv.embeddingSidecarImage(),
     modelId: containersEnv.embeddingSidecarModelId(),
+    modelRevision: containersEnv.embeddingSidecarModelRevision(),
+    pooling: containersEnv.embeddingSidecarPooling(),
     hostPort: containersEnv.embeddingSidecarHostPort(),
     network: containersEnv.dockerNetwork(),
   };
@@ -101,6 +107,12 @@ export function buildEnsureEmbeddingSidecarCmd(
   const image = assertShellSafe(config.image, "image");
   const modelId = assertShellSafe(config.modelId, "model id");
   const network = assertShellSafe(config.network, "network");
+  const revisionFlag = config.modelRevision
+    ? ` --revision ${assertShellSafe(config.modelRevision, "model revision")}`
+    : "";
+  const poolingFlag = config.pooling
+    ? ` --pooling ${assertShellSafe(config.pooling, "pooling")}`
+    : "";
   const port = config.hostPort;
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`[embedding-sidecar] invalid host port: ${port}`);
@@ -114,7 +126,10 @@ export function buildEnsureEmbeddingSidecarCmd(
     `docker run -d --name ${name} --restart always ` +
     `--label ${CONTAINER_LABEL_MANAGED_BY}=${CONTAINER_LABEL_MANAGED_BY_VALUE} ` +
     `--network ${network} -p 127.0.0.1:${port}:80 ` +
-    `-v ${MODEL_CACHE_HOST_DIR}:/data ${image} --model-id ${modelId}; }`
+    // --auto-truncate: inputs past the model's 512-token window are truncated
+    // to their prefix instead of TEI returning 413 and the memory write losing
+    // its vector (the failure the VPS sidecar hit on long document fragments).
+    `-v ${MODEL_CACHE_HOST_DIR}:/data ${image} --model-id ${modelId}${revisionFlag}${poolingFlag} --auto-truncate; }`
   );
 }
 
