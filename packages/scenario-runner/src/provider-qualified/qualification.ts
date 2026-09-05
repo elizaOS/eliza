@@ -2102,6 +2102,19 @@ export function deriveProviderQualification(
     payload.observations,
     input.manifest.requiredObservations,
   );
+  for (const contract of input.manifest.requiredObservations) {
+    if (
+      (contract.kind === "durable-approval" ||
+        contract.kind === "provider-no-effect") &&
+      contract.trajectoryPhase !== undefined
+    ) {
+      // Stage hashes and timestamps do not identify an authenticated owner turn
+      // or a durable state transition. This evidence schema cannot attest phases.
+      reasons.push(
+        `observation-contract:${contract.contractId}:phase-evidence-unavailable`,
+      );
+    }
+  }
   if (!assignment) {
     reasons.push("observation:exact-multiset-mismatch");
   }

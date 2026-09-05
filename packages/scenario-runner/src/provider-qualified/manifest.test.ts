@@ -412,6 +412,20 @@ describe("createProviderQualificationManifest", () => {
     ).toThrow(/must bind exactly one declared connector/);
   });
 
+  it.each([undefined, "domain-contract"] as const)(
+    "refuses to issue a provider manifest with evidence scope %s",
+    (evidenceScope) => {
+      const definition = scenario();
+      definition.evidenceScope = evidenceScope;
+      expect(() =>
+        createProviderQualificationManifest({
+          scenario: definition,
+          bindings: bindings(),
+        }),
+      ).toThrow(/scenario.evidenceScope/);
+    },
+  );
+
   it("requires a distinct acting and semantic-judge model identity", () => {
     const sameModel = bindings();
     sameModel.models.judgeProvider = sameModel.models.actingProvider;

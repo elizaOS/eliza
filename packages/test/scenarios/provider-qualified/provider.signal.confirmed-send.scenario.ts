@@ -12,6 +12,6 @@ export default buildProviderCanary({
   operation: "message-send",
   plugins: ["@elizaos/plugin-personal-assistant", "@elizaos/plugin-signal"],
   effectLabel: "message send",
-  targetLabel: "operator-owned Signal canary chat",
+  targetLabel: "Signal canary chat",
   payload: "Signal provider canary delivery",
 });

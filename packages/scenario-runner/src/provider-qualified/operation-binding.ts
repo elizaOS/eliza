@@ -1,8 +1,9 @@
 /**
  * Validates provider-native canary targets and operation inputs before reducing
- * them to domain-separated canonical hashes. Raw operator values remain outside
- * the publishable manifest; this module only returns them from the explicit
- * validation API used at the private controller boundary.
+ * them to canonical hashes. Target hashes include the provider namespace;
+ * input hashes match the trajectory recorder's complete tool-argument hash.
+ * Raw operator values remain outside the publishable manifest and are returned
+ * only by the explicit validation API at the private controller boundary.
  */
 
 import { createHash } from "node:crypto";
@@ -820,8 +821,13 @@ function hash(
   role: "target" | "input",
   value: unknown,
 ): string {
+  // The signed manifest already binds the operation kind and target. Input
+  // bytes must use the recorder's canonical JSON encoding so real verified
+  // trajectories can satisfy the qualifier's exact argument comparison.
   const envelope = canonical(
-    { domain: `provider-operation-${role}:${kind}:v1`, value },
+    role === "input"
+      ? value
+      : { domain: `provider-operation-${role}:${kind}:v1`, value },
     `${role}HashEnvelope`,
   );
   return createHash("sha256").update(JSON.stringify(envelope)).digest("hex");

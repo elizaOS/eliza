@@ -45,6 +45,20 @@ import type { VerifiedScenarioTrajectorySet } from "./trajectory-verifier.ts";
 const hash = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 
+const calendarOperationInput = {
+  title: "School pickup",
+  start: "2026-05-23T01:00:00.000Z",
+  end: "2026-05-23T01:30:00.000Z",
+  timeZone: "UTC",
+  attendees: [],
+  location: null,
+  description: null,
+  createMeetLink: false,
+  sendUpdates: "none",
+  recurrence: [],
+  idempotencyKey: "calendar-create-1",
+};
+
 function scenario(): ScenarioDefinition {
   return {
     id: "calendar.provider.create",
@@ -52,6 +66,7 @@ function scenario(): ScenarioDefinition {
     domain: "calendar",
     lane: "live-only",
     executionProfile: "provider-qualified",
+    evidenceScope: "provider-certification",
     isolation: "per-scenario",
     turns: [
       {
@@ -111,19 +126,7 @@ function bindings(
       operation: createProviderOperationBinding({
         kind: "google-calendar.event-create",
         providerTarget: { calendarId: "primary" },
-        operationInput: {
-          title: "School pickup",
-          start: "2026-05-23T01:00:00.000Z",
-          end: "2026-05-23T01:30:00.000Z",
-          timeZone: "UTC",
-          attendees: [],
-          location: null,
-          description: null,
-          createMeetLink: false,
-          sendUpdates: "none",
-          recurrence: [],
-          idempotencyKey: "calendar-create-1",
-        },
+        operationInput: calendarOperationInput,
       }),
     },
     models: {
@@ -175,19 +178,7 @@ function bindings(
         resourceRefSha256: createProviderOperationBinding({
           kind: "google-calendar.event-create",
           providerTarget: { calendarId: "primary" },
-          operationInput: {
-            title: "School pickup",
-            start: "2026-05-23T01:00:00.000Z",
-            end: "2026-05-23T01:30:00.000Z",
-            timeZone: "UTC",
-            attendees: [],
-            location: null,
-            description: null,
-            createMeetLink: false,
-            sendUpdates: "none",
-            recurrence: [],
-            idempotencyKey: "calendar-create-1",
-          },
+          operationInput: calendarOperationInput,
         }).providerTargetRefSha256,
         requiredCount: 1,
         maxObservationAgeMs: 5 * 60_000,
@@ -311,7 +302,7 @@ function fixture(): DeriveProviderQualificationInput & {
             endedAtIso: "2026-05-23T00:00:30.000Z",
             tool: {
               name: "CREATE_CALENDAR_EVENT",
-              argsSha256: manifest.target.operation.operationInputSha256,
+              argsSha256: canonicalSha256(calendarOperationInput),
               resultSha256: hash("calendar tool result"),
               success: true,
             },
@@ -741,12 +732,14 @@ describe("deriveProviderQualification", () => {
     });
   });
 
-  it("qualifies a no-effect interval ending at its single referenced stage", () => {
+  it("withholds phase-dependent publication when the signed evidence only identifies an arbitrary tool stage", () => {
     const input = noEffectFixture(true);
-    expect(deriveProviderQualification(input).qualification).toEqual({
-      status: "qualified",
-      publishable: true,
-      reasons: [],
+    expect(deriveProviderQualification(input).qualification).toMatchObject({
+      status: "unqualified",
+      publishable: false,
+      reasons: expect.arrayContaining([
+        "observation-contract:calendar-no-effect:phase-evidence-unavailable",
+      ]),
     });
   });
 

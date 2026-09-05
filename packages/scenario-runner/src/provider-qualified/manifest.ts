@@ -527,6 +527,12 @@ function validateScenarioShape(scenario: ScenarioDefinition): void {
   if (scenario.executionProfile !== "provider-qualified") {
     fail("scenario.executionProfile", 'must be "provider-qualified"');
   }
+  if (scenario.evidenceScope !== "provider-certification") {
+    fail(
+      "scenario.evidenceScope",
+      'must be explicitly "provider-certification"',
+    );
+  }
   if (scenario.lane !== "live-only") {
     fail("scenario.lane", 'must be explicitly "live-only"');
   }
