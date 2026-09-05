@@ -116,13 +116,23 @@ The isolated agent also has a deliberately ambiguous `User` display alias; the
 tea preference must still be attributed to the actual owner, never the agent.
 
 ```bash
-# Use an already configured live provider key. Cerebras is selected through
-# the runner's existing OpenAI-compatible provider adapter.
+# Use a Cerebras-only test environment with a resolved CEREBRAS_API_KEY.
+# A vault:// reference is not an API credential. Automatic provider discovery
+# selects the OpenAI-compatible adapter; --provider openai instead asserts
+# that the endpoint is OpenAI and rejects a Cerebras endpoint.
+OPENAI_BASE_URL=https://api.cerebras.ai/v1 \
+OPENAI_SMALL_MODEL=qwen-3.8-27b OPENAI_LARGE_MODEL=qwen-3.8-27b \
+CEREBRAS_JUDGE_MODEL=qwen-3.8-27b \
 bun --conditions eliza-source packages/scenario-runner/src/cli.ts run \
   packages/test/scenarios/conversation-quality \
-  --scenario convq.continuous-conversation --provider openai \
+  --scenario convq.continuous-conversation \
   --report /tmp/eliza-continuous-conversation.json
 ```
+
+This command uses the same model family for acting and judging, not an
+independent-model quality assessment. Inspect the trajectory and mechanical
+checks alongside the judge score. The author filter in the database check is
+`authorEntityIds`; `entityId` establishes access context, not row authorship.
 
 This in-process scenario does **not** prove UI routing, reload restoration,
 semantic/vector retrieval, graph extraction, physical voice, or VPS/Pixel
