@@ -139,7 +139,7 @@ describe("TodosView — states", () => {
         fetchers: makeFetchers({ fetchTodos: async () => ({ todos: [] }) }),
       }),
     );
-    await screen.findByText("None");
+    await screen.findByText("No todos yet");
     expect(screen.queryByText("Overdue task")).toBeNull();
   });
 
@@ -153,7 +153,7 @@ describe("TodosView — states", () => {
         }),
       }),
     );
-    await screen.findByText("None");
+    await screen.findByText("No todos yet");
     expect(screen.queryByText("Done")).toBeNull();
   });
 
@@ -163,7 +163,7 @@ describe("TodosView — states", () => {
         fetchers: makeFetchers({ fetchTodos: async () => ({ todos: [] }) }),
       }),
     );
-    await screen.findByText("None");
+    await screen.findByText("No todos yet");
     fireEvent.click(agent("add"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
@@ -251,7 +251,7 @@ describe("TodosView — proactive overdue line", () => {
   it("surfaces one quiet line when active todos are past due", async () => {
     render(React.createElement(TodosView, { fetchers: makeFetchers() }));
     await screen.findByText("Overdue task");
-    expect(screen.getByText("1 todo is overdue.")).toBeTruthy();
+    expect(screen.getByText("1 overdue")).toBeTruthy();
   });
 
   it("pluralizes the overdue line for multiple past-due todos", async () => {
@@ -275,7 +275,7 @@ describe("TodosView — proactive overdue line", () => {
       }),
     );
     await screen.findByText("Late one");
-    expect(screen.getByText("2 todos are overdue.")).toBeTruthy();
+    expect(screen.getByText("2 overdue")).toBeTruthy();
   });
 
   it("renders no proactive line when nothing is overdue", async () => {

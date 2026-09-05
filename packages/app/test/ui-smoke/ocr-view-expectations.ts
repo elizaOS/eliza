@@ -245,7 +245,7 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["address book", "phone, or email", "search"],
   }),
   "plugin-focus-gui": expected({
-    requireAll: ["Idle"],
+    requireAll: ["No focus session active"],
   }),
   "plugin-calendar-gui": expected({
     requireAny: [

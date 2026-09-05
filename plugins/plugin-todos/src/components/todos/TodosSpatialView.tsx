@@ -14,7 +14,15 @@
  * fetches or computes — it displays the snapshot and dispatches actions.
  */
 
-import { Button, Card, HStack, List, Text, VStack } from "@elizaos/ui/spatial";
+import {
+  Button,
+  Card,
+  Divider,
+  HStack,
+  List,
+  Text,
+  VStack,
+} from "@elizaos/ui/spatial";
 
 export type LaneId = "today" | "upcoming" | "someday";
 
@@ -72,7 +80,7 @@ export function TodosSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1}>
+    <Card gap={1} padding={1} grow={1} shrink={0}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
           Loading
@@ -82,7 +90,7 @@ export function TodosSpatialView({
       ) : snapshot.state === "empty" ? (
         <TodosEmptyBody dispatch={dispatch} />
       ) : (
-        <TodosReadyBody snapshot={snapshot} />
+        <TodosReadyBody snapshot={snapshot} dispatch={dispatch} />
       )}
     </Card>
   );
@@ -116,46 +124,85 @@ function TodosEmptyBody({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <>
-      <Text bold>None</Text>
+    <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+      <Text bold align="center">
+        No todos yet
+      </Text>
+      <Text tone="muted" style="caption" align="center">
+        Add something you want Eliza to keep track of.
+      </Text>
       <HStack gap={1}>
         <Button agent="add" onPress={dispatch("add")}>
-          Add
+          Add todo
         </Button>
       </HStack>
-    </>
+    </VStack>
   );
 }
 
-function TodosReadyBody({ snapshot }: { snapshot: TodosSnapshot }) {
+function TodosReadyBody({
+  snapshot,
+  dispatch,
+}: {
+  snapshot: TodosSnapshot;
+  dispatch: (action: string) => () => void;
+}) {
+  const total = LANES.reduce(
+    (count, lane) => count + snapshot.lanes[lane.id].length,
+    0,
+  );
   return (
     <>
-      {snapshot.overdue > 0 ? (
-        <Text tone="warning" style="caption">
-          {snapshot.overdue === 1
-            ? "1 todo is overdue."
-            : `${snapshot.overdue} todos are overdue.`}
-        </Text>
-      ) : null}
-      {LANES.map((lane) => (
-        <Lane key={lane.id} lane={lane} todos={snapshot.lanes[lane.id]} />
+      <HStack gap={1} align="center">
+        <VStack gap={0} grow={1}>
+          <Text bold>{`${total} open`}</Text>
+          {snapshot.overdue > 0 ? (
+            <Text tone="warning" style="caption">
+              {snapshot.overdue === 1
+                ? "1 overdue"
+                : `${snapshot.overdue} overdue`}
+            </Text>
+          ) : null}
+        </VStack>
+        <Button agent="add" onPress={dispatch("add")}>
+          Add todo
+        </Button>
+      </HStack>
+      {LANES.map((lane, index) => (
+        <Lane
+          key={lane.id}
+          lane={lane}
+          todos={snapshot.lanes[lane.id]}
+          isLast={index === LANES.length - 1}
+        />
       ))}
     </>
   );
 }
 
-function Lane({ lane, todos }: { lane: LaneDef; todos: TodoCard[] }) {
+function Lane({
+  lane,
+  todos,
+  isLast,
+}: {
+  lane: LaneDef;
+  todos: TodoCard[];
+  isLast: boolean;
+}) {
   return (
-    <>
-      <Text style="caption" tone="muted">
-        {lane.label} ({todos.length})
-      </Text>
+    <VStack gap={1} padding={isLast ? undefined : { bottom: 2 }}>
+      <HStack gap={1} align="center">
+        <Text bold style="caption" wrap={false} shrink={0}>
+          {`${lane.label} (${todos.length})`}
+        </Text>
+        <Divider grow={1} />
+      </HStack>
       {todos.length > 0 ? (
         <List gap={0}>
           {todos.map((todo) => (
             <HStack
               key={todo.id}
-              gap={1}
+              gap={2}
               align="center"
               agent={`todo-${todo.id}`}
             >
@@ -176,6 +223,6 @@ function Lane({ lane, todos }: { lane: LaneDef; todos: TodoCard[] }) {
           ))}
         </List>
       ) : null}
-    </>
+    </VStack>
   );
 }
