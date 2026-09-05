@@ -294,6 +294,46 @@ function runTelegramAuthorityCanaryAdmission(
   };
 }
 
+function runCanonicalDeploySourceGuard(
+  overrides: Partial<{ sourceRef: string; targetEnvironment: string }> = {},
+): TelegramExecution {
+  const guard = namedStep(
+    parsedWorkflow.jobs?.["validate-deploy-source"],
+    "Reject feature refs targeting canonical environments",
+  );
+  if (!guard.run)
+    throw new Error("Missing executable canonical deploy source guard");
+
+  const result = Bun.spawnSync(["bash", "-c", guard.run], {
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      CERTIFIED_PRODUCTION_BASE_SHA: "",
+      CERTIFIED_RECOVERY_POLICY_SHA: "",
+      EFFECT_DIGEST: "",
+      EVENT_NAME: "workflow_dispatch",
+      FORCE: "false",
+      GITHUB_SHA: "0123456789012345678901234567890123456789",
+      PRODUCTION_BINDING_ONLY_RECOVERY: "false",
+      RUN_DEPLOYED_RENDERER_STAGING: "false",
+      SOURCE_REF: overrides.sourceRef ?? "refs/heads/develop",
+      SOURCE_SHA: "",
+      TARGET_ENVIRONMENT: overrides.targetEnvironment ?? "staging",
+      TELEGRAM_AUTHORITY_CANARY: "false",
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
+  return {
+    exitCode: result.exitCode,
+    githubOutput: "",
+    stderr: result.stderr.toString(),
+    stdout: result.stdout.toString(),
+    summary: "",
+  };
+}
+
 function assertNoPublicSurfaceLeak(
   execution: TelegramExecution,
   values: string[],
@@ -1031,6 +1071,41 @@ describe("homepage deployment workflow", () => {
       expect(execution.stderr, invalid.label).toContain(
         "Telegram runtime authority was not proven for the selected protected Environment; re-run all jobs",
       );
+    }
+  });
+
+  it("admits only the canonical ref for each environment", () => {
+    // This pairing is the only thing standing between "operator selected
+    // staging" and a production deploy: `release` routes on
+    // `github.ref == 'refs/heads/main'` as well as the environment input, so a
+    // staging dispatch admitted from main would resolve target_environment to
+    // production.
+    for (const valid of [
+      { sourceRef: "refs/heads/develop", targetEnvironment: "staging" },
+      { sourceRef: "refs/heads/main", targetEnvironment: "production" },
+    ]) {
+      const execution = runCanonicalDeploySourceGuard(valid);
+      expect(execution.exitCode, JSON.stringify(valid)).toBe(0);
+    }
+
+    for (const invalid of [
+      { sourceRef: "refs/heads/main", targetEnvironment: "staging" },
+      { sourceRef: "refs/heads/develop", targetEnvironment: "production" },
+      {
+        sourceRef: "refs/heads/feature/anything",
+        targetEnvironment: "staging",
+      },
+      {
+        sourceRef: "refs/heads/feature/anything",
+        targetEnvironment: "production",
+      },
+    ]) {
+      const execution = runCanonicalDeploySourceGuard(invalid);
+      expect(execution.exitCode, JSON.stringify(invalid)).toBe(1);
+      expect(
+        `${execution.stdout}\n${execution.stderr}`,
+        JSON.stringify(invalid),
+      ).toContain("deploys must run from");
     }
   });
 
