@@ -8264,6 +8264,39 @@ function collectPlannerTools(
 	];
 }
 
+export type UmbrellaPlannerBudgetDecision =
+	| "under-dispatch-budget"
+	| "smaller-than-complete-surface"
+	| "not-smaller";
+
+/**
+ * Decide whether the umbrella-parent request replaces the current planner
+ * request. The dispatch threshold compares a utf8-upper-bound ESTIMATE (one
+ * token per byte) against the model window, and the provider's real count runs
+ * far below it (190,732 tokens for a surface this estimator put at 506,107), so
+ * an umbrella that misses the estimate routinely fits the real window. Both
+ * requests are measured with the same upper bound, so a smaller umbrella
+ * estimate is a strictly smaller request: keeping the larger complete surface
+ * instead fails whenever the umbrella would fail and also whenever it would not
+ * (the provider rejects the larger request and the turn ends in the typed
+ * overflow apology). The umbrella keeps every authorized parent, and the
+ * provider boundary in planner-loop.ts remains the ground-truth backstop.
+ */
+export function decideUmbrellaPlannerBudget(args: {
+	umbrella: { estimatedInputTokens: number; dispatchThresholdTokens: number };
+	current: { estimatedInputTokens: number };
+}): UmbrellaPlannerBudgetDecision {
+	if (
+		args.umbrella.estimatedInputTokens <= args.umbrella.dispatchThresholdTokens
+	) {
+		return "under-dispatch-budget";
+	}
+	if (args.umbrella.estimatedInputTokens < args.current.estimatedInputTokens) {
+		return "smaller-than-complete-surface";
+	}
+	return "not-smaller";
+}
+
 /**
  * Preserve every authorized umbrella parent while removing duplicate promoted
  * child schemas from an oversized native-tool request. Every child remains
@@ -10598,10 +10631,22 @@ export async function runV5MessageRuntimeStage1(args: {
 						tools: umbrellaTools.length > 0 ? umbrellaTools : undefined,
 						codingMode: false,
 					});
-					if (
-						umbrellaBudget.estimatedInputTokens <=
-						umbrellaBudget.dispatchThresholdTokens
-					) {
+					const umbrellaDecision = decideUmbrellaPlannerBudget({
+						umbrella: umbrellaBudget,
+						current: effectivePlannerBudget,
+					});
+					if (umbrellaDecision === "not-smaller") {
+						args.runtime.logger.warn(
+							{
+								estimatedInputTokens: umbrellaBudget.estimatedInputTokens,
+								dispatchThresholdTokens: umbrellaBudget.dispatchThresholdTokens,
+								currentEstimatedInputTokens:
+									effectivePlannerBudget.estimatedInputTokens,
+								parentToolCount: umbrellaTools.length,
+							},
+							"[SERVICE:MESSAGE] Complete umbrella capability still exceeds the planner dispatch budget",
+						);
+					} else {
 						budgetedPlannerContextWithDecision = umbrellaContextWithDecision;
 						plannerTools = umbrellaTools;
 						effectivePlannerBudget = umbrellaBudget;
@@ -10611,17 +10656,11 @@ export async function runV5MessageRuntimeStage1(args: {
 								dispatchThresholdTokens: umbrellaBudget.dispatchThresholdTokens,
 								parentToolCount: umbrellaTools.length,
 								authorizedActionCount: exposedPlannerActions.length,
+								decision: umbrellaDecision,
 							},
-							"[SERVICE:MESSAGE] Planner retained complete umbrella capability under the dispatch budget",
-						);
-					} else {
-						args.runtime.logger.warn(
-							{
-								estimatedInputTokens: umbrellaBudget.estimatedInputTokens,
-								dispatchThresholdTokens: umbrellaBudget.dispatchThresholdTokens,
-								parentToolCount: umbrellaTools.length,
-							},
-							"[SERVICE:MESSAGE] Complete umbrella capability still exceeds the planner dispatch budget",
+							umbrellaDecision === "under-dispatch-budget"
+								? "[SERVICE:MESSAGE] Planner retained complete umbrella capability under the dispatch budget"
+								: "[SERVICE:MESSAGE] Planner retained complete umbrella capability above the conservative estimate as the smallest complete surface",
 						);
 					}
 				}
