@@ -60,7 +60,10 @@ describe("currentTimeProvider", () => {
 		});
 	});
 
-	it("labels an agent setting as reference time when the sender zone is unknown", async () => {
+	it("presents the agent's configured TIMEZONE as the user's zone when no device zone exists", async () => {
+		// Live 2026-09-05: "User timezone: unknown" made the planner emit UTC
+		// day bounds and "Z" instants for a Pacific owner's calendar even though
+		// TIMEZONE=America/Los_Angeles was configured.
 		const result = await currentTimeProvider.get(
 			runtime("Europe/Paris"),
 			message(),
@@ -72,10 +75,11 @@ describe("currentTimeProvider", () => {
 			userTimeZone: null,
 			timeZoneOrigin: "agent-setting",
 		});
-		expect(result.text).toContain("User timezone: unknown");
-		expect(result.text).toContain("Agent reference time:");
-		expect(result.text).toContain("not the user's local time");
-		expect(result.text).not.toContain("User local time:");
+		expect(result.text).toContain("User timezone: Europe/Paris");
+		expect(result.text).toContain("configured timezone");
+		expect(result.text).toContain("User local time:");
+		expect(result.text).not.toContain("User timezone: unknown");
+		expect(result.text).not.toContain("Agent reference time:");
 	});
 
 	it("labels the host clock as server time when no trusted sender zone exists", async () => {

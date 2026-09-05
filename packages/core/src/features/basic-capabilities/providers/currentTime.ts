@@ -119,10 +119,22 @@ export const currentTimeProvider: Provider = {
 - User timezone: ${timeZone} (from the active device)
 - ISO (UTC): ${isoTimestamp}
 The local time above is already the user's wall-clock time. State it as-is; do not perform timezone arithmetic.`
-				: `# Current Time
+				: origin === "agent-setting"
+					? // The operator configured TIMEZONE for this agent: it is the owner's
+						// zone. Live 2026-09-05 the "unknown" wording made the planner emit
+						// UTC day bounds and "Z" instants for a Pacific owner's calendar.
+						`# Current Time
+- User local time: ${humanReadable}
+- Date: ${dateOnly}
+- Time: ${timeOnly} ${timeZone}
+- Day: ${dayOfWeek}
+- User timezone: ${timeZone} (the agent's configured timezone; treat it as the user's zone unless the user states another)
+- ISO (UTC): ${isoTimestamp}
+The local time above is the user's wall-clock time in that zone. State it as-is; do not perform timezone arithmetic.`
+					: `# Current Time
 - User timezone: unknown (do not guess; ask when the user's local time matters)
-- ${origin === "agent-setting" ? "Agent reference" : "Server"} time: ${humanReadable}
-- ${origin === "agent-setting" ? "Agent" : "Server"} timezone: ${timeZone}
+- Server time: ${humanReadable}
+- Server timezone: ${timeZone}
 - ISO (UTC): ${isoTimestamp}
 The reference clock above is not the user's local time. Do not present it as user-local or perform timezone arithmetic.`;
 

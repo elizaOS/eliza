@@ -57,6 +57,16 @@ const spec = requireProviderSpec("FACTS");
  */
 const CURRENT_DECAY_DAYS = 14;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+/**
+ * A room-pool `current` fact about ANOTHER participant stops being "currently
+ * happening" after one decay constant. Live 2026-09-05: 107 such lines dated
+ * Aug 11–24 (AGI debates, shared links from other Discord channels) rendered
+ * in every Stage-1, planner and evaluator call for a calendar request. Lapsed
+ * items are summarized by count and date range instead of listed; the speaker's
+ * own facts never lapse here, and the stored rows are untouched and remain
+ * recallable through the memory tools.
+ */
+const ROOM_CURRENT_LAPSE_MS = CURRENT_DECAY_DAYS * MS_PER_DAY;
 
 const DEFAULT_FACT_CONFIDENCE = 0.6;
 
@@ -516,7 +526,13 @@ const factsProvider: Provider = {
 			);
 			const roomDurable = durableFacts.filter((m) => !isAboutSender(m));
 			const senderCurrent = currentFacts.filter(isAboutSender);
-			const roomCurrent = currentFacts.filter((m) => !isAboutSender(m));
+			const roomCurrentAll = currentFacts.filter((m) => !isAboutSender(m));
+			const isLapsedRoomCurrent = (memory: Memory): boolean => {
+				const ts = readEffectiveTimestampMs(memory);
+				return ts !== null && nowMs - ts > ROOM_CURRENT_LAPSE_MS;
+			};
+			const roomCurrent = roomCurrentAll.filter((m) => !isLapsedRoomCurrent(m));
+			const roomCurrentLapsed = roomCurrentAll.filter(isLapsedRoomCurrent);
 
 			const sections: string[] = [];
 			if (senderPreferences.length > 0) {
@@ -544,6 +560,19 @@ const factsProvider: Provider = {
 			if (roomCurrent.length > 0) {
 				sections.push(
 					`What's currently happening in this room:\n${formatLines(roomCurrent, "current")}`,
+				);
+			}
+			if (roomCurrentLapsed.length > 0) {
+				const stamps = roomCurrentLapsed
+					.map((memory) => readEffectiveTimestampMs(memory))
+					.filter((ts): ts is number => ts !== null)
+					.sort((left, right) => left - right);
+				const range =
+					stamps.length > 0
+						? ` (${new Date(stamps[0] as number).toISOString().slice(0, 10)} to ${new Date(stamps[stamps.length - 1] as number).toISOString().slice(0, 10)})`
+						: "";
+				sections.push(
+					`Older observations about other participants: ${roomCurrentLapsed.length} stored item${roomCurrentLapsed.length === 1 ? "" : "s"}${range} are no longer current and are not listed here; the memory tools can recall them on request.`,
 				);
 			}
 

@@ -944,3 +944,85 @@ describe("factsProvider semantic union (Grove/Zcash replay)", () => {
 		expect(result.text).toContain("Zcash core dev");
 	});
 });
+
+describe("factsProvider room-pool currency", () => {
+	// Live 2026-09-05: 107 "currently happening in this room" lines dated
+	// Aug 11–24 about other participants rendered in every model call of a
+	// calendar turn. Lapsed room observations are summarized; the speaker's own
+	// facts and recent room facts still render in full, and nothing is removed
+	// from the returned data.
+	const DAY_MS = 24 * 60 * 60 * 1000;
+
+	it("summarizes lapsed current facts about other participants and keeps the speaker's own", async () => {
+		const now = Date.now();
+		const stale = now - 20 * DAY_MS;
+		const fresh = now - 2 * DAY_MS;
+		const roomFacts = [
+			memory(
+				"room-stale-1",
+				"argues that unbounded knowledge does not disqualify AGI",
+				{ kind: "current", category: "uncategorized" },
+				stale,
+				otherEntityId,
+			),
+			memory(
+				"room-stale-2",
+				"shared a link about pancake sorting",
+				{ kind: "current", category: "uncategorized" },
+				stale,
+				otherEntityId,
+			),
+			memory(
+				"room-fresh",
+				"is travelling to Lisbon this week",
+				{ kind: "current", category: "uncategorized" },
+				fresh,
+				otherEntityId,
+			),
+		];
+		const senderStale = memory(
+			"sender-stale",
+			"is training for a marathon",
+			{ kind: "current", category: "uncategorized" },
+			stale,
+		);
+		const runtime = makeRuntime({
+			roomFacts: [...roomFacts, senderStale],
+			entityFacts: [senderStale],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "what's new?", { source: "test" }),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("is travelling to Lisbon this week");
+		expect(result.text).toContain("is training for a marathon");
+		expect(result.text).not.toContain("pancake sorting");
+		expect(result.text).not.toContain("disqualify AGI");
+		expect(result.text).toMatch(
+			/Older observations about other participants: 2 stored items \(\d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}\) are no longer current/,
+		);
+		const data = result.data as { currentFacts: Memory[] };
+		expect(data.currentFacts).toHaveLength(4);
+	});
+
+	it("keeps room current facts with unreadable timestamps listed rather than lapsing them", async () => {
+		const unknownStamp = memory(
+			"room-unknown",
+			"mentioned a conference in Oslo",
+			{ kind: "current", category: "uncategorized" },
+			Number.NaN,
+			otherEntityId,
+		);
+		const runtime = makeRuntime({ roomFacts: [unknownStamp], entityFacts: [] });
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "anything new?", { source: "test" }),
+			{ values: {}, data: {}, text: "" },
+		);
+		expect(result.text).toContain("mentioned a conference in Oslo");
+		expect(result.text).not.toContain("Older observations");
+	});
+});
