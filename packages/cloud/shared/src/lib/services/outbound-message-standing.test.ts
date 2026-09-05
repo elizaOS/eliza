@@ -122,7 +122,53 @@ const deniedStandingCases = [
     rows: [{ ...activeStandingRow, moderationStatus: "banned" }],
     reason: "moderation_blocked",
   },
+  {
+    // The moderation clause is a disjunction, and only its `banned` arm was
+    // covered: a row with a clean status and the violation count at the
+    // threshold is the only fixture that fails when the count is compared
+    // against a different number, or when that half of the clause is deleted
+    // outright.
+    name: "violation count at the threshold without a ban",
+    rows: [{ ...activeStandingRow, moderationStatus: "clean", moderationViolations: 5 }],
+    reason: "moderation_blocked",
+  },
 ] as const;
+
+const allowedModerationCases = [
+  // Below the threshold, and absent. Together with the denial row above these
+  // fix the comparison from both sides: without them the threshold can be
+  // lowered, and the `?? 0` default can be replaced by any blocking number,
+  // with nothing to notice.
+  { name: "one violation below the threshold", moderationViolations: 4 },
+  { name: "no recorded violation count", moderationViolations: null },
+] as const;
+
+for (const scenario of allowedModerationCases) {
+  test(`authoritative standing allows ${scenario.name}`, async () => {
+    cacheRead.mockResolvedValueOnce({ kind: "miss", backend: "cloudflare-kv" });
+    selectLimit.mockResolvedValueOnce([
+      {
+        ...activeStandingRow,
+        moderationStatus: "clean",
+        moderationViolations: scenario.moderationViolations,
+      },
+    ]);
+    const deferred: Promise<unknown>[] = [];
+
+    await expect(
+      resolveOutboundMessageStanding("org-1", "user-1", {
+        defer: (promise) => deferred.push(promise),
+      }),
+    ).resolves.toEqual({ allowed: true, source: "authoritative" });
+    expect(cacheWrite).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ decision: "allowed" }),
+      expect.any(Number),
+      expect.any(Object),
+    );
+    await Promise.all(deferred);
+  });
+}
 
 for (const scenario of deniedStandingCases) {
   test(`authoritative standing denies ${scenario.name}`, async () => {
