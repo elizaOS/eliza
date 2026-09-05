@@ -4,11 +4,13 @@
  */
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
-  type Eliza1TierId,
-  eliza1TierPublishStatus,
   FIRST_RUN_DEFAULT_MODEL_ID,
   MODEL_CATALOG,
 } from "./catalog";
+import {
+  isPublishedLocalModel,
+  type LocalModelCatalogEntry,
+} from "./catalog-policy";
 import { assessFit } from "./hardware";
 import type {
   CatalogModel,
@@ -221,14 +223,8 @@ function isLongContextModel(model: CatalogModel): boolean {
   );
 }
 
-function publishStatusFor(model: CatalogModel): "published" | "pending" {
-  return (
-    model.publishStatus ?? eliza1TierPublishStatus(model.id as Eliza1TierId)
-  );
-}
-
 function isPublishedCatalogTier(model: CatalogModel): boolean {
-  return publishStatusFor(model) === "published";
+  return isPublishedLocalModel(model as unknown as LocalModelCatalogEntry);
 }
 
 function fallbackCandidates(

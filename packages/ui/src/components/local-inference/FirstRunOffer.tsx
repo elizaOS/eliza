@@ -12,9 +12,9 @@ import type {
   InstalledModel,
 } from "../../api/client-local-inference";
 import {
-  type Eliza1TierId,
-  eliza1TierPublishStatus,
-} from "../../services/local-inference/catalog";
+  isPublishedLocalModel,
+  type LocalModelCatalogEntry,
+} from "../../services/local-inference/catalog-policy";
 import { selectRecommendedModels } from "../../services/local-inference/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
@@ -125,8 +125,7 @@ function pickRecommended(
       (model) =>
         model.id.startsWith("eliza-1-") &&
         !findInstalled(model, installed) &&
-        (model.publishStatus ??
-          eliza1TierPublishStatus(model.id as Eliza1TierId)) === "published",
+        isPublishedLocalModel(model as unknown as LocalModelCatalogEntry),
     ) ?? null
   );
 }

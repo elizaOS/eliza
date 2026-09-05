@@ -6,8 +6,8 @@
  * render a distinct unavailable state without download buttons when none exist (#30650).
  */
 
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   CatalogModel,
   HardwareProbe,
@@ -48,6 +48,8 @@ const appleSilicon24Gb: HardwareProbe = {
 };
 
 describe("FirstRunOffer", () => {
+  afterEach(cleanup);
+
   it("recommends the published 4B model and enables download on 24 GB Apple Silicon", () => {
     const catalog: CatalogModel[] = [
       makeCatalogModel("eliza-1-2b", { minRamGb: 4, sizeGb: 1.5 }),
@@ -68,7 +70,7 @@ describe("FirstRunOffer", () => {
     expect(screen.getByText("Local model required")).toBeTruthy();
     expect(
       screen.getByText(
-        /Download the default local model \(Eliza-1 4B\) to run chat on this device\./,
+        /Download the default local model \(eliza-1-4b\) to run chat on this device\./,
       ),
     ).toBeTruthy();
     expect(
@@ -80,6 +82,33 @@ describe("FirstRunOffer", () => {
     render(
       <FirstRunOffer
         catalog={[]}
+        installed={[]}
+        downloads={[]}
+        hardware={appleSilicon24Gb}
+        onDownload={vi.fn()}
+        busy={false}
+      />,
+    );
+
+    expect(screen.getByText("Local model required")).toBeTruthy();
+    expect(
+      screen.getByText("No local chat model is available on this device."),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("shows unavailable state when only pending models exist in catalog", () => {
+    const catalog: CatalogModel[] = [
+      makeCatalogModel("eliza-1-9b", {
+        minRamGb: 14,
+        sizeGb: 5.5,
+        publishStatus: "pending",
+      }),
+    ];
+
+    render(
+      <FirstRunOffer
+        catalog={catalog}
         installed={[]}
         downloads={[]}
         hardware={appleSilicon24Gb}
