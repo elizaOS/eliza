@@ -38,12 +38,27 @@ const blooioValues: Record<(typeof blooioNames)[number], string> = {
   ELIZA_APP_BLOOIO_PHONE_NUMBER: "+15555550200",
   ELIZA_APP_BLOOIO_WEBHOOK_SECRET: "railway-webhook-private-canary",
 };
-const telegramValues = {
-  ELIZA_APP_TELEGRAM_BOT_ID: "123456789",
-  ELIZA_APP_TELEGRAM_BOT_USERNAME: "eliza_fixture_bot",
-  ELIZA_APP_TELEGRAM_BOT_TOKEN: "telegram-token-private-canary",
-  ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "telegram-webhook-private-canary",
+const telegramNames = [
+  "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+  "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+] as const;
+const telegramValues: Record<(typeof telegramNames)[number], string> = {
+  ELIZA_APP_TELEGRAM_BOT_TOKEN: "railway-telegram-token-private-canary",
+  ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "railway-telegram-webhook-private-canary",
+};
+const expectedTelegramConsumerValues = {
+  TELEGRAM_BOT_TOKEN: "railway-telegram-token-private-canary",
+  TELEGRAM_WEBHOOK_SECRET: "railway-telegram-webhook-private-canary",
 } as const;
+const protectedNames = [...blooioNames, ...telegramNames] as const;
+const protectedValues = { ...blooioValues, ...telegramValues };
+
+function protectedFamily(
+  name: (typeof protectedNames)[number],
+): "Blooio" | "Telegram" {
+  return name.startsWith("ELIZA_APP_TELEGRAM_") ? "Telegram" : "Blooio";
+}
+
 interface WorkflowStep {
   env?: Record<string, string>;
   id?: string;
@@ -165,6 +180,7 @@ function verifyRailwayVariableInventory(
   target: "staging" | "production",
   overrides: Record<string, string | undefined> = {},
   workerOverrides: Record<string, string | undefined> = {},
+  verification = step("Verify canonical Railway variables and sensitive names"),
 ): ReturnType<typeof Bun.spawnSync> {
   const fixtureRoot = mkdtempSync(join(tmpdir(), "gateway-webhook-vars-"));
   const binRoot = join(fixtureRoot, "bin");
@@ -175,11 +191,15 @@ function verifyRailwayVariableInventory(
           ELIZA_CLOUD_URL: "https://api-staging.eliza.app",
           AGENT_ROUTER_ORIGIN_HOST: "eliza-staging-1.eliza.app",
           ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud-staging.eliza.app",
+          ELIZA_APP_TELEGRAM_BOT_ID: "1111111111",
+          ELIZA_APP_TELEGRAM_BOT_USERNAME: "eliza_staging_bot",
         }
       : {
           ELIZA_CLOUD_URL: "https://api.eliza.app",
           AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.eliza.app",
           ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+          ELIZA_APP_TELEGRAM_BOT_ID: "2222222222",
+          ELIZA_APP_TELEGRAM_BOT_USERNAME: "eliza_production_bot",
         };
   const variables: Record<string, string | undefined> = {
     ...canonical,
@@ -188,23 +208,22 @@ function verifyRailwayVariableInventory(
     AGENT_SERVER_SHARED_SECRET: "server-private-canary",
     ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "forwarder-private-canary",
     REDIS_URL: "redis-private-canary",
-    ...blooioValues,
-    ...telegramValues,
+    ...protectedValues,
     ...overrides,
   };
   // The Worker side receives these as GitHub Environment secrets; by default
   // they agree with Railway, so only an explicit override models divergence.
   const workerEnvironment: Record<string, string> = {};
-  for (const name of blooioNames) {
+  for (const name of protectedNames) {
+    const workerName = `WORKER_${name}`;
+    if (
+      verification.env?.[workerName] !== githubExpression(`secrets.${name}`)
+    ) {
+      continue;
+    }
     const value =
-      name in workerOverrides ? workerOverrides[name] : blooioValues[name];
-    if (value !== undefined) workerEnvironment[`WORKER_${name}`] = value;
-  }
-  for (const name of [
-    "ELIZA_APP_TELEGRAM_BOT_TOKEN",
-    "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
-  ] as const) {
-    workerEnvironment[`WORKER_${name}`] = telegramValues[name];
+      name in workerOverrides ? workerOverrides[name] : protectedValues[name];
+    if (value !== undefined) workerEnvironment[workerName] = value;
   }
   writeFileSync(
     join(binRoot, "railway"),
@@ -228,21 +247,55 @@ fi
 exit 98
 `,
   );
-  writeFileSync(join(binRoot, "node"), "#!/bin/sh\nexit 0\n");
+  writeFileSync(
+    join(binRoot, "node"),
+    `#!/bin/sh
+set -eu
+if [ "$1" = "packages/cloud/scripts/verify-telegram-bot-identity.mjs" ] &&
+   [ "\${TELEGRAM_BOT_TOKEN:-}" = "$EXPECTED_TELEGRAM_BOT_TOKEN_FIXTURE" ] &&
+   [ "\${TELEGRAM_WEBHOOK_SECRET:-}" = "$EXPECTED_TELEGRAM_WEBHOOK_SECRET_FIXTURE" ] &&
+   [ "\${TELEGRAM_EXPECTED_BOT_ID:-}" = "$EXPECTED_TELEGRAM_BOT_ID_FIXTURE" ] &&
+   [ "\${TELEGRAM_EXPECTED_BOT_USERNAME:-}" = "$EXPECTED_TELEGRAM_BOT_USERNAME_FIXTURE" ] &&
+   [ "$TELEGRAM_ATTESTATION_CONTEXT" = "$TARGET_ENVIRONMENT" ]; then
+  exit 0
+fi
+printf '%s\n' "::error::Telegram identity attestation failed for $TARGET_ENVIRONMENT (not_configured)" >&2
+exit 1
+`,
+  );
   chmodSync(join(binRoot, "railway"), 0o755);
   chmodSync(join(binRoot, "shred"), 0o755);
   chmodSync(join(binRoot, "node"), 0o755);
+  const inheritedEnvironment = { ...Bun.env };
+  for (const name of [
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_WEBHOOK_SECRET",
+    "TELEGRAM_EXPECTED_BOT_ID",
+    "TELEGRAM_EXPECTED_BOT_USERNAME",
+    "TELEGRAM_ATTESTATION_CONTEXT",
+    "EXPECTED_TELEGRAM_BOT_ID_FIXTURE",
+    "EXPECTED_TELEGRAM_BOT_USERNAME_FIXTURE",
+    "EXPECTED_TELEGRAM_BOT_TOKEN_FIXTURE",
+    "EXPECTED_TELEGRAM_WEBHOOK_SECRET_FIXTURE",
+    ...protectedNames.map((name) => `WORKER_${name}`),
+  ]) {
+    delete inheritedEnvironment[name];
+  }
 
   try {
-    const verification = step(
-      "Verify canonical Railway variables and sensitive names",
-    );
     return Bun.spawnSync(["bash", "-c", verification.run ?? ""], {
       env: {
-        ...process.env,
+        ...inheritedEnvironment,
         EXPECTED_AGENT_BASE_DOMAIN: canonical.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
         EXPECTED_CLOUD_URL: canonical.ELIZA_CLOUD_URL,
         EXPECTED_ROUTER_ORIGIN: canonical.AGENT_ROUTER_ORIGIN_HOST,
+        EXPECTED_TELEGRAM_BOT_ID_FIXTURE: canonical.ELIZA_APP_TELEGRAM_BOT_ID,
+        EXPECTED_TELEGRAM_BOT_USERNAME_FIXTURE:
+          canonical.ELIZA_APP_TELEGRAM_BOT_USERNAME,
+        EXPECTED_TELEGRAM_BOT_TOKEN_FIXTURE:
+          expectedTelegramConsumerValues.TELEGRAM_BOT_TOKEN,
+        EXPECTED_TELEGRAM_WEBHOOK_SECRET_FIXTURE:
+          expectedTelegramConsumerValues.TELEGRAM_WEBHOOK_SECRET,
         PATH: `${binRoot}:${process.env.PATH ?? ""}`,
         RAILWAY_ENVIRONMENT_ID: "22222222-2222-4222-8222-222222222222",
         RAILWAY_PROJECT_ID: "11111111-1111-4111-8111-111111111111",
@@ -250,9 +303,9 @@ exit 98
         RAILWAY_VARIABLES_FIXTURE: JSON.stringify(variables),
         RUNNER_TEMP: fixtureRoot,
         TARGET_ENVIRONMENT: target,
-        TELEGRAM_EXPECTED_BOT_ID: telegramValues.ELIZA_APP_TELEGRAM_BOT_ID,
+        TELEGRAM_EXPECTED_BOT_ID: canonical.ELIZA_APP_TELEGRAM_BOT_ID,
         TELEGRAM_EXPECTED_BOT_USERNAME:
-          telegramValues.ELIZA_APP_TELEGRAM_BOT_USERNAME,
+          canonical.ELIZA_APP_TELEGRAM_BOT_USERNAME,
         ...workerEnvironment,
       },
       stderr: "pipe",
@@ -301,14 +354,22 @@ function assertExactForwarderAuthReadinessProbe(run: string): void {
     readiness: '.status == "enforced"',
     project: '.project == "eliza-app"',
   } as const;
-  const routeStart = run.indexOf(required.route);
-  const routeEnd = run.indexOf("telegram_probe_path=", routeStart);
-  if (routeStart < 0 || routeEnd < 0) {
+  const forwarderBlockStart = run.indexOf(
+    'forwarder_probe_path="$RUNNER_TEMP/gateway-webhook-forwarder-auth-readiness.json"',
+  );
+  if (forwarderBlockStart < 0) {
     throw new Error("forwarder readiness route contract drifted");
   }
-  const forwarderProbe = run.slice(routeStart, routeEnd);
+  const forwarderBlockEnd = run.indexOf(
+    'telegram_probe_path="$RUNNER_TEMP/gateway-webhook-telegram-identity-readiness.json"',
+    forwarderBlockStart,
+  );
+  if (forwarderBlockEnd < 0) {
+    throw new Error("forwarder readiness block boundary drifted");
+  }
+  const forwarderBlock = run.slice(forwarderBlockStart, forwarderBlockEnd);
   for (const [contract, fragment] of Object.entries(required)) {
-    if (!forwarderProbe.includes(fragment)) {
+    if (!forwarderBlock.includes(fragment)) {
       throw new Error(`forwarder readiness ${contract} contract drifted`);
     }
   }
@@ -323,7 +384,8 @@ function assertExactForwarderAuthReadinessProbe(run: string): void {
     }
   }
   if (
-    run.indexOf("assert_active_deployment after") < run.indexOf(required.route)
+    run.indexOf("assert_active_deployment after") <
+    run.indexOf(required.route, forwarderBlockStart)
   ) {
     throw new Error("forwarder readiness active-deployment recheck drifted");
   }
@@ -501,7 +563,151 @@ describe("protected gateway-webhook deployment workflow", () => {
     expect(source).not.toContain('echo "$RAILWAY_TOKEN"');
   });
 
-  test("requires the complete protected-environment Blooio set", () => {
+  test("rejects broken Telegram credential translation into the identity verifier", () => {
+    const variables = step(
+      "Verify canonical Railway variables and sensitive names",
+    );
+    for (const consumerName of [
+      "TELEGRAM_BOT_TOKEN",
+      "TELEGRAM_WEBHOOK_SECRET",
+    ]) {
+      const mutatedRun = (variables.run ?? "").replace(
+        `"${consumerName}=`,
+        `"BROKEN_${consumerName}=`,
+      );
+      expect(mutatedRun).not.toBe(variables.run);
+
+      const brokenTranslation = verifyRailwayVariableInventory(
+        "staging",
+        {},
+        {},
+        { ...variables, run: mutatedRun },
+      );
+      expect(brokenTranslation.exitCode).toBe(1);
+      expect(brokenTranslation.stderr.toString()).toContain(
+        "Telegram identity attestation failed for staging (not_configured)",
+      );
+    }
+
+    const wrongBotIdRun = (variables.run ?? "").replace(
+      '"TELEGRAM_EXPECTED_BOT_ID=$TELEGRAM_EXPECTED_BOT_ID"',
+      '"TELEGRAM_EXPECTED_BOT_ID=$TELEGRAM_EXPECTED_BOT_USERNAME"',
+    );
+    expect(wrongBotIdRun).not.toBe(variables.run);
+    const wrongBotIdTranslation = verifyRailwayVariableInventory(
+      "staging",
+      {},
+      {},
+      { ...variables, run: wrongBotIdRun },
+    );
+    expect(wrongBotIdTranslation.exitCode).toBe(1);
+    expect(wrongBotIdTranslation.stderr.toString()).toContain(
+      "Telegram identity attestation failed for staging (not_configured)",
+    );
+
+    const wrongBotUsernameRun = (variables.run ?? "").replace(
+      '"TELEGRAM_EXPECTED_BOT_USERNAME=$TELEGRAM_EXPECTED_BOT_USERNAME"',
+      '"TELEGRAM_EXPECTED_BOT_USERNAME=$TELEGRAM_EXPECTED_BOT_ID"',
+    );
+    expect(wrongBotUsernameRun).not.toBe(variables.run);
+    const wrongBotUsernameTranslation = verifyRailwayVariableInventory(
+      "staging",
+      {},
+      {},
+      { ...variables, run: wrongBotUsernameRun },
+    );
+    expect(wrongBotUsernameTranslation.exitCode).toBe(1);
+    expect(wrongBotUsernameTranslation.stderr.toString()).toContain(
+      "Telegram identity attestation failed for staging (not_configured)",
+    );
+
+    for (const [consumerName, correctSource, wrongSource] of [
+      [
+        "TELEGRAM_BOT_TOKEN",
+        "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+        "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+      ],
+      [
+        "TELEGRAM_WEBHOOK_SECRET",
+        "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+        "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+      ],
+    ] as const) {
+      const wrongSourceRun = (variables.run ?? "").replace(
+        `${consumerName}=\${railway_${correctSource}:-}`,
+        `${consumerName}=\${railway_${wrongSource}:-}`,
+      );
+      expect(wrongSourceRun).not.toBe(variables.run);
+      const wrongSourceTranslation = verifyRailwayVariableInventory(
+        "staging",
+        {},
+        {},
+        {
+          ...variables,
+          run: wrongSourceRun,
+        },
+      );
+      expect(wrongSourceTranslation.exitCode).toBe(1);
+      expect(wrongSourceTranslation.stderr.toString()).toContain(
+        "Telegram identity attestation failed for staging (not_configured)",
+      );
+    }
+  });
+
+  test("rejects broken Telegram Worker secret mappings", () => {
+    const variables = step(
+      "Verify canonical Railway variables and sensitive names",
+    );
+    const brokenMapping = verifyRailwayVariableInventory(
+      "staging",
+      {},
+      {},
+      {
+        ...variables,
+        env: {
+          ...variables.env,
+          WORKER_ELIZA_APP_TELEGRAM_BOT_TOKEN: githubExpression(
+            "secrets.WRONG_TELEGRAM_BOT_TOKEN",
+          ),
+        },
+      },
+    );
+    expect(brokenMapping.exitCode).toBe(1);
+    expect(
+      `${brokenMapping.stdout.toString()}${brokenMapping.stderr.toString()}`,
+    ).toContain(
+      "Required protected staging Telegram GitHub environment secret is absent or blank: ELIZA_APP_TELEGRAM_BOT_TOKEN",
+    );
+  });
+
+  test("ignores inherited protected Worker credentials", () => {
+    const name = "ELIZA_APP_TELEGRAM_BOT_TOKEN" as const;
+    const workerName = `WORKER_${name}`;
+    const inheritedValue = Bun.env[workerName];
+    Bun.env[workerName] = protectedValues[name];
+
+    try {
+      const missing = verifyRailwayVariableInventory(
+        "staging",
+        {},
+        { [name]: undefined },
+      );
+      expect(missing.exitCode).toBe(1);
+      expect(
+        `${missing.stdout.toString()}${missing.stderr.toString()}`,
+      ).toContain(
+        `Required protected staging Telegram GitHub environment secret is absent or blank: ${name}`,
+      );
+    } finally {
+      if (inheritedValue === undefined) {
+        delete Bun.env[workerName];
+      } else {
+        Bun.env[workerName] = inheritedValue;
+      }
+    }
+  });
+
+  test("requires the complete protected-environment credential set", () => {
     for (const target of ["staging", "production"] as const) {
       const complete = verifyRailwayVariableInventory(target);
       expect(complete.exitCode).toBe(0);
@@ -509,21 +715,27 @@ describe("protected gateway-webhook deployment workflow", () => {
         "required sensitive variable names are present",
       );
       const completeOutput = `${complete.stdout.toString()}${complete.stderr.toString()}`;
-      for (const value of Object.values(blooioValues)) {
+      for (const value of Object.values(protectedValues)) {
         expect(completeOutput).not.toContain(value);
       }
 
-      for (const name of blooioNames) {
+      for (const name of protectedNames) {
         for (const missingValue of [undefined, "", " \t "]) {
           const missing = verifyRailwayVariableInventory(target, {
             [name]: missingValue,
           });
-          expect(missing.exitCode).toBe(1);
           const output = `${missing.stdout.toString()}${missing.stderr.toString()}`;
-          expect(output).toContain(
-            `Required protected ${target} Blooio Railway variable name is absent or blank: ${name}`,
-          );
-          for (const value of Object.values(blooioValues)) {
+          expect(missing.exitCode).toBe(1);
+          if (protectedFamily(name) === "Blooio") {
+            expect(output).toContain(
+              `Required protected ${target} Blooio Railway variable name is absent or blank: ${name}`,
+            );
+          } else {
+            expect(output).toContain(
+              `Telegram identity attestation failed for ${target} (not_configured)`,
+            );
+          }
+          for (const value of Object.values(protectedValues)) {
             expect(output).not.toContain(value);
           }
         }
@@ -531,11 +743,11 @@ describe("protected gateway-webhook deployment workflow", () => {
     }
   }, 60_000);
 
-  test("requires protected Worker and Railway Blooio values to actually match", () => {
+  test("requires protected Worker and Railway credential values to actually match", () => {
     const variables = step(
       "Verify canonical Railway variables and sensitive names",
     );
-    for (const name of blooioNames) {
+    for (const name of protectedNames) {
       expect(variables.env?.[`WORKER_${name}`]).toBe(
         githubExpression(`secrets.${name}`),
       );
@@ -551,11 +763,14 @@ describe("protected gateway-webhook deployment workflow", () => {
 
     const workerValues = {
       ELIZA_APP_BLOOIO_API_KEY: "worker-api-key-private-canary",
-      ELIZA_APP_BLOOIO_PHONE_NUMBER: "+15555550999",
+      ELIZA_APP_BLOOIO_PHONE_NUMBER: "+155****0999",
       ELIZA_APP_BLOOIO_WEBHOOK_SECRET: "worker-webhook-private-canary",
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: "worker-telegram-token-private-canary",
+      ELIZA_APP_TELEGRAM_WEBHOOK_SECRET:
+        "worker-telegram-webhook-private-canary",
     } as const;
     const allSecretValues = [
-      ...Object.values(blooioValues),
+      ...Object.values(protectedValues),
       ...Object.values(workerValues),
     ];
 
@@ -565,8 +780,11 @@ describe("protected gateway-webhook deployment workflow", () => {
       expect(matched.stdout.toString()).toContain(
         `protected ${target} Blooio Worker/Railway value matches by salted digest`,
       );
+      expect(matched.stdout.toString()).toContain(
+        `protected ${target} Telegram credential pair, selected identity, and getMe attestation`,
+      );
 
-      for (const name of blooioNames) {
+      for (const name of protectedNames) {
         // A divergent-but-nonblank Worker secret is precisely the case a
         // names-only inventory accepts and a live webhook then rejects with 401.
         const divergent = verifyRailwayVariableInventory(
@@ -577,7 +795,7 @@ describe("protected gateway-webhook deployment workflow", () => {
         expect(divergent.exitCode).toBe(1);
         const divergentOutput = `${divergent.stdout.toString()}${divergent.stderr.toString()}`;
         expect(divergentOutput).toContain(
-          `Protected ${target} Blooio value differs between the Cloudflare Worker GitHub environment secret and the Railway variable: ${name}`,
+          `Protected ${target} ${protectedFamily(name)} value differs between the Cloudflare Worker GitHub environment secret and the Railway variable: ${name}`,
         );
         for (const value of allSecretValues) {
           expect(divergentOutput).not.toContain(value);
@@ -592,7 +810,7 @@ describe("protected gateway-webhook deployment workflow", () => {
           expect(absent.exitCode).toBe(1);
           const absentOutput = `${absent.stdout.toString()}${absent.stderr.toString()}`;
           expect(absentOutput).toContain(
-            `Required protected ${target} Blooio GitHub environment secret is absent or blank: ${name}`,
+            `Required protected ${target} ${protectedFamily(name)} GitHub environment secret is absent or blank: ${name}`,
           );
           for (const value of allSecretValues) {
             expect(absentOutput).not.toContain(value);
@@ -763,8 +981,16 @@ describe("protected gateway-webhook deployment workflow", () => {
     expect(() =>
       assertExactForwarderAuthReadinessProbe(
         verifyRun.replace(
-          "--max-time 15",
-          "--max-time 15 --header X-Eliza-Webhook-Forwarder-Secret:guess",
+          '--output "$forwarder_probe_path"',
+          '--header X-Eliza-Webhook-Forwarder-Secret:guess --output "$forwarder_probe_path"',
+        ),
+      ),
+    ).toThrow("forwarder readiness probe entered a forbidden path");
+    expect(() =>
+      assertExactForwarderAuthReadinessProbe(
+        verifyRun.replace(
+          '--output "$telegram_probe_path"',
+          '--request POST --output "$telegram_probe_path"',
         ),
       ),
     ).toThrow("forwarder readiness probe entered a forbidden path");
