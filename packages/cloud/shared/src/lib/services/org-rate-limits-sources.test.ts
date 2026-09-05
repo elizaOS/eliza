@@ -15,6 +15,7 @@ type RpmOverride = {
 let tierSourceCreditTotal: unknown = "0";
 let override: RpmOverride | undefined;
 let cacheWrites = 0;
+let cacheWrite: () => Promise<void>;
 
 mock.module("../../db/helpers", () => ({
   dbRead: {
@@ -36,6 +37,7 @@ mock.module("../cache/client", () => ({
   cache: {
     set: async () => {
       cacheWrites += 1;
+      await cacheWrite();
     },
     get: async () => null,
     getWithOutcome: async () => ({ kind: "miss" as const }),
@@ -56,6 +58,7 @@ beforeEach(() => {
   tierSourceCreditTotal = "0";
   override = undefined;
   cacheWrites = 0;
+  cacheWrite = async () => undefined;
 });
 
 describe("authoritative organization rate-limit tier reads", () => {
@@ -96,6 +99,23 @@ describe("authoritative organization rate-limit tier reads", () => {
       embeddingsRpm: 200,
       standardRpm: 60,
       strictRpm: 20,
+    });
+    expect(cacheWrites).toBe(0);
+  });
+
+  test.each([
+    ["never settles", () => new Promise<void>(() => undefined)],
+    ["rejects", () => Promise.reject(new Error("cache unavailable"))],
+  ])("source reads do not join a tier cache write that %s", async (_name, behavior) => {
+    tierSourceCreditTotal = "7.25";
+    cacheWrite = behavior;
+
+    await expect(readOrgTierFromSources("org-observation-only")).resolves.toEqual({
+      tierName: "paid",
+      completionsRpm: 120,
+      embeddingsRpm: 200,
+      standardRpm: 60,
+      strictRpm: 10,
     });
     expect(cacheWrites).toBe(0);
   });

@@ -342,6 +342,24 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
     expect(increment).toHaveBeenCalled();
   });
 
+  test("concurrent debounced usage observations start one repository update", async () => {
+    const update = Promise.withResolvers<void>();
+    const increment = track(
+      spyOn(apiKeysRepository, "incrementUsage").mockImplementation(async () => {
+        await update.promise;
+      }),
+    );
+    const keyId = "usage-concurrency-key";
+
+    const retained = apiKeysService.incrementUsageDebounced(keyId);
+    await expect(apiKeysService.incrementUsageDebounced(keyId)).resolves.toBeUndefined();
+    expect(increment).toHaveBeenCalledTimes(1);
+
+    update.reject(new Error("usage database unavailable"));
+    await expect(retained).rejects.toThrow("usage database unavailable");
+    expect(increment).toHaveBeenCalledTimes(1);
+  });
+
   test("default-key self-heal validates inputs and reports strict provisioner failures", async () => {
     await expect(apiKeysService.provisionDefaultApiKey("", MOBILE_ORG_ID)).rejects.toThrow(
       /invalid userid/i,
