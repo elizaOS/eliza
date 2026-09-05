@@ -173,6 +173,22 @@ describe("Qwen3.8 response-schema wire contract", () => {
     }
   );
 
+  it.each([false, true])(
+    "sends the strict schema for gemma-4-31b as well (stream=%s)",
+    async (stream) => {
+      // Live 2026-09-05: the second Cerebras bucket ran evaluator calls in
+      // json_object mode and answered with prose plus a fenced envelope.
+      expect(
+        await invoke({ model: "gemma-4-31b", schema: evaluatorSchema, stream, tools: [] })
+      ).toEqual(verdict);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].response_format).toEqual({
+        type: "json_schema",
+        json_schema: { name: "response", strict: true, schema: evaluatorSchema },
+      });
+    }
+  );
+
   it.each([
     ["another Cerebras model", { model: "gpt-oss-120b", schema: evaluatorSchema }],
     ["schema-less JSON", { responseFormat: { type: "json_object" as const } }],

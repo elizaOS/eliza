@@ -12,6 +12,7 @@ import { createServer, type Server } from "node:http";
 import { type ElizaError, type IAgentRuntime, logger, MAX_WELL_FORMED_VISITS } from "@elizaos/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models";
+import { __INTERNAL_resetRateLimitCooldowns as resetRateLimitCooldowns } from "../models/text";
 
 /** JSON.stringify only escapes surrogate code units when they are lone; a
  * well-formed body therefore contains no \ud800-\udfff escape at all. */
@@ -26,6 +27,7 @@ const captured: CapturedRequest[] = [];
 let server: Server;
 let baseUrl: string;
 let rateLimitRequestsRemaining = 0;
+let rateLimitRetryAfterHeader = "0.001";
 
 function startCaptureServer(): Promise<string> {
   server = createServer((request, response) => {
@@ -36,7 +38,10 @@ function startCaptureServer(): Promise<string> {
       captured.push({ url: request.url ?? "", bytes: Buffer.from(raw, "utf8") });
       if (rateLimitRequestsRemaining > 0) {
         rateLimitRequestsRemaining--;
-        response.writeHead(429, { "content-type": "application/json", "retry-after": "0.001" });
+        response.writeHead(429, {
+          "content-type": "application/json",
+          "retry-after": rateLimitRetryAfterHeader,
+        });
         response.end(
           JSON.stringify({ error: { message: "test rate limit", type: "rate_limit_error" } })
         );
@@ -109,6 +114,10 @@ afterAll(() => {
 beforeEach(() => {
   captured.length = 0;
   rateLimitRequestsRemaining = 0;
+  rateLimitRetryAfterHeader = "0.001";
+  // The per-model rate-limit cooldown is process-wide state; a bucket 429 in
+  // one case must not hold the model for the next.
+  resetRateLimitCooldowns();
   vi.stubEnv("OPENAI_API_KEY", "test-key");
   vi.stubEnv("OPENAI_BASE_URL", baseUrl);
   vi.stubEnv("OPENAI_SMALL_MODEL", "test-model");
@@ -143,8 +152,17 @@ describe("#18025: request bodies are well-formed strict JSON", () => {
     }
   });
 
+  // Retries are owned by the plugin's bounded transient lanes (generate: 3
+  // retries, both stream lanes: 5) and never by the AI SDK, which would honor a
+  // provider Retry-After of up to 60 s inside one model call (live 2026-09-05).
+  // The final error is the provider's own 429, so the runtime can fail over.
+  const LANE_ATTEMPTS: Record<string, number> = {
+    generate: 4,
+    "live-stream": 6,
+    "buffered-stream": 6,
+  };
   it.each(["generate", "live-stream", "buffered-stream"])(
-    "%s preserves the SDK's exhausted HTTP retry budget",
+    "%s makes one HTTP attempt per plugin-lane attempt on a burst 429 and surfaces the provider error",
     async (lane) => {
       rateLimitRequestsRemaining = Number.POSITIVE_INFINITY;
       vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", lane === "buffered-stream" ? "1" : "0");
@@ -160,10 +178,29 @@ describe("#18025: request bodies are well-formed strict JSON", () => {
         }
       };
       await expect(request()).rejects.toMatchObject({
-        name: "AI_RetryError",
-        reason: "maxRetriesExceeded",
+        name: "AI_APICallError",
+        statusCode: 429,
       });
-      expect(captured).toHaveLength(3);
+      expect(captured).toHaveLength(LANE_ATTEMPTS[lane]);
+    },
+    20_000
+  );
+
+  it.each(["generate", "buffered-stream"])(
+    "%s does not sleep on a per-minute-bucket 429 (Retry-After 60): one attempt, immediate provider error",
+    async (lane) => {
+      rateLimitRequestsRemaining = Number.POSITIVE_INFINITY;
+      rateLimitRetryAfterHeader = "60";
+      vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", lane === "buffered-stream" ? "1" : "0");
+      const startedAt = Date.now();
+      await expect(
+        handleTextSmall(buildRuntime(), {
+          prompt: "bucket exhausted probe",
+          stream: lane !== "generate",
+        })
+      ).rejects.toMatchObject({ name: "AI_APICallError", statusCode: 429 });
+      expect(captured).toHaveLength(1);
+      expect(Date.now() - startedAt).toBeLessThan(5_000);
     },
     20_000
   );
