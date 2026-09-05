@@ -3,7 +3,10 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { listManagedGoogleConnectorAccounts } from "@/lib/services/agent-google-connector";
+import {
+  initiateManagedGoogleConnection,
+  listManagedGoogleConnectorAccounts,
+} from "@/lib/services/agent-google-connector";
 import {
   AgentGoogleConnectorError,
   googleFetch,
@@ -108,6 +111,29 @@ app.get("/google/connections", async (c) => {
     side: "owner",
   });
   return c.json({ success: true, connections });
+});
+
+app.post("/google/connect", async (c) => {
+  const user = await outreachrDelegationService.authorize(
+    outreachrRegistration(c.env),
+    c.req.header("X-Outreachr-Client") ?? "",
+    c.req.header("Authorization")?.replace(/^Bearer /, "") ?? "",
+  );
+  const result = await initiateManagedGoogleConnection({
+    organizationId: user.organizationId,
+    userId: user.id,
+    side: "owner",
+    redirectUrl: "/auth/success?platform=google",
+    capabilities: [
+      "google.basic_identity",
+      "google.calendar.read",
+      "google.calendar.write",
+      "google.gmail.triage",
+      "google.gmail.send",
+      "google.gmail.manage",
+    ],
+  });
+  return c.json({ success: true, ...result });
 });
 
 app.post("/google/request", async (c) => {
