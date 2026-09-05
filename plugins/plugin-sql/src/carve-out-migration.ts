@@ -7,6 +7,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import { executeSql, sqlQuote as literal, type RuntimeDb } from "@elizaos/shared/db/raw-sql";
 
 export type CarveOutSqlExecutor = (statement: string) => Promise<Array<Record<string, unknown>>>;
 
@@ -16,9 +17,7 @@ export interface CarveOutDatabase {
   transaction<T>(operation: (execute: CarveOutSqlExecutor) => Promise<T>): Promise<T>;
 }
 
-type DrizzleExecutor = {
-  execute(query: unknown): Promise<unknown>;
-};
+type DrizzleExecutor = RuntimeDb;
 
 type DrizzleTransactionalDatabase = DrizzleExecutor & {
   transaction?<T>(operation: (transaction: DrizzleExecutor) => Promise<T>): Promise<T>;
@@ -32,10 +31,6 @@ const RECEIPT_SCHEMA = "app_eliza_migrations";
 const RECEIPT_TABLE = "carve_out_receipts";
 
 const SQL_IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
-
-function literal(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
 
 function firstValue(row: Record<string, unknown> | undefined): unknown {
   return row ? Object.values(row)[0] : undefined;
@@ -61,19 +56,6 @@ function countValue(row: Record<string, unknown> | undefined, key: string): numb
   return count;
 }
 
-function extractRows(result: unknown): Array<Record<string, unknown>> {
-  const rows =
-    result && typeof result === "object" && "rows" in result
-      ? (result as { rows: unknown }).rows
-      : result;
-  return Array.isArray(rows)
-    ? rows.filter(
-        (row): row is Record<string, unknown> =>
-          typeof row === "object" && row !== null && !Array.isArray(row)
-      )
-    : [];
-}
-
 /** Adapt a real Drizzle PostgreSQL/PGlite database without losing its transaction session. */
 export async function createDrizzleCarveOutDatabase(
   database: DrizzleTransactionalDatabase
@@ -88,11 +70,10 @@ export async function createDrizzleCarveOutDatabase(
   const transactionalDatabase = database as DrizzleExecutor & {
     transaction<T>(operation: (executor: DrizzleExecutor) => Promise<T>): Promise<T>;
   };
-  const { sql } = await import("drizzle-orm");
   const executeWith =
     (executor: DrizzleExecutor): CarveOutSqlExecutor =>
     async (statement) =>
-      extractRows(await executor.execute(sql.raw(statement)));
+      executeSql(executor, statement);
   return {
     execute: executeWith(database),
     transaction: (operation) =>

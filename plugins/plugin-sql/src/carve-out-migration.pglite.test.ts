@@ -1,14 +1,18 @@
 /**
  * Real PGlite coverage for carve-out projection certification across partially
- * populated targets, same-key collisions, and incomplete copies.
+ * populated targets, same-key collisions, incomplete copies, and real Drizzle
+ * transaction rollback after malformed adapter results.
  */
 
 import { PGlite } from "@electric-sql/pglite";
+import { RawSqlError, type RawSqlQuery, type RuntimeDb } from "@elizaos/shared/db/raw-sql";
+import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   assertCarveOutProjectionComplete,
   type CarveOutDatabase,
   type CarveOutSqlExecutor,
+  createDrizzleCarveOutDatabase,
   runCarveOutMigration,
 } from "./carve-out-migration.js";
 
@@ -143,4 +147,66 @@ describe("runCarveOutMigration transaction", () => {
     expect(copied).toEqual([]);
     expect(receipts).toEqual([]);
   }, 120_000);
+  it.each(["invalid envelope", "invalid row"])(
+    "rolls back real Drizzle mutation and receipt on %s",
+    async (fault) => {
+      const exec = await fixture();
+      const real = drizzle(database!);
+      const before = await exec("SELECT * FROM canonical_domain.items ORDER BY id");
+      let corruptNextResult = false;
+      let injectedResults = 0;
+      let observedInsideTransaction: unknown;
+      const adapter = await createDrizzleCarveOutDatabase({
+        execute: (query: RawSqlQuery) => real.execute(query),
+        transaction: <T>(operation: (executor: RuntimeDb) => Promise<T>) =>
+          real.transaction((transaction) =>
+            operation({
+              async execute(query) {
+                const result = await transaction.execute(query);
+                if (!corruptNextResult) return result;
+                corruptNextResult = false;
+                injectedResults += 1;
+                observedInsideTransaction = result.rows;
+                return fault === "invalid envelope"
+                  ? { rows: null }
+                  : { ...result, rows: [...result.rows, false] };
+              },
+            })
+          ),
+      });
+      const key = "test/strict-drizzle-result/v2";
+      const [outcome] = await Promise.allSettled([
+        runCarveOutMigration(adapter, {
+          key,
+          sourceTables: [{ schema: "legacy_domain", table: "items" }],
+          run: async (transactionExec) => {
+            await transactionExec(
+              "INSERT INTO canonical_domain.items VALUES ('transient', 'copied', NULL)"
+            );
+            corruptNextResult = true;
+            await transactionExec("SELECT id FROM canonical_domain.items WHERE id = 'transient'");
+            return "copied";
+          },
+          outcome: String,
+        }),
+      ]);
+      const after = await exec("SELECT * FROM canonical_domain.items ORDER BY id");
+      const receipts = await exec(`
+        SELECT status FROM app_eliza_migrations.carve_out_receipts
+         WHERE migration_key = '${key}'
+      `);
+
+      expect(injectedResults).toBe(1);
+      expect(observedInsideTransaction).toEqual([{ id: "transient" }]);
+      expect({ rows: after, receipts }).toEqual({ rows: before, receipts: [] });
+      expect(outcome).toMatchObject({
+        status: "rejected",
+        reason: { code: "SQL_RESULT_INVALID" },
+      });
+      if (outcome.status === "rejected") {
+        expect(outcome.reason).toBeInstanceOf(RawSqlError);
+      }
+    },
+    120_000
+  );
 });

@@ -4,12 +4,12 @@
  * the next workflow/reminder fire in the owner's local time zone.
  */
 
-import { parseIsoMs } from "@elizaos/plugin-health";
 import type {
   LifeOpsRegularityClass,
   LifeOpsWorkflowSchedule,
 } from "@elizaos/shared";
 import type { LifeOpsScheduleMergedStateRecord } from "./repository.js";
+import { parseIsoMs } from "./time-util.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "./time.js";
 
 const REGULARITY_RANK: Record<LifeOpsRegularityClass, number> = {

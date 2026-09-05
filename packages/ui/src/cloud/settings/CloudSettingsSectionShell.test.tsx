@@ -10,7 +10,7 @@ import {
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { useSetPageHeader } from "../../cloud-ui/components/layout";
 import { CloudSettingsSectionShell } from "./CloudSettingsSectionShell";
 
@@ -103,6 +103,12 @@ function BillingInvoiceNavigationProbe() {
     </div>
   );
 }
+
+// Resolve the real lazy route module before measuring navigation behavior.
+// The file-level billing and provider mocks also apply during this import.
+beforeAll(async () => {
+  await import("../billing/InvoiceDetailPage");
+}, 120_000);
 
 describe("CloudSettingsSectionShell", () => {
   afterEach(() => cleanup());

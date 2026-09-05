@@ -4,7 +4,6 @@
  * can be scheduled against "after you wake" rather than a fixed clock time.
  */
 
-import { parseIsoMs, roundConfidence } from "@elizaos/plugin-health";
 import type {
   LifeOpsAwakeProbability,
   LifeOpsCircadianState,
@@ -15,6 +14,7 @@ import type {
   LifeOpsScheduleInsight,
   LifeOpsScheduleRegularity,
 } from "@elizaos/shared";
+import { parseIsoMs, roundConfidence } from "./time-util.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,

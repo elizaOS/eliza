@@ -14,7 +14,6 @@ import type {
   SyncLifeOpsScheduleObservationInput,
   SyncLifeOpsScheduleObservationsRequest,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
-import { parseIsoMs, roundConfidence } from "@elizaos/plugin-health";
 import {
   asRecord,
   type LifeOpsAwakeProbability,
@@ -28,6 +27,7 @@ import {
 } from "@elizaos/shared";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
 import type { LifeOpsScheduleInsightRecord } from "./repository.js";
+import { parseIsoMs, roundConfidence } from "./time-util.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,

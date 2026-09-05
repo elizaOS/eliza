@@ -46,8 +46,6 @@ describe("AgentManager capacity", () => {
 
   test("rejects malformed capacity before opening Redis or listening", async () => {
     let child: ReturnType<typeof Bun.spawn> | undefined;
-    let deadline: ReturnType<typeof setTimeout> | undefined;
-    let timedOut = false;
 
     try {
       child = Bun.spawn(
@@ -66,12 +64,12 @@ describe("AgentManager capacity", () => {
           },
           stdout: "pipe",
           stderr: "pipe",
+          // Cold source imports share host CPU with the package suite. Bound
+          // the child separately so it can exit and drain before the test ends.
+          timeout: 20_000,
+          killSignal: "SIGKILL",
         },
       );
-      deadline = setTimeout(() => {
-        timedOut = true;
-        child?.kill();
-      }, 5_000);
       const [stdout, stderr, exitCode] = await Promise.all([
         new Response(child.stdout).text(),
         new Response(child.stderr).text(),
@@ -79,19 +77,18 @@ describe("AgentManager capacity", () => {
       ]);
       const output = `${stdout}${stderr}`;
 
-      expect(timedOut).toBe(false);
-      expect(exitCode).toBe(1);
+      expect(child.signalCode, output).toBeNull();
+      expect(exitCode, output).toBe(1);
       expect(output).toContain(
         "CAPACITY must be a canonical decimal integer from 1 to 200",
       );
       expect(output).not.toContain("[redis] using in-memory mock");
       expect(output).not.toContain("Agent-server listening");
     } finally {
-      if (deadline) clearTimeout(deadline);
       if (child?.exitCode === null) {
-        child.kill();
+        child.kill("SIGKILL");
         await child.exited;
       }
     }
-  });
+  }, 30_000);
 });
