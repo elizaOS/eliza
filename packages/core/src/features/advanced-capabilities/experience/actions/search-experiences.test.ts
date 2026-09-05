@@ -3,9 +3,11 @@
  * wrapped in core's external-content security envelope) driving the free-text
  * query fallback must never echo the envelope into the user-facing callback
  * text, and the machine-facing query fields stay single-line and
- * length-bounded. Deterministic — fake EXPERIENCE service, no model.
+ * length-bounded. Empty results must not terminate unrelated queued work.
+ * Deterministic — real action and planner loop, fake EXPERIENCE service and model.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { runPlannerLoop } from "../../../../runtime/planner-loop.ts";
 import { hardenIncomingUserMessage } from "../../../../security/incoming-message-security.ts";
 import type { Memory } from "../../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
@@ -42,6 +44,65 @@ function hardenedMessage(text: string): Memory {
 }
 
 describe("SEARCH_EXPERIENCES hardened-message fallback (envelope echo regression)", () => {
+	it("continues queued work after an empty search and lets the evaluator compose the answer", async () => {
+		const { runtime, queries } = makeRuntime();
+		const message = hardenedMessage(
+			"Search for QA ferry trip, then record the QA-only correction.",
+		);
+		const stored: string[] = [];
+		const useModel = vi.fn().mockResolvedValueOnce({
+			text: "",
+			toolCalls: [
+				{
+					id: "search",
+					name: "SEARCH_EXPERIENCES",
+					arguments: { query: "QA ferry trip" },
+				},
+				{
+					id: "memory",
+					name: "MEMORY",
+					arguments: { action: "create", text: "QA-only ferry trip" },
+				},
+			],
+		});
+		const reply = "The search was empty; I recorded the QA-only correction.";
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			executeToolCall: async (call) => {
+				if (call.name === "SEARCH_EXPERIENCES") {
+					return searchExperiencesAction.handler(runtime, message, undefined, {
+						parameters: call.params,
+					});
+				}
+				if (call.name !== "MEMORY") throw new Error("Unexpected action");
+				stored.push(String(call.params?.text));
+				return { success: true, text: "QA correction stored." };
+			},
+			evaluate: async ({ trajectory }) =>
+				trajectory.plannedQueue.length > 0
+					? {
+							success: false,
+							decision: "NEXT_RECOMMENDED",
+							thought: "The search is empty; the requested correction remains.",
+							recommendedToolCallId: trajectory.plannedQueue[0]?.id,
+						}
+					: {
+							success: true,
+							decision: "FINISH",
+							thought: "Both requested steps completed.",
+							messageToUser: reply,
+						},
+		});
+
+		expect(queries).toEqual([
+			expect.objectContaining({ query: "QA ferry trip" }),
+		]);
+		expect(stored).toEqual(["QA-only ferry trip"]);
+		expect(result.finalMessage).toBe(reply);
+		expect(useModel).toHaveBeenCalledTimes(1);
+	});
+
 	it("derives the query from the user's words and never echoes the envelope", async () => {
 		const { runtime, queries } = makeRuntime();
 		const message = hardenedMessage(
