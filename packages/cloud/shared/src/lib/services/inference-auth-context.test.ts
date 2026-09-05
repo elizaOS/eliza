@@ -323,7 +323,7 @@ describe("resolveInferenceAuthContext", () => {
       await writeBarrier;
       return originalWrite(...args);
     });
-    const info = spyOn(logger, "info").mockImplementation(() => undefined);
+    const info = spyOn(logger, "audit").mockImplementation(() => undefined);
     const traces: import("./inference-auth-context").InferenceAuthTelemetry[] = [];
     const traceIds = ["a".repeat(32), "b".repeat(32)];
     try {
@@ -536,7 +536,7 @@ describe("resolveInferenceAuthContext", () => {
   });
 
   test("a cold request safely joins a refresh-created flight and retains its lease credential", async () => {
-    const info = spyOn(logger, "info").mockImplementation(() => undefined);
+    const info = spyOn(logger, "audit").mockImplementation(() => undefined);
     await writeInferenceAuthContext({
       v: 3,
       cachedAt: 1,
@@ -666,7 +666,7 @@ describe("resolveInferenceAuthContext", () => {
     const waited: Promise<unknown>[] = [];
     const cacheRead = spyOn(cache, "getWithOutcome");
     const errorSpy = spyOn(logger, "error").mockImplementation(() => undefined);
-    const infoSpy = spyOn(logger, "info").mockImplementation(() => undefined);
+    const infoSpy = spyOn(logger, "audit").mockImplementation(() => undefined);
     try {
       const result = await resolveInferenceAuthContext(reqWithApiKey(), {
         cacheOnly: true,

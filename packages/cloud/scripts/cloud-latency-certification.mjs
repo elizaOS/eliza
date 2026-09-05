@@ -22,6 +22,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import {
+  inferenceAuthTailFailureCode,
   isCloudflarePlacement,
   sanitizeInferenceAuthTail,
   summarizeDeferredCacheWrites,
@@ -439,7 +440,7 @@ async function waitForSanitizedTail(rawPath, traceIds, deploySha) {
     }
   }
   throw new Error(
-    "Worker Tail did not yield complete sanitized auth evidence",
+    `Worker Tail did not yield complete sanitized auth evidence (${inferenceAuthTailFailureCode(lastFailure)})`,
     {
       cause: lastFailure,
     },

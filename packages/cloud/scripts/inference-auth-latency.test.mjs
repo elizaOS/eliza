@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  inferenceAuthTailFailureCode,
   isCloudflarePlacement,
   parseArgs,
   parseAuthServerTiming,
@@ -41,6 +42,67 @@ function timingHeader(phase, resolveMs = 10) {
     ? shared
     : `${shared}, auth_key_lookup;dur=3, auth_user_org;dur=2, auth_moderation;dur=1`;
 }
+
+function warmTailRecord(traceId) {
+  return JSON.stringify({
+    outcome: "ok",
+    logs: [
+      {
+        message: [
+          "[InferenceAuth] trace",
+          {
+            v: 1,
+            traceId,
+            authSource: "x_api_key",
+            controlledProbe: "off",
+            cacheAvailability: "available",
+            cacheBackend: "cloudflare_kv",
+            cacheRead: "hit",
+            authoritative: "not_run",
+            cacheWrite: "not_run",
+            result: "authorized_cache",
+            timings: {
+              extractMs: 0,
+              cacheAvailabilityMs: 0,
+              cacheReadMs: 1,
+              keyLookupMs: null,
+              userOrgLookupMs: null,
+              moderationMs: null,
+              cacheWriteMs: null,
+              totalMs: 1,
+            },
+          },
+        ],
+      },
+    ],
+  });
+}
+
+test("Tail failure categories preserve diagnostic meaning without raw content", () => {
+  const traceId = "a".repeat(32);
+  const cases = [
+    ["", "missing_auth_records"],
+    [
+      warmTailRecord(traceId) + warmTailRecord(traceId),
+      "duplicate_auth_records",
+    ],
+    ['{"private":"raw-secret', "incomplete_stream"],
+    ['{"private": raw-secret}', "invalid_json"],
+  ];
+  for (const [raw, expected] of cases) {
+    assert.throws(
+      () => sanitizeInferenceAuthTail(raw, [traceId], SHA),
+      (error) => {
+        assert.equal(inferenceAuthTailFailureCode(error), expected);
+        return true;
+      },
+    );
+  }
+  assert.equal(
+    inferenceAuthTailFailureCode(new Error("private-token-or-url")),
+    "unclassified_failure",
+  );
+});
 
 test("parseArgs requires exact HTTPS deployment provenance and sample counts", () => {
   assert.deepEqual(
@@ -378,8 +440,12 @@ test("Tail readiness waits for an observed authenticated trace", async () => {
     readTail: () => {
       reads++;
       return traceIds.length > 1
-        ? JSON.stringify({ traceId: traceIds[1] })
-        : "";
+        ? warmTailRecord(traceIds[1])
+        : JSON.stringify({
+            event: {
+              request: { headers: { "x-eliza-trace-id": traceIds[0] } },
+            },
+          });
     },
     fetchImpl: async (_url, init) => {
       traceIds.push(init.headers["X-Eliza-Trace-Id"]);
@@ -412,7 +478,7 @@ test("Tail readiness retries a transient workers.dev propagation response", asyn
     pollsPerAttempt: 1,
     pollIntervalMs: 1,
     sleep: async () => {},
-    readTail: () => observedTraceId,
+    readTail: () => warmTailRecord(observedTraceId),
     fetchImpl: async (_url, init) => {
       requests++;
       if (requests === 1) return new Response(null, { status: 404 });
