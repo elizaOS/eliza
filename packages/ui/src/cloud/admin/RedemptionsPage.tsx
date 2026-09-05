@@ -1,3 +1,4 @@
+import { tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * /cloud/admin/redemptions — review and approve token redemption requests.
  *
@@ -324,7 +325,9 @@ export default function RedemptionsPage(): React.JSX.Element {
 
   const truncateAddress = (address: string) => {
     if (!address) return "-";
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    const wellFormed = toWellFormedUnicode(address);
+    if (wellFormed.length <= 10) return wellFormed;
+    return `${truncateWellFormed(wellFormed, 6)}...${tailWellFormed(wellFormed, 4)}`;
   };
 
   return (
