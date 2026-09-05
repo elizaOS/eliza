@@ -44,9 +44,10 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
 
   public async withEntityContext<T>(
     entityId: UUID | null,
-    callback: (tx: NodePgDatabase) => Promise<T>
+    callback: (tx: NodePgDatabase) => Promise<T>,
+    options?: { isolationLevel?: "repeatable read" }
   ): Promise<T> {
-    return await this.manager.withEntityContext(entityId, callback);
+    return await this.manager.withEntityContext(entityId, callback, options);
   }
 
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
