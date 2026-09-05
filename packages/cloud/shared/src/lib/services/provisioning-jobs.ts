@@ -2412,7 +2412,6 @@ export class ProvisioningJobService {
     expectedLifecycleRevision?: number;
     requireUserOwnedBillingAuthority?: boolean;
     webhookUrl?: string;
-    expectedLifecycleRevision?: number;
   }): Promise<EnqueueAgentSuspendResult> {
     return this.enqueueLifecycleJob<AgentSuspendJobData>(this.agentSuspendLifecycleOptions(params));
   }
@@ -2459,12 +2458,26 @@ export class ProvisioningJobService {
     authorization: "user_request" | "billing_request";
     webhookUrl?: string;
     expectedLifecycleRevision?: number;
+    requireUserOwnedBillingAuthority?: boolean;
   }): LifecycleJobOptions<AgentSuspendJobData> {
     let intentIdToBind: string | undefined;
     const expectedLifecycleRevision = params.expectedLifecycleRevision;
     const validateTarget = (sandbox: LifecycleSandboxRow): void => {
       if (sandbox.pool_status !== null || sandbox.deleted_at !== null) {
         throw new ApiError(404, "resource_not_found", "Agent not found");
+      }
+      if (
+        params.requireUserOwnedBillingAuthority &&
+        (!isContainerBackedExecutionTier(sandbox.execution_tier) ||
+          sandbox.deletion_attempt_id !== null)
+      ) {
+        throw new ApiError(
+          409,
+          "session_not_ready",
+          sandbox.deletion_attempt_id
+            ? "Managed agent deletion is in progress"
+            : "Managed agent billing authority changed",
+        );
       }
       if (
         expectedLifecycleRevision !== undefined &&
@@ -2493,33 +2506,6 @@ export class ProvisioningJobService {
       maxAttempts: 3,
       estimatedDurationMs: 30_000,
       logName: "agent_suspend",
-      validateSandbox: (sandbox) => {
-        if (
-          params.expectedLifecycleRevision !== undefined &&
-          sandbox.lifecycle_revision !== params.expectedLifecycleRevision
-        ) {
-          throw new ApiError(
-            409,
-            "session_not_ready",
-            "Managed agent lifecycle changed before cancellation enqueue",
-          );
-        }
-        if (
-          params.requireUserOwnedBillingAuthority &&
-          (!isContainerBackedExecutionTier(sandbox.execution_tier) ||
-            sandbox.pool_status !== null ||
-            sandbox.deletion_attempt_id !== null ||
-            sandbox.deleted_at !== null)
-        ) {
-          throw new ApiError(
-            409,
-            "session_not_ready",
-            sandbox.deletion_attempt_id || sandbox.deleted_at
-              ? "Managed agent deletion is in progress"
-              : "Managed agent billing authority changed",
-          );
-        }
-      },
       idempotencyPredicates:
         params.authorization === "user_request"
           ? [
