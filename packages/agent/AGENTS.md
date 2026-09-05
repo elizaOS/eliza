@@ -141,6 +141,16 @@ Capability router (remote plugins — see `docs/capability-router-remote-plugins
 
 Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `{BSC,QUICKNODE_BSC,NODEREAL_BSC}_RPC_URL`. Misc: `GITHUB_TOKEN`, `LOG_LEVEL`.
 
+Synthetic-mode admission (`runtime/synthetic-admission.ts`, #24394): synthetic/
+scenario processes are deny-by-default — only declared capabilities may start.
+- `ELIZA_SYNTHETIC_MODE=1` — activates deny-by-default plugin admission; every
+  collected package outside the allowlist and the boot-required set is denied,
+  the denial ledger is written to `<state-dir>/synthetic-admission-denials.json`,
+  and the boot fails with `SYNTHETIC_ADMISSION_DENIED`.
+- `ELIZA_SYNTHETIC_PLUGIN_ALLOWLIST` — comma-separated exact package names the
+  composition declares; malformed entries fail the boot rather than narrowing
+  or widening the list.
+
 Stability (memory watchdog — `runtime/memory-watchdog.ts`, #10197): the boot
   sampler (`runtime/boot-telemetry.ts`) only *records* RSS; the watchdog *acts* on
 it by requesting a clean restart through the existing `requestRestart()` seam
