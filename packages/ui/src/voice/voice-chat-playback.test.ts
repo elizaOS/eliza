@@ -3,7 +3,11 @@
  * text/actions vs plain). Pure function, no live TTS.
  */
 import { describe, expect, it } from "vitest";
-import { extractVoiceText, toSpeakableText } from "./voice-chat-playback";
+import {
+  extractVoiceText,
+  splitFirstSentence,
+  toSpeakableText,
+} from "./voice-chat-playback";
 
 describe("extractVoiceText", () => {
   it("extracts text from JSON assistant payloads", () => {
@@ -16,6 +20,15 @@ describe("extractVoiceText", () => {
     expect(
       extractVoiceText('{"actions":["BENCHMARK_ACTION"],"params":{"foo":1}}'),
     ).toBe("");
+  });
+});
+
+describe("splitFirstSentence", () => {
+  it("splits long sentence window safely when surrogate pairs appear near 180 chars", () => {
+    const text = "A".repeat(170) + " " + "B".repeat(8) + "🚀" + " " + "C".repeat(50);
+    const result = splitFirstSentence(text);
+    expect(result.firstSentence.isWellFormed()).toBe(true);
+    expect(result.remainder.isWellFormed()).toBe(true);
   });
 });
 
