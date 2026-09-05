@@ -319,7 +319,7 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
 		id: "openai-subscription",
 		name: "ChatGPT Subscription",
 		envKey: null,
-		pluginName: "@elizaos/plugin-openai",
+		pluginName: "@elizaos/plugin-codex-cli",
 		keyPrefix: null,
 		description:
 			"Powers Codex-backed coding agents through the official Codex surface.",
