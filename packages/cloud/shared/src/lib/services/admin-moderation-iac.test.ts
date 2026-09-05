@@ -22,6 +22,8 @@ interface ModStatusRow {
 let existingStatus: ModStatusRow | undefined;
 
 mock.module("../../db/client", () => ({
+  getDbConnectionInfo: () => ({ type: "mock" }),
+  db: {},
   dbRead: {
     query: {
       userModerationStatus: { findFirst: async () => existingStatus },
@@ -34,6 +36,15 @@ mock.module("../../db/client", () => ({
     },
   },
   dbWrite: {
+    query: {
+      userModerationStatus: { findFirst: async () => existingStatus },
+      users: {
+        findFirst: async () => ({
+          steward_user_id: "steward-user-1",
+          organization_id: "org-1",
+        }),
+      },
+    },
     insert: () => ({ values: () => ({ returning: async () => [{ id: "violation-1" }] }) }),
     update: () => ({ set: () => ({ where: async () => undefined }) }),
   },
@@ -41,7 +52,7 @@ mock.module("../../db/client", () => ({
 
 mock.module("../../db/repositories", () => ({
   apiKeysRepository: {
-    listByUser: async () => [{ key_hash: "hash-1" }, { key_hash: "hash-2" }],
+    listByUserConsistent: async () => [{ key_hash: "hash-1" }, { key_hash: "hash-2" }],
   },
   organizationsRepository: {},
   usersRepository: {},
