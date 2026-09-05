@@ -1,12 +1,7 @@
 /**
- * Durability coverage for GET /api/connectors/<provider>/accounts against the
- * REAL @elizaos/core connector-account manager (unlike the sibling route test,
- * core is not mocked here). Reproduces the production boot shape where the
- * manager is constructed during plugin registration before the SQL adapter is
- * attached to the runtime, then proves the account written after OAuth lands
- * in the durable adapter and is still listed by the route after a simulated
- * restart (fresh runtime + manager over the same adapter). Deterministic
- * harness — core's InMemoryDatabaseAdapter stands in for plugin-sql.
+ * Exercises connector account persistence and audit failures through the real
+ * route handler and core account manager. The deterministic adapter verifies
+ * restart readback; malformed SQL results must not become empty audit pages.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
@@ -120,4 +115,20 @@ describe("connector account route durability (real core manager)", () => {
     });
     expect(body.defaultAccountId).toBeTruthy();
   });
+});
+
+it("rejects an invalid SQL audit result before publishing an empty audit page", async () => {
+  const runtime = createRuntime();
+  const { ctx, captured } = createContext(
+    runtime,
+    "/api/connectors/google/audit/events",
+  );
+  ctx.state.runtime = {
+    ...runtime,
+    adapter: { db: { execute: async () => ({ rows: [null] }) } },
+  } as never;
+  await expect(handleConnectorAccountRoutes(ctx)).rejects.toMatchObject({
+    code: "SQL_RESULT_INVALID",
+  });
+  expect(captured.body).toBeNull();
 });
