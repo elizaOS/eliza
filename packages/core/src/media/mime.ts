@@ -78,24 +78,28 @@ function normalizeHeaderMime(mime?: string | null): string | undefined {
  */
 export function getFileExtension(filePath?: string | null): string | undefined {
 	if (!filePath) return undefined;
-	let candidate = filePath;
+	let candidate = filePath.trim();
+	if (!candidate) return undefined;
 	try {
-		if (/^https?:\/\//i.test(filePath)) {
-			candidate = new URL(filePath).pathname;
+		if (/^https?:\/\//i.test(candidate)) {
+			candidate = new URL(candidate).pathname;
 		}
 	} catch {
 		// error-policy:J3 URL paths are untrusted input; malformed URLs are
 		// treated as plain paths without partial decoding.
 		// fall back to plain path parsing
 	}
+	// Strip query/hash that may trail a plain path (URLs already stripped via pathname).
+	const withoutSearch = candidate.split(/[?#]/)[0] ?? candidate;
 	// Only the last path segment can carry an extension; splitting the whole
 	// path on "." would treat a dot in a directory name (or a dotless URL
 	// pathname) as an extension boundary and return garbage like ".2/notes".
-	const base = candidate.split(/[\\/]/).pop() ?? "";
+	const base = withoutSearch.split(/[\\/]/).pop()?.trim() ?? "";
 	const dotIndex = base.lastIndexOf(".");
-	if (dotIndex === -1) return undefined;
-	const ext = base.slice(dotIndex + 1).toLowerCase();
-	return ext ? `.${ext}` : undefined;
+	if (dotIndex <= 0) return undefined;
+	const ext = base.slice(dotIndex + 1).trim().toLowerCase();
+	if (!ext || /[^a-z0-9]/.test(ext)) return undefined;
+	return `.${ext}`;
 }
 
 /**
