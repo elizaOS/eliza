@@ -166,10 +166,10 @@ function parseActionParamsRecord(
 				typeof paramsValue === "object" &&
 				!isArrayRecord(paramsValue)
 			) {
-				return collectActionParams(paramsValue, ctx);
+				return collectActionParams(paramsValue, ctx, 1);
 			}
 		}
-		return collectActionsFromEntries(rootEntries, ctx);
+		return collectActionsFromEntries(rootEntries, ctx, 0);
 	} finally {
 		ctx.visiting.delete(parsed);
 	}
@@ -178,6 +178,7 @@ function parseActionParamsRecord(
 function collectActionParams(
 	candidate: object,
 	ctx: WalkContext,
+	depthBase: number,
 ): Map<string, ActionParameters> {
 	if (ctx.visiting.has(candidate)) {
 		failUnbounded({ cycle: true });
@@ -187,6 +188,7 @@ function collectActionParams(
 		return collectActionsFromEntries(
 			ownEnumerableStringDataEntries(candidate, ctx),
 			ctx,
+			depthBase + 1,
 		);
 	} finally {
 		ctx.visiting.delete(candidate);
@@ -196,6 +198,7 @@ function collectActionParams(
 function collectActionsFromEntries(
 	actionEntries: Array<[string, unknown]>,
 	ctx: WalkContext,
+	baseDepth: number,
 ): Map<string, ActionParameters> {
 	const result = new Map<string, ActionParameters>();
 	for (const [actionName, paramsValue] of actionEntries) {
@@ -218,7 +221,7 @@ function collectActionsFromEntries(
 				defineDataProperty(
 					params,
 					paramName,
-					toActionParameterValueInner(paramValue, 0, ctx, true),
+					toActionParameterValueInner(paramValue, baseDepth + 2, ctx, true),
 				);
 			}
 			if (Object.keys(params).length > 0) {

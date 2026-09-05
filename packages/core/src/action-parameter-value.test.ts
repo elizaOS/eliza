@@ -377,6 +377,43 @@ describe("parseActionParams", () => {
 			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
 		}
 	});
+
+	it("shares the depth budget across wrapper levels", () => {
+		function nestObject(depth: number): unknown {
+			let value: unknown = "x";
+			for (let index = 0; index < depth; index += 1) {
+				value = { next: value };
+			}
+			return value;
+		}
+		// 28-deep payload via wrapper stays within MAX 32 (28 + 4 wrapper levels = 32)
+		expect(
+			parseActionParams({
+				params: { A: { payload: nestObject(28) } },
+			}).has("A"),
+		).toBe(true);
+		// 29-deep payload via wrapper exceeds budget (29 + 4 = 33)
+		try {
+			parseActionParams({
+				params: { A: { payload: nestObject(29) } },
+			});
+			expect.unreachable("wrapper depth should fail closed one past budget");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
+		}
+		// Fallback without params wrapper allows deeper payload (30 + 2 = 32)
+		expect(parseActionParams({ A: { payload: nestObject(30) } }).has("A")).toBe(
+			true,
+		);
+		try {
+			parseActionParams({ A: { payload: nestObject(31) } });
+			expect.unreachable("fallback depth should fail closed one past budget");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
+		}
+	});
 });
 
 describe("validateActionParams", () => {
