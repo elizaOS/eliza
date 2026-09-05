@@ -2423,6 +2423,15 @@ function withViewsUserFacingText(result: ActionResult): ActionResult {
 	};
 }
 
+function ownerRequiredViewMutation(mode: "create" | "delete"): ActionResult {
+	return {
+		success: false,
+		text: `Owner authorization is required for the VIEWS ${mode} operation.`,
+		transcriptVisibility: "internal",
+		values: { error: "FORBIDDEN", mode },
+	};
+}
+
 function asViewInteractionDataValue(
 	value: unknown,
 ): object | string | number | boolean | null | undefined {
@@ -2893,7 +2902,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 			// Multi-turn create follow-up: choice reply matches a pending intent task.
 			if (isChoiceReply(text)) {
-				if (await hasPendingViewsCreateIntent(runtime, roomId)) return true;
+				if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+					return ownerCheck(runtime, message);
+				}
 			}
 
 			// Multi-turn delete follow-up: structured confirm boolean matches a
@@ -2944,7 +2955,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				// room; execution-time validate re-checks with the planner's options,
 				// so every mode-carrying call above still resolves normally.
 				if (!mode) {
-					if (await hasPendingViewsCreateIntent(runtime, roomId)) return true;
+					if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+						return ownerCheck(runtime, message);
+					}
 					if (await hasPendingDeleteConfirm(runtime, roomId)) {
 						return ownerCheck(runtime, message);
 					}
@@ -2975,6 +2988,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				// Multi-turn follow-up: choice reply for an in-progress create flow.
 				if (isChoiceReply(text)) {
 					if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("create");
+						}
 						const views = await client.listViews();
 						return runViewsCreate({
 							runtime,
@@ -2993,6 +3009,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					isDeleteCancellation(actionOptions)
 				) {
 					if (await hasPendingDeleteConfirm(runtime, roomId)) {
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("delete");
+						}
 						const views = await client.listViews();
 						return runViewsDelete({
 							runtime,
@@ -3467,6 +3486,11 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					}
 
 					case "create": {
+						// Planner-supplied choices can continue a pending task even when
+						// the user's words are not a literal new/edit-N/cancel token.
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("create");
+						}
 						const views = await client.listViews();
 						return runViewsCreate({
 							runtime,
@@ -3512,6 +3536,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 					case "delete":
 					case "remove": {
+						if (!(await ownerCheck(runtime, message))) {
+							return ownerRequiredViewMutation("delete");
+						}
 						const views = await client.listViews();
 						return runViewsDelete({
 							runtime,
