@@ -117,9 +117,7 @@ describe("ProviderPanels", () => {
     ).toBeNull();
     expect(screen.queryByText(/cloud controls/)).toBeNull();
     expect(
-      screen.getByText(
-        "Sign in to use Eliza Cloud services.",
-      ),
+      screen.getByText("Sign in to use Eliza Cloud services."),
     ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "Sign in to Eliza Cloud" }),
