@@ -1,8 +1,8 @@
 /**
- * Ensures a requested Ollama model exists before inference, pulling it once
- * when the daemon reports it missing and surfacing every transport failure.
+ * Checks that a requested Ollama model is installed before inference. Model
+ * installation belongs to explicit setup, never an ordinary chat or embedding call.
  */
-import { ElizaError, logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 async function responseDetail(response: Response): Promise<string> {
   try {
@@ -45,7 +45,7 @@ export async function ensureModelAvailable(
     if (showResponse.ok) return;
 
     const showDetail = await responseDetail(showResponse);
-    if (showResponse.status !== 404 && showResponse.status !== 400) {
+    if (showResponse.status !== 404) {
       throw new ElizaError(`Ollama model lookup failed: ${showDetail}`, {
         code: "OLLAMA_MODEL_LOOKUP_FAILED",
         context: { model: normalizedModel, status: showResponse.status, apiBase },
@@ -53,22 +53,14 @@ export async function ensureModelAvailable(
       });
     }
 
-    logger.info(`[Ollama] Model ${normalizedModel} is missing; pulling it now`);
-    const pullResponse = await fetcher(`${apiBase}/api/pull`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: normalizedModel, stream: false }),
-      signal,
-    });
-    if (!pullResponse.ok) {
-      const pullDetail = await responseDetail(pullResponse);
-      throw new ElizaError(`Ollama failed to pull ${normalizedModel}: ${pullDetail}`, {
-        code: "OLLAMA_MODEL_PULL_FAILED",
-        context: { model: normalizedModel, status: pullResponse.status, apiBase },
+    throw new ElizaError(
+      `Ollama model ${normalizedModel} is not installed. Install it on the configured server or select an installed model. Eliza does not download models during inference.`,
+      {
+        code: "OLLAMA_MODEL_NOT_INSTALLED",
+        context: { model: normalizedModel, status: showResponse.status, apiBase },
         severity: "ephemeral",
-      });
-    }
-    logger.info(`[Ollama] Pulled model ${normalizedModel}`);
+      }
+    );
   } catch (error) {
     // error-policy:J2 model readiness is required by the caller; add endpoint
     // and model context while preserving the original transport failure.

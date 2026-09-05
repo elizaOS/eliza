@@ -118,7 +118,9 @@ export function isMaintainedSource(file) {
     /^(packages|plugins)\//.test(rel) &&
     /\.[jt]sx?$/.test(rel) &&
     !/(^|\/)\.eliza(\/|$)/.test(rel) &&
-    !/(^|\/)(node_modules|dist|build|coverage|generated)(\/|$)/.test(rel) &&
+    !/(^|\/)(node_modules|\.vite|dist|build|coverage|generated)(\/|$)/.test(
+      rel,
+    ) &&
     !/\.(stories|test|spec)\.[jt]sx?$/.test(rel) &&
     !/(^|\/)(test|__tests__|__e2e__|__fixtures__|fixtures|stubs|templates)(\/|$)/.test(
       rel,
@@ -139,7 +141,7 @@ export function isMaintainedSource(file) {
 function* walk(directory) {
   if (!fs.existsSync(directory)) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (["node_modules", "dist", "build", ".git"].includes(entry.name))
+    if (["node_modules", ".vite", "dist", "build", ".git"].includes(entry.name))
       continue;
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) yield* walk(full);

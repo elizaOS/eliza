@@ -5,7 +5,7 @@
  * 1. The Eliza dev server (\[(eliza|eliza)(?:-api)?\]|runtime + API on port 31337) with restart support
  * 2. The vite app dev server (port 2138, proxies /api and /ws to 31337)
  *
- * Automatically kills zombie processes on both ports before starting.
+ * Refuses occupied ports without terminating another workspace or service.
  * Starts the API and Vite together. The UI can compile and serve before the
  * runtime is ready; proxied requests recover as soon as the API comes online.
  *
@@ -16,13 +16,7 @@
  *   bun …/dev-ui.mjs --check-acp-hot-reload=31337             # one-shot reload safety probe
  */
 import { execSync, spawn } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  statSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -38,6 +32,7 @@ import {
   applyDevCloudTarget,
   configureDevCloudEnvironment,
 } from "./lib/dev-cloud-target.mjs";
+import { assertDevPortsAvailable } from "./lib/dev-port-ownership.mjs";
 import {
   createApiHealthWatchdog,
   createParentExitGuard,
@@ -570,40 +565,6 @@ function createStartupFilter(dest) {
 }
 
 // ---------------------------------------------------------------------------
-// Port cleanup — force-kill zombie processes on our dev ports
-// ---------------------------------------------------------------------------
-
-function killPort(port) {
-  try {
-    if (process.platform === "win32") {
-      const out = execSync(
-        `netstat -ano | findstr :${port} | findstr LISTENING`,
-        { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] },
-      );
-      const pids = new Set(
-        out
-          .split("\n")
-          .map((l) => l.trim().split(/\s+/).pop())
-          .filter(Boolean),
-      );
-      for (const pid of pids) {
-        try {
-          execSync(`taskkill /F /PID ${pid}`, { stdio: "ignore" });
-        } catch {
-          /* already dead */
-        }
-      }
-    } else {
-      execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null`, {
-        stdio: "ignore",
-      });
-    }
-  } catch {
-    // No process found — port is clean
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Wait for a TCP port to accept connections
 // ---------------------------------------------------------------------------
 
@@ -739,72 +700,6 @@ async function hasBusyAcpSessions(port) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Orphan cleanup (startup only) — never kills arbitrary Bun; PID/name-wide pkill is avoided.
-// Only processes whose command line ties them to this repo or Eliza workspace dirs.
-// ---------------------------------------------------------------------------
-
-function killOrphanedWorkspaceProcesses() {
-  if (process.platform === "win32") return; // spawn-helper is Unix only
-
-  let repoRoot;
-  try {
-    repoRoot = realpathSync(cwd);
-  } catch {
-    repoRoot = cwd;
-  }
-
-  let psOut;
-  try {
-    psOut = execSync("ps axo pid=,command=", {
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024,
-      stdio: ["pipe", "pipe", "ignore"],
-    });
-  } catch {
-    return;
-  }
-
-  const workspaceDirRe =
-    /\.eliza\/workspaces|\.elizaai\/workspaces|\.eliza\/workspaces|\.elizaai\/workspaces/i;
-  const ptyWorkerRe = /pty-worker\.js/i;
-
-  const workspacePids = [];
-  const ptyPids = [];
-
-  for (const line of psOut.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const sp = trimmed.indexOf(" ");
-    if (sp < 1) continue;
-    const pidStr = trimmed.slice(0, sp).trim();
-    const cmd = trimmed.slice(sp + 1);
-    const pid = Number.parseInt(pidStr, 10);
-    if (!Number.isFinite(pid) || pid <= 0) continue;
-
-    if (workspaceDirRe.test(cmd)) {
-      workspacePids.push(pid);
-      continue;
-    }
-    if (ptyWorkerRe.test(cmd) && cmd.includes(repoRoot)) {
-      ptyPids.push(pid);
-    }
-  }
-
-  const killPids = (label, pids) => {
-    if (!pids.length) return;
-    console.log(`[dev-ui] Killing ${pids.length} orphaned ${label}…`);
-    try {
-      execSync(`kill -9 ${pids.join(" ")} 2>/dev/null`, { stdio: "ignore" });
-    } catch {
-      /* ignore */
-    }
-  };
-
-  killPids("workspace process(es)", workspacePids);
-  killPids("repo-scoped pty-worker(s)", ptyPids);
-}
-
 const acpHotReloadProbeArg = process.argv.find((arg) =>
   arg.startsWith("--check-acp-hot-reload="),
 );
@@ -833,8 +728,7 @@ if (acpHotReloadProbeArg) {
 // Main
 // ---------------------------------------------------------------------------
 
-killOrphanedWorkspaceProcesses();
-killPort(UI_PORT);
+await assertDevPortsAvailable(uiOnly ? [UI_PORT] : [UI_PORT, API_PORT]);
 
 let visionDepsProcess = null;
 let visionDepsCheckStarted = false;
@@ -867,10 +761,6 @@ function startVisionDepsCheck() {
       );
     }
   });
-}
-
-if (!uiOnly) {
-  killPort(API_PORT);
 }
 
 let apiProcess = null;
