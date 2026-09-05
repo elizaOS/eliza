@@ -105,9 +105,9 @@ export default function AgentsPage() {
                       <Badge variant="outline">Free</Badge>
                     </div>
                     <p className="max-w-2xl text-sm leading-relaxed text-txt-muted">
-                      Shared is ready instantly and uses pooled Cloud capacity.
-                      Dedicated gives your Eliza private, always-on compute and
-                      moves this conversation only after setup succeeds.
+                      Shared handles public and connector messages on pooled
+                      Cloud capacity. Signed-in chat requires a Dedicated agent
+                      with hosting credit.
                     </p>
                   </div>
                   <ElizaAgentActions
