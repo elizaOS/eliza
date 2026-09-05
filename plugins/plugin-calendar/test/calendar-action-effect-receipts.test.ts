@@ -687,7 +687,10 @@ describe("CALENDAR effect receipt settlement", () => {
       expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
         expect.any(URL),
         expect.objectContaining({
-          startAt: "2026-09-05T16:00:00-04:00",
+          // The handler anchors the request to its zone before the service
+          // call: the extracted 4 PM Eastern offset string arrives as the
+          // same instant, with the zone pinned on the request.
+          startAt: "2026-09-05T20:00:00.000Z",
           durationMinutes: 30,
           timeZone: "America/New_York",
         }),
@@ -1036,8 +1039,8 @@ describe("CALENDAR effect receipt settlement", () => {
       expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
         expect.any(URL),
         expect.objectContaining({
-          startAt: "2026-08-05T09:00:00-07:00",
-          endAt: "2026-08-05T10:00:00-07:00",
+          startAt: "2026-08-05T16:00:00.000Z",
+          endAt: "2026-08-05T17:00:00.000Z",
           timeZone: "America/Los_Angeles",
         }),
       );
