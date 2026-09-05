@@ -1326,7 +1326,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
       enabled: true,
       connected: true,
       hasApiKey: true,
-      cloudVoiceProxyAvailable: false,
+      cloudVoiceProxyAvailable: true,
     });
     getCloudCreditsSpy.mockResolvedValue({
       authRejected: true,
@@ -1334,14 +1334,27 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     });
 
     const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    let connected = true;
     await act(async () => {
-      await result.current.pollCloudCredits();
+      connected = await result.current.pollCloudCredits();
     });
 
+    expect(connected).toBe(false);
+    expect(result.current.elizaCloudConnected).toBe(false);
+    expect(result.current.elizaCloudVoiceProxyAvailable).toBe(false);
     expect(result.current.elizaCloudAuthRejected).toBe(true);
     expect(result.current.elizaCloudCredits).toBeNull();
     expect(result.current.elizaCloudCreditsLow).toBe(false);
     expect(result.current.elizaCloudCreditsError).toBeNull();
+
+    getCloudCreditsSpy.mockResolvedValue({ balance: 12 });
+    await act(async () => {
+      connected = await result.current.pollCloudCredits();
+    });
+    expect(connected).toBe(true);
+    expect(result.current.elizaCloudConnected).toBe(true);
+    expect(result.current.elizaCloudVoiceProxyAvailable).toBe(true);
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
 
     unmount();
   });
@@ -1361,6 +1374,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     });
 
     expect(result.current.elizaCloudCreditsError).toBe("credits endpoint down");
+    expect(result.current.elizaCloudConnected).toBe(true);
     expect(result.current.elizaCloudCredits).toBeNull();
     expect(result.current.elizaCloudAuthRejected).toBe(false);
 
