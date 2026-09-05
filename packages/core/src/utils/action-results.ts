@@ -5,6 +5,7 @@
  * sizes explicitly instead of silently changing the prompt.
  */
 import type { ActionResult, ProviderDataRecord } from "../types/components";
+import { formatError } from "./format-error.ts";
 
 export const ACTION_RESULT_OVERSIZE_WARNING_TOKENS = 10000;
 export const ACTION_RESULT_TOKEN_ESTIMATE_CHARS = 4;
@@ -77,7 +78,7 @@ export function stringifyActionResultError(
 	if (error === undefined || error === null) {
 		return undefined;
 	}
-	return error instanceof Error ? error.message : String(error);
+	return formatError(error);
 }
 
 function getReferenceFromData(
