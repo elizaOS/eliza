@@ -1,5 +1,5 @@
 // Persists characters records for cloud services through the shared DB boundary.
-import { and, desc, eq, inArray, or, SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, SQL, sql } from "drizzle-orm";
 import type { SearchFilters, SortOptions } from "../../lib/types/my-agents";
 import { normalizeTokenAddress } from "../../lib/utils/token-address";
 import type { DbTransaction } from "../client";
@@ -585,12 +585,18 @@ export class UserCharactersRepository {
       .from(userCharacters)
       .where(conditions.length > 0 ? and(...conditions) : undefined);
 
+    // The id tie-break makes every search ORDER BY total (see listPublic
+    // above): without it, tied rows come back in an unstable order per
+    // LIMIT/OFFSET query and page walks drop or repeat rows (#30296).
     if (sortOptions.pinFeatured === false) {
-      return await baseQuery.orderBy(secondaryOrderBy).limit(limit).offset(offset);
+      return await baseQuery
+        .orderBy(secondaryOrderBy, asc(userCharacters.id))
+        .limit(limit)
+        .offset(offset);
     }
 
     return await baseQuery
-      .orderBy(desc(userCharacters.featured), secondaryOrderBy)
+      .orderBy(desc(userCharacters.featured), secondaryOrderBy, asc(userCharacters.id))
       .limit(limit)
       .offset(offset);
   }
@@ -690,7 +696,7 @@ export class UserCharactersRepository {
       .select()
       .from(userCharacters)
       .where(and(...conditions))
-      .orderBy(desc(userCharacters.featured), secondaryOrderBy)
+      .orderBy(desc(userCharacters.featured), secondaryOrderBy, asc(userCharacters.id))
       .limit(limit)
       .offset(offset);
   }
