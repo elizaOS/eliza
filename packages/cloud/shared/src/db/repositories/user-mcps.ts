@@ -364,11 +364,122 @@ export const mcpUsageRepository = {
   // ============================================================================
 
   /**
-   * Record MCP usage
+   * Record MCP usage. When `settlement_id` is set the insert is idempotent:
+   * a concurrent duplicate settlement of the same payment event reuses the
+   * committed row instead of inserting a second one (#22961). `created` says
+   * whether this call inserted the row (only that caller may bump counters).
    */
-  async create(data: NewMcpUsage): Promise<McpUsage> {
-    const [usage] = await dbWrite.insert(mcpUsage).values(data).returning();
-    return usage;
+  async create(data: NewMcpUsage): Promise<McpUsage & { created: boolean }> {
+    const { usage, created } = await this.createWithStats(data);
+    return { ...usage, created };
+  },
+
+  /**
+   * Atomically claim the settlement's usage row AND, when this call is the
+   * one that inserted it, bump the MCP stats counters in the same statement
+   * (#22961). Splitting insert and increment leaves a crash window that a
+   * re-delivery cannot distinguish (counter lost forever) and lets the race
+   * loser double-bump; one CTE makes the unique settlement index the sole
+   * exactly-once gate for both effects.
+   */
+  async createWithStats(
+    data: NewMcpUsage,
+    stats?: { mcpId: string; creatorEarnings: number; x402EarnedUsd?: number },
+  ): Promise<{ usage: McpUsage; created: boolean }> {
+    if (!data.settlement_id && stats) {
+      // Free-tier/settlement-less usage: no unique settlement key to gate
+      // on, but usage row and stats must still commit atomically — one CTE,
+      // same shape as the keyed branch minus the conflict arbitration.
+      const x402Free = stats.x402EarnedUsd ?? 0;
+      const result = await dbWrite.execute<{ id: string }>(sql`
+        WITH ins AS (
+          INSERT INTO mcp_usage (
+            mcp_id, organization_id, user_id, tool_name, request_count,
+            credits_charged, base_amount_usd, affiliate_fee_usd, platform_fee_usd,
+            total_amount_usd, fee_components_known, x402_amount_usd, payment_type,
+            creator_earnings, platform_earnings, metadata, settlement_id
+          ) VALUES (
+            ${data.mcp_id}, ${data.organization_id}, ${data.user_id ?? null}, ${data.tool_name}, ${data.request_count ?? 1},
+            ${data.credits_charged}, ${data.base_amount_usd}, ${data.affiliate_fee_usd}, ${data.platform_fee_usd},
+            ${data.total_amount_usd}, ${data.fee_components_known ?? true}, ${data.x402_amount_usd}, ${data.payment_type},
+            ${data.creator_earnings}, ${data.platform_earnings}, ${data.metadata ?? {}}, NULL
+          )
+          RETURNING id
+        ),
+        upd AS (
+          UPDATE user_mcps SET
+            total_requests = user_mcps.total_requests + 1,
+            total_credits_earned = user_mcps.total_credits_earned + ${stats.creatorEarnings},
+            total_x402_earned_usd = user_mcps.total_x402_earned_usd + ${x402Free},
+            last_used_at = now(),
+            updated_at = now()
+          WHERE user_mcps.id = ${stats.mcpId}
+            AND EXISTS (SELECT 1 FROM ins)
+          RETURNING 1 AS bumped
+        )
+        SELECT (SELECT id FROM ins LIMIT 1) AS id
+      `);
+      const id = result.rows?.[0]?.id;
+      if (!id) {
+        throw new Error("MCP free-tier usage insert returned no row");
+      }
+      return { usage: { ...data, id } as McpUsage, created: true };
+    }
+    if (!data.settlement_id || !stats) {
+      const [usage] = await dbWrite.insert(mcpUsage).values(data).returning();
+      return { usage, created: true };
+    }
+    const x402 = stats.x402EarnedUsd ?? 0;
+    // The insert and the stats bump are ONE statement so the unique
+    // settlement index is the sole exactly-once gate for both effects. The
+    // conflict-loser row is NOT re-read here: under MVCC the conflicting row
+    // may be visible to ON CONFLICT arbitration yet invisible to this
+    // statement's snapshot, so the fallback read runs as a second statement
+    // (the same pattern as credits.ts's idempotent credit increase).
+    const result = await dbWrite.execute<{ id?: string; created?: boolean }>(sql`
+      WITH ins AS (
+        INSERT INTO mcp_usage (
+          mcp_id, organization_id, user_id, tool_name, request_count,
+          credits_charged, base_amount_usd, affiliate_fee_usd, platform_fee_usd,
+          total_amount_usd, fee_components_known, x402_amount_usd, payment_type,
+          creator_earnings, platform_earnings, metadata, settlement_id
+        ) VALUES (
+          ${data.mcp_id}, ${data.organization_id}, ${data.user_id ?? null}, ${data.tool_name}, ${data.request_count ?? 1},
+          ${data.credits_charged}, ${data.base_amount_usd}, ${data.affiliate_fee_usd}, ${data.platform_fee_usd},
+          ${data.total_amount_usd}, ${data.fee_components_known ?? true}, ${data.x402_amount_usd}, ${data.payment_type},
+          ${data.creator_earnings}, ${data.platform_earnings}, ${data.metadata ?? {}}, ${data.settlement_id}
+        )
+        ON CONFLICT (settlement_id) DO NOTHING
+        RETURNING id
+      ),
+      upd AS (
+        UPDATE user_mcps SET
+          total_requests = user_mcps.total_requests + 1,
+          total_credits_earned = user_mcps.total_credits_earned + ${stats.creatorEarnings},
+          total_x402_earned_usd = user_mcps.total_x402_earned_usd + ${x402},
+          last_used_at = now(),
+          updated_at = now()
+        WHERE user_mcps.id = ${stats.mcpId}
+          AND EXISTS (SELECT 1 FROM ins)
+        RETURNING 1 AS bumped
+      )
+      SELECT (SELECT id FROM ins LIMIT 1) AS id, TRUE AS created
+    `);
+    const inserted = result.rows?.[0]?.id;
+    if (inserted) {
+      return { usage: { ...data, id: inserted } as McpUsage, created: true };
+    }
+    // Conflict (or rare empty RETURNING): re-read the committed row in a
+    // FRESH statement so the winner's commit is visible.
+    const [existing] = await dbWrite
+      .select()
+      .from(mcpUsage)
+      .where(eq(mcpUsage.settlement_id, data.settlement_id))
+      .limit(1);
+    if (!existing) {
+      throw new Error("MCP usage claim lost the committed row");
+    }
+    return { usage: existing, created: false };
   },
 };
 

@@ -1636,6 +1636,12 @@ export class CreditsService {
             -- Native storage reservations are settled only after a strong R2
             -- HEAD proves the immutable generation present or absent.
             AND NOT (metadata ? 'storage_operation_id')
+            -- #27992 r1 F1: an MCP buyer debit carrying the sweep marker is
+            -- owned by the durable orphan sweep (it refunded or is refunding
+            -- the buyer); reconciling it here would issue a SECOND refund on
+            -- top of the sweep's. Non-MCP reservations never carry the
+            -- marker, so this guard is a no-op for every other caller.
+            AND metadata->>'mcp_precharge_swept' IS NULL
             AND settled_at IS NULL
           RETURNING id, amount
         `,

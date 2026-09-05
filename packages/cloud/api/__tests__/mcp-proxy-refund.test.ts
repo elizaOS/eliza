@@ -13,9 +13,76 @@ import { __mcpProxyHopTestHooks } from "../mcp/proxy/[mcpId]/proxy-body-budget";
 const requireGenerativeRouteCaller = mock();
 const admitFlatGenerativeOperation = mock();
 let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
+
+// Mirrors resolveInferenceCredentialAdmissionDenial's bounded public taxonomy
+// for the two revocation-boundary error classes the route can surface from the
+// pre-dispatch free-tier strong check (real route maps them through
+// asGenerativeCacheApiError; every other error still maps to null here).
+class InferenceCredentialRevokedError extends Error {
+  constructor(public readonly reason: string) {
+    super("Inference credential is revoked");
+    this.name = "InferenceCredentialRevokedError";
+  }
+}
+class InferenceCredentialRevocationUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InferenceCredentialRevocationUnavailableError";
+  }
+}
+const assertInferenceCredentialActive = mock(
+  async (_organizationId: string, _credential: unknown) => undefined,
+);
+mock.module("@/lib/services/inference-credential-revocation", () => ({
+  assertInferenceCredentialActive,
+  InferenceCredentialRevokedError,
+  InferenceCredentialRevocationUnavailableError,
+}));
+
+function revokedReasonToStanding(reason: string): {
+  status: number;
+  reason: string;
+} {
+  switch (reason) {
+    case "credential_revoked":
+    case "session_revoked":
+    case "session_binding_revoked":
+      return { status: 401, reason: "credential_inactive" };
+    case "organization_disabled":
+      return { status: 403, reason: "organization_inactive" };
+    case "subject_account_disabled":
+      return { status: 403, reason: "account_inactive" };
+    case "subject_membership_disabled":
+      return { status: 403, reason: "membership_missing" };
+    case "subject_moderation_disabled":
+      return { status: 403, reason: "moderation_blocked" };
+    default:
+      return { status: 403, reason: "credential_invalid" };
+  }
+}
+
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   admitFlatGenerativeOperation,
-  asGenerativeCacheApiError: () => null,
+  asGenerativeCacheApiError: (error: unknown) => {
+    if (error instanceof InferenceCredentialRevokedError) {
+      const standing = revokedReasonToStanding(error.reason);
+      return new ApiError(
+        standing.status,
+        "access_denied",
+        "Account is not eligible for generative work",
+        { reason: standing.reason },
+      );
+    }
+    if (error instanceof InferenceCredentialRevocationUnavailableError) {
+      return new ApiError(
+        503,
+        "service_unavailable",
+        "Authorization service is unavailable. Retry shortly.",
+        { retryable: true, retryAfterSeconds: 1 },
+      );
+    }
+    return null;
+  },
   getGenerativeExecutionContext: () => executionCtx,
   requireGenerativeRouteCaller,
 }));
@@ -54,9 +121,17 @@ const markProviderDispatched = mock(async () => undefined);
 
 const getById = mock();
 const recordUsageWithoutDeduction = mock(async () => {});
+const recordZeroCostUsage = mock(async () => {});
+// The route's fail-closed numeric gate (#22961) runs before admission. The
+// real gate's behavior is pinned at the service boundary
+// (user-mcps-recordusage-numeric.test.ts); here it is a boundary spy like
+// every other mocked collaborator, available for ordering/call assertions.
+const assertSettleableMcpRow = mock(() => undefined);
 mock.module("@/lib/services/user-mcps", () => ({
+  assertSettleableMcpRow,
   userMcpsService: {
     getById,
+    recordZeroCostUsage,
     recordUsageWithoutDeduction,
   },
 }));
@@ -100,7 +175,10 @@ beforeEach(() => {
     authSource: "combined_cache",
     admissionSnapshot: { standing: "active" },
     appScopeId: null,
+    credential: { kind: "api_key", credentialId: "key1", userId: "u1" },
   });
+  assertInferenceCredentialActive.mockReset();
+  assertInferenceCredentialActive.mockResolvedValue(undefined);
   settle.mockReset();
   settle.mockResolvedValue(null);
   settleUnknown.mockReset();
@@ -118,6 +196,8 @@ beforeEach(() => {
   getReferrer.mockReset();
   getReferrer.mockResolvedValue(null);
   recordUsageWithoutDeduction.mockClear();
+  recordZeroCostUsage.mockReset();
+  recordZeroCostUsage.mockResolvedValue(undefined);
   assertSafeOutboundUrl.mockResolvedValue(
     new URL("https://mcp.example.test/rpc"),
   );
@@ -455,6 +535,203 @@ test("successful call settles exact cost and records usage", async () => {
   expect(settle).toHaveBeenCalledWith(0.05);
   expect(settleUnknown).not.toHaveBeenCalled();
   expect(recordUsageWithoutDeduction).toHaveBeenCalledTimes(1);
+});
+
+test("settlement receipt is keyed on the admission rail's durable charge row (#22961 rebase)", async () => {
+  // Durable-admission mode: settle() commits the deferred debit and reports
+  // its id through settlementTransactionIds — the settlement receipt's
+  // payment event must be THAT uuid, never the requestId fallback that
+  // claimPrechargeForSettlement cannot cast.
+  const durableId = "5f2c0a34-9b1e-4c8d-a6f7-2e8d1b3c4d5e";
+  settle.mockImplementationOnce(
+    async () =>
+      ({
+        reservedAmount: 0.05,
+        actualCost: 0.05,
+        settlementTransactionIds: [durableId],
+        adjustmentType: "none",
+      }) as unknown as null,
+  );
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const res = await post();
+  expect(res.status).toBe(200);
+  expect(settle).toHaveBeenCalledWith(0.05);
+  expect(recordUsageWithoutDeduction).toHaveBeenCalledTimes(1);
+  expect(
+    (
+      recordUsageWithoutDeduction.mock.calls[0] as unknown as [
+        { metadata?: { preChargeTransactionId?: string } },
+      ]
+    )[0]?.metadata,
+  ).toMatchObject({
+    preChargeTransactionId: durableId,
+  });
+});
+
+test("free-tier MCP call skips the admission rail and records zero-cost usage (#22961 rebase)", async () => {
+  // credits_per_request 0 => totalAmountUsd <= 0 => the flat cost contract
+  // rejects it; admission must never be consulted and usage is recorded via
+  // the zero-cost path with no settlement claim.
+  getById.mockResolvedValueOnce({
+    ...EXTERNAL_MCP,
+    credits_per_request: "0",
+  });
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const res = await post();
+  expect(res.status).toBe(200);
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
+  expect(settleUnknown).not.toHaveBeenCalled();
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+  expect(recordZeroCostUsage).toHaveBeenCalledTimes(1);
+  expect(
+    (
+      recordZeroCostUsage.mock.calls[0] as unknown as [
+        { toolName?: string; metadata?: Record<string, unknown> },
+      ]
+    )[0],
+  ).toMatchObject({
+    // post() dispatches params.name "t"; the route forwards the real parsed
+    // tool name (toolNameFromRpcBody), not the malformed-body "unknown" path.
+    toolName: "t",
+    metadata: { success: true },
+  });
+});
+
+test("free-tier price change mid-flight cannot bill the buyer (#22961 rebase)", async () => {
+  // The route snapshot says free (credits_per_request 0), so admission is
+  // skipped; the MCP row flips to paid (5) BEFORE usage recording. The
+  // zero-cost API must record 0 anyway — it never re-reads the price row,
+  // so a mid-flight price change cannot produce a post-delivery charge.
+  getById.mockResolvedValueOnce({
+    ...EXTERNAL_MCP,
+    credits_per_request: "0",
+  });
+  recordZeroCostUsage.mockImplementationOnce(async () => {
+    // Simulate the price flip landing before the usage write.
+    getById.mockResolvedValue({ ...EXTERNAL_MCP });
+  });
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const res = await post();
+  expect(res.status).toBe(200);
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
+  expect(settleUnknown).not.toHaveBeenCalled();
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+  expect(recordZeroCostUsage).toHaveBeenCalledTimes(1);
+});
+
+test("free-tier revoked credential is rejected before upstream dispatch (#27992)", async () => {
+  // Regression: on the free tier the admission rail is skipped, so the
+  // deferred strong credential check used to run only in the guard's async
+  // disposal — after the upstream fetch. A revoked credential must never
+  // reach safeFetch on a zero-cost call.
+  getById.mockResolvedValueOnce({ ...EXTERNAL_MCP, credits_per_request: "0" });
+  assertInferenceCredentialActive.mockRejectedValueOnce(
+    new InferenceCredentialRevokedError("credential_revoked"),
+  );
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const res = await post();
+  const body = (await res.json()) as { details?: { reason?: string } };
+  expect(res.status).toBe(401);
+  expect(body.details?.reason).toBe("credential_inactive");
+  expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
+  expect(assertInferenceCredentialActive).toHaveBeenCalledWith("org1", {
+    kind: "api_key",
+    credentialId: "key1",
+    userId: "u1",
+  });
+  expect(safeFetch).not.toHaveBeenCalled();
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(recordZeroCostUsage).not.toHaveBeenCalled();
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
+});
+
+test("free-tier active credential dispatches with exactly one strong check (#27992)", async () => {
+  // The pre-dispatch check runs exactly once: consuming the proof through
+  // the guard marks the admission boundary, so disposal never re-checks and
+  // the zero-cost delivery proceeds normally.
+  getById.mockResolvedValueOnce({ ...EXTERNAL_MCP, credits_per_request: "0" });
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const res = await post();
+  expect(res.status).toBe(200);
+  expect(assertInferenceCredentialActive).toHaveBeenCalledTimes(1);
+  expect(safeFetch).toHaveBeenCalledTimes(1);
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(recordZeroCostUsage).toHaveBeenCalledTimes(1);
+});
+
+test("free-tier call without a deferred credential dispatches unchecked (#27992)", async () => {
+  // Compatibility-auth callers carry no strong-check proof; nothing to
+  // verify, so dispatch proceeds without the boundary roundtrip.
+  requireGenerativeRouteCaller.mockResolvedValueOnce({
+    user: { id: "u1", organization_id: "org1" },
+    apiKeyId: null,
+    authSource: "compatibility",
+    appScopeId: null,
+  });
+  getById.mockResolvedValueOnce({ ...EXTERNAL_MCP, credits_per_request: "0" });
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const res = await post();
+  expect(res.status).toBe(200);
+  expect(assertInferenceCredentialActive).not.toHaveBeenCalled();
+  expect(safeFetch).toHaveBeenCalledTimes(1);
+});
+
+test("free-tier revocation-boundary outage fails closed before dispatch (#27992)", async () => {
+  // DO outage must not become unlimited free access for revoked credentials:
+  // the free tier pays the same fail-closed 503 price as the paid rail.
+  getById.mockResolvedValueOnce({ ...EXTERNAL_MCP, credits_per_request: "0" });
+  assertInferenceCredentialActive.mockRejectedValueOnce(
+    new InferenceCredentialRevocationUnavailableError(
+      "Inference revocation boundary is unavailable",
+    ),
+  );
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const res = await post();
+  expect(res.status).toBe(503);
+  expect(safeFetch).not.toHaveBeenCalled();
+  expect(recordZeroCostUsage).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
+});
+
+test("paid-path control: revoked credential on a priced MCP denies before dispatch (#27992)", async () => {
+  // Guards the ternary-to-if/else conversion: the paid rail still consumes
+  // the credential proof inside admission and maps revocation identically.
+  assertInferenceCredentialActive.mockRejectedValueOnce(
+    new InferenceCredentialRevokedError("session_revoked"),
+  );
+  admitFlatGenerativeOperation.mockImplementationOnce(
+    async (params: { credential?: { kind: string } }) => {
+      if (params.credential) {
+        await assertInferenceCredentialActive("org1", params.credential);
+      }
+      return { settle, settleUnknown, markProviderDispatched };
+    },
+  );
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const res = await post();
+  const body = (await res.json()) as { details?: { reason?: string } };
+  expect(res.status).toBe(401);
+  expect(body.details?.reason).toBe("credential_inactive");
+  expect(safeFetch).not.toHaveBeenCalled();
 });
 
 test("stalled endpoint prevalidation returns 504 before admission", async () => {

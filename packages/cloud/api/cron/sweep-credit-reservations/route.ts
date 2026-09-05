@@ -10,6 +10,7 @@ import { drainAffiliatePayoutOutbox } from "@/lib/services/affiliate-payout-outb
 import { sweepPendingAppUsageProjections } from "@/lib/services/app-usage-projections";
 import { creditsService } from "@/lib/services/credits";
 import { reconcileNativeStoragePuts } from "@/lib/services/storage/native-storage-put";
+import { userMcpsService } from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -26,15 +27,19 @@ async function handleSweepCreditReservations(c: Context<AppEnv>) {
     // generic stale-hold sweep so a strong R2 HEAD, not age alone, decides
     // whether an ambiguous PUT settles or refunds.
     const nativeStorage = await reconcileNativeStoragePuts(c.env.BLOB);
-    const [stats, affiliatePayouts, appUsageProjections] = await Promise.all([
-      creditsService.sweepStaleReservations(),
-      drainAffiliatePayoutOutbox(),
-      sweepPendingAppUsageProjections(),
-    ]);
+    const [stats, affiliatePayouts, appUsageProjections, mcpSettlements] =
+      await Promise.all([
+        creditsService.sweepStaleReservations(),
+        drainAffiliatePayoutOutbox(),
+        sweepPendingAppUsageProjections(),
+        // #22961: resume settling MCP receipts and refund orphaned precharges.
+        userMcpsService.sweepMcpSettlements(),
+      ]);
     logger.info("[Credits] durable billing projection sweep complete", {
       creditReservations: stats,
       affiliatePayouts,
       appUsageProjections,
+      mcpSettlements,
     });
     return c.json({
       success: true,
@@ -42,6 +47,7 @@ async function handleSweepCreditReservations(c: Context<AppEnv>) {
       nativeStorage,
       affiliatePayouts,
       appUsageProjections,
+      mcpSettlements,
     });
   } catch (error) {
     // error-policy:J1 cron is the outer transport boundary for durable
