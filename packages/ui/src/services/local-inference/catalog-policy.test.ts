@@ -9,6 +9,7 @@ import {
   filterSettingsDefaultLocalModels,
   isDefaultLocalModelFamily,
   isEliza1ModelFamilyId,
+  isPublishedLocalModel,
   isSettingsDefaultLocalModel,
   isVerifiedCuratedEliza1Download,
 } from "./catalog-policy.js";
@@ -143,6 +144,42 @@ describe("catalog-policy", () => {
         bundleVerifiedAt: "2026-08-24T01:00:00.000Z",
       });
       expect(isVerifiedCuratedEliza1Download(nonEligible)).toBe(false);
+    });
+  });
+
+  describe("isPublishedLocalModel", () => {
+    it("recognizes canonically published tiers as published", () => {
+      expect(isPublishedLocalModel(createMockCatalogModel("eliza-1-2b"))).toBe(
+        true,
+      );
+      expect(isPublishedLocalModel(createMockCatalogModel("eliza-1-4b"))).toBe(
+        true,
+      );
+    });
+
+    it("recognizes un-cut / pending tiers as not published", () => {
+      expect(isPublishedLocalModel(createMockCatalogModel("eliza-1-9b"))).toBe(
+        false,
+      );
+      expect(isPublishedLocalModel(createMockCatalogModel("eliza-1-27b"))).toBe(
+        false,
+      );
+      expect(
+        isPublishedLocalModel(createMockCatalogModel("eliza-1-27b-256k")),
+      ).toBe(false);
+    });
+
+    it("respects explicit publishStatus overrides on the model", () => {
+      expect(
+        isPublishedLocalModel(
+          createMockCatalogModel("eliza-1-9b", { publishStatus: "published" }),
+        ),
+      ).toBe(true);
+      expect(
+        isPublishedLocalModel(
+          createMockCatalogModel("eliza-1-2b", { publishStatus: "pending" }),
+        ),
+      ).toBe(false);
     });
   });
 

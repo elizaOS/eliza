@@ -10,7 +10,10 @@ import {
   findCatalogModel,
   MODEL_CATALOG,
 } from "./catalog";
-import { recommendForFirstRun } from "./recommendation";
+import {
+  recommendForFirstRun,
+  selectRecommendedModelForSlot,
+} from "./recommendation";
 import { localInferenceService } from "./service";
 
 const EXPECTED_ELIZA_1_DISPLAY_NAMES: Record<string, string> = {
@@ -161,5 +164,25 @@ describe("local inference catalog", () => {
     expect(picked.displayName).toBe(
       EXPECTED_ELIZA_1_DISPLAY_NAMES[FIRST_RUN_DEFAULT_MODEL_ID],
     );
+  });
+
+  it("selectRecommendedModelForSlot on 24 GB Apple Silicon skips pending 9B and selects published 4B", () => {
+    const appleSiliconHardware: import("./types").HardwareProbe = {
+      totalRamGb: 24,
+      freeRamGb: 16,
+      gpu: null,
+      cpuCores: 8,
+      platform: "darwin",
+      arch: "arm64",
+      appleSilicon: true,
+      recommendedBucket: "mid",
+      source: "os-fallback",
+    };
+    const selection = selectRecommendedModelForSlot(
+      "TEXT_LARGE",
+      appleSiliconHardware,
+    );
+    // 9B fits into 24 GB, but its publishStatus is pending. 4B is published, so 4B is chosen.
+    expect(selection.model?.id).toBe("eliza-1-4b");
   });
 });
