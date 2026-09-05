@@ -748,6 +748,7 @@ export async function markInferenceAdmissionLeaseDispatched(
 
   let lastAmbiguousError: unknown;
   const prepared = lease.preparedDispatch;
+  let mayHaveCommitted = prepared?.state === "ambiguous";
   const path = prepared?.path ?? "/dispatch";
   const body = prepared
     ? { ...prepared.body, preProviderCancellationToken: cancellationToken }
@@ -767,12 +768,14 @@ export async function markInferenceAdmissionLeaseDispatched(
         AbortSignal.timeout(DISPATCH_GATE_TIMEOUT_MS),
       );
     } catch (error) {
+      mayHaveCommitted = true;
       lastAmbiguousError = error;
       if (attempt < DISPATCH_GATE_MAX_ATTEMPTS) continue;
       break;
     }
     if (prepared && response.status === 403) {
-      prepared.state = "rejected";
+      // A later denial cannot erase a prior acknowledgement-ambiguous commit.
+      if (!mayHaveCommitted) prepared.state = "rejected";
       let reason = "revoked";
       try {
         const payload = (await response.json()) as { reason?: unknown };
@@ -783,7 +786,7 @@ export async function markInferenceAdmissionLeaseDispatched(
       throw new InferenceCredentialRevokedError(reason);
     }
     if (prepared && response.status === 402) {
-      prepared.state = "rejected";
+      if (!mayHaveCommitted) prepared.state = "rejected";
       const payload = await parseLeaseResponse(response);
       throw new InferenceAdmissionLeaseRejectedError(payload.requiredUsd, payload.availableUsd);
     }
@@ -799,16 +802,20 @@ export async function markInferenceAdmissionLeaseDispatched(
       const error = new InferenceAdmissionDispatchMarkError(
         `Inference admission gate combined dispatch failed with status ${response.status}`,
       );
+      mayHaveCommitted = true;
       lastAmbiguousError = error;
       if (attempt < DISPATCH_GATE_MAX_ATTEMPTS) continue;
       break;
     }
     if (!response.ok) {
-      if (prepared && response.status < 500) prepared.state = "rejected";
+      if (prepared && response.status < 500 && !mayHaveCommitted) {
+        prepared.state = "rejected";
+      }
       const error = new InferenceAdmissionDispatchMarkError(
         `Inference admission gate dispatch failed with status ${response.status}`,
       );
       if (response.status < 500) throw error;
+      mayHaveCommitted = true;
       lastAmbiguousError = error;
       if (attempt < DISPATCH_GATE_MAX_ATTEMPTS) continue;
       break;
@@ -819,6 +826,7 @@ export async function markInferenceAdmissionLeaseDispatched(
     } catch (error) {
       // A valid 2xx transport with an unreadable body can still follow a
       // committed dispatch. Replaying the same capability resolves ambiguity.
+      mayHaveCommitted = true;
       lastAmbiguousError = error;
       if (attempt < DISPATCH_GATE_MAX_ATTEMPTS) continue;
       break;
