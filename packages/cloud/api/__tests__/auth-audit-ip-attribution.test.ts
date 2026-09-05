@@ -76,6 +76,8 @@ const LOGOUT_USER = {
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   ...realAuth,
+  getCurrentUserForStewardToken: async (_context: unknown, token: string) =>
+    token === "logout-token" ? LOGOUT_USER : null,
   getCurrentUser: async (c: {
     req: { header: (n: string) => string | undefined };
   }) =>
