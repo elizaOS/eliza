@@ -354,6 +354,27 @@ export function normalizeConnectorInteractionCapabilityProfile(
 			{ code: "INVALID_INTERACTION_CAPABILITY_PROFILE" },
 		);
 	}
+	// Typed as non-secret; an untrusted payload arrives as parsed JSON, so the
+	// runtime guard must hold even when the static type was bypassed.
+	if (
+		(profile.nonSecretFallbacks as readonly string[]).includes(
+			"sensitive-request",
+		)
+	) {
+		throw new ElizaError(
+			"The sensitive-request flow is not a non-secret fallback.",
+			{ code: "INVALID_INTERACTION_CAPABILITY_PROFILE" },
+		);
+	}
+	if ((profile.sensitiveFallback as string) !== "sensitive-request") {
+		throw new ElizaError(
+			"Secret and OAuth collection must use the sensitive-request flow.",
+			{
+				code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
+				context: { sensitiveFallback: profile.sensitiveFallback },
+			},
+		);
+	}
 	for (const kind of INTERACTION_BLOCK_KINDS) {
 		if (kind === "secret") continue;
 		if (
