@@ -12,6 +12,8 @@
  * Pure transport glue — the plugin is passed in, so it unit-tests with a fake.
  */
 
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
+
 export interface NativeStreamAgentRequestOptions {
   method?: string;
   path: string;
@@ -85,7 +87,9 @@ function base64ToBytes(base64: string): Uint8Array {
 export async function createNativeStreamingResponse(
   agent: NativeStreamingAgentPlugin,
   options: NativeStreamAgentRequestOptions,
+  signal?: AbortSignal,
 ): Promise<Response> {
+  signal?.throwIfAborted();
   const stream = await agent.requestStream(options);
   const { streamId } = stream;
 
@@ -116,15 +120,31 @@ export async function createNativeStreamingResponse(
     idleTimer = null;
   };
 
+  const removeHandle = async (
+    handle: NativeStreamListenerHandle,
+  ): Promise<void> => {
+    try {
+      await handle.remove();
+    } catch (error) {
+      // error-policy:J6 listener teardown must not replace the settled stream result.
+      reportRendererDiagnostic({
+        scope: "native-stream.remove-listener",
+        severity: "warning",
+        error,
+      });
+    }
+  };
+
   const detach = (): void => {
     if (detached) return;
     detached = true;
     clearTimers();
-    for (const handle of handles) void handle.remove();
+    signal?.removeEventListener("abort", onAbort);
+    for (const handle of handles) void removeHandle(handle);
   };
   const trackHandle = (handle: NativeStreamListenerHandle): void => {
     if (detached) {
-      void handle.remove();
+      void removeHandle(handle);
       return;
     }
     handles.push(handle);
@@ -152,11 +172,20 @@ export async function createNativeStreamingResponse(
     resolveHead = resolve;
     rejectHead = reject;
   });
-  // error-policy:J5 unhandled-rejection guard; the rejection IS observed by the
-  // caller that consumes the returned `head` promise (line 207) — this keepalive
-  // catch only prevents a spurious unhandledrejection if head settles first.
-  void head.catch(() => {});
+  void head.catch(() => {
+    // error-policy:J5 the caller observes this rejection through the returned head promise.
+  });
   let headSettled = false;
+
+  const onAbort = (): void => {
+    if (detached) return;
+    if (!headSettled) {
+      headSettled = true;
+      rejectHead(signal?.reason);
+    }
+    controller?.error(signal?.reason);
+    detach();
+  };
 
   const failStream = (reason: unknown): void => {
     if (detached) return;
@@ -232,7 +261,7 @@ export async function createNativeStreamingResponse(
 
   const onChunk = (event: unknown): void => {
     const e = event as NativeStreamChunkEvent;
-    if (!e || e.streamId !== streamId || !e.dataBase64) return;
+    if (!e || e.streamId !== streamId || !e.dataBase64 || detached) return;
     const bytes = base64ToBytes(e.dataBase64);
     if (controller) controller.enqueue(bytes);
     else pending.push(bytes);
@@ -272,15 +301,32 @@ export async function createNativeStreamingResponse(
     void stream.completion.then(finishStream, failStream);
   }
 
-  trackHandle(await agent.addListener("agentStreamResponse", onResponse));
-  trackHandle(await agent.addListener("agentStreamChunk", onChunk));
-  trackHandle(await agent.addListener("agentStreamComplete", onComplete));
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
+
+  if (detached) return head;
+
+  try {
+    for (const [eventName, listener] of [
+      ["agentStreamResponse", onResponse],
+      ["agentStreamChunk", onChunk],
+      ["agentStreamComplete", onComplete],
+    ] as const) {
+      if (detached) break;
+      trackHandle(await agent.addListener(eventName, listener));
+    }
+  } catch (error) {
+    // error-policy:J1 stream setup failure rejects the head and releases acquired listeners.
+    failStream(error);
+  }
 
   // Head deadline: if no response arrives in time, fail the head so the caller's
   // try/catch falls back to the buffered request instead of hanging.
-  headTimer = setTimeout(() => {
-    if (!headSettled) failStream(new Error("native stream head timeout"));
-  }, HEAD_TIMEOUT_MS);
+  if (!detached) {
+    headTimer = setTimeout(() => {
+      if (!headSettled) failStream(new Error("native stream head timeout"));
+    }, HEAD_TIMEOUT_MS);
+  }
 
   return head;
 }

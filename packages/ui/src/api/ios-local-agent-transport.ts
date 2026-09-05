@@ -1,23 +1,27 @@
 /**
- * AgentRequestTransport for the iOS local agent: installs the __ELIZA_BRIDGE__
- * window bridge and routes requests to the in-process full-bun agent over its
- * IPC base. See the ios-local-agent references in the package CLAUDE.md.
+ * Owns the iOS local-agent transport, fetch interception, native runtime and
+ * watchdog recovery shared by app startup and API clients. App-core preserves
+ * its public entrypoint by re-exporting this singleton owner. Native Capacitor
+ * proxies are wrapped before crossing an await boundary to avoid their then trap.
  */
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { getElizaApiBase } from "@elizaos/shared/utils/eliza-globals";
 import {
   installElizaBridge,
   registerElizaBridgeCapability,
 } from "../bridge/eliza-window-bridge";
 import { isStoreBuild } from "../build-variant";
-import { getBootConfig } from "../config/boot-config";
 import {
   isCommittedOnDeviceMobileRuntimeMode,
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
   isMobileLocalAgentIpcUrl,
+  MOBILE_LOCAL_AGENT_PORT,
   mobileLocalAgentPathFromUrl,
   normalizeMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
+import { abortableResponse, runAbortableRequest } from "./abortable-request";
 import {
   handleIosLocalAgentRequest,
   startIosLocalAgentKernel,
@@ -34,6 +38,8 @@ import {
 let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;
 let globalFetchBridgeInstalled = false;
+let restartRequestListenerInstalled = false;
+let restartRequestInFlight: Promise<void> | null = null;
 let originalFetch: typeof fetch | null = null;
 let fullBunRuntime:
   | Promise<FullBunRuntimePlugin | null>
@@ -392,10 +398,17 @@ const IOS_FULL_BUN_ENV: Record<string, string> = {
   LOG_LEVEL: "error",
 };
 
+const STARTUP_TRACE_ID_WINDOW_KEY = "__ELIZA_STARTUP_TRACE_ID__";
+const STARTUP_TRACE_WINDOW_KEY = "__ELIZA_STARTUP_TRACE__";
+const IOS_RESTART_LISTENER_WINDOW_KEY =
+  "__ELIZA_IOS_LOCAL_AGENT_RESTART_LISTENER_INSTALLED__";
+
 type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
 declare global {
   interface Window {
+    [STARTUP_TRACE_ID_WINDOW_KEY]?: string;
+    [IOS_RESTART_LISTENER_WINDOW_KEY]?: boolean;
     __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
       options: IosLocalAgentNativeRequestOptions,
     ) => Promise<IosLocalAgentNativeRequestResult>;
@@ -493,10 +506,6 @@ function readPersistedRuntimeMode(): string | null {
   }
 }
 
-function getElizaApiBase(): string | undefined {
-  return getBootConfig().apiBase?.trim() || undefined;
-}
-
 function fullBunStartupError(message: string, cause?: unknown): Error {
   const causeMessage =
     cause instanceof Error ? cause.message : cause ? String(cause) : "";
@@ -538,7 +547,7 @@ function isLoopbackLocalAgentUrl(value: string): boolean {
     const hostname = parsed.hostname || "";
     return (
       parsed.protocol === "http:" &&
-      parsed.port === "31337" &&
+      parsed.port === MOBILE_LOCAL_AGENT_PORT &&
       (hostname === "127.0.0.1" ||
         hostname.startsWith("127.") ||
         hostname === "localhost" ||
@@ -777,9 +786,65 @@ function normalizeNativeResult(
   };
 }
 
+function normalizeStartupTraceId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readStartupTraceId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const startupTrace = (
+    window as Window & {
+      [STARTUP_TRACE_WINDOW_KEY]?: { traceId?: unknown };
+    }
+  )[STARTUP_TRACE_WINDOW_KEY];
+  return (
+    normalizeStartupTraceId(window[STARTUP_TRACE_ID_WINDOW_KEY]) ??
+    normalizeStartupTraceId(startupTrace?.traceId)
+  );
+}
+
+function iosFullBunEnv(): Record<string, string> {
+  const startupTraceId = readStartupTraceId();
+  return startupTraceId
+    ? { ...IOS_FULL_BUN_ENV, ELIZA_STARTUP_TRACE_ID: startupTraceId }
+    : IOS_FULL_BUN_ENV;
+}
+
+async function startFullBunRuntime(
+  runtime: FullBunRuntimePlugin,
+  source = "startup",
+): Promise<void> {
+  recordIosNativeAgentBootPhase("starting");
+  appendIosBootTrace("engine-start-requested", { source });
+  const startedAt = Date.now();
+  const started = await runtime.start({
+    engine: "bun",
+    argv: IOS_FULL_BUN_ARGV,
+    env: iosFullBunEnv(),
+  });
+  if (!started.ok) {
+    throw new Error(started.error ?? "runtime start returned ok=false");
+  }
+  const status = await runtime.getStatus();
+  if (!status.ready || status.engine !== "bun") {
+    throw new Error(
+      `runtime status was ready=${String(status.ready)} engine=${status.engine ?? "unknown"}`,
+    );
+  }
+  recordIosNativeAgentBootPhase("ready");
+  appendIosBootTrace("engine-start-ok", {
+    source,
+    durationMs: Date.now() - startedAt,
+    engine: status.engine,
+  });
+}
+
 let tracedEngineAcquire = false;
 
 async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
+  if (restartRequestInFlight) await restartRequestInFlight;
   const strict = shouldRequireFullBunRuntime();
   const pluginAvailable = isFullBunRuntimePluginAvailable();
   if (!tracedEngineAcquire && isNativeIos()) {
@@ -829,32 +894,10 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
         });
         return runtime;
       }
-      recordIosNativeAgentBootPhase("starting");
-      appendIosBootTrace("engine-start-requested", { copy: "ui" });
-      const startRequestedAt = Date.now();
-      const started = await runtime.start({
-        engine: "bun",
-        argv: IOS_FULL_BUN_ARGV,
-        env: IOS_FULL_BUN_ENV,
-      });
-      if (!started.ok) {
-        throw new Error(started.error ?? "runtime start returned ok=false");
-      }
-      const status = await runtime.getStatus();
-      if (!status.ready || status.engine !== "bun") {
-        throw new Error(
-          `runtime status was ready=${String(status.ready)} engine=${
-            status.engine ?? "unknown"
-          }`,
-        );
-      }
-      recordIosNativeAgentBootPhase("ready");
-      appendIosBootTrace("engine-start-ok", {
-        durationMs: Date.now() - startRequestedAt,
-        engine: status.engine,
-      });
+      await startFullBunRuntime(runtime);
       return runtime;
     } catch (error) {
+      // error-policy:J4 development may use the compatibility engine; strict builds reject.
       const message = error instanceof Error ? error.message : String(error);
       recordIosNativeAgentBootPhase("error", message);
       if (strict) {
@@ -871,6 +914,7 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
     if (!runtime) fullBunRuntime = null;
     return runtime;
   } catch (error) {
+    // error-policy:J2 clear rejected acquisition for retry and preserve the failure.
     fullBunRuntime = null;
     throw error;
   }
@@ -892,6 +936,7 @@ async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
       "@elizaos/capacitor-bun-runtime"
     )) as Partial<FullBunRuntimeModule>;
   } catch {
+    // error-policy:J4 browser bundles resolve the registered native plugin below.
     mod = null;
   }
   appendIosBootTrace("engine-import-done", {
@@ -913,10 +958,75 @@ async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
   );
 }
 
+async function restartIosFullBunRuntimeFromWatchdog(): Promise<void> {
+  if (restartRequestInFlight) return restartRequestInFlight;
+  restartRequestInFlight = (async () => {
+    if (!isNativeIos()) return;
+    if (["cloud", "remote-mac"].includes(readRuntimeMode() ?? "")) return;
+    appendIosBootTrace("watchdog-restart-handling", {
+      pluginAvailable: isFullBunRuntimePluginAvailable(),
+    });
+    if (!isFullBunRuntimePluginAvailable()) {
+      throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
+    }
+
+    const runtime = isPrimedFullBunRuntime(fullBunRuntime)
+      ? fullBunRuntime.runtime
+      : ((await fullBunRuntime) ?? (await importFullBunRuntimePlugin()));
+    if (!runtime) {
+      throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
+    }
+
+    await startFullBunRuntime(runtime, "watchdog-restart");
+    fullBunRuntime = { kind: "primed", runtime };
+  })().catch((error: unknown) => {
+    // error-policy:J2 preserve the failed restart for the event boundary.
+    fullBunRuntime = null;
+    const message = error instanceof Error ? error.message : String(error);
+    recordIosNativeAgentBootPhase("error", message);
+    appendIosBootTrace("watchdog-restart-failed", {
+      message: truncateWellFormed(toWellFormedUnicode(message), 300),
+    });
+    throw error;
+  });
+  restartRequestInFlight = restartRequestInFlight.finally(() => {
+    restartRequestInFlight = null;
+  });
+  return restartRequestInFlight;
+}
+
+function installIosLocalAgentRestartRequestListener(): void {
+  if (restartRequestListenerInstalled) return;
+  if (typeof window === "undefined") return;
+  if (typeof window.addEventListener !== "function") return;
+  if (window[IOS_RESTART_LISTENER_WINDOW_KEY]) return;
+  window.addEventListener(
+    "eliza:local-agent-restart-requested",
+    (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ attempt?: number; source?: string }>
+      ).detail;
+      void restartIosFullBunRuntimeFromWatchdog().catch((error) => {
+        // error-policy:J7 report a failed native recovery without killing the event loop.
+        reportRendererDiagnostic({
+          scope: "ios-local-agent.watchdog-restart",
+          severity: "error",
+          error,
+          context: { attempt: detail?.attempt, source: detail?.source },
+        });
+      });
+    },
+  );
+  window[IOS_RESTART_LISTENER_WINDOW_KEY] = true;
+  restartRequestListenerInstalled = true;
+}
+
 async function tryFullBunNativeRequest(
   options: IosLocalAgentNativeRequestOptions,
+  signal?: AbortSignal,
 ): Promise<IosLocalAgentNativeRequestResult | null> {
   const runtime = await getFullBunRuntime();
+  signal?.throwIfAborted();
   if (!runtime) return null;
   const response = await runtime.call({
     method: "http_request",
@@ -997,8 +1107,10 @@ function nativeResultToResponse(
  */
 async function tryFullBunStreamingResponse(
   options: IosLocalAgentNativeRequestOptions,
+  signal: AbortSignal,
 ): Promise<Response | null> {
   const runtime = await getFullBunRuntime();
+  signal.throwIfAborted();
   if (!runtime?.addListener) return null;
   const plugin = createIosStreamingAgentPlugin(
     { call: runtime.call, addListener: runtime.addListener },
@@ -1011,13 +1123,17 @@ async function tryFullBunStreamingResponse(
       });
     },
   );
-  const response = await createNativeStreamingResponse(plugin, {
-    method: options.method,
-    path: options.path,
-    headers: options.headers,
-    body: options.body ?? null,
-    timeoutMs: options.timeoutMs,
-  });
+  const response = await createNativeStreamingResponse(
+    plugin,
+    {
+      method: options.method,
+      path: options.path,
+      headers: options.headers,
+      body: options.body ?? null,
+      timeoutMs: options.timeoutMs,
+    },
+    signal,
+  );
   recordIosNativeAgentBootHeartbeat();
   return response;
 }
@@ -1026,29 +1142,46 @@ async function dispatchIosLocalAgentRequest(
   request: Request,
   context?: { timeoutMs?: number },
 ): Promise<Response> {
+  return runAbortableRequest(request.signal, () =>
+    dispatchIosRequest(request, context),
+  );
+}
+
+async function dispatchIosRequest(
+  request: Request,
+  context?: { timeoutMs?: number },
+): Promise<Response> {
   const options = await requestToNativeBridgeOptions(request, context);
+  request.signal.throwIfAborted();
 
   // Route the chat token stream (POST …/messages/stream, or any
   // Accept: text/event-stream request) through the streaming bridge so tokens
   // render incrementally instead of the buffered single-frame fallback.
   if (isStreamingRequest(request.url, request.headers)) {
     try {
-      const streamed = await tryFullBunStreamingResponse(options);
+      const streamed = await tryFullBunStreamingResponse(
+        options,
+        request.signal,
+      );
       if (streamed) return streamed;
     } catch {
-      // Stream couldn't start — fall through to the buffered request path.
+      // error-policy:J4 a stream startup failure may use buffered transport;
+      // caller cancellation must never dispatch a second native operation.
+      request.signal.throwIfAborted();
     }
   }
 
-  return nativeResultToResponse(
-    await handleIosLocalAgentNativeRequest(options),
+  const response = nativeResultToResponse(
+    await handleIosLocalAgentNativeRequest(options, request.signal),
   );
+  return abortableResponse(response, request.signal);
 }
 
 let tracedNativeRequests = 0;
 
 export async function handleIosLocalAgentNativeRequest(
   options: IosLocalAgentNativeRequestOptions,
+  signal?: AbortSignal,
 ): Promise<IosLocalAgentNativeRequestResult> {
   if (tracedNativeRequests < 3) {
     tracedNativeRequests += 1;
@@ -1079,11 +1212,14 @@ export async function handleIosLocalAgentNativeRequest(
     throw new TypeError(IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE);
   }
 
-  const fullBunResult = await tryFullBunNativeRequest({
-    ...options,
-    method,
-    path,
-  });
+  const fullBunResult = await tryFullBunNativeRequest(
+    {
+      ...options,
+      method,
+      path,
+    },
+    signal,
+  );
   if (fullBunResult) return fullBunResult;
 
   if (isNativeIosStoreBuild()) {
@@ -1106,6 +1242,7 @@ export async function handleIosLocalAgentNativeRequest(
         options.body == null || method === "GET" || method === "HEAD"
           ? undefined
           : options.body,
+      signal,
     }),
     { timeoutMs: options.timeoutMs },
   );
@@ -1122,6 +1259,7 @@ export async function handleIosLocalAgentNativeRequest(
 }
 
 export function installIosLocalAgentNativeRequestBridge(): void {
+  installIosLocalAgentRestartRequestListener();
   if (globalRequestHandlerInstalled) return;
   if (typeof window === "undefined") return;
   registerElizaBridgeCapability(
@@ -1172,6 +1310,7 @@ function localAgentUrlForFetch(url: URL): string {
 }
 
 export function installIosLocalAgentFetchBridge(): void {
+  installIosLocalAgentRestartRequestListener();
   if (globalFetchBridgeInstalled) return;
   if (typeof globalThis.fetch !== "function") return;
   const nativeFetch = globalThis.fetch;
@@ -1183,8 +1322,7 @@ export function installIosLocalAgentFetchBridge(): void {
     const original = originalFetch;
     if (!original) return fetch(input, init);
 
-    const request = input instanceof Request ? input.clone() : null;
-    const rawUrl = request?.url ?? String(input);
+    const rawUrl = input instanceof Request ? input.url : String(input);
     let url: URL;
     try {
       url = new URL(
@@ -1194,15 +1332,15 @@ export function installIosLocalAgentFetchBridge(): void {
           : "http://localhost",
       );
     } catch {
+      // error-policy:J3 delegate invalid URL handling to the native Fetch boundary.
       return original(input, init);
     }
 
     if (!shouldBridgeFetchUrl(url)) return original(input, init);
 
     const bridgedUrl = localAgentUrlForFetch(url);
-    const bridgedRequest = request
-      ? new Request(bridgedUrl, request)
-      : new Request(bridgedUrl, init);
+    const request = new Request(input instanceof Request ? input : url, init);
+    const bridgedRequest = new Request(bridgedUrl, request);
     return dispatchIosLocalAgentRequest(bridgedRequest);
   }) as typeof fetch;
   const nativeFetchWithPreconnect = nativeFetch as FetchWithOptionalPreconnect;

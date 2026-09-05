@@ -78,6 +78,7 @@ import {
   savePersistedFirstRunComplete,
 } from "./persistence";
 import {
+  isLoopbackHostname,
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
 } from "./runtime-url-trust";
@@ -281,11 +282,6 @@ function isMobileLocalActiveServer(
   if (mobileRuntimeMode === "remote-mac") return false;
 
   return isMobileLocalAgentApiBase(server.apiBase);
-}
-
-function isLoopbackHostname(hostname: string): boolean {
-  const h = hostname.toLowerCase();
-  return h === "127.0.0.1" || h === "localhost" || h === "::1";
 }
 
 // Re-resolve a persisted loopback apiBase against whatever port the
@@ -686,7 +682,10 @@ export async function applyRestoredConnection(args: {
     return;
   }
 
-  if (isMobileLocalActiveServer(restoredActiveServer)) {
+  if (
+    isMobileLocalAgentIpcUrl(restoredActiveServer.apiBase) ||
+    (isNative && isMobileLocalActiveServer(restoredActiveServer))
+  ) {
     // Bundled mobile on-device agent (`eliza-local-agent://ipc`): a native
     // Capacitor IPC identity, not a network host — no socket dial, no bearer
     // token. Route the client at the IPC base; the full-Bun engine starts
