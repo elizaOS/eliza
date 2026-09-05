@@ -49,6 +49,79 @@ afterEach(async () => {
 });
 
 describe("runtime installation identity", () => {
+  it("preserves identity through an Android platform-owned app-data alias", async () => {
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "runtime-id-android-alias-")),
+    );
+    cleanup.push(root);
+    const physicalData = path.join(root, "data", "data");
+    const users = path.join(root, "data", "user");
+    const appDataDirectory = path.join(users, "0", "ai.elizaos.app");
+    const stateDirectory = path.join(appDataDirectory, "files", "agent-state");
+    await fs.mkdir(path.join(physicalData, "ai.elizaos.app", "files"), {
+      recursive: true,
+      mode: 0o700,
+    });
+    await fs.mkdir(users, { recursive: true, mode: 0o700 });
+    await fs.symlink(physicalData, path.join(users, "0"), "dir");
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_ANDROID_APP_DATA_DIR = appDataDirectory;
+    const id = await loadOrCreateRuntimeInstallationId(stateDirectory);
+    expect(await loadOrCreateRuntimeInstallationId(stateDirectory)).toBe(id);
+    expect(
+      await fs.readFile(
+        path.join(
+          physicalData,
+          "ai.elizaos.app",
+          "files",
+          "agent-state",
+          "runtime-installation-id",
+        ),
+        "utf8",
+      ),
+    ).toBe(`${id}\n`);
+  });
+
+  it("rejects an aliased app boundary and a state redirect outside that boundary", async () => {
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "runtime-id-android-escape-")),
+    );
+    cleanup.push(root);
+    const physicalAppData = path.join(root, "app-data");
+    const aliasAppData = path.join(root, "alias-app-data");
+    const outside = path.join(root, "outside");
+    await fs.mkdir(physicalAppData, { mode: 0o700 });
+    await fs.mkdir(outside, { mode: 0o700 });
+    await fs.symlink(physicalAppData, aliasAppData, "dir");
+    await fs.mkdir(path.join(physicalAppData, "files"), { mode: 0o700 });
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_ANDROID_APP_DATA_DIR = aliasAppData;
+    await expect(
+      loadOrCreateRuntimeInstallationId(
+        path.join(aliasAppData, "files", "agent-state"),
+      ),
+    ).rejects.toThrow("Runtime state parent must be a real directory");
+    process.env.ELIZA_ANDROID_APP_DATA_DIR = physicalAppData;
+    await fs.symlink(outside, path.join(physicalAppData, "redirect"), "dir");
+    await expect(
+      loadOrCreateRuntimeInstallationId(
+        path.join(physicalAppData, "redirect", "agent-state"),
+      ),
+    ).rejects.toThrow("Runtime state parent must be a real directory");
+    await fs.mkdir(path.join(outside, "nested"), { mode: 0o700 });
+    await expect(
+      loadOrCreateRuntimeInstallationId(
+        path.join(physicalAppData, "redirect", "nested", "agent-state"),
+      ),
+    ).rejects.toThrow("Resolved Android runtime state directory escaped");
+    await expect(
+      fs.access(path.join(outside, "nested", "agent-state")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      fs.access(path.join(physicalAppData, "files", "agent-state")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("uses the explicit Android app-data boundary for platform ancestors", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "runtime-owner-android-"),

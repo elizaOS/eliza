@@ -224,6 +224,17 @@ async function openTrustedLexicalChain(
   try {
     for (const [index, entryPath] of paths.entries()) {
       const stat = await fs.lstat(entryPath);
+      if (stat.isSymbolicLink()) {
+        if (
+          index === paths.length - 1 ||
+          entryPath === androidBoundary?.appDataDirectory
+        ) {
+          throw new Error("Runtime state parent must be a real directory.");
+        }
+        assertTrustedSymlinkStat(stat);
+        trusted.push({ path: entryPath, stat, validation: "symlink" });
+        continue;
+      }
       if (isAndroidPlatformAncestor(entryPath, androidBoundary)) {
         assertAndroidPlatformAncestorStat(stat);
         trusted.push({
@@ -231,14 +242,6 @@ async function openTrustedLexicalChain(
           stat,
           validation: "android-platform",
         });
-        continue;
-      }
-      if (stat.isSymbolicLink()) {
-        if (index === paths.length - 1) {
-          throw new Error("Runtime state parent must be a real directory.");
-        }
-        assertTrustedSymlinkStat(stat);
-        trusted.push({ path: entryPath, stat, validation: "symlink" });
         continue;
       }
       assertTrustedParentDirectoryStat(stat);
@@ -616,15 +619,23 @@ async function loadOrCreateRuntimeInstallationIdImpl(
   let trustedDirectory: TrustedDirectory;
   let resolvedStateDirectory: string;
   try {
+    // Android may expose the app through the platform-owned /data/user/0
+    // symlink. Containment must compare both paths in the same namespace;
+    // the captured lexical chain continues to detect alias replacement.
+    const resolvedAndroidBoundary = androidBoundary
+      ? {
+          appDataDirectory: await fs.realpath(androidBoundary.appDataDirectory),
+        }
+      : undefined;
     resolvedStateDirectory = path.join(
       await fs.realpath(requestedParent),
       path.basename(requestedStateDirectory),
     );
     if (
-      androidBoundary &&
+      resolvedAndroidBoundary &&
       !isSameOrDescendant(
         resolvedStateDirectory,
-        androidBoundary.appDataDirectory,
+        resolvedAndroidBoundary.appDataDirectory,
       )
     ) {
       throw new Error(
@@ -634,7 +645,7 @@ async function loadOrCreateRuntimeInstallationIdImpl(
     trustedDirectory = await openTrustedStateDirectory(
       resolvedStateDirectory,
       lexicalAncestors,
-      androidBoundary,
+      resolvedAndroidBoundary,
     );
   } catch (error) {
     await closeLexicalAncestors(lexicalAncestors);
