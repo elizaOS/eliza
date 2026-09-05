@@ -17,6 +17,9 @@ describe("voice", () => {
     expect(sanitizeApiKey("short")).toBe("short");
     expect(sanitizeApiKey("  key123456789  ")).toContain("...");
     expect(sanitizeApiKey("[REDACTED]")).toBe("[REDACTED]");
+    expect(sanitizeApiKey("🔑🔑🔑🔑secret🔑🔑🔑🔑")).toBe("🔑🔑...🔑🔑");
+    expect(sanitizeApiKey("key_🚀_value_🛰️")?.isWellFormed()).toBe(true);
+
   });
   it("checks configured", () => {
     expect(hasConfiguredApiKey("abc")).toBe(true);
