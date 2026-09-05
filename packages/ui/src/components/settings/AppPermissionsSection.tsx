@@ -96,6 +96,7 @@ export function AppPermissionsSection() {
       setRows(views.map(buildRowState));
       setListStatus({ state: "idle" });
     } catch (err) {
+      // error-policy:J4 Inventory failures render an exclusive retryable error state.
       const message = err instanceof Error ? err.message : String(err);
       if (!mountedRef.current) return;
       setListStatus({
@@ -145,6 +146,7 @@ export function AppPermissionsSection() {
           ),
         );
       } catch (err) {
+        // error-policy:J4 Restore the previous grant and expose the rejected update.
         const message = err instanceof Error ? err.message : String(err);
         if (!mountedRef.current) return;
         setRows((prev) =>
@@ -158,7 +160,7 @@ export function AppPermissionsSection() {
               : row,
           ),
         );
-        setActionNotice?.(
+        setActionNotice(
           `Failed to update permissions for ${slug}: ${message}`,
           "error",
         );
