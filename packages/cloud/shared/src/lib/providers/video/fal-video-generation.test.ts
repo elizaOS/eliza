@@ -55,6 +55,26 @@ describe("FAL video provider", () => {
     });
   });
 
+  test("builds the MiniMax H3 Max image-to-video input contract", () => {
+    expect(
+      buildFalVideoInput({
+        model: "minimax/h3-max/image-to-video",
+        prompt: "the subject turns toward the camera",
+        referenceUrl: "https://example.com/start.png",
+        durationSeconds: 5,
+        resolution: "768P",
+        audio: true,
+        apiKeys: { FAL_KEY: "fal-key" },
+      }),
+    ).toEqual({
+      prompt: "the subject turns toward the camera",
+      image_url: "https://example.com/start.png",
+      duration: 5,
+      resolution: "768P",
+      prompt_expansion_mode: "balanced",
+    });
+  });
+
   test("maps Seedance 2.5 controls to its exact fal schema", () => {
     expect(
       buildFalVideoInput({
@@ -424,3 +444,19 @@ describe("generateFalVideo — post-enqueue failures never present as refundable
     expect(queueStatus).not.toHaveBeenCalled();
   });
 });
+
+test.each([{ audio: false }, { voiceControl: true }, { voiceControl: false }])(
+  "rejects unsupported H3 Max controls %j before a billable provider submission",
+  async (controls) => {
+    subscribe.mockClear();
+    await expect(
+      generateFalVideo({
+        model: "minimax/h3-max/image-to-video",
+        prompt: "a silent city timelapse",
+        ...controls,
+        apiKeys: { FAL_KEY: "fal-key" },
+      }),
+    ).rejects.toBeInstanceOf(VideoGenerationTerminalError);
+    expect(subscribe).not.toHaveBeenCalled();
+  },
+);

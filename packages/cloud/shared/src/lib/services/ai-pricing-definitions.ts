@@ -148,6 +148,7 @@ export interface SupportedVideoModelDefinition {
     | "veo"
     | "veo31"
     | "veo31lite"
+    | "h3_max"
     | "kling"
     | "hailuo_standard"
     | "hailuo_pro"
@@ -162,6 +163,10 @@ export interface SupportedVideoModelDefinition {
     audio?: boolean;
     voiceControl?: boolean;
   };
+  requiresReferenceImage?: boolean;
+  /** Set only when the provider cannot toggle audio generation. */
+  fixedAudio?: boolean;
+  supportsVoiceControl?: boolean;
 }
 
 export interface SupportedMusicModelDefinition {
@@ -325,7 +330,16 @@ export const DEFAULT_IMAGE_MODEL_ID = "google/nano-banana-2/text-to-image";
  * is primary and later entries are terminal-failure fallbacks; explicit model
  * requests never use this chain.
  */
-export const DEFAULT_VIDEO_MODEL_IDS = ["fal-ai/veo3", "vidu/q3-turbo/text-to-video"] as const;
+export const DEFAULT_VIDEO_MODEL_IDS = [
+  "minimax/h3-max/image-to-video",
+  "vidu/q3-turbo/text-to-video",
+] as const;
+
+/** Image-bearing requests retain the image through every fallback. */
+export const DEFAULT_IMAGE_TO_VIDEO_MODEL_IDS = [
+  DEFAULT_VIDEO_MODEL_IDS[0],
+  "vidu/image-to-video-2.0",
+] as const;
 
 export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
   {
@@ -352,6 +366,22 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
       durationSeconds: 4,
       resolution: "720p",
       audio: false,
+    },
+    requiresReferenceImage: true,
+  },
+  {
+    modelId: "minimax/h3-max/image-to-video",
+    provider: "fal",
+    billingSource: "fal",
+    label: "MiniMax H3 Max Image-to-Video",
+    pageUrl: "https://fal.ai/models/minimax/h3-max/image-to-video",
+    pricingParser: "h3_max",
+    fixedAudio: true,
+    supportsVoiceControl: false,
+    defaultParameters: {
+      durationSeconds: 5,
+      resolution: "768P",
+      audio: true,
     },
   },
   {

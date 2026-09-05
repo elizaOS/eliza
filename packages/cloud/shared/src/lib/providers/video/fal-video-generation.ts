@@ -1,4 +1,5 @@
 /** Implements fal.ai video submission, queue polling, and status reconciliation. */
+import { ElizaError } from "@elizaos/core";
 import { ApiError, createFalClient } from "@fal-ai/client";
 import { getAiProviderConfigurationError } from "../language-model";
 import {
@@ -103,12 +104,21 @@ export function normalizeFalVideoResult(result: unknown, requestId?: string): Ge
 export function buildFalVideoInput(request: VideoGenerationRequest): Record<string, unknown> {
   const input: Record<string, unknown> = { prompt: request.prompt };
   const isSeedance25 = request.model.startsWith("bytedance/seedance-2.5/");
+  const isH3MaxImageToVideo = request.model === "minimax/h3-max/image-to-video";
+  if (isH3MaxImageToVideo && (request.audio === false || request.voiceControl !== undefined)) {
+    throw new ElizaError("MiniMax H3 Max does not support the requested audio controls", {
+      code: "VIDEO_CONTROLS_UNSUPPORTED",
+      context: { model: request.model, audio: request.audio, voiceControl: request.voiceControl },
+    });
+  }
   if (request.referenceUrl) {
     input.image_url = request.referenceUrl;
   }
   if (request.durationSeconds) {
     input.duration = isSeedance25 ? String(request.durationSeconds) : request.durationSeconds;
-    if (!isSeedance25) input.duration_seconds = request.durationSeconds;
+    if (!isSeedance25 && !isH3MaxImageToVideo) {
+      input.duration_seconds = request.durationSeconds;
+    }
   }
   if (request.resolution) {
     input.resolution = request.resolution;
@@ -122,6 +132,12 @@ export function buildFalVideoInput(request: VideoGenerationRequest): Record<stri
   if (request.endUserId) input.end_user_id = request.endUserId;
   if (request.voiceControl !== undefined) {
     input.voice_control = request.voiceControl;
+  }
+  if (isH3MaxImageToVideo) {
+    input.prompt_expansion_mode = "balanced";
+    delete input.audio;
+    delete input.generate_audio;
+    delete input.voice_control;
   }
   return input;
 }
@@ -197,6 +213,9 @@ export async function generateFalVideo(request: VideoGenerationRequest): Promise
   } catch (error) {
     // error-policy:J1 the provider adapter translates submission/poll outcomes
     // into the typed states required by route billing and reconciliation.
+    if (error instanceof ElizaError && error.code === "VIDEO_CONTROLS_UNSUPPORTED") {
+      throw new VideoGenerationTerminalError(error.message, error);
+    }
     if (!requestId) {
       // The client only raises ApiError from a real HTTP error response, and
       // fal issues a request_id only inside a 2xx submit body, so ANY error
