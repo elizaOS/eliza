@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 import { canUseWorkspaceEntry } from "./mobile-workspace-entry.mjs";
 
 test("browser builds retain their browser export when Node output is absent", async () => {
@@ -37,11 +38,12 @@ test("browser builds retain their browser export when Node output is absent", as
     const entry = path.join(root, "entry.ts");
     await writeFile(
       entry,
-      'import {result} from "@elizaos/browser-fixture"; console.log(result);',
+      'import {result} from "@elizaos/browser-fixture"; globalThis.fixtureResult = result;',
     );
     const output = await Bun.build({
       entrypoints: [entry],
       target: "browser",
+      format: "iife",
       plugins: [
         {
           name: "workspace-entry",
@@ -58,11 +60,9 @@ test("browser builds retain their browser export when Node output is absent", as
       ],
     });
     assert.equal(output.success, true, output.logs.map(String).join("\n"));
-    const artifact = path.join(root, "bundle.mjs");
-    await writeFile(artifact, await output.outputs[0].text());
-    const execution = Bun.spawnSync([process.execPath, artifact]);
-    assert.equal(execution.exitCode, 0, execution.stderr.toString());
-    assert.equal(execution.stdout.toString().trim(), "browser");
+    const browserRealm = {};
+    runInNewContext(await output.outputs[0].text(), browserRealm);
+    assert.equal(browserRealm.fixtureResult, "browser");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
