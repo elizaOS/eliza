@@ -2039,6 +2039,31 @@ function calendarEventLocalDate(
  * target but can never turn a match into a not-found or retarget a unique
  * match.
  */
+/**
+ * Planner title hints are often richer than the stored title: the model folds
+ * the date and time it was given into `query` ("Gym session September 8 2026
+ * 7:00" for "Gym session"), so requiring the title to contain the hint reported
+ * an existing event as not found. A hint matches when either string contains
+ * the other or when it carries every token of the title; the stated-date filter
+ * in the caller, not the title test, decides among same-title events.
+ */
+export function calendarTitleMatchesHint(title: string, hint: string): boolean {
+  const normalizedTitle = normalizeText(title);
+  const normalizedHint = normalizeText(hint);
+  if (!normalizedTitle || !normalizedHint) {
+    return false;
+  }
+  if (normalizedTitle.includes(normalizedHint)) {
+    return true;
+  }
+  const titleTokens = tokenize(normalizedTitle);
+  if (titleTokens.length === 0) {
+    return false;
+  }
+  const hintTokens = new Set(tokenize(normalizedHint));
+  return titleTokens.every((token) => hintTokens.has(token));
+}
+
 function resolveCalendarMutationCandidates(args: {
   action: "update" | "delete";
   events: LifeOpsCalendarEvent[];
@@ -2049,7 +2074,7 @@ function resolveCalendarMutationCandidates(args: {
   const titleHint = args.titleHint;
   const byTitle = titleHint
     ? args.events.filter((event) =>
-        normalizeText(event.title).includes(normalizeText(titleHint)),
+        calendarTitleMatchesHint(event.title, titleHint),
       )
     : args.events;
   if (byTitle.length < 2) {
