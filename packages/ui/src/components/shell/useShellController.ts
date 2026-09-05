@@ -1379,6 +1379,10 @@ export function useShellController(): ShellController {
       // configured sensitivity. Only consumed by the local-inference backend.
       const handle = createVoiceCapture({
         localAsrAutoStop: loadVadAutoStop(),
+        cloudConnected: isCloudVoiceRunnable({
+          connected: elizaCloudConnected,
+          proxyAvailable: elizaCloudVoiceProxyAvailable,
+        }),
         // Route to the configured STT backend. Without this the factory only
         // ever saw `undefined` and could never select the `eliza-cloud` /
         // `openai` cloud STT path — on a cloud box with no local ASR assets it
@@ -1627,6 +1631,8 @@ export function useShellController(): ShellController {
     [
       realtimeVoiceSelected,
       realtimeVoiceOwnsMedia,
+      elizaCloudConnected,
+      elizaCloudVoiceProxyAvailable,
       send,
       stopCapture,
       finalizeTranscriptSession,
