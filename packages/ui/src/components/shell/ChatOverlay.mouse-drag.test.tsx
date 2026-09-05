@@ -163,6 +163,17 @@ function drag(el: Element) {
 }
 
 describe("layout-shift-intent marker (#15257)", () => {
+  it("opens and closes through assistive clicks without replaying pointer compatibility clicks", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    expect(detent()).toBe("collapsed");
+    fireEvent.click(grabber(), { detail: 0 });
+    await waitFor(() => expect(detent()).toBe("half"));
+    fireEvent.click(grabber(), { detail: 1 });
+    expect(detent()).toBe("half");
+    fireEvent.click(grabber(), { detail: 0 });
+    await waitFor(() => expect(detent()).toBe("collapsed"));
+  });
+
   it("a continuous drag arms the marker ONCE, not per height tick", async () => {
     render(<ChatOverlay controller={makeController()} />);
     const el = grabber();

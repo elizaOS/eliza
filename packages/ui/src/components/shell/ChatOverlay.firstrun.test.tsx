@@ -250,6 +250,10 @@ describe("ChatOverlay first-run gating", () => {
     expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     expect(grabber.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(grabber, { detail: 0 });
+    fireEvent.keyDown(grabber, { key: "Enter" });
+    fireEvent.keyDown(grabber, { key: "ArrowDown" });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
     expect(screen.queryByTestId("chat-first-run-grabber")).toBeNull();
     expect(screen.getByTestId("chat-sheet-rim")).toBeTruthy();
     // Onboarding owns the first card at the top of the transcript, so the
