@@ -12,6 +12,7 @@ import {
   installPageDiagnosticsGuard,
   openAppPath,
   seedAppStorage,
+  UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
 
 test.describe("deferred Eliza Cloud model registration", () => {
@@ -82,6 +83,11 @@ test.describe("deferred Eliza Cloud model registration", () => {
           status: 200,
           contentType: "application/json",
           body: JSON.stringify({
+            // The real hub route always ships a hardware probe (#29831's
+            // client validation rejects a hardware-less snapshot), so the mock
+            // must mirror that contract or the composer gate under test never
+            // engages.
+            hardware: UI_SMOKE_CPU_ONLY_HARDWARE,
             textReadiness: {
               slots: {
                 TEXT_SMALL: {
