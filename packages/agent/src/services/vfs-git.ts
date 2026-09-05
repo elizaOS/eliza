@@ -57,7 +57,12 @@ class IsomorphicVfsGitService implements VfsGitService {
   constructor(private readonly vfs: VirtualFilesystemService) {}
 
   async run(request: PostWorkbenchVfsGitRequest): Promise<unknown> {
-    await this.vfs.initialize();
+    return this.vfs.withProjectOperation(() => this.runUnlocked(request));
+  }
+
+  private async runUnlocked(
+    request: PostWorkbenchVfsGitRequest,
+  ): Promise<unknown> {
     switch (request.action) {
       case "init":
         return this.init(request);

@@ -9,6 +9,7 @@ import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   ElizaError,
   ModelType,
+  NoModelProviderConfiguredError,
   parseJSONObjectFromText,
   renderActionResultsForModel,
 } from "@elizaos/core";
@@ -205,9 +206,21 @@ export async function renderGroundedActionReply(
     `Canonical fallback: ${JSON.stringify(args.fallback)}`,
   ].join("\n");
 
-  const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-    prompt,
-  });
+  let result: unknown;
+  try {
+    result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+  } catch (error) {
+    // error-policy:J4 A zero-key runtime has no model capable of polishing the
+    // already-grounded canonical reply. Return that reply exactly; every
+    // configured-provider failure remains loud so outages cannot masquerade as
+    // successful model output.
+    if (error instanceof NoModelProviderConfiguredError) {
+      return args.fallback;
+    }
+    throw error;
+  }
   if (typeof result !== "string") {
     throw new ElizaError("Grounded reply model returned a non-text response", {
       code: "GROUNDED_REPLY_OUTPUT_INVALID",

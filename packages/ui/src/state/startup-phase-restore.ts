@@ -907,6 +907,7 @@ export async function runRestoringSession(
     try {
       probed = await detectExistingFirstRunConnection({
         client,
+        cloudOnlyBranding: getBootConfig().branding.cloudOnly === true,
         timeoutMs: isDesktop
           ? Math.min(getBackendStartupTimeoutMs(), 30_000)
           : committedMobileOnDeviceMode

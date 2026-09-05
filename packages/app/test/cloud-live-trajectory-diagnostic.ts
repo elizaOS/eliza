@@ -104,6 +104,24 @@ export interface CloudLivePreIdentityDiagnostic {
   decodedUnavailableDedicatedAdoptionQuoteCount: number;
   uninspectableDedicatedAdoptionQuoteResponseBodyCount: number;
   dedicatedAdoptionConfirmationPostRequestCount: number;
+  dedicatedAdoptionConfirmationPostResponseCount: number;
+  failedDedicatedAdoptionConfirmationPostRequestCount: number;
+  pendingDedicatedAdoptionConfirmationPostRequestCount: number;
+  dedicatedAdoptionConfirmationResponseStatus: number | null;
+  dedicatedAdoptionConfirmationResponseCode: string | null;
+  dedicatedAdoptionConfirmationElapsedMs: number | null;
+  dedicatedProvisionJobGetRequestCount: number;
+  dedicatedProvisionJobGetResponseCount: number;
+  failedDedicatedProvisionJobGetRequestCount: number;
+  pendingDedicatedProvisionJobGetRequestCount: number;
+  dedicatedProvisionJobResponseStatus: number | null;
+  dedicatedProvisionJobResponseCode: string | null;
+  dedicatedProvisionJobStatus:
+    | "pending"
+    | "in_progress"
+    | "completed"
+    | "failed"
+    | null;
 }
 
 const CLOUD_LIVE_PRE_IDENTITY_DIAGNOSTIC_KEYS = [
@@ -175,6 +193,13 @@ const CLOUD_LIVE_PRE_IDENTITY_DIAGNOSTIC_KEYS = [
   "decodedUnavailableDedicatedAdoptionQuoteCount",
   "uninspectableDedicatedAdoptionQuoteResponseBodyCount",
   "dedicatedAdoptionConfirmationPostRequestCount",
+  "dedicatedAdoptionConfirmationPostResponseCount",
+  "failedDedicatedAdoptionConfirmationPostRequestCount",
+  "pendingDedicatedAdoptionConfirmationPostRequestCount",
+  "dedicatedProvisionJobGetRequestCount",
+  "dedicatedProvisionJobGetResponseCount",
+  "failedDedicatedProvisionJobGetRequestCount",
+  "pendingDedicatedProvisionJobGetRequestCount",
 ] as const satisfies readonly (keyof CloudLivePreIdentityDiagnostic)[];
 
 interface WriteCloudLiveTrajectoryDiagnosticOptions {
@@ -234,6 +259,78 @@ export function createCloudLiveTrajectoryDiagnostic(
     }
     closedCounters.dedicatedActivationResponseStatus = responseStatus;
     closedCounters.dedicatedActivationResponseCode = responseCode;
+    const adoptionResponseStatus =
+      preIdentity.dedicatedAdoptionConfirmationResponseStatus;
+    if (
+      adoptionResponseStatus !== null &&
+      (!Number.isSafeInteger(adoptionResponseStatus) ||
+        adoptionResponseStatus < 100 ||
+        adoptionResponseStatus > 599)
+    ) {
+      throw new Error(
+        "[cloud-live] Dedicated adoption response status must be an HTTP status or null",
+      );
+    }
+    const adoptionResponseCode =
+      preIdentity.dedicatedAdoptionConfirmationResponseCode;
+    if (
+      adoptionResponseCode !== null &&
+      !/^[a-z][a-z0-9_]{0,79}$/.test(adoptionResponseCode)
+    ) {
+      throw new Error(
+        "[cloud-live] Dedicated adoption response code must be a bounded machine code or null",
+      );
+    }
+    const adoptionElapsedMs =
+      preIdentity.dedicatedAdoptionConfirmationElapsedMs;
+    if (
+      adoptionElapsedMs !== null &&
+      (!Number.isSafeInteger(adoptionElapsedMs) || adoptionElapsedMs < 0)
+    ) {
+      throw new Error(
+        "[cloud-live] Dedicated adoption elapsed time must be non-negative or null",
+      );
+    }
+    closedCounters.dedicatedAdoptionConfirmationResponseStatus =
+      adoptionResponseStatus;
+    closedCounters.dedicatedAdoptionConfirmationResponseCode =
+      adoptionResponseCode;
+    closedCounters.dedicatedAdoptionConfirmationElapsedMs = adoptionElapsedMs;
+    const jobResponseStatus = preIdentity.dedicatedProvisionJobResponseStatus;
+    if (
+      jobResponseStatus !== null &&
+      (!Number.isSafeInteger(jobResponseStatus) ||
+        jobResponseStatus < 100 ||
+        jobResponseStatus > 599)
+    ) {
+      throw new Error(
+        "[cloud-live] Dedicated provision job response status must be an HTTP status or null",
+      );
+    }
+    const jobResponseCode = preIdentity.dedicatedProvisionJobResponseCode;
+    if (
+      jobResponseCode !== null &&
+      !/^[a-z][a-z0-9_]{0,79}$/.test(jobResponseCode)
+    ) {
+      throw new Error(
+        "[cloud-live] Dedicated provision job response code must be a bounded machine code or null",
+      );
+    }
+    const jobStatus = preIdentity.dedicatedProvisionJobStatus;
+    if (
+      jobStatus !== null &&
+      jobStatus !== "pending" &&
+      jobStatus !== "in_progress" &&
+      jobStatus !== "completed" &&
+      jobStatus !== "failed"
+    ) {
+      throw new Error(
+        "[cloud-live] Dedicated provision job status must be a closed status or null",
+      );
+    }
+    closedCounters.dedicatedProvisionJobResponseStatus = jobResponseStatus;
+    closedCounters.dedicatedProvisionJobResponseCode = jobResponseCode;
+    closedCounters.dedicatedProvisionJobStatus = jobStatus;
     diagnostic.preIdentity = closedCounters;
   }
   return diagnostic;

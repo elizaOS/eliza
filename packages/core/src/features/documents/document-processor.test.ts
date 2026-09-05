@@ -210,6 +210,39 @@ describe("processFragmentsSynchronously", () => {
 			source: "upload",
 		});
 	});
+
+	it("persists a batch embedding whose first component is zero", async () => {
+		const embedding = [0, 0.51, -0.32, 0.77];
+		const writes: Memory[] = [];
+		const runtime = runtimeWith({
+			getSetting: (key: string) => {
+				if (key === "BATCH_EMBEDDINGS") return "true";
+				if (key === "RATE_LIMIT_ENABLED") return "false";
+				return null;
+			},
+			getModel: (type: string) =>
+				type === ModelType.TEXT_EMBEDDING ? async () => embedding : undefined,
+			useModel: (async (type: string) => {
+				if (type === ModelType.TEXT_EMBEDDING) return [embedding];
+				throw new Error(`Unexpected model: ${type}`);
+			}) as IAgentRuntime["useModel"],
+			createMemory: async (memory: Memory) => {
+				writes.push(memory);
+				return memory.id as UUID;
+			},
+		});
+
+		const saved = await processFragmentsSynchronously({
+			runtime,
+			documentId: DOCUMENT_ID,
+			fullDocumentText: "batch vector searchable text",
+			agentId: MOCK_AGENT_ID,
+		});
+
+		expect(saved).toBe(1);
+		expect(writes).toHaveLength(1);
+		expect(writes[0]?.embedding).toEqual(embedding);
+	});
 });
 
 describe("extractTextFromDocument", () => {

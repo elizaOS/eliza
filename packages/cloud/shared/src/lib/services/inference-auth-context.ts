@@ -181,6 +181,9 @@ interface ApiKeyHydration {
 
 const apiKeyHydrations = new Map<string, ApiKeyHydration>();
 const SKIP_CACHE_PROJECTION_WRITE = Symbol("skip-cache-projection-write");
+// A cold request owns the canonical denial log after consuming its nested
+// authoritative continuation; the hydration phase still emits its trace.
+const SUPPRESS_STANDING_DENIAL_LOG = Symbol("suppress-standing-denial-log");
 const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
 const DEFAULT_HYDRATION_DEADLINE_MS = 10_000;
 const DEFAULT_INLINE_CONTINUATION_DEADLINE_MS = 2_500;
@@ -390,12 +393,14 @@ function getOrCreateApiKeyHydration(
   // projection barrier, including its standalone strong credential check.
   const hydrationOptions: ResolveInferenceAuthOptions & {
     [SKIP_CACHE_PROJECTION_WRITE]: true;
+    [SUPPRESS_STANDING_DENIAL_LOG]: true;
   } = {
     traceId: options.traceId,
     cacheOnly: false,
     forceAuthoritative: true,
     deferStrongCredentialCheck: true,
     [SKIP_CACHE_PROJECTION_WRITE]: true,
+    [SUPPRESS_STANDING_DENIAL_LOG]: true,
     onAuthoritativeRejection: (reason) => {
       authoritativeRejectionReason = reason;
     },
@@ -650,6 +655,15 @@ export async function resolveInferenceAuthContext(
     source: InferenceStandingDecisionSource;
   }): void => {
     standingDenialLogged = true;
+    if (
+      (
+        options as ResolveInferenceAuthOptions & {
+          [SUPPRESS_STANDING_DENIAL_LOG]?: true;
+        }
+      )[SUPPRESS_STANDING_DENIAL_LOG]
+    ) {
+      return;
+    }
     const reason =
       typeof params.reason === "string" && /^[a-z0-9_:-]{1,64}$/.test(params.reason)
         ? params.reason
@@ -837,7 +851,7 @@ export async function resolveInferenceAuthContext(
           ? { kind: "suspended", reason: cached.reason }
           : { kind: "rejected", status: cached.status, reason: cached.reason };
       }
-    } else {
+    } else if (!cacheAvailable) {
       trace.cacheRead = "unavailable";
     }
 

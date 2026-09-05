@@ -265,16 +265,21 @@ function quote(agentId = PERSONAL_A) {
   );
 }
 
-function confirm(quoteId: string, agentId = PERSONAL_A) {
-  return app.request(
-    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier/adopt-existing`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "adopt_existing_dedicated", quoteId }),
-    },
-    ENV,
-  );
+function confirm(
+  quoteId: string,
+  agentId = PERSONAL_A,
+  executionCtx?: unknown,
+) {
+  const path = `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier/adopt-existing`;
+  const init = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "adopt_existing_dedicated", quoteId }),
+  };
+  if (executionCtx) {
+    return app.request(path, init, ENV, executionCtx as never);
+  }
+  return app.request(path, init, ENV);
 }
 
 function patchProfile(agentConfig: Record<string, unknown>) {
@@ -646,6 +651,9 @@ describe("GET/POST adopt-existing Dedicated", () => {
 
       const response = await confirm(quoteBody.data.quoteId);
       expect(response.status).toBe(202);
+      expect(response.headers.get("x-eliza-trace-id")).toMatch(
+        /^[a-f0-9]{32}$/,
+      );
       const body = (await response.json()) as {
         data: { dedicatedAgentId: string; jobId: string; runtime: string };
       };
@@ -780,12 +788,18 @@ describe("GET/POST adopt-existing Dedicated", () => {
     ).mockResolvedValue();
     commitAckLossCountdown = 1;
     try {
-      const response = await confirm(quoteId);
+      const registered: Promise<unknown>[] = [];
+      const response = await confirm(quoteId, PERSONAL_A, {
+        waitUntil: (promise: Promise<unknown>) => registered.push(promise),
+        passThroughOnException: () => undefined,
+      });
       expect(response.status).toBe(202);
       expect(await response.json()).toMatchObject({
         success: true,
         data: { dedicatedAgentId: TARGET_A },
       });
+      expect(registered).toHaveLength(1);
+      await Promise.all(registered);
       expect(trigger).toHaveBeenCalledTimes(1);
       const [target] = await rows();
       expect(

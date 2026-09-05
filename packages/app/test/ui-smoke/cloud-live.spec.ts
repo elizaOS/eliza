@@ -593,7 +593,7 @@ async function resolvePersonalIdentity(
       chooseRuntimeAction: () => chooseCloudRuntime(page),
     });
     const confirmationChoices = page.locator(
-      '[data-testid="choice-__first_run__:dedicated-adoption:confirm"], [data-testid^="choice-__first_run__:dedicated-adoption:confirm:"], [data-testid="choice-__first_run__:dedicated-activation:confirm"], [data-testid^="choice-__first_run__:dedicated-activation:confirm:"]',
+      '[data-testid="dedicated-adoption-confirm"], [data-testid="choice-__first_run__:dedicated-adoption:confirm"], [data-testid^="choice-__first_run__:dedicated-adoption:confirm:"], [data-testid="choice-__first_run__:dedicated-activation:confirm"], [data-testid^="choice-__first_run__:dedicated-activation:confirm:"]',
     );
     const binding = await waitForCloudLivePersonalIdentity({
       readBinding: () => readActiveBinding(page),
@@ -613,6 +613,7 @@ async function resolvePersonalIdentity(
         performConfirmation: async (confirmation) => {
           const testId = await confirmation.getAttribute("data-testid");
           if (
+            testId === "dedicated-adoption-confirm" ||
             testId?.startsWith(
               "choice-__first_run__:dedicated-adoption:confirm",
             )
@@ -916,6 +917,31 @@ test.describe("real cloud login + personal identity + chat", () => {
             audit.uninspectableDedicatedAdoptionQuoteResponseBodyCount,
           dedicatedAdoptionConfirmationPostRequestCount:
             audit.dedicatedAdoptionConfirmationPostRequestCount,
+          dedicatedAdoptionConfirmationPostResponseCount:
+            audit.dedicatedAdoptionConfirmationPostResponseCount,
+          failedDedicatedAdoptionConfirmationPostRequestCount:
+            audit.failedDedicatedAdoptionConfirmationPostRequestCount,
+          pendingDedicatedAdoptionConfirmationPostRequestCount:
+            audit.pendingDedicatedAdoptionConfirmationPostRequestCount,
+          dedicatedAdoptionConfirmationResponseStatus:
+            audit.dedicatedAdoptionConfirmationResponseStatus,
+          dedicatedAdoptionConfirmationResponseCode:
+            audit.dedicatedAdoptionConfirmationResponseCode,
+          dedicatedAdoptionConfirmationElapsedMs:
+            audit.dedicatedAdoptionConfirmationElapsedMs,
+          dedicatedProvisionJobGetRequestCount:
+            audit.dedicatedProvisionJobGetRequestCount,
+          dedicatedProvisionJobGetResponseCount:
+            audit.dedicatedProvisionJobGetResponseCount,
+          failedDedicatedProvisionJobGetRequestCount:
+            audit.failedDedicatedProvisionJobGetRequestCount,
+          pendingDedicatedProvisionJobGetRequestCount:
+            audit.pendingDedicatedProvisionJobGetRequestCount,
+          dedicatedProvisionJobResponseStatus:
+            audit.dedicatedProvisionJobResponseStatus,
+          dedicatedProvisionJobResponseCode:
+            audit.dedicatedProvisionJobResponseCode,
+          dedicatedProvisionJobStatus: audit.dedicatedProvisionJobStatus,
           ...dedicatedConsentGate.snapshot(),
         };
       };

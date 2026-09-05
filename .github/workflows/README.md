@@ -365,13 +365,20 @@ pair only when it matches the protected `staging` GitHub Environment secret
 `TELEGRAM_IDENTITY_AUTHORITY_SHA256`, and requires both components to differ
 from production. The receipt is the lowercase SHA-256 of the framed bytes
 `elizaOS/eliza\0staging\0telegram-public-identity\0v1\0<ID>\0<lowercase-username>\n`.
+`staging-approval` is the policy-only admission checkpoint for `develop`, not a
+third runtime or a Git branch. The `staging` Environment owns staging runtime
+configuration; `production` deploys certified `main` trees. Deployment branch
+policies must allow `develop` for staging approval and `main` for production.
+
 The protected staging entry job reads the receipt directly and verifies that the
 existing Worker has both Telegram binding names before any release mutation. It
 emits only a safe staging preserve-authority result; the reusable release
-receives that result and the already-admitted public pair, never the receipt,
-bot token, or webhook secret. This keeps a repository or organization secret
-from substituting for Environment authority or crossing the reusable-workflow
-boundary. The `deploy-api` job preserves a staging binding whose GitHub source
+receives that result and the already-admitted public pair, never the receipt.
+The caller maps both Telegram credential names to literal empty strings. This
+enables GitHub to resolve the selected Environment's secrets inside the reusable
+job while keeping repository and organization values out of that boundary.
+Omitting a name prevents its Environment secret from reaching the called job.
+The `deploy-api` job preserves a staging binding whose GitHub source
 is blank, then verifies its name again after the atomic Worker deploy. For
 production, the already-approved `production` authorization job verifies the
 live bot token against the canonical public identity and the deploy hard-fails

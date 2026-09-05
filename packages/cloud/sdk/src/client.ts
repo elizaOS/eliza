@@ -11,6 +11,7 @@
 
 import { isCliLoginSessionId } from "./cli-login.js";
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
+import { pollUntil } from "./poll.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import type {
   CreateRedemptionRequest,
@@ -411,11 +412,14 @@ export class ElizaCloudClient {
     });
   }
 
-  pollCliLogin(sessionId: string): Promise<CliLoginPollResponse> {
+  pollCliLogin(
+    sessionId: string,
+    options?: Pick<CloudRequestOptions, "signal" | "timeoutMs">,
+  ): Promise<CliLoginPollResponse> {
     return this.request<CliLoginPollResponse>(
       "GET",
       `/api/auth/cli-session/${encodePathParam(sessionId)}`,
-      { skipAuth: true },
+      { ...options, skipAuth: true },
     );
   }
 
@@ -441,25 +445,22 @@ export class ElizaCloudClient {
       signal?: AbortSignal;
     } = {},
   ): Promise<CliLoginPollResponse> {
-    const timeoutMs = options.timeoutMs ?? 300_000;
-    const intervalMs = options.intervalMs ?? 2_000;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      if (options.signal?.aborted) {
-        throw new Error("Eliza Cloud sign-in was cancelled");
-      }
-      const result = await this.pollCliLogin(sessionId);
-      if (result.status === "authenticated") {
-        return result;
-      }
-      if (result.status === "expired" || result.status === "error") {
-        throw new Error(result.error ?? `Eliza Cloud sign-in ${result.status}`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    }
-
-    throw new Error("Timed out waiting for Eliza Cloud sign-in");
+    return pollUntil({
+      read: (requestOptions) => this.pollCliLogin(sessionId, requestOptions),
+      isComplete: (result) => {
+        if (result.status === "expired" || result.status === "error") {
+          throw new Error(
+            result.error ?? `Eliza Cloud sign-in ${result.status}`,
+          );
+        }
+        return result.status === "authenticated";
+      },
+      timeoutMs: options.timeoutMs ?? 300_000,
+      intervalMs: options.intervalMs ?? 2_000,
+      signal: options.signal,
+      timeoutMessage: "Timed out waiting for Eliza Cloud sign-in",
+      cancellationMessage: "Eliza Cloud sign-in was cancelled",
+    });
   }
 
   pairWithToken(token: string, origin: string): Promise<AuthPairResponse> {
@@ -1518,27 +1519,29 @@ export class ElizaCloudClient {
     );
   }
 
-  getJob(jobId: string): Promise<JobStatus> {
-    return this.request("GET", `/api/v1/jobs/${encodePathParam(jobId)}`);
+  getJob(
+    jobId: string,
+    options?: Pick<CloudRequestOptions, "signal" | "timeoutMs">,
+  ): Promise<JobStatus> {
+    return this.request(
+      "GET",
+      `/api/v1/jobs/${encodePathParam(jobId)}`,
+      options,
+    );
   }
 
   async pollJob(
     jobId: string,
     options: { timeoutMs?: number; intervalMs?: number } = {},
-  ) {
-    const timeoutMs = options.timeoutMs ?? 120_000;
-    const intervalMs = options.intervalMs ?? 2_000;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      const job = await this.getJob(jobId);
-      if (job.status === "completed" || job.status === "failed") {
-        return job;
-      }
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    }
-
-    throw new Error(`Timed out waiting for Eliza Cloud job ${jobId}`);
+  ): Promise<JobStatus> {
+    return pollUntil({
+      read: (requestOptions) => this.getJob(jobId, requestOptions),
+      isComplete: (job) =>
+        job.status === "completed" || job.status === "failed",
+      timeoutMs: options.timeoutMs ?? 120_000,
+      intervalMs: options.intervalMs ?? 2_000,
+      timeoutMessage: `Timed out waiting for Eliza Cloud job ${jobId}`,
+    });
   }
 
   getUser(): Promise<UserProfileResponse> {

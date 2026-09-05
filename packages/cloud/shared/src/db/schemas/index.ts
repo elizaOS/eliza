@@ -102,6 +102,7 @@ export * from "./organization-encryption-keys";
 export * from "./organization-entitlements";
 export * from "./organization-invites";
 export * from "./organizations";
+export * from "./outreachr-delegations";
 export * from "./payment-request-receipts";
 export * from "./payment-requests";
 export * from "./personal-account-convergences";

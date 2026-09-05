@@ -175,6 +175,30 @@ describe("runRestoringSession — mobile committed-runtime existing-install prob
     );
   });
 
+  it("forwards authoritative Cloud-only boot branding to the existing-install probe", async () => {
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      branding: { cloudOnly: true },
+    });
+    const dispatch = vi.fn();
+
+    await drive(dispatch);
+
+    expect(probeMock.detectExistingFirstRunConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ cloudOnlyBranding: true }),
+    );
+  });
+
+  it("keeps the existing-install probe unbranded by default", async () => {
+    const dispatch = vi.fn();
+
+    await drive(dispatch);
+
+    expect(probeMock.detectExistingFirstRunConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ cloudOnlyBranding: false }),
+    );
+  });
+
   it("does not wait for a persisted cloud (non-agent) runtime — no bundled agent to boot", async () => {
     localStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, "cloud");
     const dispatch = vi.fn();

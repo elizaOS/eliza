@@ -105,6 +105,17 @@ function main(): void {
 }
 
 function isDirectExecution(): boolean {
+  // Mobile builds bundle this module into the agent entry point. In that
+  // artifact import.meta.url and process.argv[1] both identify the bundle, so
+  // the ordinary direct-run check would regenerate a packaged read-only asset
+  // during every agent boot. The mobile bundler defines both markers.
+  if (
+    process.env.ELIZA_DISABLE_DIRECT_RUN === "1" ||
+    (globalThis as { __ELIZA_MOBILE_BUNDLE__?: unknown })
+      .__ELIZA_MOBILE_BUNDLE__ === true
+  ) {
+    return false;
+  }
   const entry = process.argv[1];
   return Boolean(entry) && import.meta.url === pathToFileURL(entry).href;
 }

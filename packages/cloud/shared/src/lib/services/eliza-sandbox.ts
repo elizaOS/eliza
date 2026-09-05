@@ -4018,6 +4018,7 @@ export class ElizaSandboxService {
     // Solution: Retry loop catches unique constraint errors, cleans up ghost container, and retries.
     const MAX_PROVISION_ATTEMPTS = 3;
     let lastError: string = "Unknown error";
+    let lastFailureCause: unknown;
     // Only a port collision retries; any other failure gives up after its first
     // attempt. `attempt` is scoped to the loop header, so the count that
     // actually ran is mirrored here for the post-loop markError message —
@@ -4132,6 +4133,7 @@ export class ElizaSandboxService {
           success: false,
           sandboxRecord: await agentSandboxesRepository.findById(rec.id),
           error: msg,
+          failureCause: err,
         };
       }
 
@@ -4539,6 +4541,7 @@ export class ElizaSandboxService {
         // Ghost container deletion: provider.create() succeeded but DB update or health check failed
         const msg = err instanceof Error ? err.message : String(err);
         lastError = msg;
+        lastFailureCause = err;
 
         // Transport-unresolved readiness probe: the probe never reached the
         // container, so it is likely healthy. DO NOT tear it down and DO NOT
@@ -4558,6 +4561,7 @@ export class ElizaSandboxService {
             retryable: true,
             sandboxRecord: await agentSandboxesRepository.findById(rec.id),
             error: msg,
+            failureCause: err,
           };
         }
 
@@ -4631,6 +4635,9 @@ export class ElizaSandboxService {
       success: false,
       sandboxRecord: await agentSandboxesRepository.findById(rec.id),
       error: lastError,
+      ...(lastFailureCause === undefined
+        ? {}
+        : { failureCause: lastFailureCause }),
     };
     } finally {
       if (reviewedAdmissionFence) {

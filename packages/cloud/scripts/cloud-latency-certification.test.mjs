@@ -11,6 +11,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  extractBoundedChildFailure,
   parseCertificationArgs,
   requireAuthSecrets,
   requirePairedSecrets,
@@ -186,6 +187,30 @@ test("protected secret gates fail closed without exposing values", () => {
   })();
   assert.match(failure.message, /INFERENCE_AUTH_PROBE_TOKEN/);
   assert.equal(failure.message.includes("probe-private"), false);
+});
+
+test("child failure diagnostics retain only a bounded trusted category", () => {
+  assert.equal(
+    extractBoundedChildFailure(
+      "transport details\n[inference-auth-latency] Auth probe returned HTTP 503\n",
+      "inference-auth-latency",
+    ),
+    "[inference-auth-latency] Auth probe returned HTTP 503",
+  );
+  assert.equal(
+    extractBoundedChildFailure(
+      "[inference-auth-latency] leaked_secret=do-not-log\n",
+      "inference-auth-latency",
+    ),
+    null,
+  );
+  assert.equal(
+    extractBoundedChildFailure(
+      `[inference-auth-latency] ${"x".repeat(300)}\n`,
+      "inference-auth-latency",
+    ),
+    null,
+  );
 });
 
 test("verifyExactDeployment accepts only the requested staging commit", async () => {

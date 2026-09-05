@@ -14,7 +14,6 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { type CreditReconciliationResult, creditsService } from "./credits";
-import { clearOrgAdmissionRefused, markOrgAdmissionRefused } from "./inference-admission-refusal";
 import {
   invalidateOrgBalanceHint,
   readOrgBalanceHint,
@@ -152,7 +151,6 @@ function refreshOrgBalanceHint(organizationId: string): Promise<GateBalanceSnaps
     .getOrganizationBalanceSnapshot(organizationId)
     .then(async (fresh) => {
       await writeOrgBalanceHint(organizationId, fresh.balanceUsd, balanceAt, fresh.revision);
-      clearOrgAdmissionRefused(organizationId);
       return {
         balanceUsd: fresh.balanceUsd,
         balanceAt,
@@ -411,7 +409,6 @@ export async function debitInferenceCost(
       transactionMetadata.requestId !== ctx.requestId ||
       !Number.isFinite(persistedAmountUsd)
     ) {
-      markOrgAdmissionRefused(ctx.organizationId);
       try {
         await invalidateOrgBalanceHint(ctx.organizationId);
       } catch (invalidationError) {
@@ -451,7 +448,6 @@ export async function debitInferenceCost(
         result.balanceRevision,
       );
     } catch (cause) {
-      markOrgAdmissionRefused(ctx.organizationId);
       try {
         await invalidateOrgBalanceHint(ctx.organizationId);
       } catch (invalidationError) {

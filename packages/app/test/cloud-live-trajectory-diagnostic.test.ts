@@ -62,6 +62,19 @@ const ZERO_DEDICATED_CONTROL_PLANE_COUNTERS = {
   decodedUnavailableDedicatedAdoptionQuoteCount: 0,
   uninspectableDedicatedAdoptionQuoteResponseBodyCount: 0,
   dedicatedAdoptionConfirmationPostRequestCount: 0,
+  dedicatedAdoptionConfirmationPostResponseCount: 0,
+  failedDedicatedAdoptionConfirmationPostRequestCount: 0,
+  pendingDedicatedAdoptionConfirmationPostRequestCount: 0,
+  dedicatedAdoptionConfirmationResponseStatus: null,
+  dedicatedAdoptionConfirmationResponseCode: null,
+  dedicatedAdoptionConfirmationElapsedMs: null,
+  dedicatedProvisionJobGetRequestCount: 0,
+  dedicatedProvisionJobGetResponseCount: 0,
+  failedDedicatedProvisionJobGetRequestCount: 0,
+  pendingDedicatedProvisionJobGetRequestCount: 0,
+  dedicatedProvisionJobResponseStatus: null,
+  dedicatedProvisionJobResponseCode: null,
+  dedicatedProvisionJobStatus: null,
 } as const;
 
 const ZERO_PERSONAL_BODY_AND_RECOVERY_COUNTERS = {
@@ -225,6 +238,54 @@ describe("Cloud live trajectory diagnostic", () => {
         dedicatedActivationResponseCode: "private message: user@example.com",
       }),
     ).toThrow("bounded machine code");
+  });
+
+  it("retains only bounded Dedicated adoption terminal diagnostics", () => {
+    const counters = {
+      runtimeCloudActionAttemptCount: 1,
+      runtimeCloudActionSuccessCount: 0,
+      runtimeCloudActionTimeoutCount: 0,
+      ...ZERO_PERSONAL_BODY_AND_RECOVERY_COUNTERS,
+      personalIdentityGetRequestCount: 1,
+      successfulPersonalIdentityGetResponseCount: 1,
+      clientErrorPersonalIdentityGetResponseCount: 0,
+      serverErrorPersonalIdentityGetResponseCount: 0,
+      otherPersonalIdentityGetResponseCount: 0,
+      failedPersonalIdentityGetRequestCount: 0,
+      pendingPersonalIdentityGetRequestCount: 0,
+      ...ZERO_DEDICATED_CONTROL_PLANE_COUNTERS,
+      dedicatedAdoptionConfirmationPostRequestCount: 1,
+      dedicatedAdoptionConfirmationPostResponseCount: 1,
+      dedicatedAdoptionConfirmationResponseStatus: 503,
+      dedicatedAdoptionConfirmationResponseCode:
+        "provisioning_worker_unavailable",
+      dedicatedAdoptionConfirmationElapsedMs: 30_000,
+    };
+
+    expect(
+      createCloudLiveTrajectoryDiagnostic("personal-identity", 456, counters)
+        .preIdentity,
+    ).toMatchObject({
+      dedicatedAdoptionConfirmationPostRequestCount: 1,
+      dedicatedAdoptionConfirmationPostResponseCount: 1,
+      dedicatedAdoptionConfirmationResponseStatus: 503,
+      dedicatedAdoptionConfirmationResponseCode:
+        "provisioning_worker_unavailable",
+      dedicatedAdoptionConfirmationElapsedMs: 30_000,
+    });
+    expect(() =>
+      createCloudLiveTrajectoryDiagnostic("personal-identity", 456, {
+        ...counters,
+        dedicatedAdoptionConfirmationResponseCode:
+          "private message: user@example.com",
+      }),
+    ).toThrow("bounded machine code");
+    expect(() =>
+      createCloudLiveTrajectoryDiagnostic("personal-identity", 456, {
+        ...counters,
+        dedicatedAdoptionConfirmationElapsedMs: -1,
+      }),
+    ).toThrow("elapsed time must be non-negative");
   });
 
   it("overwrites one private receipt with restrictive permissions", async () => {

@@ -9,7 +9,7 @@ import {
   createSharedTodoCutoverSnapshot,
   type SharedTodoCutoverSnapshot,
 } from "@elizaos/shared/todo-cutover";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { usersRepository } from "@/db/repositories/users";
 import { errorToResponse } from "@/lib/api/errors";
@@ -33,6 +33,7 @@ import {
   personalDedicatedClientApiBase,
   personalSharedAgentId,
 } from "@/lib/services/shared-runtime/personal-shared-agent";
+import { SharedRuntimeCacheWarmingError } from "@/lib/services/shared-runtime/shared-runtime-errors";
 import {
   commitSharedReminderCutover,
   releaseSharedReminderCutover,
@@ -41,6 +42,7 @@ import {
   SharedReminderCutoverConflictError,
 } from "@/lib/services/shared-runtime/shared-scheduling";
 import { readSharedTodoCutoverState } from "@/lib/services/shared-runtime/shared-todos";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
@@ -49,6 +51,51 @@ const bodySchema = z.object({ dedicatedAgentId: z.string().uuid() });
 
 function json(body: unknown, status = 200): Response {
   return applyCorsHeaders(Response.json(body, { status }), CORS_METHODS);
+}
+
+interface CutoverRejection {
+  code: string;
+  error: string;
+  status: number;
+  phase: string;
+  context?: Record<string, unknown>;
+}
+
+function rejectCutover(
+  c: Context<AppEnv>,
+  rejection: CutoverRejection,
+): Response {
+  logger.warn("[personal-dedicated-cutover] Cutover rejected", {
+    traceId: c.get("traceId") ?? c.get("requestId"),
+    code: rejection.code,
+    status: rejection.status,
+    phase: rejection.phase,
+    sourceAgentId: c.req.param("agentId") ?? null,
+    ...rejection.context,
+  });
+  return json(
+    {
+      success: false,
+      code: rejection.code,
+      error: rejection.error,
+    },
+    rejection.status,
+  );
+}
+
+function errorDiagnostic(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) return { error: String(error) };
+  return {
+    errorName: error.name,
+    errorMessage: error.message,
+    errorStack: error.stack,
+    errorCause:
+      error.cause instanceof Error
+        ? { name: error.cause.name, message: error.cause.message }
+        : error.cause === undefined
+          ? undefined
+          : String(error.cause),
+  };
 }
 
 async function invalidateUserDeliveryProjections(
@@ -249,14 +296,13 @@ app.post("/", async (c) => {
     const { user } = await requireAuthOrApiKeyWithOrg(c.req.raw);
     const parsed = bodySchema.safeParse(await readJsonBody(c.req.raw));
     if (!parsed.success) {
-      return json(
-        {
-          success: false,
-          code: "invalid_dedicated_cutover",
-          error: "A valid Dedicated target id is required.",
-        },
-        400,
-      );
+      return rejectCutover(c, {
+        code: "invalid_dedicated_cutover",
+        error: "A valid Dedicated target id is required.",
+        status: 400,
+        phase: "validate-request",
+        context: { orgId: user.organization_id, userId: user.id },
+      });
     }
 
     const sourceAgentId = personalSharedAgentId({
@@ -264,22 +310,27 @@ app.post("/", async (c) => {
       organizationId: user.organization_id,
     });
     if (c.req.param("agentId") !== sourceAgentId) {
-      return json({ success: false, error: "Agent not found" }, 404);
+      return rejectCutover(c, {
+        code: "personal_source_not_found",
+        error: "Agent not found",
+        status: 404,
+        phase: "authorize-source",
+        context: { orgId: user.organization_id, userId: user.id },
+      });
     }
     const conversationNamespace = c.env.SHARED_RUNTIME_CONVERSATIONS;
     if (
       !conversationNamespace ||
       typeof conversationNamespace.getByName !== "function"
     ) {
-      return json(
-        {
-          success: false,
-          code: "shared_history_unavailable",
-          error:
-            "Shared history is temporarily unavailable. Shared remains active.",
-        },
-        503,
-      );
+      return rejectCutover(c, {
+        code: "shared_history_unavailable",
+        error:
+          "Shared history is temporarily unavailable. Shared remains active.",
+        status: 503,
+        phase: "resolve-shared-history",
+        context: { orgId: user.organization_id, userId: user.id },
+      });
     }
     if (
       await usersRepository.hasPendingPhoneTelegramPersonalAccountConvergenceTarget(
@@ -290,15 +341,14 @@ app.post("/", async (c) => {
         },
       )
     ) {
-      return json(
-        {
-          success: false,
-          code: "personal_identity_convergence_in_progress",
-          error:
-            "Personal history is still linking across channels. Try Dedicated activation again shortly.",
-        },
-        409,
-      );
+      return rejectCutover(c, {
+        code: "personal_identity_convergence_in_progress",
+        error:
+          "Personal history is still linking across channels. Try Dedicated activation again shortly.",
+        status: 409,
+        phase: "identity-convergence",
+        context: { orgId: user.organization_id, userId: user.id },
+      });
     }
     const sealToken = `personal-cutover:${sourceAgentId}:${parsed.data.dedicatedAgentId}`;
     const reminderReservationToken = `${sealToken}:reminders:${crypto.randomUUID()}`;
@@ -332,15 +382,19 @@ app.post("/", async (c) => {
       ) {
         const activeToken = dedicatedAgentTransportToken(active);
         if (!activeToken) {
-          return json(
-            {
-              success: false,
-              code: "dedicated_transport_unavailable",
-              error:
-                "Dedicated authentication is still being prepared. Shared remains active.",
+          return rejectCutover(c, {
+            code: "dedicated_transport_unavailable",
+            error:
+              "Dedicated authentication is still being prepared. Shared remains active.",
+            status: 503,
+            phase: "repair-active-transport",
+            context: {
+              orgId: user.organization_id,
+              userId: user.id,
+              dedicatedAgentId: active.id,
+              targetStatus: active.status,
             },
-            503,
-          );
+          });
         }
         try {
           await invalidateUserDeliveryProjections(c.env, user);
@@ -419,9 +473,21 @@ app.post("/", async (c) => {
               importedTodoMutations: marker.sharedTodoMutationCount,
             },
           });
-        } catch {
+        } catch (error) {
           // error-policy:J4 An old or interrupted marker is not accepted as a
           // healthy success until the full sealed import below repairs it.
+          logger.warn(
+            "[personal-dedicated-cutover] Active marker repair failed; full sealed import retained",
+            {
+              traceId: c.get("traceId") ?? c.get("requestId"),
+              phase: "repair-active-marker",
+              sourceAgentId,
+              dedicatedAgentId: active.id,
+              orgId: user.organization_id,
+              userId: user.id,
+              ...errorDiagnostic(error),
+            },
+          );
         }
       }
     }
@@ -435,15 +501,23 @@ app.post("/", async (c) => {
       target.user_id !== user.id ||
       target.status !== "running"
     ) {
-      return json(
-        {
-          success: false,
-          code: "dedicated_not_healthy",
-          error:
-            "Dedicated is not healthy yet. Shared remains active; try again when setup finishes.",
+      return rejectCutover(c, {
+        code: "dedicated_not_healthy",
+        error:
+          "Dedicated is not healthy yet. Shared remains active; try again when setup finishes.",
+        status: 409,
+        phase: "resolve-running-target",
+        context: {
+          orgId: user.organization_id,
+          userId: user.id,
+          requestedDedicatedAgentId: parsed.data.dedicatedAgentId,
+          targetResolved: Boolean(target),
+          targetIdMatches: target?.id === parsed.data.dedicatedAgentId,
+          targetOwnerMatches: target?.user_id === user.id,
+          targetStatus: target?.status ?? null,
+          targetLifecycleRevision: target?.lifecycle_revision ?? null,
         },
-        409,
-      );
+      });
     }
 
     const base = personalDedicatedAgentApiBase(
@@ -451,27 +525,35 @@ app.post("/", async (c) => {
       c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
     );
     if (!base) {
-      return json(
-        {
-          success: false,
-          code: "dedicated_not_reachable",
-          error:
-            "Dedicated has no reachable endpoint yet. Shared remains active.",
+      return rejectCutover(c, {
+        code: "dedicated_not_reachable",
+        error:
+          "Dedicated has no reachable endpoint yet. Shared remains active.",
+        status: 409,
+        phase: "resolve-dedicated-endpoint",
+        context: {
+          orgId: user.organization_id,
+          userId: user.id,
+          dedicatedAgentId: target.id,
+          targetStatus: target.status,
         },
-        409,
-      );
+      });
     }
     const targetToken = dedicatedAgentTransportToken(target);
     if (!targetToken) {
-      return json(
-        {
-          success: false,
-          code: "dedicated_transport_unavailable",
-          error:
-            "Dedicated authentication is still being prepared. Shared remains active.",
+      return rejectCutover(c, {
+        code: "dedicated_transport_unavailable",
+        error:
+          "Dedicated authentication is still being prepared. Shared remains active.",
+        status: 503,
+        phase: "resolve-dedicated-transport",
+        context: {
+          orgId: user.organization_id,
+          userId: user.id,
+          dedicatedAgentId: target.id,
+          targetStatus: target.status,
         },
-        503,
-      );
+      });
     }
     const history = await coordinateSharedCutoverSeal(
       sourceAgentId,
@@ -497,15 +579,19 @@ app.post("/", async (c) => {
           message.role === "user" || message.role === "assistant",
       );
       if (transferableHistory.some((message) => !message.id)) {
-        return json(
-          {
-            success: false,
-            code: "shared_history_identity_missing",
-            error:
-              "Shared history could not be verified for an exact transfer. Shared remains active.",
+        return rejectCutover(c, {
+          code: "shared_history_identity_missing",
+          error:
+            "Shared history could not be verified for an exact transfer. Shared remains active.",
+          status: 503,
+          phase: "validate-shared-history",
+          context: {
+            orgId: user.organization_id,
+            userId: user.id,
+            dedicatedAgentId: target.id,
+            transferableMessageCount: transferableHistory.length,
           },
-          503,
-        );
+        });
       }
       let scheduledTasks: Awaited<
         ReturnType<typeof reserveSharedRemindersForCutover>
@@ -521,15 +607,19 @@ app.post("/", async (c) => {
       } catch (error) {
         // error-policy:J1 the cutover boundary translates an ownership conflict for retry.
         if (error instanceof SharedReminderCutoverConflictError) {
-          return json(
-            {
-              success: false,
-              code: "personal_reminder_cutover_in_progress",
-              error:
-                "Another Dedicated cutover is already moving Shared reminders.",
+          return rejectCutover(c, {
+            code: "personal_reminder_cutover_in_progress",
+            error:
+              "Another Dedicated cutover is already moving Shared reminders.",
+            status: 423,
+            phase: "reserve-shared-reminders",
+            context: {
+              orgId: user.organization_id,
+              userId: user.id,
+              dedicatedAgentId: target.id,
+              ...errorDiagnostic(error),
             },
-            423,
-          );
+          });
         }
         throw error;
       }
@@ -555,15 +645,24 @@ app.post("/", async (c) => {
           targetToken,
         );
         if (!imported.response.ok) {
-          return json(
-            {
-              success: false,
-              code: "dedicated_history_import_failed",
-              error:
-                "History, reminders, and Todos did not finish moving to Dedicated. Shared remains active.",
+          return rejectCutover(c, {
+            code: "dedicated_history_import_failed",
+            error:
+              "History, reminders, and Todos did not finish moving to Dedicated. Shared remains active.",
+            status: 503,
+            phase: "import-personal-state",
+            context: {
+              orgId: user.organization_id,
+              userId: user.id,
+              dedicatedAgentId: target.id,
+              upstreamStatus: imported.response.status,
+              importAttempt: attempt + 1,
+              messageCount: importedMessages.length,
+              scheduledTaskCount: scheduledTasks.length,
+              todoCount: todoSnapshot.todos.length,
+              todoMutationCount: todoSnapshot.mutations.length,
             },
-            503,
-          );
+          });
         }
         const receipt = imported.receipt;
         if (
@@ -575,15 +674,25 @@ app.post("/", async (c) => {
             false,
           )
         ) {
-          return json(
-            {
-              success: false,
-              code: "dedicated_history_receipt_invalid",
-              error:
-                "Dedicated did not confirm the complete history, reminder, and Todo import. Shared remains active.",
+          return rejectCutover(c, {
+            code: "dedicated_history_receipt_invalid",
+            error:
+              "Dedicated did not confirm the complete history, reminder, and Todo import. Shared remains active.",
+            status: 503,
+            phase: "verify-personal-import-receipt",
+            context: {
+              orgId: user.organization_id,
+              userId: user.id,
+              dedicatedAgentId: target.id,
+              importAttempt: attempt + 1,
+              upstreamStatus: imported.response.status,
+              receiptPresent: Boolean(receipt),
+              messageCount: importedMessages.length,
+              scheduledTaskCount: scheduledTasks.length,
+              todoCount: todoSnapshot.todos.length,
+              todoMutationCount: todoSnapshot.mutations.length,
             },
-            503,
-          );
+          });
         }
         const refreshedTasks = await reserveSharedRemindersForCutover({
           sourceAgentId,
@@ -602,15 +711,19 @@ app.post("/", async (c) => {
           break;
         }
         if (attempt >= 2) {
-          return json(
-            {
-              success: false,
-              code: "shared_personal_snapshot_unstable",
-              error:
-                "Shared personal data is still settling. Try Dedicated activation again.",
+          return rejectCutover(c, {
+            code: "shared_personal_snapshot_unstable",
+            error:
+              "Shared personal data is still settling. Try Dedicated activation again.",
+            status: 409,
+            phase: "stabilize-personal-snapshot",
+            context: {
+              orgId: user.organization_id,
+              userId: user.id,
+              dedicatedAgentId: target.id,
+              importAttempts: attempt + 1,
             },
-            409,
-          );
+          });
         }
         scheduledTasks = refreshedTasks;
         todoSnapshot = refreshedTodoSnapshot;
@@ -657,15 +770,24 @@ app.post("/", async (c) => {
           true,
         )
       ) {
-        return json(
-          {
-            success: false,
-            code: "dedicated_reminder_activation_failed",
-            error:
-              "Dedicated did not confirm the imported reminders and Todos. Retry cutover to repair them.",
+        return rejectCutover(c, {
+          code: "dedicated_reminder_activation_failed",
+          error:
+            "Dedicated did not confirm the imported reminders and Todos. Retry cutover to repair them.",
+          status: 503,
+          phase: "activate-dedicated-personal-state",
+          context: {
+            orgId: user.organization_id,
+            userId: user.id,
+            dedicatedAgentId: target.id,
+            upstreamStatus: activation.response.status,
+            receiptPresent: Boolean(activation.receipt),
+            messageCount: importedMessages.length,
+            scheduledTaskCount: scheduledTasks.length,
+            todoCount: todoSnapshot.todos.length,
+            todoMutationCount: todoSnapshot.mutations.length,
           },
-          503,
-        );
+        });
       }
       await commitSharedReminderCutover({
         sourceAgentId,
@@ -711,6 +833,23 @@ app.post("/", async (c) => {
       }
     }
   } catch (error) {
+    // error-policy:J1 preserve the coordinator's temporary unavailable state
+    // so the client can retry the idempotent cutover within its startup deadline.
+    if (error instanceof SharedRuntimeCacheWarmingError) {
+      return rejectCutover(c, {
+        code: "shared_history_unavailable",
+        error:
+          "Shared history is temporarily unavailable. Retry Dedicated activation shortly.",
+        status: 503,
+        phase: "coordinate-shared-history",
+      });
+    }
+    logger.error("[personal-dedicated-cutover] Cutover failed", {
+      traceId: c.get("traceId") ?? c.get("requestId"),
+      phase: "unhandled-boundary",
+      sourceAgentId: c.req.param("agentId") ?? null,
+      ...errorDiagnostic(error),
+    });
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 });

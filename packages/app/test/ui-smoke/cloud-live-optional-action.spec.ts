@@ -585,6 +585,7 @@ test.describe("Cloud live optional action boundary", () => {
             data: {
               quoteId: "private-quote",
               dedicatedAgentId: "private-dedicated",
+              adoptionState: "available",
               status: "stopped",
               startsCompute: true,
               hourlyRateUsd: 0.01,
@@ -594,6 +595,8 @@ test.describe("Cloud live optional action boundary", () => {
               balanceUsd: 115.54059,
               deficitUsd: 0,
               stateDisposition: "verified_backup_present",
+              canAdopt: true,
+              requiresCatalogRestore: false,
               requiresConfirmation: true,
               action: "adopt_existing_dedicated",
             },
@@ -603,11 +606,17 @@ test.describe("Cloud live optional action boundary", () => {
     );
     await page.goto("/");
     await page.setContent(`
-      <article data-testid="thread-line">
-        <p>Use your existing Dedicated agent? Current status: stopped. Hosting: $0.01/hour ($0.24/day). Balance: $115.54; minimum required: $0.72 (3 days of runway); deficit: $0.00. This action starts Dedicated compute and will restore its reviewed backup.</p>
-        <button data-testid="dedicated-adoption-confirm">Confirm and continue</button>
-        <button data-testid="dedicated-adoption-cancel">Not now</button>
-      </article>
+      <div data-testid="dedicated-adoption-review">
+        <h1>Bring this Dedicated Eliza online?</h1>
+        <p>We found an existing Dedicated Eliza for this account. Confirming reuses it — it does not create another one.</p>
+        <p>This starts Dedicated hosting at $0.24/day ($0.01/hr).</p>
+        <p>Balance: $115.54 · Required: $0.72 (3 days of runway)</p>
+        <p>Current Dedicated status: stopped.</p>
+        <p>Cloud will restore its reviewed backup before switching.</p>
+        <p>Your Shared Eliza keeps working until Dedicated is healthy. If setup fails or you cancel, nothing switches.</p>
+        <button data-testid="dedicated-adoption-cancel">Cancel setup</button>
+        <button data-testid="dedicated-adoption-confirm">Start Dedicated</button>
+      </div>
       <output data-testid="confirmation-count">0</output>
       <script>
         document.addEventListener("click", (event) => {

@@ -24,6 +24,7 @@ vi.mock("../bridge/electrobun-rpc", () => ({
   invokeDesktopBridgeRequest: vi.fn(),
 }));
 
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import {
   acknowledgeRemoteCommandEnqueue,
   clearRemoteControllerSessionState,
@@ -34,7 +35,10 @@ import {
 } from "./remote-controller";
 
 describe("Capacitor remote controller bridge", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    nativeAvailable.value = true;
+  });
 
   it("uses native identity storage and never accepts a private key", async () => {
     native.getOrCreateIdentity.mockResolvedValue({
@@ -140,6 +144,24 @@ describe("Capacitor remote controller bridge", () => {
     ).rejects.toThrow("native iOS plugin is installed");
     nativeAvailable.value = true;
   });
+
+  it.each([
+    ["command creation", createRemoteCommand],
+    ["enqueue acknowledgement", acknowledgeRemoteCommandEnqueue],
+    ["result decryption", openRemoteCommandResult],
+    ["start receipt", openRemoteCommandStartReceipt],
+    ["session cleanup", clearRemoteControllerSessionState],
+  ] as const)(
+    "rejects %s without native support or desktop dispatch",
+    async (_name, operation) => {
+      nativeAvailable.value = false;
+      await expect(operation({} as never)).rejects.toThrow("native iOS plugin");
+      expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
+      for (const method of Object.values(native)) {
+        expect(method).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it("rejects malformed acknowledgement and cleanup bridge responses", async () => {
     native.acknowledgeEnqueue.mockResolvedValue({ acknowledged: "yes" });

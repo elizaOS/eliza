@@ -537,6 +537,8 @@ jobs:
 
       - name: Run repository postinstall patches
         run: bun run postinstall
+        env:
+          ELIZA_SKIP_FUSED_INFERENCE_SETUP: ""
 
       - name: Align version with release tag
         run: |

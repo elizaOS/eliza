@@ -252,7 +252,15 @@ export async function runQueueWorker(
   let state = createWorkerState();
 
   while (!options.signal?.aborted) {
-    const claimed = deps.queue.claim();
+    const claimed = deps.queue.claim((result) => {
+      counts.failed += 1;
+      emit({
+        type: "processed",
+        id: result.id,
+        action: "failed",
+        reason: result.reason,
+      });
+    });
     if (!claimed) {
       emit({ type: "idle" });
       // When draining, a requeued job is the only thing that could reappear; if
@@ -316,15 +324,14 @@ async function withHardTimeout<T>(
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      { once: true },
-    );
+    const finish = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    signal?.addEventListener("abort", finish, { once: true });
   });
 }

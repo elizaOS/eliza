@@ -17,6 +17,7 @@ import {
   isCloudAgentsCollectionBase,
   isElizaCloudControlPlaneAgentlessBase,
   isManagedCloudSharedAgentBase,
+  isTrustedHostedCloudOnboardingBase,
   resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
 import { resolveCloudAgentApiBase } from "./client-cloud";
@@ -292,5 +293,40 @@ describe("cloud-agent-base helpers", () => {
         "https://ff479713-41c8-4d82-92b8-5f0881062189.elizacloud.ai",
       ),
     ).toBe(false);
+  });
+
+  it("trusts canonical Cloud and the exact branded HTTPS staging Pages alias", () => {
+    expect(
+      isTrustedHostedCloudOnboardingBase("https://cloud.eliza.app", false),
+    ).toBe(true);
+    expect(
+      isTrustedHostedCloudOnboardingBase("https://app.elizacloud.ai", false),
+    ).toBe(true);
+    expect(
+      isTrustedHostedCloudOnboardingBase(
+        "https://develop.eliza-app.pages.dev",
+        true,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects unbranded, insecure, self-hosted, and lookalike Pages bases", () => {
+    for (const [base, cloudOnlyBranding] of [
+      ["https://develop.eliza-app.pages.dev", false],
+      ["http://develop.eliza-app.pages.dev", true],
+      ["https://develop.eliza-app.pages.dev:8443", true],
+      ["https://eliza-app.pages.dev", true],
+      ["https://preview.eliza-app.pages.dev", true],
+      ["https://pr-30375.preview.eliza-app.pages.dev", true],
+      ["https://agent.example.com", true],
+      ["https://other-project.pages.dev", true],
+      ["https://evil-eliza-app.pages.dev", true],
+      ["https://eliza-app.pages.dev.evil.example", true],
+      ["https://develop.eliza-app.pages.dev/api/v1/eliza/agents/agent", true],
+    ] as const) {
+      expect(isTrustedHostedCloudOnboardingBase(base, cloudOnlyBranding)).toBe(
+        false,
+      );
+    }
   });
 });

@@ -535,7 +535,74 @@ jobs:
           bun-version: "1.3.14"
 
       - name: Validate provision diagnostic contract
-        run: bun test packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.test.ts
+        run: >-
+          bun test
+          packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.test.ts
+          packages/scripts/__tests__/staging-worker-journal-diagnostic.test.ts
+
+      - name: Classify recent provisioning worker failures
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            sudo journalctl -u eliza-provisioning-worker.service --since '2 hours ago' -o json --no-pager | python3 -c '
+            import collections, json, re, sys
+            patterns = {
+                "sandbox_health_timeout": r"Sandbox health check timed out",
+                "sandbox_creation_timeout": r"Sandbox creation failed:.*(?:timed out|timeout)",
+                "database_provision_failed": r"Database provisioning failed:",
+                "environment_decryption_failed": r"Environment decryption failed:",
+                "ssh_command_timeout": r"\[docker-ssh\] Command timed out",
+                "ssh_connect_timeout": r"(?:SSH|connection|connect).*timed out",
+                "docker_health_timeout": r"Docker health check timed out",
+                "tailnet_health_timeout": r"Tailnet health check timed out",
+                "vpn_registration_timeout": r"VPN registration timeout",
+                "registration_unresolved": r"Headscale registration did not reach an exact observable completion",
+                "job_watchdog_timeout": r"Execution timed out; retaining ownership until quiescent",
+                "image_pull_failed": r"Image pull failed",
+                "image_pull_completed": r"Image pulled successfully",
+                "docker_capacity_unavailable": r"No (?:reachable )?Docker capacity",
+                "container_daemon_unavailable": r"Cannot connect to the Docker daemon|docker_daemon_unavailable",
+                "container_created": r"\[docker-sandbox\] Created container",
+                "provision_failed": r"agent_provision failed",
+                "provision_completed": r"agent_provision completed",
+                "runtime_module_resolution": r"Cannot find (?:package|module)|ERR_MODULE_NOT_FOUND",
+                "runtime_out_of_memory": r"heap out of memory|Out of memory|OOMKilled",
+                "runtime_database_unavailable": r"database.*(?:unavailable|connection refused|timeout)",
+                "remote_command_timeout": r"remote_command_timeout",
+                "unclassified_timeout": r"timed out|timeout|ETIMEDOUT",
+            }
+            patterns = {key: re.compile(value, re.I) for key, value in patterns.items()}
+            counts = collections.Counter()
+            durations = collections.Counter()
+            functions = collections.Counter()
+            allowed_functions = (
+                "executeJob", "provision", "create", "checkHealthDetailed", "checkHealth",
+                "ensureDatabase", "mintAgentToken", "ensureImage", "prepareRuntime",
+                "withTimeout", "fetch", "exec", "connect", "ensureAgentDatabase",
+            )
+            records = 0
+            for line in sys.stdin:
+                entry = json.loads(line)
+                message = entry["MESSAGE"]
+                if not isinstance(message, str):
+                    raise ValueError("Journal message is not text")
+                records += 1
+                for key, pattern in patterns.items():
+                    if pattern.search(message):
+                        counts[key] += 1
+                if patterns["unclassified_timeout"].search(message):
+                    for value in re.findall(r"timed out after ([0-9]{1,8})ms", message):
+                        durations[value] += 1
+                    for name in allowed_functions:
+                        if re.search(r"\bat (?:[A-Za-z0-9_]+\.)?" + name + r"\s*\(", message):
+                            functions[name] += 1
+            print(json.dumps({"schemaVersion": 1, "scope": "staging-worker-two-hours", "records": records, "signals": dict(counts), "timeoutDurationsMs": dict(durations), "timeoutFunctions": dict(functions)}, sort_keys=True))
+            '
 
       - name: Classify exact canary journal by suffix
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -795,6 +862,102 @@ jobs:
             "$CANARY_DIAGNOSTIC_SUFFIX" \
             "$CANARY_DIAGNOSTIC_RAW_PATH" \
             "$CANARY_DIAGNOSTIC_EVIDENCE_PATH"
+
+      - name: Diagnose activated target job origin
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=20000
+        run: |
+          set -euo pipefail
+          PSQL_DATABASE_URL="$(bun packages/cloud/scripts/admin/libpq-connection-url.ts)"
+          echo "::add-mask::$PSQL_DATABASE_URL"
+          psql "$PSQL_DATABASE_URL" --no-psqlrc --no-align --tuples-only --quiet \
+            --set ON_ERROR_STOP=1 --set suffix="$CANARY_DIAGNOSTIC_SUFFIX" <<'SQL'
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout = '20s';
+          WITH canary AS (
+            SELECT organization_id, user_id FROM agent_sandboxes
+            WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
+          ), target AS (
+            SELECT agent.id, agent.organization_id, agent.user_id, agent.status,
+              agent.lifecycle_job_id, agent.lifecycle_execution_generation, agent.deletion_attempt_id
+            FROM canary
+            JOIN personal_dedicated_upgrade_authorities AS authority
+              ON authority.organization_id = canary.organization_id AND authority.user_id = canary.user_id
+            JOIN agent_sandboxes AS agent
+              ON agent.id = authority.dedicated_agent_id
+              AND agent.organization_id = authority.organization_id AND agent.user_id = authority.user_id
+            WHERE (SELECT count(*) FROM canary) = 1
+          ), selected_target AS (
+            SELECT * FROM target WHERE (SELECT count(*) FROM target) = 1
+          ), organization AS (
+            SELECT org.is_active, org.account_lifecycle_state,
+              org.account_lifecycle_revision, org.account_deletion_request_id
+            FROM selected_target JOIN organizations AS org ON org.id = selected_target.organization_id
+          ), latest_job AS (
+            SELECT job.* FROM target
+            JOIN jobs AS job ON job.agent_id = target.id::text
+              AND job.organization_id = target.organization_id AND job.user_id = target.user_id
+            WHERE job.type = 'agent_provision' AND (SELECT count(*) FROM target) = 1
+            ORDER BY job.created_at DESC, job.id DESC LIMIT 1
+          )
+          SELECT json_build_object(
+            'kind', 'activated-target-job-origin',
+            'canaryCount', (SELECT count(*) FROM canary),
+            'targetCount', (SELECT count(*) FROM target),
+            'jobCount', (SELECT count(*) FROM latest_job),
+            'startedAt', (SELECT started_at FROM latest_job),
+            'updatedAt', (SELECT updated_at FROM latest_job),
+            'attempts', (SELECT attempts FROM latest_job),
+            'errorStoredExternally', (SELECT error_storage = 'r2' FROM latest_job),
+            'failureKind', (SELECT CASE
+              WHEN error_storage = 'r2' THEN 'external_error'
+              WHEN error IS NULL THEN 'none'
+              WHEN error ~ 'Account lifecycle fenced provisioning job' THEN 'account_preparation_fenced'
+              WHEN error ~ 'Account lifecycle fenced provider admission' THEN 'account_provider_fenced'
+              WHEN error ~ 'Agent lifecycle resource generation is already owned' THEN 'resource_generation_owned'
+              WHEN error ~ 'Lifecycle execution generation is no longer current' THEN 'job_generation_stale'
+              WHEN error ~ 'has conflicting .* job' THEN 'conflicting_lifecycle_job'
+              WHEN error ~ 'timeout exceeded when trying to connect' THEN 'database_pool_timeout'
+              WHEN error ~ 'canceling statement due to lock timeout' THEN 'database_lock_timeout'
+              WHEN error ~ 'canceling statement due to statement timeout' THEN 'database_statement_timeout'
+              WHEN error ~ 'Reviewed backup authority changed' THEN 'reviewed_backup_changed'
+              WHEN error ~ 'Reviewed fresh-boot authority changed' THEN 'reviewed_fresh_boot_changed'
+              WHEN split_part(error, E'\n', 1) ~* 'timed out|timeout' THEN 'timeout'
+              ELSE 'unclassified' END FROM latest_job),
+            'organizationActive', (SELECT is_active FROM organization),
+            'accountLifecycleState', (SELECT account_lifecycle_state FROM organization),
+            'accountLifecycleRevision', (SELECT account_lifecycle_revision::text FROM organization),
+            'accountDeletionRequested', (SELECT account_deletion_request_id IS NOT NULL FROM organization),
+            'sandboxStatus', (SELECT status FROM selected_target),
+            'sandboxDeletionRequested', (SELECT deletion_attempt_id IS NOT NULL FROM selected_target),
+            'sandboxLifecycleJobPresent', (SELECT lifecycle_job_id IS NOT NULL FROM selected_target),
+            'sandboxLifecycleJobMatches', (SELECT selected_target.lifecycle_job_id = latest_job.id FROM selected_target, latest_job),
+            'sandboxGenerationMatches', (SELECT selected_target.lifecycle_execution_generation = latest_job.execution_generation FROM selected_target, latest_job),
+            'jobQuiesced', (SELECT execution_quiesced_at IS NOT NULL FROM latest_job),
+            'jobHasLiveLease', (SELECT EXISTS (
+              SELECT 1 FROM job_execution_leases AS lease
+              WHERE lease.job_id = latest_job.id AND lease.expires_at > NOW()
+            ) FROM latest_job),
+            'errorTerms', ARRAY(
+              SELECT DISTINCT term[1] FROM latest_job,
+                regexp_matches(lower(split_part(error, E'\n', 1)), '\m(timeout|timed|query|connection|connect|handshake|socket|pool|database|postgres|acquire|client|read|write|fetch|abort|aborted|operation|exceeded|trying|response|request|statement|health|sandbox|docker|ssh|vpn|headscale|backup|restore|revocation|lock|lease|body|headers|control|preflight|capacity|admission|fence|fenced|account|lifecycle|generation|owned|current|conflicting|revision|stale|steward|kms|crypto|encryption|decryption|redis|s3|r2|tls|certificate|auth|credential|token|key|econnreset|etimedout|econnrefused)\M', 'g') AS term
+              ORDER BY term[1]
+            ),
+            'stackFrames', ARRAY(
+              SELECT DISTINCT frame[1] FROM latest_job,
+                regexp_matches(error, '((?:provisioning-jobs|provisioning-account-lifecycle-fence|account-lifecycle-authority|provider-admission|eliza-sandbox|managed-eliza-config|with-timeout|agent-env-crypto|agent-tier-upgrade-target|kms-client|steward-client|api-keys)\.ts:[0-9]+(?::[0-9]+)?)', 'g') AS frame
+              ORDER BY frame[1]
+            ),
+            'stackModules', ARRAY(
+              SELECT DISTINCT module[1] FROM latest_job,
+                regexp_matches(error, '(pg-pool/index\.js|pg/lib/client\.js|postgres/src/connection\.js|docker-ssh-client\.ts|eliza-sandbox\.ts|provisioning-jobs\.ts|managed-eliza-config\.ts|with-timeout\.ts|agent-env-crypto\.ts|agent-tier-upgrade-target\.ts|kms-client\.ts|steward-client\.ts|api-keys\.ts)', 'g') AS module
+              ORDER BY module[1]
+            )
+          );
+          COMMIT;
+          SQL
 
       - name: Summarize replacement cleanup reconciliation eligibility
         id: cleanup_reconciliation

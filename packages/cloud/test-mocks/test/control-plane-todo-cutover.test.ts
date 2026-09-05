@@ -15,6 +15,7 @@ import {
 import { type RunningHetznerMock, startHetznerMock } from "../src/hetzner";
 
 const TOKEN = "todo-cutover-token";
+const RUNTIME_TOKEN = "dedicated-runtime-token";
 const CONVERSATION_ID = "personal:todo-cutover-source";
 const DEDICATED_AGENT_ID = "dedicated-todo-target";
 const TODO_ID = "11111111-1111-4111-8111-111111111111";
@@ -40,6 +41,8 @@ beforeAll(async () => {
     userId: "user-1",
     agentId: DEDICATED_AGENT_ID,
   }).id;
+  controlPlane.store.updateSandbox(sandboxId, { status: "running" });
+  controlPlane.store.bindSandboxRuntimeToken(sandboxId, RUNTIME_TOKEN);
 });
 
 afterAll(async () => {
@@ -63,7 +66,54 @@ async function postImport(body: Record<string, unknown>): Promise<Response> {
   );
 }
 
+async function postDirectRuntimeImport(
+  body: Record<string, unknown>,
+): Promise<Response> {
+  return fetch(
+    `${controlPlane.url}/api/conversations/${encodeURIComponent(CONVERSATION_ID)}/import`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RUNTIME_TOKEN}`,
+        "Content-Type": "application/json",
+        "X-API-Key": RUNTIME_TOKEN,
+      },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 describe("control-plane Todo cutover import", () => {
+  test("routes the health-origin runtime surface by exact agent token", async () => {
+    const sandboxHealth = await fetch(
+      `${controlPlane.url}/api/compat/agents/${sandboxId}/api/health`,
+    );
+    expect(sandboxHealth.status).toBe(200);
+
+    const snapshot = await createSharedTodoCutoverSnapshot({
+      sourceAgentId: CONVERSATION_ID,
+      todos: [],
+      mutations: [],
+    });
+    const imported = await postDirectRuntimeImport({
+      messages: [{ role: "user", text: "direct runtime import" }],
+      cutoverToken: "direct-runtime-cutover",
+      todoSnapshot: snapshot,
+    });
+    expect(imported.status).toBe(200);
+    expect(await imported.json()).toMatchObject({
+      complete: true,
+      sourceMessageCount: 1,
+      sourceTodoDigest: snapshot.digest,
+    });
+
+    const denied = await fetch(
+      `${controlPlane.url}/api/conversations/${encodeURIComponent(CONVERSATION_ID)}/messages`,
+      { headers: { Authorization: "Bearer wrong-runtime-token" } },
+    );
+    expect(denied.status).toBe(401);
+  });
+
   test("requires, verifies, stores, and replays the exact digest-bound snapshot", async () => {
     const mutation = {
       version: 1,

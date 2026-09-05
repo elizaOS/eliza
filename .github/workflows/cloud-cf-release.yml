@@ -3301,6 +3301,10 @@ jobs:
 
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
+        env:
+          # This browser proves deployed Cloud inference, so installing a
+          # local desktop model adds an unrelated network dependency.
+          ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
         with:
           bun-version: "1.3.14"
           install-command: bun install --frozen-lockfile

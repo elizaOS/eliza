@@ -6,7 +6,7 @@
  * parsed to 3600 and became configuration nobody set.
  */
 import { describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 import { parseIntegerEnvValue } from "../src/integer-env";
 
 const NAME = "VOICE_AUDIO_TTL_SECONDS";

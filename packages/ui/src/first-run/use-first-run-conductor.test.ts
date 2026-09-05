@@ -2870,7 +2870,7 @@ describe("bounded cloud sign-in wait (#19255)", () => {
 
     // The OAuth-only deadline must not govern this already-authenticated
     // Personal/Dedicated activation. Its own client contract owns the longer
-    // six-minute bound.
+    // bounded cold-start window.
     await act(async () => vi.advanceTimersByTimeAsync(90_000));
     expect(signalA?.aborted).toBe(false);
     expect(turn("first-run:cloud-login-waiting")?.text).not.toContain(

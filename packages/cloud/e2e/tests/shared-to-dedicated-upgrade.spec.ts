@@ -61,6 +61,7 @@ test.use({
     frontend: false,
     mockLlmEchoContext: true,
     env: { ELIZAOS_CLOUD_SMALL_MODEL: "openai/gpt-4o-mini" },
+    mockLlmOpenRouter: true,
   },
 });
 
@@ -127,18 +128,29 @@ test.describe("shared→dedicated tier upgrade", () => {
       const SECOND = "set a reminder for Friday";
       const sendTurn = (text: string, clientMessageId: string) =>
         retrySharedRuntimeWarming(() =>
-          c("POST", convoUrl, { text, clientMessageId }),
+          c<{ text?: string; degraded?: boolean }>("POST", convoUrl, {
+            text,
+            clientMessageId,
+          }),
         );
       const firstTurn = await sendTurn(FIRST, "personal-upgrade-1");
       expect(
         firstTurn.status,
         `first shared turn: ${JSON.stringify(firstTurn.json)}`,
       ).toBe(200);
+      expect(
+        firstTurn.json.degraded,
+        `first shared turn must use the configured mock model: ${JSON.stringify(firstTurn.json)}`,
+      ).not.toBe(true);
       const secondTurn = await sendTurn(SECOND, "personal-upgrade-2");
       expect(
         secondTurn.status,
         `second shared turn: ${JSON.stringify(secondTurn.json)}`,
       ).toBe(200);
+      expect(
+        secondTurn.json.degraded,
+        `second shared turn must use the configured mock model: ${JSON.stringify(secondTurn.json)}`,
+      ).not.toBe(true);
       const sharedHistory = await retrySharedRuntimeWarming(() =>
         c<{ messages?: Array<{ role: string; text: string }> }>(
           "GET",

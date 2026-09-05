@@ -26,6 +26,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentButton, getViewRegistry } from "./agent-surface";
 import { registerAppShellPage } from "./app-shell-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
+import { DEFAULT_BRANDING } from "./config/branding-base";
+import { BrandingContext } from "./config/branding-react.hooks";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { resetUiRegistryHostForTests } from "./registry-host";
 import { getActiveSurfaceRealmScope } from "./surface-realm-broker";
@@ -51,10 +53,6 @@ const authStatusMock = vi.hoisted(() => ({
     | "server_unavailable",
   refetch: vi.fn(),
   use: vi.fn(),
-}));
-
-const cloudOriginMock = vi.hoisted(() => ({
-  agentless: false,
 }));
 
 const cloudSessionState = vi.hoisted(() => ({
@@ -359,15 +357,6 @@ vi.mock("./cloud/lib/use-session-auth", () => ({
   }),
 }));
 
-vi.mock("./utils/cloud-agent-base", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("./utils/cloud-agent-base")>();
-  return {
-    ...actual,
-    isElizaCloudControlPlaneAgentlessBase: () => cloudOriginMock.agentless,
-  };
-});
-
 vi.mock("./first-run/use-first-run-conductor", () => ({
   FirstRunConductorMount: () => <div data-testid="first-run-conductor-mount" />,
   surfaceCloudLoginRetryTurn: vi.fn(),
@@ -584,6 +573,33 @@ function navigateView(detail: Record<string, unknown>) {
   });
 }
 
+const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "location",
+);
+
+function setWindowLocation(url: string): void {
+  const parsed = new URL(url);
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: {
+      href: parsed.href,
+      origin: parsed.origin,
+      protocol: parsed.protocol,
+      host: parsed.host,
+      hostname: parsed.hostname,
+      port: parsed.port,
+      pathname: parsed.pathname,
+      search: parsed.search,
+      hash: parsed.hash,
+      assign: vi.fn(),
+      replace: vi.fn(),
+      reload: vi.fn(),
+      toString: () => parsed.href,
+    },
+  });
+}
+
 describe("App navigate-view event wiring", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
@@ -591,6 +607,7 @@ describe("App navigate-view event wiring", () => {
     // App with first-run complete and covers the surfaces under test — mark it
     // already shown.
     window.localStorage.setItem("eliza:permissions-primed", "1");
+    window.localStorage.removeItem("steward_session_token");
     setBootConfig(DEFAULT_BOOT_CONFIG);
     Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
@@ -601,7 +618,6 @@ describe("App navigate-view event wiring", () => {
     appState.tab = "chat";
     appState.plugins = [];
     authStatusMock.phase = "authenticated";
-    cloudOriginMock.agentless = false;
     cloudSessionState.authenticated = false;
     mediaQueryState.matches = false;
     electrobunRuntimeState.enabled = true;
@@ -623,22 +639,61 @@ describe("App navigate-view event wiring", () => {
     cleanup();
     resetUiRegistryHostForTests();
     vi.unstubAllGlobals();
+    if (originalLocationDescriptor) {
+      Object.defineProperty(window, "location", originalLocationDescriptor);
+    }
   });
 
-  it("keeps an unauthenticated shared Cloud app inside first-run onboarding", () => {
+  it("keeps the exact branded staging Pages alias inside first-run onboarding", () => {
     window.history.replaceState(null, "", "/?shellMode=full");
+    setWindowLocation("https://develop.eliza-app.pages.dev/?shellMode=full");
     appState.firstRunComplete = false;
     appState.startupPhase = "first-run-required";
     authStatusMock.phase = "unauthenticated";
-    cloudOriginMock.agentless = true;
+    window.localStorage.setItem(
+      "steward_session_token",
+      "existing-steward-session",
+    );
 
-    render(<App />);
+    render(
+      <BrandingContext.Provider
+        value={{ ...DEFAULT_BRANDING, cloudOnly: true }}
+      >
+        <App />
+      </BrandingContext.Provider>,
+    );
 
     expect(authStatusMock.use).toHaveBeenCalledWith(
       expect.objectContaining({ skip: true }),
     );
     expect(screen.getByTestId("first-run-conductor-mount")).toBeTruthy();
     expect(screen.queryByText("Open this agent from Eliza Cloud")).toBeNull();
+  });
+
+  it.each([
+    ["unbranded Pages alias", "https://develop.eliza-app.pages.dev/", false],
+    ["arbitrary branded self-host", "https://agent.example.com/", true],
+  ])("keeps the App auth gate for an %s", (_name, origin, cloudOnly) => {
+    window.history.replaceState(null, "", "/?shellMode=full");
+    setWindowLocation(`${origin}?shellMode=full`);
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    authStatusMock.phase = "unauthenticated";
+    window.localStorage.setItem(
+      "steward_session_token",
+      "existing-steward-session",
+    );
+
+    render(
+      <BrandingContext.Provider value={{ ...DEFAULT_BRANDING, cloudOnly }}>
+        <App />
+      </BrandingContext.Provider>,
+    );
+
+    expect(authStatusMock.use).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: false }),
+    );
+    expect(screen.queryByTestId("first-run-conductor-mount")).toBeNull();
   });
 
   it("restores a deep route after an auth-startup retry commits the default chat path", async () => {

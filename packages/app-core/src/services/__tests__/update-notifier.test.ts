@@ -1,3 +1,4 @@
+/** Tests startup update notices with deterministic provider and terminal fixtures. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -72,10 +73,11 @@ describe("scheduleUpdateNotification", () => {
       .spyOn(process.stderr, "write")
       .mockImplementation(() => true);
     mod.scheduleUpdateNotification();
-    await new Promise((r) => setTimeout(r, 10));
-    expect(write).toHaveBeenCalledWith(
-      expect.stringContaining("Update available"),
-    );
+    await vi.waitFor(() => {
+      expect(write).toHaveBeenCalledWith(
+        expect.stringContaining("Update available"),
+      );
+    });
     write.mockRestore();
   });
 });

@@ -252,6 +252,355 @@ describe("anti-larp test discovery", () => {
     ).toEqual(["orphaned-skip", "orphaned-skip", "orphaned-skip"]);
   });
 
+  test("fails closed for shorthand, accessor, method, and spread runner options", () => {
+    const source = `
+      import test from "node:test";
+      const skip = "always skipped via shorthand";
+      const opts = { skip: "always skipped via spread" };
+      test("shorthand", { skip }, () => {});
+      test("getter", { get skip() { return "always skipped via getter"; } }, () => {});
+      test("method", { skip() { return "always skipped via method"; } }, () => {});
+      test("spread", { ...opts }, () => {});
+    `;
+    expect(
+      findViolations("fixture.test.mjs", source).map(({ kind }) => kind),
+    ).toEqual([
+      "orphaned-skip",
+      "orphaned-skip",
+      "orphaned-skip",
+      "orphaned-skip",
+    ]);
+    expect(findConditionalSkipSites("fixture.test.mjs", source)).toEqual([]);
+  });
+
+  test("does not flag statically disabled shorthand or harmless known spreads", () => {
+    const source = `
+      import test from "node:test";
+      const skip = false;
+      const options = { timeout: 1_000 };
+      test("shorthand runs", { skip }, () => {});
+      test("spread runs", { ...options }, () => {});
+    `;
+    expect(findViolations("fixture.test.mjs", source)).toEqual([]);
+  });
+
+  test("classifies documented runtime Node option skips without blessing lookalikes", () => {
+    const runtimeOption = `
+      import test from "node:test";
+      test("Windows cleanup", {
+        timeout: 15_000,
+        skip: process.platform !== "win32" ? "Windows cleanup contract" : false,
+      }, () => {});
+    `;
+    expect(findViolations("fixture.test.mjs", runtimeOption)).toEqual([]);
+    expect(findConditionalSkipSites("fixture.test.mjs", runtimeOption)).toEqual(
+      [expect.objectContaining({ form: "conditional-options-skip", line: 3 })],
+    );
+
+    const namedRuntimeGate = `
+      import test from "node:test";
+      const hostIsNode24 =
+        !process.versions.bun && Number(process.versions.node) >= 24;
+      test("host runtime", { skip: !hostIsNode24 }, () => {});
+    `;
+    expect(findViolations("fixture.test.mjs", namedRuntimeGate)).toEqual([]);
+    expect(
+      findConditionalSkipSites("fixture.test.mjs", namedRuntimeGate),
+    ).toEqual([
+      expect.objectContaining({ form: "conditional-options-skip", line: 5 }),
+    ]);
+
+    const deceptiveNames = `
+      import test from "node:test";
+      const isWindows = true;
+      function WindowsEnabled() { return true; }
+      test("constant binding", { skip: isWindows }, () => {});
+      test("constant call", { skip: WindowsEnabled() }, () => {});
+    `;
+    expect(
+      findViolations("fixture.test.mjs", deceptiveNames).map(
+        ({ kind }) => kind,
+      ),
+    ).toEqual(["orphaned-skip", "orphaned-skip"]);
+    expect(
+      findConditionalSkipSites("fixture.test.mjs", deceptiveNames),
+    ).toEqual([]);
+
+    const shadowedAndMutable = `
+      import test from "node:test";
+      const isWindows = process.platform === "win32";
+      function register(isWindows) {
+        test("shadowed parameter", { skip: isWindows }, () => {});
+      }
+      register(true);
+      let hostIsWindows = process.platform === "win32";
+      hostIsWindows = true;
+      test("reassigned binding", { skip: hostIsWindows }, () => {});
+    `;
+    expect(
+      findViolations("fixture.test.mjs", shadowedAndMutable).map(
+        ({ kind }) => kind,
+      ),
+    ).toEqual(["orphaned-skip", "orphaned-skip"]);
+    expect(
+      findConditionalSkipSites("fixture.test.mjs", shadowedAndMutable),
+    ).toEqual([]);
+
+    const shadowedRuntimeRoots = `
+      import test from "node:test";
+      const process = { platform: "win32", env: { SKIP: "yes" } };
+      const os = { platform: () => "win32" };
+      const gateA = process.platform === "win32";
+      const gateB = process.env.SKIP;
+      const gateC = os.platform() === "win32";
+      test("case one", { skip: gateA }, () => {});
+      test("case two", { skip: gateB }, () => {});
+      test("case three", { skip: gateC }, () => {});
+      function register(process) {
+        const gateD = process.platform === "win32";
+        test("case four", { skip: gateD }, () => {});
+      }
+      register({ platform: "win32" });
+    `;
+    expect(
+      findViolations("fixture.test.mjs", shadowedRuntimeRoots).map(
+        ({ kind }) => kind,
+      ),
+    ).toEqual([
+      "orphaned-skip",
+      "orphaned-skip",
+      "orphaned-skip",
+      "orphaned-skip",
+    ]);
+    expect(
+      findConditionalSkipSites("fixture.test.mjs", shadowedRuntimeRoots),
+    ).toEqual([]);
+
+    const scopeShadowedRuntimeRoots = [
+      `
+        import test from "node:test";
+        for (const process of [{ platform: "win32" }]) {
+          const gate = process.platform === "win32";
+          test("loop binding", { skip: gate }, () => {});
+        }
+      `,
+      `
+        import test from "node:test";
+        for (let process = { platform: "win32" }; false;) {
+          const gate = process.platform === "win32";
+          test("loop initializer", { skip: gate }, () => {});
+        }
+      `,
+      `
+        import test from "node:test";
+        switch (1) {
+          case 1:
+            const process = { platform: "win32" };
+            const gate = process.platform === "win32";
+            test("switch binding", { skip: gate }, () => {});
+            break;
+        }
+      `,
+      `
+        import test from "node:test";
+        function register() {
+          if (false) var process = { platform: "win32" };
+          const gate = process.platform === "win32";
+          test("hoisted function binding", { skip: gate }, () => {});
+        }
+      `,
+      `
+        import test from "node:test";
+        if (false) var process = { platform: "win32" };
+        const gate = process.platform === "win32";
+        test("hoisted source binding", { skip: gate }, () => {});
+      `,
+    ];
+    for (const source of scopeShadowedRuntimeRoots) {
+      expect(
+        findViolations("fixture.test.mjs", source).map(({ kind }) => kind),
+      ).toEqual(["orphaned-skip"]);
+      expect(findConditionalSkipSites("fixture.test.mjs", source)).toEqual([]);
+    }
+
+    const reassignedRuntimeRoots = [
+      `
+        const test = require("node:test");
+        process = { platform: "win32" };
+        const gate = process.platform === "win32";
+        test("case one", { skip: gate }, () => {});
+      `,
+      `
+        const test = require("node:test");
+        process.env.SKIP = "yes";
+        const gate = process.env.SKIP;
+        test("case two", { skip: gate }, () => {});
+      `,
+      `
+        const test = require("node:test");
+        process.runtimeGate++;
+        const gate = process.runtimeGate > 0;
+        test("case three", { skip: gate }, () => {});
+      `,
+      `
+        const test = require("node:test");
+        ({ process } = { process: { platform: "win32" } });
+        const gate = process.platform === "win32";
+        test("case four", { skip: gate }, () => {});
+      `,
+      `
+        const test = require("node:test");
+        globalThis.process = { platform: "win32" };
+        const gate = process.platform === "win32";
+        test("case five", { skip: gate }, () => {});
+      `,
+      `
+        const test = require("node:test");
+        global.process = { platform: "win32" };
+        const gate = process.platform === "win32";
+        test("case six", { skip: gate }, () => {});
+      `,
+      `
+        const test = require("node:test");
+        require = () => ({ platform: () => "win32" });
+        const os = require("node:os");
+        const gate = os.platform() === "win32";
+        test("case seven", { skip: gate }, () => {});
+      `,
+    ];
+    for (const source of reassignedRuntimeRoots) {
+      expect(
+        findViolations("fixture.test.cjs", source).map(({ kind }) => kind),
+      ).toEqual(["orphaned-skip"]);
+      expect(findConditionalSkipSites("fixture.test.cjs", source)).toEqual([]);
+    }
+
+    const adversarial = `
+      import test from "node:test";
+      test("unowned condition", { skip: shouldSkip }, () => {});
+      customRunner("lookalike", {
+        skip: process.platform !== "win32" ? "not a test runner" : false,
+      });
+    `;
+    expect(
+      findViolations("fixture.test.mjs", adversarial).map(({ kind }) => kind),
+    ).toEqual(["orphaned-skip"]);
+    expect(findConditionalSkipSites("fixture.test.mjs", adversarial)).toEqual(
+      [],
+    );
+  });
+
+  test("does not classify static Node option skips as runtime-conditional", () => {
+    const source = `
+      import test from "node:test";
+      test("always runs", { skip: false }, () => {});
+      test("tracked permanent skip", { skip: "requires a Windows host" }, () => {});
+    `;
+    expect(findViolations("fixture.test.mjs", source)).toEqual([]);
+    expect(findConditionalSkipSites("fixture.test.mjs", source)).toEqual([]);
+  });
+
+  test("folds constant runtime-shaped option skips instead of blessing them", () => {
+    const source = `
+      import test from "node:test";
+      test("same truthy branches", {
+        skip: process.platform === "win32" ? true : true,
+      }, () => {});
+      test("same false branches", {
+        skip: process.platform === "win32" ? false : false,
+      }, () => {});
+      test("truthy OR dominance", {
+        skip: true || process.platform === "win32",
+      }, () => {});
+      test("false AND dominance", {
+        skip: false && process.platform === "win32",
+      }, () => {});
+      test("literal comparison", {
+        // requires a Windows host
+        skip: 1 === 1,
+      }, () => {});
+      test("bare runtime value", { skip: process.platform }, () => {});
+    `;
+    expect(findViolations("fixture.test.mjs", source)).toEqual([]);
+    expect(findConditionalSkipSites("fixture.test.mjs", source)).toEqual([]);
+  });
+
+  test("uses exact Node option semantics for permanent non-false values", () => {
+    const source = `
+      import test from "node:test";
+      import os from "node:os";
+      test("zero", { /* requires a disabled fixture */ skip: 0 }, () => {});
+      test("empty", { /* requires a disabled fixture */ skip: "" }, () => {});
+      test("null", { /* requires a disabled fixture */ skip: null }, () => {});
+      test("bigint", { /* requires a disabled fixture */ skip: 0n }, () => {});
+      test("object", { /* requires a disabled fixture */ skip: {} }, () => {});
+      test("array", { /* requires a disabled fixture */ skip: [] }, () => {});
+      test("function", {
+        /* requires a disabled fixture */ skip: () => false,
+      }, () => {});
+      test("constructed", {
+        /* requires a disabled fixture */ skip: new Boolean(false),
+      }, () => {});
+      test("platform call", {
+        /* requires a disabled fixture */ skip: os.platform(),
+      }, () => {});
+      test("void runs", { skip: void 0 }, () => {});
+      test("object condition runs", { skip: [] && false }, () => {});
+      test("nullish run", { skip: null ?? false }, () => {});
+      test("runtime string fallback", {
+        skip: process.env.RUNTIME_SKIP ?? "requires a disabled fixture",
+      }, () => {});
+      test("platform boolean", {
+        /* requires a disabled fixture */ skip: !!os.platform(),
+      }, () => {});
+    `;
+    expect(findViolations("fixture.test.mjs", source)).toEqual([]);
+    expect(findConditionalSkipSites("fixture.test.mjs", source)).toEqual([]);
+  });
+
+  test("fails closed on unevaluated Node option values and evaluates assignments", () => {
+    const source = `
+      import test from "node:test";
+      let gate;
+      test("empty Boolean", { skip: Boolean() }, () => {});
+      test("Boolean ignores later arguments", {
+        skip: Boolean(false, process.platform),
+      }, () => {});
+      test("false assignment runs", { skip: (gate = false) }, () => {});
+      test("object assignment", {
+        /* requires a disabled fixture */ skip: (gate = {}),
+      }, () => {});
+      test("platform assignment", {
+        /* requires a disabled fixture */ skip: (gate = process.platform),
+      }, () => {});
+      test("unclassified call", {
+        /* requires a disabled fixture */ skip: calculateSkip(),
+      }, () => {});
+    `;
+    expect(findViolations("fixture.test.mjs", source)).toEqual([]);
+    expect(findConditionalSkipSites("fixture.test.mjs", source)).toEqual([]);
+  });
+
+  test("does not infer runtime variability from nested source text", () => {
+    const source = `
+      import test from "node:test";
+      test("unknown nullish", {
+        /* requires a disabled fixture */ skip: calculateSkip() ?? false,
+      }, () => {});
+      test("runtime argument", {
+        /* requires a disabled fixture */ skip: constantFalse(process.platform),
+      }, () => {});
+      test("runtime-looking literal", {
+        /* requires a disabled fixture */ skip: constantFalse("process.platform"),
+      }, () => {});
+      test("awaited runtime value", {
+        /* requires a disabled fixture */ skip: await process.platform,
+      }, () => {});
+    `;
+    expect(findViolations("fixture.test.mjs", source)).toEqual([]);
+    expect(findConditionalSkipSites("fixture.test.mjs", source)).toEqual([]);
+  });
+
   test("rejects option-form focus unless it is statically false", () => {
     const source = `
       const yes = true;
@@ -375,4 +724,16 @@ describe("anti-larp test discovery", () => {
       /cannot be combined/,
     );
   });
+});
+
+test("does not fold shadowed globals into a running test", () => {
+  const sources = [
+    'import test from "node:test"; function define(undefined) { test("hidden", { skip: undefined }, () => {}); } define(true);',
+    'import test from "node:test"; const Boolean = () => true; test("hidden", { skip: Boolean(false) }, () => {});',
+  ];
+  for (const source of sources) {
+    expect(findViolations("fixture.test.ts", source)).toEqual([
+      expect.objectContaining({ kind: "orphaned-skip" }),
+    ]);
+  }
 });

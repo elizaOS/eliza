@@ -10,6 +10,10 @@
  */
 
 import { createHash, createHmac } from "node:crypto";
+import {
+  classifyManagedDedicatedProvisionFailure,
+  type ManagedDedicatedProvisionFailureCode,
+} from "./managed-dedicated-provision-diagnostic";
 
 const STAGING_API_BASE_URL = "https://api-staging.eliza.app";
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
@@ -48,6 +52,53 @@ interface MutationSnapshot {
   agentDigest: string;
   jobCount: number;
   jobDigest: string;
+  selectedTarget: RereviewTargetDiagnostic;
+}
+
+interface RereviewTargetDiagnostic {
+  status: string;
+  databaseStatus: string;
+  provisionFailure: ManagedDedicatedProvisionFailureCode;
+  hasContainer: boolean;
+  hasBridge: boolean;
+}
+
+/** Emits only lifecycle vocabulary and presence flags from the retained row. */
+export function diagnoseRereviewTarget(target: {
+  status: string;
+  database_status: string;
+  error_message: string | null;
+  sandbox_id: string | null;
+  bridge_url: string | null;
+}): RereviewTargetDiagnostic {
+  if (
+    ![
+      "pending",
+      "provisioning",
+      "running",
+      "stopped",
+      "sleeping",
+      "disconnected",
+      "error",
+      "deletion_pending",
+      "deletion_failed",
+    ].includes(target.status) ||
+    !["none", "provisioning", "ready", "error"].includes(target.database_status)
+  ) {
+    throw new PersonalDedicatedRereviewOperatorError(
+      "selected_target_status_invalid",
+    );
+  }
+  return {
+    status: target.status,
+    databaseStatus: target.database_status,
+    provisionFailure: classifyManagedDedicatedProvisionFailure(
+      target.error_message,
+      "selected target error",
+    ),
+    hasContainer: Boolean(target.sandbox_id),
+    hasBridge: Boolean(target.bridge_url),
+  };
 }
 
 interface SelectionPreviewBase {
@@ -114,6 +165,7 @@ export interface RereviewOperatorEvidence {
   agentCount: number;
   jobCount: number;
   executed: boolean;
+  selectedTarget: RereviewTargetDiagnostic;
 }
 
 export interface RereviewOperatorDecisionEvidence {
@@ -132,6 +184,7 @@ export interface RereviewOperatorDecisionEvidence {
 
 export interface RereviewOperatorDependencies {
   verifyDeployment(expectedCommit: string): Promise<void>;
+  reportAccountLifecycle(apiKey: string): Promise<void>;
   resolveSelection(apiKey: string): Promise<ResolvedSelection>;
   preview(input: ResolvedSelection): Promise<SelectionPreview>;
   execute(input: SelectionExecuteInput): Promise<void>;
@@ -319,6 +372,9 @@ export async function runRereviewOperator(
   dependencies: RereviewOperatorDependencies,
 ): Promise<RereviewOperatorEvidence> {
   await dependencies.verifyDeployment(config.expectedCloudCommit);
+  // A used or absent selection can reject before preview. Diagnose the owner
+  // first so that a stalled activation does not suppress lifecycle evidence.
+  await dependencies.reportAccountLifecycle(config.apiKey);
   const resolved = await dependencies.resolveSelection(config.apiKey);
   const preview = await dependencies.preview(resolved);
   if (preview.operation !== resolved.operation) {
@@ -409,6 +465,7 @@ export async function runRereviewOperator(
     agentCount: after.agentCount,
     jobCount: after.jobCount,
     executed: config.mode === "execute",
+    selectedTarget: after.selectedTarget,
   };
 }
 
@@ -427,44 +484,17 @@ async function defaultVerifyDeployment(expectedCommit: string): Promise<void> {
   }
 }
 
-async function defaultResolveSelection(
-  apiKey: string,
-): Promise<ResolvedSelection> {
-  const [
-    { and, asc, eq, inArray, isNull, notExists },
-    { dbWrite },
-    { apiKeys },
-    { users },
-    selectionSchema,
-    sandboxSchema,
-    shared,
-    targetService,
-    provenance,
-  ] = await Promise.all([
-    import("drizzle-orm"),
-    import("@elizaos/cloud-shared/db/client"),
-    import("@elizaos/cloud-shared/db/schemas/api-keys"),
-    import("@elizaos/cloud-shared/db/schemas/users"),
-    import(
-      "@elizaos/cloud-shared/db/schemas/personal-dedicated-adoption-selections"
-    ),
-    import("@elizaos/cloud-shared/db/schemas/agent-sandboxes"),
-    import(
-      "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent"
-    ),
-    import("@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target"),
-    import(
-      "@elizaos/cloud-shared/lib/services/personal-dedicated-adoption-provenance"
-    ),
-  ]);
-  const { personalDedicatedAdoptionSelections } = selectionSchema;
-  const { agentSandboxBackups, agentSandboxes } = sandboxSchema;
-  const { personalSharedAgentId } = shared;
-  const { adoptableUnmarkedTargetWhere } = targetService;
-  const {
-    personalDedicatedActivationAuthority,
-    personalDedicatedBackupProvenanceFromStored,
-  } = provenance;
+async function defaultResolveSmokeOwner(apiKey: string): Promise<{
+  id: string;
+  organizationId: string;
+}> {
+  const [{ and, eq, isNull }, { dbWrite }, { apiKeys }, { users }] =
+    await Promise.all([
+      import("drizzle-orm"),
+      import("@elizaos/cloud-shared/db/client"),
+      import("@elizaos/cloud-shared/db/schemas/api-keys"),
+      import("@elizaos/cloud-shared/db/schemas/users"),
+    ]);
   const keyHash = createHash("sha256").update(apiKey).digest("hex");
   // Identity and receipt resolution are execution authority. A replica can
   // lag key revocation or receipt replacement, so every read uses primary.
@@ -504,6 +534,44 @@ async function defaultResolveSelection(
   ) {
     throw new PersonalDedicatedRereviewOperatorError("smoke_owner_not_active");
   }
+  return { id: owner.id, organizationId: owner.organizationId };
+}
+
+async function defaultResolveSelection(
+  apiKey: string,
+): Promise<ResolvedSelection> {
+  const [
+    { and, asc, eq, inArray, notExists },
+    { dbWrite },
+    selectionSchema,
+    sandboxSchema,
+    shared,
+    targetService,
+    provenance,
+  ] = await Promise.all([
+    import("drizzle-orm"),
+    import("@elizaos/cloud-shared/db/client"),
+    import(
+      "@elizaos/cloud-shared/db/schemas/personal-dedicated-adoption-selections"
+    ),
+    import("@elizaos/cloud-shared/db/schemas/agent-sandboxes"),
+    import(
+      "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent"
+    ),
+    import("@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target"),
+    import(
+      "@elizaos/cloud-shared/lib/services/personal-dedicated-adoption-provenance"
+    ),
+  ]);
+  const { personalDedicatedAdoptionSelections } = selectionSchema;
+  const { agentSandboxBackups, agentSandboxes } = sandboxSchema;
+  const { personalSharedAgentId } = shared;
+  const { adoptableUnmarkedTargetWhere } = targetService;
+  const {
+    personalDedicatedActivationAuthority,
+    personalDedicatedBackupProvenanceFromStored,
+  } = provenance;
+  const owner = await defaultResolveSmokeOwner(apiKey);
   const sourceAgentId = personalSharedAgentId({
     organizationId: owner.organizationId,
     userId: owner.id,
@@ -624,16 +692,134 @@ async function defaultSnapshot(
       ),
     )
     .orderBy(jobs.id);
+  const selectedTarget = agentRows.find(
+    (row) => row.id === input.retainedAgentId,
+  );
+  if (!selectedTarget) {
+    throw new PersonalDedicatedRereviewOperatorError("selected_target_missing");
+  }
   return {
     agentCount: agentRows.length,
     agentDigest: digestRows(agentRows),
     jobCount: jobRows.length,
     jobDigest: digestRows(jobRows),
+    selectedTarget: diagnoseRereviewTarget(selectedTarget),
   };
+}
+
+async function defaultReportAccountLifecycle(apiKey: string): Promise<void> {
+  const owner = await defaultResolveSmokeOwner(apiKey);
+  const [
+    { and, eq },
+    { dbWrite },
+    { agentSandboxes },
+    { jobs },
+    { personalDedicatedUpgradeAuthorities: authorities },
+    { personalDedicatedAdoptionSelections: selections },
+  ] = await Promise.all([
+    import("drizzle-orm"),
+    import("@elizaos/cloud-shared/db/client"),
+    import("@elizaos/cloud-shared/db/schemas/agent-sandboxes"),
+    import("@elizaos/cloud-shared/db/schemas/jobs"),
+    import(
+      "@elizaos/cloud-shared/db/schemas/personal-dedicated-upgrade-authorities"
+    ),
+    import(
+      "@elizaos/cloud-shared/db/schemas/personal-dedicated-adoption-selections"
+    ),
+  ]);
+  const [agentRows, jobRows, authorityRows, selectionRows] = await Promise.all([
+    dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.organization_id, owner.organizationId),
+          eq(agentSandboxes.user_id, owner.id),
+        ),
+      )
+      .orderBy(agentSandboxes.id),
+    dbWrite
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.organization_id, owner.organizationId),
+          eq(jobs.user_id, owner.id),
+        ),
+      )
+      .orderBy(jobs.created_at),
+    dbWrite
+      .select()
+      .from(authorities)
+      .where(
+        and(
+          eq(authorities.organization_id, owner.organizationId),
+          eq(authorities.user_id, owner.id),
+        ),
+      ),
+    dbWrite
+      .select()
+      .from(selections)
+      .where(
+        and(
+          eq(selections.organization_id, owner.organizationId),
+          eq(selections.user_id, owner.id),
+        ),
+      ),
+  ]);
+  const evidence = {
+    schemaVersion: 1,
+    kind: "account-lifecycle",
+    agents: agentRows.map((agent) => ({
+      ...diagnoseRereviewTarget(agent),
+      updatedAt: agent.updated_at,
+      selected: selectionRows.some(
+        (row) => row.dedicated_agent_id === agent.id,
+      ),
+      activationBound: authorityRows.some(
+        (row) => row.dedicated_agent_id === agent.id,
+      ),
+      cutoverActivated: authorityRows.some(
+        (row) =>
+          row.dedicated_agent_id === agent.id &&
+          row.cutover_activated_at !== null,
+      ),
+      jobs: jobRows
+        .filter((row) => row.agent_id === agent.id)
+        .map((job) => {
+          if (
+            ![
+              "pending",
+              "in_progress",
+              "completed",
+              "failed",
+              "cancelled",
+            ].includes(job.status)
+          ) {
+            throw new PersonalDedicatedRereviewOperatorError(
+              "diagnostic_job_status_invalid",
+            );
+          }
+          return {
+            status: job.status,
+            failure: classifyManagedDedicatedProvisionFailure(
+              job.error,
+              "lifecycle job error",
+            ),
+            attempts: job.attempts,
+            retryableRequeues: job.retryable_requeues,
+            updatedAt: job.updated_at,
+          };
+        }),
+    })),
+  };
+  process.stdout.write(`${JSON.stringify(evidence)}\n`);
 }
 
 const defaultDependencies: RereviewOperatorDependencies = {
   verifyDeployment: defaultVerifyDeployment,
+  reportAccountLifecycle: defaultReportAccountLifecycle,
   resolveSelection: defaultResolveSelection,
   preview: async (input) => {
     const { personalDedicatedAdoptionSelectionService } = await import(
@@ -695,11 +881,9 @@ if (import.meta.main) {
   try {
     config = readRereviewOperatorConfig();
     const evidence = await runRereviewOperator(config, defaultDependencies);
-    const { logger } = await import("@elizaos/cloud-shared/lib/utils/logger");
-    logger.info(
-      "[personal-dedicated-rereview-staging] Operator result",
-      evidence,
-    );
+    // This identifier-free receipt is CLI output, required even when verbose
+    // application logging is disabled so an operator can review the next step.
+    process.stdout.write(`${JSON.stringify(evidence)}\n`);
   } catch (error) {
     // error-policy:J1 the command boundary emits only a typed diagnostic code;
     // sensitive resolved identifiers and credentials never reach logs.
@@ -710,10 +894,7 @@ if (import.meta.main) {
     const { logger } = await import("@elizaos/cloud-shared/lib/utils/logger");
     const decision = previewDecisionEvidence(config?.mode, code);
     if (decision) {
-      logger.info(
-        "[personal-dedicated-rereview-staging] Operator decision required",
-        decision,
-      );
+      process.stdout.write(`${JSON.stringify(decision)}\n`);
       process.exitCode = 0;
     } else {
       logger.error("[personal-dedicated-rereview-staging] Operator failed", {

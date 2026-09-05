@@ -273,6 +273,24 @@ An out-of-process controller can use the public primitives under
    observation/result multisets, independent semantic verdicts, provider
    acceptance, and required readback/idempotency.
 
+Qualification also requires the signed target operation to correlate to one
+trajectory tool stage with the exact input hash, and requires an independently
+signed result for every authorization-denied and provider-rejected probe. A
+tool input uses the recorder's canonical JSON hash of the complete arguments;
+target hashes additionally bind their provider namespace. An adapter must
+record the exact authorized input without substituting a manifest digest for
+the argument bytes. A manifest issued under an earlier schema must be reissued
+by the operator; the new operation and failure-probe bindings are never inferred
+during parsing.
+
+Phase-dependent approval and no-effect contracts can be authored and signed,
+but this evidence schema records stage hashes and times without authenticated
+owner-turn or durable-transition attestation. The qualifier therefore returns
+`phase-evidence-unavailable` and withholds publication for those contracts,
+including the Duffel hold canary. Adding phase names to a manifest or pointing
+at an arbitrary tool stage cannot establish owner approval. A later attestation
+schema must prove those bindings before phase-dependent evidence can qualify.
+
 The qualifier always records `exactlyOnce: false`; provider idempotency and
 readback reduce ambiguity but do not prove end-to-end exactly-once delivery.
 Action results, model prose, loopback fixtures, local PGlite, and unsigned

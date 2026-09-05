@@ -1,11 +1,10 @@
-// The GPU queue worker driven end-to-end against a LOCAL HTTP stub standing in
-// for the llama-server: a reachable stub proves a real screenshot flows
-// enqueue → claim → OCR request → result merged into analysis.json (with the
-// pinned prompt and image data URL asserted on the wire). The unreachable and
-// drain paths prove the honesty contract — a down service yields a `skipped`
-// job result and a `skipped-missing-tool` analysis record naming why, NEVER a
-// fabricated empty transcript. No GPU, no model: just a Node http server.
+/**
+ * Exercises the GPU queue worker with real filesystem jobs and a local HTTP
+ * server standing in for the model service. Covers persisted analysis, honest
+ * unavailable outcomes, and cancellation cleanup through real polling timers.
+ */
 
+import { getEventListeners } from "node:events";
 import fs from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -17,7 +16,7 @@ import { makeOcrAnalyzer } from "../analyzers/ocr/ocr.ts";
 import type { Analyzer } from "../analyzers/types.ts";
 import { FileJobQueue } from "./file-queue.ts";
 import { DEFAULT_LIMITS, type WorkerState } from "./state.ts";
-import { processJob, runQueueWorker } from "./worker.ts";
+import { processJob, runQueueWorker, type WorkerEvent } from "./worker.ts";
 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "evidence-worker-"));
 afterAll(() => fs.rmSync(scratch, { recursive: true, force: true }));
@@ -328,4 +327,130 @@ describe("queue worker enforces a hard per-job timeout", () => {
     expect(jobResult?.status).toBe("failed");
     expect(jobResult?.reason).toMatch(/hard timeout/);
   });
+});
+
+describe("queue worker cancellation cleanup", () => {
+  it("releases each idle sleep listener before the next poll", async () => {
+    const queue = new FileJobQueue(newRoot());
+    const controller = new AbortController();
+    const listeners: number[] = [];
+
+    await runQueueWorker({
+      queue,
+      signal: controller.signal,
+      limits: { pollMs: 1 },
+      onEvent(event) {
+        if (event.type !== "idle") return;
+        listeners.push(getEventListeners(controller.signal, "abort").length);
+        if (listeners.length === 8) controller.abort();
+      },
+    });
+
+    expect(listeners.every((count) => count === 0)).toBe(true);
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+  });
+
+  it("stops before starting another sleep when cancelled during the idle event", async () => {
+    const controller = new AbortController();
+    const worker = runQueueWorker({
+      queue: new FileJobQueue(newRoot()),
+      signal: controller.signal,
+      limits: { pollMs: 50 },
+      onEvent(event) {
+        if (event.type === "idle") controller.abort();
+      },
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const nextTimer = new Promise<string>((resolve) => {
+        timer = setTimeout(() => resolve("still sleeping"), 0);
+      });
+      await expect(
+        Promise.race([worker.then(() => "stopped"), nextTimer]),
+      ).resolves.toBe("stopped");
+    } finally {
+      clearTimeout(timer);
+      await worker;
+    }
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+  });
+
+  it("interrupts an active idle sleep and removes its listener", async () => {
+    const controller = new AbortController();
+    const worker = runQueueWorker({
+      queue: new FileJobQueue(newRoot()),
+      signal: controller.signal,
+      limits: { pollMs: 60_000 },
+    });
+
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(1);
+    controller.abort();
+    await worker;
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+  });
+});
+
+describe("invalid queue job outcomes", () => {
+  it.each([false, true])(
+    "reports every invalid job and keeps processing valid work (mixed=%s)",
+    async (mixed) => {
+      const root = newRoot();
+      const queue = new FileJobQueue(root);
+      for (const [id, raw] of [
+        ["000-invalid-json", "broken"],
+        ["001-invalid-shape", "{}"],
+      ]) {
+        fs.writeFileSync(path.join(root, "pending", `${id}.json`), raw);
+      }
+      let validId: string | undefined;
+      if (mixed) {
+        validId = queue.enqueue(
+          writePng(path.join(root, "shot.png")),
+          "ocr.unlimited",
+          {
+            artifact: "shot.png",
+            kind: "screenshot",
+            analysisPath: path.join(root, "analysis.json"),
+          },
+        ).id;
+      }
+      const events: WorkerEvent[] = [];
+      const counts = await runQueueWorker({
+        queue,
+        analyzers: [unlimitedAt(undefined)],
+        stopWhenIdle: true,
+        limits: { drainAfterMs: 0 },
+        onEvent: (event) => events.push(event),
+      });
+      expect(counts).toEqual({
+        completed: 0,
+        failed: 2,
+        skipped: mixed ? 1 : 0,
+        requeued: 0,
+      });
+      for (const id of ["000-invalid-json", "001-invalid-shape"]) {
+        const result = queue.readResult(id);
+        expect(result?.status).toBe("failed");
+        expect(
+          events.filter(
+            (event) => event.type === "processed" && event.id === id,
+          ),
+        ).toEqual([
+          { type: "processed", id, action: "failed", reason: result?.reason },
+        ]);
+        expect(fs.existsSync(path.join(root, "done", `${id}.json`))).toBe(true);
+      }
+      if (validId) expect(queue.readResult(validId)?.status).toBe("skipped");
+      expect(queue.pendingCount()).toBe(0);
+      const secondEvents: WorkerEvent[] = [];
+      expect(
+        await runQueueWorker({
+          queue,
+          stopWhenIdle: true,
+          onEvent: (event) => secondEvents.push(event),
+        }),
+      ).toEqual({ completed: 0, failed: 0, skipped: 0, requeued: 0 });
+      expect(secondEvents).toEqual([{ type: "idle" }]);
+    },
+  );
 });

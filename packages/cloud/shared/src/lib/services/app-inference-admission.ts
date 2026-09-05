@@ -33,7 +33,6 @@ import {
   invalidateOrgBalanceHint,
   writeOrgBalanceHint,
 } from "./inference-auth-cache";
-import { clearOrgAdmissionRefused, markOrgAdmissionRefused } from "./inference-billing-deferred";
 import {
   getGateBalanceHint,
   InferenceBalanceCacheWarmingError,
@@ -114,28 +113,14 @@ function refreshBalanceHintAfterSettlement(organizationId: string): Promise<void
     .getOrganizationBalanceSnapshot(organizationId)
     .then(async (snapshot) => {
       await writeOrgBalanceHint(organizationId, snapshot.balanceUsd, balanceAt, snapshot.revision);
-      clearOrgAdmissionRefused(organizationId);
     })
-    .catch(async (error) => {
-      markOrgAdmissionRefused(organizationId);
-      let invalidationError: unknown;
-      try {
-        await invalidateOrgBalanceHint(organizationId);
-      } catch (cause) {
-        invalidationError = cause;
-      }
+    .catch((error) => {
       logger.warn("[AppInferenceAdmission] Balance-hint refresh failed", {
         organizationId,
         error: error instanceof Error ? error.message : String(error),
       });
-      if (invalidationError !== undefined) {
-        throw new AggregateError(
-          [error, invalidationError],
-          "Balance refresh and fail-closed invalidation both failed",
-        );
-      }
-      // error-policy:J2 the database settlement is complete, but cache repair
-      // must remain retryable before the refusal guard can be cleared.
+      // error-policy:J2 the database settlement is complete. The caller owns
+      // the one fail-closed invalidation and preserves this cache-write cause.
       throw error;
     })
     .finally(() => {
@@ -149,7 +134,6 @@ async function blockAppAdmissionAfterFailure(
   organizationId: string,
   failure: unknown,
 ): Promise<never> {
-  markOrgAdmissionRefused(organizationId);
   try {
     await invalidateOrgBalanceHint(organizationId);
   } catch (invalidationError) {
@@ -266,7 +250,6 @@ export async function admitAppInferenceCacheOnly(
       usageProjectionTransactionId = reservation.reservationTransactionId ?? null;
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
-        markOrgAdmissionRefused(params.organizationId);
         await invalidateOrgBalanceHint(params.organizationId);
         return {
           reservedAmount: 0,

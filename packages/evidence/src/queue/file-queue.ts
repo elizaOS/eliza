@@ -120,9 +120,10 @@ export class FileJobQueue {
    * concurrency primitive: if two workers target the same file, exactly one
    * rename succeeds and the loser's `ENOENT` makes it try the next candidate, so
    * a job is never processed twice. A file that parses invalid is moved aside
-   * with a `failed` result recorded and the claim continues past it.
+   * with a `failed` result recorded and the claim continues past it. The optional
+   * observer receives each invalid result only after this worker retires it.
    */
-  claim(): ClaimedJob | null {
+  claim(onInvalid?: (result: JobResult) => void): ClaimedJob | null {
     for (const fileName of claimOrder(fs.readdirSync(this.dir("pending")))) {
       const from = path.join(this.dir("pending"), fileName);
       const to = path.join(this.dir("processing"), fileName);
@@ -144,7 +145,8 @@ export class FileJobQueue {
           // Malformed job: record an honest failed result and retire the file so
           // the queue makes progress instead of wedging on a poison job.
           const id = fileName.replace(/\.json$/, "");
-          this.recordInvalid(id, to, error);
+          const result = this.recordInvalid(id, to, error);
+          onInvalid?.(result);
           continue;
         }
         throw error;
@@ -208,16 +210,18 @@ export class FileJobQueue {
     id: string,
     processingPath: string,
     error: QueueJobInvalidError,
-  ): void {
-    this.writeResult({
+  ): JobResult {
+    const result: JobResult = {
       schema: 1,
       id,
       analyzerId: "unknown",
       status: "failed",
       completedAt: new Date(this.now()).toISOString(),
       reason: error.message,
-    });
+    };
+    this.writeResult(result);
     const done = path.join(this.dir("done"), path.basename(processingPath));
     fs.renameSync(processingPath, done);
+    return result;
   }
 }

@@ -254,6 +254,32 @@ export function isElizaCloudControlPlaneAgentlessBase(
   return isCloudAgentsCollectionBase(value);
 }
 
+const DEVELOP_ELIZA_APP_PAGES_ORIGIN = "https://develop.eliza-app.pages.dev";
+
+/**
+ * True when an agentless browser host is trusted to own hosted Cloud
+ * onboarding. Canonical and legacy control-plane origins are always trusted.
+ * The deployed Cloudflare Pages staging alias is trusted only for an
+ * authoritative Cloud-only build and only on its exact HTTPS origin.
+ * Other Pages project/preview hosts and self-hosted `cloudOnly` branding must
+ * never suppress the local-install/auth gates because they are outside the
+ * credentialed API's server-authoritative origin set.
+ */
+export function isTrustedHostedCloudOnboardingBase(
+  value: string | null | undefined,
+  cloudOnlyBranding: boolean,
+): boolean {
+  if (isElizaCloudControlPlaneAgentlessBase(value)) return true;
+  if (!cloudOnlyBranding || !value?.trim()) return false;
+
+  const url = normalizeHttpUrl(value.trim());
+  if (url?.protocol !== "https:" || !isCloudAgentsCollectionBase(value)) {
+    return false;
+  }
+
+  return url.origin.toLowerCase() === DEVELOP_ELIZA_APP_PAGES_ORIGIN;
+}
+
 /**
  * True when `value` is a DEDICATED cloud agent base — an agent that lives on its
  * own `<agentId>.cloud.eliza.app` subdomain (not a control-plane host, not the
