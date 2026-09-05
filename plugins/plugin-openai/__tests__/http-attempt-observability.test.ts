@@ -14,6 +14,7 @@ import {
 } from "@elizaos/core";
 import { generateText } from "ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { handleResponseHandler } from "../models/text";
 import { createOpenAIClient } from "../providers/openai";
 import { getBaseURL, getEmbeddingBaseURL, getImageDescriptionBaseURL } from "../utils/config";
 
@@ -45,6 +46,10 @@ function runtime(): IAgentRuntime {
     ELIZA_PROVIDER: "openai",
   };
   return {
+    character: { name: "Fixture", system: "Fixture system" },
+    emitEvent: vi.fn(),
+    getService: vi.fn(() => null),
+    getServicesByType: vi.fn(() => []),
     getSetting: (key: string) => settings[key] ?? "",
     redactSecrets: (text: string) =>
       redactWithSecrets(text, { secrets: { fixture: PRIVATE_HEADER, apiKey: PRIVATE_KEY } }),
@@ -94,9 +99,173 @@ function diagnostics() {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("HTTP attempt observability", () => {
+  it.each([
+    { structured: false, failure: "none" },
+    { structured: true, failure: "none" },
+    { structured: false, failure: "timer" },
+    { structured: false, failure: "reporter" },
+  ])(
+    "records SDK and adapter point events without changing real SDK chunks (structured=$structured, diagnostic=$failure)",
+    async ({ structured, failure }) => {
+      vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "0");
+      const logs = diagnostics();
+      let now = 1000;
+      vi.spyOn(Date, "now").mockImplementation(() => now);
+      const timer = new InferenceTurnTimer({ turnId: "stream-observer", label: "fixture" });
+      const fixture = runtime();
+      if (failure !== "none") {
+        const record = timer.recordSpan.bind(timer);
+        vi.spyOn(timer, "recordSpan").mockImplementation((name, duration, meta) => {
+          if (name.startsWith("openai.stream.")) throw new Error(PRIVATE_PROMPT);
+          record(name, duration, meta);
+        });
+        if (failure === "reporter")
+          vi.mocked(fixture.reportError).mockImplementation(() => {
+            throw new Error(PRIVATE_KEY);
+          });
+      }
+      let releaseTail!: () => void;
+      const tail = new Promise<void>((resolve) => {
+        releaseTail = resolve;
+      });
+      let firstDelivered!: () => void;
+      const delivered = new Promise<void>((resolve) => {
+        firstDelivered = resolve;
+      });
+      const first = structured ? '{"replyText":"hel' : "hel";
+      const second = structured ? 'lo"}' : "lo";
+      const encoder = new TextEncoder();
+      const frame = (delta: object, finish_reason: string | null = null) =>
+        encoder.encode(
+          `data: ${JSON.stringify({
+            id: "fixture-stream",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "fixture",
+            choices: [{ index: 0, delta, finish_reason }],
+          })}\n\n`
+        );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              new ReadableStream({
+                async start(controller) {
+                  now = 1100;
+                  controller.enqueue(
+                    frame(
+                      structured
+                        ? {
+                            tool_calls: [
+                              {
+                                index: 0,
+                                id: "call-fixture",
+                                type: "function",
+                                function: { name: "HANDLE_RESPONSE", arguments: first },
+                              },
+                            ],
+                          }
+                        : { content: first }
+                    )
+                  );
+                  await tail;
+                  now = 1400;
+                  controller.enqueue(
+                    frame(
+                      structured
+                        ? { tool_calls: [{ index: 0, function: { arguments: second } }] }
+                        : { content: second }
+                    )
+                  );
+                  controller.enqueue(frame({}, structured ? "tool_calls" : "stop"));
+                  controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                  controller.close();
+                },
+              }),
+              { headers: { "content-type": "text/event-stream" } }
+            )
+        )
+      );
+      const callbackChunks: string[] = [];
+      const consumed = runWithTrajectoryContext({ purpose: PRIVATE_PROMPT }, () =>
+        runWithInferenceTiming(timer, async () => {
+          const result = await handleResponseHandler(fixture, {
+            model: "fixture",
+            prompt: PRIVATE_PROMPT,
+            stream: true,
+            ...(structured
+              ? {
+                  streamStructured: true,
+                  tools: [
+                    {
+                      name: "HANDLE_RESPONSE",
+                      description: "Fixture",
+                      parameters: {
+                        type: "object",
+                        properties: { replyText: { type: "string" } },
+                        required: ["replyText"],
+                      },
+                    },
+                  ],
+                  toolChoice: "required" as const,
+                }
+              : {}),
+            onStreamChunk: (chunk: string) => {
+              callbackChunks.push(chunk);
+              firstDelivered();
+            },
+          });
+          if (typeof result === "string" || !result.textStream) throw new Error("Expected stream");
+          let text = "";
+          for await (const chunk of result.textStream) text += chunk;
+          return text;
+        })
+      );
+      await delivered;
+      const beforeTail = timer
+        .summary()
+        .spans.filter((span) => span.name.startsWith("openai.stream."));
+      releaseTail();
+      expect(await consumed).toBe(first + second);
+      expect(callbackChunks).toEqual([first, second]);
+      if (failure !== "none") {
+        expect(beforeTail).toEqual([]);
+        expect(fixture.reportError).toHaveBeenCalled();
+        expect(JSON.stringify(vi.mocked(fixture.reportError).mock.calls)).not.toContain(
+          PRIVATE_PROMPT
+        );
+        expect(logs.serialized()).not.toContain(PRIVATE_KEY);
+        return;
+      }
+      expect(beforeTail.map((span) => span.name)).toEqual([
+        "openai.stream.mode",
+        "openai.stream.first-sdk-delta",
+        "openai.stream.first-adapter-delivery",
+      ]);
+      expect(beforeTail.every((span) => span.durationMs === 0)).toBe(true);
+      expect(beforeTail.slice(1).map((span) => span.startMs)).toEqual([100, 100]);
+      expect(new Set(beforeTail.map((span) => span.meta?.streamCallId)).size).toBe(1);
+      expect(beforeTail[0]?.meta).toMatchObject({
+        mode: structured ? "live-structured" : "live-text",
+        modelType: "RESPONSE_HANDLER",
+        purpose: "other",
+        streamAttempt: 1,
+      });
+      expect(
+        timer.summary().spans.filter((span) => span.name.startsWith("openai.stream."))
+      ).toHaveLength(3);
+      const timing = JSON.stringify(beforeTail);
+      for (const secret of [PRIVATE_PROMPT, PRIVATE_KEY, first, second])
+        expect(timing).not.toContain(secret);
+      expect(logs.serialized()).not.toContain(PRIVATE_KEY);
+    }
+  );
+
   it("resolves all endpoint variants without logging endpoint values", () => {
     const logs = diagnostics();
     const endpoints: Record<string, string> = {
