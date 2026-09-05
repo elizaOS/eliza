@@ -117,6 +117,15 @@ describe("atomic-json", () => {
 			expect((await fsp.readdir(tempDir)).sort()).toEqual(["concurrent.json"]);
 		});
 
+		it("strips UTF-8 BOM before parsing JSON", async () => {
+			const bomFile = path.join(tempDir, "bom.json");
+			await fsp.writeFile(bomFile, '\uFEFF{"a":1}', "utf-8");
+			expect(await readJsonFile<{ a: number }>(bomFile)).toEqual({ a: 1 });
+			const bomSync = path.join(tempDir, "bom-sync.json");
+			fs.writeFileSync(bomSync, '\uFEFF{"b":2}', "utf-8");
+			expect(readJsonFileSync<{ b: number }>(bomSync)).toEqual({ b: 2 });
+		});
+
 		it("rejects non-string or empty file paths", async () => {
 			await expect(
 				writeJsonAtomic("" as unknown as string, {}),
