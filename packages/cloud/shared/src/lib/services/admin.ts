@@ -28,13 +28,13 @@ import { invalidateOutboundMessageStanding } from "./outbound-message-standing";
 
 /**
  * Clear the inference auth-context cache (#9899) for every API key a user owns.
- * Called on ban so a user who was being served from a warm IAC entry stops
- * fast-pathing inference immediately (bounded otherwise by the IAC TTL).
+ * Called whenever moderation standing crosses its blocking boundary to evict
+ * both allow and deny projections; backing-store propagation can remain eventual.
  */
 async function invalidateUserInferenceContext(userId: string): Promise<void> {
   const [keys, user] = await Promise.all([
-    apiKeysRepository.listByUser(userId),
-    dbRead.query.users.findFirst({
+    apiKeysRepository.listByUserConsistent(userId),
+    dbWrite.query.users.findFirst({
       where: eq(users.id, userId),
       columns: { steward_user_id: true, organization_id: true },
     }),
@@ -457,6 +457,22 @@ class AdminService {
     return status.status === "banned" || status.totalViolations >= 5;
   }
 
+  /** Reads moderation standing from the primary for authorization decisions. */
+  async getUserModerationStatusConsistent(userId: string): Promise<UserModerationStatus | null> {
+    const result = await dbWrite.query.userModerationStatus.findFirst({
+      where: eq(userModerationStatus.userId, userId),
+    });
+    return result ?? null;
+  }
+
+  /** Checks blocking standing without accepting replica lag. */
+  async shouldBlockUserConsistent(userId: string): Promise<boolean> {
+    const status = await this.getUserModerationStatusConsistent(userId);
+    if (!status) return false;
+
+    return status.status === "banned" || status.totalViolations >= 5;
+  }
+
   /**
    * Mark user as spammer/scammer
    */
@@ -503,8 +519,8 @@ class AdminService {
     const { userId, adminUserId, reason } = params;
     const now = new Date();
 
-    const existing = await this.getUserModerationStatus(userId);
-    const user = await dbRead.query.users.findFirst({
+    const existing = await this.getUserModerationStatusConsistent(userId);
+    const user = await dbWrite.query.users.findFirst({
       where: eq(users.id, userId),
       columns: { organization_id: true },
     });
@@ -561,13 +577,20 @@ class AdminService {
       })
       .where(eq(userModerationStatus.userId, userId));
 
-    const user = await dbRead.query.users.findFirst({
+    const user = await dbWrite.query.users.findFirst({
       where: eq(users.id, userId),
       columns: { organization_id: true },
     });
     if (user?.organization_id) {
       await setInferenceSubjectActive(user.organization_id, userId, true, "moderation");
     }
+
+    // A prior denied request may have projected moderation_blocked into both
+    // API-key and Steward-session IAC entries. Re-enabling the strong subject
+    // fence without evicting those entries would leave the user blocked until
+    // their physical TTL expires. Keep this after the DB write and strong fence
+    // so partial invalidation is reported as an explicit transition failure.
+    await invalidateUserInferenceContext(userId);
 
     logger.info("[Admin] User unbanned", { userId, adminUserId });
   }

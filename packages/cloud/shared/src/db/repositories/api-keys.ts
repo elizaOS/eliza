@@ -179,6 +179,13 @@ export class ApiKeysRepository {
     });
   }
 
+  /** Lists every key on the primary before standing-cache invalidation. */
+  async listByUserConsistent(userId: string): Promise<ApiKey[]> {
+    return await dbWrite.query.apiKeys.findMany({
+      where: eq(apiKeys.user_id, userId),
+    });
+  }
+
   /** Lists active keys for one user and organization on the primary. */
   async listActiveByUserAndOrganizationConsistent(
     userId: string,
