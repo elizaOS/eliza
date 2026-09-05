@@ -82,6 +82,7 @@ export class ScreenCaptureWeb extends WebPlugin {
    * any await and cleared in a finally that also covers the J2 rollback path.
    */
   private starting = false;
+  private recordingStop: Promise<ScreenRecordingResult> | null = null;
   private recordingStartTime = 0;
   private pausedDuration = 0;
   private pauseStartTime = 0;
@@ -197,7 +198,7 @@ export class ScreenCaptureWeb extends WebPlugin {
   async startRecording(options?: ScreenRecordingOptions): Promise<void> {
     // Latch synchronously before the first await so a concurrent second call
     // cannot slip past the guard while getDisplayMedia is still resolving.
-    if (this.isRecording || this.starting) {
+    if (this.isRecording || this.starting || this.recordingStop) {
       throw new Error("Recording already in progress");
     }
     this.starting = true;
@@ -350,11 +351,12 @@ export class ScreenCaptureWeb extends WebPlugin {
   }
 
   async stopRecording(): Promise<ScreenRecordingResult> {
+    if (this.recordingStop) return this.recordingStop;
     if (!this.isRecording || !this.mediaRecorder) {
       throw new Error("Not recording");
     }
 
-    return new Promise((resolve, reject) => {
+    const stopping = new Promise<ScreenRecordingResult>((resolve, reject) => {
       if (!this.mediaRecorder) {
         reject(new Error("MediaRecorder not initialized"));
         return;
@@ -412,6 +414,14 @@ export class ScreenCaptureWeb extends WebPlugin {
 
       this.mediaRecorder.stop();
     });
+    // Keep ownership through metadata loading so concurrent callers share the
+    // result and a new recording cannot replace its MIME type or chunk state.
+    this.recordingStop = stopping;
+    try {
+      return await stopping;
+    } finally {
+      if (this.recordingStop === stopping) this.recordingStop = null;
+    }
   }
 
   async pauseRecording(): Promise<void> {
