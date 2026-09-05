@@ -75,7 +75,17 @@ function makeHub(textLarge: LocalInferenceSlotReadiness): ModelHubSnapshot {
     installed: [],
     active: { modelId: null, loadedAt: null, status: "idle" },
     downloads: [],
-    hardware: {} as ModelHubSnapshot["hardware"],
+    hardware: {
+      totalRamGb: 16,
+      freeRamGb: 8,
+      gpu: null,
+      cpuCores: 8,
+      platform: "linux",
+      arch: "x64",
+      appleSilicon: false,
+      recommendedBucket: "mid",
+      source: "os-fallback",
+    },
     assignments: {} as ModelHubSnapshot["assignments"],
     textReadiness: {
       updatedAt: "2026-01-01T00:00:00.000Z",

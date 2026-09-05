@@ -18,6 +18,7 @@ import type {
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
 import { SettingsSelectTrigger } from "../ui/settings-controls";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
@@ -100,7 +101,12 @@ export function RoutingMatrix() {
     policy: {},
   });
   const [error, setError] = useState<string | null>(null);
-  const [deviceTier, setDeviceTier] = useState<DeviceTierResult | null>(null);
+  const [deviceTier, setDeviceTier] = useState<
+    | { phase: "loading" }
+    | { phase: "ready"; value: DeviceTierResult }
+    | { phase: "error" }
+  >({ phase: "loading" });
+  const hardwareReadIdRef = useRef(0);
   const [busySlots, setBusySlots] = useState<Set<AgentModelSlot>>(
     () => new Set(),
   );
@@ -141,32 +147,55 @@ export function RoutingMatrix() {
 
   useIntervalWhenDocumentVisible(() => void refreshRouting(), 15_000);
 
-  useEffect(() => {
-    let active = true;
-    void (async () => {
+  const loadHardware = useCallback(async () => {
+    const requestId = ++hardwareReadIdRef.current;
+    setDeviceTier({ phase: "loading" });
+    try {
       const result = await client.getLocalInferenceDeviceTier();
-      if (active) setDeviceTier(result);
-    })();
-    return () => {
-      active = false;
-    };
+      if (hardwareReadIdRef.current === requestId) {
+        setDeviceTier({ phase: "ready", value: result });
+      }
+    } catch {
+      // error-policy:J1 Translate the hardware-read failure at the UI
+      // boundary into an explicit unavailable state with a retry action.
+      if (hardwareReadIdRef.current === requestId) {
+        setDeviceTier({ phase: "error" });
+      }
+    }
   }, []);
+
+  const { ref: retryHardwareRef, agentProps: retryHardwareProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "model-routing-retry-hardware",
+      role: "button",
+      label: "Retry hardware detection",
+      group: "models",
+      onActivate: () => void loadHardware(),
+    });
+
+  useEffect(() => {
+    void loadHardware();
+    return () => {
+      hardwareReadIdRef.current += 1;
+    };
+  }, [loadHardware]);
 
   // For an "Auto" slot (no preferred provider pinned) the runtime resolves
   // on-device vs cloud from the device tier: MAX/GOOD run locally, OKAY/POOR
   // route to cloud. Surface the same resolution the runtime will make.
   const autoResolution = useCallback(
     (policy: RoutingPolicy): { onDevice: boolean; line: string } | null => {
-      if (!deviceTier) return null;
+      if (deviceTier.phase !== "ready") return null;
       if (policy !== "prefer-local" && policy !== "cheapest") return null;
-      const onDevice = deviceTier.tier === "MAX" || deviceTier.tier === "GOOD";
+      const onDevice =
+        deviceTier.value.tier === "MAX" || deviceTier.value.tier === "GOOD";
       const line = onDevice
         ? t("routingmatrix.autoOnDevice", {
-            tier: deviceTier.tier,
+            tier: deviceTier.value.tier,
             defaultValue: "Auto: on-device · {{tier}} tier",
           })
         : t("routingmatrix.autoCloud", {
-            tier: deviceTier.tier,
+            tier: deviceTier.value.tier,
             defaultValue: "Auto: cloud · device is {{tier}}",
           });
       return { onDevice, line };
@@ -244,6 +273,34 @@ export function RoutingMatrix() {
           {t("routingmatrix.title", { defaultValue: "Model routing" })}
         </h3>
       </header>
+      {deviceTier.phase === "loading" ? (
+        <p role="status" className="text-xs text-muted">
+          {t("routingmatrix.hardwareLoading", {
+            defaultValue: "Checking device hardware…",
+          })}
+        </p>
+      ) : deviceTier.phase === "error" ? (
+        <div
+          role="status"
+          className="flex items-center justify-between gap-3 rounded-sm border border-danger/40 bg-danger/10 p-3 text-xs text-danger"
+        >
+          <span>
+            {t("routingmatrix.hardwareUnavailable", {
+              defaultValue:
+                "Hardware details are unavailable. Auto routing estimates cannot be shown.",
+            })}
+          </span>
+          <Button
+            ref={retryHardwareRef}
+            {...retryHardwareProps}
+            variant="outline"
+            size="sm"
+            onClick={() => void loadHardware()}
+          >
+            {t("common.retry", { defaultValue: "Retry" })}
+          </Button>
+        </div>
+      ) : null}
       {error ? (
         <div className="rounded-sm border border-danger/40 bg-danger/10 p-3 text-xs text-danger">
           {error}
