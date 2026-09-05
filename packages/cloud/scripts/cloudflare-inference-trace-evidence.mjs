@@ -6,6 +6,7 @@
  */
 
 import { writeFile } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
 
 const API_ORIGIN = "https://api.cloudflare.com/client/v4";
 const STAGING_WORKER = "eliza-cloud-api-staging";
@@ -13,6 +14,9 @@ const GATE_ORIGIN = "https://inference-admission.internal";
 const QUERY_TIMEOUT_MS = 30_000;
 const QUERY_ATTEMPTS = 8;
 const QUERY_RETRY_MS = 2_500;
+const SEMANTIC_SETTLE_ROUNDS = 8;
+const DISCOVERY_SLICE_MS = 10_000;
+const MIN_DISCOVERY_SLICE_MS = 5_000;
 const MAX_EVENTS = 2_000;
 const MAX_TRACE_DURATION_MS = 300_000;
 const TRACE_ID_PATTERN = /^[0-9a-f]{32}$/;
@@ -147,6 +151,30 @@ export function pairedGatewayTraceWindow(records) {
       to: Math.ceil(Math.max(...observed) + 30_000),
     },
   };
+}
+
+/** Divide a trace window into the bounded slices required by repository policy. */
+export function traceDiscoverySlices(timeframe) {
+  if (
+    !Number.isSafeInteger(timeframe?.from) ||
+    !Number.isSafeInteger(timeframe?.to) ||
+    timeframe.from >= timeframe.to ||
+    timeframe.to - timeframe.from < MIN_DISCOVERY_SLICE_MS
+  ) {
+    throw new CloudflareTraceSchemaError(
+      "Cloudflare trace discovery timeframe is invalid",
+    );
+  }
+  const duration = timeframe.to - timeframe.from;
+  const sliceCount = Math.ceil(duration / DISCOVERY_SLICE_MS);
+  const slices = [];
+  for (let index = 0; index < sliceCount; index++) {
+    slices.push({
+      from: Math.floor(timeframe.from + (duration * index) / sliceCount),
+      to: Math.floor(timeframe.from + (duration * (index + 1)) / sliceCount),
+    });
+  }
+  return slices;
 }
 
 export function buildTraceKeysRequest(timeframe) {
@@ -319,9 +347,7 @@ function phaseForEvent(event) {
   const metadata = object(event?.$metadata);
   if (metadata?.spanName !== "durable_object_subrequest") return null;
   if (typeof metadata.url !== "string") {
-    throw new CloudflareTraceSchemaError(
-      "Cloudflare Durable Object subrequest has no URL classification",
-    );
+    return undefined;
   }
   let url;
   try {
@@ -403,9 +429,9 @@ function sanitizePhase(subrequest, phase, events, bySpanId) {
       isDescendant(candidate, rootMetadata.spanId, bySpanId)
     );
   });
-  let storageMs = 0;
+  let storageInclusiveSumMs = 0;
   for (const event of storage) {
-    storageMs += roundDuration(
+    storageInclusiveSumMs += roundDuration(
       requireMetadata(event).duration,
       "storage duration",
     );
@@ -419,7 +445,7 @@ function sanitizePhase(subrequest, phase, events, bySpanId) {
       workers.wallTimeMs ?? rootMetadata.duration,
       "Durable Object wall duration",
     ),
-    storageMs: Math.round(storageMs * 100) / 100,
+    storageInclusiveSumMs: Math.round(storageInclusiveSumMs * 100) / 100,
     storageSpans: storage.length,
   };
 }
@@ -467,6 +493,9 @@ export function sanitizeTraceEvents(rawEvents, references) {
   const subrequests = events
     .map((event) => ({ event, phase: phaseForEvent(event) }))
     .filter((candidate) => candidate.phase !== null);
+  if (subrequests.some((candidate) => candidate.phase === undefined)) {
+    return null;
+  }
   const counts = new Map();
   for (const candidate of subrequests) {
     counts.set(candidate.phase, (counts.get(candidate.phase) ?? 0) + 1);
@@ -562,7 +591,10 @@ async function completeTraceEvents(options, body, state) {
   for (let page = 0; page < 20; page++) {
     const response = await completedQuery(
       options,
-      { ...body, ...(offset === undefined ? {} : { offset }) },
+      {
+        ...body,
+        ...(offset === undefined ? {} : { offset, offsetDirection: "next" }),
+      },
       parseTraceEventsResponse,
       "events",
       state,
@@ -609,6 +641,90 @@ async function completeTraceEvents(options, body, state) {
   );
 }
 
+async function discoverSettledRootTraces(
+  options,
+  timeframe,
+  references,
+  state,
+) {
+  const slices = traceDiscoverySlices(timeframe);
+  const traceIds = new Set();
+  const traceIdsBySlice = slices.map(() => new Set());
+  for (let round = 0; round < SEMANTIC_SETTLE_ROUNDS; round++) {
+    if (round > 0) await options.sleepImpl(QUERY_RETRY_MS);
+    for (let sliceIndex = 0; sliceIndex < slices.length; sliceIndex++) {
+      const response = await completedQuery(
+        options,
+        buildRootTraceQuery(slices[sliceIndex], references),
+        parseRootTraceResponse,
+        `roots-s${sliceIndex + 1}-r${round + 1}`,
+        state,
+      );
+      for (const traceId of response.traceIds) {
+        traceIds.add(traceId);
+        traceIdsBySlice[sliceIndex].add(traceId);
+      }
+    }
+  }
+  return {
+    traceIds: [...traceIds],
+    discoverySlices: slices.map((slice, index) => ({
+      fromUtc: new Date(slice.from).toISOString(),
+      toUtc: new Date(slice.to).toISOString(),
+      sampledTraces: traceIdsBySlice[index].size,
+    })),
+    settleRounds: SEMANTIC_SETTLE_ROUNDS,
+  };
+}
+
+async function settleTraceSample(options, body, references, state) {
+  const slices = traceDiscoverySlices(body.timeframe);
+  const eventsById = new Map();
+  const eventIdsBySlice = slices.map(() => new Set());
+  for (let round = 0; round < SEMANTIC_SETTLE_ROUNDS; round++) {
+    if (round > 0) await options.sleepImpl(QUERY_RETRY_MS);
+    for (let sliceIndex = 0; sliceIndex < slices.length; sliceIndex++) {
+      const events = await completeTraceEvents(
+        options,
+        { ...body, timeframe: slices[sliceIndex] },
+        state,
+      );
+      for (const event of events) {
+        const metadata = requireMetadata(event);
+        const prior = eventsById.get(metadata.id);
+        if (prior && !isDeepStrictEqual(prior, event)) {
+          throw new CloudflareTraceSchemaError(
+            "Cloudflare trace slices returned conflicting event records",
+          );
+        }
+        eventsById.set(metadata.id, event);
+        eventIdsBySlice[sliceIndex].add(metadata.id);
+      }
+    }
+    const sample = sanitizeTraceEvents([...eventsById.values()], references);
+    const eventSweep = {
+      settleRounds: round + 1,
+      slices: slices.map((slice, index) => ({
+        fromUtc: new Date(slice.from).toISOString(),
+        toUtc: new Date(slice.to).toISOString(),
+        eventCount: eventIdsBySlice[index].size,
+      })),
+    };
+    if (sample) return { sample, eventSweep };
+  }
+  return {
+    sample: null,
+    eventSweep: {
+      settleRounds: SEMANTIC_SETTLE_ROUNDS,
+      slices: slices.map((slice, index) => ({
+        fromUtc: new Date(slice.from).toISOString(),
+        toUtc: new Date(slice.to).toISOString(),
+        eventCount: eventIdsBySlice[index].size,
+      })),
+    },
+  };
+}
+
 export async function collectInferenceTraceEvidence({
   pairedRecords,
   deploySha,
@@ -636,23 +752,24 @@ export async function collectInferenceTraceEvidence({
     rawLabel: "keys",
   });
   validateTraceKeysResponse(keysText);
-  const rootQuery = await completedQuery(
+  const rootDiscovery = await discoverSettledRootTraces(
     requestOptions,
-    buildRootTraceQuery(timeframe, references),
-    parseRootTraceResponse,
-    "roots",
+    timeframe,
+    references,
     state,
   );
   const complete = [];
+  const eventSweeps = [];
   let incompleteTraces = 0;
-  for (const traceId of rootQuery.traceIds) {
-    const events = await completeTraceEvents(
+  for (const traceId of rootDiscovery.traceIds) {
+    const settled = await settleTraceSample(
       requestOptions,
       buildTraceEventsQuery(timeframe, traceId),
+      references,
       state,
     );
-    const sample = sanitizeTraceEvents(events, references);
-    if (sample) complete.push(sample);
+    eventSweeps.push(settled.eventSweep);
+    if (settled.sample) complete.push(settled.sample);
     else incompleteTraces++;
   }
   complete.sort((left, right) => left.sample - right.sample);
@@ -666,14 +783,17 @@ export async function collectInferenceTraceEvidence({
     reason:
       status === "observed"
         ? null
-        : rootQuery.traceIds.length === 0
+        : rootDiscovery.traceIds.length === 0
           ? "no_sampled_traces"
           : "sampled_traces_incomplete",
     coverage: {
       gatewayRequests: references.length,
-      sampledTraces: rootQuery.traceIds.length,
+      sampledTraces: rootDiscovery.traceIds.length,
       completeTraces: complete.length,
       incompleteTraces,
+      settleRounds: rootDiscovery.settleRounds,
+      discoverySlices: rootDiscovery.discoverySlices,
+      eventSweeps,
     },
     samples: complete,
   };
