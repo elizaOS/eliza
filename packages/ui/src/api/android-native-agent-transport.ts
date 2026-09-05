@@ -14,7 +14,6 @@ import {
 } from "../first-run/mobile-runtime-mode";
 import {
   createNativeStreamingResponse,
-  type NativeStreamingAgentPlugin,
   supportsNativeStreaming,
 } from "./native-agent-stream";
 import {
@@ -321,28 +320,19 @@ export function createAndroidNativeAgentTransport(
         );
       }
 
-      // SSE requests (the chat reply token stream) go through the streaming
-      // bridge so tokens reach the WebView incrementally instead of buffering
-      // the whole body. Falls through to the buffered `request` below if the
-      // native plugin has no streaming bridge or the stream fails to start.
+      // Select buffered compatibility only before native dispatch. A missing
+      // stream head cannot prove that the agent has not accepted this request.
       if (
         isStreamingRequest(url, init.headers) &&
         supportsNativeStreaming(agent)
       ) {
-        try {
-          return await createNativeStreamingResponse(
-            agent as NativeStreamingAgentPlugin,
-            {
-              method,
-              path: localAgentRequestPath(url),
-              headers: headersToRecord(init.headers),
-              body: methodAllowsBody(method) ? (body ?? null) : null,
-              timeoutMs: context?.timeoutMs,
-            },
-          );
-        } catch {
-          // Stream couldn't start — fall back to the buffered request path.
-        }
+        return createNativeStreamingResponse(agent, {
+          method,
+          path: localAgentRequestPath(url),
+          headers: headersToRecord(init.headers),
+          body: methodAllowsBody(method) ? (body ?? null) : null,
+          timeoutMs: context?.timeoutMs,
+        });
       }
 
       const result = await request({
