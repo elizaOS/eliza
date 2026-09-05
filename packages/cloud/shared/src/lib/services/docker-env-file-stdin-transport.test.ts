@@ -165,6 +165,23 @@ describe("generic Docker env-file stdin transport", () => {
 
       expect(existsSync(join(attempt, "candidate-id"))).toBe(false);
       rmSync(join(attempt, "cancelled"));
+      const rejected = buildDockerEnvFileStdinTransport(
+        { APP_SECRET: secret },
+        () => "sh -c 'printf \"invalid reference format\" >&2; exit 1'",
+        { replacementAttemptId: attemptId },
+      );
+      expect((await runShell(remap(rejected.command), rejected.input, env)).code).toBe(1);
+      const rejectedCleanup = await runShell(
+        remap(buildDockerCreateAttemptCleanupCommand(attemptId)),
+        "",
+        env,
+      );
+      expect(rejectedCleanup.code).toBe(0);
+      expect(parseDockerCreateAttemptCleanupReceipt(rejectedCleanup.output, attemptId)).toEqual({
+        quiescent: true,
+        containerId: null,
+      });
+      rmSync(join(attempt, "cancelled"));
       const ambiguous = buildDockerEnvFileStdinTransport(
         { APP_SECRET: secret },
         () => "printf 'daemon request failed' >&2; exit 1",

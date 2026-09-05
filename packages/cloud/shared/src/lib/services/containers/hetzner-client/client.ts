@@ -1107,7 +1107,7 @@ export class HetznerContainersClient {
   // Internal helpers
   // ----------------------------------------------------------------------
 
-  /** Cancel the producer before deleting only its recorded candidate or proven-quiescent name. */
+  /** Cancel the producer before deleting only its recorded candidate. */
   private async cleanupCreateAttempt(
     ssh: DockerSSHClient,
     attemptId: string,
@@ -1122,8 +1122,10 @@ export class HetznerContainersClient {
         30_000,
       );
       const receipt = parseDockerCreateAttemptCleanupReceipt(output, attemptId);
-      if (!receipt.quiescent && receipt.containerId === null) return false;
-      const target = receipt.containerId ?? deriveContainerName(attemptId);
+      // Quiescence without a candidate proves this attempt has nothing to remove.
+      // A reusable name cannot authorize deleting a container created elsewhere.
+      if (receipt.containerId === null) return receipt.quiescent;
+      const target = receipt.containerId;
       try {
         await ssh.exec(
           buildExactRestoreBootFencedCommand(nodeIncarnation, `docker rm -f ${shellQuote(target)}`),
