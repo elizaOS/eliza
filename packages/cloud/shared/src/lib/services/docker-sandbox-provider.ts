@@ -4008,11 +4008,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         const meshJoinCandidateId = createdContainerId;
         let registration = await headscaleIntegration.waitForVPNRegistration(
           vpnEnvVars.TS_HOSTNAME ?? agentId,
-          // 180s default (env-overridable via VPN_REGISTRATION_TIMEOUT_MS), not
-          // a hardcoded 60s: a cold container needs >1 min to boot + register,
-          // so 60s expired before the node appeared → "continuing without VPN"
-          // → 404 despite running. Single source of truth lives in
-          // headscale-integration so the constant and this call agree.
+          // The shared observer budget covers the container entrypoint's join
+          // deadline and validates any deployment override before provisioning.
           DEFAULT_REGISTRATION_TIMEOUT_MS,
           {
             // During a blue/green overlap the preserved live node shares this
