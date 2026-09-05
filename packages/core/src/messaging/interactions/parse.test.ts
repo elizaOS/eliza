@@ -102,17 +102,14 @@ describe("findInteractionRegions: CHOICE blocks", () => {
 		expect((regions[0].block as ChoiceInteraction).scope).toBe("c");
 	});
 
-	it("swallows a duplicate opener into the active block's body", () => {
+	it("uses the latest same-kind opener for a closing marker", () => {
 		const regions = findInteractionRegions(
 			"[CHOICE:a]\nx=1\n[CHOICE:b]\ny=2\n[/CHOICE]",
 		);
 		expect(regions).toHaveLength(1);
 		const block = regions[0].block as ChoiceInteraction;
-		expect(block.scope).toBe("a");
-		expect(block.options).toEqual([
-			{ value: "x", label: "1" },
-			{ value: "y", label: "2" },
-		]);
+		expect(block.scope).toBe("b");
+		expect(block.options).toEqual([{ value: "y", label: "2" }]);
 	});
 
 	it("requires the body to start on the next line", () => {
@@ -485,6 +482,34 @@ describe("parseInteractionBlocks", () => {
 		);
 		expect(parsed.blocks.map((b) => b.kind)).toEqual(["choice", "followups"]);
 		expect(parsed.cleanedText).toBe("A\n\nmid\n\nB");
+	});
+
+	it("does not pair an unterminated choice with a later choice closer", () => {
+		const parsed = parseInteractionBlocks(
+			[
+				"Pick one:",
+				"[CHOICE:first]",
+				"a=Alpha",
+				"",
+				"Sorry, ignore that. Here is the real question.",
+				"",
+				"[CHOICE:second]",
+				"b=Beta",
+				"[/CHOICE]",
+			].join("\n"),
+		);
+
+		expect(parsed.blocks).toMatchObject([
+			{
+				kind: "choice",
+				scope: "second",
+				options: [{ value: "b", label: "Beta" }],
+			},
+		]);
+		expect(parsed.cleanedText).toContain("[CHOICE:first]\na=Alpha");
+		expect(parsed.cleanedText).toContain(
+			"Sorry, ignore that. Here is the real question.",
+		);
 	});
 
 	it("removes an inline task while preserving sentence spacing", () => {
