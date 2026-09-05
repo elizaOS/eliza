@@ -18,19 +18,31 @@ describe("ContactsWeb fallback", () => {
     },
   );
 
-  it("returns an empty contact list for valid web fallback queries", async () => {
+  it("rejects valid queries because no address book is available", async () => {
     const contacts = new ContactsWeb();
 
     await expect(
       contacts.listContacts({ limit: 25, query: "../../ada" }),
-    ).resolves.toEqual({ contacts: [] });
+    ).rejects.toMatchObject({ code: "UNAVAILABLE" });
   });
 
   it("accepts explicit limits above the former arbitrary ceiling", async () => {
     const contacts = new ContactsWeb();
 
-    await expect(contacts.listContacts({ limit: 5_000 })).resolves.toEqual({
-      contacts: [],
+    await expect(contacts.listContacts({ limit: 5_000 })).rejects.toMatchObject(
+      {
+        code: "UNAVAILABLE",
+      },
+    );
+  });
+
+  it("cannot grant access to an unsupported address book", async () => {
+    const contacts = new ContactsWeb();
+    await expect(contacts.checkPermissions()).rejects.toMatchObject({
+      code: "UNAVAILABLE",
+    });
+    await expect(contacts.requestPermissions()).rejects.toMatchObject({
+      code: "UNAVAILABLE",
     });
   });
 
