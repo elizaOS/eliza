@@ -7,8 +7,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   captureBaselineDirty,
   captureBaselineSha,
+  captureBaselineUntracked,
   captureChangeSet,
-  parseLsFiles,
+  capturePrGateChangeSet,
   summarizeChangeSet,
   verifyChangedFilesOnDisk,
 } from "../services/workspace-diff.js";
@@ -87,11 +88,142 @@ describe("workspace diff production paths", () => {
     }
   });
 
-  it("drops an incomplete ls-files tail", () => {
-    expect(parseLsFiles("one.ts\ntwo.ts\npartial")).toEqual([
-      "one.ts",
-      "two.ts",
-    ]);
-    expect(parseLsFiles(undefined)).toEqual([]);
+  it("captures a complete Git diff beyond the former subprocess buffer", async () => {
+    git("branch", "review-base");
+    const content = `${"complete diff line abcdefghijklmnopqrstuvwxyz 0123456789\n".repeat(180_000)}FINAL_CHANGE_MARKER\n`;
+    writeFileSync(join(dir, "tracked.txt"), content);
+    const current = await captureChangeSet(dir);
+    expect(current?.diff).toContain("+FINAL_CHANGE_MARKER");
+    expect(current?.diff).toBe(
+      execFileSync("git", ["diff", "HEAD", "--", "tracked.txt"], {
+        cwd: dir,
+        encoding: "utf8",
+        maxBuffer: Buffer.byteLength(content) * 2,
+      }),
+    );
+    git("add", "tracked.txt");
+    git("commit", "-q", "-m", "large change");
+    const reviewed = await capturePrGateChangeSet(dir, "review-base");
+    expect(reviewed?.diff).toBe(current?.diff);
+    expect(reviewed?.truncated).toBe(false);
+  });
+
+  it("preserves Unicode and whitespace filenames through capture and verification", async () => {
+    const names = [
+      "snow☃.txt",
+      "tab\tname.txt",
+      "line\nname.txt",
+      " spaced.txt ",
+    ];
+    for (const name of names) writeFileSync(join(dir, name), "before\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "path baseline");
+    for (const name of names) writeFileSync(join(dir, name), `after ${name}\n`);
+    expect(new Set(await captureBaselineDirty(dir))).toEqual(new Set(names));
+    const changed = await captureChangeSet(dir);
+    expect(new Set(changed?.changedFiles)).toEqual(new Set(names));
+    expect(
+      verifyChangedFilesOnDisk(dir, changed?.changedFiles ?? []).verified,
+    ).toBe(true);
+    for (const name of names) {
+      for (const line of `after ${name}`.split("\n")) {
+        expect(changed?.diff).toContain(`+${line}`);
+      }
+    }
+
+    const untrackedName = " new\t☃.txt ";
+    writeFileSync(join(dir, untrackedName), "untracked content\n");
+    expect(await captureBaselineUntracked(dir)).toEqual([untrackedName]);
+    const explicit = await captureChangeSet(
+      dir,
+      undefined,
+      [untrackedName],
+      names,
+    );
+    expect(explicit?.changedFiles).toEqual([untrackedName]);
+    expect(explicit?.diff).toContain("+untracked content");
+  });
+
+  it("reads rename records without treating the original path as another status", async () => {
+    const renamed = "renamed\t☃.txt";
+    git("mv", "tracked.txt", renamed);
+    writeFileSync(join(dir, "next.txt"), "next change\n");
+    git("add", "next.txt");
+    const changes = await captureChangeSet(dir);
+    expect(new Set(changes?.changedFiles)).toEqual(
+      new Set([renamed, "next.txt"]),
+    );
+    expect(changes?.diff).toContain("+base");
+    expect(changes?.diff).toContain("+next change");
+    expect(await captureBaselineUntracked(dir)).toEqual([]);
+  });
+
+  it("keeps non-repository and unborn baselines distinct from command failures", async () => {
+    const plain = mkdtempSync(join(tmpdir(), "workspace-diff-empty-"));
+    try {
+      expect(await captureBaselineSha(plain)).toBeUndefined();
+      expect(await captureBaselineDirty(plain)).toEqual([]);
+      expect(await capturePrGateChangeSet(plain, "main")).toBeUndefined();
+      execFileSync("git", ["init", "-q"], { cwd: plain });
+      expect(await captureBaselineSha(plain)).toBeUndefined();
+      expect(await captureBaselineDirty(plain)).toEqual([]);
+      writeFileSync(join(plain, "new\t☃.txt"), "fresh file\n");
+      const unborn = await captureChangeSet(plain);
+      expect(unborn?.changedFiles).toEqual(["new\t☃.txt"]);
+      expect(unborn?.diff).toContain("+fresh file");
+    } finally {
+      rmSync(plain, { recursive: true, force: true });
+    }
+    await expect(
+      captureChangeSet(dir, "missing-base-ref"),
+    ).rejects.toMatchObject({
+      code: "WORKSPACE_GIT_COMMAND_FAILED",
+    });
+    await expect(
+      captureBaselineSha(join(dir, "missing-dir")),
+    ).rejects.toMatchObject({
+      code: "WORKSPACE_GIT_CAPTURE_FAILED",
+    });
+  });
+
+  it("rejects failed Git output even when an external diff emitted a prefix", async () => {
+    git("branch", "review-base");
+    writeFileSync(join(dir, "tracked.txt"), "after\n");
+    git("add", "tracked.txt");
+    git("commit", "-q", "-m", "change");
+    const helper = join(dir, "failed-diff.sh");
+    writeFileSync(
+      helper,
+      "#!/bin/sh\nprintf 'partial diff output\\n'\nexit 2\n",
+      {
+        mode: 0o700,
+      },
+    );
+    git("config", "diff.external", helper);
+    await expect(
+      capturePrGateChangeSet(dir, "review-base"),
+    ).rejects.toMatchObject({
+      code: "WORKSPACE_GIT_COMMAND_FAILED",
+    });
+  });
+
+  it("uses one direct comparison when the histories have no merge base", async () => {
+    git("branch", "review-base");
+    git("checkout", "--orphan", "independent");
+    git("rm", "-q", "-f", "tracked.txt");
+    writeFileSync(join(dir, "independent.txt"), "independent history\n");
+    git("add", "independent.txt");
+    git("commit", "-q", "-m", "independent base");
+    const reviewed = await capturePrGateChangeSet(dir, "review-base");
+    expect(new Set(reviewed?.changedFiles)).toEqual(
+      new Set(["independent.txt", "tracked.txt"]),
+    );
+    expect(reviewed?.diff).toContain("+independent history");
+    expect(reviewed?.diff).toContain("-base");
+    await expect(
+      capturePrGateChangeSet(dir, "missing-base-ref"),
+    ).rejects.toMatchObject({
+      code: "WORKSPACE_GIT_COMMAND_FAILED",
+    });
   });
 });

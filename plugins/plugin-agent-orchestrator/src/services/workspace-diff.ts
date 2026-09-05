@@ -5,32 +5,18 @@
  * "show me the diff" queries. An unborn HEAD (a fresh repo with zero commits) is diffed against
  * the canonical empty-tree hash so the whole working tree reads as added.
  */
-import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { spawn } from "node:child_process";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { isAbsolute, relative, resolve } from "node:path";
+import { ElizaError } from "@elizaos/core";
 
 const GIT_TIMEOUT_MS = 10_000;
-const GIT_MAX_BUFFER = 8 * 1024 * 1024;
 
 // The canonical git empty-tree object hash. On an unborn HEAD (a fresh repo
 // with zero commits), `git diff HEAD` throws because HEAD resolves to nothing;
 // diffing against the empty tree yields the whole working tree as "added"
 // instead (issue elizaOS/eliza#11578 FIX C).
 const EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-
-function outputToString(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (value instanceof Uint8Array) return Buffer.from(value).toString("utf8");
-  return undefined;
-}
 
 /**
  * What a sub-agent actually changed in its workspace, captured as ground
@@ -65,56 +51,89 @@ export interface WorkspaceArtifactVerification {
   missingFiles: string[];
 }
 
-async function git(
+interface GitResult {
+  stdout: string;
+  stderr: string;
+  status: number;
+}
+
+async function gitResult(workdir: string, args: string[]): Promise<GitResult> {
+  return new Promise((resolveResult, reject) => {
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    const child = spawn("git", args, {
+      cwd: workdir,
+      env: { ...process.env, LC_ALL: "C" },
+      timeout: GIT_TIMEOUT_MS,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    const fail = (cause: Error) =>
+      reject(
+        new ElizaError("Unable to read complete workspace Git output", {
+          code: "WORKSPACE_GIT_CAPTURE_FAILED",
+          cause,
+          context: { workdir, args },
+        }),
+      );
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.stdout.on("error", fail);
+    child.stderr.on("error", fail);
+    child.on("error", fail);
+    // `close` follows stream completion; a signal or transport error must never
+    // promote the bytes received before failure into complete evidence.
+    child.on("close", (status, signal) => {
+      if (status === null || signal !== null) {
+        fail(new Error(`Git terminated by ${signal ?? "an unknown failure"}`));
+        return;
+      }
+      resolveResult({
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+        status,
+      });
+    });
+  });
+}
+
+function requireGitSuccess(
+  result: GitResult,
   workdir: string,
   args: string[],
-): Promise<string | undefined> {
-  const direct = spawnSync("git", args, {
-    cwd: workdir,
-    timeout: GIT_TIMEOUT_MS,
-    maxBuffer: GIT_MAX_BUFFER,
-    windowsHide: true,
-  });
-  const directStdout = outputToString(direct.stdout);
-  if (directStdout && directStdout.length > 0) return directStdout;
-
-  // Bun's test runner can report a successful git process with an empty stdout
-  // pipe. In that environment only, ask the shell to redirect stdout itself.
-  if (direct.status !== 0 && !process.versions.bun) return undefined;
-  if (!process.versions.bun) return directStdout;
-
-  const outDir = mkdtempSync(join(tmpdir(), "workspace-diff-git-"));
-  const outPath = join(outDir, "stdout");
-  writeFileSync(outPath, "");
-  const result = spawnSync(
-    "sh",
-    ["-c", 'git "$@" > "$WORKSPACE_DIFF_GIT_STDOUT"', "git", ...args],
-    {
-      cwd: workdir,
-      env: { ...process.env, WORKSPACE_DIFF_GIT_STDOUT: outPath },
-      timeout: GIT_TIMEOUT_MS,
-      maxBuffer: GIT_MAX_BUFFER,
-      stdio: ["ignore", "ignore", "pipe"],
-      windowsHide: true,
-    },
-  );
-
-  // `git diff --no-index` exits 1 when files differ — that's the success case
-  // for us and the diff is on stdout. Everything else (not a repo, git missing,
-  // detached state) is best-effort: change capture must never disturb the
-  // session lifecycle.
-  try {
-    const stdout = readFileSync(outPath, "utf8");
-    if (result.status === 0 || stdout.length > 0) return stdout;
-    return undefined;
-  } finally {
-    rmSync(outDir, { recursive: true, force: true });
+): string {
+  if (result.status !== 0) {
+    throw new ElizaError("Workspace Git command failed", {
+      code: "WORKSPACE_GIT_COMMAND_FAILED",
+      context: { workdir, args, status: result.status, stderr: result.stderr },
+    });
   }
+  return result.stdout;
+}
+
+async function git(workdir: string, args: string[]): Promise<string> {
+  return requireGitSuccess(await gitResult(workdir, args), workdir, args);
 }
 
 async function isWorkTree(workdir: string): Promise<boolean> {
-  const inside = await git(workdir, ["rev-parse", "--is-inside-work-tree"]);
-  return inside?.trim() === "true";
+  const args = ["rev-parse", "--is-inside-work-tree"];
+  const result = await gitResult(workdir, args);
+  if (
+    result.status === 128 &&
+    result.stderr.startsWith("fatal: not a git repository")
+  ) {
+    return false;
+  }
+  return requireGitSuccess(result, workdir, args).trim() === "true";
+}
+
+async function headSha(workdir: string): Promise<string | undefined> {
+  const args = ["rev-parse", "--verify", "--quiet", "HEAD"];
+  const result = await gitResult(workdir, args);
+  if (result.status === 1 && result.stdout === "" && result.stderr === "") {
+    return undefined;
+  }
+  return requireGitSuccess(result, workdir, args).trim();
 }
 
 /** Returns the checked-out branch for resume metadata, or undefined outside a named branch. */
@@ -122,7 +141,7 @@ export async function getWorkspaceBranch(
   workdir: string,
 ): Promise<string | undefined> {
   if (!(await isWorkTree(workdir))) return undefined;
-  const branch = (await git(workdir, ["branch", "--show-current"]))?.trim();
+  const branch = (await git(workdir, ["branch", "--show-current"])).trim();
   return branch || undefined;
 }
 
@@ -135,8 +154,7 @@ export async function captureBaselineSha(
   workdir: string,
 ): Promise<string | undefined> {
   if (!(await isWorkTree(workdir))) return undefined;
-  const sha = await git(workdir, ["rev-parse", "HEAD"]);
-  return sha?.trim() || undefined;
+  return headSha(workdir);
 }
 
 /**
@@ -148,10 +166,10 @@ export async function captureBaselineSha(
  */
 export async function captureBaselineDirty(workdir: string): Promise<string[]> {
   if (!(await isWorkTree(workdir))) return [];
-  return ((await git(workdir, ["diff", "--name-only", "HEAD"])) ?? "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  const base = (await headSha(workdir)) ?? EMPTY_TREE_HASH;
+  return parseNullRecords(
+    await git(workdir, ["diff", "--name-only", "-z", base]),
+  );
 }
 
 /**
@@ -166,41 +184,64 @@ export async function captureBaselineUntracked(
   workdir: string,
 ): Promise<string[]> {
   if (!(await isWorkTree(workdir))) return [];
-  return ((await git(workdir, ["status", "--porcelain"])) ?? "")
-    .split("\n")
-    .filter((line) => line.startsWith("?? "))
-    .map((line) => line.slice(3).trim())
-    .filter((line) => line.length > 0);
-}
-
-/**
- * Parse `git diff --name-status` output into the set of affected paths. Renames
- * appear as `R100\told\tnew` — the post-rename path is what changed, so take
- * the last tab-separated field for every status.
- */
-function parseNameStatus(out: string | undefined): string[] {
+  const records = parseNullRecords(
+    await git(workdir, ["status", "--porcelain", "-z"]),
+  );
   const files: string[] = [];
-  for (const line of (out ?? "").split("\n")) {
-    if (!line.trim()) continue;
-    const parts = line.split("\t");
-    const path = parts[parts.length - 1]?.trim();
-    if (path) files.push(path);
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (record.startsWith("?? ")) files.push(record.slice(3));
+    // Porcelain -z places the original pathname after a rename/copy record.
+    if (/[RC]/.test(record.slice(0, 2))) index += 1;
   }
   return files;
 }
 
 /**
- * Parse `git ls-files --others` output (one path per line) into a path list.
- * A complete listing always ends with a newline; when the output was cut at
- * maxBuffer (ENOBUFS on a huge untracked tree) the tail is a truncated
- * garbage path — drop the partial final line rather than surface junk.
+ * Parse `git diff --name-status -z`; rename/copy records contain two paths and
+ * the destination is the affected path. NUL separators preserve Git filenames.
+ */
+function parseNameStatus(out: string): string[] {
+  const files: string[] = [];
+  const records = parseNullRecords(out);
+  for (let index = 0; index < records.length; ) {
+    const status = records[index++];
+    if (/^[RC]/.test(status)) index += 1;
+    const file = records[index++];
+    if (!file) {
+      throw new ElizaError("Incomplete Git filename record", {
+        code: "WORKSPACE_GIT_OUTPUT_INVALID",
+      });
+    }
+    files.push(file);
+  }
+  return files;
+}
+
+function parseNullRecords(out: string): string[] {
+  if (out === "") return [];
+  if (!out.endsWith("\0")) {
+    throw new ElizaError("Incomplete Git filename output", {
+      code: "WORKSPACE_GIT_OUTPUT_INVALID",
+    });
+  }
+  const records = out.split("\0");
+  records.pop();
+  return records;
+}
+
+/**
+ * Parse complete legacy newline-delimited ls-files output. Runtime capture
+ * uses NUL records; this exported compatibility parser rejects partial output.
  */
 export function parseLsFiles(out: string | undefined): string[] {
   if (!out) return [];
-  const complete = out.endsWith("\n")
-    ? out
-    : out.slice(0, out.lastIndexOf("\n") + 1);
-  return complete
+  if (!out.endsWith("\n")) {
+    throw new ElizaError("Incomplete Git filename output", {
+      code: "WORKSPACE_GIT_OUTPUT_INVALID",
+    });
+  }
+  return out
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
@@ -209,8 +250,8 @@ export function parseLsFiles(out: string | undefined): string[] {
 // Dependency/build directories a fresh scaffold populates BEFORE any
 // .gitignore exists (`npm install` typically runs first). On an unborn HEAD
 // `--exclude-standard` has no .gitignore to honor, so thousands of vendor
-// paths would flood MAX_CHANGED_FILES and evict the agent's real files.
-// Fallback for the unborn-HEAD untracked scoop ONLY — the born-HEAD path
+// paths would swamp the agent's real files. Applies to the unborn-HEAD
+// untracked scoop ONLY — the born-HEAD path
 // never scoops untracked files, and explicit tool-written paths are always
 // kept regardless (agentWritten is unioned separately).
 const UNBORN_SCOOP_VENDOR_DIRS = new Set([
@@ -250,17 +291,16 @@ async function resolveDiffBase(
 ): Promise<string> {
   const trimmed = baselineSha?.trim();
   if (trimmed) return trimmed;
-  const head = await git(workdir, ["rev-parse", "--verify", "--quiet", "HEAD"]);
-  return head?.trim() ? "HEAD" : EMPTY_TREE_HASH;
+  return (await headSha(workdir)) ?? EMPTY_TREE_HASH;
 }
 
 /** Normalize a tool-call file path to workdir-relative POSIX form. */
 function toWorkdirRelative(workdir: string, file: string): string {
-  const trimmed = file.trim();
-  if (!trimmed) return "";
-  const absolute = isAbsolute(trimmed) ? trimmed : resolve(workdir, trimmed);
+  if (!file) return "";
+  const absolute = isAbsolute(file) ? file : resolve(workdir, file);
   const rel = relative(workdir, absolute);
-  const normalized = rel.split("\\").join("/");
+  const normalized =
+    process.platform === "win32" ? rel.split("\\").join("/") : rel;
   if (
     !normalized ||
     normalized === ".." ||
@@ -278,12 +318,12 @@ async function fileDiff(
   base: string,
   file: string,
 ): Promise<string> {
-  const tracked = (await git(workdir, ["diff", base, "--", file]))?.trim();
+  const tracked = await git(workdir, ["diff", base, "--", file]);
   if (tracked) return tracked;
-  const created = (
-    await git(workdir, ["diff", "--no-index", "--", "/dev/null", file])
-  )?.trim();
-  return created ?? "";
+  const args = ["diff", "--no-index", "--", "/dev/null", file];
+  const created = await gitResult(workdir, args);
+  if (created.status === 1) return created.stdout;
+  return requireGitSuccess(created, workdir, args);
 }
 
 /**
@@ -339,7 +379,7 @@ export async function captureChangeSet(
     baselineDirty.filter((file) => !agentWrittenSet.has(file)),
   );
   const tracked = parseNameStatus(
-    await git(workdir, ["diff", "--name-status", base]),
+    await git(workdir, ["diff", "--name-status", "-z", base]),
   ).filter((file) => !dirtyAtSpawn.has(file));
   const agentWritten = [...agentWrittenSet];
 
@@ -350,8 +390,13 @@ export async function captureChangeSet(
   // (issue #11578 FIX C). Scoped to unborn HEAD to preserve the born-HEAD
   // clutter invariant above.
   const untracked = unbornHead
-    ? parseLsFiles(
-        await git(workdir, ["ls-files", "--others", "--exclude-standard"]),
+    ? parseNullRecords(
+        await git(workdir, [
+          "ls-files",
+          "--others",
+          "--exclude-standard",
+          "-z",
+        ]),
       ).filter((file) => !dirtyAtSpawn.has(file) && !isVendorScoopPath(file))
     : [];
 
@@ -368,7 +413,7 @@ export async function captureChangeSet(
   // tool-written files.
   const shortstat = (
     await git(workdir, ["diff", "--shortstat", base, "--", ...changedFiles])
-  )?.trim();
+  ).trim();
   const diffStat =
     shortstat && shortstat.length > 0
       ? shortstat
@@ -440,12 +485,12 @@ function captureToolPathOnlyChangeSet(
 /**
  * Complete diff + changed-file list for a workspace branch against its PR base.
  *
- * The gate needs the FULL diff text to scan every added line for secrets, so the
- * We diff `base...HEAD` (three-dot = changes on the branch since it forked
+ * The gate needs the full diff text to scan every added line. We diff
+ * `base...HEAD` (three-dot = changes on the branch since it forked
  * from base) so pre-existing base-branch content is never re-scanned, and fall
  * back to a two-dot `base HEAD` diff when the merge-base can't be resolved (e.g.
- * unrelated histories). Best-effort: any git failure yields `undefined` and the
- * caller treats the gate as unavailable rather than blocking a legitimate PR.
+ * unrelated histories). Non-repository workspaces are unavailable; command
+ * failures throw so the caller cannot review an incomplete changeset.
  */
 export interface PrGateChangeSet {
   changedFiles: string[];
@@ -464,20 +509,18 @@ export async function capturePrGateChangeSet(
   const base = (baseBranch ?? "").trim();
   if (!base) return undefined;
 
-  // Prefer the branch-since-fork diff (base...HEAD). If the symmetric range
-  // can't resolve (no common ancestor), fall back to the direct base..HEAD diff.
-  const nameStatus =
-    (await git(workdir, ["diff", "--name-status", `${base}...HEAD`])) ??
-    (await git(workdir, ["diff", "--name-status", base, "HEAD"]));
-  if (nameStatus === undefined) return undefined;
-
-  const allChangedFiles = parseNameStatus(nameStatus);
-  const changedFiles = allChangedFiles;
-
-  const diffRaw =
-    (await git(workdir, ["diff", `${base}...HEAD`])) ??
-    (await git(workdir, ["diff", base, "HEAD"])) ??
-    "";
+  // Choose one comparison for both commands. Only unrelated histories permit
+  // a direct comparison; an invalid ref or failed process is not a fallback.
+  let refs = [`${base}...HEAD`];
+  let args = ["diff", "--name-status", "-z", ...refs];
+  let names = await gitResult(workdir, args);
+  if (names.status === 128 && names.stderr.includes("no merge base")) {
+    refs = [base, "HEAD"];
+    args = ["diff", "--name-status", "-z", ...refs];
+    names = await gitResult(workdir, args);
+  }
+  const changedFiles = parseNameStatus(requireGitSuccess(names, workdir, args));
+  const diffRaw = await git(workdir, ["diff", ...refs]);
   return {
     changedFiles,
     diff: diffRaw,

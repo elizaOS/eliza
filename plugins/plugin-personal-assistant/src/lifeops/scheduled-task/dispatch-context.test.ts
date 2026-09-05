@@ -4,7 +4,10 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { ScheduledTaskDispatchRecord } from "@elizaos/plugin-scheduling";
+import {
+  buildScheduledDispatchRenderPrompt,
+  type ScheduledTaskDispatchRecord,
+} from "@elizaos/plugin-scheduling";
 import { describe, expect, it, vi } from "vitest";
 import {
   type OwnerFactStore,
@@ -164,6 +167,43 @@ function makeRuntime(): IAgentRuntime {
 }
 
 describe("resolveScheduledTaskDispatchContext", () => {
+  it("preserves a large event through context resolution and prompt construction", async () => {
+    const runtime = makeRuntime();
+    const eventPayload = {
+      document: `${"Complete supporting notes. ".repeat(5_000)}Final decision: postpone.`,
+    };
+    const record = {
+      ...makeRecord(),
+      ownerVisible: false,
+      contextRequest: { includeEventPayload: true },
+      eventPayload,
+    };
+    const resolvedContext = await resolveScheduledTaskDispatchContext(
+      runtime,
+      record,
+    );
+    expect(resolvedContext?.eventPayload).toEqual(eventPayload);
+    const prompt = buildScheduledDispatchRenderPrompt(runtime, {
+      ...record,
+      resolvedContext,
+    });
+    expect(prompt).toContain(JSON.stringify(eventPayload));
+  });
+
+  it("rejects event data that JSON would silently discard", async () => {
+    const record = {
+      ...makeRecord(),
+      ownerVisible: false,
+      contextRequest: { includeEventPayload: true },
+      eventPayload: { requiredFact: undefined },
+    };
+    await expect(
+      resolveScheduledTaskDispatchContext(makeRuntime(), record),
+    ).rejects.toMatchObject({
+      code: "SCHEDULED_EVENT_PAYLOAD_NOT_SERIALIZABLE",
+    });
+  });
+
   it("resolves requested fields at fire time without leaking unrequested data", async () => {
     const runtime = makeRuntime();
     registerOwnerFactStore(runtime, {

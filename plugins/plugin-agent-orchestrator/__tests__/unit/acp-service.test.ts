@@ -157,12 +157,23 @@ import {
 } from "../../src/services/acp-service.js";
 import { InMemorySessionStore } from "../../src/services/session-store.js";
 
+// These suites own ACP transport behavior; Git baseline capture is covered by
+// real-repository workspace-diff tests and remains an explicit boundary here.
+vi.mock("../../src/services/workspace-diff.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/services/workspace-diff.js")
+    >();
+  return {
+    ...actual,
+    captureBaselineSha: async () => undefined,
+    captureBaselineDirty: async () => [],
+    captureBaselineUntracked: async () => [],
+  };
+});
+
 vi.mock("node:child_process", () => ({
   exec: vi.fn(),
-  // execFile is promisified by workspace-diff (baseline/diff capture). The
-  // promisified form hangs unless the callback is invoked, which would stall
-  // every spawn test; make the mock behave like an unavailable git so capture
-  // degrades to undefined.
   execFile: vi.fn(
     (
       _file: string,
