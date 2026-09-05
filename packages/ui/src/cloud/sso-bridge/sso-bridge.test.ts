@@ -1,7 +1,10 @@
 /** Pure-logic contract for the SSO bridge client module: hostname role table, returnTo sanitation, state-nonce + PKCE-verifier lifecycle, loop guard, logged-out marker, URL builders, and the mint/exchange/burn fetch wrappers — jsdom storage + hand-rolled fetch stubs, nothing mocked at module level. */
 // @vitest-environment jsdom
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  clearStoredStewardToken,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   peekPendingOnboardingSession,
@@ -43,6 +46,8 @@ const STATE = "a".repeat(64);
 const CHALLENGE = "c".repeat(64);
 const VERIFIER = "d".repeat(64);
 const CODE = `esso_${"b".repeat(64)}`;
+const LOGGED_OUT_MARKER_KEY = "eliza_sso_logged_out";
+const LOGGED_OUT_ACK_KEY = "eliza_sso_logged_out_ack";
 
 async function sha256Hex(input: string): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest(
@@ -82,7 +87,43 @@ function clearCookies(): void {
   }
 }
 
+function installOriginWideLocks(): void {
+  Object.defineProperty(globalThis, "isSecureContext", {
+    configurable: true,
+    value: true,
+  });
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: {
+      request: (_name: string, _options: unknown, callback: () => unknown) =>
+        Promise.resolve(callback()),
+    },
+  });
+}
+
+function installSerialOriginWideLocks(): void {
+  let tail: Promise<unknown> = Promise.resolve();
+  Object.defineProperty(globalThis, "isSecureContext", {
+    configurable: true,
+    value: true,
+  });
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: {
+      request: (_name: string, _options: unknown, callback: () => unknown) => {
+        const result = tail.then(callback);
+        tail = result.then(
+          () => undefined,
+          () => undefined,
+        );
+        return result;
+      },
+    },
+  });
+}
+
 beforeEach(() => {
+  installOriginWideLocks();
   invalidateStewardServerCookieSyncMarker();
   localStorage.clear();
   sessionStorage.clear();
@@ -199,12 +240,44 @@ describe("loop guard", () => {
 });
 
 describe("logged-out marker", () => {
-  it("persists until cleared", () => {
+  it("reads and clears the historical boolean marker", () => {
     expect(isSsoLoggedOut()).toBe(false);
-    markSsoLoggedOut();
+    localStorage.setItem(LOGGED_OUT_MARKER_KEY, "1");
     expect(isSsoLoggedOut()).toBe(true);
     clearSsoLoggedOut();
     expect(isSsoLoggedOut()).toBe(false);
+  });
+
+  it("writes opaque versioned markers and clears only the captured value", () => {
+    markSsoLoggedOut();
+    const first = localStorage.getItem(LOGGED_OUT_MARKER_KEY);
+    expect(first).toMatch(/^v2:[0-9a-f]{64}$/);
+
+    markSsoLoggedOut();
+    const second = localStorage.getItem(LOGGED_OUT_MARKER_KEY);
+    expect(second).toMatch(/^v2:[0-9a-f]{64}$/);
+    expect(second).not.toBe(first);
+
+    clearSsoLoggedOut(first ?? undefined);
+    expect(localStorage.getItem(LOGGED_OUT_MARKER_KEY)).toBe(second);
+    expect(localStorage.getItem(LOGGED_OUT_ACK_KEY)).toBe(first);
+    expect(isSsoLoggedOut()).toBe(true);
+    clearSsoLoggedOut(second ?? undefined);
+    expect(isSsoLoggedOut()).toBe(false);
+  });
+
+  it("keeps a new opaque logout visible after acknowledging a legacy marker", () => {
+    localStorage.setItem(LOGGED_OUT_MARKER_KEY, "1");
+    clearSsoLoggedOut("1");
+    expect(localStorage.getItem(LOGGED_OUT_ACK_KEY)).toBe("1");
+    expect(isSsoLoggedOut()).toBe(false);
+
+    markSsoLoggedOut();
+    expect(localStorage.getItem(LOGGED_OUT_MARKER_KEY)).toMatch(
+      /^v2:[0-9a-f]{64}$/,
+    );
+    expect(localStorage.getItem(LOGGED_OUT_ACK_KEY)).toBe("1");
+    expect(isSsoLoggedOut()).toBe(true);
   });
 });
 
@@ -284,6 +357,14 @@ describe("shouldAutoBridgeToSso", () => {
 
   it("honors the loop guard", () => {
     markSsoBridgeAttempt();
+    expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
+  });
+
+  it("fails closed to ordinary login when origin-wide locks are unavailable", () => {
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: undefined,
+    });
     expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
   });
 });
@@ -464,6 +545,178 @@ describe("performSsoExchange", () => {
       "opaque-telegram-claim-token",
     );
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeTruthy();
+  });
+
+  it("rejects an exchange response superseded by logout before authority acquisition", async () => {
+    const token = liveToken();
+    let exchangeStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      exchangeStarted = resolve;
+    });
+    let resolveExchange!: (response: Response) => void;
+    const exchangeResponse = new Promise<Response>((resolve) => {
+      resolveExchange = resolve;
+    });
+    const calls: FetchCall[] = [];
+    const fn = ((input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      exchangeStarted();
+      return exchangeResponse;
+    }) as typeof fetch;
+
+    const exchange = performSsoExchange(CODE, VERIFIER, "cloud.eliza.app", fn);
+    await started;
+    markSsoLoggedOut();
+    await clearStoredStewardToken();
+    resolveExchange(json(200, { ok: true, token }));
+
+    await expect(exchange).resolves.toEqual({
+      ok: false,
+      error: "Session was superseded in another tab",
+    });
+    expect(calls).toHaveLength(1);
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(isSsoLoggedOut()).toBe(true);
+  });
+
+  it("fails closed and clears the bridged token when cookie sync reports session_ended", async () => {
+    const token = liveToken();
+    const { fn } = fetchStub((url) =>
+      url.includes("/sso-bridge/exchange")
+        ? json(200, { ok: true, token })
+        : json(401, { error: "Session ended", code: "session_ended" }),
+    );
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 204 }))) as typeof fetch;
+    try {
+      await expect(
+        performSsoExchange(CODE, VERIFIER, "cloud.eliza.app", fn),
+      ).resolves.toEqual({
+        ok: false,
+        error: "The bridged session has ended",
+      });
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(isSsoLoggedOut()).toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("does not acknowledge a logout marker raised after the exchange began", async () => {
+    const token = liveToken();
+    const { fn } = fetchStub((url) => {
+      if (url.includes("/sso-bridge/exchange")) {
+        return json(200, { ok: true, token });
+      }
+      markSsoLoggedOut();
+      return json(200, { ok: true });
+    });
+
+    await expect(
+      performSsoExchange(CODE, VERIFIER, "cloud.eliza.app", fn),
+    ).resolves.toEqual({ ok: true });
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
+    expect(isSsoLoggedOut()).toBe(true);
+  });
+
+  it("keeps logout authoritative when it queues during cookie sync", async () => {
+    installSerialOriginWideLocks();
+    markSsoLoggedOut();
+    const token = liveToken();
+    let cookieSyncStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      cookieSyncStarted = resolve;
+    });
+    let releaseCookieSync!: () => void;
+    const cookieSync = new Promise<Response>((resolve) => {
+      releaseCookieSync = () => resolve(json(200, { ok: true }));
+    });
+    const fn = ((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/sso-bridge/exchange")) {
+        return Promise.resolve(json(200, { ok: true, token }));
+      }
+      if (url.includes("/steward-session")) {
+        cookieSyncStarted();
+        return cookieSync;
+      }
+      return Promise.resolve(json(200, { success: true }));
+    }) as typeof fetch;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 204 }))) as typeof fetch;
+    try {
+      const exchange = performSsoExchange(
+        CODE,
+        VERIFIER,
+        "cloud.eliza.app",
+        fn,
+      );
+      await started;
+      const logout = signOutFromSsoBridgedHost("cloud.eliza.app", fn);
+      releaseCookieSync();
+
+      await expect(exchange).resolves.toEqual({ ok: true });
+      await expect(logout).resolves.toBeUndefined();
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(isSsoLoggedOut()).toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("preserves a newer logout marker when a legacy-marker exchange overlaps a rejected logout lease", async () => {
+    localStorage.setItem(LOGGED_OUT_MARKER_KEY, "1");
+    const unavailable = new Error("authority unavailable");
+    let lockRequests = 0;
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: {
+        request: (
+          _name: string,
+          _options: unknown,
+          callback: () => unknown,
+        ) => {
+          lockRequests += 1;
+          return lockRequests === 1
+            ? Promise.resolve(callback())
+            : Promise.reject(unavailable);
+        },
+      },
+    });
+
+    const token = liveToken();
+    let cookieSyncStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      cookieSyncStarted = resolve;
+    });
+    let releaseCookieSync!: () => void;
+    const cookieSync = new Promise<Response>((resolve) => {
+      releaseCookieSync = () => resolve(json(200, { ok: true }));
+    });
+    const fn = ((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/sso-bridge/exchange")) {
+        return Promise.resolve(json(200, { ok: true, token }));
+      }
+      cookieSyncStarted();
+      return cookieSync;
+    }) as typeof fetch;
+
+    const exchange = performSsoExchange(CODE, VERIFIER, "cloud.eliza.app", fn);
+    await started;
+    await expect(signOutFromSsoBridgedHost("cloud.eliza.app", fn)).rejects.toBe(
+      unavailable,
+    );
+    const newerMarker = localStorage.getItem(LOGGED_OUT_MARKER_KEY);
+    expect(newerMarker).toMatch(/^v2:[0-9a-f]{64}$/);
+    expect(newerMarker).not.toBe("1");
+
+    releaseCookieSync();
+    await expect(exchange).resolves.toEqual({ ok: true });
+    expect(localStorage.getItem(LOGGED_OUT_MARKER_KEY)).toBe(newerMarker);
+    expect(isSsoLoggedOut()).toBe(true);
   });
 
   it("refuses a malformed verifier without calling out", async () => {
@@ -649,6 +902,34 @@ describe("prepareSsoAccountSwitch", () => {
       );
     } finally {
       globalThis.fetch = realFetch;
+    }
+  });
+});
+
+describe("logout authority acquisition", () => {
+  it("re-stamps the logout marker when the lease rejects before work starts", async () => {
+    const actions = [
+      () => signOutFromSsoBridgedHost("cloud.eliza.app"),
+      () => prepareSsoAccountSwitch("eliza.app"),
+    ];
+
+    for (const action of actions) {
+      clearSsoLoggedOut();
+      const unavailable = new Error("authority unavailable");
+      Object.defineProperty(navigator, "locks", {
+        configurable: true,
+        value: {
+          request: () => {
+            // Model an older exchange acknowledging the pre-existing marker
+            // immediately before this queued acquisition rejects.
+            clearSsoLoggedOut();
+            return Promise.reject(unavailable);
+          },
+        },
+      });
+
+      await expect(action()).rejects.toBe(unavailable);
+      expect(isSsoLoggedOut()).toBe(true);
     }
   });
 });

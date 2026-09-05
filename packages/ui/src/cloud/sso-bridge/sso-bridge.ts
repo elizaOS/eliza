@@ -47,7 +47,11 @@
 
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import {
+  getStewardTabSessionAuthorityCoordinator,
+  isOriginWideStewardSessionAuthorityAvailable,
+  isStewardSessionAuthoritySuperseded,
   readStoredStewardToken,
+  runStewardSessionAuthorityExclusive,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { shellLocalStorage } from "../../surface-realm-channel";
@@ -291,6 +295,12 @@ export function clearSsoBridgeAttempt(): void {
 // ---------------------------------------------------------------------------
 
 const SSO_LOGGED_OUT_KEY = "eliza_sso_logged_out";
+const SSO_LOGGED_OUT_ACK_KEY = "eliza_sso_logged_out_ack";
+const SSO_LOGGED_OUT_MARKER_VERSION = "v2";
+
+function readSsoLoggedOutMarker(): string | null {
+  return localStorage.getItem(SSO_LOGGED_OUT_KEY);
+}
 
 /**
  * Persistent (localStorage) "the user explicitly signed out here" marker. It
@@ -300,7 +310,14 @@ const SSO_LOGGED_OUT_KEY = "eliza_sso_logged_out";
  */
 export function isSsoLoggedOut(): boolean {
   try {
-    return localStorage.getItem(SSO_LOGGED_OUT_KEY) === "1";
+    // Read the acknowledgement first. If another realm publishes a fresh
+    // marker between these two synchronous reads, that newer value cannot be
+    // mistaken for the acknowledgement of an older logout.
+    const acknowledgedMarker = localStorage.getItem(SSO_LOGGED_OUT_ACK_KEY);
+    const marker = readSsoLoggedOutMarker();
+    // Any stored value is a fence. This preserves the historical `"1"`
+    // marker while allowing each new logout to carry a distinct identity.
+    return marker !== null && marker !== acknowledgedMarker;
   } catch {
     // error-policy:J4 unreadable storage reads as "logged out" so the bridge
     // never auto-runs somewhere it cannot honor a logout marker.
@@ -312,16 +329,25 @@ export function markSsoLoggedOut(): void {
   try {
     // Reserved shell key: raw localStorage writes throw SurfaceRealmDeniedError
     // while a view scope is foreground (surface-realm-broker guard, #13452).
-    shellLocalStorage.setItem(SSO_LOGGED_OUT_KEY, "1");
+    shellLocalStorage.setItem(
+      SSO_LOGGED_OUT_KEY,
+      `${SSO_LOGGED_OUT_MARKER_VERSION}:${randomHex32()}`,
+    );
   } catch {
     // error-policy:J6 best-effort marker; isSsoLoggedOut fails closed when
     // storage is unavailable.
   }
 }
 
-export function clearSsoLoggedOut(): void {
+export function clearSsoLoggedOut(expectedMarker?: string): void {
   try {
-    shellLocalStorage.removeItem(SSO_LOGGED_OUT_KEY);
+    const marker = expectedMarker ?? readSsoLoggedOutMarker();
+    if (marker === null) return;
+    // Keep the marker immutable and acknowledge its exact identity in a
+    // separate key. Unlike getItem-then-remove, this stays safe if another
+    // browser realm writes a newer logout between either operation: the new
+    // marker will differ from this acknowledgement in every ordering.
+    shellLocalStorage.setItem(SSO_LOGGED_OUT_ACK_KEY, marker);
   } catch {
     // error-policy:J6 best-effort cleanup; an over-persistent marker only
     // suppresses auto-bridge, never login itself.
@@ -385,6 +411,7 @@ export function shouldAutoBridgeToSso(
   now: number = Date.now(),
 ): boolean {
   if (ssoBridgeRoleForHostname(hostname) !== "exchange") return false;
+  if (!isOriginWideStewardSessionAuthorityAvailable()) return false;
   if (isSsoLoggedOut()) return false;
   return shouldAttemptSsoBridge(now);
 }
@@ -400,6 +427,7 @@ export async function redirectToSsoBridge(
   returnTo: string,
   hostname: string = window.location.hostname,
 ): Promise<boolean> {
+  if (!isOriginWideStewardSessionAuthorityAvailable()) return false;
   const handshake = await createSsoBridgeHandshake();
   if (!handshake) return false;
   const url = buildBridgeMintUrl(
@@ -491,6 +519,18 @@ function tokenLooksHydratable(token: string): boolean {
   return claims.exp * 1000 > Date.now();
 }
 
+async function cookieSyncEndedSession(response: Response): Promise<boolean> {
+  if (response.status !== 401) return false;
+  try {
+    const body = (await response.json()) as { code?: unknown };
+    return body.code === "session_ended";
+  } catch {
+    // error-policy:J3 a malformed error body remains an ordinary rejected
+    // best-effort sync; it can never be promoted to a successful response.
+    return false;
+  }
+}
+
 /**
  * App side: consume the code (presenting the PKCE verifier that never left
  * this origin's sessionStorage) and hydrate this origin's localStorage
@@ -511,6 +551,15 @@ export async function performSsoExchange(
     return { ok: false, error: "Malformed code verifier" };
   }
   try {
+    const authority = getStewardTabSessionAuthorityCoordinator();
+    // The exchange request consumes a one-time code before this origin can take
+    // the lock. Bind its eventual response to the authority visible before the
+    // POST so a logout completed during the request cannot be resurrected.
+    const expected = authority.readSnapshot();
+    // A marker that already existed belongs to this explicit sign-in and may be
+    // acknowledged on success. A marker raised after this point belongs to a
+    // concurrent logout and must survive until that logout wins the lock.
+    const acknowledgedLoggedOutMarker = readSsoLoggedOutMarker();
     const res = await fetchFn(`${base}/api/auth/sso-bridge/exchange`, {
       method: "POST",
       credentials: "include",
@@ -528,34 +577,68 @@ export async function performSsoExchange(
       return { ok: false, error: "Exchange returned no usable session" };
     }
 
-    await writeStoredStewardToken(token);
-
-    // Same call the login flow makes: sets the HttpOnly steward cookies + the
-    // authed marker for this environment. It stays best-effort for an ordinary
-    // bridge because AuthTokenSync retries. Account-link authority is never
-    // discovered here: a pending Telegram claim remains inert until the user
-    // returns to /get-started and confirms the preview explicitly.
     try {
-      await fetchFn(configuredSessionEndpoint(), {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+      return await authority.runExclusive({
+        kind: "callback-restore",
+        expectedToken: expected.token,
+        expectedGeneration: expected.generation,
+        work: async (ctx) => {
+          ctx.revalidate();
+          await writeStoredStewardToken(token, ctx);
+          ctx.noteToken(token);
+          ctx.revalidate();
+          let cookieSyncResponse: Response | null = null;
+          try {
+            cookieSyncResponse = await fetchFn(configuredSessionEndpoint(), {
+              method: "POST",
+              credentials: "include",
+              signal: ctx.signal,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token }),
+            });
+          } catch {
+            // error-policy:J6 best-effort cookie sync; the localStorage session is
+            // established and AuthTokenSync re-syncs on its own cadence.
+          }
+          ctx.revalidate();
+          if (
+            cookieSyncResponse &&
+            (await cookieSyncEndedSession(cookieSyncResponse))
+          ) {
+            ctx.revalidate();
+            // The server's durable logout marker rejected this exact token.
+            // Teardown must reuse the held lease and preserve the local marker
+            // so the paired origin cannot immediately bridge it back again.
+            markSsoLoggedOut();
+            await clearStaleStewardSession(ctx);
+            ctx.revalidate();
+            markSsoLoggedOut();
+            return {
+              ok: false,
+              error: "The bridged session has ended",
+            } as const;
+          }
+
+          clearSsoBridgeAttempt();
+          if (acknowledgedLoggedOutMarker !== null) {
+            clearSsoLoggedOut(acknowledgedLoggedOutMarker);
+          }
+          ctx.revalidate();
+          try {
+            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          } catch {
+            // error-policy:J6 best-effort notification; storage listeners re-read
+            // on their own triggers.
+          }
+          return { ok: true } as const;
+        },
       });
-    } catch {
-      // error-policy:J6 best-effort cookie sync; the localStorage session is
-      // established and AuthTokenSync re-syncs on its own cadence.
+    } catch (error) {
+      if (isStewardSessionAuthoritySuperseded(error)) {
+        return { ok: false, error: "Session was superseded in another tab" };
+      }
+      throw error;
     }
-
-    clearSsoBridgeAttempt();
-    clearSsoLoggedOut();
-    try {
-      window.dispatchEvent(new CustomEvent("steward-token-sync"));
-    } catch {
-      // error-policy:J6 best-effort notification; storage listeners re-read
-      // on their own triggers.
-    }
-    return { ok: true };
   } catch (err) {
     // error-policy:J1 transport failure becomes the typed failure result the
     // bridge route turns into its fall-back-to-login redirect.
@@ -618,31 +701,62 @@ export async function signOutFromSsoBridgedHost(
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
-  const stewardToken = readStoredStewardToken();
   // Invalidate before even issuing the server logout request: fetch adapters
   // may have synchronous hooks, and no re-entrant token publication may reuse
   // proof from the authority epoch being ended.
   invalidateStewardServerCookieSyncMarker();
   markSsoLoggedOut();
   const base = apiBaseForHostname(hostname);
-  const serverLogout = base
-    ? fetchFn(`${base}/api/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(stewardToken ? { Authorization: `Bearer ${stewardToken}` } : {}),
-        },
-      })
-    : // error-policy:J6 best-effort server teardown — the local marker is
-      // already set and the local scrub below always runs.
-      Promise.resolve(undefined);
-  await clearStaleStewardSession();
-  const response = await serverLogout;
-  if (response && !response.ok) {
-    throw new Error(
-      `Eliza Cloud could not end the browser session (${response.status}).`,
-    );
+  try {
+    await runStewardSessionAuthorityExclusive({
+      kind: "logout",
+      work: async (ctx) => {
+        ctx.revalidate();
+        // Read Authorization only after this logout owns the lease. A queued
+        // logout must never send or clear the account that replaced it.
+        const stewardToken = readStoredStewardToken();
+        invalidateStewardServerCookieSyncMarker();
+        markSsoLoggedOut();
+        const serverLogout = base
+          ? fetchFn(`${base}/api/auth/logout`, {
+              method: "POST",
+              credentials: "include",
+              signal: ctx.signal,
+              headers: {
+                "Content-Type": "application/json",
+                ...(stewardToken
+                  ? { Authorization: `Bearer ${stewardToken}` }
+                  : {}),
+              },
+            })
+          : // error-policy:J6 best-effort server teardown — the local marker is
+            // already set and the local scrub below always runs.
+            Promise.resolve(undefined);
+        try {
+          const [clearResult, logoutResult] = await Promise.allSettled([
+            clearStaleStewardSession(ctx),
+            serverLogout,
+          ]);
+          if (clearResult.status === "rejected") throw clearResult.reason;
+          if (logoutResult.status === "rejected") throw logoutResult.reason;
+          const response = logoutResult.value;
+          ctx.revalidate();
+          if (response && !response.ok) {
+            throw new Error(
+              `Eliza Cloud could not end the browser session (${response.status}).`,
+            );
+          }
+        } finally {
+          // An exchange that held the lease when sign-out began may acknowledge
+          // the synchronous fence. Re-stamp under the winning logout lease.
+          markSsoLoggedOut();
+        }
+      },
+    });
+  } finally {
+    // If acquisition itself times out or is unavailable, `work` never runs.
+    // Preserve the immediate logout fence even on that fail-closed path.
+    markSsoLoggedOut();
   }
 }
 
@@ -656,7 +770,6 @@ export async function prepareSsoAccountSwitch(
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
-  const stewardToken = readStoredStewardToken();
   invalidateStewardServerCookieSyncMarker();
   markSsoLoggedOut();
   const base = apiBaseForHostname(hostname);
@@ -665,19 +778,45 @@ export async function prepareSsoAccountSwitch(
       "Eliza Cloud account switching is unavailable on this host.",
     );
   }
-  const serverLogout = fetchFn(`${base}/api/auth/logout`, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(stewardToken ? { Authorization: `Bearer ${stewardToken}` } : {}),
-    },
-  });
-  await clearStaleStewardSession();
-  const response = await serverLogout;
-  if (!response.ok) {
-    throw new Error(
-      `Eliza Cloud could not end the previous browser session (${response.status}).`,
-    );
+  try {
+    await runStewardSessionAuthorityExclusive({
+      kind: "logout",
+      work: async (ctx) => {
+        ctx.revalidate();
+        const stewardToken = readStoredStewardToken();
+        invalidateStewardServerCookieSyncMarker();
+        markSsoLoggedOut();
+        const serverLogout = fetchFn(`${base}/api/auth/logout`, {
+          method: "POST",
+          credentials: "include",
+          signal: ctx.signal,
+          headers: {
+            "Content-Type": "application/json",
+            ...(stewardToken
+              ? { Authorization: `Bearer ${stewardToken}` }
+              : {}),
+          },
+        });
+        try {
+          const [clearResult, logoutResult] = await Promise.allSettled([
+            clearStaleStewardSession(ctx),
+            serverLogout,
+          ]);
+          if (clearResult.status === "rejected") throw clearResult.reason;
+          if (logoutResult.status === "rejected") throw logoutResult.reason;
+          const response = logoutResult.value;
+          ctx.revalidate();
+          if (!response.ok) {
+            throw new Error(
+              `Eliza Cloud could not end the previous browser session (${response.status}).`,
+            );
+          }
+        } finally {
+          markSsoLoggedOut();
+        }
+      },
+    });
+  } finally {
+    markSsoLoggedOut();
   }
 }

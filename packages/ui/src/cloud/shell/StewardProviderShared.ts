@@ -5,8 +5,10 @@
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
+  runStewardSessionAuthorityExclusive,
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
+  type StewardSessionAuthorityWorkContext,
   StewardTokenRemovalError,
 } from "@elizaos/shared/steward-session-client";
 import { createContext } from "react";
@@ -127,15 +129,26 @@ export function clearServerStewardSessionCookies(): void {
   // Invalidate before issuing any best-effort DELETE: a rejected request must
   // never leave a proof that can suppress a later session-establishing POST.
   invalidateStewardServerCookieSyncMarker();
-  for (const url of stewardSessionClearUrls()) {
-    // error-policy:J6 best-effort sign-out cookie clear across session hosts;
-    // the local token is already cleared and an expired cookie self-heals.
-    fetch(url, {
-      method: "DELETE",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-    }).catch(() => undefined);
-  }
+  void runStewardSessionAuthorityExclusive({
+    kind: "cookie-delete",
+    requireTokenAbsent: true,
+    work: async (ctx) => {
+      ctx.revalidate();
+      await Promise.all(
+        stewardSessionClearUrls().map((url) =>
+          // error-policy:J6 best-effort sign-out cookie clear across session hosts;
+          // the local token is already cleared and an expired cookie self-heals.
+          fetch(url, {
+            method: "DELETE",
+            credentials: "include",
+            signal: ctx.signal,
+            headers: { "Content-Type": "application/json" },
+          }).catch(() => undefined),
+        ),
+      );
+      ctx.revalidate();
+    },
+  }).catch(() => undefined);
 }
 
 export function readStoredToken(): string | null {
@@ -167,7 +180,9 @@ export function tokenSecsRemaining(token: string): number | null {
   return payload.exp - Date.now() / 1000;
 }
 
-export async function clearStaleStewardSession(): Promise<void> {
+export async function clearStaleStewardSession(
+  authority?: Pick<StewardSessionAuthorityWorkContext, "runExclusive">,
+): Promise<void> {
   if (typeof window === "undefined") return;
   // This is deliberately before protected-storage removal. That operation can
   // reject and abort the rest of teardown, but an attempted session clear must
@@ -175,7 +190,11 @@ export async function clearStaleStewardSession(): Promise<void> {
   invalidateStewardServerCookieSyncMarker();
   let storedTokenClearError: unknown;
   try {
-    await clearStoredStewardToken();
+    // Callers already holding the origin-wide authority lease must lend that
+    // lease to the nested logout transaction. Re-entering the same Web Lock
+    // here would wait on the outer callback while the outer callback waits on
+    // this clear, producing a deterministic self-deadlock.
+    await clearStoredStewardToken(authority);
   } catch (error) {
     if (error instanceof StewardTokenRemovalError) throw error;
     // error-policy:J2 canonical invalidation may already have succeeded before

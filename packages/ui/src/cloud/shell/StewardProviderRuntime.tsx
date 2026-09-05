@@ -10,7 +10,11 @@
  * (honoring `exp`) running while a cloud surface is mounted.
  */
 
-import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  isStewardSessionAuthoritySuperseded,
+  runStewardSessionAuthorityExclusive,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
 import { StewardClient } from "@stwd/sdk";
 import {
@@ -127,95 +131,104 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
       // fire only when /get-started attaches the continuation after rendering
       // its identity preview and receiving explicit confirmation. Login,
       // nonce exchange, and SSO establish authentication only.
-      fetch(sessionEndpoint, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      })
-        .then(async (res) => {
-          if (res.ok) {
-            dispatchStewardSessionChange("present");
-            window.dispatchEvent(
-              new CustomEvent("steward-token-sync", {
-                detail: { token, userId: user?.id },
-              }),
-            );
-            return;
-          }
+      void runStewardSessionAuthorityExclusive({
+        kind: "passive-mirror",
+        expectedToken: token,
+        work: async (ctx) => {
+          ctx.revalidate();
+          const res = await fetch(sessionEndpoint, {
+            method: "POST",
+            credentials: "include",
+            signal: ctx.signal,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token }),
+          });
+          ctx.revalidate();
+          await (async () => {
+            if (res.ok) {
+              dispatchStewardSessionChange("present");
+              window.dispatchEvent(
+                new CustomEvent("steward-token-sync", {
+                  detail: { token, userId: user?.id },
+                }),
+              );
+              return;
+            }
 
-          const body = await parseStewardResponseBody(res);
-          if (body?.code === "server_secret_missing") {
+            const body = await parseStewardResponseBody(res);
+            if (body?.code === "server_secret_missing") {
+              reportRendererDiagnostic({
+                scope: "steward.server-secret-missing",
+                error: new Error("Steward server secret is not configured"),
+                severity: "warning",
+              });
+              return;
+            }
+            if (res.status !== 401) {
+              reportRendererDiagnostic({
+                scope: "steward.session-token-rejected",
+                error: new Error("Server did not accept the stored token"),
+                severity: "warning",
+                context: { status: res.status, code: body?.code },
+              });
+              return;
+            }
+            if (body?.code === "session_ended") {
+              // The user explicitly logged out (possibly on the PAIRED origin —
+              // the cross-host SSO logout marker outranks this origin's surviving
+              // token). Unlike a bare 401 this code is only ever emitted on
+              // purpose, so it bypasses the stale-proxy guard below: clear the
+              // stored session instead of retrying it for the rest of its
+              // lifetime. This is what propagates a sign-out across the host
+              // pair without a shared cookie.
+              reportRendererDiagnostic({
+                scope: "steward.session-ended",
+                error: new Error("Session was ended by an explicit logout"),
+                severity: "warning",
+              });
+              lastSyncedToken.current = null;
+              wasAuthenticated.current = false;
+              await clearStaleStewardSession(ctx);
+              return;
+            }
+            // Same stale-proxy guard as the refresh path: a still-valid token that
+            // gets a 401 from the session-sync endpoint is far more likely a
+            // misproxied control plane than a real revocation. Only clear once the
+            // token is actually expired, so a stale staging proxy can't loop us.
+            const current = readStoredToken();
+            if (current && !tokenIsExpired(current)) {
+              // Reset the dedupe marker so the next sync trigger (visibility,
+              // storage, re-render) retries the cookie POST for this same token
+              // once the endpoint recovers — otherwise the session would ride
+              // out its lifetime with no HttpOnly cookie ever established.
+              lastSyncedToken.current = null;
+              reportRendererDiagnostic({
+                scope: "steward.session-sync-stale-proxy",
+                error: new Error(
+                  "Session sync returned 401 for a still-valid stored token",
+                ),
+                severity: "warning",
+              });
+              return;
+            }
             reportRendererDiagnostic({
-              scope: "steward.server-secret-missing",
-              error: new Error("Steward server secret is not configured"),
-              severity: "warning",
-            });
-            return;
-          }
-          if (res.status !== 401) {
-            reportRendererDiagnostic({
-              scope: "steward.session-token-rejected",
-              error: new Error("Server did not accept the stored token"),
-              severity: "warning",
-              context: { status: res.status, code: body?.code },
-            });
-            return;
-          }
-          if (body?.code === "session_ended") {
-            // The user explicitly logged out (possibly on the PAIRED origin —
-            // the cross-host SSO logout marker outranks this origin's surviving
-            // token). Unlike a bare 401 this code is only ever emitted on
-            // purpose, so it bypasses the stale-proxy guard below: clear the
-            // stored session instead of retrying it for the rest of its
-            // lifetime. This is what propagates a sign-out across the host
-            // pair without a shared cookie.
-            reportRendererDiagnostic({
-              scope: "steward.session-ended",
-              error: new Error("Session was ended by an explicit logout"),
+              scope: "steward.session-token-cleared",
+              error: new Error("Stored token was rejected by the server"),
               severity: "warning",
             });
             lastSyncedToken.current = null;
             wasAuthenticated.current = false;
-            await clearStaleStewardSession();
-            return;
-          }
-          // Same stale-proxy guard as the refresh path: a still-valid token that
-          // gets a 401 from the session-sync endpoint is far more likely a
-          // misproxied control plane than a real revocation. Only clear once the
-          // token is actually expired, so a stale staging proxy can't loop us.
-          const current = readStoredToken();
-          if (current && !tokenIsExpired(current)) {
-            // Reset the dedupe marker so the next sync trigger (visibility,
-            // storage, re-render) retries the cookie POST for this same token
-            // once the endpoint recovers — otherwise the session would ride
-            // out its lifetime with no HttpOnly cookie ever established.
-            lastSyncedToken.current = null;
-            reportRendererDiagnostic({
-              scope: "steward.session-sync-stale-proxy",
-              error: new Error(
-                "Session sync returned 401 for a still-valid stored token",
-              ),
-              severity: "warning",
-            });
-            return;
-          }
-          reportRendererDiagnostic({
-            scope: "steward.session-token-cleared",
-            error: new Error("Stored token was rejected by the server"),
-            severity: "warning",
-          });
-          lastSyncedToken.current = null;
-          wasAuthenticated.current = false;
-          await clearStaleStewardSession();
-        })
-        .catch((error) => {
-          reportRendererDiagnostic({
-            scope: "steward.session-cookie-sync",
-            error,
-            severity: "warning",
-          });
+            await clearStaleStewardSession(ctx);
+          })();
+        },
+      }).catch((error) => {
+        if (isStewardSessionAuthoritySuperseded(error)) return;
+        reportRendererDiagnostic({
+          scope: "steward.session-cookie-sync",
+          error,
+          severity: "warning",
         });
+      });
     };
 
     // Single-flight: never run two refreshes at once. The refresh-token rotation
@@ -234,56 +247,67 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
 
       refreshInFlight = (async () => {
         try {
-          const res = await fetch(configuredRefreshEndpoint(), {
-            method: "POST",
-            credentials: "include",
-          });
-          if (res.ok) {
-            const body = await parseStewardResponseBody(res);
-            if (body?.token) {
-              await writeStoredStewardToken(body.token);
-              lastSyncedToken.current = body.token;
-              wasAuthenticated.current = true;
-            }
-            try {
-              window.dispatchEvent(new CustomEvent("steward-token-sync"));
-            } catch (error) {
-              // error-policy:J7 token persistence remains authoritative when
-              // an optional renderer notification cannot be delivered.
-              reportRendererDiagnostic({
-                scope: "steward.token-sync-event",
-                error,
-                severity: "warning",
+          await runStewardSessionAuthorityExclusive({
+            kind: "refresh",
+            expectedToken: token,
+            work: async (ctx) => {
+              ctx.revalidate();
+              const res = await fetch(configuredRefreshEndpoint(), {
+                method: "POST",
+                credentials: "include",
+                signal: ctx.signal,
               });
-            }
-            return;
-          }
-          if (res.status === 401) {
-            // A refresh 401 normally means the session was revoked → clear so it
-            // self-heals. But a STALE co-hosted proxy (staging's FRONTEND_ALIAS
-            // pointing at the wrong control plane) 401s a still-VALID session,
-            // and wiping it here kicks the user back to /login on every refresh
-            // tick — the sign-in loop. So only clear when the stored token is
-            // actually expired (keeping it is useless then); a still-valid token
-            // rides until real expiry and any genuine revocation self-heals then.
-            const stored = readStoredToken();
-            if (!stored || tokenIsExpired(stored)) {
-              if (wasAuthenticated.current && lastSyncedToken.current) {
-                lastSyncedToken.current = null;
-                wasAuthenticated.current = false;
+              if (res.ok) {
+                const body = await parseStewardResponseBody(res);
+                ctx.revalidate();
+                if (body?.token) {
+                  await writeStoredStewardToken(body.token, ctx);
+                  ctx.noteToken(body.token);
+                  lastSyncedToken.current = body.token;
+                  wasAuthenticated.current = true;
+                }
+                try {
+                  window.dispatchEvent(new CustomEvent("steward-token-sync"));
+                } catch (error) {
+                  // error-policy:J7 token persistence remains authoritative when
+                  // an optional renderer notification cannot be delivered.
+                  reportRendererDiagnostic({
+                    scope: "steward.token-sync-event",
+                    error,
+                    severity: "warning",
+                  });
+                }
+                return;
               }
-              await clearStaleStewardSession();
-            } else {
-              reportRendererDiagnostic({
-                scope: "steward.refresh-stale-proxy",
-                error: new Error(
-                  "Refresh returned 401 for a still-valid stored token",
-                ),
-                severity: "warning",
-              });
-            }
-          }
+              if (res.status === 401) {
+                // A refresh 401 normally means the session was revoked → clear so it
+                // self-heals. But a STALE co-hosted proxy (staging's FRONTEND_ALIAS
+                // pointing at the wrong control plane) 401s a still-VALID session,
+                // and wiping it here kicks the user back to /login on every refresh
+                // tick — the sign-in loop. So only clear when the stored token is
+                // actually expired (keeping it is useless then); a still-valid token
+                // rides until real expiry and any genuine revocation self-heals then.
+                const stored = readStoredToken();
+                if (!stored || tokenIsExpired(stored)) {
+                  if (wasAuthenticated.current && lastSyncedToken.current) {
+                    lastSyncedToken.current = null;
+                    wasAuthenticated.current = false;
+                  }
+                  await clearStaleStewardSession(ctx);
+                } else {
+                  reportRendererDiagnostic({
+                    scope: "steward.refresh-stale-proxy",
+                    error: new Error(
+                      "Refresh returned 401 for a still-valid stored token",
+                    ),
+                    severity: "warning",
+                  });
+                }
+              }
+            },
+          });
         } catch (error) {
+          if (isStewardSessionAuthoritySuperseded(error)) return;
           // error-policy:J4 a transient refresh failure leaves the still-valid
           // session visible while surfacing the degraded refresh path.
           reportRendererDiagnostic({

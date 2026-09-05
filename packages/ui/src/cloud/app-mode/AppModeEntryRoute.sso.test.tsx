@@ -102,6 +102,17 @@ function renderEntry(initialPath = "/"): void {
 }
 
 beforeEach(() => {
+  Object.defineProperty(globalThis, "isSecureContext", {
+    configurable: true,
+    value: true,
+  });
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: {
+      request: (_name: string, _options: unknown, callback: () => unknown) =>
+        Promise.resolve(callback()),
+    },
+  });
   stubNetwork();
 });
 

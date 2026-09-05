@@ -13,6 +13,12 @@
  */
 
 import { classifyElizaHostname } from "../elizacloud/domain-contract.js";
+import {
+  isStewardSessionAuthoritySuperseded,
+  runStewardSessionAuthorityExclusive,
+  StewardSessionAuthorityError,
+  type StewardSessionAuthorityWorkContext,
+} from "./tab-session-authority.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -421,17 +427,30 @@ async function persistStoredStewardToken(
  * host boundary succeeds. A protected-store rejection never becomes a
  * healthy-looking in-memory login that disappears on relaunch.
  */
-export async function writeStoredStewardToken(token: string): Promise<void> {
+export async function writeStoredStewardToken(
+  token: string,
+  authority?: Pick<StewardSessionAuthorityWorkContext, "runExclusive">,
+): Promise<void> {
   if (typeof window === "undefined") return;
-  await serializeStewardTokenMutation(async () => {
-    const requiredScope = configuredLoopbackStewardScope();
-    const wasCurrent =
-      window.localStorage.getItem(STEWARD_TOKEN_KEY) === token &&
-      (!requiredScope ||
-        window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY) === requiredScope);
-    if (!stewardTokenPersistence && wasCurrent) return;
-    await persistStoredStewardToken(token, requiredScope);
-    if (!wasCurrent) dispatchStewardSessionChange("present");
+  const run = authority?.runExclusive ?? runStewardSessionAuthorityExclusive;
+  await run({
+    kind: "token-write",
+    work: async (ctx) => {
+      ctx.revalidate();
+      await serializeStewardTokenMutation(async () => {
+        ctx.revalidate();
+        const requiredScope = configuredLoopbackStewardScope();
+        const wasCurrent =
+          window.localStorage.getItem(STEWARD_TOKEN_KEY) === token &&
+          (!requiredScope ||
+            window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY) ===
+              requiredScope);
+        if (!stewardTokenPersistence && wasCurrent) return;
+        await persistStoredStewardToken(token, requiredScope);
+        ctx.revalidate();
+        if (!wasCurrent) dispatchStewardSessionChange("present");
+      });
+    },
   });
 }
 
@@ -445,13 +464,29 @@ export async function replaceStoredStewardTokenIfCurrent(
   token: string,
 ): Promise<boolean> {
   if (typeof window === "undefined") return false;
-  return serializeStewardTokenMutation(async () => {
-    const current = readStoredStewardToken();
-    if (current !== expectedToken) return false;
-    await persistStoredStewardToken(token, configuredLoopbackStewardScope());
-    if (current !== token) dispatchStewardSessionChange("present");
-    return true;
-  });
+  try {
+    return await runStewardSessionAuthorityExclusive({
+      kind: "refresh",
+      work: async (ctx) => {
+        ctx.revalidate();
+        return serializeStewardTokenMutation(async () => {
+          ctx.revalidate();
+          const current = readStoredStewardToken();
+          if (current !== expectedToken) return false;
+          await persistStoredStewardToken(
+            token,
+            configuredLoopbackStewardScope(),
+          );
+          ctx.revalidate();
+          if (current !== token) dispatchStewardSessionChange("present");
+          return true;
+        });
+      },
+    });
+  } catch (error) {
+    if (isStewardSessionAuthoritySuperseded(error)) return false;
+    throw error;
+  }
 }
 
 /**
@@ -459,23 +494,35 @@ export async function replaceStoredStewardTokenIfCurrent(
  * Once the canonical removal succeeds, invalidation is published even if the
  * legacy cleanup fails; either storage failure remains observable to callers.
  */
-export async function clearStoredStewardToken(): Promise<void> {
+export async function clearStoredStewardToken(
+  authority?: Pick<StewardSessionAuthorityWorkContext, "runExclusive">,
+): Promise<void> {
   if (typeof window === "undefined") return;
-  await serializeStewardTokenMutation(async () => {
-    try {
-      if (stewardTokenRemoval) {
-        await stewardTokenRemoval();
-      } else {
-        window.localStorage.removeItem(STEWARD_TOKEN_KEY);
-      }
-    } catch (error) {
-      // error-policy:J2 callers must distinguish canonical removal failure from
-      // obsolete refresh-key cleanup so they never publish a false logout.
-      throw new StewardTokenRemovalError(error);
-    }
-    dispatchStewardSessionChange("cleared");
-    window.localStorage.removeItem(STEWARD_TOKEN_SCOPE_KEY);
-    window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
+  const run = authority?.runExclusive ?? runStewardSessionAuthorityExclusive;
+  await run({
+    kind: "logout",
+    work: async (ctx) => {
+      ctx.revalidate();
+      ctx.advanceLogoutGeneration();
+      await serializeStewardTokenMutation(async () => {
+        ctx.revalidate();
+        try {
+          if (stewardTokenRemoval) {
+            await stewardTokenRemoval();
+          } else {
+            window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+          }
+        } catch (error) {
+          // error-policy:J2 callers must distinguish canonical removal failure from
+          // obsolete refresh-key cleanup so they never publish a false logout.
+          throw new StewardTokenRemovalError(error);
+        }
+        ctx.revalidate();
+        dispatchStewardSessionChange("cleared");
+        window.localStorage.removeItem(STEWARD_TOKEN_SCOPE_KEY);
+        window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
+      });
+    },
   });
 }
 
@@ -558,24 +605,38 @@ export async function syncStewardSession(
     token,
     ...(refreshToken ? { refreshToken } : {}),
   };
-  const response = await f(endpoint, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      [STEWARD_CSRF_HEADER]: STEWARD_CSRF_HEADER_VALUE,
+  return runStewardSessionAuthorityExclusive({
+    kind: "session-sync",
+    work: async (ctx) => {
+      const current = ctx.revalidate();
+      if (current.token && current.token !== token) {
+        throw new StewardSessionAuthorityError(
+          "Steward session sync was superseded by a different token.",
+          "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+        );
+      }
+      const response = await f(endpoint, {
+        method: "POST",
+        credentials: "include",
+        signal: ctx.signal,
+        headers: {
+          "Content-Type": "application/json",
+          [STEWARD_CSRF_HEADER]: STEWARD_CSRF_HEADER_VALUE,
+        },
+        body: JSON.stringify(body),
+      });
+      ctx.revalidate();
+      if (!response.ok) {
+        const errBody = await readErrorBody(response);
+        throw new StewardSessionError(
+          errBody?.error || "Could not establish an Eliza Cloud session.",
+          response.status,
+          errBody?.code ?? null,
+        );
+      }
+      return (await response.json()) as StewardSessionResponse;
     },
-    body: JSON.stringify(body),
   });
-  if (!response.ok) {
-    const errBody = await readErrorBody(response);
-    throw new StewardSessionError(
-      errBody?.error || "Could not establish an Eliza Cloud session.",
-      response.status,
-      errBody?.code ?? null,
-    );
-  }
-  return (await response.json()) as StewardSessionResponse;
 }
 
 // ---------------------------------------------------------------------------
@@ -640,31 +701,34 @@ export async function exchangeStewardCode(
     ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
     ...(opts.codeVerifier ? { codeVerifier: opts.codeVerifier } : {}),
   };
-  const response = await f(endpoint, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      [STEWARD_CSRF_HEADER]: STEWARD_CSRF_HEADER_VALUE,
+  return runStewardSessionAuthorityExclusive({
+    kind: "nonce-exchange",
+    work: async (ctx) => {
+      ctx.revalidate();
+      const response = await f(endpoint, {
+        method: "POST",
+        credentials: "include",
+        signal: ctx.signal,
+        headers: {
+          "Content-Type": "application/json",
+          [STEWARD_CSRF_HEADER]: STEWARD_CSRF_HEADER_VALUE,
+        },
+        body: JSON.stringify(body),
+      });
+      ctx.revalidate();
+      if (!response.ok) {
+        const errBody = await readErrorBody(response);
+        throw new StewardSessionError(
+          errBody?.error || "Could not complete Eliza Cloud sign-in.",
+          response.status,
+          errBody?.code ?? null,
+        );
+      }
+      return (await response.json()) as StewardNonceExchangeResponse;
     },
-    body: JSON.stringify(body),
   });
-  if (!response.ok) {
-    const errBody = await readErrorBody(response);
-    throw new StewardSessionError(
-      errBody?.error || "Could not complete Eliza Cloud sign-in.",
-      response.status,
-      errBody?.code ?? null,
-    );
-  }
-  return (await response.json()) as StewardNonceExchangeResponse;
 }
 
-/**
- * Best-effort DELETE of every configured session endpoint. Failures are
- * swallowed — the caller has already wiped localStorage and there's nothing
- * useful to do about a cookie that won't clear.
- */
 export {
   buildStewardOAuthAuthorizeUrl,
   consumeStewardPkceVerifier,
@@ -677,18 +741,47 @@ export {
   type StewardPkcePair,
   storeStewardPkceVerifier,
 } from "./steward-oauth-pkce.js";
+/**
+ * Best-effort DELETE of every configured session endpoint. Failures are
+ * swallowed — the caller has already wiped localStorage and there's nothing
+ * useful to do about a cookie that won't clear.
+ */
+export {
+  getStewardTabSessionAuthorityCoordinator,
+  isOriginWideStewardSessionAuthorityAvailable,
+  isStewardSessionAuthoritySuperseded,
+  resetStewardTabSessionAuthorityCoordinatorForTests,
+  runStewardSessionAuthorityExclusive,
+  STEWARD_LOGOUT_GENERATION_KEY,
+  StewardSessionAuthorityError,
+  type StewardSessionAuthoritySnapshot,
+  type StewardSessionAuthorityWorkContext,
+} from "./tab-session-authority.js";
 
 export function clearStewardSession(opts: ClearOpts = {}): void {
   const endpoints = opts.endpoints ?? [STEWARD_SESSION_ENDPOINT];
   const f = opts.fetchImpl ?? (typeof fetch !== "undefined" ? fetch : null);
   if (!f) return;
-  for (const url of endpoints) {
-    f(url, {
-      method: "DELETE",
-      credentials: "include",
-      headers: { [STEWARD_CSRF_HEADER]: STEWARD_CSRF_HEADER_VALUE },
-    }).catch(() => {
-      // ignore — see jsdoc
-    });
-  }
+  void runStewardSessionAuthorityExclusive({
+    kind: "cookie-delete",
+    requireTokenAbsent: true,
+    work: async (ctx) => {
+      ctx.revalidate();
+      await Promise.all(
+        endpoints.map((url) =>
+          f(url, {
+            method: "DELETE",
+            credentials: "include",
+            signal: ctx.signal,
+            headers: { [STEWARD_CSRF_HEADER]: STEWARD_CSRF_HEADER_VALUE },
+          }).catch(() => {
+            // ignore — see jsdoc
+          }),
+        ),
+      );
+      ctx.revalidate();
+    },
+  }).catch(() => {
+    // error-policy:J6 best-effort cookie DELETE; a superseded login must win.
+  });
 }

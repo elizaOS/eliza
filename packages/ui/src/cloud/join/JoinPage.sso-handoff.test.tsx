@@ -46,6 +46,17 @@ let replacedUrls: string[];
 let assignedUrls: string[];
 
 beforeEach(() => {
+  Object.defineProperty(globalThis, "isSecureContext", {
+    configurable: true,
+    value: true,
+  });
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: {
+      request: (_name: string, _options: unknown, callback: () => unknown) =>
+        Promise.resolve(callback()),
+    },
+  });
   authenticatedRef.current = false;
   runJoinFlowMock.mockReset();
   replacedUrls = [];
