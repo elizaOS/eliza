@@ -4285,6 +4285,9 @@ function normalizeToolCallName(value: unknown): string {
 	const raw = String(value ?? "").trim();
 	if (!raw) return "";
 	const withoutPrefix = raw.replace(/^(?:functions?|tools?)\./i, "");
+	// This is a reply field, not a tool; never recover it as an invocation
+	// when a model serializes a no-tools response as an action envelope.
+	if (withoutPrefix.trim() === "messageToUser") return "";
 	return withoutPrefix.trim();
 }
 

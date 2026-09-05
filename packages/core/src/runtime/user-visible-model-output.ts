@@ -261,6 +261,15 @@ function classifyControlRecord(
 	record: Record<string, unknown>,
 ): { envelope: UserVisibleControlEnvelope; malformed: boolean } | undefined {
 	const action = typeof record.action === "string" ? record.action.trim() : "";
+	// A reply field is not a callable action. Qwen emitted this shape during
+	// no-tools recovery; keep it in the protocol channel, not visible prose.
+	if (action === "messageToUser") {
+		return {
+			envelope: "planner",
+			malformed:
+				!isPlainObject(record.args) || typeof record.args.message !== "string",
+		};
+	}
 	if (TOOL_ACTION_NAME.test(action)) {
 		return {
 			envelope: "action",
@@ -352,6 +361,7 @@ function classifyMalformedControl(
 ): UserVisibleControlEnvelope | undefined {
 	if (!text.startsWith("{")) return undefined;
 	const candidate = text;
+	if (/"action"\s*:\s*"messageToUser"/.test(candidate)) return "planner";
 	const action = candidate.match(
 		/"action"\s*:\s*"((?:functions\.)?[A-Z][A-Z0-9_.:-]*)"/,
 	)?.[1];
