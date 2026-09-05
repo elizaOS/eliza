@@ -135,3 +135,13 @@ Build and publish:
 bun run build
 npm publish --access public
 ```
+
+## Parsed responses
+
+`request` and typed endpoint methods accept `application/json` and application
+media types ending in `+json`, preserving objects, arrays and JSON primitives.
+Successful HTML/text, malformed JSON and unexpectedly empty JSON responses
+throw `CloudApiError`; they never become an invented `{ success: true }` DTO.
+HEAD and HTTP 204/205 responses resolve to `undefined`, as these protocols have
+no response body. Use `requestRaw` (or a generated `Raw` method) for text,
+binary, streaming, or status-sensitive responses.

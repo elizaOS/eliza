@@ -240,11 +240,13 @@ describe("error handling", () => {
     expect(err.message).toContain("503");
   });
 
-  it("returns {success: true} for non-JSON 200 response", async () => {
+  it("rejects non-JSON 200 responses instead of inventing a DTO", async () => {
     setTextResponse(200, "OK");
     const client = new CloudApiClient(baseUrl);
-    const result = await client.get<{ success: boolean }>("/health");
-    expect(result.success).toBe(true);
+    await expect(client.get("/health")).rejects.toMatchObject({
+      name: "CloudApiError",
+      errorBody: { code: "unexpected_response_content_type" },
+    });
   });
 
   it("throws CloudApiError for 403 quota exceeded", async () => {
