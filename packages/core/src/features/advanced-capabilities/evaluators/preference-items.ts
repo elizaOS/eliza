@@ -179,6 +179,7 @@ async function preparePreferences(
 			tableName: "facts",
 			roomId: message.roomId,
 			entityId: message.entityId,
+			authorEntityIds: [message.entityId],
 			unique: false,
 		}),
 	]);
@@ -462,6 +463,7 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 								tableName: "facts",
 								roomId: message.roomId,
 								entityId: message.entityId,
+								authorEntityIds: [message.entityId],
 								unique: false,
 							})
 						).filter(isDurablePreferenceFact)

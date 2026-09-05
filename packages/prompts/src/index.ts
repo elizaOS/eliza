@@ -742,7 +742,7 @@ Never simple when message:
 - searches/browses/current facts; runs shell; inspects files/logs/repos/services/disk; builds/deploys apps; creates PRs; spawns coding/task agents; sends messages; schedules tasks
 - benefits from tool call even if plausible answer exists
 - owner life-management: todos/habits/routines/goals/reminders/alarms/check-ins/blocks/calls/travel/device delivery/desktop actions/approvals; route owner context, action asks missing detail. Goal phrases like "I want a goal", "track this goal", and "count it if" route to tasks + OWNER_GOALS; do not create work threads for owner goals.
-- changes/persists/updates/remembers settings/preferences/identity/persona/response style/future behavior; select settings + relevant context
+- explicitly asks to change/persist/update/remember/forget settings, preferences, identity, persona, response style, or future behavior ("remember that…", "from now on…", "save this", "forget X"); select settings + relevant context. A message that merely states the user's own preference, habit, or personal fact and asks for nothing ("I prefer oat milk in my coffee", "my cat is named Momo") IS simple: answer it directly and list the fact in extract.facts — durable memory extraction runs after every turn, so never route such a statement to a memory tool.
 
 Domain routing (when context is available):
 - explicit workflow lifecycle (create/list/show/get/edit/activate/deactivate/run/delete/revisions/executions) -> automation + candidateActions=["WORKFLOW"] + parentActionHints=["WORKFLOW"]. WORKFLOW is the canonical direct action; never hint PAGE_DELEGATE, WORKFLOW_CREATE, or CREATE_WORKFLOW for these requests.
@@ -759,7 +759,7 @@ Domain routing (when context is available):
 - X/Twitter DMs -> messaging + connectors; X/Twitter timeline/feed/mentions/post search -> social_posting + connectors
 - desktop/native-app/browser/Finder/window screenshots/control -> browser or automation
 - LifeOps browser bridge/companion/extension/tab/settings -> browser; add settings/connectors for config/connection
-- durable owner facts/preferences, esp travel/booking ("remember aisle seats") -> memory + settings; documents only create/search/edit document/file
+- explicit requests to remember durable owner facts/preferences, esp travel/booking ("remember aisle seats") -> memory + settings; a bare statement of a preference or fact stays simple (extract.facts persists it); documents only create/search/edit document/file
 
 Otherwise: list relevant context ids. If only general exists and tool needed, use contexts=["general"].
 

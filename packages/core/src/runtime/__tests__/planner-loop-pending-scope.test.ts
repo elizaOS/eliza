@@ -32,6 +32,7 @@ function harness(args: {
 	plans: Array<string | { text: string; toolCalls: ReturnType<typeof call>[] }>;
 	evaluations: string[];
 	results?: PlannerToolResult[];
+	intents?: string[];
 }) {
 	let plannerIndex = 0;
 	let evaluatorIndex = 0;
@@ -65,7 +66,9 @@ function harness(args: {
 						id: "handler",
 						type: "message_handler",
 						metadata: {
-							plan: { intents: ["read record", "open destination"] },
+							plan: {
+								intents: args.intents ?? ["read record", "open destination"],
+							},
 						},
 					},
 				],
@@ -215,6 +218,142 @@ describe("planner-declared pending work", () => {
 			expect(h.useModel).toHaveBeenCalledTimes(5);
 		},
 	);
+
+	it("adopts the sub-planner evaluator's FINISH for an umbrella result instead of evaluating again", async () => {
+		// Live 2026-09-05 (tj-b2756267002022): umbrella CALENDAR → sub-planner →
+		// child evaluator FINISH → umbrella step settled → a second evaluation ran
+		// over the same results (11.1 s vs 3.3 s for the direct child call).
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [],
+			results: [
+				{
+					success: true,
+					text: "OK CALENDAR_DELETE_EVENT",
+					transcriptVisibility: "internal" as const,
+					subPlannerEvaluation: {
+						decision: "FINISH" as const,
+						success: true,
+						messageToUser: "Deleted the gym session on Tuesday at 7am.",
+					},
+				},
+			],
+			intents: ["delete the gym session on tuesday"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["CALENDAR"]);
+		expect(result.finalMessage).toBe(
+			"Deleted the gym session on Tuesday at 7am.",
+		);
+		expect(
+			h.useModel.mock.calls.filter(
+				([type]) => type === ModelType.RESPONSE_HANDLER,
+			),
+		).toHaveLength(0);
+	});
+
+	it("does not let a child FINISH close a parent that declared more_work_pending", async () => {
+		// The umbrella step succeeded and its child evaluator said FINISH, but
+		// the planner marked the batch more_work_pending: the dependent NOTES
+		// step still has to run. The child verdict is not adopted; the model
+		// evaluator's FINISH goes through the pending-scope correction once and
+		// the loop replans.
+		const childFinish = {
+			success: true,
+			text: "OK CALENDAR_DELETE_EVENT",
+			transcriptVisibility: "internal" as const,
+			subPlannerEvaluation: {
+				decision: "FINISH" as const,
+				success: true,
+				messageToUser: "Deleted the gym session on Tuesday at 7am.",
+			},
+		};
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("CALENDAR", "more_work_pending")] },
+				{ text: "", toolCalls: [call("NOTES", "final")] },
+			],
+			evaluations: [
+				finish("Deleted the gym session on Tuesday at 7am."),
+				finish("Deleted the gym session and noted it."),
+			],
+			results: [
+				childFinish,
+				{
+					success: true,
+					text: "OK NOTES",
+					transcriptVisibility: "internal" as const,
+				},
+			],
+			intents: ["delete the gym session and note it"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["CALENDAR", "NOTES"]);
+		expect(result.finalMessage).toBe("Deleted the gym session and noted it.");
+		expect(
+			h.useModel.mock.calls.filter(
+				([type]) => type === ModelType.RESPONSE_HANDLER,
+			),
+		).toHaveLength(2);
+	});
+
+	it("still runs the intent evaluation when Stage-1 declared more than one intent", async () => {
+		// The child verdict covers the delegated calendar operation only; the
+		// second declared intent is reconciled by the model evaluator.
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [
+				finish(
+					"Deleted the gym session; I could not open the destination.",
+					false,
+				),
+			],
+			results: [
+				{
+					success: true,
+					text: "OK CALENDAR_DELETE_EVENT",
+					transcriptVisibility: "internal" as const,
+					subPlannerEvaluation: {
+						decision: "FINISH" as const,
+						success: true,
+						messageToUser: "Deleted the gym session on Tuesday at 7am.",
+					},
+				},
+			],
+		});
+		const result = await h.run();
+		expect(
+			h.useModel.mock.calls.filter(
+				([type]) => type === ModelType.RESPONSE_HANDLER,
+			),
+		).toHaveLength(1);
+		expect(result.finalMessage).toBe(
+			"Deleted the gym session; I could not open the destination.",
+		);
+	});
+
+	it("still evaluates when the sub-planner verdict was not a successful FINISH", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [
+				finish("Nothing was deleted; the event was not found.", false),
+			],
+			results: [
+				{
+					success: true,
+					text: "OK CALENDAR_DELETE_EVENT",
+					transcriptVisibility: "internal" as const,
+					subPlannerEvaluation: { decision: "FINISH" as const, success: false },
+				},
+			],
+		});
+		await h.run();
+		expect(
+			h.useModel.mock.calls.filter(
+				([type]) => type === ModelType.RESPONSE_HANDLER,
+			),
+		).toHaveLength(1);
+	});
 
 	it("preserves the queued batch after rejecting a premature successful FINISH", async () => {
 		const h = harness({

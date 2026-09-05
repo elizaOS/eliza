@@ -132,6 +132,17 @@ export interface PlannerRuntime {
 export interface PlannerToolResult {
 	success: boolean;
 	/**
+	 * Verdict the sub-planner's own evaluator reached over this umbrella
+	 * action's recorded child results (same planner context, same declared
+	 * intents). A FINISH here is a completed intent evaluation; the outer loop
+	 * may adopt it instead of judging the same results a second time.
+	 */
+	subPlannerEvaluation?: {
+		decision: "FINISH";
+		success: boolean;
+		messageToUser?: string;
+	};
+	/**
 	 * Diagnostic / log-shaped projection of the tool's output. Goes into
 	 * the trajectory and the planner's tool-result message. Used by the
 	 * model to reason about success/failure and to decide the next step.

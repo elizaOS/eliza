@@ -8244,6 +8244,18 @@ export function subPlannerResultToPlannerToolResult(
 				}
 			: {}),
 		...(terminalVerifiedUserFacing ? { verifiedUserFacing: true } : {}),
+		...(evaluator?.decision === "FINISH" && evaluator.protocolFailure !== true
+			? {
+					subPlannerEvaluation: {
+						decision: "FINISH" as const,
+						success: evaluator.success === true,
+						...(typeof evaluator.messageToUser === "string" &&
+						evaluator.messageToUser.trim()
+							? { messageToUser: evaluator.messageToUser }
+							: {}),
+					},
+				}
+			: {}),
 		data,
 		error: lastStep?.result?.error,
 		// Propagate the terminal sub-action's chain signal to the parent

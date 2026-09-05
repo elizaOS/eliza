@@ -45,6 +45,7 @@ import {
 } from "@elizaos/shared";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
 import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "../calendar-action-schema.js";
+import { normalizeCalendarDateTimeInTimeZone } from "../internal/calendar-normalize.js";
 import {
   CALENDAR_TIME_ZONE_ALIASES,
   isValidTimeZone,
@@ -1772,21 +1773,27 @@ export function parseExplicitLocalDate(
   return null;
 }
 
+/**
+ * A planner-supplied zone only when it names a real IANA zone (aliases such
+ * as "pst" accepted). Planner junk ("user's timezone", "[REDACTED]") resolves
+ * to undefined so callers fall back instead of letting CalendarService reject
+ * the whole request with a 400.
+ */
+function plannerRequestedTimeZone(
+  details: Record<string, unknown> | undefined,
+): string | undefined {
+  const requested = detailString(details, "timeZone");
+  if (!requested) return undefined;
+  const normalized =
+    CALENDAR_TIME_ZONE_ALIASES[requested.toLowerCase()] ?? requested;
+  return isValidTimeZone(normalized) ? normalized : undefined;
+}
+
 function resolveCalendarTimeZone(
   details: Record<string, unknown> | undefined,
   fallbackTimeZone: string = resolveDefaultTimeZone(),
 ): string {
-  const requested = detailString(details, "timeZone");
-  if (requested) {
-    const normalized =
-      CALENDAR_TIME_ZONE_ALIASES[requested.toLowerCase()] ?? requested;
-    if (isValidTimeZone(normalized)) {
-      return normalized;
-    }
-  }
-  // Planner junk (e.g. "user's timezone") falls back to the configured zone
-  // instead of letting CalendarService reject the whole read with a 400.
-  return fallbackTimeZone;
+  return plannerRequestedTimeZone(details) ?? fallbackTimeZone;
 }
 
 /**
@@ -1797,7 +1804,7 @@ function resolveCalendarTimeZone(
  * at 7am" was extracted, stored and rendered in UTC and one intent produced a
  * 7 AM and a 2 PM event.
  */
-function resolveConfiguredCalendarTimeZone(runtime: IAgentRuntime): string {
+function configuredCalendarTimeZone(runtime: IAgentRuntime): string | null {
   const configured =
     typeof runtime.getSetting === "function"
       ? runtime.getSetting("TIMEZONE")
@@ -1806,7 +1813,11 @@ function resolveConfiguredCalendarTimeZone(runtime: IAgentRuntime): string {
     configured.trim().length > 0 &&
     isValidTimeZone(configured.trim())
     ? configured.trim()
-    : resolveDefaultTimeZone();
+    : null;
+}
+
+function resolveConfiguredCalendarTimeZone(runtime: IAgentRuntime): string {
+  return configuredCalendarTimeZone(runtime) ?? resolveDefaultTimeZone();
 }
 
 type LocalDateOnly = Pick<
@@ -2065,10 +2076,18 @@ function resolveCreateEventCalendarTimeZone(
   details: Record<string, unknown> | undefined,
   feed: LifeOpsCalendarFeed | null | undefined,
   fallbackTimeZone: string,
+  configuredTimeZone: string | null = null,
 ): string {
-  const explicitTimeZone = detailString(details, "timeZone");
+  const explicitTimeZone = plannerRequestedTimeZone(details);
   if (explicitTimeZone) {
     return explicitTimeZone;
+  }
+  // The agent's configured zone is the owner's zone and outranks the
+  // event-majority vote below. Live 2026-09-05 the built-in calendar held
+  // only UTC-stamped events from earlier host-zone creates, so the vote kept
+  // re-electing UTC for every new event even after TIMEZONE was configured.
+  if (configuredTimeZone) {
+    return configuredTimeZone;
   }
 
   const counts = new Map<string, number>();
@@ -2291,6 +2310,35 @@ function applyStatedDateToCreateRequest(args: {
   };
 }
 
+/**
+ * Pin the create zone on the request and express every planner timestamp as
+ * an instant in that zone: offset-less values are the owner's wall time,
+ * values with a "Z" or numeric offset already name an instant. The service
+ * stores this zone on the event, so later reads render in it too. Bound
+ * validation (end after start) stays with the service so the planner receives
+ * structured guidance instead of an invented duration.
+ */
+function anchorCreateRequestToTimeZone(
+  request: CreateLifeOpsCalendarEventRequest,
+  timeZone: string,
+): void {
+  request.timeZone = timeZone;
+  if (request.startAt) {
+    request.startAt = normalizeCalendarDateTimeInTimeZone(
+      request.startAt,
+      "startAt",
+      timeZone,
+    );
+  }
+  if (request.endAt) {
+    request.endAt = normalizeCalendarDateTimeInTimeZone(
+      request.endAt,
+      "endAt",
+      timeZone,
+    );
+  }
+}
+
 function suggestCreateEventStartAt(args: {
   currentMessage: string;
   intent: string;
@@ -2344,6 +2392,7 @@ async function loadCreateEventCalendarContext(
   details: Record<string, unknown> | undefined,
   hasCalendarRead: boolean,
   fallbackTimeZone: string = resolveDefaultTimeZone(),
+  configuredTimeZone: string | null = null,
 ): Promise<CreateEventCalendarContext | null> {
   if (!hasCalendarRead) {
     return null;
@@ -2370,6 +2419,7 @@ async function loadCreateEventCalendarContext(
       details,
       feed,
       requestTimeZone,
+      configuredTimeZone,
     ),
     feed,
   };
@@ -4399,6 +4449,7 @@ const calendarAction: CalendarHandlerAction = {
           details,
           true,
           planningTimeZone,
+          configuredCalendarTimeZone(runtime),
         );
         if (!calendarContext) {
           throw new CalendarServiceError(
@@ -4415,16 +4466,24 @@ const calendarAction: CalendarHandlerAction = {
         const plannerStartAt = detailString(details, "startAt");
         const plannerEndAt = detailString(details, "endAt");
         const plannerTimeZone = detailString(details, "timeZone");
+        // A "Z" instant for an owner who is not in UTC is the planner's most
+        // common mistake (live 2026-09-05: "tuesday at 7am" arrived as
+        // 2026-09-09T07:00:00Z). It is not executable as typed; the
+        // timezone-grounded extractor re-derives the wall time from the
+        // user's words with local-date anchors instead of trusting the
+        // fabricated instant.
+        const utcInstantForNonUtcOwner = Boolean(
+          plannerStartAt?.toUpperCase().endsWith("Z") &&
+            (plannerTimeZone
+              ? plannerTimeZone !== "UTC"
+              : calendarContext.calendarTimeZone !== "UTC"),
+        );
         const hasExecutablePlannerCreate = Boolean(
           explicitTitle &&
             ((plannerStartAt && normalizeIsoDateTime(plannerStartAt)) ||
               detailString(details, "windowPreset")) &&
             (!plannerEndAt || normalizeIsoDateTime(plannerEndAt)) &&
-            !(
-              plannerStartAt?.toUpperCase().endsWith("Z") &&
-              plannerTimeZone &&
-              plannerTimeZone !== "UTC"
-            ),
+            !utcInstantForNonUtcOwner,
         );
         const extractedDetails = hasExecutablePlannerCreate
           ? {}
@@ -4449,14 +4508,19 @@ const calendarAction: CalendarHandlerAction = {
         });
         const { title, resolvedStartAt, resolvedWindowPreset, request } =
           createEventBuild;
+        // Planner timestamps arrive as offset-less wall time or with a real
+        // offset. Anchor them to the create zone so the stored event and every
+        // rendering share the owner's zone; the stated-day guard then keeps
+        // the day the user named.
+        const createTimeZone =
+          plannerRequestedTimeZone({ timeZone: request.timeZone }) ??
+          calendarContext.calendarTimeZone;
+        anchorCreateRequestToTimeZone(request, createTimeZone);
         applyStatedDateToCreateRequest({
           request,
           currentMessage: messageText(message).trim(),
           intent,
-          timeZone:
-            request.timeZone ??
-            calendarContext.calendarTimeZone ??
-            planningTimeZone,
+          timeZone: createTimeZone,
         });
         const travelIntent = createEventBuild.travelIntent;
         if (!title) {

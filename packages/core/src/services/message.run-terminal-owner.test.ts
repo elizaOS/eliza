@@ -526,6 +526,66 @@ describe("DefaultMessageService run-terminal owner", () => {
 		]);
 	});
 
+	it("finishes a pending fact extraction before a later turn can forget it", async () => {
+		const modelGate = deferred();
+		const modelStarted = deferred();
+		const facts = new Set<string>();
+		const writes: string[] = [];
+		const { runtime } = makeRuntime({});
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		(
+			runtime as unknown as { roomHandlerQueue: RoomHandlerQueue }
+		).roomHandlerQueue = queue;
+		(
+			runtime as unknown as { getServiceLoadPromise: unknown }
+		).getServiceLoadPromise = vi.fn(async () => ({
+			run: async () => {
+				modelStarted.release();
+				await modelGate.promise;
+				facts.add("jasmine tea");
+				writes.push("extract");
+				return {
+					skipped: false,
+					activeEvaluators: ["facts"],
+					processedEvaluators: ["facts"],
+					results: [],
+					errors: [],
+				};
+			},
+		}));
+		const lease = await queue.acquire(ROOM_ID);
+		const delivered = vi.fn(async () => []);
+		await queue.runInLease(ROOM_ID, lease, () =>
+			new DefaultMessageService().handleMessage(
+				runtime,
+				inputMessage("I like jasmine tea"),
+				delivered,
+				{ roomHandlerLease: lease },
+			),
+		);
+		await modelStarted.promise;
+		expect(delivered).toHaveBeenCalled();
+		// The chat transport drains room-state continuations before releasing
+		// its lease; reproduce that ownership contract here.
+		const releasing = drainRoomPostDeliveryTasks(runtime, ROOM_ID).then(() =>
+			lease.release(),
+		);
+		const forgetTurn = queue.withLease(ROOM_ID, async () => {
+			facts.delete("jasmine tea");
+			writes.push("forget");
+		});
+		// The newer mutation must not run before the older extraction lands,
+		// even though the user has already received the first reply.
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(writes).toEqual([]);
+		modelGate.release();
+		await releasing;
+		await forgetTurn;
+		await drainPostDeliveryTasks(runtime);
+		expect(writes).toEqual(["extract", "forget"]);
+		expect(facts.size).toBe(0);
+	});
+
 	it("keeps post-turn state writes ordered while visible delivery is already complete", async () => {
 		// ALWAYS_AFTER can mutate state used by the next turn. It cannot be
 		// classified as diagnostics simply to release the room lease earlier.
