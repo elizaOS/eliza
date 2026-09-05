@@ -6,9 +6,11 @@
 
 import type { CallLogEntry } from "@elizaos/capacitor-phone";
 import { Phone } from "@elizaos/capacitor-phone";
+import { ElizaError } from "@elizaos/core";
 
 const DEFAULT_CALL_LOG_LIMIT = 50;
 const MAX_CALL_LOG_LIMIT = 200;
+export const COMPLETE_CALL_LOG_READ_LIMIT = 2_147_483_647;
 
 export function callLabelFor(entry: CallLogEntry): string {
   if (entry.cachedName && entry.cachedName.trim().length > 0) {
@@ -36,15 +38,25 @@ function normalizeCallLogLimit(limit: unknown): number {
 }
 
 export async function loadPhoneState(options?: {
+  complete?: boolean;
   limit?: unknown;
   number?: string;
 }) {
   const normalizedNumber =
     typeof options?.number === "string" ? normalizeNumber(options.number) : "";
   const [status, recent] = await Promise.all([
-    Phone.getStatus().catch(() => null),
+    Phone.getStatus().catch((cause) => {
+      // error-policy:J2 phone status is part of phone-state; a native failure
+      // must remain distinct from a valid but unavailable device feature.
+      throw new ElizaError("Android phone status is unavailable", {
+        code: "NATIVE_PHONE_STATUS_UNAVAILABLE",
+        cause,
+      });
+    }),
     Phone.listRecentCalls({
-      limit: normalizeCallLogLimit(options?.limit),
+      limit: options?.complete
+        ? COMPLETE_CALL_LOG_READ_LIMIT
+        : normalizeCallLogLimit(options?.limit),
       ...(normalizedNumber ? { number: normalizedNumber } : {}),
     }),
   ]);

@@ -51,7 +51,9 @@ describe("androidContacts provider", () => {
       {} as State,
     );
 
-    expect(contactsMock.listContacts).toHaveBeenCalledWith();
+    expect(contactsMock.listContacts).toHaveBeenCalledWith({
+      limit: 2_147_483_647,
+    });
     expect(typeof result.text).toBe("string");
     expect(result.text).toContain("android_contacts");
     expect(result.text).toContain("Ada Lovelace");
@@ -90,6 +92,30 @@ describe("androidContacts provider", () => {
 
     expect((result.data as { contacts: unknown[] }).contacts).toHaveLength(75);
     expect(result.text).toContain("Contact 74");
+  });
+
+  it("returns an explicit error instead of a potentially incomplete native page", async () => {
+    contactsMock.listContacts.mockResolvedValue({
+      contacts: Object.assign([], { length: 2_147_483_647 }),
+    });
+    const reportError = vi.fn();
+
+    const result = await contactsProvider.get(
+      { reportError } as unknown as IAgentRuntime,
+      {} as Memory,
+      {} as State,
+    );
+
+    expect(result.values).toMatchObject({
+      contactsAvailable: false,
+      contactsCount: 0,
+      contactsError: expect.stringContaining("potentially incomplete"),
+    });
+    expect((result.data as { contacts: unknown[] }).contacts).toEqual([]);
+    expect(reportError).toHaveBeenCalledWith(
+      "androidContacts.provider",
+      expect.objectContaining({ code: "NATIVE_CONTACTS_PROVIDER_INCOMPLETE" }),
+    );
   });
   it("renders a distinguishable error shape and reports on bridge failure", async () => {
     const boom = new Error("contacts permission denied");
