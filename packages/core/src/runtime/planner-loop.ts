@@ -1021,6 +1021,29 @@ async function runPlannerLoopIterations(
 				};
 			}
 
+			if (
+				!codingDrainQueue &&
+				requiresIntentEvaluation &&
+				hasExecutedNonTerminalTool(trajectory) &&
+				plannerOutput.toolCalls.every(isTerminalToolCall) &&
+				plannerOutput.toolCalls.some(
+					(call) => call.name.toUpperCase() === "REPLY",
+				)
+			) {
+				// Native REPLY is a proposed answer, not proof that the earlier tool
+				// fulfilled every intent. Reuse text-terminal judgment and delivery;
+				// callPlanner already recorded the original native calls and raw output.
+				// STOP/IGNORE without REPLY remain deliberate silence.
+				plannerOutput = {
+					...plannerOutput,
+					messageToUser: terminalMessageFromToolCalls(
+						plannerOutput.toolCalls,
+						plannerOutput.messageToUser,
+					),
+					toolCalls: [],
+				};
+			}
+
 			if (plannerOutput.toolCalls.length === 0) {
 				if (
 					requireNonTerminalToolCall &&
@@ -1151,11 +1174,19 @@ async function runPlannerLoopIterations(
 							),
 						};
 					}
-					let evaluator = await evaluateTrajectory(
-						params,
-						trajectory,
-						iteration,
-					);
+					let evaluator: EvaluatorOutput;
+					try {
+						evaluator = await evaluateTrajectory(params, trajectory, iteration);
+					} catch (error) {
+						// error-policy:J4 a settled internal effect survives expected
+						// reply-model unavailability without replay or fabricated prose.
+						const unavailable = evaluatorFailureAfterInternalEffect(
+							trajectory,
+							error,
+						);
+						if (unavailable) return unavailable;
+						throw error;
+					}
 					const pendingCompletionCorrection = correctPendingSuccessfulFinish(
 						evaluator,
 						iteration,
@@ -1909,35 +1940,8 @@ async function runPlannerLoopIterations(
 		try {
 			evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		} catch (err) {
-			const noProvider =
-				err instanceof Error && err.name === "NoModelProviderConfiguredError";
-			if (
-				latestResult?.transcriptVisibility === "internal" &&
-				latestResult.effectReceipts?.length &&
-				(noProvider || isModelProviderError(err))
-			) {
-				// This action already settled, but intentionally left its reply to
-				// the evaluator. Reuse the non-replayable presentation-failure
-				// channel; neither retry the mutation nor promote internal facts to
-				// canned conversational text when the model is unavailable.
-				const replyFailure = createUnavailableGroundedActionReply({
-					kind: noProvider
-						? "no_provider"
-						: modelProviderErrorDetail(err)?.status === 429
-							? "rate_limited"
-							: "provider_issue",
-					code: "EVALUATOR_REPLY_GENERATION_FAILED",
-				}).failure;
-				// Downstream message and nested-planner boundaries consume the
-				// settled result's typed presentation failure to suppress recovery
-				// and post-turn hooks. Keep the original success/data/receipts intact.
-				latestResult.replyFailure = replyFailure;
-				return {
-					status: "finished",
-					trajectory,
-					terminalFailure: replyFailure,
-				};
-			}
+			const unavailable = evaluatorFailureAfterInternalEffect(trajectory, err);
+			if (unavailable) return unavailable;
 			// error-policy:J4 explicit user-facing degrade - only an EXPECTED
 			// provider/model failure degrades to the completed tool's truthful
 			// output; every other error shape propagates.
@@ -3356,6 +3360,37 @@ function extractProviderName(
 		}
 	}
 	return undefined;
+}
+
+function evaluatorFailureAfterInternalEffect(
+	trajectory: PlannerTrajectory,
+	error: unknown,
+): PlannerLoopResult | undefined {
+	const latestResult = allTrajectorySteps(trajectory)
+		.reverse()
+		.find((step) => step.result)?.result;
+	const noProvider =
+		error instanceof Error && error.name === "NoModelProviderConfiguredError";
+	if (
+		latestResult?.transcriptVisibility !== "internal" ||
+		!latestResult.effectReceipts?.length ||
+		(!noProvider && !isModelProviderError(error))
+	) {
+		return undefined;
+	}
+	// This action already settled and left its reply to the evaluator. Keep
+	// success/data/receipts intact, and propagate presentation failure through
+	// the existing non-replayable boundary instead of promoting internal facts.
+	const replyFailure = createUnavailableGroundedActionReply({
+		kind: noProvider
+			? "no_provider"
+			: modelProviderErrorDetail(error)?.status === 429
+				? "rate_limited"
+				: "provider_issue",
+		code: "EVALUATOR_REPLY_GENERATION_FAILED",
+	}).failure;
+	latestResult.replyFailure = replyFailure;
+	return { status: "finished", trajectory, terminalFailure: replyFailure };
 }
 
 async function evaluateTrajectory(

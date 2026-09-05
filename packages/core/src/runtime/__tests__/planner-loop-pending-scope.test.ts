@@ -187,35 +187,47 @@ describe("planner-declared pending work", () => {
 				{ text: "Only read.", toolCalls: [call("REPLY")] },
 				{ text: "", toolCalls: [call("NAVIGATE", "final")] },
 			],
-			evaluations: [finish("Only read."), finish("All done.")],
+			evaluations: [
+				finish("Only read."),
+				finish("Only read."),
+				finish("All done."),
+			],
 		});
 		const result = await h.run();
 		expect(h.executed).toEqual(["READ", "NAVIGATE"]);
 		expect(result.finalMessage).toBe("All done.");
 	});
 
-	it.each(["REPLY", "STOP"])("preserves an explicit final %s", async (name) => {
-		const terminal = call(name, "final");
-		const h = harness({
-			plans: [
-				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
-				{
-					text: "The remaining operation is unavailable.",
-					toolCalls: [terminal],
-				},
-			],
-			evaluations: [finish("Only read.")],
-		});
-		const result = await h.run();
-		expect(h.executed).toEqual(["READ"]);
-		expect(h.useModel).toHaveBeenCalledTimes(3);
-		expect(result.status).toBe("finished");
-		if (name === "REPLY")
-			expect(result.finalMessage).toBe(
-				"The remaining operation is unavailable.",
-			);
-		else expect(result.finalMessage).toBeUndefined();
-	});
+	it.each(["REPLY", "STOP", "IGNORE"])(
+		"preserves an explicit final %s",
+		async (name) => {
+			const terminal = call(name, "final");
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+					{
+						text: "The remaining operation is unavailable.",
+						toolCalls: [terminal],
+					},
+				],
+				evaluations: [
+					finish("Only read."),
+					...(name === "REPLY"
+						? [finish("The remaining operation is unavailable.", false)]
+						: []),
+				],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["READ"]);
+			expect(h.useModel).toHaveBeenCalledTimes(name === "REPLY" ? 4 : 3);
+			expect(result.status).toBe("finished");
+			if (name === "REPLY")
+				expect(result.finalMessage).toBe(
+					"The remaining operation is unavailable.",
+				);
+			else expect(result.finalMessage).toBeUndefined();
+		},
+	);
 
 	it.each([
 		{
