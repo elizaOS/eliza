@@ -50,26 +50,61 @@ describe("personal Dedicated staging re-review workflow", () => {
     });
   });
 
-  test("requires exact develop SHA, prior digest, reviewed reason, and confirmation", () => {
-    const guard = step("Require exact develop deployment authority");
-    expect(guard.run).toContain(
-      'process.env.REF_NAME !== "refs/heads/develop"',
-    );
-    expect(guard.run).toContain("expected !== process.env.CHECKED_OUT_COMMIT");
-    expect(guard.run).toContain("APPROVAL_DIGEST");
-    expect(guard.run).toContain(
-      "retain_current_receipt_target_after_duplicate_inventory_review",
-    );
-    expect(guard.run).toContain(
-      "REREVIEW_STALE_SELECTION_WITHOUT_COMPUTE_MUTATION",
-    );
-    expect(guard.run).toContain(
-      "select_unique_verified_backup_after_duplicate_inventory_review",
-    );
-    expect(guard.run).toContain(
-      "SELECT_UNIQUE_VERIFIED_BACKUP_WITHOUT_COMPUTE_MUTATION",
-    );
-  });
+  test.each([
+    [
+      "preview of the currently served older commit",
+      { MODE: "preview", EXPECTED_COMMIT: "b".repeat(40) },
+      0,
+    ],
+    [
+      "execution against an older commit",
+      { EXPECTED_COMMIT: "b".repeat(40) },
+      1,
+    ],
+    ["preview from main", { MODE: "preview", REF_NAME: "refs/heads/main" }, 1],
+    [
+      "malformed preview commit",
+      { MODE: "preview", EXPECTED_COMMIT: "invalid" },
+      1,
+    ],
+    ["unknown operation", { MODE: "unknown" }, 1],
+    ["execution without a prior digest", { APPROVAL_DIGEST: "" }, 1],
+    ["execution without confirmation", { CONFIRMATION: "" }, 1],
+    ["execution without a reviewed reason", { REVIEWED_REASON: "" }, 1],
+    ["approved exact-head re-review", {}, 0],
+    [
+      "approved exact-head backup selection",
+      {
+        REVIEWED_REASON:
+          "select_unique_verified_backup_after_duplicate_inventory_review",
+        CONFIRMATION: "SELECT_UNIQUE_VERIFIED_BACKUP_WITHOUT_COMPUTE_MUTATION",
+      },
+      0,
+    ],
+  ] as const)(
+    "enforces shell admission for %s",
+    (_name, overrides, expectedExit) => {
+      const guard = step("Require protected staging diagnostic authority");
+      if (!guard.run)
+        throw new Error("Deployment admission command is missing");
+      const result = Bun.spawnSync({
+        cmd: ["bash", "-c", guard.run],
+        env: {
+          ...process.env,
+          REF_NAME: "refs/heads/develop",
+          EXPECTED_COMMIT: "a".repeat(40),
+          CHECKED_OUT_COMMIT: "a".repeat(40),
+          MODE: "execute",
+          APPROVAL_DIGEST: "c".repeat(64),
+          REVIEWED_REASON:
+            "retain_current_receipt_target_after_duplicate_inventory_review",
+          CONFIRMATION: "REREVIEW_STALE_SELECTION_WITHOUT_COMPUTE_MUTATION",
+          ...overrides,
+        },
+      });
+      expect(result.exitCode).toBe(expectedExit);
+    },
+  );
 
   test("binds protected identity and smoke account authorities without artifacts", () => {
     expect(job.env.DATABASE_IDENTITY_GATE_MODE).toBe("enforce");
