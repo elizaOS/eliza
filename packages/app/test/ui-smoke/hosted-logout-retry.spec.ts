@@ -95,6 +95,10 @@ for (const viewport of [
       ),
     ).toBeNull();
     expect(requests).toBe(2);
+    await expect(
+      page.getByRole("heading", { name: "Sign in", exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
     await page.screenshot({
       path: testInfo.outputPath(`${viewport.name}-logout-complete.jpg`),
       fullPage: true,
