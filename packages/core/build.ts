@@ -1767,6 +1767,9 @@ async function verifyPackedEdgeContract(): Promise<void> {
 			join(contractRoot, "consumer.mjs"),
 			[
 				'import * as edge from "@elizaos/core/edge";',
+				'import { isElizaError, toElizaError } from "@elizaos/core/errors";',
+				'let edgeFailure; try { edge.assertModelOutputComplete({ finishReason: "length", model: "fixture", provider: "fixture" }); } catch (error) { edgeFailure = error; }',
+				'if (!isElizaError(edgeFailure) || toElizaError(edgeFailure) !== edgeFailure || edgeFailure.code !== "MODEL_OUTPUT_INCOMPLETE") throw new Error("packed edge error identity was lost");',
 				'if (edge.isEdge !== true) throw new Error("packed edge marker is missing");',
 				'if (!Array.isArray(edge.basicActions) || typeof edge.createBasicCapabilitiesPlugin !== "function") throw new Error("packed basic capability runtime is missing");',
 				'if ("advancedCapabilities" in edge || "pluginManager" in edge) throw new Error("packed edge runtime exposes a host-only capability");',
