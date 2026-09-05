@@ -112,6 +112,7 @@ async function loadAgentModule(): Promise<AndroidAgentModule> {
 		startEliza: mod.startEliza,
 		dispatchRoute: mod.dispatchApiRoute,
 		coreRoutes: {
+			fullApiKernel: true,
 			configFileExists: mod.configFileExists,
 			loadElizaConfig: mod.loadElizaConfig,
 			saveElizaConfig: mod.saveElizaConfig,

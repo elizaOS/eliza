@@ -306,6 +306,8 @@ function runtimeAgentName(runtime: IAgentRuntime): string {
 
 /** The persisted-config seams the first-run routes read/write (from @elizaos/agent). */
 export interface AndroidCoreRouteDeps {
+	/** Full server kernel owns health and startup state when available. */
+	fullApiKernel?: boolean;
 	configFileExists: () => boolean;
 	loadElizaConfig: () => AndroidElizaConfigLike;
 	saveElizaConfig: (config: AndroidElizaConfigLike) => void;
@@ -521,6 +523,7 @@ function directAndroidCoreRoute(
 	pathname: string,
 	coreRoutes?: AndroidCoreRouteDeps,
 ): AndroidBufferedResponse | null {
+	if (coreRoutes?.fullApiKernel) return null;
 	if (method === "GET" && pathname === "/api/health") {
 		return jsonResponse(200, {
 			ready: true,
