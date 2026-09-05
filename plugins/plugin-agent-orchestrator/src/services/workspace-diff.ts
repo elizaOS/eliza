@@ -31,6 +31,8 @@ export interface WorkspaceChangeSet {
   diff: string;
   truncated: boolean;
   capturedAt: number;
+  /** Exact per-file patch ownership; absent on older persisted captures. */
+  fileDiffs?: Array<{ path: string; diff: string }>;
 }
 
 /** Disk-level verification for one path the sub-agent claims changed. */
@@ -419,16 +421,17 @@ export async function captureChangeSet(
       ? shortstat
       : `${changedFiles.length} file(s) changed`;
 
-  let diff = "";
+  const fileDiffs: Array<{ path: string; diff: string }> = [];
   for (const file of changedFiles) {
     const fd = await fileDiff(workdir, base, file);
-    if (fd) diff = diff ? `${diff}\n${fd}` : fd;
+    fileDiffs.push({ path: file, diff: fd });
   }
 
   return {
     changedFiles,
     diffStat,
-    diff,
+    diff: joinFileDiffs(fileDiffs),
+    fileDiffs,
     truncated: false,
     capturedAt: Date.now(),
   };
@@ -447,7 +450,7 @@ function captureToolPathOnlyChangeSet(
   ];
   if (changedFiles.length === 0) return undefined;
 
-  let diff = "";
+  const fileDiffs: Array<{ path: string; diff: string }> = [];
   for (const file of changedFiles) {
     const absolute = resolve(workdir, file);
     let fileDiff = "";
@@ -470,13 +473,14 @@ function captureToolPathOnlyChangeSet(
       // error-policy:J4 unreadable file → omit from diff preview; still listed in changedFiles
       fileDiff = "";
     }
-    if (fileDiff) diff = diff ? `${diff}\n${fileDiff}` : fileDiff;
+    fileDiffs.push({ path: file, diff: fileDiff });
   }
 
   return {
     changedFiles,
     diffStat: `${changedFiles.length} file(s) changed`,
-    diff,
+    diff: joinFileDiffs(fileDiffs),
+    fileDiffs,
     truncated: false,
     capturedAt: Date.now(),
   };
@@ -586,48 +590,130 @@ export function summarizeChangeSet(
   return `Changed ${count} ${noun}: ${shown}${verifiedSuffix}`;
 }
 
-/**
- * Remove spawn-time baseline paths from a captured change set. In a SHARED
- * route workdir the git diff sees every pre-existing dirty file from other
- * apps (months-old edits included), so the completion evidence attributed
- * unrelated changes to the session (live: velvet-moth's changeset rendered a
- * different app's diff and the judge called the evidence contradictory). The
- * baselines are the orchestrator-stamped codingBaselineDirty/Untracked lists
- * (#20969's residuals inputs) — subtracting them leaves the session's OWN
- * work. Diff hunks and diffstat lines for baseline paths are dropped with the
- * file list so the rendered body matches.
- */
+function joinFileDiffs(
+  fileDiffs: Array<{ path: string; diff: string }>,
+): string {
+  return fileDiffs
+    .map((entry) => entry.diff)
+    .filter(Boolean)
+    .join("\n");
+}
+
+function invalidPatchOwnership(): ElizaError {
+  return new ElizaError(
+    "Cannot attribute persisted workspace patches to files; recapture the workspace change set before subtracting its baseline",
+    { code: "WORKSPACE_CHANGESET_PATCH_OWNERSHIP_INVALID" },
+  );
+}
+
+const GIT_PATH_ESCAPES: Record<number, string> = {
+  7: "\\a",
+  8: "\\b",
+  9: "\\t",
+  10: "\\n",
+  11: "\\v",
+  12: "\\f",
+  13: "\\r",
+  34: '\\"',
+  92: "\\\\",
+};
+
+/** Git quotes control characters and, with core.quotePath, UTF-8 bytes. */
+function quotedGitPath(path: string, quoteUnicode: boolean): string {
+  const escaped = [...Buffer.from(path)]
+    .map((byte) => {
+      return (
+        GIT_PATH_ESCAPES[byte] ??
+        (byte < 32 || byte === 127 || (quoteUnicode && byte >= 128)
+          ? `\\${byte.toString(8).padStart(3, "0")}`
+          : String.fromCharCode(byte))
+      );
+    })
+    .join("");
+  return `"${Buffer.from(escaped, "latin1").toString("utf8")}"`;
+}
+
+function readFileDiffs(
+  changeSet: WorkspaceChangeSet,
+): Array<{ path: string; diff: string }> {
+  if (changeSet.fileDiffs !== undefined) {
+    const entries = changeSet.fileDiffs;
+    if (
+      !Array.isArray(entries) ||
+      entries.some(
+        (entry) =>
+          !entry ||
+          typeof entry.path !== "string" ||
+          typeof entry.diff !== "string",
+      )
+    ) {
+      throw invalidPatchOwnership();
+    }
+    const paths = new Set(entries.map((entry) => entry.path));
+    if (
+      paths.size !== entries.length ||
+      paths.size !== changeSet.changedFiles.length ||
+      changeSet.changedFiles.some((path) => !paths.has(path)) ||
+      joinFileDiffs(entries) !== changeSet.diff
+    )
+      throw invalidPatchOwnership();
+    return entries;
+  }
+
+  // Older persisted captures have only Git's display text. Match against the
+  // authoritative file inventory; never guess an ambiguous suffix or retain
+  // an unowned patch as if subtraction had succeeded.
+  const patches = new Map<string, string[]>();
+  for (const diff of changeSet.diff
+    .split(/^(?=diff --git )/m)
+    .filter(Boolean)) {
+    const header = diff.split("\n", 1)[0];
+    const paths = changeSet.changedFiles.filter(
+      (path) =>
+        header?.startsWith("diff --git ") &&
+        [
+          `b/${path}`,
+          quotedGitPath(`b/${path}`, true),
+          quotedGitPath(`b/${path}`, false),
+        ].some(
+          (encoded) =>
+            !encoded.includes("\n") && header.endsWith(` ${encoded}`),
+        ),
+    );
+    if (paths.length !== 1) throw invalidPatchOwnership();
+    const path = paths[0];
+    if (path === undefined) throw invalidPatchOwnership();
+    const previous = patches.get(path) ?? [];
+    previous.push(diff);
+    patches.set(path, previous);
+  }
+  return changeSet.changedFiles.map((path) => ({
+    path,
+    diff: (patches.get(path) ?? []).join("\n"),
+  }));
+}
+
+/** Remove exact spawn-time baseline paths and their patches from completion evidence. */
 export function subtractChangeSetBaseline(
   changeSet: WorkspaceChangeSet,
   baselinePaths: readonly string[],
 ): WorkspaceChangeSet {
-  if (baselinePaths.length === 0) return changeSet;
-  const baseline = new Set(baselinePaths.map((p) => p.trim()).filter(Boolean));
-  if (baseline.size === 0) return changeSet;
+  const baseline = new Set(baselinePaths);
   const changedFiles = changeSet.changedFiles.filter(
     (file) => !baseline.has(file),
   );
   if (changedFiles.length === changeSet.changedFiles.length) return changeSet;
 
-  const keptHunks = changeSet.diff
-    .split(/^(?=diff --git )/m)
-    .filter((hunk) => {
-      const match = /^diff --git a\/(\S+) b\//.exec(hunk);
-      if (!match) return true;
-      return !baseline.has(match[1] ?? "");
-    })
-    .join("");
-  const keptStat = changeSet.diffStat
-    .split("\n")
-    .filter((line) => {
-      const name = line.split("|")[0]?.trim();
-      return !name || !baseline.has(name);
-    })
-    .join("\n");
+  const fileDiffs = readFileDiffs(changeSet).filter(
+    (entry) => !baseline.has(entry.path),
+  );
   return {
     ...changeSet,
     changedFiles,
-    diff: keptHunks,
-    diffStat: keptStat,
+    diff: joinFileDiffs(fileDiffs),
+    // The original aggregate shortstat includes removed files; only the
+    // retained inventory is available without rerunning Git at another time.
+    diffStat: `${changedFiles.length} file(s) changed: ${changedFiles.map((path) => JSON.stringify(path)).join(", ")}`,
+    fileDiffs,
   };
 }
