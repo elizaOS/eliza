@@ -15,13 +15,24 @@ import test from "node:test";
 import {
   ensureEmbeddingArtifact,
   ensureFusedInferenceInstall,
+  FUSED_EMBEDDING_ARTIFACT,
   resolveEmbeddingArtifactPath,
 } from "./ensure-fused-inference-install.mjs";
 
 const readyEmbedding = async () => ({
   status: "ready",
-  path: "/models/gte-small_fp16.gguf",
+  path: "/models/bge-small-en-v1.5-f16.gguf",
   downloaded: false,
+});
+
+test("the install artifact pins the verified BGE-small F16 model", () => {
+  assert.deepEqual(FUSED_EMBEDDING_ARTIFACT, {
+    filename: "bge-small-en-v1.5-f16.gguf",
+    repo: "CompendiumLabs/bge-small-en-v1.5-gguf",
+    revision: "d32f8c040ea3b516330eeb75b72bcc2d3a780ab7",
+    sha256: "f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999",
+    size: 67_308_128,
+  });
 });
 
 test("a normal install initializes the pinned source and ensures the fused library", async () => {
@@ -117,7 +128,7 @@ test("the explicit emergency escape hatch performs no native mutations", async (
 
 function fixtureArtifact(bytes) {
   return {
-    filename: "gte-small_fp16.gguf",
+    filename: FUSED_EMBEDDING_ARTIFACT.filename,
     repo: "fixture/embedding",
     revision: "fixture-revision",
     size: bytes.byteLength,
@@ -140,6 +151,9 @@ test("a missing embedding artifact is downloaded and hash-verified atomically", 
   const artifact = fixtureArtifact(bytes);
   const requests = [];
   try {
+    const legacyPath = path.join(repoRoot, "models", "gte-small_fp16.gguf");
+    mkdirSync(path.dirname(legacyPath), { recursive: true });
+    writeFileSync(legacyPath, "existing legacy model");
     const result = await ensureEmbeddingArtifact({
       env: { MODELS_DIR: "models" },
       repoRoot,
@@ -156,6 +170,8 @@ test("a missing embedding artifact is downloaded and hash-verified atomically", 
     });
     assert.equal(result.downloaded, true);
     assert.deepEqual(readFileSync(target), bytes);
+    assert.equal(readFileSync(legacyPath, "utf8"), "existing legacy model");
+    assert.equal(path.basename(target), "bge-small-en-v1.5-f16.gguf");
     assert.equal(requests.length, 1);
     assert.match(
       requests[0].url,
@@ -230,9 +246,9 @@ test("a corrupt download is rejected without replacing the existing artifact", a
         repoRoot,
         artifact,
         fetchImpl: async () =>
-          fixtureResponse(Buffer.from("corrupt bytes of same length")),
+          fixtureResponse(Buffer.alloc(expected.length, 0xff)),
       }),
-      /mismatch/,
+      /SHA-256 mismatch/,
     );
     assert.equal(readFileSync(target, "utf8"), "stale");
   } finally {

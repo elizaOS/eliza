@@ -33,8 +33,11 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 
 - Bun 1.3.14. A normal source-checkout `bun install` stages and freshness-checks
   the fused desktop library and installs the pinned, SHA-256-verified
-  `gte-small_fp16.gguf` under the same state tree the runtime resolves. Node is
+  `bge-small-en-v1.5-f16.gguf` under the same state tree the runtime resolves. Node is
   not required for install, development startup, or local inference.
+  Artifact staging does not change an existing agent's embedding configuration
+  or delete its vectors or legacy model. The legacy GTE runtime presets below
+  remain until their guarded BGE cutover is complete.
 - The fused `libelizainference` native library for the desktop text/voice/vision path (built from the llama.cpp fork's fused-inference FFI tool at `tools/omnivoice` — the Kokoro TTS engine is folded into this library; resolved via `ELIZA_INFERENCE_LIBRARY` / `ELIZA_INFERENCE_LIB_DIR` or the bundle's `lib/` dir). Generic single-file GGUF additionally needs the explicit-`modelPath` binding (`llama-cpp-capacitor` on mobile).
 - Native binaries for optional capabilities: `sd.cpp` for image-gen on Linux/Windows and `mflux` for Apple Silicon image-gen.
 - An Eliza-1 GGUF bundle downloaded via the model catalog (dashboard → Models, or `POST /api/local-inference/downloads`).
@@ -117,6 +120,15 @@ Operational knobs:
   `LOCAL_EMBEDDING_DIMENSIONS`) should keep the SQL vector dimension in sync.
   The built-in `gte-small` preset is intentionally 384-dim because the default
   storage schema is 384-dim.
+- BGE migration must align the full vector space, not only its 384 dimensions:
+  use `BAAI/bge-small-en-v1.5`, CLS pooling, L2 normalization and the same input
+  preprocessing/token boundary. On desktop, CLS is currently selected with
+  `ELIZA_EMBED_POOLING=cls`. Cloudflare requests must explicitly set
+  `pooling: "cls"`; its [BGE endpoint defaults to mean pooling](https://developers.cloudflare.com/workers-ai/models/bge-small-en-v1.5/),
+  which is incompatible. Back up and clear only the migrating agent's old
+  vector index before changing spaces; source memories and other agents remain
+  intact. Staging the artifact alone is not a completed migration or proof of
+  cross-backend parity.
 - Generic single-file GGUFs are advanced/developer-mode only and should not be
   used as automatic defaults. The default recommender is Eliza-1-only because
   fused bundles carry the manifest, tokenizer, KV/cache policy, and voice/vision
