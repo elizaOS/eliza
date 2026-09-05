@@ -24,6 +24,10 @@ export interface McpToolDefinition {
     modes: readonly string[];
     organizationRoles: readonly string[];
   };
+  access: {
+    effect: "read" | "mutation" | "dynamic";
+    authority: "member" | "billing_manager" | "admin";
+  };
 }
 
 type ToolArgs = Record<string, unknown>;
@@ -53,6 +57,7 @@ const protocolTools: McpToolDefinition[] = [
         description: "Return full capability definitions instead of compact coverage rows.",
       },
     }),
+    access: { effect: "read", authority: "member" },
   },
   {
     name: "cloud.api.request",
@@ -67,6 +72,7 @@ const protocolTools: McpToolDefinition[] = [
       },
       ["method", "path"],
     ),
+    access: { effect: "dynamic", authority: "billing_manager" },
   },
   {
     name: "cloud.admin.request",
@@ -84,6 +90,7 @@ const protocolTools: McpToolDefinition[] = [
       },
       ["method", "path"],
     ),
+    access: { effect: "dynamic", authority: "admin" },
   },
 ];
 
@@ -94,6 +101,15 @@ function capabilityToolDefinitions(): McpToolDefinition[] {
     auth: {
       modes: capability.auth.modes,
       organizationRoles: capability.auth.organizationRoles ?? [],
+    },
+    access: {
+      effect: capability.surfaces.rest.method === "GET" ? "read" : "mutation",
+      authority:
+        capability.auth.adminOnly === true
+          ? "admin"
+          : capability.auth.organizationRoles?.length
+            ? "billing_manager"
+            : "member",
     },
     inputSchema:
       capability.id === "billing.cancel_resource"

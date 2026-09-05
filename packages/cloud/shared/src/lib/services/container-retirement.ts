@@ -1,7 +1,8 @@
 /**
  * Atomically retires app-container rows with their durable delete jobs. The
  * container row is the serialization point, while migration 0176 repairs rows
- * created before this invariant existed.
+ * created before this invariant existed. A deleting row remains billable until
+ * the daemon confirms provider deletion and marks it terminal.
  */
 
 import { randomUUID } from "node:crypto";

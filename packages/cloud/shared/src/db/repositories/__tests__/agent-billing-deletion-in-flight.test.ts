@@ -1,20 +1,7 @@
 /**
- * `listBillableSandboxes` was the only predicate in `agent-billing.ts` without a
- * `deletion_attempt_id IS NULL` guard; its six siblings all carry one (#22508).
- *
- * The charge path was never at risk: `recordHourlyBillingWithOptions` claims the
- * row with the same guard on its `SELECT ... FOR UPDATE`, so a deleting sandbox
- * is never debited, and everything gated on that claim (shutdown-warning mail,
- * the `credits.low` webhook) is equally unreachable. The exposure is the cron's
- * `shutdown_pending` branch, which reads the selected row directly and fires
- * the `credits.depleted` webhook plus `enqueueAgentSuspendOnce` without
- * consulting the deletion state.
- *
- * The window is narrow: both writers that set `deletion_attempt_id` set
- * `status='deletion_pending'` in the same UPDATE, and that status is already
- * excluded here. It opens when something writes `running` back over a row whose
- * deletion attempt is still set, a shape `agent_sandboxes_deletion_intent_pair_check`
- * permits. These tests pin the guard rather than that race.
+ * Deletion intent is not provider absence. These real-PGlite cases prove an
+ * owned workload remains due through deletion_pending/deletion_failed and only
+ * leaves billing when the provider-confirmed delete removes its row.
  *
  * Harness mirrors `agent-billing-reactivation.test.ts`: drizzle-kit `pushSchema`
  * generates the EXACT DDL from the real schema objects and applies it to the same
@@ -32,6 +19,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
+import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { agentSandboxes } from "../../schemas/agent-sandboxes";
 import { organizations } from "../../schemas/organizations";
@@ -72,7 +60,7 @@ async function seedDueSandbox(
   organizationId: string,
   userId: string,
   overrides: {
-    status: "running" | "stopped";
+    status: "running" | "stopped" | "deletion_pending" | "deletion_failed";
     deletionAttemptId: string | null;
   },
 ): Promise<string> {
@@ -147,11 +135,15 @@ afterAll(async () => {
 });
 
 describe("AgentBillingRepository.listBillableSandboxes deletion guard", () => {
-  test("a running sandbox with a deletion attempt in flight is NOT billable", async () => {
+  test("deletion-pending and deletion-failed provider workloads remain billable", async () => {
     const { organizationId, userId } = await seedOrgAndUser();
 
     const deleting = await seedDueSandbox(organizationId, userId, {
-      status: "running",
+      status: "deletion_pending",
+      deletionAttemptId: crypto.randomUUID(),
+    });
+    const failed = await seedDueSandbox(organizationId, userId, {
+      status: "deletion_failed",
       deletionAttemptId: crypto.randomUUID(),
     });
     const live = await seedDueSandbox(organizationId, userId, {
@@ -161,14 +153,14 @@ describe("AgentBillingRepository.listBillableSandboxes deletion guard", () => {
 
     const { running } = await billable();
 
-    // Identical rows apart from the in-flight deletion. Without the guard both
-    // are returned, and the cron's shutdown_pending branch then webhooks and
-    // enqueues a suspend for a sandbox that is already being torn down.
+    // Provider-backed delete attempts still accrue compute until absence is
+    // confirmed; a user-owned live row remains the control case.
     expect(running).toContain(live);
-    expect(running).not.toContain(deleting);
+    expect(running).toContain(deleting);
+    expect(running).toContain(failed);
   });
 
-  test("a stopped-with-backup sandbox with a deletion attempt in flight is NOT billable", async () => {
+  test("provider-confirmed row removal is the billing terminal condition", async () => {
     const { organizationId, userId } = await seedOrgAndUser();
 
     const deleting = await seedDueSandbox(organizationId, userId, {
@@ -182,8 +174,10 @@ describe("AgentBillingRepository.listBillableSandboxes deletion guard", () => {
 
     const { stopped } = await billable();
 
-    // The stopped arm bills for retained backups and has the same exposure.
+    // Retained provider/storage state remains billable until terminal removal.
     expect(stopped).toContain(live);
-    expect(stopped).not.toContain(deleting);
+    expect(stopped).toContain(deleting);
+    await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, deleting));
+    expect((await billable()).stopped).not.toContain(deleting);
   });
 });
