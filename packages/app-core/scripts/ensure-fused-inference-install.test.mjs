@@ -239,3 +239,127 @@ test("a corrupt download is rejected without replacing the existing artifact", a
     rmSync(repoRoot, { recursive: true, force: true });
   }
 });
+
+function rateLimitResponse(retryAfterSeconds) {
+  return new Response("rate limited", {
+    status: 429,
+    headers:
+      retryAfterSeconds === undefined
+        ? {}
+        : { "retry-after": String(retryAfterSeconds) },
+  });
+}
+
+test("a transient 429 download is retried and then installs", async () => {
+  const repoRoot = mkdtempSync(path.join(os.tmpdir(), "fused-install-retry-"));
+  const env = { MODELS_DIR: "models" };
+  const bytes = Buffer.from("retried embedding fixture");
+  const artifact = fixtureArtifact(bytes);
+  const requests = [];
+  const sleeps = [];
+  try {
+    const result = await ensureEmbeddingArtifact({
+      env,
+      repoRoot,
+      artifact,
+      retryDelayMs: 5,
+      async fetchImpl(url, options) {
+        requests.push({ url, options });
+        if (requests.length === 1) return rateLimitResponse();
+        return fixtureResponse(bytes);
+      },
+      async sleep(ms) {
+        sleeps.push(ms);
+      },
+    });
+
+    assert.equal(result.downloaded, true);
+    assert.equal(requests.length, 2);
+    assert.deepEqual(sleeps, [5]);
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("Retry-After is honored and capped", async () => {
+  const repoRoot = mkdtempSync(
+    path.join(os.tmpdir(), "fused-install-retry-after-"),
+  );
+  const env = { MODELS_DIR: "models" };
+  const artifact = fixtureArtifact(Buffer.from("fixture"));
+  const sleeps = [];
+  try {
+    await assert.rejects(
+      ensureEmbeddingArtifact({
+        env,
+        repoRoot,
+        artifact,
+        downloadAttempts: 2,
+        retryDelayMs: 10_000,
+        fetchImpl: async () => rateLimitResponse(120),
+        async sleep(ms) {
+          sleeps.push(ms);
+        },
+      }),
+      /HTTP 429/,
+    );
+    assert.deepEqual(sleeps, [60_000]);
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("a persistent 429 exhausts the attempts and keeps the typed error", async () => {
+  const repoRoot = mkdtempSync(
+    path.join(os.tmpdir(), "fused-install-persistent-429-"),
+  );
+  const env = { MODELS_DIR: "models" };
+  const artifact = fixtureArtifact(Buffer.from("fixture"));
+  const requests = [];
+  try {
+    await assert.rejects(
+      ensureEmbeddingArtifact({
+        env,
+        repoRoot,
+        artifact,
+        downloadAttempts: 3,
+        retryDelayMs: 5,
+        async fetchImpl() {
+          requests.push(1);
+          return rateLimitResponse();
+        },
+        sleep: async () => {},
+      }),
+      /failed to download gte-small_fp16\.gguf: HTTP 429/,
+    );
+    assert.equal(requests.length, 3);
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("a non-retryable download status is not retried", async () => {
+  const repoRoot = mkdtempSync(
+    path.join(os.tmpdir(), "fused-install-not-found-"),
+  );
+  const env = { MODELS_DIR: "models" };
+  const artifact = fixtureArtifact(Buffer.from("fixture"));
+  const requests = [];
+  try {
+    await assert.rejects(
+      ensureEmbeddingArtifact({
+        env,
+        repoRoot,
+        artifact,
+        fetchImpl: async () => {
+          requests.push(1);
+          return new Response("not found", { status: 404 });
+        },
+      }),
+      /HTTP 404/,
+    );
+    assert.equal(requests.length, 1);
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
