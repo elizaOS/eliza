@@ -35,18 +35,18 @@ const base: ServingAxesInput = {
 };
 
 describe("resolveServingAxes", () => {
-  it("marks everything local on an unsigned loopback agent", () => {
+  it("does not infer local model readiness from a loopback runtime", () => {
     const axes = resolveServingAxes({
       ...base,
       startupTarget: "embedded-local",
     });
     expect(axes).toMatchObject({
       runtime: "local",
-      inference: "local",
-      combination: "all-local",
+      inference: "unknown",
+      combination: "inference-unknown",
       inferenceFallback: false,
     });
-    expect(servingAxesHeadline(axes)).toBe("Everything is local");
+    expect(servingAxesHeadline(axes)).toBe("Chat provider unconfirmed");
   });
 
   it("keeps local runtime when cloud-proxy is selected but unsigned", () => {
@@ -59,8 +59,8 @@ describe("resolveServingAxes", () => {
     });
     expect(axes).toMatchObject({
       runtime: "local",
-      inference: "local",
-      combination: "all-local",
+      inference: "unknown",
+      combination: "inference-unknown",
       inferenceFallback: true,
     });
     expect(servingAxesDescription(axes)).toContain("not signed in");
@@ -99,7 +99,7 @@ describe("resolveServingAxes", () => {
     });
   });
 
-  it("is cloud runtime when a hosted agent uses local inference", () => {
+  it("keeps Cloud runtime independent of unconfirmed inference", () => {
     const axes = resolveServingAxes({
       ...base,
       startupTarget: "cloud-managed",
@@ -107,10 +107,10 @@ describe("resolveServingAxes", () => {
     });
     expect(axes).toMatchObject({
       runtime: "cloud",
-      inference: "local",
-      combination: "cloud-runtime",
+      inference: "unknown",
+      combination: "inference-unknown",
     });
-    expect(servingAxesHeadline(axes)).toBe("Cloud runtime");
+    expect(servingAxesHeadline(axes)).toBe("Chat provider unconfirmed");
   });
 
   it("is both when a hosted agent uses Cloud inference", () => {
@@ -147,8 +147,8 @@ describe("resolveServingAxes", () => {
       ...base,
       startupTarget: "remote-backend",
     });
-    expect(axes.combination).toBe("remote");
-    expect(servingAxesHeadline(axes)).toBe("Remote runtime");
+    expect(axes.combination).toBe("inference-unknown");
+    expect(servingAxesHeadline(axes)).toBe("Chat provider unconfirmed");
   });
 
   it("prefers the server deploymentRuntime over a stale local startup target", () => {
@@ -231,21 +231,21 @@ describe("resolveServingAxes", () => {
     });
     expect(axes.inference).toBe("unknown");
     expect(axes.combination).toBe("inference-unknown");
-    expect(servingAxesHeadline(axes)).toBe("Checking what answers chat");
+    expect(servingAxesHeadline(axes)).toBe("Chat provider unconfirmed");
   });
 
-  it("treats a Cloud-named route with no live account as local fallback", () => {
+  it("does not fabricate local fallback for a signed-out Cloud route", () => {
     const axes = resolveServingAxes({
       ...base,
       deploymentRuntime: "local",
       activeChat: CLOUD,
       elizaCloudConnected: false,
     });
-    expect(axes.inference).toBe("local");
+    expect(axes.inference).toBe("unknown");
     expect(axes.inferenceFallback).toBe(true);
   });
 
-  it("keeps local-only routing local even when a Cloud route is configured", () => {
+  it("does not infer local readiness from disabling Cloud calls", () => {
     const axes = resolveServingAxes({
       ...base,
       deploymentRuntime: "local",
@@ -253,7 +253,7 @@ describe("resolveServingAxes", () => {
       elizaCloudConnected: true,
       cloudCallsDisabled: true,
     });
-    expect(axes.inference).toBe("local");
+    expect(axes.inference).toBe("unknown");
     expect(axes.inferenceFallback).toBe(false);
   });
 
@@ -275,6 +275,6 @@ describe("resolveServingAxes", () => {
       cloudCallsDisabled: true,
     });
     expect(axes.runtime).toBe("cloud");
-    expect(axes.combination).toBe("cloud-runtime");
+    expect(axes.combination).toBe("inference-unknown");
   });
 });
