@@ -863,6 +863,61 @@ jobs:
             "$CANARY_DIAGNOSTIC_RAW_PATH" \
             "$CANARY_DIAGNOSTIC_EVIDENCE_PATH"
 
+      - name: Diagnose activated target job origin
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=20000
+        run: |
+          set -euo pipefail
+          PSQL_DATABASE_URL="$(bun packages/cloud/scripts/admin/libpq-connection-url.ts)"
+          echo "::add-mask::$PSQL_DATABASE_URL"
+          psql "$PSQL_DATABASE_URL" --no-psqlrc --no-align --tuples-only --quiet \
+            --set ON_ERROR_STOP=1 --set suffix="$CANARY_DIAGNOSTIC_SUFFIX" <<'SQL'
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout = '20s';
+          WITH canary AS (
+            SELECT organization_id, user_id FROM agent_sandboxes
+            WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
+          ), target AS (
+            SELECT agent.id, agent.organization_id, agent.user_id
+            FROM canary
+            JOIN personal_dedicated_upgrade_authorities AS authority
+              ON authority.organization_id = canary.organization_id AND authority.user_id = canary.user_id
+            JOIN agent_sandboxes AS agent
+              ON agent.id = authority.dedicated_agent_id
+              AND agent.organization_id = authority.organization_id AND agent.user_id = authority.user_id
+            WHERE (SELECT count(*) FROM canary) = 1
+          ), latest_job AS (
+            SELECT job.* FROM target
+            JOIN jobs AS job ON job.agent_id = target.id::text
+              AND job.organization_id = target.organization_id AND job.user_id = target.user_id
+            WHERE job.type = 'agent_provision' AND (SELECT count(*) FROM target) = 1
+            ORDER BY job.created_at DESC, job.id DESC LIMIT 1
+          )
+          SELECT json_build_object(
+            'kind', 'activated-target-job-origin',
+            'canaryCount', (SELECT count(*) FROM canary),
+            'targetCount', (SELECT count(*) FROM target),
+            'jobCount', (SELECT count(*) FROM latest_job),
+            'startedAt', (SELECT started_at FROM latest_job),
+            'updatedAt', (SELECT updated_at FROM latest_job),
+            'attempts', (SELECT attempts FROM latest_job),
+            'errorStoredExternally', (SELECT error_storage IS NOT NULL FROM latest_job),
+            'errorTerms', ARRAY(
+              SELECT DISTINCT term[1] FROM latest_job,
+                regexp_matches(lower(error), '\m(timeout|timed|query|connection|connect|handshake|socket|pool|database|postgres|acquire|client|read|write|fetch|abort|aborted|operation|exceeded|trying|response|request|statement|health|sandbox|docker|ssh|vpn|headscale|backup|restore|revocation|lock|lease|body|headers|control|preflight|capacity|admission|fence|econnreset|etimedout|econnrefused)\M', 'g') AS term
+              ORDER BY term[1]
+            ),
+            'stackModules', ARRAY(
+              SELECT DISTINCT module[1] FROM latest_job,
+                regexp_matches(error, '(pg-pool/index\.js|pg/lib/client\.js|postgres/src/connection\.js|docker-ssh-client\.ts|eliza-sandbox\.ts|provisioning-jobs\.ts|managed-eliza-config\.ts|with-timeout\.ts|agent-env-crypto\.ts|agent-tier-upgrade-target\.ts)', 'g') AS module
+              ORDER BY module[1]
+            )
+          );
+          COMMIT;
+          SQL
+
       - name: Summarize replacement cleanup reconciliation eligibility
         id: cleanup_reconciliation
         shell: bash
