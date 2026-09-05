@@ -519,8 +519,6 @@ export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
-// Canonical Node-only connector token envelope and local key-file handling.
-export * from "./utils/token-encryption";
 export * from "./utils/well-formed";
 // User-chosen workspace folder persisted in <stateDir>/workspace-folder.json,
 // shared between the Electrobun renderer (writes via desktop RPC) and the
