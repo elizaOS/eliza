@@ -48,7 +48,8 @@ const STEP_STATUSES = new Set<WorkflowStepStatus>([
   "failed",
 ]);
 
-export const WORKFLOW_RE = /\[WORKFLOW\]\n([\s\S]*?)\n\[\/WORKFLOW\]/g;
+export const WORKFLOW_RE =
+  /\[[ \t]*WORKFLOW[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*WORKFLOW[ \t]*\]/g;
 
 function generateId(): string {
   if (
