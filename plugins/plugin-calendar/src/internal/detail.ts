@@ -173,3 +173,32 @@ export function sanitizeCalendarId(
     ? undefined
     : trimmed;
 }
+
+const CALENDAR_WINDOW_PRESETS = new Set([
+  "tomorrow_morning",
+  "tomorrow_afternoon",
+  "tomorrow_evening",
+]);
+
+export type CalendarWindowPreset =
+  | "tomorrow_morning"
+  | "tomorrow_afternoon"
+  | "tomorrow_evening";
+
+/**
+ * Planner-authored `windowPreset` is junk-prone: models invent values such as
+ * "tuesday_morning" for arbitrary dates, and CalendarService rejects them with
+ * a hard 400 that aborted the whole create ("the calendar hit a snag",
+ * observed live for "gym session tuesday at 7am"). Only the declared presets
+ * pass; anything else resolves to unset so an explicit or extracted startAt —
+ * or the normal timestamp re-extraction — decides the time instead.
+ */
+export function sanitizeWindowPreset(
+  value: string | undefined,
+): CalendarWindowPreset | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  return CALENDAR_WINDOW_PRESETS.has(normalized)
+    ? (normalized as CalendarWindowPreset)
+    : undefined;
+}

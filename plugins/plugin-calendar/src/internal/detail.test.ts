@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { sanitizeCalendarId } from "./detail.js";
+import { sanitizeCalendarId, sanitizeWindowPreset } from "./detail.js";
 
 describe("sanitizeCalendarId", () => {
   it("passes real calendar ids through untouched", () => {
@@ -46,5 +46,22 @@ describe("sanitizeCalendarId", () => {
     expect(sanitizeCalendarId(undefined)).toBeUndefined();
     expect(sanitizeCalendarId("")).toBeUndefined();
     expect(sanitizeCalendarId("   ")).toBeUndefined();
+  });
+});
+
+describe("sanitizeWindowPreset", () => {
+  it("passes the declared presets through, case-insensitively", () => {
+    expect(sanitizeWindowPreset("tomorrow_morning")).toBe("tomorrow_morning");
+    expect(sanitizeWindowPreset(" Tomorrow_Evening ")).toBe("tomorrow_evening");
+  });
+
+  it("drops planner-invented presets so the timestamp path decides instead", () => {
+    // The live regression: "gym session tuesday at 7am" produced a preset the
+    // service rejected with a 400 that aborted the whole create.
+    for (const junk of ["tuesday_morning", "morning", "next_week", "auto"]) {
+      expect(sanitizeWindowPreset(junk)).toBeUndefined();
+    }
+    expect(sanitizeWindowPreset(undefined)).toBeUndefined();
+    expect(sanitizeWindowPreset("   ")).toBeUndefined();
   });
 });
