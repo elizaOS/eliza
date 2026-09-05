@@ -194,6 +194,25 @@ describe("buildModelInputBudget", () => {
 			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
 		});
 
+		it("applies that sentinel to exactly one value, not a range", () => {
+			// The "carrying the legacy default" rule keys on strict equality with
+			// DEFAULT_INPUT_RESERVE_TOKENS. Neighbouring values are ordinary
+			// explicit overrides, so widening the sentinel to a range (or to
+			// "<= DEFAULT") would silently re-scale reserves callers pinned.
+			for (const reserveTokens of [
+				DEFAULT_INPUT_RESERVE_TOKENS - 1,
+				DEFAULT_INPUT_RESERVE_TOKENS + 1,
+			]) {
+				const budget = buildModelInputBudget({
+					messages: [userMessageOfChars(100)],
+					modelName: "gpt-oss-120b",
+					reserveTokens,
+				});
+				expect(budget.reserveTokens).toBe(reserveTokens);
+				expect(budget.dispatchThresholdTokens).toBe(131_000 - reserveTokens);
+			}
+		});
+
 		it("does NOT swap derivation in when reserveTokens===DEFAULT and lookup misses", () => {
 			// Lookup misses → no derived reserve available → the explicit
 			// default-equal must be honored. Otherwise we'd silently drop the
