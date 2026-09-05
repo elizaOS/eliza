@@ -166,20 +166,55 @@ export async function confirmTelegramAccountClaim(
     telegramContinuation,
     telegramClaimConfirmation: "explicit",
   };
-  const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, request);
-  if (!response.ok) {
-    const body = await readSessionError(response);
-    throw new Error(body.error || "Could not connect this Telegram account.");
-  }
-  clearPendingOnboardingSessionIfMatches(
-    telegramContinuation,
-    TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
-  );
-  if (typeof window !== "undefined") {
-    await writeStoredStewardToken(token);
-    window.dispatchEvent(
-      new CustomEvent("steward-token-sync", { detail: { token } }),
-    );
+  const authority = getStewardTabSessionAuthorityCoordinator();
+  const observed = authority.readSnapshot();
+  try {
+    await authority.runExclusive({
+      kind: "session-sync",
+      expectedToken: token,
+      expectedGeneration: observed.generation,
+      work: async (ctx) => {
+        // The claim is valid only for the exact authenticated session observed
+        // by /get-started. Binding that snapshot before the POST prevents a
+        // logout (or account switch) queued ahead of this work from letting a
+        // stale continuation mutate the server or republish its old token.
+        ctx.revalidate();
+        const response = await postAuthJson(
+          STEWARD_SESSION_ENDPOINT,
+          request,
+          "POST",
+          ctx.signal,
+        );
+        ctx.revalidate();
+        if (!response.ok) {
+          const body = await readSessionError(response);
+          throw new Error(
+            body.error || "Could not connect this Telegram account.",
+          );
+        }
+        clearPendingOnboardingSessionIfMatches(
+          telegramContinuation,
+          TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+        );
+        if (typeof window !== "undefined") {
+          // Persist and publish on the same held lease as the server mutation.
+          // A logout requested while the POST is in flight therefore runs
+          // afterwards and remains the final authority instead of being
+          // overwritten by this older confirmation.
+          await writeStoredStewardToken(token, ctx);
+          ctx.noteToken(token);
+          ctx.revalidate();
+          window.dispatchEvent(
+            new CustomEvent("steward-token-sync", { detail: { token } }),
+          );
+        }
+      },
+    });
+  } catch (error) {
+    if (isStewardSessionAuthoritySuperseded(error)) {
+      throw new Error("Could not connect this Telegram account.");
+    }
+    throw error;
   }
 }
 
