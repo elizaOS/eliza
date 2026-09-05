@@ -784,9 +784,15 @@ export async function executePlannedToolCall(
 		actionStatus: "executing" as const,
 		source: executorCtx.message.content.source,
 	};
+	// ACTION_STARTED is a lifecycle notification. Its dispatch runs alongside
+	// the handler instead of in front of it (live: 30-145 ms of subscriber
+	// work per tool call before the handler could begin); ACTION_COMPLETED
+	// below awaits this dispatch first, so subscribers still observe the two
+	// events settle in order.
+	let actionStartedDispatch: Promise<void> = Promise.resolve();
 	if (typeof runtime.emitEvent === "function") {
 		const worldId = await getActionEventWorldId();
-		await runtime
+		actionStartedDispatch = runtime
 			.emitEvent(EventType.ACTION_STARTED, {
 				runtime,
 				...(messageId ? { messageId } : {}),
@@ -932,6 +938,7 @@ export async function executePlannedToolCall(
 
 	if (typeof runtime.emitEvent === "function") {
 		const worldId = await getActionEventWorldId();
+		await actionStartedDispatch;
 		await runtime
 			.emitEvent(EventType.ACTION_COMPLETED, {
 				runtime,
