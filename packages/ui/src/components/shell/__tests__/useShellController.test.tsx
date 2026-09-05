@@ -1002,6 +1002,28 @@ describe("useShellController — voice capture routing", () => {
     expect(appMock.value.sendChatText).not.toHaveBeenCalled();
   });
 
+  it("updates capture routing when Cloud speech becomes available or disconnects", async () => {
+    appMock.value.elizaCloudConnected = true;
+    appMock.value.elizaCloudVoiceProxyAvailable = false;
+    const { result, rerender } = renderHook(() => useShellController());
+
+    await act(async () => result.current.startRecording("dictate"));
+    expect(lastCaptureOpts?.cloudConnected).toBe(false);
+    await act(async () => result.current.stopRecording());
+
+    appMock.value.elizaCloudVoiceProxyAvailable = true;
+    rerender();
+    await act(async () => result.current.startRecording("dictate"));
+    expect(lastCaptureOpts?.cloudConnected).toBe(true);
+    await act(async () => result.current.stopRecording());
+
+    appMock.value.elizaCloudConnected = false;
+    rerender();
+    await act(async () => result.current.startRecording("dictate"));
+    expect(lastCaptureOpts?.cloudConnected).toBe(false);
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+  });
+
   it("converse capture (hands-free) sends the transcript as a VOICE_DM", async () => {
     const { result } = renderHook(() => useShellController());
     await act(async () => {
