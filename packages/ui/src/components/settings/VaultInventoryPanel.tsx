@@ -40,6 +40,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -505,8 +506,8 @@ const EntryRow = memo(function EntryRow({
     return undefined;
   }, [focusKey, entry.key, onFocusApplied]);
 
-  // Auto-hide the revealed value after 10 seconds.
-  useEffect(() => {
+  // Install focus-loss protection before the revealed value can be painted.
+  useLayoutEffect(() => {
     if (!revealed) return;
     const hideRevealedValue = () => setRevealed(null);
     const hideWhenBackgrounded = () => {
