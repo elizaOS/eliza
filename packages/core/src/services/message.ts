@@ -12387,8 +12387,20 @@ function detachPostDeliverySideEffect(
  * drain independently. A run-owned task may not join after terminalization is
  * requested.
  */
+/**
+ * Which barrier a run-owned continuation belongs to. `room-state` work writes
+ * state the room's next turn must observe and holds the room handler lease
+ * until it settles. `deferred` work (post-turn evaluators, ALWAYS_AFTER hooks)
+ * is optional model work whose results are eventually consistent; it is still
+ * awaited before RUN_ENDED so the run's telemetry closes after its children,
+ * but it never holds the room lease, so a follow-up message in the same room
+ * is admitted as soon as the visible reply and room-state writes are done.
+ */
+type RunOwnedTaskLane = "room-state" | "deferred";
+
 class MessageRunTerminalOwner {
 	private readonly pending = new Set<Promise<void>>();
+	private readonly deferred = new Set<Promise<void>>();
 	private terminalRequest:
 		| {
 				status: RunEventPayload["status"];
@@ -12405,7 +12417,12 @@ class MessageRunTerminalOwner {
 		private readonly roomHandlerLease?: RoomHandlerLease,
 	) {}
 
-	track(label: string, task: () => Promise<unknown>): Promise<void> {
+	track(
+		label: string,
+		task: () => Promise<unknown>,
+		options: { lane?: RunOwnedTaskLane } = {},
+	): Promise<void> {
+		const lane = options.lane ?? "room-state";
 		if (this.terminalRequest) {
 			const error = new ElizaError(
 				"Run-owned work cannot start after terminalization was requested",
@@ -12426,6 +12443,7 @@ class MessageRunTerminalOwner {
 			return Promise.resolve();
 		}
 
+		const bucket = lane === "deferred" ? this.deferred : this.pending;
 		let tracked!: Promise<void>;
 		tracked = Promise.resolve()
 			.then(task)
@@ -12440,9 +12458,9 @@ class MessageRunTerminalOwner {
 				});
 			})
 			.finally(() => {
-				this.pending.delete(tracked);
+				bucket.delete(tracked);
 			});
-		this.pending.add(tracked);
+		bucket.add(tracked);
 		return tracked;
 	}
 
@@ -12457,12 +12475,29 @@ class MessageRunTerminalOwner {
 			...(error === undefined ? {} : { error }),
 		};
 		try {
+			// The room lease waits only for room-state children. Deferred children
+			// are awaited by the RUN_ENDED barrier below, which is runtime-scoped
+			// (drained at shutdown) and never attached to the room.
+			if (this.pending.size > 0) {
+				detachPostDeliverySideEffect(
+					this.runtime,
+					"RUN_ROOM_STATE",
+					async () => {
+						while (this.pending.size > 0) {
+							await Promise.allSettled([...this.pending]);
+						}
+					},
+					"room-state",
+					this.message.roomId,
+					this.roomHandlerLease,
+				);
+			}
 			this.terminalTask = detachPostDeliverySideEffect(
 				this.runtime,
 				"RUN_ENDED",
 				async () => {
-					while (this.pending.size > 0) {
-						await Promise.allSettled([...this.pending]);
+					while (this.pending.size > 0 || this.deferred.size > 0) {
+						await Promise.allSettled([...this.pending, ...this.deferred]);
 					}
 					const terminal = this.terminalRequest;
 					if (!terminal) {
@@ -12492,9 +12527,7 @@ class MessageRunTerminalOwner {
 								}),
 					} as RunEventPayload);
 				},
-				"room-state",
-				this.message.roomId,
-				this.roomHandlerLease,
+				"diagnostic",
 			);
 		} catch (terminalScheduleError) {
 			this.terminalRequest = undefined;
@@ -16268,26 +16301,32 @@ export class DefaultMessageService implements IMessageService {
 		// barrier so the parent cannot close while that child's telemetry is still
 		// being written. Child failure is reported at that barrier, which still
 		// releases the trajectory exactly once after the child settles.
-		runTerminalOwner.track("post_turn", async () => {
-			if (actionResults?.some((result) => result.replyFailure !== undefined)) {
-				// The action already settled and response generation is unavailable.
-				// Close the run without another evaluation/model or action hook.
-				return;
-			}
-			await withEvaluatorStep(runtime, "post_turn", async () => {
-				if (semanticSignal) {
-					await runPostTurnEvaluators(runtime, message, state, {
+		runTerminalOwner.track(
+			"post_turn",
+			async () => {
+				if (
+					actionResults?.some((result) => result.replyFailure !== undefined)
+				) {
+					// The action already settled and response generation is unavailable.
+					// Close the run without another evaluation/model or action hook.
+					return;
+				}
+				await withEvaluatorStep(runtime, "post_turn", async () => {
+					if (semanticSignal) {
+						await runPostTurnEvaluators(runtime, message, state, {
+							didRespond: didRespondGate,
+							responses: responseMessages,
+							semanticSignal,
+						});
+					}
+					await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
 						didRespond: didRespondGate,
 						responses: responseMessages,
-						semanticSignal,
 					});
-				}
-				await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
-					didRespond: didRespondGate,
-					responses: responseMessages,
 				});
-			});
-		});
+			},
+			{ lane: "deferred" },
+		);
 
 		const didRespond =
 			responseMessages.length > 0 && !isStopResponse(responseContent);

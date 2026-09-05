@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NoModelProviderConfiguredError } from "../runtime";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import { TurnControllerRegistry } from "../runtime/turn-controller";
 import { getStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
@@ -19,7 +20,11 @@ import {
 } from "../types/action-reply";
 import { asUUID, ChannelType, type UUID } from "../types/primitives";
 import { DefaultMessageService } from "./message";
-import { drainPostDeliveryTasks } from "./post-delivery-task-tracker";
+import {
+	drainPostDeliveryTasks,
+	drainRoomPostDeliveryTasks,
+	pendingRoomPostDeliveryTaskCount,
+} from "./post-delivery-task-tracker";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000002a1" as UUID;
 const ENTITY_ID = "00000000-0000-0000-0000-0000000002b1" as UUID;
@@ -519,5 +524,64 @@ describe("DefaultMessageService run-terminal owner", () => {
 			{ text: "Okay.)" },
 			{ text: "arrived." },
 		]);
+	});
+
+	it("releases the room lane before deferred post-turn work while RUN_ENDED still waits for it", async () => {
+		// Live 2026-09-05: the post-turn evaluator (a 17K-token model call, up to
+		// tens of seconds under 429s) ran inside the room-state RUN_ENDED barrier,
+		// so a follow-up message in the same room queued behind it.
+		const afterGate = deferred();
+		const afterStarted = deferred();
+		const { runtime, terminalPayloads } = makeRuntime({});
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		(
+			runtime as unknown as { roomHandlerQueue: RoomHandlerQueue }
+		).roomHandlerQueue = queue;
+		(runtime.runActionsByMode as ReturnType<typeof vi.fn>).mockImplementation(
+			async (mode: string) => {
+				if (mode === "ALWAYS_AFTER") {
+					afterStarted.release();
+					await afterGate.promise;
+				}
+			},
+		);
+		const service = new DefaultMessageService();
+		const lease = await queue.acquire(ROOM_ID);
+
+		const result = await queue.runInLease(ROOM_ID, lease, () =>
+			service.handleMessage(
+				runtime,
+				inputMessage("what's on my calendar tuesday?"),
+				async () => [],
+				{ roomHandlerLease: lease },
+			),
+		);
+		expect(result.trajectoryTerminalOwner).toBe("run");
+		await afterStarted.promise;
+
+		// Room-state work is done: the room drain returns while the post-turn
+		// hook is still running, and the next turn is admitted once the lease is
+		// released. The run has not been terminalized yet. A bounded race keeps
+		// the regression fast instead of hanging on the old behavior.
+		const settledBefore = <T>(work: Promise<T>) =>
+			Promise.race([
+				work.then(() => "settled" as const),
+				new Promise<"blocked">((resolve) =>
+					setTimeout(() => resolve("blocked"), 250),
+				),
+			]);
+		expect(
+			await settledBefore(drainRoomPostDeliveryTasks(runtime, ROOM_ID)),
+		).toBe("settled");
+		expect(pendingRoomPostDeliveryTaskCount(runtime, ROOM_ID)).toBe(0);
+		expect(await settledBefore(lease.release())).toBe("settled");
+		const nextTurn = queue.acquire(ROOM_ID);
+		expect(await settledBefore(nextTurn)).toBe("settled");
+		expect(terminalPayloads).toEqual([]);
+
+		afterGate.release();
+		await drainPostDeliveryTasks(runtime);
+		expect(terminalPayloads).toHaveLength(1);
+		await (await nextTurn).release();
 	});
 });
