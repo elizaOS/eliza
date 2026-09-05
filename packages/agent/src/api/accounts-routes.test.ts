@@ -744,6 +744,48 @@ describe("accounts routes", () => {
     expect(runtime.getSetting("OPENAI_BASE_URL")).toBeNull();
   });
 
+  it("revokes live authority when credential removal succeeds but metadata deletion fails", async () => {
+    const runtime = new AgentRuntime({
+      character: {
+        name: "account-delete-partial-failure",
+        secrets: { OPENROUTER_API_KEY: "removed-token" },
+      },
+      settings: { OPENROUTER_API_KEY: "removed-token" },
+    });
+    process.env.OPENROUTER_API_KEY = "removed-token";
+    process.env.OPENAI_API_KEY = "removed-token";
+    process.env.OPENAI_BASE_URL = "https://openrouter.ai/api/v1";
+    fakes.pool.deleteMetadata.mockRejectedValueOnce(
+      new Error("metadata write failed"),
+    );
+    fakes.applyAccountPoolApiCredentials.mockImplementationOnce(async () => {
+      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_BASE_URL;
+    });
+    const deleted = makeContext(
+      "DELETE",
+      "/api/accounts/openrouter-api/account-1",
+    );
+    deleted.ctx.state.runtime = runtime;
+    deleted.ctx.state.config = {
+      serviceRouting: { llmText: { backend: "openrouter" } },
+    } as AccountsRouteContext["state"]["config"];
+    try {
+      await expect(handleAccountsRoutes(deleted.ctx)).rejects.toThrow(
+        "metadata write failed",
+      );
+      expect(fakes.deleteAccount).toHaveBeenCalled();
+      expect(runtime.getSetting("OPENROUTER_API_KEY")).toBeNull();
+      expect(runtime.getSetting("OPENAI_API_KEY")).toBeNull();
+      expect(runtime.getSetting("OPENAI_BASE_URL")).toBeNull();
+    } finally {
+      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_BASE_URL;
+    }
+  });
+
   it("rejects an unverified OpenRouter credential without persisting it", async () => {
     fakes.probeDirectApiKey.mockResolvedValueOnce({
       ok: false,
