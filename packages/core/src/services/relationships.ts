@@ -1224,8 +1224,8 @@ export class RelationshipsService extends Service {
 					message.entityId === targetEntityId,
 			)
 			.sort((a, b) => {
-				const aSafe = safeSortNumber(a.createdAt ?? 0);
-				const bSafe = safeSortNumber(b.createdAt ?? 0);
+				const aSafe = toMessageTimestamp(a.createdAt) ?? 0;
+				const bSafe = toMessageTimestamp(b.createdAt) ?? 0;
 				if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
 				return String(a.id ?? "").localeCompare(String(b.id ?? ""));
 			});
@@ -1242,9 +1242,13 @@ export class RelationshipsService extends Service {
 			targetEntityId,
 		);
 		const lastInteraction = interactions[interactions.length - 1];
-		const lastInteractionAt = lastInteraction?.createdAt
-			? new Date(Number(lastInteraction.createdAt)).toISOString()
-			: relationship?.lastInteractionAt;
+		const lastInteractionTimestamp = lastInteraction
+			? toMessageTimestamp(lastInteraction.createdAt)
+			: null;
+		const lastInteractionAt =
+			lastInteractionTimestamp !== null
+				? new Date(lastInteractionTimestamp).toISOString()
+				: relationship?.lastInteractionAt;
 
 		// Calculate average response time
 		let totalResponseTime = 0;
@@ -1254,19 +1258,23 @@ export class RelationshipsService extends Service {
 			const current = interactions[i];
 			const next = interactions[i + 1];
 
-			if (
-				current.entityId !== next.entityId &&
-				current.createdAt &&
-				next.createdAt
-			) {
-				const timeDiff = Number(next.createdAt) - Number(current.createdAt);
-				totalResponseTime += timeDiff;
-				responseCount++;
+			if (current.entityId !== next.entityId) {
+				const currentTs = toMessageTimestamp(current.createdAt);
+				const nextTs = toMessageTimestamp(next.createdAt);
+				if (currentTs !== null && nextTs !== null) {
+					const timeDiff = nextTs - currentTs;
+					if (Number.isFinite(timeDiff)) {
+						totalResponseTime += timeDiff;
+						responseCount++;
+					}
+				}
 			}
 		}
 
 		const averageResponseTime =
-			responseCount > 0 ? totalResponseTime / responseCount : undefined;
+			responseCount > 0 && Number.isFinite(totalResponseTime / responseCount)
+				? totalResponseTime / responseCount
+				: undefined;
 
 		// Extract topics (simplified - could use NLP)
 		const topicsSet = new Set<string>();
