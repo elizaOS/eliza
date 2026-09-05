@@ -1,6 +1,6 @@
 {
-  "componentFiles": 395,
-  "withStories": 257,
+  "componentFiles": 391,
+  "withStories": 253,
   "missing": [
     "src/components/accounts/AccountListShell.tsx",
     "src/components/accounts/AccountManagementPanel.tsx",
