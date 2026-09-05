@@ -83,12 +83,14 @@ function gmailMessage(args: {
   listUnsubscribe?: string;
   listUnsubscribePost?: string;
   listId?: string;
+  receivedAt?: string;
 }) {
   const headers: Record<string, string> = {};
   if (args.listUnsubscribe) headers["List-Unsubscribe"] = args.listUnsubscribe;
   if (args.listUnsubscribePost)
     headers["List-Unsubscribe-Post"] = args.listUnsubscribePost;
   if (args.listId) headers["List-Id"] = args.listId;
+  const receivedAt = args.receivedAt ?? "2026-06-17T08:00:00.000Z";
   return {
     id: `${AGENT_ID}:google:owner:gmail:${args.id}`,
     externalId: args.id,
@@ -103,7 +105,7 @@ function gmailMessage(args: {
     to: [],
     cc: [],
     snippet: "",
-    receivedAt: "2026-06-17T08:00:00.000Z",
+    receivedAt,
     isUnread: true,
     isImportant: false,
     likelyReplyNeeded: false,
@@ -112,8 +114,8 @@ function gmailMessage(args: {
     labels: ["UNREAD", "INBOX"],
     htmlLink: null,
     metadata: { googlePlugin: true, headers },
-    syncedAt: "2026-06-17T08:00:00.000Z",
-    updatedAt: "2026-06-17T08:00:00.000Z",
+    syncedAt: receivedAt,
+    updatedAt: receivedAt,
     connectorAccountId: "acct-1",
     grantId: "connector-account:acct-1",
     accountEmail: "owner@example.com",
@@ -286,6 +288,124 @@ describe("InboxUnsubscribeService", () => {
       expect(searchGmail).toHaveBeenCalledWith(
         expect.not.objectContaining({ maxResults: expect.anything() }),
       );
+    });
+
+    // Gmail's users.messages.list (via GoogleGmailClient.searchMessages) returns
+    // newest-first, and the Gmail seam consumes that order without re-sorting.
+    // Regression for #27807: the per-sender aggregation must derive firstSeenAt
+    // = oldest, latestSeenAt = newest, and point latestMessageId/latestThreadId
+    // at the newest message regardless of arrival order — never assume
+    // iteration order equals chronology.
+    it("derives first/latest extremes from a newest-first Gmail feed", async () => {
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m3",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+            receivedAt: "2026-06-17T09:00:00.000Z",
+          }),
+          gmailMessage({
+            id: "m2",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+            receivedAt: "2026-06-16T09:00:00.000Z",
+          }),
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+            receivedAt: "2026-06-15T09:00:00.000Z",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const result = await service.scanEmailSubscriptions();
+      const brand = result.senders.find(
+        (sender) => sender.senderEmail === "news@brand.com",
+      );
+
+      expect(brand?.messageCount).toBe(3);
+      expect(brand?.firstSeenAt).toBe("2026-06-15T09:00:00.000Z");
+      expect(brand?.latestSeenAt).toBe("2026-06-17T09:00:00.000Z");
+      expect(brand?.latestMessageId).toBe(`${AGENT_ID}:google:owner:gmail:m3`);
+      expect(brand?.latestThreadId).toBe("thread-m3");
+    });
+
+    it("is order-independent when the newest message arrives in the middle", async () => {
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m2",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+            receivedAt: "2026-06-16T09:00:00.000Z",
+          }),
+          gmailMessage({
+            id: "m3",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+            receivedAt: "2026-06-17T09:00:00.000Z",
+          }),
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+            receivedAt: "2026-06-15T09:00:00.000Z",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const result = await service.scanEmailSubscriptions();
+      const brand = result.senders.find(
+        (sender) => sender.senderEmail === "news@brand.com",
+      );
+
+      expect(brand?.firstSeenAt).toBe("2026-06-15T09:00:00.000Z");
+      expect(brand?.latestSeenAt).toBe("2026-06-17T09:00:00.000Z");
+      expect(brand?.latestMessageId).toBe(`${AGENT_ID}:google:owner:gmail:m3`);
+      expect(brand?.latestThreadId).toBe("thread-m3");
+    });
+
+    it("keeps valid extremes when one message has an unparseable receivedAt", async () => {
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m2",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+            receivedAt: "2026-06-16T09:00:00.000Z",
+          }),
+          gmailMessage({
+            id: "bad",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+            receivedAt: "not-a-date",
+          }),
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+            receivedAt: "2026-06-15T09:00:00.000Z",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const result = await service.scanEmailSubscriptions();
+      const brand = result.senders.find(
+        (sender) => sender.senderEmail === "news@brand.com",
+      );
+
+      // The unparseable message still counts, but never becomes an extreme and
+      // never hijacks the latest-message pointer.
+      expect(brand?.messageCount).toBe(3);
+      expect(brand?.firstSeenAt).toBe("2026-06-15T09:00:00.000Z");
+      expect(brand?.latestSeenAt).toBe("2026-06-16T09:00:00.000Z");
+      expect(brand?.latestMessageId).toBe(`${AGENT_ID}:google:owner:gmail:m2`);
+      expect(brand?.latestThreadId).toBe("thread-m2");
     });
   });
 
