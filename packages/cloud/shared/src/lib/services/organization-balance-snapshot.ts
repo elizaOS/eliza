@@ -3,16 +3,16 @@
  * row so inference hydration and direct credit reads share one parsing contract.
  */
 import { ElizaError } from "@elizaos/core";
-import type { Organization } from "../../db/schemas/organizations";
 
 export interface OrganizationBalanceSnapshot {
   balanceUsd: number;
   revision: string;
 }
 
-export function parseOrganizationBalanceSnapshot(
-  organization: Pick<Organization, "credit_balance" | "balance_revision">,
-): OrganizationBalanceSnapshot {
+export function parseOrganizationBalanceSnapshot(organization: {
+  credit_balance: string | number | null;
+  balance_revision: string | number | null;
+}): OrganizationBalanceSnapshot {
   const revision = String(organization.balance_revision);
   if (!/^(0|[1-9]\d*)$/.test(revision)) {
     throw new ElizaError("[CreditsService] Invalid organization balance revision", {
