@@ -455,9 +455,68 @@ describe("ensurePersonalDedicatedEliza", () => {
     );
   });
 
+  it.each([undefined, "", { invalid: true }])(
+    "rejects an accepted activation with invalid job identity %j before cutover",
+    async (jobId) => {
+      const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
+      const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+      const unexpectedRequests: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.endsWith("/api/v1/eliza/personal")) {
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                identity: {
+                  id: personalElizaId,
+                  displayName: "Eliza",
+                  runtime: "shared",
+                },
+              },
+            });
+          }
+          if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                quoteId: "a".repeat(64),
+                canActivate: true,
+                activation: { state: "available" },
+              },
+            });
+          }
+          if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+            return jsonResponse(202, {
+              success: true,
+              data: { dedicatedAgentId, jobId },
+            });
+          }
+          unexpectedRequests.push(url);
+          return jsonResponse(500, {
+            error: "unexpected request after invalid activation",
+          });
+        }),
+      );
+      await expect(
+        new ElizaClient().ensurePersonalDedicatedEliza({
+          cloudApiBase: "https://api.eliza.app",
+          authToken: "steward-token",
+          timeoutMs: 1_000,
+        }),
+      ).rejects.toMatchObject({
+        code: "CLOUD_DEDICATED_PROVISION_JOB_INVALID",
+        context: { phase: "activation", field: "jobId" },
+      });
+      expect(unexpectedRequests).toEqual([]);
+    },
+  );
+
   it("does not retry cutover from HTTP status alone without a retryable response code", async () => {
     const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
     const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const jobId = "10000000-0000-4000-8000-000000000020";
     let cutoverAttempts = 0;
     vi.stubGlobal(
       "fetch",
@@ -488,7 +547,13 @@ describe("ensurePersonalDedicatedEliza", () => {
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
           return jsonResponse(202, {
             success: true,
-            data: { dedicatedAgentId },
+            data: { dedicatedAgentId, jobId },
+          });
+        }
+        if (url.endsWith(`/api/v1/jobs/${jobId}`)) {
+          return jsonResponse(200, {
+            success: true,
+            data: { id: jobId, status: "completed" },
           });
         }
         if (url.endsWith("/upgrade-tier/cutover")) {
@@ -1571,6 +1636,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     async (targetStatus) => {
       const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
       const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+      const jobId = "10000000-0000-4000-8000-000000000020";
       let activationPosts = 0;
       const fetchMock = vi.fn(
         async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1605,7 +1671,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             activationPosts += 1;
             return jsonResponse(202, {
               success: true,
-              data: { dedicatedAgentId },
+              data: { dedicatedAgentId, jobId },
             });
           }
           if (
@@ -1616,6 +1682,12 @@ describe("ensurePersonalDedicatedEliza", () => {
               success: false,
               code: "dedicated_adoption_unavailable",
               error: "Agent not found",
+            });
+          }
+          if (url.endsWith(`/api/v1/jobs/${jobId}`)) {
+            return jsonResponse(200, {
+              success: true,
+              data: { id: jobId, status: "completed" },
             });
           }
           if (url.endsWith("/upgrade-tier/cutover")) {
@@ -1839,14 +1911,21 @@ describe("ensurePersonalDedicatedEliza", () => {
     expect(cutoverPosts).toBe(1);
   });
 
-  it.each(["request", "body"] as const)(
-    "aborts a hung boundary cutover %s at exactly 720000ms without late work",
-    async (stalledPhase) => {
+  it.each([
+    ["cutover", "request"],
+    ["cutover", "body"],
+    ["job", "request"],
+    ["job", "body"],
+  ] as const)(
+    "aborts a hung boundary %s %s at exactly 720000ms without late work",
+    async (stalledBoundary, stalledPhase) => {
       vi.useFakeTimers();
       vi.setSystemTime(0);
       const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
       const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+      const jobId = "10000000-0000-4000-8000-000000000020";
       let cutoverPosts = 0;
+      let boundaryRequests = 0;
       let releaseLateRequest: ((response: Response) => void) | undefined;
       let releaseLateBody: ((body: string) => void) | undefined;
       const onProgress = vi.fn();
@@ -1872,30 +1951,49 @@ describe("ensurePersonalDedicatedEliza", () => {
               data: {
                 quoteId: "3".repeat(64),
                 canActivate: true,
-                activation: {
-                  state: "in_progress",
-                  dedicatedAgentId,
-                  status: "provisioning",
-                },
+                activation:
+                  stalledBoundary === "job"
+                    ? { state: "available" }
+                    : {
+                        state: "in_progress",
+                        dedicatedAgentId,
+                        status: "provisioning",
+                      },
               },
             });
           }
           if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+            if (stalledBoundary === "job") {
+              return jsonResponse(202, {
+                success: true,
+                data: { dedicatedAgentId, jobId },
+              });
+            }
             throw new Error("activation POST must not replay");
           }
-          if (url.endsWith("/upgrade-tier/cutover")) {
-            cutoverPosts += 1;
-            if (cutoverPosts === 2) {
+          if (url.endsWith("/upgrade-tier/cutover")) cutoverPosts += 1;
+          if (
+            url.endsWith("/upgrade-tier/cutover") ||
+            url.endsWith(`/api/v1/jobs/${jobId}`)
+          ) {
+            boundaryRequests += 1;
+            if (boundaryRequests === 2) {
               if (stalledPhase === "request") {
                 return await new Promise<Response>((resolve) => {
                   releaseLateRequest = resolve;
                 });
               }
-              const headersOnly = jsonResponse(409, {
-                success: false,
-                code: "dedicated_not_healthy",
-                error: "Dedicated is still provisioning",
-              });
+              const headersOnly =
+                stalledBoundary === "job"
+                  ? jsonResponse(200, {
+                      success: true,
+                      data: { id: jobId, status: "in_progress" },
+                    })
+                  : jsonResponse(409, {
+                      success: false,
+                      code: "dedicated_not_healthy",
+                      error: "Dedicated is still provisioning",
+                    });
               vi.spyOn(headersOnly, "text").mockImplementation(
                 async () =>
                   await new Promise<string>((resolve) => {
@@ -1904,11 +2002,16 @@ describe("ensurePersonalDedicatedEliza", () => {
               );
               return headersOnly;
             }
-            return jsonResponse(409, {
-              success: false,
-              code: "dedicated_not_healthy",
-              error: "Dedicated is still provisioning",
-            });
+            return stalledBoundary === "job"
+              ? jsonResponse(200, {
+                  success: true,
+                  data: { id: jobId, status: "in_progress" },
+                })
+              : jsonResponse(409, {
+                  success: false,
+                  code: "dedicated_not_healthy",
+                  error: "Dedicated is still provisioning",
+                });
           }
           return jsonResponse(500, { error: "unexpected route" });
         }),
@@ -1931,7 +2034,8 @@ describe("ensurePersonalDedicatedEliza", () => {
 
       await vi.advanceTimersByTimeAsync(719_999);
       expect(outcome).toBeUndefined();
-      expect(cutoverPosts).toBe(2);
+      expect(boundaryRequests).toBe(2);
+      expect(cutoverPosts).toBe(stalledBoundary === "cutover" ? 2 : 0);
       const progressCountAtBoundaryRequest = onProgress.mock.calls.length;
 
       await vi.advanceTimersByTimeAsync(1);
@@ -1945,19 +2049,26 @@ describe("ensurePersonalDedicatedEliza", () => {
         name: "TimeoutError",
       });
       expect(Date.now()).toBe(720_000);
-      expect(cutoverPosts).toBe(2);
+      expect(boundaryRequests).toBe(2);
       expect(onProgress).toHaveBeenCalledTimes(progressCountAtBoundaryRequest);
 
-      const lateResponse = jsonResponse(409, {
-        success: false,
-        error: "late Dedicated response",
-      });
+      const lateResponse =
+        stalledBoundary === "job"
+          ? jsonResponse(200, {
+              success: true,
+              data: { id: jobId, status: "completed" },
+            })
+          : jsonResponse(409, {
+              success: false,
+              error: "late Dedicated response",
+            });
       releaseLateRequest?.(lateResponse);
       releaseLateBody?.(await lateResponse.text());
       await Promise.resolve();
       await Promise.resolve();
       await vi.advanceTimersByTimeAsync(30_000);
-      expect(cutoverPosts).toBe(2);
+      expect(boundaryRequests).toBe(2);
+      expect(cutoverPosts).toBe(stalledBoundary === "cutover" ? 2 : 0);
       expect(onProgress).toHaveBeenCalledTimes(progressCountAtBoundaryRequest);
       expect(vi.getTimerCount()).toBe(0);
     },
@@ -2041,6 +2152,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     vi.setSystemTime(0);
     const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
     const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const jobId = "10000000-0000-4000-8000-000000000020";
     const onProgress = vi.fn();
     let activationPosts = 0;
     let cutoverPosts = 0;
@@ -2090,7 +2202,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             1_000,
             jsonResponse(202, {
               success: true,
-              data: { dedicatedAgentId },
+              data: { dedicatedAgentId, jobId },
             }),
           );
         }
@@ -2102,6 +2214,15 @@ describe("ensurePersonalDedicatedEliza", () => {
             success: false,
             code: "dedicated_adoption_unavailable",
           });
+        }
+        if (url.endsWith(`/api/v1/jobs/${jobId}`)) {
+          return await delayResponse(
+            1_000,
+            jsonResponse(200, {
+              success: true,
+              data: { id: jobId, status: "completed" },
+            }),
+          );
         }
         if (url.endsWith("/upgrade-tier/cutover")) {
           cutoverPosts += 1;

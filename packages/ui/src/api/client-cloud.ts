@@ -5249,7 +5249,20 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
       );
     }
     dedicatedAgentId = activatedTargetId;
-    if (activatedJobId) provisioningJobId = activatedJobId;
+    if (
+      !adoptionRequired &&
+      activationResponse.status === 202 &&
+      !activatedJobId
+    ) {
+      throw new ElizaError(
+        "Eliza Cloud accepted Dedicated activation without a provisioning job.",
+        {
+          code: "CLOUD_DEDICATED_PROVISION_JOB_INVALID",
+          context: { phase: "activation", field: "jobId" },
+        },
+      );
+    }
+    if (!adoptionRequired && activatedJobId) provisioningJobId = activatedJobId;
   }
   if (!dedicatedAgentId) {
     throw new Error(

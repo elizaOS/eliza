@@ -33,6 +33,7 @@ import {
   personalDedicatedClientApiBase,
   personalSharedAgentId,
 } from "@/lib/services/shared-runtime/personal-shared-agent";
+import { SharedRuntimeCacheWarmingError } from "@/lib/services/shared-runtime/shared-runtime-errors";
 import {
   commitSharedReminderCutover,
   releaseSharedReminderCutover,
@@ -832,6 +833,17 @@ app.post("/", async (c) => {
       }
     }
   } catch (error) {
+    // error-policy:J1 preserve the coordinator's temporary unavailable state
+    // so the client can retry the idempotent cutover within its startup deadline.
+    if (error instanceof SharedRuntimeCacheWarmingError) {
+      return rejectCutover(c, {
+        code: "shared_history_unavailable",
+        error:
+          "Shared history is temporarily unavailable. Retry Dedicated activation shortly.",
+        status: 503,
+        phase: "coordinate-shared-history",
+      });
+    }
     logger.error("[personal-dedicated-cutover] Cutover failed", {
       traceId: c.get("traceId") ?? c.get("requestId"),
       phase: "unhandled-boundary",
