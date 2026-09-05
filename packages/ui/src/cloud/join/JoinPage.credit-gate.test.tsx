@@ -8,6 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -15,7 +16,6 @@ const mocks = vi.hoisted(() => ({
   runJoinFlow: vi.fn(),
 }));
 
-vi.mock("react-router-dom", () => ({ Navigate: () => null }));
 vi.mock("../../api", () => ({ client: {} }));
 vi.mock("../../state/persistence", () => ({
   savePersistedActiveServer: vi.fn(),
@@ -53,9 +53,21 @@ vi.mock("./lib/use-join-session", () => ({
 
 import JoinPage from "./JoinPage";
 
+function renderJoin() {
+  return render(
+    <MemoryRouter initialEntries={["/join"]}>
+      <Routes>
+        <Route path="/join" element={<JoinPage />} />
+        <Route path="/" element={<h1>Connected chat</h1>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe("JoinPage Dedicated credit gate", () => {
   beforeEach(() => {
-    mocks.openCloudBillingConsole.mockClear();
+    mocks.openCloudBillingConsole.mockReset();
+    mocks.openCloudBillingConsole.mockResolvedValue(true);
     mocks.runJoinFlow.mockReset();
     mocks.runJoinFlow.mockRejectedValue(
       Object.assign(
@@ -70,7 +82,7 @@ describe("JoinPage Dedicated credit gate", () => {
   afterEach(cleanup);
 
   it("opens the billing console from the credit-specific recovery action", async () => {
-    render(<JoinPage />);
+    renderJoin();
 
     const addCredits = await screen.findByRole("button", {
       name: "Add credits",
@@ -92,15 +104,64 @@ describe("JoinPage Dedicated credit gate", () => {
           { status: 402 },
         ),
       )
-      .mockResolvedValueOnce({ runtime: "dedicated" });
-    render(<JoinPage />);
+      .mockResolvedValueOnce({
+        personalElizaId: "personal:credit-user",
+        agentId: "personal:credit-user",
+        activeAgentId: "dedicated-credit-user",
+        agentName: "Eliza",
+        apiBase: "https://dedicated-credit-user.cloud.eliza.app",
+        runtime: "dedicated",
+      });
+    renderJoin();
 
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Try again",
+    await screen.findByRole("button", { name: "Add credits" });
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await screen.findByRole("heading", { name: "Connected chat" });
+    expect(mocks.runJoinFlow).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("button", { name: "Add credits" })).toBeNull();
+  });
+  it("shows a declined billing launch and permits another attempt", async () => {
+    mocks.openCloudBillingConsole.mockResolvedValueOnce(false);
+    renderJoin();
+    fireEvent.click(await screen.findByRole("button", { name: "Add credits" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Could not open billing",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add credits" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(mocks.openCloudBillingConsole).toHaveBeenCalledTimes(2);
+  });
+  it("handles a rejected platform launch without losing credit recovery", async () => {
+    mocks.openCloudBillingConsole.mockRejectedValueOnce(
+      new Error("Native browser unavailable"),
+    );
+    renderJoin();
+    fireEvent.click(await screen.findByRole("button", { name: "Add credits" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Could not open billing",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add credits" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(mocks.openCloudBillingConsole).toHaveBeenCalledTimes(2);
+  });
+
+  it("prevents duplicate billing windows while the platform launch is pending", async () => {
+    let finish: (opened: boolean) => void = () => {
+      throw new Error("Billing launch has not started");
+    };
+    mocks.openCloudBillingConsole.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        finish = resolve;
       }),
     );
-
-    await waitFor(() => expect(mocks.runJoinFlow).toHaveBeenCalledTimes(2));
+    renderJoin();
+    const add = await screen.findByRole("button", { name: "Add credits" });
+    fireEvent.click(add);
+    fireEvent.click(add);
+    expect(add).toHaveProperty("disabled", true);
+    expect(mocks.openCloudBillingConsole).toHaveBeenCalledOnce();
+    finish(true);
+    await waitFor(() => expect(add).toHaveProperty("disabled", false));
   });
 });

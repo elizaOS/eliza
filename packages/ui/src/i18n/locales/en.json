@@ -8562,6 +8562,8 @@
   "cloud.getStarted.openChat": "Or chat here instead",
   "cloud.getStarted.retry": "Try again",
   "cloud.join.addCredits": "Add credits",
+  "cloud.join.billingOpenFailed": "Could not open billing. Please try again.",
+  "cloud.join.openingBilling": "Opening billing...",
   "cloud.join.connecting": "Opening your personal Eliza...",
   "cloud.join.dedicatedAdoptionBalance": "Balance: {{balance}} · Required: {{minimum}} ({{days}} days of runway)",
   "cloud.join.dedicatedAdoptionCancel": "Cancel setup",

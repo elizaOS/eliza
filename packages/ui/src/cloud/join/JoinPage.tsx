@@ -71,17 +71,24 @@ type JoinFailure =
   | { kind: "generic"; message: string };
 
 function describeJoinError(err: unknown): JoinFailure {
-  if (err instanceof Error && err.message === "Dedicated adoption was not confirmed.") {
-    return { kind: "generic", message: "Dedicated setup was not started. Your Shared Eliza is unchanged." };
+  if (
+    err instanceof Error &&
+    err.message === "Dedicated adoption was not confirmed."
+  ) {
+    return {
+      kind: "generic",
+      message:
+        "Dedicated setup was not started. Your Shared Eliza is unchanged.",
+    };
   }
-  const message = err instanceof Error && err.message.trim()
-    ? err.message
-    : "Could not connect to your agent. Try again.";
+  const message =
+    err instanceof Error && err.message.trim()
+      ? err.message
+      : "Could not connect to your agent. Try again.";
   if (err instanceof Error && "status" in err && err.status === 402) {
     return { kind: "insufficient-credit", message };
   }
   return { kind: "generic", message };
-
 }
 
 function readableDedicatedStatus(status: string): string {
@@ -95,6 +102,9 @@ export default function JoinPage(): React.JSX.Element {
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<JoinFailure | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [openingBilling, setOpeningBilling] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
+  const billingOpeningRef = useRef(false);
   const [adoptionReview, setAdoptionReview] =
     useState<DedicatedAdoptionReview | null>(null);
   const pendingAdoptionDecisionRef =
@@ -167,6 +177,7 @@ export default function JoinPage(): React.JSX.Element {
     }
     setPhase("connecting");
     setError(null);
+    setBillingError(null);
     settleDedicatedAdoption(null);
     activeAttemptRef.current?.controller.abort(
       new DOMException("Join attempt superseded", "AbortError"),
@@ -251,6 +262,27 @@ export default function JoinPage(): React.JSX.Element {
     startedRef.current = true;
     void start();
   }, [start]);
+
+  const handleOpenBilling = useCallback(async () => {
+    if (billingOpeningRef.current) return;
+    billingOpeningRef.current = true;
+    setOpeningBilling(true);
+    setBillingError(null);
+    const failedMessage = t("cloud.join.billingOpenFailed", {
+      defaultValue: "Could not open billing. Please try again.",
+    });
+    try {
+      if (!(await openCloudBillingConsole(resolveJoinCloudApiBase()))) {
+        setBillingError(failedMessage);
+      }
+    } catch {
+      // error-policy:J4 a platform browser launch failure keeps credit recovery available.
+      setBillingError(failedMessage);
+    } finally {
+      billingOpeningRef.current = false;
+      setOpeningBilling(false);
+    }
+  }, [t]);
 
   const handleSignOut = useCallback(async () => {
     if (signingOut) return;
@@ -476,12 +508,23 @@ export default function JoinPage(): React.JSX.Element {
                   variant="surface"
                   size="wide"
                   type="button"
-                  onClick={() =>
-                    void openCloudBillingConsole(resolveJoinCloudApiBase())
-                  }
+                  disabled={openingBilling}
+                  aria-busy={openingBilling || undefined}
+                  onClick={() => void handleOpenBilling()}
                 >
-                  {t("cloud.join.addCredits", { defaultValue: "Add credits" })}
+                  {openingBilling
+                    ? t("cloud.join.openingBilling", {
+                        defaultValue: "Opening billing...",
+                      })
+                    : t("cloud.join.addCredits", {
+                        defaultValue: "Add credits",
+                      })}
                 </Button>
+                {billingError && (
+                  <p role="alert" className="text-sm text-orange-400">
+                    {billingError}
+                  </p>
+                )}
                 <Button
                   variant="ghostMuted"
                   size="wide"
