@@ -6,7 +6,7 @@
 import fs, { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AccountCredentialRecord,
   commitAccountDeletions,
@@ -275,5 +275,77 @@ describe("encrypted at-rest storage", () => {
     expect(() => loadAccount("openai-codex", "replayed", policy)).toThrow(
       expect.objectContaining({ code: "AUTH_CREDENTIAL_RECORD_CORRUPT" }),
     );
+  });
+
+  it("enforces multi-provider isolation across distinct providers", () => {
+    const policy = createIsolatedAccountStoragePolicy(stateRoot);
+    const codexRecord = record("codex-1");
+    const anthropicRecord: AccountCredentialRecord = {
+      ...record("anthropic-1"),
+      providerId: "anthropic-subscription",
+    };
+
+    saveAccount(codexRecord, policy);
+    saveAccount(anthropicRecord, policy);
+
+    const codexAccounts = listAccounts("openai-codex", policy);
+    const anthropicAccounts = listAccounts("anthropic-subscription", policy);
+
+    expect(codexAccounts.map((a) => a.id)).toEqual(["codex-1"]);
+    expect(anthropicAccounts.map((a) => a.id)).toEqual(["anthropic-1"]);
+
+    expect(loadAccount("openai-codex", "anthropic-1", policy)).toBeNull();
+    expect(loadAccount("anthropic-subscription", "codex-1", policy)).toBeNull();
+  });
+
+  it("returns null when loading non-existent accounts or uninitialized providers", () => {
+    const policy = createIsolatedAccountStoragePolicy(stateRoot);
+    expect(loadAccount("openai-codex", "missing-account", policy)).toBeNull();
+    expect(
+      loadAccount("anthropic-subscription", "uninitialized", policy),
+    ).toBeNull();
+    expect(listAccounts("zai-coding", policy)).toEqual([]);
+  });
+
+  it("atomically updates an existing account record preserving creation metadata", () => {
+    const policy = createIsolatedAccountStoragePolicy(stateRoot);
+    const initial = record("update-target");
+    saveAccount(initial, policy);
+
+    const accountFile = path.join(
+      stateRoot,
+      "auth",
+      "openai-codex",
+      "update-target.json",
+    );
+    const initialStat = fs.statSync(accountFile);
+
+    const before = Date.now();
+    const updated: AccountCredentialRecord = {
+      ...initial,
+      label: "Updated Label",
+      userId: "user-123",
+      email: "user@example.com",
+      credentials: {
+        access: "new-access-token",
+        refresh: "new-refresh-token",
+        expires: Date.now() + 120_000,
+      },
+    };
+    saveAccount(updated, policy);
+
+    const loaded = loadAccount("openai-codex", "update-target", policy);
+    expect(loaded).not.toBeNull();
+    expect(loaded?.label).toBe("Updated Label");
+    expect(loaded?.userId).toBe("user-123");
+    expect(loaded?.email).toBe("user@example.com");
+    expect(loaded?.credentials.access).toBe("new-access-token");
+    expect(loaded?.createdAt).toBe(initial.createdAt);
+    expect(loaded?.updatedAt).toBeGreaterThanOrEqual(before);
+    expect(loaded?.updatedAt).toBeGreaterThan(initial.updatedAt);
+
+    // Atomicity assertion: atomic rename replaced directory entry with a distinct inode
+    const updatedStat = fs.statSync(accountFile);
+    expect(updatedStat.ino).not.toBe(initialStat.ino);
   });
 });
