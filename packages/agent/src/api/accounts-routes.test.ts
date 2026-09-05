@@ -6,7 +6,11 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { AgentRuntime, ElizaError, LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/core";
+import {
+  AgentRuntime,
+  ElizaError,
+  LINKED_ACCOUNT_PROVIDER_IDS,
+} from "@elizaos/core";
 import { codingProviderDescriptorForProvider } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
