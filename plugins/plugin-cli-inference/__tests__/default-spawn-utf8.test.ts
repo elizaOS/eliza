@@ -5,6 +5,7 @@
  * own turns it into two U+FFFD in the text generate() returns. Real child
  * process (node -e), no mocks: the split is produced by two separate writes.
  */
+import { devNull } from "node:os";
 import { describe, expect, it } from "vitest";
 import { defaultSpawn } from "../src/claude-cli";
 
@@ -12,7 +13,7 @@ const OPTS = {
   cwd: process.cwd(),
   env: { PATH: process.env.PATH ?? "" } as Record<string, string>,
   timeoutMs: 5_000,
-  stdinPath: "/dev/null",
+  stdinPath: devNull,
 };
 
 function splitWriter(stream: "stdout" | "stderr", first: number[], rest: number[]): string {
