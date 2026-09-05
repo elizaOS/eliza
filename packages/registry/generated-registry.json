@@ -92,6 +92,52 @@
       "registryKind": "plugin",
       "directory": "eliza-plugin-agentradar"
     },
+    "@aipowergrid/plugin-aipg": {
+      "git": {
+        "repo": "AIPowerGrid/grid-provider-integrations",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@aipowergrid/plugin-aipg",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "AI Power Grid text, image, video, and music generation for elizaOS agents through remote community-operated workers.",
+      "homepage": "https://github.com/AIPowerGrid/grid-provider-integrations/tree/main/elizaos-aipg",
+      "topics": [
+        "model-provider",
+        "text-generation",
+        "image-generation",
+        "video-generation",
+        "music-generation",
+        "remote-inference"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "elizaos-aipg"
+    },
     "@aomi-labs/eliza-plugin-aomi": {
       "git": {
         "repo": "aomi-labs/eliza-plugin-aomi",
