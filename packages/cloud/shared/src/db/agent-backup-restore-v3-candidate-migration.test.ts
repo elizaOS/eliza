@@ -19,8 +19,8 @@ import {
 import { AGENT_BACKUP_RESTORE_V3_CANDIDATE_COMPONENTS } from "./schemas/agent-backup-restore-v3-candidates";
 
 const MIGRATIONS_DIR = join(import.meta.dir, "migrations");
-const FOUNDATION_TAG = "0373_agent_backup_restore_v3_candidates";
-const GUARDS_TAG = "0374_agent_backup_restore_v3_candidate_guards";
+const FOUNDATION_TAG = "0377_agent_backup_restore_v3_candidates";
+const GUARDS_TAG = "0378_agent_backup_restore_v3_candidate_guards";
 const FOUNDATION = readFileSync(join(MIGRATIONS_DIR, `${FOUNDATION_TAG}.sql`), "utf8");
 const GUARDS = readFileSync(join(MIGRATIONS_DIR, `${GUARDS_TAG}.sql`), "utf8");
 const CANDIDATE_SCHEMA = readFileSync(
@@ -569,7 +569,7 @@ async function insertGcTombstone(database: PGlite): Promise<void> {
     WHERE candidate.id = '${IDS.candidate}'`);
 }
 
-describe("0375/0376 restore-v3 candidate authority", () => {
+describe("0377/0378 restore-v3 candidate authority", () => {
   test("registers consecutive journal entries and exports the schema", () => {
     const journal = JSON.parse(
       readFileSync(join(MIGRATIONS_DIR, "meta", "_journal.json"), "utf8"),
@@ -585,8 +585,8 @@ describe("0375/0376 restore-v3 candidate authority", () => {
     expect(
       journal.entries.filter(({ tag }) => tag === FOUNDATION_TAG || tag === GUARDS_TAG),
     ).toEqual([
-      { idx: 358, version: "7", when: 1796083200002, tag: FOUNDATION_TAG, breakpoints: true },
-      { idx: 359, version: "7", when: 1796083200003, tag: GUARDS_TAG, breakpoints: true },
+      { idx: 360, version: "7", when: 1796083200004, tag: FOUNDATION_TAG, breakpoints: true },
+      { idx: 361, version: "7", when: 1796083200005, tag: GUARDS_TAG, breakpoints: true },
     ]);
     expect(readFileSync(join(import.meta.dir, "schemas", "index.ts"), "utf8")).toContain(
       'export * from "./agent-backup-restore-v3-candidates"',

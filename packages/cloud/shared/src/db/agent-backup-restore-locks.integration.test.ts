@@ -102,8 +102,8 @@ if (EXACT_FINAL_REPLACEMENT_GUARD_SQL.length !== 2) {
   throw new Error("0371 exact final replacement guard fixture is incomplete");
 }
 const RESTORE_V3_CANDIDATE_MIGRATIONS = [
-  "0373_agent_backup_restore_v3_candidates",
-  "0374_agent_backup_restore_v3_candidate_guards",
+  "0377_agent_backup_restore_v3_candidates",
+  "0378_agent_backup_restore_v3_candidate_guards",
 ].map((name) => readFileSync(join(MIGRATIONS_DIR, `${name}.sql`), "utf8"));
 
 const ORG_ID = "00000000-0000-4000-8000-00000000b101";
@@ -172,6 +172,12 @@ const LOCK_KEY_BUNDLE = Buffer.alloc(AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappe
 const LOCK_KEY_BUNDLE_SHA = createHash("sha256").update(LOCK_KEY_BUNDLE).digest("hex");
 
 let postgres: EphemeralPostgres | null = await acquireEphemeralPostgres();
+if (!postgres && process.env.REQUIRE_REAL_POSTGRES_RESTORE_LOCK_TESTS === "1") {
+  throw new Error(
+    "Real PostgreSQL is required for restore lock proofs; configure APPS_TENANT_DB_TEST_DSN or APPS_TENANT_DB_EPHEMERAL=1.",
+  );
+}
+
 let isolatedDatabaseName: string | null = null;
 let isolatedDsn: string | null = null;
 let sourceNodeHistoryId: string | null = null;
