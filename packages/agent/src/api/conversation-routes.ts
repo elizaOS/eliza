@@ -4620,6 +4620,8 @@ export async function handleConversationRoutes(
           const publishReplyReady = async (result: ChatGenerationResult) => {
             if (
               replyReadyPublished ||
+              // Failure text is a typed system status, not an early model reply.
+              result.terminalFailure !== undefined ||
               result.noResponseReason === "ignored" ||
               disconnectTracker.isAborted() ||
               disconnectTracker.checkConnectionClosed()
@@ -4756,6 +4758,7 @@ export async function handleConversationRoutes(
               result.transcriptVisibility === "internal" ? "" : resolvedText;
             if (
               !disconnectTracker.isAborted() &&
+              !result.terminalFailure &&
               !streamedText &&
               resolvedText &&
               result.transcriptVisibility !== "internal"

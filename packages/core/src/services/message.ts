@@ -8195,6 +8195,9 @@ export function subPlannerResultToPlannerToolResult(
 		transcriptVisibility: lastStep?.result?.transcriptVisibility,
 		...(internalTerminalPayload ? {} : { userFacingText }),
 		...(effectReceipts.length > 0 ? { effectReceipts } : {}),
+		...(terminalResult?.replyFailure
+			? { replyFailure: terminalResult.replyFailure }
+			: {}),
 		...(terminalUserFacingEffectReceiptIds
 			? {
 					userFacingEffectReceiptIds: terminalUserFacingEffectReceiptIds,
@@ -8472,6 +8475,9 @@ function collectPreviousActionResults(
 				...(step.result.effectReceipts !== undefined
 					? { effectReceipts: step.result.effectReceipts }
 					: {}),
+				...(step.result.replyFailure !== undefined
+					? { replyFailure: step.result.replyFailure }
+					: {}),
 				...(step.result.userFacingEffectReceiptIds !== undefined
 					? {
 							userFacingEffectReceiptIds:
@@ -8540,6 +8546,9 @@ function collectPreviousActionResults(
 				: {}),
 			...(step.result.effectReceipts !== undefined
 				? { effectReceipts: step.result.effectReceipts }
+				: {}),
+			...(step.result.replyFailure !== undefined
+				? { replyFailure: step.result.replyFailure }
 				: {}),
 			...(step.result.userFacingEffectReceiptIds !== undefined
 				? {
@@ -11025,6 +11034,9 @@ export async function runV5MessageRuntimeStage1(args: {
 						evaluatorOutputs: [],
 					},
 					...(finalMessage ? { finalMessage } : {}),
+					...(result.replyFailure
+						? { terminalFailure: result.replyFailure }
+						: {}),
 				};
 			};
 
@@ -11281,6 +11293,31 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannerResult.trajectory,
 			exposedPlannerActions,
 		);
+		if (
+			plannerResult.terminalFailure &&
+			egressActionResults.some((result) => result.replyFailure !== undefined)
+		) {
+			// There is no model-authored reply to deliver. Preserve every action
+			// outcome and surface the unavailable system status separately; none of
+			// the answerless/egress/context-after fallbacks may call another model
+			// or execute another action after this presentation failure.
+			return {
+				kind: "planned_reply",
+				messageHandler,
+				result: {
+					responseContent: null,
+					responseMessages: [],
+					state: withActionResultsForPrompt(
+						plannerState,
+						egressActionResults,
+						args.runtime,
+					),
+					mode: "none",
+					terminalFailure: plannerResult.terminalFailure,
+					actionResults: egressActionResults,
+				},
+			};
+		}
 		let replyRecovered = false;
 		let recoveredReply:
 			| Awaited<ReturnType<typeof resolvePlannedReplyEgress>>
@@ -16223,6 +16260,11 @@ export class DefaultMessageService implements IMessageService {
 		// being written. Child failure is reported at that barrier, which still
 		// releases the trajectory exactly once after the child settles.
 		runTerminalOwner.track("post_turn", async () => {
+			if (actionResults?.some((result) => result.replyFailure !== undefined)) {
+				// The action already settled and response generation is unavailable.
+				// Close the run without another evaluation/model or action hook.
+				return;
+			}
 			await withEvaluatorStep(runtime, "post_turn", async () => {
 				if (semanticSignal) {
 					await runPostTurnEvaluators(runtime, message, state, {

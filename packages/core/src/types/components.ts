@@ -6,6 +6,7 @@
  * action/provider surface that the message loop dispatches against.
  */
 import type { ActionFailureProvenance } from "./action-failure";
+import type { ActionReplyFailure } from "./action-reply";
 import type { ConnectorAccountPolicy } from "./connector-account-policy";
 import type {
 	AgentContext,
@@ -999,6 +1000,9 @@ export interface ActionResult {
 	 * throws. It must be absent on successful results.
 	 */
 	failureProvenance?: ActionFailureProvenance;
+
+	/** Reply generation failed; success and effect receipts still describe the action. */
+	replyFailure?: ActionReplyFailure;
 
 	/** Values to merge into the state */
 	values?: Record<string, ProviderValue>;

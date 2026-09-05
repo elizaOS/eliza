@@ -1683,6 +1683,16 @@ async function runPlannerLoopIterations(
 		});
 
 		const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
+		if (latestResult?.replyFailure) {
+			// The action already settled. A failed presentation is not an action
+			// failure and must never trigger model rescue, tool replay, or another
+			// queued mutation. Preserve the queue as unexecuted trajectory evidence.
+			return {
+				status: "finished",
+				trajectory,
+				terminalFailure: latestResult.replyFailure,
+			};
+		}
 		if (latestResult?.continueChain === false) {
 			// `suppressPlannerReply` from terminal actions blanks finalMessage so a
 			// same-turn hallucinated `messageToUser` cannot leak past the transient
@@ -5616,6 +5626,7 @@ async function ensureToolTurnFinalMessage(
 	result: PlannerLoopResult,
 ): Promise<PlannerLoopResult> {
 	if (result.status !== "finished") return result;
+	if (result.terminalFailure) return result;
 	if (result.endedWithDeliberateSilence) return result;
 	if (params.codingMode === true) return result;
 	const message = result.finalMessage;
@@ -5726,6 +5737,7 @@ async function ensureFailedTurnFinalMessage(
 	result: PlannerLoopResult,
 ): Promise<PlannerLoopResult> {
 	if (result.status !== "finished") return result;
+	if (result.terminalFailure) return result;
 	// Coding/full-surface mode is exempt for the same reason as the tool-turn
 	// guarantee: its result feeds the orchestrator (which owns its own summary
 	// fallback), not a chat user, and an extra model call per failed build
@@ -7216,6 +7228,7 @@ export function actionResultToPlannerToolResult(
 		promptData: result.promptData,
 		error: result.error,
 		failureProvenance: result.failureProvenance,
+		replyFailure: result.replyFailure,
 		turnComplete: result.turnComplete,
 		modelReplyRequired: result.modelReplyRequired,
 		modelReplyFallback: result.modelReplyFallback,

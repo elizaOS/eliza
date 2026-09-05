@@ -1557,6 +1557,8 @@ export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
+  // Keep optional operation-specific details optional in provider tool schemas.
+  toolSchemaStrict: false,
   similes: [
     "CALENDAR",
     "SCHEDULE",

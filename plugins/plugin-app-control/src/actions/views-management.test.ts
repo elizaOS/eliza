@@ -15,7 +15,7 @@ import path from "node:path";
 import type { ResponseHandlerEvaluatorContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { viewFollowupRoutingEvaluator } from "../evaluators/view-followup-routing.js";
-import { runCreate } from "./app-create.js";
+import { APP_CREATE_INTENT_TAG, runCreate } from "./app-create.js";
 import { createViewsAction, createViewsAliasAction } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
 import { runViewsCreate } from "./views-create.js";
@@ -68,6 +68,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 
 type RuntimeTask = {
 	id: string;
+	agentId?: string;
+	tags?: string[];
 	metadata?: Record<string, unknown>;
 };
 
@@ -4827,6 +4829,8 @@ describe("view management actions", () => {
 		const pendingTasks: RuntimeTask[] = [
 			{
 				id: "pending-app-create",
+				agentId: "agent-1",
+				tags: [APP_CREATE_INTENT_TAG],
 				metadata: {
 					roomId: "room-1",
 					intent: "Update proof app",
@@ -4836,6 +4840,7 @@ describe("view management actions", () => {
 			},
 		];
 		const pendingRuntime = createRuntime({ tasks: pendingTasks }).runtime;
+		callback.mockClear();
 		const lostTarget = await runCreate({
 			runtime: pendingRuntime as never,
 			client: appClient as never,
@@ -4845,11 +4850,12 @@ describe("view management actions", () => {
 		});
 		expect(lostTarget).toMatchObject({
 			success: false,
-			text: 'I lost track of the edit target "edit-1". Please re-state your request.',
+			transcriptVisibility: "internal",
+			turnComplete: false,
+			data: { error: "CREATE_CHOICE_TARGET_INVALID" },
 		});
-		expect(pendingRuntime.deleteTask).toHaveBeenCalledWith(
-			"pending-app-create",
-		);
+		expect(pendingRuntime.deleteTask).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
 		expect(emptyRuntime.actions[0]?.handler).not.toHaveBeenCalled();
 	});
 

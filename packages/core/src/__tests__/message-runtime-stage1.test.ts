@@ -32,6 +32,10 @@ import {
 	runV5MessageRuntimeStage1,
 } from "../services/message";
 import { runWithTrajectoryContext } from "../trajectory-context";
+import {
+	applyGroundedActionReply,
+	createUnavailableGroundedActionReply,
+} from "../types/action-reply";
 import type { Action } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
@@ -309,6 +313,88 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it("preserves a committed action when its reply is unavailable without recovery models or context-after actions", async () => {
+		const unavailable = createUnavailableGroundedActionReply({
+			kind: "provider_issue",
+			code: "GROUNDED_REPLY_GENERATION_FAILED",
+		});
+		const receipt = {
+			receiptId: "saved-1",
+			operation: "lifeops.reminder.create",
+			resource: { kind: "lifeops.reminder", id: "reminder-1" },
+			artifacts: [],
+			idempotency: { key: "request-1", replayed: false },
+			observedAt: "2026-07-27T18:00:00.000Z",
+			outcome: "applied" as const,
+			commit: {
+				kind: "durable" as const,
+				id: "txn-1",
+				committedAt: "2026-07-27T18:00:00.000Z",
+			},
+		};
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				candidateActionNames: ["SAVE"],
+				replyText: "",
+				extra: { requiresTool: true },
+			}),
+			{ text: "", toolCalls: [{ id: "save-1", name: "SAVE", arguments: {} }] },
+		]);
+		const handler = vi.fn(async () =>
+			applyGroundedActionReply(
+				{
+					success: true,
+					text: "Internal save receipt.",
+					effectReceipts: [receipt],
+				},
+				unavailable,
+			),
+		);
+		runtime.actions = [
+			{
+				name: "SAVE",
+				description: "Save the requested reminder.",
+				contexts: ["general"],
+				tags: ["write"],
+				validate: async () => true,
+				handler,
+			},
+		];
+		const callback = vi.fn(async () => []);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Save the requested reminder." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			callback,
+		});
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply")
+			throw new Error("Expected a planned result");
+		expect(result.result).toMatchObject({
+			responseContent: null,
+			responseMessages: [],
+			terminalFailure: unavailable.failure,
+			actionResults: [
+				{
+					success: true,
+					effectReceipts: [receipt],
+					replyFailure: unavailable.failure,
+				},
+			],
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(callback).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(2);
+		expect(runtime.runActionsByMode).not.toHaveBeenCalledWith(
+			"CONTEXT_AFTER",
+			expect.anything(),
+			expect.anything(),
+			expect.anything(),
+		);
+	});
+
 	it("keeps the message pipeline from laundering missing planner inputs through empty fallbacks", async () => {
 		const source = await readFile(
 			join(__dirname, "../services/message.ts"),

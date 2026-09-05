@@ -257,6 +257,11 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
       runTextModel: vi.fn(async () => null),
       runJsonModel: vi.fn(async () => null),
       recentConversationTexts: vi.fn(async () => []),
+      // Explicit deterministic presentation fixture; the database proof is real.
+      renderGroundedReply: async ({ fallback }) => ({
+        kind: "model",
+        text: fallback,
+      }),
     };
     const action = createCalendarActionRunner(actionDeps);
     const delivered: Content[] = [];
