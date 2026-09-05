@@ -24,6 +24,20 @@ test("a generated declaration removed during a concurrent build is skipped", () 
   );
 });
 
+test("Vite dependency caches do not become maintained React source", () => {
+  const cacheRoot = fileURLToPath(new URL("../../app/.vite/", import.meta.url));
+  fs.mkdirSync(cacheRoot, { recursive: true });
+  const probe = fs.mkdtempSync(path.join(cacheRoot, "inventory-probe-"));
+  try {
+    const cachedSource = path.join(probe, "CachedComponent.tsx");
+    fs.writeFileSync(cachedSource, "export const CachedComponent = () => <div />;");
+    assert.equal(isMaintainedSource(cachedSource), false);
+    assert.equal(listMaintainedSourceFiles().includes(cachedSource), false);
+  } finally {
+    fs.rmSync(probe, { recursive: true, force: true });
+  }
+});
+
 test("local Eliza runtime artifacts are outside maintained source", () => {
   assert.equal(
     isMaintainedSource(
