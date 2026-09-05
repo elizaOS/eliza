@@ -10,6 +10,54 @@ import { ElizaError } from "@elizaos/core";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 
+const REMOTE_NODE_BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
+const EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE = 78;
+
+/** Reject remote work when the host boot no longer matches its admitted incarnation. */
+export function buildExactRestoreBootFencedCommand(
+  expectedNodeIncarnation: string,
+  exactCommand: string,
+): string {
+  return [
+    `observed_boot_id=$(cat ${shellQuote(REMOTE_NODE_BOOT_ID_PATH)} 2>/dev/null) || { printf '%s\\n' 'ELIZA_RESTORE_BOOT_ID_UNREADABLE' >&2; exit ${EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE}; }`,
+    `if [ "$observed_boot_id" != ${shellQuote(expectedNodeIncarnation)} ]; then printf '%s\\n' 'ELIZA_RESTORE_BOOT_ID_MISMATCH' >&2; exit ${EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE}; fi`,
+    exactCommand,
+  ].join("; ");
+}
+
+/** Boot-fence and isolate every exact Docker CLI call from ambient client state. */
+export function buildExactRestoreDockerBootFencedCommand(
+  expectedNodeIncarnation: string,
+  exactDockerCommand: string,
+): string {
+  const configTemplate = "/tmp/eliza-exact-docker.XXXXXXXXXX";
+  const cleanup =
+    "cleanup_exact_docker_config() { cleanup_status=$?; trap - EXIT; " +
+    'case "$exact_docker_config" in /tmp/eliza-exact-docker.?*) ' +
+    'rm -rf -- "$exact_docker_config" || cleanup_status=70 ;; *) cleanup_status=70 ;; esac; ' +
+    'exit "$cleanup_status"; }';
+  const isolatedCommand = [
+    "set -eu",
+    "umask 077",
+    `exact_docker_config=$(mktemp -d ${shellQuote(configTemplate)})`,
+    cleanup,
+    "trap cleanup_exact_docker_config EXIT",
+    "trap 'exit 129' HUP",
+    "trap 'exit 130' INT",
+    "trap 'exit 143' TERM",
+    'chmod 700 -- "$exact_docker_config"',
+    `printf '%s\\n' ${shellQuote('{"auths":{},"proxies":{}}')} > "$exact_docker_config/config.json"`,
+    'chmod 600 -- "$exact_docker_config/config.json"',
+    "unset DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH DOCKER_CONFIG DOCKER_DEFAULT_PLATFORM DOCKER_API_VERSION",
+    'DOCKER_HOST="unix:///var/run/docker.sock"',
+    'DOCKER_CONFIG="$exact_docker_config"',
+    "export DOCKER_HOST DOCKER_CONFIG",
+    'docker() { command docker --host unix:///var/run/docker.sock --config "$exact_docker_config" "$@"; }',
+    `(${exactDockerCommand})`,
+  ].join("; ");
+  return buildExactRestoreBootFencedCommand(expectedNodeIncarnation, isolatedCommand);
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -315,6 +363,8 @@ export interface DockerEnvFileStdinTransport {
 export interface DockerEnvFileStdinTransportOptions {
   /** Override for isolated tests; production callers use restrictive files under `/tmp`. */
   temporaryDirectory?: string;
+  /** Persist create/cancellation authority using the existing root-owned attempt directory. */
+  replacementAttemptId?: string;
 }
 
 const CONTAINER_SECRET_ENV_STDIN_SENTINEL = "ELIZA_SECRET_ENV_STDIN_V1_END";
@@ -379,6 +429,8 @@ const DOCKER_CLIENT_CONTROL_ENV_KEYS = new Set([
 
 function isDockerClientControlEnvKey(key: string): boolean {
   if (
+    /^(?:attempt_|secure_|candidate_)/.test(key) ||
+    ["docker_status", "control_parent", "cleanup_status"].includes(key) ||
     /^(?:DOCKER_|LD_|DYLD_|XDG_|LC_|MALLOC_)/.test(key) ||
     /^(?:GODEBUG|GOMAXPROCS|GOMEMLIMIT|GOTRACEBACK)$/.test(key)
   ) {
@@ -497,6 +549,12 @@ export function buildDockerEnvFileStdinTransport(
   options: DockerEnvFileStdinTransportOptions = {},
 ): DockerEnvFileStdinTransport {
   const input = buildDockerEnvironmentFrame(environment);
+  const attemptId = options.replacementAttemptId;
+  if (attemptId !== undefined) assertCanonicalReplacementPathAttemptId(attemptId);
+  if (attemptId && options.temporaryDirectory !== undefined) {
+    throw new Error("Fenced Docker stdin transport requires its canonical attempt directory.");
+  }
+  const controlEnvPath = attemptId ? getReplacementControlSecretEnvPath(attemptId) : undefined;
   const temporaryDirectory = options.temporaryDirectory ?? "/tmp";
   validateVolumePath(temporaryDirectory);
 
@@ -515,13 +573,34 @@ export function buildDockerEnvFileStdinTransport(
       "env_frame_file=",
       "env_file=",
       "env_end_file=",
-      'cleanup_env_files() { test -z "$env_frame_file" || rm -f "$env_frame_file"; test -z "$env_end_file" || rm -f "$env_end_file"; test -z "$env_file" || rm -f "$env_file"; }',
+      ...(attemptId
+        ? [
+            ...replacementAttemptControlPrelude(attemptId),
+            'test ! -e "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
+            'test ! -e "$attempt_active" && test ! -L "$attempt_active" || exit 75',
+            'test ! -e "$attempt_candidate_id" && test ! -L "$attempt_candidate_id" || exit 75',
+          ]
+        : []),
+      attemptId
+        ? 'cleanup_env_files() { cleanup_status=$?; if ! rm -f -- "$env_frame_file" "$env_end_file" "$env_file"; then cleanup_status=70; fi; for secure_path in "$env_frame_file" "$env_end_file" "$env_file"; do if test -e "$secure_path" || test -L "$secure_path"; then cleanup_status=70; fi; done; if test "$cleanup_status" -eq 0; then rm -f -- "$attempt_active" || cleanup_status=70; fi; trap - EXIT; exit "$cleanup_status"; }'
+        : 'cleanup_env_files() { test -z "$env_frame_file" || rm -f "$env_frame_file"; test -z "$env_end_file" || rm -f "$env_end_file"; test -z "$env_file" || rm -f "$env_file"; }',
       "trap cleanup_env_files EXIT",
       "trap 'exit 1' HUP INT TERM",
       "umask 077",
-      `env_frame_file=$(mktemp ${envFrameTemplate})`,
-      `env_file=$(mktemp ${envFileTemplate})`,
-      `env_end_file=$(mktemp ${envEndFileTemplate})`,
+      ...(controlEnvPath
+        ? [
+            `env_frame_file=${shellQuote(`${controlEnvPath}.body`)}`,
+            `env_file=${shellQuote(controlEnvPath)}`,
+            `env_end_file=${shellQuote(`${controlEnvPath}.end`)}`,
+            'secure_reset_control_file "$env_frame_file"',
+            'secure_reset_control_file "$env_file"',
+            'secure_reset_control_file "$env_end_file"',
+          ]
+        : [
+            `env_frame_file=$(mktemp ${envFrameTemplate})`,
+            `env_file=$(mktemp ${envFileTemplate})`,
+            `env_end_file=$(mktemp ${envEndFileTemplate})`,
+          ]),
       'chmod 600 "$env_frame_file" "$env_end_file" "$env_file"',
       `dd bs=1 count=${DOCKER_ENV_FILE_STDIN_HEADER_BYTES} of="$env_frame_file" status=none`,
       `test "$(wc -c < "$env_frame_file" | tr -d ' ')" = ${DOCKER_ENV_FILE_STDIN_HEADER_BYTES}`,
@@ -541,7 +620,14 @@ export function buildDockerEnvFileStdinTransport(
       "test \"$(dd bs=1 count=1 status=none | wc -c | tr -d ' ')\" = 0",
       '. "$env_frame_file"',
       'chmod 600 "$env_file"',
-      dockerCommand,
+      ...(attemptId
+        ? [
+            'secure_reset_control_file "$attempt_docker_error"',
+            'secure_reset_control_file "$attempt_active"',
+            buildDockerCreateAttemptInvocation(dockerCommand, true, true),
+            'printf "%s\\n" "$candidate_id"',
+          ]
+        : [dockerCommand]),
     ].join("; "),
   };
 }
@@ -876,6 +962,35 @@ export function getReplacementCandidateObservedReceipt(
 export function getReplacementDockerCreateQuiescentReceipt(replacementAttemptId: string): string {
   assertCanonicalReplacementPathAttemptId(replacementAttemptId);
   return `${REPLACEMENT_DOCKER_CREATE_QUIESCENT_RECEIPT} ${replacementAttemptId}`;
+}
+
+/** Validate the complete cleanup response before it can authorize capacity release. */
+export function parseDockerCreateAttemptCleanupReceipt(
+  output: string,
+  replacementAttemptId: string,
+): { quiescent: boolean; containerId: string | null } {
+  const lines = output.trim().split(/\r?\n/);
+  const invalid = () =>
+    new ElizaError("Docker create cleanup receipt is invalid", {
+      code: "DOCKER_CREATE_CLEANUP_RECEIPT_INVALID",
+      context: { replacementAttemptId },
+    });
+  if (lines.shift() !== getReplacementSecretArtifactsCleanupReceipt(replacementAttemptId)) {
+    throw invalid();
+  }
+  const quiescent = lines[0] === getReplacementDockerCreateQuiescentReceipt(replacementAttemptId);
+  if (quiescent) lines.shift();
+  if (lines.length === 0) return { quiescent, containerId: null };
+  if (lines.length !== 1) throw invalid();
+  const containerId = lines[0].split(" ").at(-1);
+  if (
+    !containerId ||
+    !/^[0-9a-f]{64}$/.test(containerId) ||
+    lines[0] !== getReplacementCandidateObservedReceipt(replacementAttemptId, containerId)
+  ) {
+    throw invalid();
+  }
+  return { quiescent, containerId };
 }
 
 /** Exact non-secret receipt proving one abandoned restore staging path is absent. */
@@ -1302,6 +1417,7 @@ export function buildReplacementSecretArtifactsCleanupCommand(
   const artifactPaths = [
     secretEnvPath,
     secretEnvBodyPath,
+    `${secretEnvPath}.end`,
     getReplacementControlVaultPassphrasePath(replacementAttemptId),
     ...(["stdin", "override", "generated", "normalized"] as const).map((kind) =>
       getReplacementControlVaultArtifactPath(replacementAttemptId, kind),
@@ -1313,6 +1429,24 @@ export function buildReplacementSecretArtifactsCleanupCommand(
     ),
     getVolumeVaultPassphrasePublicationCandidatePath(volumePath, replacementAttemptId),
   ];
+  return buildAttemptArtifactsCleanupCommand(replacementAttemptId, artifactPaths);
+}
+
+/** Cancel a framed Docker create and prove only its canonical transient files absent. */
+export function buildDockerCreateAttemptCleanupCommand(replacementAttemptId: string): string {
+  const envPath = getReplacementControlSecretEnvPath(replacementAttemptId);
+  return buildAttemptArtifactsCleanupCommand(replacementAttemptId, [
+    envPath,
+    `${envPath}.body`,
+    `${envPath}.end`,
+  ]);
+}
+
+/** Keep cancellation, path validation, and receipts identical across plaintext producers. */
+function buildAttemptArtifactsCleanupCommand(
+  replacementAttemptId: string,
+  artifactPaths: readonly string[],
+): string {
   const existingArtifactProof = artifactPaths
     .map(
       (path) =>
@@ -1472,6 +1606,59 @@ export function buildReplacementCreatedContainerIdProofCommand(
   ].join("; ");
 }
 
+/** Build one create invocation using the shared attempt markers and exact candidate receipt. */
+function buildDockerCreateAttemptInvocation(
+  command: string,
+  fenced: boolean,
+  recordContainerId: boolean,
+): string {
+  const definitiveDockerFailurePatterns = [
+    "Conflict. The container name",
+    "is already in use by container",
+    "invalid reference format",
+    "No such image",
+    "invalid mount config",
+    "invalid volume specification",
+    "unknown flag:",
+  ]
+    .map((marker) => `-e ${shellQuote(marker)}`)
+    .join(" ");
+  const clearDefinitiveDockerFailure = fenced
+    ? `secure_private_regular_file_proof "$attempt_docker_error"; if grep -F ${definitiveDockerFailurePatterns} -- "$attempt_docker_error" >/dev/null 2>&1; then rm -f -- "$attempt_active" || exit 70; test ! -e "$attempt_active" && test ! -L "$attempt_active" || exit 70; fi`
+    : ":";
+  return recordContainerId
+    ? [
+        'exec 8>>"$attempt_docker_error"',
+        `if candidate_id=$(${command} 2>&8); then docker_status=0; else docker_status=$?; fi`,
+        "exec 8>&-",
+        'secure_private_regular_file_proof "$attempt_docker_error"',
+        `if test "$docker_status" -ne 0; then ${clearDefinitiveDockerFailure}; rm -f -- "$attempt_docker_error"; exit "$docker_status"; fi`,
+        'rm -f -- "$attempt_docker_error"',
+        'test ! -e "$attempt_docker_error" && test ! -L "$attempt_docker_error" || exit 70',
+        'case "$candidate_id" in ""|*[!0-9a-f]*) exit 70 ;; esac',
+        'test "${#candidate_id}" = 64',
+        'candidate_tmp="$attempt_dir/candidate-id.tmp"',
+        'secure_reset_control_file "$candidate_tmp"',
+        'exec 8>>"$candidate_tmp"',
+        'printf "%s\\n" "$candidate_id" >&8',
+        "exec 8>&-",
+        'secure_private_regular_file_proof "$candidate_tmp"',
+        'mv -- "$candidate_tmp" "$attempt_candidate_id"',
+        'secure_private_regular_file_proof "$attempt_candidate_id"',
+      ].join("; ")
+    : fenced
+      ? [
+          'exec 8>>"$attempt_docker_error"',
+          `if ${command} 2>&8; then docker_status=0; else docker_status=$?; fi`,
+          "exec 8>&-",
+          'secure_private_regular_file_proof "$attempt_docker_error"',
+          `if test "$docker_status" -ne 0; then ${clearDefinitiveDockerFailure}; rm -f -- "$attempt_docker_error"; exit "$docker_status"; fi`,
+          'rm -f -- "$attempt_docker_error"',
+          'test ! -e "$attempt_docker_error" && test ! -L "$attempt_docker_error" || exit 70',
+        ].join("; ")
+      : command;
+}
+
 /**
  * Wrap `docker create` so stdin becomes a 0600 env file, the persisted vault
  * value is appended without being read by the caller, and every shell exit
@@ -1541,51 +1728,11 @@ export function buildDockerCreateWithSecretEnvCommand(options: {
       ? 'if test "$cleanup_status" -eq 0; then if ! rm -f -- "$attempt_active"; then cleanup_status=70; elif test -e "$attempt_active" || test -L "$attempt_active"; then cleanup_status=70; fi; fi; '
       : "") +
     'trap - EXIT; exit "$cleanup_status"; }';
-  const definitiveDockerFailurePatterns = [
-    "Conflict. The container name",
-    "is already in use by container",
-    "invalid reference format",
-    "No such image",
-    "invalid mount config",
-    "invalid volume specification",
-    "unknown flag:",
-  ]
-    .map((marker) => `-e ${shellQuote(marker)}`)
-    .join(" ");
-  const clearDefinitiveDockerFailure = fenced
-    ? `secure_private_regular_file_proof "$attempt_docker_error"; if grep -F ${definitiveDockerFailurePatterns} -- "$attempt_docker_error" >/dev/null 2>&1; then rm -f -- "$attempt_active" || exit 70; test ! -e "$attempt_active" && test ! -L "$attempt_active" || exit 70; fi`
-    : ":";
-  const dockerCreateCommand = options.exactReplacement?.recordContainerId
-    ? [
-        'exec 8>>"$attempt_docker_error"',
-        `if candidate_id=$(${options.dockerCreateCommand} 2>&8); then docker_status=0; else docker_status=$?; fi`,
-        "exec 8>&-",
-        'secure_private_regular_file_proof "$attempt_docker_error"',
-        `if test "$docker_status" -ne 0; then ${clearDefinitiveDockerFailure}; rm -f -- "$attempt_docker_error"; exit "$docker_status"; fi`,
-        'rm -f -- "$attempt_docker_error"',
-        'test ! -e "$attempt_docker_error" && test ! -L "$attempt_docker_error" || exit 70',
-        'case "$candidate_id" in ""|*[!0-9a-f]*) exit 70 ;; esac',
-        'test "${#candidate_id}" = 64',
-        'candidate_tmp="$attempt_dir/candidate-id.tmp"',
-        'secure_reset_control_file "$candidate_tmp"',
-        'exec 8>>"$candidate_tmp"',
-        'printf "%s\\n" "$candidate_id" >&8',
-        "exec 8>&-",
-        'secure_private_regular_file_proof "$candidate_tmp"',
-        'mv -- "$candidate_tmp" "$attempt_candidate_id"',
-        'secure_private_regular_file_proof "$attempt_candidate_id"',
-      ].join("; ")
-    : fenced
-      ? [
-          'exec 8>>"$attempt_docker_error"',
-          `if ${options.dockerCreateCommand} 2>&8; then docker_status=0; else docker_status=$?; fi`,
-          "exec 8>&-",
-          'secure_private_regular_file_proof "$attempt_docker_error"',
-          `if test "$docker_status" -ne 0; then ${clearDefinitiveDockerFailure}; rm -f -- "$attempt_docker_error"; exit "$docker_status"; fi`,
-          'rm -f -- "$attempt_docker_error"',
-          'test ! -e "$attempt_docker_error" && test ! -L "$attempt_docker_error" || exit 70',
-        ].join("; ")
-      : options.dockerCreateCommand;
+  const dockerCreateCommand = buildDockerCreateAttemptInvocation(
+    options.dockerCreateCommand,
+    fenced,
+    options.exactReplacement?.recordContainerId === true,
+  );
   return [
     "set -eu",
     `env_file=${envFile}`,

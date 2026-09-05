@@ -6,7 +6,12 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { dbWrite } from "../../db/helpers";
 import { containers } from "../../db/schemas/containers";
-import { dockerNodes, PLACEABLE_NODE_STATE } from "../../db/schemas/docker-nodes";
+import { type DockerNode, dockerNodes, PLACEABLE_NODE_STATE } from "../../db/schemas/docker-nodes";
+
+export type CreatePlacementHost = Pick<
+  DockerNode,
+  "hostname" | "ssh_port" | "ssh_user" | "host_key_fingerprint" | "node_incarnation"
+>;
 
 export interface ProjectableContainerRow {
   id: string;
@@ -79,19 +84,28 @@ export function claimAppContainerNodeSlot(
   nodeId: string,
   capacityError: () => Error,
   conflictError: (existing: ExistingAppContainerNodeSlotClaim | null) => Error,
+  initialPlacement?: {
+    nodeRecordId: string;
+    environment: string;
+    expectedHost: CreatePlacementHost;
+  },
 ): Promise<AppContainerNodeSlotClaim> {
   return database.transaction(async (tx) => {
     const [claimed] = await tx
       .update(containers)
       .set({
         node_id: nodeId,
-        metadata: sql`jsonb_set(coalesce(${containers.metadata}, '{}'::jsonb), '{slotClaimedAt}', to_jsonb(now()::text))`,
+        ...(initialPlacement ? { status: "building" } : {}),
+        metadata: sql`jsonb_set(coalesce(${containers.metadata}, '{}'::jsonb), '{slotClaimedAt}', to_jsonb(now()::text)) || ${JSON.stringify(initialPlacement ? { nodeRecordId: initialPlacement.nodeRecordId, environment: initialPlacement.environment } : {})}::jsonb`,
         updated_at: new Date(),
       })
       .where(
         and(
           eq(containers.id, containerId),
           eq(containers.organization_id, organizationId),
+          ...(initialPlacement
+            ? [eq(containers.status, "pending"), sql`${containers.node_id} IS NULL`]
+            : []),
           sql`NOT jsonb_exists(coalesce(${containers.metadata}, '{}'::jsonb), 'slotClaimedAt')`,
           sql`NOT jsonb_exists(coalesce(${containers.metadata}, '{}'::jsonb), 'slotReleasedAt')`,
         ),
@@ -110,6 +124,7 @@ export function claimAppContainerNodeSlot(
         .where(and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)))
         .limit(1);
       if (
+        !initialPlacement &&
         existing?.nodeId === nodeId &&
         existing.slotClaimed &&
         !existing.slotReleased &&
@@ -129,6 +144,20 @@ export function claimAppContainerNodeSlot(
       .where(
         and(
           eq(dockerNodes.node_id, nodeId),
+          ...(initialPlacement
+            ? [
+                eq(dockerNodes.id, initialPlacement.nodeRecordId),
+                eq(dockerNodes.status, "healthy"),
+                sql`${dockerNodes.node_incarnation} IS NOT NULL`,
+                sql`length(trim(${dockerNodes.host_key_fingerprint})) > 0`,
+                sql`${dockerNodes.metadata}->>'environment' = ${initialPlacement.environment}`,
+                eq(dockerNodes.hostname, initialPlacement.expectedHost.hostname),
+                eq(dockerNodes.ssh_port, initialPlacement.expectedHost.ssh_port),
+                eq(dockerNodes.ssh_user, initialPlacement.expectedHost.ssh_user),
+                sql`${dockerNodes.host_key_fingerprint} = ${initialPlacement.expectedHost.host_key_fingerprint}`,
+                sql`${dockerNodes.node_incarnation} = ${initialPlacement.expectedHost.node_incarnation}::uuid`,
+              ]
+            : []),
           eq(dockerNodes.enabled, true),
           eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
           sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
@@ -139,6 +168,24 @@ export function claimAppContainerNodeSlot(
     // The exception rolls back both attribution and the claim marker. The caller
     // supplies its domain error so this SQL-only module stays runtime-independent.
     if (!node) throw capacityError();
+    if (initialPlacement) {
+      // The node UPDATE still holds its row lock: snapshot the same host whose
+      // capacity was reserved, before another incarnation can be published.
+      await tx
+        .update(containers)
+        .set({
+          metadata: sql`${containers.metadata} || (
+          SELECT jsonb_build_object(
+            'createNodeIncarnation', ${dockerNodes.node_incarnation},
+            'createHostKeyFingerprint', ${dockerNodes.host_key_fingerprint},
+            'createHostname', ${dockerNodes.hostname},
+            'createSshPort', ${dockerNodes.ssh_port},
+            'createSshUser', ${dockerNodes.ssh_user}
+          ) FROM ${dockerNodes} WHERE ${dockerNodes.id} = ${initialPlacement.nodeRecordId}::uuid
+        )`,
+        })
+        .where(eq(containers.id, containerId));
+    }
     return "claimed";
   });
 }

@@ -207,6 +207,7 @@ const oneShotModuleSpecifiers = [
   "@elizaos/cloud-shared/lib/utils/logger",
   "@elizaos/cloud-shared/lib/services/docker-node-manager",
   "@elizaos/cloud-shared/lib/services/containers/node-autoscaler",
+  "@elizaos/cloud-shared/lib/services/containers/hetzner-client",
   "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool",
   "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator",
   "@elizaos/cloud-shared/lib/config/containers-env",
@@ -431,8 +432,22 @@ describe("real one-shot daemon entrypoint", () => {
       "@elizaos/cloud-shared/lib/services/containers/node-autoscaler": {
         getNodeAutoscaler: () => ({
           evaluateCapacity,
+          reconcileRetirements: async () => ({
+            completed: 0,
+            retained: 0,
+            failed: 0,
+          }),
           provisionNode,
           drainNode,
+        }),
+      },
+      "@elizaos/cloud-shared/lib/services/containers/hetzner-client": {
+        getHetznerContainersClient: () => ({
+          reconcileCreateCleanup: async () => ({
+            checked: 0,
+            removed: 0,
+            pending: 0,
+          }),
         }),
       },
       "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool": {

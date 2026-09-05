@@ -10,9 +10,15 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 // afterAll so these stubs never leak into sibling files.
 import * as realContainersRepo from "../../../../db/repositories/containers";
 import * as realDockerNodesRepo from "../../../../db/repositories/docker-nodes";
+import { containersEnv } from "../../../config/containers-env";
 import * as realDockerNodeManager from "../../docker-node-manager";
 import * as realDockerPortAllocation from "../../docker-port-allocation";
-import { buildDockerEnvFileStdinTransport } from "../../docker-sandbox-utils";
+import {
+  buildDockerEnvFileStdinTransport,
+  getReplacementCandidateObservedReceipt,
+  getReplacementDockerCreateQuiescentReceipt,
+  getReplacementSecretArtifactsCleanupReceipt,
+} from "../../docker-sandbox-utils";
 import * as realDockerSsh from "../../docker-ssh";
 import * as realHetznerVolumes from "../hetzner-volumes";
 import * as realMetadata from "./metadata";
@@ -35,6 +41,11 @@ const tryReleaseNodeSlot = mock(async (): Promise<void> => {});
 const updateRow = mock(async (): Promise<unknown> => null);
 const updateStatus = mock(async (): Promise<void> => {});
 const prepareFundedRestart = mock(async (): Promise<void> => {});
+const reserveCreatePlacement = mock(async (..._args: unknown[]): Promise<void> => {});
+const completeCreatePlacement = mock(async (..._args: unknown[]) => ROW);
+const settleCreateFailure = mock(async (..._args: unknown[]): Promise<void> => {});
+const findCreateCleanupCandidates = mock(async (): Promise<unknown[]> => []);
+const findByIdOnPrimary = mock(async (_id: string): Promise<unknown> => null);
 const createWithProjectIntentAndQuotaCheck = mock(
   async (): Promise<unknown> => ({
     container: ROW,
@@ -75,6 +86,10 @@ mock.module("../../../../db/repositories/containers", () => ({
     update: updateRow,
     updateStatus,
     prepareFundedRestart,
+    reserveCreatePlacement,
+    completeCreatePlacement,
+    settleCreateFailure,
+    findCreateCleanupCandidates,
     createWithProjectIntentAndQuotaCheck,
   },
 }));
@@ -84,6 +99,7 @@ mock.module("../../../../db/repositories/docker-nodes", () => ({
   dockerNodesRepository: {
     ...realDockerNodesRepo.dockerNodesRepository,
     findByNodeId,
+    findByIdOnPrimary,
     incrementAllocated,
   },
 }));
@@ -129,14 +145,14 @@ const META = {
   provider: "hetzner-docker" as const,
   nodeId: "node-1",
   hostname: "10.0.0.1",
-  containerName: "app-ct1",
+  containerName: "app-11111111-1111-4111-8111-111111111111",
   hostPort: 8080,
   image: "ghcr.io/elizaos/eliza:stable",
   containerPort: 3000,
 };
 
 const ROW = {
-  id: "ct1",
+  id: "11111111-1111-4111-8111-111111111111",
   name: "existing",
   project_name: "project-one",
   organization_id: "org1",
@@ -159,11 +175,14 @@ const ROW = {
 };
 
 const NODE = {
+  id: "22222222-2222-4222-8222-222222222222",
+  node_incarnation: "33333333-3333-4333-8333-333333333333",
+  metadata: { environment: containersEnv.environment() },
   node_id: "node-create",
   hostname: "10.0.0.2",
   ssh_port: 22,
   ssh_user: "root",
-  host_key_fingerprint: null,
+  host_key_fingerprint: "SHA256:test-host-pin",
 };
 
 const NEW_CONTAINER_INPUT: CreateContainerInput = {
@@ -190,7 +209,7 @@ function dockerCreateCommands(): string[] {
 function assertSecretsAbsentFromCommands(secrets: readonly string[]): void {
   const commands = [...execMock.mock.calls.map((call) => call[0]), ...dockerCreateCommands()];
   for (const command of commands) {
-    expect(command).not.toMatch(/(?:^|\s)-e(?:\s|$)/);
+    expect(command).not.toMatch(/\bdocker\s+(?:create|run)\s[^;\n]*\s-e(?:\s|$)/);
     for (const secret of secrets) {
       if (secret.length > 0) expect(command).not.toContain(secret);
     }
@@ -217,6 +236,11 @@ beforeEach(() => {
     updateRow,
     updateStatus,
     prepareFundedRestart,
+    reserveCreatePlacement,
+    completeCreatePlacement,
+    settleCreateFailure,
+    findCreateCleanupCandidates,
+    findByIdOnPrimary,
     createWithProjectIntentAndQuotaCheck,
     readMetadata,
     execMock,
@@ -239,6 +263,11 @@ beforeEach(() => {
   updateRow.mockResolvedValue(null);
   updateStatus.mockResolvedValue(undefined);
   prepareFundedRestart.mockResolvedValue(undefined);
+  reserveCreatePlacement.mockResolvedValue(undefined);
+  completeCreatePlacement.mockResolvedValue(ROW);
+  settleCreateFailure.mockResolvedValue(undefined);
+  findCreateCleanupCandidates.mockResolvedValue([]);
+  findByIdOnPrimary.mockResolvedValue(NODE);
   createWithProjectIntentAndQuotaCheck.mockResolvedValue({
     container: ROW,
     created: false,
@@ -272,7 +301,10 @@ describe("createContainer — primary project intent", () => {
         cpu: 1024,
         memoryMb: 1024,
       }),
-    ).resolves.toMatchObject({ id: "ct1", projectName: "project-one" });
+    ).resolves.toMatchObject({
+      id: "11111111-1111-4111-8111-111111111111",
+      projectName: "project-one",
+    });
 
     expect(createWithProjectIntentAndQuotaCheck).toHaveBeenCalledTimes(1);
     expect(getClient).not.toHaveBeenCalled();
@@ -305,9 +337,157 @@ describe("createContainer — primary project intent", () => {
       }),
     ).rejects.toMatchObject({ code: "container_create_failed" });
 
-    expect(updateStatus).toHaveBeenCalledWith("ct1", "failed", "volume preflight unavailable");
+    expect(updateStatus).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      "failed",
+      "volume preflight unavailable",
+    );
     expect(getClient).not.toHaveBeenCalled();
     expect(execMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("createContainer — placement and cleanup authority", () => {
+  test("background cleanup refuses a replacement boot but settles the original pinned host", async () => {
+    findCreateCleanupCandidates.mockResolvedValue([
+      {
+        ...ROW,
+        status: "cleanup_required",
+        node_id: NODE.node_id,
+        metadata: {
+          ...META,
+          nodeRecordId: NODE.id,
+          environment: containersEnv.environment(),
+          createNodeIncarnation: NODE.node_incarnation,
+          createHostKeyFingerprint: NODE.host_key_fingerprint,
+          createHostname: NODE.hostname,
+          createSshPort: NODE.ssh_port,
+          createSshUser: NODE.ssh_user,
+        },
+      },
+    ]);
+    findByIdOnPrimary.mockResolvedValue({
+      ...NODE,
+      node_incarnation: "44444444-4444-4444-8444-444444444444",
+    });
+    expect(await getHetznerContainersClient().reconcileCreateCleanup()).toEqual({
+      checked: 1,
+      removed: 0,
+      pending: 1,
+    });
+    expect(execMock).not.toHaveBeenCalled();
+    expect(settleCreateFailure).not.toHaveBeenCalled();
+    findByIdOnPrimary.mockResolvedValue(NODE);
+    execMock.mockImplementation(async (command) =>
+      command.includes("attempt_cancelled")
+        ? `${getReplacementSecretArtifactsCleanupReceipt(ROW.id)}\n${getReplacementDockerCreateQuiescentReceipt(ROW.id)}\n`
+        : "",
+    );
+    expect(await getHetznerContainersClient().reconcileCreateCleanup()).toEqual({
+      checked: 1,
+      removed: 1,
+      pending: 0,
+    });
+    expect(settleCreateFailure.mock.calls[0]?.[2]).toBe(NODE.id);
+  });
+
+  test("port inventory failure cannot leave a node reservation", async () => {
+    createWithProjectIntentAndQuotaCheck.mockResolvedValue({ container: ROW, created: true });
+    getUsedDockerHostPorts.mockRejectedValue(new Error("primary inventory unavailable"));
+    await expect(getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT)).rejects.toThrow(
+      "primary inventory unavailable",
+    );
+    expect(reserveCreatePlacement).not.toHaveBeenCalled();
+    expect(execMock).not.toHaveBeenCalled();
+    expect(execStdinMock).not.toHaveBeenCalled();
+  });
+
+  test("rejected placement never reaches Docker", async () => {
+    createWithProjectIntentAndQuotaCheck.mockResolvedValue({ container: ROW, created: true });
+    reserveCreatePlacement.mockRejectedValue(new Error("node was retired"));
+    await expect(getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT)).rejects.toThrow(
+      "node was retired",
+    );
+    expect(execMock).not.toHaveBeenCalled();
+    expect(execStdinMock).not.toHaveBeenCalled();
+    expect(completeCreatePlacement).not.toHaveBeenCalled();
+  });
+
+  test("unreachable cleanup keeps the capacity claim", async () => {
+    createWithProjectIntentAndQuotaCheck.mockResolvedValue({ container: ROW, created: true });
+    execStdinMock.mockRejectedValue(new Error("create acknowledgement lost"));
+    execMock.mockImplementation(async (command) => {
+      if (
+        command.includes("attempt_cancelled") ||
+        command.includes("docker rm -f") ||
+        command.includes("docker inspect --format")
+      ) {
+        throw new Error("SSH connection lost");
+      }
+      return "";
+    });
+    await expect(getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT)).rejects.toThrow(
+      "create acknowledgement lost",
+    );
+    expect(settleCreateFailure.mock.calls[0]?.[4]).toBe(false);
+    expect(incrementAllocated).not.toHaveBeenCalled();
+    expect(completeCreatePlacement).not.toHaveBeenCalled();
+  });
+
+  test("lost removal acknowledgement settles through explicit Docker absence", async () => {
+    createWithProjectIntentAndQuotaCheck.mockResolvedValue({ container: ROW, created: true });
+    execStdinMock.mockRejectedValue(
+      new Error("[docker-ssh] Command exited with code 1: create failed"),
+    );
+    execMock.mockImplementation(async (command) => {
+      if (command.includes("attempt_cancelled"))
+        return `${getReplacementSecretArtifactsCleanupReceipt(ROW.id)}\n${getReplacementDockerCreateQuiescentReceipt(ROW.id)}\n`;
+      if (command.includes("docker rm -f")) throw new Error("SSH response lost");
+      if (command.includes("docker inspect --format"))
+        throw new Error(
+          "Error: No such container: cloud-container-11111111-1111-4111-8111-111111111111",
+        );
+      return "";
+    });
+    await expect(getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT)).rejects.toThrow(
+      "create failed",
+    );
+    expect(settleCreateFailure.mock.calls[0]?.[4]).toBe(true);
+    expect(completeCreatePlacement).not.toHaveBeenCalled();
+  });
+
+  test("removal cannot release capacity while a timed-out create may still finish", async () => {
+    createWithProjectIntentAndQuotaCheck.mockResolvedValue({ container: ROW, created: true });
+    execStdinMock.mockRejectedValue(new Error("SSH create timed out"));
+    execMock.mockImplementation(async (command) =>
+      command.includes("attempt_cancelled")
+        ? `${getReplacementSecretArtifactsCleanupReceipt(ROW.id)}\n`
+        : "",
+    );
+    await expect(getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT)).rejects.toThrow(
+      "SSH create timed out",
+    );
+    expect(settleCreateFailure.mock.calls[0]?.[4]).toBe(false);
+  });
+
+  test("cleanup removes the recorded candidate ID instead of a reusable name", async () => {
+    const candidateId = "a".repeat(64);
+    createWithProjectIntentAndQuotaCheck.mockResolvedValue({ container: ROW, created: true });
+    execStdinMock.mockRejectedValue(new Error("SSH response lost"));
+    execMock.mockImplementation(async (command) =>
+      command.includes("attempt_cancelled")
+        ? `${getReplacementSecretArtifactsCleanupReceipt(ROW.id)}\n${getReplacementCandidateObservedReceipt(ROW.id, candidateId)}\n`
+        : "",
+    );
+    await expect(getHetznerContainersClient().createContainer(NEW_CONTAINER_INPUT)).rejects.toThrow(
+      "SSH response lost",
+    );
+    const removals = execMock.mock.calls
+      .map(([command]) => command)
+      .filter((command) => command.includes("docker rm -f"));
+    expect(removals).toHaveLength(1);
+    expect(removals[0]).toEndWith(`docker rm -f '${candidateId}'`);
+    expect(settleCreateFailure.mock.calls[0]?.[4]).toBe(true);
   });
 });
 
@@ -328,7 +508,7 @@ describe("createContainer — stdin-only environment transport", () => {
     const client = getHetznerContainersClient();
     await expect(
       client.createContainer({ ...NEW_CONTAINER_INPUT, environmentVars }),
-    ).resolves.toMatchObject({ id: "ct1" });
+    ).resolves.toMatchObject({ id: "11111111-1111-4111-8111-111111111111" });
 
     expect(createWithProjectIntentAndQuotaCheck).toHaveBeenCalledTimes(1);
     expect(createWithProjectIntentAndQuotaCheck.mock.calls[0]?.[0]).toMatchObject({
@@ -367,7 +547,7 @@ describe("createContainer — stdin-only environment transport", () => {
     const client = getHetznerContainersClient();
     await expect(
       client.createContainer({ ...NEW_CONTAINER_INPUT, environmentVars }),
-    ).resolves.toMatchObject({ id: "ct1" });
+    ).resolves.toMatchObject({ id: "11111111-1111-4111-8111-111111111111" });
 
     expect(execStdinMock).toHaveBeenCalledTimes(2);
     const firstCommand = execStdinMock.mock.calls[0]![0];
@@ -429,7 +609,7 @@ describe("setEnv — validate before mutation and recreate through stdin", () =>
     for (const environmentVars of invalidEnvironments) {
       let rejection: unknown;
       try {
-        await client.setEnv("ct1", "org1", environmentVars);
+        await client.setEnv("11111111-1111-4111-8111-111111111111", "org1", environmentVars);
       } catch (error) {
         rejection = error;
       }
@@ -473,12 +653,18 @@ describe("setEnv — validate before mutation and recreate through stdin", () =>
     });
 
     const client = getHetznerContainersClient();
-    await expect(client.setEnv("ct1", "org1", environmentVars)).resolves.toMatchObject({
-      id: "ct1",
+    await expect(
+      client.setEnv("11111111-1111-4111-8111-111111111111", "org1", environmentVars),
+    ).resolves.toMatchObject({
+      id: "11111111-1111-4111-8111-111111111111",
     });
 
     expect(events).toEqual(["funded", "stop", "rm", "network", "stdin-create", "start", "persist"]);
-    expect(prepareFundedRestart).toHaveBeenCalledWith("ct1", "org1", expect.any(Date));
+    expect(prepareFundedRestart).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      "org1",
+      expect.any(Date),
+    );
     expect(execStdinMock).toHaveBeenCalledTimes(1);
     const [command, input, timeout] = execStdinMock.mock.calls[0]!;
     expect(command).toContain("docker create");
@@ -486,7 +672,7 @@ describe("setEnv — validate before mutation and recreate through stdin", () =>
     expect(input).toBe(expectedEnvironmentFrame(environmentVars));
     expect(timeout).toBe(60_000);
     expect(updateRow).toHaveBeenCalledWith(
-      "ct1",
+      "11111111-1111-4111-8111-111111111111",
       "org1",
       expect.objectContaining({
         environment_vars: environmentVars,
@@ -509,7 +695,7 @@ describe("setEnv — validate before mutation and recreate through stdin", () =>
     const client = getHetznerContainersClient();
     let rejection: unknown;
     try {
-      await client.setEnv("ct1", "org1", environmentVars);
+      await client.setEnv("11111111-1111-4111-8111-111111111111", "org1", environmentVars);
     } catch (error) {
       rejection = error;
     }
@@ -529,12 +715,14 @@ describe("setEnv — validate before mutation and recreate through stdin", () =>
 describe("deleteContainer — fail-closed host teardown", () => {
   test("happy path removes the container and then deletes the control-plane row", async () => {
     const client = getHetznerContainersClient();
-    await expect(client.deleteContainer("ct1", "org1")).resolves.toBeUndefined();
+    await expect(
+      client.deleteContainer("11111111-1111-4111-8111-111111111111", "org1"),
+    ).resolves.toBeUndefined();
 
     const cmds = execMock.mock.calls.map((c) => c[0]);
     expect(cmds.some((c) => c.includes("docker rm -f"))).toBe(true);
     expect(deleteRow).toHaveBeenCalledTimes(1);
-    expect(deleteRow.mock.calls[0]).toEqual(["ct1", "org1"]);
+    expect(deleteRow.mock.calls[0]).toEqual(["11111111-1111-4111-8111-111111111111", "org1"]);
   });
 
   test("authoritative `docker rm -f` failure PROPAGATES and the row is NOT deleted", async () => {
@@ -546,7 +734,9 @@ describe("deleteContainer — fail-closed host teardown", () => {
     });
 
     const client = getHetznerContainersClient();
-    await expect(client.deleteContainer("ct1", "org1")).rejects.toThrow("rm boom");
+    await expect(
+      client.deleteContainer("11111111-1111-4111-8111-111111111111", "org1"),
+    ).rejects.toThrow("rm boom");
     expect(deleteRow).not.toHaveBeenCalled();
   });
 
@@ -560,7 +750,9 @@ describe("deleteContainer — fail-closed host teardown", () => {
     });
 
     const client = getHetznerContainersClient();
-    await expect(client.deleteContainer("ct1", "org1")).resolves.toBeUndefined();
+    await expect(
+      client.deleteContainer("11111111-1111-4111-8111-111111111111", "org1"),
+    ).resolves.toBeUndefined();
     expect(deleteRow).toHaveBeenCalledTimes(1);
   });
 
@@ -572,7 +764,9 @@ describe("deleteContainer — fail-closed host teardown", () => {
     });
 
     const client = getHetznerContainersClient();
-    await expect(client.deleteContainer("ct1", "org1")).rejects.toMatchObject({
+    await expect(
+      client.deleteContainer("11111111-1111-4111-8111-111111111111", "org1"),
+    ).rejects.toMatchObject({
       code: "ssh_unreachable",
     });
     expect(deleteRow).not.toHaveBeenCalled();
@@ -582,7 +776,9 @@ describe("deleteContainer — fail-closed host teardown", () => {
 describe("billing stop — provider absence proof", () => {
   test("a successful docker removal reports a fresh provider acknowledgement", async () => {
     const client = getHetznerContainersClient();
-    await expect(client.stopContainerRuntimeForBilling("ct1", "org1", 7)).resolves.toEqual({
+    await expect(
+      client.stopContainerRuntimeForBilling("11111111-1111-4111-8111-111111111111", "org1", 7),
+    ).resolves.toEqual({
       nodeId: "node-1",
       alreadyAbsent: false,
     });
@@ -592,14 +788,16 @@ describe("billing stop — provider absence proof", () => {
     execMock.mockImplementation(async (cmd: string) => {
       if (cmd.includes("docker rm -f")) {
         throw new Error(
-          "[docker-ssh] Command exited with code 1 on 10.0.0.1: [stderr] Error response from daemon: No such container: app-ct1",
+          "[docker-ssh] Command exited with code 1 on 10.0.0.1: [stderr] Error response from daemon: No such container: app-11111111-1111-4111-8111-111111111111",
         );
       }
       return "";
     });
 
     const client = getHetznerContainersClient();
-    await expect(client.stopContainerRuntimeForBilling("ct1", "org1", 7)).resolves.toEqual({
+    await expect(
+      client.stopContainerRuntimeForBilling("11111111-1111-4111-8111-111111111111", "org1", 7),
+    ).resolves.toEqual({
       nodeId: "node-1",
       alreadyAbsent: true,
     });
@@ -608,7 +806,9 @@ describe("billing stop — provider absence proof", () => {
   test("malformed provider metadata cannot fabricate runtime absence", async () => {
     readMetadata.mockReturnValue(null);
     const client = getHetznerContainersClient();
-    await expect(client.stopContainerRuntimeForBilling("ct1", "org1", 7)).rejects.toMatchObject({
+    await expect(
+      client.stopContainerRuntimeForBilling("11111111-1111-4111-8111-111111111111", "org1", 7),
+    ).rejects.toMatchObject({
       code: "invalid_input",
     });
     expect(execMock).not.toHaveBeenCalled();
@@ -620,9 +820,9 @@ describe("billing stop — provider absence proof", () => {
       return "";
     });
     const client = getHetznerContainersClient();
-    await expect(client.stopContainerRuntimeForBilling("ct1", "org1", 7)).rejects.toThrow(
-      "docker helper binary not found",
-    );
+    await expect(
+      client.stopContainerRuntimeForBilling("11111111-1111-4111-8111-111111111111", "org1", 7),
+    ).rejects.toThrow("docker helper binary not found");
   });
 });
 

@@ -19,6 +19,8 @@ beforeAll(async () => {
     CREATE TABLE containers (
       id uuid PRIMARY KEY,
       node_id text,
+      volume_path text,
+      hcloud_volume_id integer,
       status text NOT NULL
     );
     CREATE TABLE agent_sandboxes (
@@ -49,6 +51,19 @@ beforeEach(async () => {
 });
 
 describe("countRetainedWorkloadsOnNodeWithDatabase", () => {
+  test("failed stateful creates retain their host until explicit volume cleanup", async () => {
+    await client.query(
+      `INSERT INTO containers (id, node_id, status, volume_path)
+      VALUES ('40000000-0000-4000-8000-000000000001', $1, 'failed', '/srv/tenant-data')`,
+      [NODE_ID],
+    );
+    expect(await countRetainedWorkloadsOnNodeWithDatabase(database, NODE_ID)).toBe(1);
+    await client.exec("UPDATE containers SET volume_path=NULL, hcloud_volume_id=42");
+    expect(await countRetainedWorkloadsOnNodeWithDatabase(database, NODE_ID)).toBe(1);
+    await client.exec("UPDATE containers SET hcloud_volume_id=NULL");
+    expect(await countRetainedWorkloadsOnNodeWithDatabase(database, NODE_ID)).toBe(0);
+  });
+
   test("keeps rolling deploys functional before the replacement table exists", async () => {
     const legacyClient = new PGlite();
     try {
@@ -56,6 +71,8 @@ describe("countRetainedWorkloadsOnNodeWithDatabase", () => {
         CREATE TABLE containers (
           id uuid PRIMARY KEY,
           node_id text,
+          volume_path text,
+          hcloud_volume_id integer,
           status text NOT NULL
         );
         CREATE TABLE agent_sandboxes (

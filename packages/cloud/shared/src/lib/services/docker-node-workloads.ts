@@ -402,7 +402,10 @@ export async function countRetainedWorkloadsOnNodeWithDatabase(
         SELECT count(*)::int
         FROM ${containers}
         WHERE ${containers.node_id} = ${nodeId}
-          AND ${containers.status} not in ('failed','deleted')
+          AND ${containers.status} <> 'deleted'
+          AND (${containers.status} <> 'failed'
+            OR ${containers.volume_path} IS NOT NULL
+            OR ${containers.hcloud_volume_id} IS NOT NULL)
       )`,
     agentCount: sql<number>`(
         SELECT count(*)::int

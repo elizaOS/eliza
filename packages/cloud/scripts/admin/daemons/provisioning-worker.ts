@@ -39,6 +39,8 @@ type WorkerNodeManager =
   typeof import("@elizaos/cloud-shared/lib/services/docker-node-manager").dockerNodeManager;
 type WorkerNodeAutoscaler =
   typeof import("@elizaos/cloud-shared/lib/services/containers/node-autoscaler").getNodeAutoscaler;
+type WorkerContainersClient =
+  typeof import("@elizaos/cloud-shared/lib/services/containers/hetzner-client").getHetznerContainersClient;
 type WorkerWarmPoolManager =
   typeof import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool").WarmPoolManager;
 type WorkerEnvWarmPoolPolicy =
@@ -87,6 +89,7 @@ interface WorkerDeps {
   provisioningJobService: WorkerService;
   dockerNodeManager: WorkerNodeManager;
   getNodeAutoscaler: WorkerNodeAutoscaler;
+  getHetznerContainersClient: WorkerContainersClient;
   WarmPoolManager: WorkerWarmPoolManager;
   envWarmPoolPolicy: WorkerEnvWarmPoolPolicy;
   immutableImageReference: WorkerImmutableImageReference;
@@ -324,6 +327,7 @@ async function loadDeps(): Promise<WorkerDeps> {
       import("@elizaos/cloud-shared/lib/services/node-disk-manager"),
       import("@elizaos/cloud-shared/lib/services/agent-backup-verifier"),
       import("@elizaos/cloud-shared/lib/services/cloud-api-db-heartbeat"),
+      import("@elizaos/cloud-shared/lib/services/containers/hetzner-client"),
     ]).then(
       ([
         jobsModule,
@@ -342,11 +346,14 @@ async function loadDeps(): Promise<WorkerDeps> {
         nodeDiskManagerModule,
         backupVerifierModule,
         cloudApiDbHeartbeatModule,
+        containersClientModule,
       ]) => ({
         provisioningJobService: jobsModule.provisioningJobService,
         logger: loggerModule.logger,
         dockerNodeManager: nodeMgrModule.dockerNodeManager,
         getNodeAutoscaler: autoscalerModule.getNodeAutoscaler,
+        getHetznerContainersClient:
+          containersClientModule.getHetznerContainersClient,
         WarmPoolManager: warmPoolModule.WarmPoolManager,
         envWarmPoolPolicy: warmPoolModule.envWarmPoolPolicy,
         immutableImageReference: warmPoolModule.immutableImageReference,
@@ -944,6 +951,8 @@ interface PrePullImagesSummary {
 }
 
 interface NodeAutoscaleSummary {
+  createCleanup: { checked: number; removed: number; pending: number };
+  retirement: { completed: number; retained: number; failed: number };
   action:
     | "noop"
     | "scale_up"
@@ -1176,18 +1185,23 @@ export function prePullAllowsPoolImageRollout(
  * runs (decision + drain) but reports `scale_up_skipped`.
  */
 async function processNodeAutoscaleCycle(): Promise<NodeAutoscaleSummary> {
-  const { getNodeAutoscaler } = await loadDeps();
+  const { getNodeAutoscaler, getHetznerContainersClient } = await loadDeps();
+  const createCleanup =
+    await getHetznerContainersClient().reconcileCreateCleanup();
   const autoscaler = getNodeAutoscaler();
+  const retirement = await autoscaler.reconcileRetirements();
   const decision = await autoscaler.evaluateCapacity();
 
   if (!decision.shouldScaleUp && decision.shouldScaleDownNodeIds.length === 0) {
-    return { action: "noop" };
+    return { action: "noop", retirement, createCleanup };
   }
 
   if (decision.shouldScaleUp) {
     const publicKey = process.env.CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY?.trim();
     if (!publicKey) {
       return {
+        retirement,
+        createCleanup,
         action: "scale_up_skipped",
         detail: "CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY not set on daemon host",
       };
@@ -1202,11 +1216,15 @@ async function processNodeAutoscaleCycle(): Promise<NodeAutoscaleSummary> {
         },
       );
       return {
+        retirement,
+        createCleanup,
         action: "scale_up",
         detail: `${provisioned.nodeId} (${provisioned.hostname})`,
       };
     } catch (error) {
       return {
+        retirement,
+        createCleanup,
         action: "scale_up_failed",
         detail: formatErrorWithCause(error),
       };
@@ -1218,13 +1236,15 @@ async function processNodeAutoscaleCycle(): Promise<NodeAutoscaleSummary> {
   // up as idle simultaneously.
   const target = decision.shouldScaleDownNodeIds[0];
   if (!target) {
-    return { action: "noop" };
+    return { action: "noop", retirement, createCleanup };
   }
   try {
     await autoscaler.drainNode(target, { deprovision: true });
-    return { action: "scale_down", detail: target };
+    return { action: "scale_down", detail: target, retirement, createCleanup };
   } catch (error) {
     return {
+      retirement,
+      createCleanup,
       action: "drain_failed",
       detail: `${target}: ${formatErrorWithCause(error)}`,
     };

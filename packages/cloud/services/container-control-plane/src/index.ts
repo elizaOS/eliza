@@ -785,9 +785,11 @@ app.post("/api/v1/cron/agent-hot-pool", agentHotPoolResponse);
 function nodeAutoscaleResponse(c: Context) {
   return handleInternal(c, async () => {
     const autoscaler = getNodeAutoscaler();
+    const retirement = await autoscaler.reconcileRetirements();
     const decision = await autoscaler.evaluateCapacity();
     const result: Record<string, unknown> = {
       ...decision,
+      retirement,
       actions: [] as Array<Record<string, unknown>>,
       timestamp: new Date().toISOString(),
     };

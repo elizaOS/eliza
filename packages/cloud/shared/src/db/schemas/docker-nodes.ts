@@ -1,4 +1,4 @@
-// Defines the docker nodes Drizzle table shape used by cloud repositories and services.
+/** Defines Docker node identity, placement state and persisted control-plane metadata. */
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   boolean,
@@ -21,6 +21,9 @@ const pgXid8 = customType<{ data: string }>({
     return "xid8";
   },
 });
+
+/** Only the retirement authority writes this key; re-enablement cancels it. */
+export const NODE_RETIREMENT_METADATA_KEY = "requestedProviderRetirement";
 
 export type DockerNodeStatus = "healthy" | "degraded" | "offline" | "unknown";
 export type DockerNodeFleetKind = "robot" | "cloud";
