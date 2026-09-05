@@ -136,9 +136,9 @@ export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "intents",
 	description:
-		'Short verb phrases covering every explicit requested outcome in this turn. Keep navigation and data changes as separate intents: "open notes and update a note" requires both. Do not discard one clause because another is more substantive. Empty for no actionable intent.',
+		'Short verb phrases covering every explicit outcome requiring runtime actions or external state in this turn. Keep navigation and data changes as separate intents: "open notes and update a note" requires both. Do not discard one clause because another is more substantive. Use [] for ordinary conversation, explanations, or answers fully supplied by replyText; a nonempty intent list requires the planner even if contexts says simple.',
 	descriptionCompressed:
-		"One short verb phrase per requested outcome, including navigation separately from edits; omit no requested clause. Empty when no actionable intent.",
+		"One verb phrase per requested runtime action, navigation separately from edits. Empty for text-only conversation; nonempty requires planning. Omit no actionable clause.",
 	priority: 15,
 	schema: {
 		type: "array",

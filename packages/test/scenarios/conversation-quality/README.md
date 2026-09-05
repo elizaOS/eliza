@@ -94,3 +94,45 @@ eliza-scenarios list packages/test/scenarios/conversation-quality
 
 The mechanical `responseExcludes` / length guards will fail the turn immediately
 if the register regresses, regardless of what the judge would have said.
+
+## Continuous-conversation regression
+
+`convq.continuous-conversation` uses seven real model turns in one owner room:
+
+1. State a new tea preference and a plan, without requesting app-side changes.
+2. Correct the guest count without restating the plan.
+3. Digress into a joke.
+4. Ask an elliptical follow-up requiring arithmetic from the corrected history.
+5. Ask for the Spanish name of a favorite color present only in durable facts,
+   never in the user transcript. Repeating the current message cannot pass.
+6. Ask about a fact never supplied; require an honest, natural admission.
+7. Return to the original plan and the new preference.
+
+Database readback separately requires the new tea preference to exist as a fact
+and every stored owner message to remain in the same room. The color seed proves
+retrieval, not extraction; the tea readback proves new persistence. A live judge
+checks natural register without mandating exact acknowledgement phrases.
+The isolated agent also has a deliberately ambiguous `User` display alias; the
+tea preference must still be attributed to the actual owner, never the agent.
+
+```bash
+# Use an already configured live provider key. Cerebras is selected through
+# the runner's existing OpenAI-compatible provider adapter.
+bun --conditions eliza-source packages/scenario-runner/src/cli.ts run \
+  packages/test/scenarios/conversation-quality \
+  --scenario convq.continuous-conversation --provider openai \
+  --report /tmp/eliza-continuous-conversation.json
+```
+
+This in-process scenario does **not** prove UI routing, reload restoration,
+semantic/vector retrieval, graph extraction, physical voice, or VPS/Pixel
+deployment. Its default runner profile disables embeddings. Keep those as
+separate acceptance gates rather than inferring them from correct reply text.
+
+For browser acceptance, use the existing personal chat: save a real preference,
+switch Notes → Calendar → Home with natural-language requests, reload, and ask
+an elliptical follow-up about that preference. Check the visible destination,
+retained transcript, conversation/room IDs in trajectories, unchanged
+conversation count, durable fact readback, and per-stage timings. Do not seed the
+synthetic scenario persona into a user's actual chat or delete old conversations.
+Test voice on that same identity only when microphone/playback is authorized.

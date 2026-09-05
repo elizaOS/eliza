@@ -50,6 +50,24 @@ const BROWSER = makeAction("BROWSER");
 const REAL_ACTIONS: Action[] = [TASKS_SPAWN_AGENT, SHELL, SEARCH];
 
 describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
+	it("plans a declared action intent even when Stage 1 contradicts it with simple and no candidate", () => {
+		const handler = messageHandlerFromFieldResult({
+			shouldRespond: "RESPOND",
+			contexts: ["simple"],
+			intents: ["go home"],
+			candidateActionNames: [],
+			replyEffectStatus: "none",
+			replyText: "Back at your home view. You prefer brief replies.",
+		});
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.contexts).toContain("general");
+		expect(handler.plan.intents).toEqual(["go home"]);
+		expect(handler.plan.reply).toBe("");
+		// The planner, not this router, must choose and parameterize the action.
+		expect(handler.plan.candidateActions ?? []).toEqual([]);
+	});
+
 	it("resolves canonical action names before another action's simile", () => {
 		const scheduledTasks = makeAction("SCHEDULED_TASKS", [
 			"TASKS",

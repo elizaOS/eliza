@@ -109,6 +109,7 @@ rules:
 - drop credentials, API keys, passwords, raw tokens, and other secrets; never persist their values
 - drop synthetic summaries, compaction artifacts, generic chat filler, and one-off task requests
 - each kept fact is an object { subject, fact }: subject names WHO the fact is about
+- current_message_author and agent_identity are trusted role bindings, independent of display names and aliases in room_entities; an entity with an alias "User" is not necessarily the current author
 - subject must be the speaker who stated the fact about themselves — use their name exactly as shown in recent_conversation or room_entities, preferring the UUID when room_entities shows one; use "user" ONLY when the fact is about the author of current_message
 - never attribute one speaker's fact to a different speaker; if the speaker cannot be identified, drop the fact
 - normalize entity names to match the names already used in existing relationships or room entities when possible (do not invent new aliases)
@@ -267,7 +268,10 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 		.filter(Boolean)
 		.join("\n\n");
 
-	const userBlocks: string[] = [];
+	const userBlocks: string[] = [
+		`current_message_author: user (id: ${args.message.entityId})`,
+		`agent_identity: agent (id: ${args.runtime.agentId})`,
+	];
 
 	// Label each line with the actual speaker so the model can attribute facts
 	// to the right participant. Collapsing every human to "user" made facts

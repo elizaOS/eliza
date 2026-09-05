@@ -90,6 +90,39 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
+  it.each(["/chat", "/notes", "/calendar", "/browser"])(
+    "restores the same transcript on repeated launches at %s without creating a chat",
+    async (route) => {
+      const messages = [
+        {
+          id: "m1",
+          role: "user",
+          text: "Please keep replies brief",
+          timestamp: 1,
+        },
+        { id: "m2", role: "assistant", text: "Will do.", timestamp: 2 },
+      ];
+      const client = makeFakeClient({
+        listConversations: vi.fn(async () => ({
+          conversations: [CONVERSATION],
+        })),
+        getConversationMessages: vi.fn(async () => ({ messages })),
+      });
+      for (let launch = 0; launch < 2; launch++) {
+        window.history.replaceState(null, "", route);
+        const { deps, activeConversationIdRef, setConversationMessages } =
+          makeDeps(client);
+        await hydrateInitialConversation(deps);
+        expect(activeConversationIdRef.current).toBe(CONVERSATION.id);
+        expect(setConversationMessages).toHaveBeenLastCalledWith(messages);
+        expect(client.getConversationMessages).toHaveBeenLastCalledWith(
+          CONVERSATION.id,
+        );
+      }
+      expect(client.createConversation).not.toHaveBeenCalled();
+    },
+  );
+
   it("disables synthetic greetings only for native iOS", () => {
     expect(shouldSeedSyntheticConversationGreeting(true, true)).toBe(false);
     expect(shouldSeedSyntheticConversationGreeting(true, false)).toBe(true);

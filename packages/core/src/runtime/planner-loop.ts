@@ -81,7 +81,11 @@ import {
 	renderContextObject,
 	segmentBlock,
 } from "./context-renderer";
-import { declaredIntentsFromContext, runEvaluator } from "./evaluator";
+import {
+	declaredIntentsFromContext,
+	repairFinishWithProgressPromise,
+	runEvaluator,
+} from "./evaluator";
 import {
 	extractJsonObjects,
 	parseJsonObject,
@@ -5676,6 +5680,23 @@ async function ensureToolTurnFinalMessage(
 	if (
 		message &&
 		message === singleVerifiedUserFacingToolResultText(result.trajectory)
+	) {
+		return result;
+	}
+	// The evaluator has already seen the tool receipts and authored the final
+	// reply. Do not apply the pre-tool/exhaustion acknowledgement heuristic to
+	// that answer: "Got it. I'll keep replies brief" is a complete preference
+	// acknowledgement, not unfinished work. Re-synthesizing it adds a redundant
+	// provider request (and potentially another rate-limit wait).
+	if (
+		message &&
+		message !== HANDLED_STEP_FALLBACK_MESSAGE &&
+		result.evaluator?.success === true &&
+		result.evaluator.decision === "FINISH" &&
+		message === sanitizePlannerMessage(result.evaluator.messageToUser) &&
+		repairFinishWithProgressPromise(result.evaluator, result.trajectory)
+			.decision === "FINISH" &&
+		!isUnsafeUserVisibleText(message)
 	) {
 		return result;
 	}

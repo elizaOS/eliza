@@ -1187,7 +1187,7 @@ function repairFinishWithUnservedDeclaredIntents(
 	};
 }
 
-function repairFinishWithProgressPromise(
+export function repairFinishWithProgressPromise(
 	output: EvaluatorOutput,
 	trajectory: PlannerTrajectory,
 ): EvaluatorOutput {

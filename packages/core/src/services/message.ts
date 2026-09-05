@@ -6512,8 +6512,21 @@ export function messageHandlerFromFieldResult(
 	const initialPlanningContexts = routedContexts.filter(
 		(context) => context !== SIMPLE_CONTEXT_ID,
 	);
+	const declaredIntents = stringArrayProperty(result.intents);
+	// A model-declared actionable outcome must not disappear just because the
+	// same payload says "simple" and omits an action name. The real planner owns
+	// action selection; do not infer an intent or fabricate a tool call here.
+	const unservedDeclaredIntent =
+		!preemptDirect &&
+		!subAgentCompletionRelay &&
+		declaredIntents.length > 0 &&
+		initialPlanningContexts.length === 0 &&
+		validCandidateCount === 0 &&
+		replyEffectStatus !== "non_applied";
 	const requestedPlanning =
-		initialPlanningContexts.length > 0 || validCandidateCount > 0;
+		initialPlanningContexts.length > 0 ||
+		validCandidateCount > 0 ||
+		unservedDeclaredIntent;
 	// The model can explicitly commit to delegation: for a genuine coding-work
 	// request it routes to a non-simple context of its OWN choosing AND names a
 	// runnable coding-delegation / spawn-class action in its OWN candidate list
@@ -6611,6 +6624,7 @@ export function messageHandlerFromFieldResult(
 	const preferCompleteDirectReply =
 		!preemptDirect &&
 		requestedPlanning &&
+		!unservedDeclaredIntent &&
 		!modelCommittedToDelegation &&
 		!modelCommittedToPlanning &&
 		!looksLikeWebSearchRequest(currentMessageText) &&
@@ -6622,6 +6636,7 @@ export function messageHandlerFromFieldResult(
 	const preferInlineCodeSnippetDirectReply =
 		!preemptDirect &&
 		requestedPlanning &&
+		!unservedDeclaredIntent &&
 		shouldPreferInlineCodeSnippetDirectReply({
 			currentMessageText,
 			candidateActions: runnableCandidateActions,
@@ -6645,10 +6660,10 @@ export function messageHandlerFromFieldResult(
 						]),
 					)
 				: routedContexts;
-	const replyText = replyTextRaw;
+	const replyText = unservedDeclaredIntent ? "" : replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
-		intents: stringArrayProperty(result.intents),
+		intents: declaredIntents,
 		reply: replyText,
 		replyEffectStatus,
 		simple: preemptDirect ? true : !shouldPlan,
