@@ -41,8 +41,14 @@ const getModelsConfig = vi.hoisted(() =>
   })),
 );
 
-vi.mock("../../hooks/useDefaultProviderPresets", () => ({
-  useDefaultProviderPresets: vi.fn(),
+vi.mock("../../voice/useVoiceConfig", () => ({
+  useVoiceConfig: () => ({
+    voiceConfig: {
+      provider: selection.cloudRuntimeLocked
+        ? "eliza-cloud"
+        : "local-inference",
+    },
+  }),
 }));
 // The serving summary reads the runtime axis from GET /api/runtime/mode and
 // the inference axis from activeChat on GET /api/models/config.
@@ -353,6 +359,9 @@ describe("ProviderSwitcher", () => {
     expect(screen.queryByText("routing matrix")).toBeNull();
     expect(screen.queryByText("model config")).toBeNull();
     expect(getModelsConfig).not.toHaveBeenCalled();
-    expect(screen.getByText("Eliza Cloud voice")).toBeTruthy();
+    expect(
+      screen.getByText("Speech playback").closest('[data-slot="settings-row"]')
+        ?.textContent,
+    ).toContain("Eliza Cloud");
   });
 });
