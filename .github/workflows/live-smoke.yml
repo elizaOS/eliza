@@ -1186,15 +1186,17 @@ jobs:
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         env:
           CANARY_HEADSCALE_IP: ${{ steps.cleanup_reconciliation.outputs.headscale_ip }}
+          CANARY_DIAGNOSTIC_SUFFIX: ${{ inputs.diagnose_canary_suffix }}
         with:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 2m
-          envs: CANARY_HEADSCALE_IP
+          envs: CANARY_HEADSCALE_IP,CANARY_DIAGNOSTIC_SUFFIX
           script: |
             set -euo pipefail
             [[ "$CANARY_HEADSCALE_IP" =~ ^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || exit 1
+            [[ "$CANARY_DIAGNOSTIC_SUFFIX" =~ ^[a-z0-9-]{8,80}$ ]] || exit 1
             status_json="$(sudo tailscale status --json 2>/dev/null || true)"
             backend="$(jq -r '.BackendState // "unknown"' <<<"$status_json" 2>/dev/null || echo unknown)"
             self_ip=false
@@ -1208,6 +1210,25 @@ jobs:
             fi
             if jq -e --arg ip "$CANARY_HEADSCALE_IP" '[.Peer[]? | select(((.TailscaleIPs // []) | index($ip)) and .Online == true)] | length == 1' <<<"$status_json" >/dev/null 2>&1; then
               peer_online=true
+            fi
+            suffix_peer_count="$(jq -r --arg suffix "$CANARY_DIAGNOSTIC_SUFFIX" '[.Peer[]? | select(((.HostName // "") | contains($suffix)) or ((.DNSName // "") | contains($suffix)))] | length' <<<"$status_json" 2>/dev/null || echo 0)"
+            suffix_peer_online_count="$(jq -r --arg suffix "$CANARY_DIAGNOSTIC_SUFFIX" '[.Peer[]? | select((((.HostName // "") | contains($suffix)) or ((.DNSName // "") | contains($suffix))) and .Online == true)] | length' <<<"$status_json" 2>/dev/null || echo 0)"
+            suffix_peer_ip="$(jq -r --arg suffix "$CANARY_DIAGNOSTIC_SUFFIX" '[.Peer[]? | select(((.HostName // "") | contains($suffix)) or ((.DNSName // "") | contains($suffix)))] | if length == 1 then (.[0].TailscaleIPs[0] // "") else "" end' <<<"$status_json" 2>/dev/null || true)"
+            suffix_ip_matches_database=false
+            suffix_route_tailnet=false
+            suffix_ping_reachable=false
+            suffix_health_reachable=false
+            if [[ "$suffix_peer_ip" =~ ^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+              [ "$suffix_peer_ip" = "$CANARY_HEADSCALE_IP" ] && suffix_ip_matches_database=true
+              suffix_route_device="$(ip route get "$suffix_peer_ip" 2>/dev/null | awk '{ for (i = 1; i <= NF; i += 1) if ($i == "dev") { print $(i + 1); exit } }')"
+              [ "$suffix_route_device" = tailscale0 ] && suffix_route_tailnet=true
+              if timeout --signal=TERM --kill-after=2s 12s sudo tailscale ping --timeout=5s --c=1 "$suffix_peer_ip" >/dev/null 2>&1; then
+                suffix_ping_reachable=true
+              fi
+              suffix_health_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --connect-timeout 5 --max-time 10 "http://$suffix_peer_ip:2138/api/health" 2>/dev/null || true)"
+              case "$suffix_health_status" in
+                200|301|302|401) suffix_health_reachable=true ;;
+              esac
             fi
             route_device="$(ip route get "$CANARY_HEADSCALE_IP" 2>/dev/null | awk '{ for (i = 1; i <= NF; i += 1) if ($i == "dev") { print $(i + 1); exit } }')"
             route_tailnet=false
@@ -1232,8 +1253,17 @@ jobs:
             echo "control_plane_canary_route_tailscale0=$route_tailnet"
             echo "control_plane_canary_ping_reachable=$ping_reachable"
             echo "control_plane_canary_health_reachable=$health_reachable"
+            echo "control_plane_suffix_peer_count=$suffix_peer_count"
+            echo "control_plane_suffix_peer_online_count=$suffix_peer_online_count"
+            echo "control_plane_suffix_ip_matches_database=$suffix_ip_matches_database"
+            echo "control_plane_suffix_route_tailscale0=$suffix_route_tailnet"
+            echo "control_plane_suffix_ping_reachable=$suffix_ping_reachable"
+            echo "control_plane_suffix_health_reachable=$suffix_health_reachable"
             unset status_json backend self_ip peer_present peer_online route_device route_tailnet \
-              ping_reachable health_status health_reachable CANARY_HEADSCALE_IP
+              ping_reachable health_status health_reachable suffix_peer_count suffix_peer_online_count \
+              suffix_peer_ip suffix_ip_matches_database suffix_route_device suffix_route_tailnet \
+              suffix_ping_reachable suffix_health_status suffix_health_reachable CANARY_HEADSCALE_IP \
+              CANARY_DIAGNOSTIC_SUFFIX
 
       - name: Classify control-plane replacement cleanup failure
         if: steps.cleanup_reconciliation.outputs.fence_present == 'true'
@@ -1338,22 +1368,24 @@ jobs:
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         env:
           CANARY_AGENT_ID: ${{ steps.cleanup_reconciliation.outputs.agent_id }}
+          CANARY_DIAGNOSTIC_SUFFIX: ${{ inputs.diagnose_canary_suffix }}
         with:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 2m
-          envs: CANARY_AGENT_ID
+          envs: CANARY_AGENT_ID,CANARY_DIAGNOSTIC_SUFFIX
           script: |
             set -euo pipefail
             [[ "$CANARY_AGENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
+            [[ "$CANARY_DIAGNOSTIC_SUFFIX" =~ ^r[1-9][0-9]{7,19}a[1-9][0-9]{0,3}$ ]] || exit 1
             block="$(
               sudo journalctl \
                 -u eliza-provisioning-worker.service \
                 --since '4 hours ago' \
                 -o cat \
                 --no-pager 2>/dev/null \
-                | grep -F -B 12 -A 12 "$CANARY_AGENT_ID" \
+                | grep -F -B 12 -A 12 "$CANARY_DIAGNOSTIC_SUFFIX" \
                 | tail -n 1200 \
                 || true
             )"
@@ -1486,12 +1518,15 @@ jobs:
             fi
             unset probe_status
             jq -e '
-              keys == ["container", "logs", "runtime", "schemaVersion", "tailscale", "targetCount"] and
-              .schemaVersion == 2 and
+              keys == ["application", "container", "host", "logs", "runtime", "schemaVersion", "tailscale", "targetCount"] and
+              .schemaVersion == 3 and
               .targetCount == 1 and
-              (.container | keys == ["exitCode", "imageMatchesConfigured", "inspect", "status"]) and
+              (.host | keys == ["containerdServiceActive", "dockerServiceActive", "liveRestoreConfigured"]) and
+              ([.host.containerdServiceActive, .host.dockerServiceActive, .host.liveRestoreConfigured] | all(type == "boolean")) and
+              (.container | keys == ["exitCode", "health", "imageMatchesConfigured", "inspect", "status"]) and
               (.container.inspect == "success" or .container.inspect == "error") and
               (.container.status | IN("created", "running", "paused", "restarting", "removing", "exited", "dead", "unknown")) and
+              (.container.health | IN("starting", "healthy", "unhealthy", "none", "unknown")) and
               (.container.exitCode == null or (.container.exitCode | type == "number")) and
               (.container.imageMatchesConfigured == null or (.container.imageMatchesConfigured | type == "boolean")) and
               (.tailscale | keys == ["authUrlPresent", "backendState", "daemonPresent", "ipPresent", "machineAuthorized", "query", "socketPresent"]) and
@@ -1504,11 +1539,19 @@ jobs:
               (.runtime | keys == ["agentProcessPresent", "entrypointProcessPresent", "forceNoise443Enabled", "pid1", "stuckCliEscapePresent", "tailscaleUpProcessPresent"]) and
               (.runtime.pid1 | IN("agent", "entrypoint", "other", "tailscale-up", "unknown")) and
               ([.runtime.agentProcessPresent, .runtime.entrypointProcessPresent, .runtime.forceNoise443Enabled, .runtime.stuckCliEscapePresent, .runtime.tailscaleUpProcessPresent] | all(type == "boolean"))
+              and (.application | keys == ["apiExposePortEnabled", "cloudProvisioned", "health", "root"])
+              and (.application.health | IN("accepted", "response", "unreachable", "unknown"))
+              and (.application.root | IN("accepted", "response", "unreachable", "unknown"))
+              and ([.application.apiExposePortEnabled, .application.cloudProvisioned] | all(type == "boolean"))
             ' <<<"$diagnostic" >/dev/null
             jq -r '
               "private_mesh_container_status=" + .container.status,
               "private_mesh_container_exit_code=" + ((.container.exitCode // "none") | tostring),
+              "private_mesh_container_health=" + (.container.health // "unknown"),
               "private_mesh_container_image_matches_configured=" + ((.container.imageMatchesConfigured // "unknown") | tostring),
+              "private_mesh_host_live_restore=" + (.host.liveRestoreConfigured | tostring),
+              "private_mesh_host_docker_service_active=" + (.host.dockerServiceActive | tostring),
+              "private_mesh_host_containerd_service_active=" + (.host.containerdServiceActive | tostring),
               "private_mesh_tailscale_query=" + .tailscale.query,
               "private_mesh_tailscale_backend=" + (.tailscale.backendState // "unknown"),
               "private_mesh_tailscale_machine_authorized=" + ((.tailscale.machineAuthorized // "unknown") | tostring),
@@ -1525,31 +1568,68 @@ jobs:
               "private_mesh_runtime_entrypoint_process=" + (.runtime.entrypointProcessPresent | tostring),
               "private_mesh_runtime_tailscale_up_process=" + (.runtime.tailscaleUpProcessPresent | tostring),
               "private_mesh_runtime_force_noise_443=" + (.runtime.forceNoise443Enabled | tostring),
-              "private_mesh_runtime_stuck_cli_escape=" + (.runtime.stuckCliEscapePresent | tostring)
+              "private_mesh_runtime_stuck_cli_escape=" + (.runtime.stuckCliEscapePresent | tostring),
+              "private_mesh_application_health=" + (.application.health // "unknown"),
+              "private_mesh_application_root=" + (.application.root // "unknown"),
+              "private_mesh_application_cloud_provisioned=" + (.application.cloudProvisioned | tostring),
+              "private_mesh_application_api_expose_port=" + (.application.apiExposePortEnabled | tostring)
             ' <<<"$diagnostic"
             unset diagnostic
+
+      - name: Classify exact Headscale API inventory
+        if: steps.cleanup_reconciliation.outputs.agent_id != ''
+        shell: bash
+        env:
+          CANARY_DIAGNOSTIC_SUFFIX: ${{ inputs.diagnose_canary_suffix }}
+          HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+        run: |
+          set -euo pipefail
+          [[ "$CANARY_DIAGNOSTIC_SUFFIX" =~ ^[a-z0-9-]{8,80}$ ]] || exit 1
+          [ -n "${HEADSCALE_API_KEY//[[:space:]]/}" ] || exit 1
+          inventory="$(
+            curl --fail --silent --show-error \
+              --connect-timeout 5 \
+              --max-time 20 \
+              --header "Authorization: Bearer $HEADSCALE_API_KEY" \
+              https://headscale-staging.eliza.app/api/v1/node
+          )"
+          jq -r --arg suffix "$CANARY_DIAGNOSTIC_SUFFIX" '
+            [(.nodes // [])[] | select((.name // "") | contains($suffix))] as $nameMatches
+            | [(.nodes // [])[] | select((.givenName // "") | contains($suffix))] as $givenNameMatches
+            | [
+                "headscale_api_name_match_count=" + (($nameMatches | length) | tostring),
+                "headscale_api_given_name_match_count=" + (($givenNameMatches | length) | tostring),
+                "headscale_api_name_match_ip_count=" + ([$nameMatches[] | select(((.ipAddresses // []) | length) > 0)] | length | tostring),
+                "headscale_api_name_match_created_at_count=" + ([$nameMatches[] | select((.createdAt // "") | fromdateiso8601? != null)] | length | tostring),
+                "headscale_api_name_match_agent_tag_count=" + ([$nameMatches[] | select(((.tags // []) | index("tag:agent")) != null)] | length | tostring)
+              ]
+            | .[]
+          ' <<<"$inventory"
+          unset inventory HEADSCALE_API_KEY CANARY_DIAGNOSTIC_SUFFIX
 
       - name: Classify exact Headscale registration exchange
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         env:
           CANARY_AGENT_ID: ${{ steps.cleanup_reconciliation.outputs.agent_id }}
+          CANARY_DIAGNOSTIC_SUFFIX: ${{ inputs.diagnose_canary_suffix }}
         with:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 2m
-          envs: CANARY_AGENT_ID
+          envs: CANARY_AGENT_ID,CANARY_DIAGNOSTIC_SUFFIX
           script: |
             set -euo pipefail
             [[ "$CANARY_AGENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
+            [[ "$CANARY_DIAGNOSTIC_SUFFIX" =~ ^[a-z0-9-]{8,80}$ ]] || exit 1
             block="$(
               sudo journalctl \
                 -u headscale.service \
                 --since '4 hours ago' \
                 -o cat \
                 --no-pager 2>/dev/null \
-                | grep -F -B 12 -A 12 "$CANARY_AGENT_ID" \
+                | grep -F -B 12 -A 12 "$CANARY_DIAGNOSTIC_SUFFIX" \
                 | tail -n 1200 \
                 || true
             )"
@@ -1589,7 +1669,42 @@ jobs:
             else
               category='no_exact_registration_log'
             fi
-            unset block lower CANARY_AGENT_ID
+            inventory="$(sudo headscale nodes list -o json 2>/dev/null)"
+            expected_node_name="managed-dedicated-canary-${CANARY_DIAGNOSTIC_SUFFIX}-${CANARY_AGENT_ID:0:12}"
+            inventory_summary="$(
+              jq -r --arg suffix "$CANARY_DIAGNOSTIC_SUFFIX" --arg expected "$expected_node_name" '
+                [
+                  .[]
+                  | select((.name // "") | contains($suffix))
+                ] as $nodes
+                | ([.[] | select(.name == "cp-staging-router")]) as $controlPlaneNodes
+                | ($nodes | map(select(.name == $expected))) as $exact
+                | ($nodes | map(select(
+                    (.name // "") as $name
+                    | ($name | startswith($expected + "-")) and
+                      (($name | ltrimstr($expected + "-")) | test("^[a-z0-9]{8}$"))
+                  ))) as $suffixed
+                | [
+                    "headscale_canary_node_count=" + (($nodes | length) | tostring),
+                    "headscale_canary_node_online_count=" + ([$nodes[] | select(.online == true)] | length | tostring),
+                    "headscale_canary_node_ip_count=" + ([$nodes[] | select(((.ipAddresses // .ip_addresses // []) | length) > 0)] | length | tostring),
+                    "headscale_canary_agent_tag_count=" + ([$nodes[] | select(((.tags // []) | index("tag:agent")) != null)] | length | tostring),
+                    "headscale_canary_node_name_category=" + (
+                      if ($exact | length) > 0 then "exact"
+                      elif ($suffixed | length) > 0 then "collision_suffix"
+                      elif ($nodes | length) > 0 then "unexpected_suffix"
+                      else "absent"
+                      end
+                    ),
+                    "headscale_control_plane_node_count=" + (($controlPlaneNodes | length) | tostring),
+                    "headscale_control_plane_node_online_count=" + ([$controlPlaneNodes[] | select(.online == true)] | length | tostring),
+                    "headscale_control_plane_node_ip_count=" + ([$controlPlaneNodes[] | select(((.ipAddresses // .ip_addresses // []) | length) > 0)] | length | tostring),
+                    "headscale_control_plane_proxy_tag_count=" + ([$controlPlaneNodes[] | select(((.tags // []) | index("tag:eliza-proxy")) != null)] | length | tostring)
+                  ]
+                | .[]
+              ' <<<"$inventory"
+            )"
+            unset block lower CANARY_AGENT_ID CANARY_DIAGNOSTIC_SUFFIX inventory expected_node_name
             echo "headscale_registration_category=$category"
             echo "headscale_registration_request_seen=$request_seen"
             echo "headscale_preauth_registration_seen=$preauth_registration"
@@ -1599,6 +1714,8 @@ jobs:
             echo "headscale_ownership_error_seen=$ownership_error"
             echo "headscale_registration_timeout_seen=$timed_out"
             echo "headscale_tag_rejection_seen=$tag_rejected"
+            printf '%s\n' "$inventory_summary"
+            unset inventory_summary
 
       - name: Summarize Headscale ingress protocol
         if: steps.cleanup_reconciliation.outputs.agent_id != ''
@@ -1744,11 +1861,27 @@ jobs:
                 | tail -n 1200 \
             )"
             lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
+            recent_recovery_block="$(
+              sudo journalctl \
+                -u eliza-provisioning-worker.service \
+                --since '3 hours ago' \
+                -o cat \
+                --no-pager 2>/dev/null \
+                | grep -F -A 12 \
+                    -e '[docker-sandbox] Docker teardown recovery decision' \
+                    -e '[docker-sandbox] Docker teardown failed twice; probing daemon recovery' \
+                    -e '[docker-sandbox] Docker daemon recovered and container removed' \
+                    -e '[docker-sandbox] Docker daemon recovery did not prove container removal' \
+                | tail -n 240 \
+                || true
+            )"
+            recent_recovery_lower="$(printf '%s' "$recent_recovery_block" | tr '[:upper:]' '[:lower:]')"
             signals=''
             for signal in \
               provision_completed heartbeat_grace heartbeat_disconnected \
               terminal_database restart_enqueued disconnected_recovery \
-              delete_started delete_completed delete_failed credential_revocation; do
+              delete_started delete_completed delete_failed credential_revocation \
+              docker_recovery_started docker_recovery_completed docker_recovery_failed; do
               case "$signal:$lower" in
                 provision_completed:*'agent_provision completed'*) matched=true ;;
                 heartbeat_grace:*'heartbeat miss within grace window'*) matched=true ;;
@@ -1760,6 +1893,9 @@ jobs:
                 delete_completed:*'agent_delete completed'*) matched=true ;;
                 delete_failed:*'marked sandbox as deletion_failed'*|*'unknown agent_delete failure'*) matched=true ;;
                 credential_revocation:*'inference revocation'*|*'revokeforagent'*) matched=true ;;
+                docker_recovery_started:*'docker teardown failed twice; probing daemon recovery'*) matched=true ;;
+                docker_recovery_completed:*'docker daemon recovered and container removed'*) matched=true ;;
+                docker_recovery_failed:*'docker daemon recovery did not prove container removal'*) matched=true ;;
                 *) matched=false ;;
               esac
               if [ "$matched" = true ]; then
@@ -1797,6 +1933,28 @@ jobs:
               *'inference revocation boundary is unavailable'*) delete_category='inference_revocation_unavailable' ;;
               *'inference revocation durable object binding is missing'*) delete_category='inference_revocation_binding_missing' ;;
               *'refusing to delete without a current backup'*) delete_category='pre_delete_capture_refused' ;;
+              *'[docker-ssh] command timed out'*) delete_category='docker_command_timeout' ;;
+              *'[docker-ssh] connection to '*'timed out'*) delete_category='docker_connect_timeout' ;;
+              *'[docker-ssh] connection error'*) delete_category='docker_connection_error' ;;
+              *'not found in memory or db. cannot resolve target node'*) delete_category='teardown_locator_unresolved' ;;
+              *'missing persisted docker node metadata'*) delete_category='teardown_node_metadata_missing' ;;
+              *'docker node '*' is missing hostname'*) delete_category='teardown_node_hostname_missing' ;;
+              *'missing port data for'*) delete_category='teardown_runtime_ports_missing' ;;
+              *'stopfailurekind'*)
+                case "$lower" in
+                  *'stopfailurekind'*'teardown_locator_unresolved'*) delete_category='teardown_locator_unresolved' ;;
+                  *'stopfailurekind'*'teardown_node_metadata_missing'*) delete_category='teardown_node_metadata_missing' ;;
+                  *'stopfailurekind'*'teardown_node_hostname_missing'*) delete_category='teardown_node_hostname_missing' ;;
+                  *'stopfailurekind'*'ssh_authentication'*) delete_category='ssh_authentication' ;;
+                  *'stopfailurekind'*'ssh_transport'*) delete_category='ssh_transport' ;;
+                  *'stopfailurekind'*'remote_command_timeout'*) delete_category='remote_command_timeout' ;;
+                  *'stopfailurekind'*'docker_daemon'*) delete_category='docker_daemon' ;;
+                  *'stopfailurekind'*'docker_stop_pair_failed'*) delete_category='docker_stop_pair_failed' ;;
+                  *'stopfailurekind'*'provider_initialization'*) delete_category='provider_initialization' ;;
+                  *) delete_category='unclassified_stop_failure' ;;
+                esac
+                ;;
+              *'failed to stop container'*) delete_category='docker_stop_pair_failed' ;;
               *'failed to delete sandbox'*) delete_category='sandbox_stop_failed' ;;
               *'value.toisostring is not a function'*) delete_category='timestamp_shape_invalid' ;;
               *'still owns backup catalog v2 authority'*) delete_category='backup_catalog_authority_retained' ;;
@@ -1810,10 +1968,65 @@ jobs:
               *'marked sandbox as deletion_failed'*) delete_category='permanent_failure_unclassified' ;;
               *) delete_category='none' ;;
             esac
-            unset block lower CANARY_AGENT_ID CANARY_DELETE_JOB_ID
+            case "$lower" in
+              *'docker daemon recovered and container removed'*) docker_recovery='completed' ;;
+              *'docker daemon recovery did not prove container removal'*) docker_recovery='failed' ;;
+              *'docker teardown failed twice; probing daemon recovery'*) docker_recovery='started' ;;
+              *) docker_recovery='not_attempted' ;;
+            esac
+            recent_recovery_started_count="$(printf '%s\n' "$recent_recovery_lower" | grep -Fc 'docker teardown failed twice; probing daemon recovery' || true)"
+            recent_recovery_completed_count="$(printf '%s\n' "$recent_recovery_lower" | grep -Fc 'docker daemon recovered and container removed' || true)"
+            recent_recovery_failed_count="$(printf '%s\n' "$recent_recovery_lower" | grep -Fc 'docker daemon recovery did not prove container removal' || true)"
+            recent_recovery_decision_count="$(printf '%s\n' "$recent_recovery_lower" | grep -Fc 'docker teardown recovery decision' || true)"
+            case "$recent_recovery_lower" in
+              *'recoverystage'*'live_restore_proof'*) docker_recovery_stage='live_restore_proof' ;;
+              *'recoverystage'*'docker_info_probe'*) docker_recovery_stage='docker_info_probe' ;;
+              *'recoverystage'*'docker_force_stop'*) docker_recovery_stage='docker_force_stop' ;;
+              *'recoverystage'*'docker_start'*) docker_recovery_stage='docker_start' ;;
+              *'recoverystage'*'docker_info'*) docker_recovery_stage='docker_info' ;;
+              *'recoverystage'*'exact_container_remove'*) docker_recovery_stage='exact_container_remove' ;;
+              *) docker_recovery_stage='none' ;;
+            esac
+            self_heal_enabled=false
+            if printf 'true' | sudo node \
+              /usr/local/lib/eliza-admin/systemd-environment-line.mjs \
+              equals \
+              /opt/eliza/cloud/.env.local \
+              CONTAINERS_PREPULL_SELF_HEAL_RESTART >/dev/null 2>&1; then
+              self_heal_enabled=true
+            fi
+            teardown_resolution_started=false
+            teardown_target_resolved=false
+            teardown_sandbox_authority_resolved=false
+            teardown_node_authority_resolved=false
+            teardown_absence_probe_unavailable=false
+            teardown_stop_failed=false
+            teardown_remove_failed=false
+            case "$lower" in *'[agent-sandbox] deleting agent'*) teardown_resolution_started=true ;; esac
+            case "$lower" in *'[docker-sandbox] stopping container'*) teardown_target_resolved=true ;; esac
+            case "$lower" in *'teardown sandbox authority resolved'*) teardown_sandbox_authority_resolved=true ;; esac
+            case "$lower" in *'teardown node authority resolved'*) teardown_node_authority_resolved=true ;; esac
+            case "$lower" in *'exact pre-delete absence probe unavailable'*) teardown_absence_probe_unavailable=true ;; esac
+            case "$lower" in *'[docker-sandbox] docker stop failed'*) teardown_stop_failed=true ;; esac
+            case "$lower" in *'[docker-sandbox] docker rm failed'*) teardown_remove_failed=true ;; esac
+            unset block lower recent_recovery_block recent_recovery_lower CANARY_AGENT_ID CANARY_DELETE_JOB_ID
             echo "dedicated_lifecycle_signals=${signals:-none}"
             echo "dedicated_heartbeat_failure_category=$heartbeat_category"
             echo "dedicated_delete_failure_category=$delete_category"
+            echo "dedicated_docker_recovery=$docker_recovery"
+            echo "dedicated_docker_recovery_failure_stage=$docker_recovery_stage"
+            echo "dedicated_recent_docker_recovery_started_count=$recent_recovery_started_count"
+            echo "dedicated_recent_docker_recovery_completed_count=$recent_recovery_completed_count"
+            echo "dedicated_recent_docker_recovery_failed_count=$recent_recovery_failed_count"
+            echo "dedicated_recent_docker_recovery_decision_count=$recent_recovery_decision_count"
+            echo "dedicated_docker_self_heal_enabled=$self_heal_enabled"
+            echo "dedicated_teardown_resolution_started=$teardown_resolution_started"
+            echo "dedicated_teardown_target_resolved=$teardown_target_resolved"
+            echo "dedicated_teardown_sandbox_authority_resolved=$teardown_sandbox_authority_resolved"
+            echo "dedicated_teardown_node_authority_resolved=$teardown_node_authority_resolved"
+            echo "dedicated_teardown_absence_probe_unavailable=$teardown_absence_probe_unavailable"
+            echo "dedicated_teardown_stop_failed=$teardown_stop_failed"
+            echo "dedicated_teardown_remove_failed=$teardown_remove_failed"
 
       - name: Upload privacy-safe provision diagnostic
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

@@ -599,6 +599,17 @@ export class AgentSandboxesRepository {
     return r;
   }
 
+  /** Primary-authority lookup for destructive teardown identity. */
+  async findBySandboxIdForWrite(sandboxId: string): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    const [r] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.sandbox_id, sandboxId))
+      .limit(1);
+    return r;
+  }
+
   async findLatestByCharacterId(characterId: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbRead

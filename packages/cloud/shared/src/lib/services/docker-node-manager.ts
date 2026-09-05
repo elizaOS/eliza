@@ -655,12 +655,19 @@ export function buildPrePullReapCommand(pidFile: string, image: string): string 
 
 export function buildPrePullSelfHealRecoverCommand(): string {
   return [
-    "systemctl kill -s SIGKILL docker.service docker.socket 2>/dev/null",
+    "set -e",
+    'python3 -c \'import json; assert json.load(open("/etc/docker/daemon.json")).get("live-restore") is True\'',
+    // Kill only the daemon's main process so live-restore can keep workloads
+    // running. A socket unit commonly has no process of its own, so stopping it
+    // is best-effort and must not trip set -e before the required start and
+    // docker-info proof run. Containerd stays running: restarting it broadens
+    // the blast radius without evidence that its API is the wedged boundary.
+    "systemctl kill --kill-who=main -s SIGKILL docker.service 2>/dev/null || true",
+    "systemctl stop docker.socket 2>/dev/null || true",
     "sleep 2",
-    "systemctl restart containerd 2>/dev/null",
-    "sleep 4",
     "systemctl reset-failed docker.service 2>/dev/null",
     "systemctl start docker.service",
+    "timeout -k 2s 20s docker info >/dev/null",
   ].join("; ");
 }
 

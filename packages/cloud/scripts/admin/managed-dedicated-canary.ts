@@ -35,7 +35,12 @@ const HEARTBEAT_MAX_AGE_MS = 120_000;
 const HEARTBEAT_FUTURE_SKEW_MS = 30_000;
 const CONTROL_REQUEST_TIMEOUT_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 130_000;
-const READY_TIMEOUT_MS = 16 * 60_000;
+// The cold-path receipt includes queue time. Live staging has demonstrated a
+// 12.7-minute queue followed by more than six minutes of real provisioning, so
+// 16 minutes can expire before the worker's terminal result. Keep enough room
+// to observe the actual lifecycle while the workflow's 45-minute outer fence
+// still bounds readiness, chat/SSE, and exact cleanup together.
+const READY_TIMEOUT_MS = 30 * 60_000;
 const CLEANUP_TIMEOUT_MS = 6 * 60_000;
 const MAX_ARTIFACT_TIMING_MS = 45 * 60_000;
 const POLL_INTERVAL_MS = 5_000;

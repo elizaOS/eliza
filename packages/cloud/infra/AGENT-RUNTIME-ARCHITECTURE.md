@@ -851,6 +851,54 @@ share runtime identity, storage ownership, health, or fallback semantics.
    exact checkout, migration, build, systemd restart, router health, and worker
    health. Same-SHA retries include the target commit relative to its parent,
    avoiding an empty-bundle failure.
+9. **Headscale success was observed through an unordered address array.**
+   Headscale v0.28 exposes repeated `ip_addresses`; their order is not an IPv4
+   contract. The client now selects and validates the canonical tailnet IPv4,
+   persists the exact node id, and requires the id/name/tag registration tuple
+   to converge. This removes IPv6-first and wrong-node false positives without
+   exposing a mesh address through the owner API.
+10. **The container and worker disagreed about the mesh-join deadline.** The
+    container originally abandoned `tailscale up` before the outer worker's
+    observer had completed, while a registered node could still take time to
+    appear in the local netmap. Managed containers now receive a 300-second
+    join budget, the worker observes the exact Headscale registration for 360
+    seconds, and the router performs a bounded 130-second local-IP convergence
+    retry. The three deadlines are ordered instead of racing one another.
+11. **Deletion reused a cancellation-damaged SSH session.** A command timeout
+    closes its channel, not necessarily the underlying pooled connection. A
+    later force-remove could therefore inherit an unusable session, and every
+    `agent_delete` retry could repeat the same transport failure. Destructive
+    teardown now owns an isolated SSH session; a transport-level graceful-stop
+    failure disconnects before the authoritative `docker rm -f`, and the
+    session is always closed after the operation.
+12. **General runtime hydration was incorrectly a prerequisite for
+    teardown.** A cold provision can persist its node and container identity
+    before bridge and web ports are assigned. After a worker restart, deletion
+    used the ordinary runtime hydrator, rejected those missing ports, and could
+    never reach Docker even when the container was already absent. Teardown now
+    rehydrates only its durable node/container/SSH authority and reconstructs
+    the deterministic Headscale name independently of runtime ports. Runtime
+    operations retain the strict port requirement.
+
+### 2026-09-03 retained-canary investigation
+
+The capacity guard found exactly one retained canary, suffix
+`r33717318238a1`, and correctly refused to create a replacement. Two cleanup
+attempts on the prior worker generation ended in `deletion_failed`. Read-only
+diagnostic `33724790121` then established the closed facts: one database row,
+`dedicated-always`, tenant database `ready`, durable sandbox/node/container and
+Headscale locators, no replacement locator, no exact Docker container on the
+host, and one offline exact Headscale node. The control plane itself was
+healthy and routed the recorded peer through `tailscale0`; the stale peer was
+offline and unreachable. This is teardown-state divergence, not a missing
+tenant database or a Shared-runtime fallback.
+
+The cleanup failure also exposed an observability weakness: the outer job
+stored only `Failed to delete sandbox`, hiding whether resolution, SSH connect,
+Docker command, or database commit failed. Exact diagnostics now classify
+Docker command timeout, SSH connect timeout, connection error, Headscale
+inventory, peer routing, lifecycle events, and container state without
+publishing tenant identifiers, hostnames, addresses, or error payloads.
 
 ### Database findings
 

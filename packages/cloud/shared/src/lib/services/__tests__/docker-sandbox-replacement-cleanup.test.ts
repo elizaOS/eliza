@@ -244,6 +244,7 @@ function replacementProvider(options?: { now?: () => number }): DockerSandboxPro
   spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(NODE);
   return new DockerSandboxProvider({
     replacementVpnSettleDelay: async () => {},
+    headscaleDockerBindingDelay: async () => {},
     ...(options?.now ? { now: options.now } : {}),
   });
 }
@@ -1723,7 +1724,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       },
       previousNodeId: PREVIOUS_VPN_NODE_ID,
     });
-    let renameCompletion: unknown;
+    let renameCompletion: unknown = { outcome: "not-needed" };
     spyOn(headscaleIntegration, "waitForVPNRegistration").mockImplementation(
       async () =>
         ({
@@ -1732,10 +1733,18 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           ...(renameCompletion === undefined ? {} : { rename: renameCompletion }),
         }) as never,
     );
+    let containerTailnetIp = "100.64.0.42";
+    let transientEmptyTailnetReads = 0;
     const ssh = {
-      exec: mock(async (command: string) =>
-        command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4") ? "100.64.0.42\n" : "",
-      ),
+      disconnect: mock(async () => {}),
+      exec: mock(async (command: string) => {
+        if (!command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4")) return "";
+        if (transientEmptyTailnetReads > 0) {
+          transientEmptyTailnetReads -= 1;
+          return "\n";
+        }
+        return `${containerTailnetIp}\n`;
+      }),
       execStdin: mock(async (command: string) => {
         if (command.includes("docker create")) return CONTAINER_ID;
         if (command.includes("steward-agent-register")) {
@@ -1747,6 +1756,58 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     spyOn(DockerSSHClient, "getClient").mockReturnValue(ssh as unknown as DockerSSHClient);
 
     try {
+      transientEmptyTailnetReads = 2;
+      const delayedBinding = await replacementProvider().create(
+        replacementCreateConfig({
+          replacementAttemptId: ATTEMPT_ID,
+          dockerImage: "eliza-agent:test",
+          environmentVars: {
+            ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1",
+          },
+          reclaimStaleVpnNode: false,
+          onReplacementCreateAttemptStarted: async () => {},
+          onReplacementCreateIntent: async () => {},
+          onReplacementCreated: async () => {},
+          onReplacementVpnRegistered: async () => {},
+          onReplacementCreateSettled: async () => {},
+        }),
+      );
+      expect(delayedBinding.metadata?.vpnNodeId).toBe(EXACT_VPN_NODE_ID);
+      expect(transientEmptyTailnetReads).toBe(0);
+
+      containerTailnetIp = "100.64.0.99";
+      const identityMismatch = await replacementProvider()
+        .create(
+          replacementCreateConfig({
+            replacementAttemptId: ATTEMPT_ID,
+            dockerImage: "eliza-agent:test",
+            environmentVars: {
+              ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1",
+            },
+            reclaimStaleVpnNode: false,
+            onReplacementCreateAttemptStarted: async () => {},
+            onReplacementCreateIntent: async () => {},
+            onReplacementCreated: async () => {},
+            onReplacementVpnRegistered: async () => {},
+            onReplacementCreateSettled: async () => {},
+          }),
+        )
+        .catch((caught: unknown) => caught);
+      expect(identityMismatch).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+      expect((identityMismatch as SandboxReplacementCleanupUnresolvedError).vpnNodeId).toBe(
+        EXACT_VPN_NODE_ID,
+      );
+      expect((identityMismatch as Error).cause).toBeInstanceOf(AggregateError);
+      expect(
+        ((identityMismatch as Error).cause as AggregateError).errors.some(
+          (cause: unknown) =>
+            cause instanceof Error &&
+            "code" in cause &&
+            cause.code === "SANDBOX_HEADSCALE_DOCKER_IDENTITY_MISMATCH",
+        ),
+      ).toBe(true);
+      containerTailnetIp = "100.64.0.42";
+
       const renameFailure = new Error("rename response was lost");
       for (const scenario of ["unresolved", "unknown"] as const) {
         renameCompletion =
@@ -3040,7 +3101,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const laterNode = headscaleNode(
       "1413",
       "agent-replacement-ab12cd34",
-      "2026-07-23T00:09:00.000Z",
+      "2026-07-23T00:12:00.000Z",
     );
     const listNodes = spyOn(headscaleClient, "listNodesStrict").mockResolvedValue([laterNode]);
     const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();

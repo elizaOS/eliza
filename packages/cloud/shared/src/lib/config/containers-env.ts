@@ -400,14 +400,14 @@ export const containersEnv = {
   },
 
   /**
-   * Auto-recover a node whose dockerd image-pull coordinator has wedged: after
-   * repeated failed pre-pulls the provisioning worker restarts docker on the
-   * node itself (rate-limited) instead of requiring a manual `systemctl
-   * restart docker`. Requires `live-restore=true` on the node so running
-   * agents survive the restart. Read via `CONTAINERS_PREPULL_SELF_HEAL_RESTART`
-   * (with `ELIZA_` fallback); only the literal string `"true"` enables it.
-   * Off by default — a docker restart is a shared-host operation, so it stays
-   * opt-in per environment.
+   * Auto-recover a node whose dockerd coordinator has wedged. Repeated failed
+   * pre-pulls and a deletion whose stop plus force-remove both time out may use
+   * the same bounded daemon restart instead of requiring manual intervention.
+   * The recovery command itself requires `live-restore=true` before mutation
+   * so running agents survive the restart. Read via
+   * `CONTAINERS_PREPULL_SELF_HEAL_RESTART` (with `ELIZA_` fallback); only the
+   * literal string `"true"` enables it. Off by default — a docker restart is a
+   * shared-host operation, so each environment opts in explicitly.
    */
   prePullSelfHealRestartEnabled(): boolean {
     const env = getCloudAwareEnv();

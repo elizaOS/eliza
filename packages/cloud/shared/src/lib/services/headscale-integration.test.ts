@@ -111,6 +111,7 @@ describe("Headscale container credentials", () => {
     expect(request).not.toHaveProperty("ensureUser");
     expect(prepared.preAuthKey).toBe("test-preauth-key");
     expect(prepared.envVars.TS_FORCE_NOISE_443).toBe("1");
+    expect(prepared.envVars.TS_UP_TIMEOUT_SECONDS).toBe("300");
   });
 
   test("removes a stale persistent registration before issuing a replacement key", async () => {
@@ -321,6 +322,20 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
     expect(probes).toBe(0);
   });
 
+  test("waitForVPNRegistration selects IPv4 independently of Headscale address order", async () => {
+    const fake = {
+      getNodeByNameOrSuffixed: async (name: string) => ({
+        id: "74",
+        name,
+        ipAddresses: ["fd7a:115c:a1e0::74", "100.64.0.74"],
+      }),
+    } as unknown as HeadscaleClient;
+
+    await expect(
+      new HeadscaleIntegration(fake).waitForVPNRegistration(nodeName, 1_000),
+    ).resolves.toMatchObject({ ip: "100.64.0.74", nodeId: "74" });
+  });
+
   test("waitForVPNRegistration rejects malformed runtime node identity", async () => {
     for (const malformedNode of [
       { id: "", name: nodeName, ipAddresses: ["100.64.0.7"] },
@@ -334,6 +349,11 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
       { id: "1", name: nodeName, ipAddresses: ["192.100.0.7"] },
       { id: "1", name: nodeName, ipAddresses: ["100.128.0.7"] },
       { id: "1", name: nodeName, ipAddresses: [42] },
+      {
+        id: "1",
+        name: nodeName,
+        ipAddresses: ["100.64.0.7", "100.64.0.8"],
+      },
     ]) {
       const fake = {
         getNodeByNameOrSuffixed: async () => malformedNode,
@@ -652,13 +672,13 @@ describe("normalizeHeadscaleSegment + registration-timeout default", () => {
     expect(normalizeHeadscaleSegment(undefined)).toBeNull();
   });
 
-  test("DEFAULT_REGISTRATION_TIMEOUT_MS falls back to 180s when env is unset", () => {
-    expect(DEFAULT_REGISTRATION_TIMEOUT_MS).toBe(180_000);
+  test("DEFAULT_REGISTRATION_TIMEOUT_MS falls back to 360s when env is unset", () => {
+    expect(DEFAULT_REGISTRATION_TIMEOUT_MS).toBe(360_000);
   });
 
   test("rejects an override shorter than the container join observation budget", () => {
     expect(() => resolveRegistrationTimeoutMs("5000")).toThrow(
-      "VPN_REGISTRATION_TIMEOUT_MS must be at least 180000",
+      "VPN_REGISTRATION_TIMEOUT_MS must be at least 360000",
     );
     expect(() => resolveRegistrationTimeoutMs("180000ms")).toThrow(
       "VPN_REGISTRATION_TIMEOUT_MS must be a positive integer",
@@ -666,7 +686,7 @@ describe("normalizeHeadscaleSegment + registration-timeout default", () => {
   });
 
   test("allows operators to extend but not shorten the observation budget", () => {
-    expect(resolveRegistrationTimeoutMs(undefined)).toBe(180_000);
-    expect(resolveRegistrationTimeoutMs("240000")).toBe(240_000);
+    expect(resolveRegistrationTimeoutMs(undefined)).toBe(360_000);
+    expect(resolveRegistrationTimeoutMs("420000")).toBe(420_000);
   });
 });

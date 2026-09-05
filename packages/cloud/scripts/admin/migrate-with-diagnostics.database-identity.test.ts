@@ -4,7 +4,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { runMigrations } from "./migrate-with-diagnostics";
+import {
+  publishMigrationIdentityResult,
+  runMigrations,
+} from "./migrate-with-diagnostics";
 
 const OPTIONS = {
   timeoutMs: 1,
@@ -99,4 +102,36 @@ describe("migration-session database identity enforcement", () => {
       expect(state.ended).toBe(true);
     });
   }
+});
+
+describe("migration identity evidence output", () => {
+  const result = { status: "disabled" as const, mismatches: [] };
+  const failedPublisher = async (): Promise<void> => {
+    throw new Error("step summary unavailable");
+  };
+
+  test("does not label disabled-gate evidence I/O as a migration failure", async () => {
+    await expect(
+      publishMigrationIdentityResult(
+        { environment: "staging", mode: "off" },
+        result,
+        failedPublisher,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  test("keeps enforced identity evidence fail-closed", async () => {
+    await expect(
+      publishMigrationIdentityResult(
+        {
+          environment: "staging",
+          mode: "enforce",
+          expectedClusterSha256: "0".repeat(64),
+          expectedAuthoritySha256: "1".repeat(64),
+        },
+        result,
+        failedPublisher,
+      ),
+    ).rejects.toThrow("step summary unavailable");
+  });
 });

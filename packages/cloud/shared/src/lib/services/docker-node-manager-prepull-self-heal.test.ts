@@ -127,10 +127,18 @@ describe("tracked pre-pull commands", () => {
   test("builds a force recovery command for a daemon whose graceful restart hangs", () => {
     const command = buildPrePullSelfHealRecoverCommand();
 
-    expect(command).toContain("systemctl kill -s SIGKILL docker.service docker.socket");
-    expect(command).toContain("systemctl restart containerd");
+    expect(command).toStartWith("set -e; ");
+    expect(command).toContain("/etc/docker/daemon.json");
+    expect(command).toContain('get("live-restore") is True');
+    expect(command).toContain("systemctl kill --kill-who=main -s SIGKILL docker.service");
+    expect(command).toContain(
+      "systemctl kill --kill-who=main -s SIGKILL docker.service 2>/dev/null || true",
+    );
+    expect(command).toContain("systemctl stop docker.socket 2>/dev/null || true");
+    expect(command).not.toContain("systemctl restart containerd");
     expect(command).toContain("systemctl reset-failed docker.service");
     expect(command).toContain("systemctl start docker.service");
+    expect(command).toContain("timeout -k 2s 20s docker info");
     expect(command).not.toContain("systemctl restart docker");
   });
 });
@@ -163,18 +171,22 @@ describe("pre-pull self-heal restart policy", () => {
     await managerHarness().recoverAfterTimedOutPrePull(ssh, node, PID_FILE, IMAGE);
 
     expect(
-      commands.filter((command) => command.includes("systemctl kill -s SIGKILL docker.service")),
+      commands.filter((command) =>
+        command.includes("systemctl kill --kill-who=main -s SIGKILL docker.service"),
+      ),
     ).toHaveLength(1);
     expect(
-      commands.filter((command) => command.includes("systemctl restart containerd")),
+      commands.filter((command) => command.includes("systemctl stop docker.socket")),
     ).toHaveLength(1);
-    expect(commands.join("\n")).not.toContain("systemctl restart docker");
+    expect(commands.join("\n")).not.toContain("systemctl restart containerd");
 
     await managerHarness().recoverAfterTimedOutPrePull(ssh, node, PID_FILE, IMAGE);
     await managerHarness().recoverAfterTimedOutPrePull(ssh, node, PID_FILE, IMAGE);
 
     expect(
-      commands.filter((command) => command.includes("systemctl kill -s SIGKILL docker.service")),
+      commands.filter((command) =>
+        command.includes("systemctl kill --kill-who=main -s SIGKILL docker.service"),
+      ),
     ).toHaveLength(1);
   });
 
@@ -184,7 +196,7 @@ describe("pre-pull self-heal restart policy", () => {
     const ssh = {
       exec: mock(async (command: string) => {
         commands.push(command);
-        if (command.includes("systemctl kill -s SIGKILL docker.service")) {
+        if (command.includes("systemctl kill --kill-who=main -s SIGKILL docker.service")) {
           throw new Error("force recovery failed");
         }
         return "";
@@ -196,14 +208,18 @@ describe("pre-pull self-heal restart policy", () => {
     await managerHarness().recoverAfterTimedOutPrePull(ssh, node, PID_FILE, IMAGE);
 
     expect(
-      commands.filter((command) => command.includes("systemctl kill -s SIGKILL docker.service")),
+      commands.filter((command) =>
+        command.includes("systemctl kill --kill-who=main -s SIGKILL docker.service"),
+      ),
     ).toHaveLength(1);
 
     await managerHarness().recoverAfterTimedOutPrePull(ssh, node, PID_FILE, IMAGE);
     await managerHarness().recoverAfterTimedOutPrePull(ssh, node, PID_FILE, IMAGE);
 
     expect(
-      commands.filter((command) => command.includes("systemctl kill -s SIGKILL docker.service")),
+      commands.filter((command) =>
+        command.includes("systemctl kill --kill-who=main -s SIGKILL docker.service"),
+      ),
     ).toHaveLength(1);
   });
 });
