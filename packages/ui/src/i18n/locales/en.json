@@ -9,7 +9,7 @@
   "accounts.add.codingPlanKey": "Coding-plan key",
   "accounts.add.deepseekUnavailableHint": "DeepSeek is unavailable here because there is no first-party coding subscription endpoint to integrate safely. Use the DeepSeek API-key provider only if you have direct API billing.",
   "accounts.add.disabledHint": "API-key accounts for this provider are not yet supported.",
-  "accounts.add.enterHint": "\\u21b5",
+  "accounts.add.enterHint": "↵",
   "accounts.add.externalCliDescription": "This subscription is managed by the provider's CLI. The app does not import or replay CLI tokens.",
   "accounts.add.geminiCliHint": "Run gemini auth login in your terminal. Task agents will use the authenticated Gemini CLI directly; no Gemini subscription token is copied into API settings.",
   "accounts.add.label": "Account name",
