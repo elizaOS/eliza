@@ -1,3 +1,6 @@
+/**
+ * Owns the Android local agent process, private state, native IPC and restart lifecycle.
+ */
 package ai.elizaos.app;
 
 import android.app.ActivityManager;
@@ -1061,6 +1064,14 @@ public class ElizaAgentService extends Service {
      */
     private void extractAssetsIfNeeded(String abi) throws IOException {
         File filesDir = getFilesDir();
+        // Android creates files/ as 0771. Runtime identity requires its entire
+        // app-owned ancestor chain to be private before the child starts.
+        try {
+            android.system.Os.chmod(filesDir.getAbsolutePath(), 0700);
+        } catch (android.system.ErrnoException error) {
+            // error-policy:J2 preserve the native permission failure at extraction.
+            throw new IOException("Could not secure the agent files directory", error);
+        }
         File root = agentRoot();
         File stateDir = agentStateDir();
         File staging = new File(filesDir, AGENT_STAGING_DIR_NAME);
