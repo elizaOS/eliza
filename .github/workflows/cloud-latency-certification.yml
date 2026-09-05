@@ -149,6 +149,7 @@ jobs:
         with:
           name: cloud-latency-certification-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
+            artifacts/cloud-latency-certification/source.json
             artifacts/cloud-latency-certification/deployment.json
             artifacts/cloud-latency-certification/paired.jsonl
             artifacts/cloud-latency-certification/inference-auth.jsonl
