@@ -1774,6 +1774,7 @@ export function parseExplicitLocalDate(
 
 function resolveCalendarTimeZone(
   details: Record<string, unknown> | undefined,
+  fallbackTimeZone: string = resolveDefaultTimeZone(),
 ): string {
   const requested = detailString(details, "timeZone");
   if (requested) {
@@ -1783,9 +1784,29 @@ function resolveCalendarTimeZone(
       return normalized;
     }
   }
-  // Planner junk (e.g. "user's timezone") falls back to the agent default
+  // Planner junk (e.g. "user's timezone") falls back to the configured zone
   // instead of letting CalendarService reject the whole read with a 400.
-  return resolveDefaultTimeZone();
+  return fallbackTimeZone;
+}
+
+/**
+ * The zone calendar work defaults to when the planner supplies none: the
+ * agent's configured `TIMEZONE` (the same setting the runtime clock provider
+ * reports as the agent zone), else the host zone. Live 2026-09-05 the host was
+ * UTC while the owner and the clock provider were in Pacific time, so "tuesday
+ * at 7am" was extracted, stored and rendered in UTC and one intent produced a
+ * 7 AM and a 2 PM event.
+ */
+function resolveConfiguredCalendarTimeZone(runtime: IAgentRuntime): string {
+  const configured =
+    typeof runtime.getSetting === "function"
+      ? runtime.getSetting("TIMEZONE")
+      : undefined;
+  return typeof configured === "string" &&
+    configured.trim().length > 0 &&
+    isValidTimeZone(configured.trim())
+    ? configured.trim()
+    : resolveDefaultTimeZone();
 }
 
 type LocalDateOnly = Pick<
@@ -2322,12 +2343,13 @@ async function loadCreateEventCalendarContext(
   service: CalendarService,
   details: Record<string, unknown> | undefined,
   hasCalendarRead: boolean,
+  fallbackTimeZone: string = resolveDefaultTimeZone(),
 ): Promise<CreateEventCalendarContext | null> {
   if (!hasCalendarRead) {
     return null;
   }
 
-  const requestTimeZone = resolveCalendarTimeZone(details);
+  const requestTimeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
   const feed = await service.getCalendarFeed(INTERNAL_URL, {
     includeHiddenCalendars: true,
     mode: connectorModeDetail(details),
@@ -2473,6 +2495,7 @@ function resolveCalendarWindow(
   details: Record<string, unknown> | undefined,
   forSearch: boolean,
   llmPlan?: CalendarLlmPlan,
+  fallbackTimeZone: string = resolveDefaultTimeZone(),
 ): {
   request: GetLifeOpsCalendarFeedRequest;
   label: string;
@@ -2480,7 +2503,7 @@ function resolveCalendarWindow(
 } {
   const plannerWindow = plannerWindowDetail(details);
   const calendarId = calendarIdDetail(details);
-  const timeZone = resolveCalendarTimeZone(details);
+  const timeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
   const forceSync = detailBoolean(details, "forceSync");
   if (plannerWindow) {
     return {
@@ -2558,10 +2581,11 @@ function resolveCalendarWindow(
 function resolveTripWindowRequest(
   details: Record<string, unknown> | undefined,
   llmPlan?: CalendarLlmPlan,
+  fallbackTimeZone: string = resolveDefaultTimeZone(),
 ): GetLifeOpsCalendarFeedRequest {
   const plannerWindow = plannerWindowDetail(details);
   const calendarId = calendarIdDetail(details);
-  const timeZone = resolveCalendarTimeZone(details);
+  const timeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
   const forceSync = detailBoolean(details, "forceSync");
 
   if (plannerWindow) {
@@ -4109,7 +4133,10 @@ const calendarAction: CalendarHandlerAction = {
       params.title,
       params.query,
     ]);
-    const planningTimeZone = resolveCalendarTimeZone(details);
+    const planningTimeZone = resolveCalendarTimeZone(
+      details,
+      resolveConfiguredCalendarTimeZone(runtime),
+    );
     const explicitSubaction = normalizeCalendarSubaction(params.subaction);
     // A promoted CALENDAR_* tool call is already the action planner's typed
     // decision. Re-planning the same operation from raw prose inside the tool
@@ -4352,7 +4379,7 @@ const calendarAction: CalendarHandlerAction = {
           INTERNAL_URL,
           {
             calendarId: calendarIdDetail(details),
-            timeZone: resolveCalendarTimeZone(details),
+            timeZone: planningTimeZone,
           },
         );
         const fallback = formatNextEventContext(context);
@@ -4371,6 +4398,7 @@ const calendarAction: CalendarHandlerAction = {
           service,
           details,
           true,
+          planningTimeZone,
         );
         if (!calendarContext) {
           throw new CalendarServiceError(
@@ -4478,8 +4506,7 @@ const calendarAction: CalendarHandlerAction = {
                 { includeTimeZoneName: true },
               )}. if you want a different time, tell me what works better.`
             : `i need a time for "${title}" in ${
-                calendarContext?.calendarTimeZone ??
-                resolveCalendarTimeZone(details)
+                calendarContext?.calendarTimeZone ?? planningTimeZone
               }. try "tomorrow morning", "tomorrow afternoon", "tomorrow evening", or give me a specific date and time.`;
           return respond({
             success: false,
@@ -4487,8 +4514,7 @@ const calendarAction: CalendarHandlerAction = {
               title,
               suggestedStartAt,
               calendarTimeZone:
-                calendarContext?.calendarTimeZone ??
-                resolveCalendarTimeZone(details),
+                calendarContext?.calendarTimeZone ?? planningTimeZone,
             }),
             effectReceipt: calendarRequestNoopReceipt({
               message,
@@ -4637,11 +4663,17 @@ const calendarAction: CalendarHandlerAction = {
             });
           }
           const feedRequest = plannerWindowUsable(details, llmPlan)
-            ? resolveCalendarWindow(intent, details, true, llmPlan).request
+            ? resolveCalendarWindow(
+                intent,
+                details,
+                true,
+                llmPlan,
+                planningTimeZone,
+              ).request
             : {
                 calendarId: calendarIdDetail(details),
-                timeZone: resolveCalendarTimeZone(details),
-                ...buildWideLookupRange(resolveCalendarTimeZone(details)),
+                timeZone: planningTimeZone,
+                ...buildWideLookupRange(planningTimeZone),
               };
           const feed = requireCompleteFreshCalendarFeed(
             await service.getCalendarFeed(INTERNAL_URL, {
@@ -4659,7 +4691,7 @@ const calendarAction: CalendarHandlerAction = {
             events: feed.events,
             titleHint,
             texts: [messageText(message), intent],
-            timeZone: resolveCalendarTimeZone(details),
+            timeZone: planningTimeZone,
           });
           if (candidates.length === 0) {
             const fallback = buildCalendarEventNotFoundFallback(
@@ -4685,7 +4717,7 @@ const calendarAction: CalendarHandlerAction = {
               action: "update",
               candidates,
               titleHint,
-              timeZone: resolveCalendarTimeZone(details),
+              timeZone: planningTimeZone,
             });
             return respond({
               success: false,
@@ -4975,11 +5007,17 @@ const calendarAction: CalendarHandlerAction = {
             });
           }
           const feedRequest = plannerWindowUsable(details, llmPlan)
-            ? resolveCalendarWindow(intent, details, true, llmPlan).request
+            ? resolveCalendarWindow(
+                intent,
+                details,
+                true,
+                llmPlan,
+                planningTimeZone,
+              ).request
             : {
                 calendarId: calendarIdDetail(details),
-                timeZone: resolveCalendarTimeZone(details),
-                ...buildWideLookupRange(resolveCalendarTimeZone(details)),
+                timeZone: planningTimeZone,
+                ...buildWideLookupRange(planningTimeZone),
               };
           const feed = requireCompleteFreshCalendarFeed(
             await service.getCalendarFeed(INTERNAL_URL, {
@@ -4997,7 +5035,7 @@ const calendarAction: CalendarHandlerAction = {
             events: feed.events,
             titleHint,
             texts: [messageText(message), intent],
-            timeZone: resolveCalendarTimeZone(details),
+            timeZone: planningTimeZone,
           });
           if (candidates.length === 0) {
             const fallback = buildCalendarEventNotFoundFallback(
@@ -5024,7 +5062,7 @@ const calendarAction: CalendarHandlerAction = {
               action: "delete",
               candidates,
               titleHint,
-              timeZone: resolveCalendarTimeZone(details),
+              timeZone: planningTimeZone,
             });
             return respond({
               success: false,
@@ -5195,7 +5233,7 @@ const calendarAction: CalendarHandlerAction = {
           mode: connectorModeDetail(details),
           side: connectorSideDetail(details),
           grantId: connectorGrantIdDetail(details),
-          ...resolveTripWindowRequest(details, llmPlan),
+          ...resolveTripWindowRequest(details, llmPlan, planningTimeZone),
         });
         const itineraryEvents = resolveTripWindowEvents(
           feed.events,
@@ -5259,6 +5297,7 @@ const calendarAction: CalendarHandlerAction = {
         details,
         subaction === "search_events",
         llmPlan,
+        planningTimeZone,
       );
       const request = baseResolved.request;
       const label = baseResolved.label;
