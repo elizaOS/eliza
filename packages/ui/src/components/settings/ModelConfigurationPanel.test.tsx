@@ -265,6 +265,46 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("catalog load states", () => {
+  it.each(["catalog", "config"] as const)(
+    "cancels the pending sibling when the %s request fails and can retry",
+    async (failedRequest) => {
+      const failed = deferred<never>();
+      let siblingCancelled = false;
+      const pending = (init: RequestInit) =>
+        new Promise<never>((_resolve, reject) => {
+          init.signal?.addEventListener(
+            "abort",
+            () => {
+              siblingCancelled = true;
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        });
+      const failing =
+        failedRequest === "catalog"
+          ? clientMock.getModelsCatalog
+          : clientMock.getModelsConfig;
+      const sibling =
+        failedRequest === "catalog"
+          ? clientMock.getModelsConfig
+          : clientMock.getModelsCatalog;
+      failing.mockImplementationOnce(() => failed.promise);
+      sibling.mockImplementationOnce(pending);
+      render(<ModelConfigurationPanel />);
+      await act(async () => failed.reject(new Error("bootstrap unavailable")));
+      await waitFor(() =>
+        expect(screen.getByText(/bootstrap unavailable/)).toBeTruthy(),
+      );
+      expect(siblingCancelled).toBe(true);
+      act(() => agentButton("models-retry").click());
+      await waitFor(() =>
+        expect(agentElements.has("models-small-provider")).toBe(true),
+      );
+      expect(screen.queryByText(/bootstrap unavailable/)).toBeNull();
+    },
+  );
+
   it("reaches ready after the StrictMode effect lifecycle replay", async () => {
     render(
       <StrictMode>
@@ -276,6 +316,18 @@ describe("catalog load states", () => {
       expect(agentElements.has("models-small-provider")).toBe(true),
     );
     expect(screen.queryByText("Loading model catalog…")).toBeNull();
+    const firstCatalogSignal = clientMock.getModelsCatalog.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const currentCatalogSignal = clientMock.getModelsCatalog.mock.calls[1]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const firstConfigSignal = clientMock.getModelsConfig.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const currentConfigSignal = clientMock.getModelsConfig.mock.calls[1]?.[0]
+      ?.signal as AbortSignal | undefined;
+    expect(firstCatalogSignal?.aborted).toBe(true);
+    expect(firstConfigSignal?.aborted).toBe(true);
+    expect(currentCatalogSignal?.aborted).toBe(false);
+    expect(currentConfigSignal?.aborted).toBe(false);
   });
 
   it("keeps the current StrictMode load when the stale load succeeds later", async () => {
@@ -368,9 +420,15 @@ describe("catalog load states", () => {
     clientMock.getModelsCatalog.mockReset().mockReturnValue(catalog.promise);
     clientMock.getModelsConfig.mockReset().mockReturnValue(config.promise);
     const view = render(<ModelConfigurationPanel />);
+    const catalogSignal = clientMock.getModelsCatalog.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const configSignal = clientMock.getModelsConfig.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
     expect(screen.getByText("Loading model catalog…")).toBeTruthy();
 
     view.unmount();
+    expect(catalogSignal?.aborted).toBe(true);
+    expect(configSignal?.aborted).toBe(true);
     await act(async () => {
       catalog.resolve({ providers: {}, catalog: fixtureCatalog() });
       config.resolve(fixtureConfig());
