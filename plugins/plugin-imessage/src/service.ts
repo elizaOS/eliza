@@ -73,6 +73,13 @@ import {
 } from "./contacts-reader.js";
 import { renderIMessageInteractionText } from "./interactions.js";
 import {
+  IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+  IMessageMembershipPublisher,
+  type IMessageMembershipRosterSource,
+  resolveMembershipService,
+} from "./membership.js";
+import { createChatDbRosterSource } from "./membership-roster.js";
+import {
   DEFAULT_POLL_INTERVAL_MS,
   formatPhoneNumber,
   type IIMessageService,
@@ -611,6 +618,45 @@ async function resolveIMessageChatId(
   return channelId.startsWith("chat_id:") ? channelId.slice("chat_id:".length) : channelId;
 }
 
+/** Metadata key under which the governed chat-id inventory is persisted. */
+export const GOVERNED_CHAT_INVENTORY_KEY = "imessage:membership:chat-inventory";
+
+/**
+ * Read the persisted governed-chat inventory from connector account
+ * metadata (written by the publisher's onRosterCommitted hook). Absent,
+ * non-array, or malformed entries yield an empty inventory — this is a
+ * best-effort restart signal, not trusted input.
+ */
+export function readGovernedChatInventory(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== "object") return [];
+  const raw = (metadata as Record<string, unknown>)[GOVERNED_CHAT_INVENTORY_KEY];
+  if (!Array.isArray(raw)) return [];
+  const ids = new Set<string>();
+  for (const entry of raw) {
+    if (typeof entry === "string" && entry.length > 0 && entry.length <= 512) {
+      ids.add(entry);
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * Build the connector-account metadata for a startup upsert that must
+ * preserve the previous process's governed-chat inventory. Upserts
+ * replace metadata wholesale, so a startup that writes { source } alone
+ * erases the inventory before the first sweep can degrade removed scopes
+ * — this helper exists so the startup path and its regression coverage
+ * share one implementation.
+ */
+export function governedChatInventoryMetadata(
+  priorInventory: readonly string[]
+): Record<string, string | string[]> {
+  return {
+    source: "imessage-membership",
+    [GOVERNED_CHAT_INVENTORY_KEY]: [...priorInventory],
+  };
+}
+
 /**
  * iMessage service for Eliza agents.
  * Note: This only works on macOS.
@@ -664,6 +710,16 @@ export class IMessageService extends Service implements IIMessageService {
    */
   private chatDb: ChatDbReader | null = null;
   private chatDbPath: string = DEFAULT_CHAT_DB_PATH;
+  /**
+   * Native membership evidence publisher (issue #24370). Non-null only when
+   * both the canonical MembershipService authority and a readable chat.db
+   * are available; it publishes chat_handle_join roster snapshots and
+   * per-sender renewals. Absent authority ⇒ membership evidence is simply
+   * not published (legacy behavior); roster read failures degrade the
+   * publisher fail-closed via its own error path.
+   */
+  private membership: IMessageMembershipPublisher | null = null;
+  private membershipRosterSource: IMessageMembershipRosterSource | null = null;
   /**
    * Cached handle → display name map from the user's Apple Contacts.
    * Populated lazily on first inbound message through CNContactStore, NOT at
@@ -739,6 +795,15 @@ export class IMessageService extends Service implements IIMessageService {
 
     // Start polling only when chat.db is available. When the database cannot
     // be opened, the service is intentionally send-only until the next start.
+    // Native membership evidence (issue #24370): when the canonical
+    // MembershipService authority is registered (plugin-sql) and chat.db is
+    // readable, publish chat_handle_join roster snapshots immediately and on
+    // a periodic sweep. Absent authority keeps the legacy ungated behavior.
+    // This MUST complete before inbound polling starts: a polling tick that
+    // dispatches an agent reply before the gate exists would bypass the
+    // membership authority entirely.
+    await service.initMembership();
+
     if (service.chatDb && service.settings.pollIntervalMs > 0) {
       service.startPolling();
     } else if (!service.chatDb && service.settings.pollIntervalMs > 0) {
@@ -1054,6 +1119,10 @@ export class IMessageService extends Service implements IIMessageService {
     logger.info("Stopping iMessage service...");
     this.connected = false;
 
+    this.membership?.stopSweeping();
+    this.membership = null;
+    this.membershipRosterSource = null;
+
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
@@ -1067,6 +1136,225 @@ export class IMessageService extends Service implements IIMessageService {
     this.settings = null;
     this.lastRowId = 0;
     logger.info("iMessage service stopped");
+  }
+
+  /**
+   * Bootstrap native membership evidence publication (issue #24370).
+   * Requires BOTH the canonical MembershipService authority (plugin-sql's
+   * SqlMembershipService) and a readable chat.db. The connector-account row
+   * is upserted through the ConnectorAccountManager so the authority's FK
+   * resolves to a stable durable UUID; a bootstrap failure is reported and
+   * leaves the publisher absent (legacy behavior) rather than crashing the
+   * connector — but roster read failures once running degrade fail-closed.
+   */
+  private async initMembership(): Promise<void> {
+    if (!this.runtime) return;
+    const authority = resolveMembershipService(this.runtime);
+    if (!authority) {
+      logger.debug(
+        "[imessage][membership] canonical MembershipService authority not registered; membership evidence is not published"
+      );
+      return;
+    }
+    if (!this.chatDb) {
+      // Restart with chat.db unreadable but the authority registered: the
+      // connector account row carries the last known governed chat-id
+      // inventory from the previous healthy run. Degrade every persisted
+      // scope fail-closed now — fresh roster evidence cannot be published
+      // while chat.db is unavailable, so stale evidence must not authorize.
+      // This requires the durable inventory to be meaningful; when no
+      // inventory was ever persisted (first run without Full Disk Access),
+      // there is nothing to degrade and the connector stays send-only.
+      try {
+        const { getConnectorAccountManager } = await import("@elizaos/core");
+        const manager = getConnectorAccountManager(this.runtime);
+        const account = await manager.getAccount(
+          IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+          `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`
+        );
+        const inventory = readGovernedChatInventory(account?.metadata);
+        if (this.membership || inventory.length > 0) {
+          if (!this.membership) {
+            const { IMessageMembershipPublisher } = await import("./membership.js");
+            const storedId = account?.id;
+            if (
+              storedId &&
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+                storedId
+              )
+            ) {
+              this.membership = new IMessageMembershipPublisher({
+                runtime: this.runtime,
+                connectorAccountId: storedId as UUID,
+                accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
+                service: authority,
+                normalizeTarget: (value) => normalizeIMessageConnectorHandle(value),
+              });
+            }
+          }
+          if (this.membership) {
+            // Degrade is per-chat resilient (a failure on one scope leaves
+            // its local degraded flag set and continues with the rest); the
+            // publisher is already assigned so any partially degraded state
+            // still gates sends.
+            await this.membership.degradePersistedScopes(inventory);
+            logger.warn(
+              `[imessage][membership] chat.db unavailable at start; degraded ${inventory.length} persisted membership scope(s) fail-closed`
+            );
+          }
+        }
+      } catch (error) {
+        // error-policy:J4 Bootstrap is an expected-failure boundary: report
+        // and continue send-only; no stale evidence is published.
+        this.runtime.reportError?.("imessage:membership:restart-degrade", error, {
+          accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
+        });
+      }
+      return;
+    }
+    try {
+      const { getConnectorAccountManager } = await import("@elizaos/core");
+      const manager = getConnectorAccountManager(this.runtime);
+      // Read the prior governed-chat inventory BEFORE any upsert: the
+      // upsert below replaces account metadata wholesale (without the
+      // inventory key), so reading after it would always see an empty
+      // inventory and skip startup reconciliation.
+      const priorAccount = await manager.getAccount(
+        IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+        `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`
+      );
+      const priorInventory = readGovernedChatInventory(priorAccount?.metadata);
+      const now = Date.now();
+      const stored = await manager.upsertAccount(IMESSAGE_MEMBERSHIP_CONNECTOR_ID, {
+        id: `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`,
+        provider: IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+        label: "iMessage (local Apple account)",
+        role: "AGENT",
+        purpose: ["messaging"],
+        accessGate: "open",
+        status: "connected",
+        createdAt: now,
+        updatedAt: now,
+        // Preserve the previous process's governed-chat inventory in the
+        // durable account metadata: the upsert replaces metadata
+        // wholesale, and the first sweep may fail to degrade every removed
+        // scope (or never run). A restart before a fully committed sweep
+        // must still find the prior inventory to degrade — overwriting it
+        // here would erase the restart ratchet before the sweep runs.
+        // governedChatInventoryMetadata is the production helper shared
+        // with the regression coverage for this exact transition.
+        metadata: governedChatInventoryMetadata(priorInventory),
+      });
+      if (
+        !stored.id ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          stored.id
+        )
+      ) {
+        throw new Error(
+          `membership connector account returned a non-authority-valid id: ${String(stored.id)}`
+        );
+      }
+      this.membershipRosterSource = createChatDbRosterSource(this.chatDb);
+      this.membership = new IMessageMembershipPublisher({
+        runtime: this.runtime,
+        connectorAccountId: stored.id as UUID,
+        accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
+        service: authority,
+        normalizeTarget: (value) => normalizeIMessageConnectorHandle(value),
+        // Seed the deletion ratchet with the previous process's persisted
+        // inventory: the first sweep of this process must degrade any
+        // removed scope (or retain the inventory when that degrade cannot
+        // commit) instead of overwriting it sight-unseen.
+        initialInventory: priorInventory,
+        // Persist the governed chat-id inventory on every committed sweep
+        // so a restart with chat.db unavailable can degrade exactly these
+        // scopes fail-closed (see the !chatDb branch above).
+        onRosterCommitted: async (chatIds) => {
+          await manager.upsertAccount(IMESSAGE_MEMBERSHIP_CONNECTOR_ID, {
+            id: `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`,
+            provider: IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+            label: "iMessage (local Apple account)",
+            role: "AGENT",
+            purpose: ["messaging"],
+            accessGate: "open",
+            status: "connected",
+            createdAt: stored.createdAt,
+            updatedAt: Date.now(),
+            metadata: {
+              source: "imessage-membership",
+              [GOVERNED_CHAT_INVENTORY_KEY]: [...chatIds],
+            },
+          });
+        },
+      });
+      // Initial snapshot sweep. The publisher seeds its deletion ratchet
+      // from priorInventory (see initialInventory above), so this first
+      // sweep already degrades every previously governed chat the fresh
+      // roster no longer lists — and retains it in the persisted
+      // inventory when that degrade cannot commit. No separate
+      // reconcile pass runs: degrading the same scopes twice would issue
+      // duplicate health mutations with fresh idempotency keys.
+      const published = await this.membership.sweepRoster(this.membershipRosterSource);
+      this.membership.startSweeping(this.membershipRosterSource);
+      logger.info(
+        `[imessage][membership] native roster snapshots published for ${published} chat(s); periodic sweep active`
+      );
+    } catch (error) {
+      // error-policy:J4 Bootstrap is an expected-failure boundary: report
+      // and continue send-only. When a prior run persisted governed-scope
+      // evidence, the failure must NOT restore ungated sending: degrade the
+      // persisted inventory fail-closed so stale evidence cannot authorize
+      // while the fresh publisher is unavailable.
+      this.membership = null;
+      this.membershipRosterSource = null;
+      logger.warn(
+        `[imessage][membership] bootstrap failed; degrading persisted membership scopes: ${error instanceof Error ? error.message : String(error)}`
+      );
+      this.runtime.reportError?.("imessage:membership:bootstrap", error, {
+        accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
+      });
+      try {
+        const { getConnectorAccountManager } = await import("@elizaos/core");
+        const manager = getConnectorAccountManager(this.runtime);
+        const account = await manager.getAccount(
+          IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+          `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`
+        );
+        const inventory = readGovernedChatInventory(account?.metadata);
+        if (inventory.length > 0 && authority) {
+          const { IMessageMembershipPublisher } = await import("./membership.js");
+          const storedId = account?.id;
+          if (
+            storedId &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+              storedId
+            )
+          ) {
+            const fallback = new IMessageMembershipPublisher({
+              runtime: this.runtime,
+              connectorAccountId: storedId as UUID,
+              accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
+              service: authority,
+              normalizeTarget: (value) => normalizeIMessageConnectorHandle(value),
+            });
+            // Assign BEFORE degrading: if the degrade pass itself fails
+            // partway, the already-assigned publisher still gates every
+            // degraded scope through its local flags (degradePersistedScopes
+            // is per-chat resilient and never throws the loop away).
+            this.membership = fallback;
+            await fallback.degradePersistedScopes(inventory);
+          }
+        }
+      } catch (degradeError) {
+        // error-policy:J4 The degrade fallback itself failed: nothing more
+        // can be done at this boundary; sending stays up but the failure is
+        // reported for visibility.
+        this.runtime.reportError?.("imessage:membership:bootstrap-degrade-fallback", degradeError, {
+          accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
+        });
+      }
+    }
   }
 
   /**
@@ -1129,6 +1417,20 @@ export class IMessageService extends Service implements IIMessageService {
 
     // Format phone number if needed
     const target = isPhoneNumber(to) ? formatPhoneNumber(to) : to;
+
+    // Membership send gate (issue #24370): when governance is active for
+    // this target, admission requires current source-derived evidence.
+    // Ungoverned targets keep the legacy behavior. A denial is a structured
+    // failure at the connector boundary, never a silent drop.
+    if (this.membership) {
+      const admission = await this.membership.authorizeOutbound(target);
+      if (admission === false) {
+        return {
+          success: false,
+          error: `iMessage membership gate denied send to ${target}: no current roster evidence`,
+        };
+      }
+    }
 
     let media: ResolvedOutboundMedia | null = null;
     if (options?.mediaUrl) {
@@ -1749,7 +2051,6 @@ export class IMessageService extends Service implements IIMessageService {
         "IMESSAGE_TRANSPORT"
       );
     }
-
     const pollIntervalRaw = getStringSetting(
       "IMESSAGE_POLL_INTERVAL_MS",
       "IMESSAGE_POLL_INTERVAL_MS"
@@ -2087,6 +2388,18 @@ export class IMessageService extends Service implements IIMessageService {
         // follows the same IMESSAGE_AUTO_REPLY consent gate as agent replies.
         // Only the DM pairing path produces one; group denials never do.
         if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
+          // The pairing reply is an autonomous outbound text and follows the
+          // same membership gate as agent replies: a degraded or revoked
+          // scope must not receive it.
+          const pairingGate = this.membership
+            ? await this.membership.authorizeOutboundInChat(row.handle, row.chatId)
+            : null;
+          if (pairingGate === false) {
+            logger.warn(
+              `[imessage] Pairing reply to handle=${row.handle} denied by membership gate`
+            );
+            continue;
+          }
           const sendResult = await this.sendSingleMessage(row.handle, access.pairingReplyMessage);
           if (!sendResult.success) {
             logger.warn(
@@ -2339,6 +2652,26 @@ export class IMessageService extends Service implements IIMessageService {
       );
     }
 
+    // Sender renewal (issue #24370): every inbound message re-proves the
+    // sender's active membership with point evidence, keeping freshness
+    // inside the validity window between periodic roster sweeps. Renewal
+    // failures are diagnostics, not dispatch blockers — the roster sweep is
+    // the authoritative refresh path.
+    if (this.membership && row.handle) {
+      try {
+        await this.membership.renewSender({
+          chatId: roomKey,
+          handle: row.handle,
+        });
+      } catch (error) {
+        // error-policy:J7 Diagnostics must not kill the dispatch loop.
+        this.runtime.reportError?.("imessage:membership:renew", error, {
+          chatId: roomKey,
+          handle: row.handle,
+        });
+      }
+    }
+
     // Resolve the in-reply-to link. If this message is an inline reply to
     // an earlier one, we build the same UUID the earlier dispatch would
     // have used (same rule: `imessage-${rowId}` keyed off the reader's
@@ -2435,6 +2768,20 @@ export class IMessageService extends Service implements IIMessageService {
         return [];
       }
 
+      // Agent-generated replies follow the same membership gate as public
+      // sendMessage: a degraded or revoked scope must not receive an
+      // autonomous external effect. The chat-scoped variant fails closed
+      // when the originating chat is durably governed but the reply target
+      // cannot be resolved to current evidence.
+      const replyGate = this.membership
+        ? await this.membership.authorizeOutboundInChat(replyTarget, row.chatId)
+        : null;
+      if (replyGate === false) {
+        logger.error(
+          `[imessage] Reply to ROWID=${row.rowId} denied by membership gate (degraded or revoked scope)`
+        );
+        return [];
+      }
       const sendResult = await this.sendSingleMessage(replyTarget, replyText);
       if (!sendResult.success) {
         logger.error(`[imessage] Reply send failed for ROWID=${row.rowId}: ${sendResult.error}`);

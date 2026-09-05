@@ -168,8 +168,8 @@ export type {
   RouteRequestMeta as IMessageRouteRequestMeta,
 } from "@elizaos/core";
 // Legacy HTTP route handlers (mounted by the agent's raw HTTP router).
-// BlueBubbles is deliberately not aliased or re-exported here; its separate
-// plugin owns that legacy/remote transport.
+// BlueBubbles is retired: the native plugin reads chat.db directly and the
+// legacy bridge plugin has been removed from the repository.
 export {
   handleIMessageRoute,
   type IMessageRouteState,
@@ -180,3 +180,18 @@ export type {
   IMessageConfig,
   IMessageReactionNotificationMode,
 } from "./config.js";
+export type {
+  IMessageMembershipRosterSource as IMessageMembershipRosterSourceType,
+  IMessageRosterMember,
+  IMessageRosterRead,
+} from "./membership.js";
+// Native membership evidence publisher (issue #24370).
+export {
+  IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+  IMessageMembershipPublisher,
+  IMessageRosterUnavailableError,
+  imessageMembershipPrincipalId,
+  imessageMembershipScope,
+  resolveMembershipService as resolveIMessageMembershipService,
+} from "./membership.js";
+export { createChatDbRosterSource } from "./membership-roster.js";

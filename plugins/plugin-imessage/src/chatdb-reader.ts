@@ -392,6 +392,15 @@ export interface ChatDbReader {
    * which was slower and returned less data.
    */
   listChats(): ChatDbChatSummary[];
+  /**
+   * Monotonic count of failed `listChats` roster queries on this reader
+   * (issue #24370). `listChats` degrades to `[]` on query failure by
+   * contract, which is indistinguishable from an empty database at the
+   * return-value boundary; this counter lets the membership roster adapter
+   * detect that a failure occurred and fail closed instead of treating a
+   * TCC-revoked or corrupt database as a healthy empty roster.
+   */
+  rosterReadFailureCount(): number;
   /** Close the underlying SQLite handle. Idempotent. */
   close(): void;
 }
@@ -719,6 +728,8 @@ export async function openChatDb(
   `);
 
   let closed = false;
+  /** Monotonic roster-query failure counter backing rosterReadFailureCount. */
+  let rosterFailures = 0;
 
   type RawMessageRow = {
     row_id: number;
@@ -937,11 +948,15 @@ export async function openChatDb(
           lastReadMessageTimestamp: appleDateToJsMs(row.last_read_apple_date ?? 0),
         }));
       } catch (error) {
+        rosterFailures += 1;
         logger.error(
           `[imessage] chat.db listChats query failed: ${error instanceof Error ? error.message : String(error)}`
         );
         return [];
       }
+    },
+    rosterReadFailureCount(): number {
+      return rosterFailures;
     },
     close(): void {
       if (closed) return;
