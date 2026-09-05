@@ -1,3 +1,4 @@
+/** Exercises Cloud credential and deployment selection at the outbound billing boundary. */
 import {
   _resetCloudSecretsForTesting,
   resetDevCloudEnvAuthorityForTests,
@@ -50,6 +51,31 @@ describe("development Cloud environment authority", () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+  });
+
+  it.each([
+    ["1", "https://api-staging.eliza.app/api/v1"],
+    [undefined, "https://api.eliza.app/api/v1"],
+  ])("keeps default billing requests in the login environment (dev=%s)", async (devSource, apiBase) => {
+    delete process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY;
+    delete process.env.ELIZAOS_CLOUD_BASE_URL;
+    if (devSource) process.env.ELIZA_DEV_SOURCE = devSource;
+    else delete process.env.ELIZA_DEV_SOURCE;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ balance: 12.5 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await expect(
+      fetchCloudCredits({ cloud: { apiKey: "login-issued-key" } }, null),
+    ).resolves.toMatchObject({ balance: 12.5, connected: true });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `${apiBase}/credits/balance`,
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer login-issued-key" }),
+      }),
+    );
   });
 
   it.each([
