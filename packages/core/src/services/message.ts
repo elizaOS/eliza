@@ -16373,28 +16373,40 @@ export class DefaultMessageService implements IMessageService {
 		// mutate state the next turn reads and have no write-phase seam, so they
 		// remain room-state work under this turn's lease. Both lanes settle before
 		// RUN_ENDED, which releases the trajectory exactly once.
-		const orderedRoomWrite = <T>(run: () => Promise<T>): Promise<T> => {
-			const queue = (runtime as { roomHandlerQueue?: RoomHandlerQueue })
-				.roomHandlerQueue;
-			return queue ? queue.withLease(message.roomId, () => run()) : run();
-		};
+		// Reserve this turn's write slot while the room is still ours. Slots
+		// apply in turn order even when an earlier turn's evaluator model call
+		// finishes after a newer turn's, so stale extraction cannot overwrite the
+		// newer facts or preferences: the processors have no revision guard (last
+		// writer wins), so ordering is the protection.
+		const deferredWriteSlot = (
+			runtime as { roomHandlerQueue?: RoomHandlerQueue }
+		).roomHandlerQueue?.reserveOrderedWrite(message.roomId);
+		const orderedRoomWrite = <T>(run: () => Promise<T>): Promise<T> =>
+			deferredWriteSlot ? deferredWriteSlot.apply(run) : run();
 		const postTurnReplyUnavailable = actionResults?.some(
 			(result) => result.replyFailure !== undefined,
 		);
 		if (semanticSignal && !postTurnReplyUnavailable) {
 			runTerminalOwner.track(
 				"post_turn",
-				() =>
-					withEvaluatorStep(runtime, "post_turn", () =>
-						runPostTurnEvaluators(runtime, message, state, {
-							didRespond: didRespondGate,
-							responses: responseMessages,
-							semanticSignal,
-							applyWrites: orderedRoomWrite,
-						}),
-					),
+				async () => {
+					try {
+						await withEvaluatorStep(runtime, "post_turn", () =>
+							runPostTurnEvaluators(runtime, message, state, {
+								didRespond: didRespondGate,
+								responses: responseMessages,
+								semanticSignal,
+								applyWrites: orderedRoomWrite,
+							}),
+						);
+					} finally {
+						deferredWriteSlot?.release();
+					}
+				},
 				{ lane: "deferred" },
 			);
+		} else {
+			deferredWriteSlot?.release();
 		}
 		runTerminalOwner.track("ALWAYS_AFTER", async () => {
 			if (postTurnReplyUnavailable) {

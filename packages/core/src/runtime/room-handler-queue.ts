@@ -223,8 +223,19 @@ class RoomQueue {
 	}
 }
 
+/**
+ * A reserved position in a room's deferred write order: reserved while the
+ * turn owns the room, applied later under a fresh lease, released when the
+ * turn's deferred work settles (with or without writes).
+ */
+export interface RoomOrderedWriteSlot {
+	apply<T>(fn: () => Promise<T>): Promise<T>;
+	release(): void;
+}
+
 export class RoomHandlerQueue {
 	private rooms = new Map<string, RoomQueue>();
+	private orderedWriteTails = new Map<string, Promise<void>>();
 	private listeners = new Set<(event: RoomQueueEvent) => void>();
 	private activeLeases = new WeakMap<
 		RoomHandlerLease,
@@ -552,6 +563,37 @@ export class RoomHandlerQueue {
 			);
 		};
 		return acquireWriter(0);
+	}
+
+	/**
+	 * Reserve the next deferred write slot for a room. Post-turn work reserves
+	 * its slot while the turn still holds the lease (turn order) and applies its
+	 * writes after its model phase; slots apply in reservation order even when
+	 * model phases finish out of order, so a slow earlier turn cannot overwrite
+	 * a newer turn's facts or preferences. `apply` takes the room lease for the
+	 * write itself. `release` must run when the turn's deferred work settles,
+	 * or every later slot for the room waits on it.
+	 */
+	reserveOrderedWrite(roomId: string): RoomOrderedWriteSlot {
+		const predecessor = this.orderedWriteTails.get(roomId) ?? Promise.resolve();
+		let release!: () => void;
+		const released = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const tail = predecessor.then(() => released);
+		this.orderedWriteTails.set(roomId, tail);
+		void tail.then(() => {
+			if (this.orderedWriteTails.get(roomId) === tail) {
+				this.orderedWriteTails.delete(roomId);
+			}
+		});
+		return {
+			apply: async <T>(fn: () => Promise<T>): Promise<T> => {
+				await predecessor;
+				return await this.withLease(roomId, () => fn());
+			},
+			release,
+		};
 	}
 
 	/**

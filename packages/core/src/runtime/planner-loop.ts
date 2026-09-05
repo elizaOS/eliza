@@ -372,8 +372,8 @@ async function runPlannerLoopIterations(
 	// Tool success proves execution, not fulfillment of the user's intent.
 	// Evaluate even a single declared intent: a final-scope call can still
 	// target the wrong resource or surface.
-	const requiresIntentEvaluation =
-		declaredIntentsFromContext(plannerContext).length > 0;
+	const declaredIntentCount = declaredIntentsFromContext(plannerContext).length;
+	const requiresIntentEvaluation = declaredIntentCount > 0;
 	// Diagnostic projection for every context/event copy of tool-call
 	// arguments: runtime-known secrets composed with the shared tool-shape
 	// patterns. The raw calls stay on `trajectory.plannedQueue` for execution.
@@ -1976,7 +1976,12 @@ async function runPlannerLoopIterations(
 		// `tryGateEvaluator` for the full contract.
 		const gateStartedAt = Date.now();
 		const gatedDecision =
-			trySubPlannerVerdictGate(trajectory, failures) ??
+			trySubPlannerVerdictGate({
+				trajectory,
+				failures,
+				lastPlannerExplicitCompleted,
+				declaredIntentCount,
+			}) ??
 			(requiresIntentEvaluation
 				? null
 				: tryGateEvaluator({
@@ -7023,10 +7028,23 @@ export const SUB_PLANNER_VERDICT_GATED_EVALUATOR_THOUGHT =
  * call). Applies only when that umbrella step is the sole completed tool, the
  * queue is drained and nothing failed; every other shape still evaluates.
  */
-function trySubPlannerVerdictGate(
-	trajectory: PlannerTrajectory,
-	failures: readonly FailureLike[],
-): GatedEvaluatorDecision | null {
+function trySubPlannerVerdictGate(args: {
+	trajectory: PlannerTrajectory;
+	failures: readonly FailureLike[];
+	lastPlannerExplicitCompleted: boolean | undefined;
+	declaredIntentCount: number;
+}): GatedEvaluatorDecision | null {
+	const { trajectory, failures } = args;
+	// The planner's own pending declaration outranks any completion signal
+	// (precondition 6 of tryGateEvaluator). Declining here lets the model
+	// evaluator run and its FINISH pass through correctPendingSuccessfulFinish
+	// exactly once, instead of a child verdict closing a parent that still owes
+	// dependent work.
+	if (args.lastPlannerExplicitCompleted === false) return null;
+	// The child evaluator judged the delegated operation only. When Stage-1
+	// declared several intents, the remaining ones still need the intent
+	// evaluation over the complete trajectory.
+	if (args.declaredIntentCount > 1) return null;
 	if (trajectory.plannedQueue.length > 0) return null;
 	if (failures.length > 0) return null;
 	if (completedToolStepCount(trajectory) !== 1) return null;

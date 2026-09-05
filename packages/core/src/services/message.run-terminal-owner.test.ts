@@ -659,4 +659,69 @@ describe("DefaultMessageService run-terminal owner", () => {
 		expect(writes).toEqual(["facts"]);
 		expect(terminalPayloads).toHaveLength(1);
 	});
+
+	it("applies deferred writes in turn order when an earlier turn's evaluator finishes late", async () => {
+		// Review gate (Discussion 30659): serialization alone let a slow turn-A
+		// extraction land after turn B's newer update. The processors have no
+		// revision guard, so A must apply before B regardless of model timing.
+		const gates = new Map<string, ReturnType<typeof deferred>>();
+		const writes: string[] = [];
+		const { runtime, terminalPayloads } = makeRuntime({});
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		(
+			runtime as unknown as { roomHandlerQueue: RoomHandlerQueue }
+		).roomHandlerQueue = queue;
+		(
+			runtime as unknown as { getServiceLoadPromise: unknown }
+		).getServiceLoadPromise = vi.fn(async () => ({
+			run: async (
+				message: Memory,
+				_state: unknown,
+				options: { applyWrites?: <T>(run: () => Promise<T>) => Promise<T> },
+			) => {
+				const text = message.content.text ?? "";
+				const gate = deferred();
+				gates.set(text, gate);
+				await gate.promise;
+				const apply = options.applyWrites ?? ((run) => run());
+				await apply(async () => {
+					writes.push(text);
+				});
+				return {
+					skipped: false,
+					activeEvaluators: ["facts"],
+					processedEvaluators: ["facts"],
+					results: [],
+					errors: [],
+				};
+			},
+		}));
+		const service = new DefaultMessageService();
+		const turn = async (text: string) => {
+			const lease = await queue.acquire(ROOM_ID);
+			const result = await queue.runInLease(ROOM_ID, lease, () =>
+				service.handleMessage(runtime, inputMessage(text), async () => [], {
+					roomHandlerLease: lease,
+				}),
+			);
+			expect(result.trajectoryTerminalOwner).toBe("run");
+			await drainRoomPostDeliveryTasks(runtime, ROOM_ID);
+			await lease.release();
+		};
+		await turn("I like tea");
+		await turn("actually I like coffee");
+		await vi.waitFor(() => {
+			expect(gates.size).toBe(2);
+		});
+
+		// The newer turn's model phase finishes first; its write waits for the
+		// older turn's slot instead of landing ahead of it.
+		gates.get("actually I like coffee")?.release();
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(writes).toEqual([]);
+		gates.get("I like tea")?.release();
+		await drainPostDeliveryTasks(runtime);
+		expect(writes).toEqual(["I like tea", "actually I like coffee"]);
+		expect(terminalPayloads).toHaveLength(2);
+	});
 });
