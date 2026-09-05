@@ -793,6 +793,9 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     () => workspace.tabs.find((tab) => tab.id === selectedTabId) ?? null,
     [selectedTabId, workspace.tabs],
   );
+  // null while a refresh omits the selected tab, which is distinct from a tab
+  // that genuinely carries an empty URL.
+  const selectedTabUrl = selectedTab?.url ?? null;
   const selectedTabSnapshot = selectedTabId
     ? (tabSnapshots[selectedTabId] ?? null)
     : null;
@@ -1211,10 +1214,17 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
         setWorkspace(snapshot);
         setLoadError(null);
         setSelectedTabId((current) =>
-          resolveBrowserWorkspaceSelection(
-            snapshot.tabs,
-            options?.preferTabId ?? current,
-          ),
+          // An empty snapshot from a background poll is transient, exactly like
+          // the failed poll handled below: retain the selection instead of
+          // resolving it to null. Clearing it here re-runs the address-bar sync
+          // as a tab switch, which drops `locationDirty` and destroys whatever
+          // the user is typing. Deliberate closes set the selection directly.
+          background && snapshot.tabs.length === 0
+            ? current
+            : resolveBrowserWorkspaceSelection(
+                snapshot.tabs,
+                options?.preferTabId ?? current,
+              ),
         );
       } catch (error) {
         if (abortController.signal.aborted) return;
@@ -2418,18 +2428,22 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     void loadBrowserWalletState();
   }, 5_000);
 
+  // `selectedTabId` is what the user picked; `selectedTab` resolves that against
+  // the latest snapshot and is null for as long as a refresh omits the tab.
+  // Keying the switch off the selection keeps a transient snapshot from reading
+  // as a tab change, which would clear `locationDirty` and discard an in-flight
+  // address edit; the sync below only runs against a tab that actually resolved.
   useEffect(() => {
-    const currentSelectedId = selectedTab?.id ?? null;
-    if (currentSelectedId !== previousSelectedTabIdRef.current) {
-      previousSelectedTabIdRef.current = currentSelectedId;
-      setLocationInput(selectedTab?.url ?? "");
+    if (selectedTabId !== previousSelectedTabIdRef.current) {
+      previousSelectedTabIdRef.current = selectedTabId;
+      setLocationInput(selectedTabUrl ?? "");
       setLocationDirty(false);
       return;
     }
-    if (!locationDirty) {
-      setLocationInput(selectedTab?.url ?? "");
+    if (selectedTabUrl !== null && !locationDirty) {
+      setLocationInput(selectedTabUrl);
     }
-  }, [locationDirty, selectedTab?.id, selectedTab?.url]);
+  }, [locationDirty, selectedTabId, selectedTabUrl]);
 
   useEffect(() => {
     if (
