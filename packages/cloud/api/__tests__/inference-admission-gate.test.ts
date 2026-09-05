@@ -1897,6 +1897,133 @@ describe("InferenceAdmissionGate", () => {
     ).toBe(409);
   });
 
+  test("atomically combines lease and provider dispatch in one Durable Object round-trip", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10);
+
+    const leaseRes = await post(gate, "/lease", {
+      requestId: "request-combined",
+      balanceUsd: 10,
+      balanceRevision: "1",
+      estimatedCostUsd: 3,
+      dispatch: true,
+      preProviderCancellationToken: "cancel-token-123",
+      recovery: organizationRecovery("request-combined"),
+    });
+    expect(leaseRes.status).toBe(200);
+    const leaseBody = (await leaseRes.json()) as Record<string, unknown>;
+    expect(leaseBody).toMatchObject({
+      admitted: true,
+      availableUsd: 7,
+      requiredUsd: 3,
+      dispatched: true,
+    });
+
+    const stored = storage.read<{
+      phase: string;
+      preProviderCancellationToken?: string;
+      estimatedCostUsd: number;
+    }>(storedLeaseKey("request-combined"));
+    expect(stored?.phase).toBe("dispatched");
+    expect(stored?.preProviderCancellationToken).toBe("cancel-token-123");
+    expect(stored?.estimatedCostUsd).toBe(3);
+    expect(storage.alarm).toBeNumber();
+
+    const replayRes = await post(gate, "/lease", {
+      requestId: "request-combined",
+      balanceUsd: 10,
+      balanceRevision: "1",
+      estimatedCostUsd: 3,
+      dispatch: true,
+      preProviderCancellationToken: "cancel-token-123",
+      recovery: organizationRecovery("request-combined"),
+    });
+    expect(replayRes.status).toBe(200);
+    const replayBody = (await replayRes.json()) as Record<string, unknown>;
+    expect(replayBody).toMatchObject({
+      admitted: true,
+      availableUsd: 7,
+      requiredUsd: 3,
+      dispatched: true,
+      duplicate: true,
+    });
+
+    const mismatchRes = await post(gate, "/release", {
+      requestId: "request-combined",
+      preProviderCancellationToken: "wrong-token",
+    });
+    expect(mismatchRes.status).toBe(409);
+
+    const noTokenRes = await post(gate, "/release", {
+      requestId: "request-combined",
+    });
+    expect(noTokenRes.status).toBe(409);
+
+    const releaseRes = await post(gate, "/release", {
+      requestId: "request-combined",
+      preProviderCancellationToken: "cancel-token-123",
+    });
+    expect(releaseRes.status).toBe(200);
+    const releaseBody = (await releaseRes.json()) as Record<string, unknown>;
+    expect(releaseBody).toMatchObject({ released: true });
+
+    const ledger = storage.read<{
+      availableUsd: number;
+      activeLeaseCount: number;
+    }>("ledger");
+    expect(ledger?.availableUsd).toBe(10);
+    expect(ledger?.activeLeaseCount).toBe(0);
+    expect(storage.read(storedLeaseKey("request-combined"))).toBeUndefined();
+  });
+
+  test("acquireInferenceAdmissionLease with dispatch: true skips separate dispatch marker and releases safely on zero settlement", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10);
+    let dispatchCalled = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: () => ({
+          fetch: async (req: Request) => {
+            const url = new URL(req.url);
+            if (url.pathname === "/dispatch") {
+              dispatchCalled++;
+            }
+            return await gate.fetch(req);
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "request-combined-client",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 4,
+        dispatch: true,
+        recovery: organizationRecovery("request-combined-client"),
+      });
+
+      expect(lease.providerDispatched).toBe(true);
+      expect(lease.preProviderCancellationToken).toBeDefined();
+
+      await markInferenceAdmissionLeaseDispatched(lease);
+      expect(dispatchCalled).toBe(0);
+      expect(lease.preProviderCancellationToken).toBeUndefined();
+
+      await settleInferenceAdmissionLease(lease, 3, 3);
+    });
+
+    const ledger = storage.read<{
+      availableUsd: number;
+      activeLeaseCount: number;
+    }>("ledger");
+    expect(ledger?.activeLeaseCount).toBe(0);
+  });
+
   test("persists a lower rejected hint across Durable Object eviction", async () => {
     const storage = new TestStorage();
     const first = createGate(storage);

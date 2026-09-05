@@ -110,6 +110,8 @@ export interface OrganizationInferenceAdmissionParams {
   admissionSnapshot?: InferenceAdmissionSnapshot;
   /** Strong standing proof consumed atomically by the primary admission gate. */
   credential?: InferenceCredentialCheck;
+  /** Atomically combine billing lease and provider dispatch in one gate round-trip. */
+  dispatch?: boolean;
 }
 
 /** Retryable signal preserving route compatibility while identifying pricing hydration. */
@@ -424,6 +426,7 @@ export async function admitOrganizationInference(
             : { kind: "direct_debit" },
         },
         credential: params.credential,
+        dispatch: params.dispatch,
         executionCtx: params.executionCtx,
       });
     } catch (error) {
