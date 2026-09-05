@@ -950,6 +950,61 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		expect(renderPrompt).toContain('"complete": true or false');
 	});
 
+	it.each([
+		[
+			"preamble before the object",
+			'Not complete yet {"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}',
+		],
+		[
+			"an array wrapping the object",
+			'[{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}]',
+		],
+		[
+			"trailing prose after the object",
+			'{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."} All done.',
+		],
+		[
+			"a fence with prose outside it",
+			'Here you go:\n```json\n{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}\n```',
+		],
+	])(
+		"falls back to the evaluator when the render carries %s",
+		async (_label, renderText) => {
+			const h = harness({
+				plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+				evaluations: [finish("Added your gym session for Tuesday at 7am.")],
+				renders: [renderText],
+				results: [internalCalendarResult()],
+				intents: ["add gym session to calendar"],
+			});
+			const result = await h.run();
+			expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+			expect(result.evaluator?.raw?.source).toBeUndefined();
+			expect(result.finalMessage).toBe(
+				"Added your gym session for Tuesday at 7am.",
+			);
+		},
+	);
+
+	it("accepts the object inside one exact whole-response code fence", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [],
+			renders: [
+				'```json\n{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}\n```',
+			],
+			results: [internalCalendarResult()],
+			intents: ["add gym session to calendar"],
+		});
+		const result = await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
+		expect(result.finalMessage).toBe(
+			"Added your gym session for Tuesday at 7:00 AM.",
+		);
+	});
+
 	it("falls back to the evaluator when the render is not the {complete, message} contract", async () => {
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],

@@ -191,6 +191,8 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
       messageId: UUID;
       keywords: string[];
       entityId?: UUID;
+      subject?: string;
+      subjectResolved?: boolean;
     },
   ): UUID {
     const id = crypto.randomUUID() as UUID;
@@ -205,6 +207,8 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
           type: "custom",
           source: "facts_and_relationships_stage",
           messageId: fields.messageId,
+          subject: fields.subject ?? "user",
+          subjectResolved: fields.subjectResolved ?? true,
           tags: ["fact", "extracted", "stage1"],
           keywords: fields.keywords,
           kind: "current",
@@ -292,6 +296,31 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
     expect(rows[0].memory.entityId).toBe(OTHER_USER_ID);
     expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
     expect(rows[1].memory.entityId).toBe(USER_ID);
+  });
+
+  it("never absorbs a same-message fact about someone the room could not resolve", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "prefers oat milk in coffee",
+      messageId: message.id as UUID,
+      keywords: ["prefers", "oat", "milk", "coffee"],
+      subject: "Bob",
+      subjectResolved: false,
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in their coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.metadata).toMatchObject({
+      kind: "current",
+      subject: "Bob",
+      subjectResolved: false,
+    });
   });
 
   it("never merges a Stage-1 fact extracted from a different message", async () => {

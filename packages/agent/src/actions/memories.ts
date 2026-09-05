@@ -252,7 +252,10 @@ async function findSameMessageStageFact(
       row.roomId !== message.roomId ||
       meta.source !== STAGE_FACT_SOURCE ||
       meta.kind !== "current" ||
-      meta.messageId !== message.id
+      meta.messageId !== message.id ||
+      // A fact about someone this room could not resolve sits under the author
+      // only as a fallback; it is not the author's own claim.
+      meta.subjectResolved === false
     ) {
       continue;
     }

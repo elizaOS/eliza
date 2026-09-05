@@ -380,6 +380,61 @@ describe("runFactsAndRelationshipsStage", () => {
 		expect(runtime.createMemory).not.toHaveBeenCalled();
 	});
 
+	it("suppresses only the author's own fact: a third-person fact in the same message persists under that participant", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [
+					{ subject: "user", fact: "prefers oat milk" },
+					{ subject: "Bob", fact: "prefers oat milk too" },
+				],
+				relationships: [],
+				thought: "two subjects",
+			}),
+		);
+		const message = makeMessage();
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-00000000bbb5" as UUID,
+				entityId: message.entityId,
+				agentId: runtime.agentId,
+				roomId: message.roomId,
+				content: { text: "User prefers oat milk.", source: "MEMORY" },
+				metadata: {
+					type: "custom",
+					source: "MEMORY",
+					kind: "durable",
+					category: "preference",
+					messageId: message.id,
+				},
+				createdAt: 2,
+			} as Memory,
+		]);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message,
+			state: makeState(),
+			extract: {
+				facts: ["prefers oat milk", "Bob prefers oat milk too"],
+			},
+		});
+
+		expect(result.written.facts).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entityId: "00000000-0000-0000-0000-0000000000b2",
+				content: expect.objectContaining({ text: "prefers oat milk too" }),
+				metadata: expect.objectContaining({
+					subject: "Bob",
+					subjectResolved: true,
+				}),
+			}),
+			"facts",
+			true,
+		);
+	});
+
 	it("still persists a Stage-1 fact when the same-message durable row has the opposite polarity", async () => {
 		const runtime = makeRuntime(
 			JSON.stringify({

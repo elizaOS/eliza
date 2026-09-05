@@ -7293,18 +7293,18 @@ interface GroundedReceiptRender {
 
 /**
  * Parses the render model's `{"complete": boolean, "message": string}` object.
- * Anything else is an explicit "no render" so the full evaluator runs.
+ * The whole trimmed response must be that one object (at most wrapped in one
+ * exact code fence): preamble, trailing prose, or an array is an explicit "no
+ * render" so the full evaluator runs instead of a verdict lifted out of prose.
  */
 function parseGroundedReceiptRender(raw: string): GroundedReceiptRender | null {
 	let candidate = raw.trim();
-	const fence = candidate.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	const fence = candidate.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/i);
 	if (fence) candidate = fence[1].trim();
-	const start = candidate.indexOf("{");
-	const end = candidate.lastIndexOf("}");
-	if (start === -1 || end <= start) return null;
+	if (!candidate.startsWith("{") || !candidate.endsWith("}")) return null;
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(candidate.slice(start, end + 1));
+		parsed = JSON.parse(candidate);
 	} catch {
 		// error-policy:J3 A malformed render is an explicit non-result; the
 		// caller falls back to the full evaluator rather than guessing a reply.
