@@ -5078,7 +5078,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			text: "fallback text should not be needed",
 		};
 
-		await runV5MessageRuntimeStage1({
+		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({
 				text: [
@@ -5106,8 +5106,15 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 			state,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			// Inspect the Stage-1 input boundary without executing the planner
+			// that the bare progress acknowledgement correctly requests.
+			stage1DecisionOnly: true,
 		});
 
+		expect(result.kind).toBe("decision");
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
 		const firstCall = useModelCalls(runtime)[0];
 		const params = firstCall?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
@@ -7042,9 +7049,20 @@ describe("runV5MessageRuntimeStage1", () => {
 					},
 				],
 			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought:
+					"The Computer Use result confirms dispatch to the requested Telegram application.",
+				messageToUser: delivered,
+			}),
 		]);
 		const computerUseHandler = vi.fn(
 			async (_runtime, _message, _state, _options, callback) => {
+				expect(_options.parameters).toMatchObject({
+					action: "launch",
+					app: "Telegram",
+				});
 				await callback?.({
 					text: delivered,
 					source: "action",
@@ -7144,10 +7162,22 @@ describe("runV5MessageRuntimeStage1", () => {
 			"AUTOMATION_TRIGGER",
 		);
 		expect(computerUseHandler).toHaveBeenCalledTimes(1);
-		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+		const calls = useModelCalls(runtime);
+		expect(calls.map((call) => call[0])).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
 		]);
+		// A successful action still needs evaluation against the declared intent.
+		const evaluationParams = calls[2]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const evaluationContext = JSON.stringify(evaluationParams.messages);
+		expect(evaluationContext).toContain("open telegram using computer use");
+		expect(evaluationContext).toContain(delivered);
+		expect(reportErrorCalls(runtime).map((call) => call[0])).not.toContain(
+			"MessageService.plannerLoop",
+		);
 	});
 
 	it("does not execute browser or automation fallbacks when explicit Computer Use is unavailable", async () => {
@@ -7649,27 +7679,25 @@ describe("verified read actions own the turn's single user-facing message", () =
 		];
 	}
 
-	it("narrows the planner surface to the selected deterministic action despite distractors", async () => {
-		// A possessive calendar read installs a deterministic CALENDAR call and
-		// never dispatches the outer planner. The surface build must narrow to
-		// that one action: with keyword-adjacent distractors registered, a wide
-		// tier would otherwise assemble (and budget-estimate) a huge tool
-		// surface only to discard it — observed live as 19-31s calendar turns
-		// against a ~590K-token estimated surface.
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["calendar"],
-				candidateActionNames: ["CALENDAR"],
-				replyText: "",
-			}),
-		]);
-		const calendarHandler = vi.fn(async () => ({
-			success: true,
-			text: CALENDAR_ANSWER,
-			userFacingText: CALENDAR_ANSWER,
-			verifiedUserFacing: true,
-			turnComplete: true,
-		}));
+	it("executes the planner-selected Calendar action while keeping authorized distractors available", async () => {
+		const runtime = makeRuntime(calendarPlannerResponses());
+		const calendarHandler = vi.fn(
+			async (_runtime, _message, _state, options) => {
+				expect(options.parameters).toMatchObject({
+					intent: "whats on my calendar tomorrow",
+				});
+				return {
+					success: true,
+					text: CALENDAR_ANSWER,
+					userFacingText: CALENDAR_ANSWER,
+					verifiedUserFacing: true,
+					turnComplete: true,
+				};
+			},
+		);
+		const distractorHandler = vi.fn(async () => {
+			throw new Error("The planner did not select this action.");
+		});
 		const distractor = (name: string): Action =>
 			({
 				name,
@@ -7679,7 +7707,7 @@ describe("verified read actions own the turn's single user-facing message", () =
 				contexts: ["calendar"],
 				parameters: [],
 				validate: async () => true,
-				handler: async () => ({ success: true, text: name }),
+				handler: distractorHandler,
 			}) as Action;
 		runtime.actions = [
 			makeCalendarReadAction(calendarHandler),
@@ -7687,29 +7715,37 @@ describe("verified read actions own the turn's single user-facing message", () =
 			distractor("WEEKLY_BRIEF_DISTRACTOR"),
 		] as never;
 
-		await runV5MessageRuntimeStage1({
+		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({ text: "whats on my calendar tomorrow" }),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000021" as UUID,
 		});
 
-		// Deterministic dispatch: stage-1 is the turn's only model call and the
-		// selected action ran exactly once.
-		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+		const calls = useModelCalls(runtime);
+		expect(calls.map((call) => call[0])).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
 		]);
 		expect(calendarHandler).toHaveBeenCalledTimes(1);
-		// The built surface exposed exactly the selected action; the distractors
-		// never reached it.
-		const surfaceLog = (
-			runtime.logger.debug as ReturnType<typeof vi.fn>
-		).mock.calls.find((call) => call[1] === "Built v5 planner action surface");
-		expect(surfaceLog).toBeDefined();
-		const summaryText = JSON.stringify(surfaceLog?.[0] ?? {});
-		expect(summaryText).toContain("CALENDAR");
-		expect(summaryText).not.toContain("SCHEDULED_HOUSEHOLD_DISTRACTOR");
-		expect(summaryText).not.toContain("WEEKLY_BRIEF_DISTRACTOR");
+		expect(distractorHandler).not.toHaveBeenCalled();
+		// Stage-1 hints do not authorize catalog removal: the planner receives
+		// every eligible action and its tool call determines which one executes.
+		const plannerParams = calls[1]?.[1] as {
+			tools?: Array<{ name: string }>;
+		};
+		expect(plannerParams.tools?.map((tool) => tool.name)).toEqual(
+			expect.arrayContaining([
+				"CALENDAR",
+				"SCHEDULED_HOUSEHOLD_DISTRACTOR",
+				"WEEKLY_BRIEF_DISTRACTOR",
+			]),
+		);
+		expect(result.kind).toBe("planned_reply");
+		expect(result.messageHandler.plan.deterministicToolCall).toBeUndefined();
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(CALENDAR_ANSWER);
+		}
 	});
 
 	it("delivers a turnComplete verified read answer exactly once with no model paraphrase", async () => {
