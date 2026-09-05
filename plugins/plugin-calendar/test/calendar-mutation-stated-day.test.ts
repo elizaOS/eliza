@@ -11,13 +11,13 @@
  * provider zone.
  *
  * The CalendarService is stubbed (feed fixture + spied mutations) and the fake
- * runtime has no `useModel`, so replies are the handler's canonical fallback
- * strings and the planner contributes no time window — exactly the live shape,
+ * runtime has no `useModel`; ordinary outcomes hand complete internal evidence
+ * to the evaluator and the planner contributes no time window — the live shape,
  * where the day survives only in the user's text. The clock is pinned so
  * "friday"/"saturday" resolve deterministically.
  */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -80,6 +80,15 @@ const HAIRCUT_SATURDAY = event({
   timezone: "UTC",
 });
 
+function localEvent(source: LifeOpsCalendarEvent): LifeOpsCalendarEvent {
+  return {
+    ...source,
+    provider: "eliza",
+    grantId: "eliza-calendar",
+    metadata: { etag: '"eliza-1"', version: 1 },
+  };
+}
+
 function stubService(feedEvents: LifeOpsCalendarEvent[]) {
   return {
     getCalendarFeed: vi.fn(async () => ({
@@ -140,11 +149,6 @@ function fakeDeps(service: StubService): CalendarActionDeps {
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async () => null),
     recentConversationTexts: vi.fn(async () => []),
-    // Deterministic presentation fixture, not a live-model response.
-    renderGroundedReply: async ({ fallback }) => ({
-      kind: "model",
-      text: fallback,
-    }),
     mutationGateway: {
       schedule: service.scheduleApproval,
       modify: service.modifyApproval,
@@ -162,6 +166,7 @@ function fakeRuntime(service: StubService): IAgentRuntime {
       error: () => undefined,
       debug: () => undefined,
     },
+    reportError: vi.fn(),
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
 }
@@ -181,13 +186,54 @@ async function runHandler(args: {
   parameters: Record<string, unknown>;
 }) {
   const action = createCalendarActionRunner(fakeDeps(args.service));
-  return (await action.handler(
+  const callback = vi.fn(async () => []);
+  const result = await action.handler(
     fakeRuntime(args.service),
     message(args.text),
     undefined,
     { parameters: args.parameters },
-    undefined,
-  )) as { success: boolean; text: string };
+    callback,
+  );
+  if (!result) throw new Error("Expected a Calendar action result");
+  expect(result.effectReceipts).toHaveLength(1);
+  if (result.transcriptVisibility === "internal") {
+    expect(callback).not.toHaveBeenCalled();
+    expect(result.turnComplete).toBe(false);
+    expect(result).not.toHaveProperty("text");
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result.data?.replyContext).toMatchObject({
+      domain: "calendar",
+      intent: args.text,
+      scenario: expect.any(String),
+      facts: expect.stringMatching(/\S/),
+      context: expect.any(Object),
+    });
+  } else {
+    expect(result.turnComplete).toBe(true);
+    expect(result.userFacingText).toBe(result.text);
+    expect(result.userFacingEffectReceiptIds).toEqual([
+      result.effectReceipts?.[0]?.receiptId,
+    ]);
+    expect(callback).toHaveBeenCalledExactlyOnceWith({
+      text: result.text,
+      source: "action",
+      action: "CALENDAR",
+    });
+  }
+  return result;
+}
+
+function replyFacts(result: ActionResult): string {
+  const replyContext = result.data?.replyContext;
+  if (
+    !replyContext ||
+    typeof replyContext !== "object" ||
+    Array.isArray(replyContext) ||
+    typeof replyContext.facts !== "string"
+  ) {
+    throw new Error("Expected Calendar internal reply facts");
+  }
+  return replyContext.facts;
 }
 
 describe("CALENDAR mutation target honors the day the user stated", () => {
@@ -216,7 +262,7 @@ describe("CALENDAR mutation target honors the day the user stated", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.text).not.toContain("multiple");
+    expect(result.text).toBe("cancel approval queued");
     expect(service.cancelApproval).toHaveBeenCalledTimes(1);
     expect(service.cancelApproval).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -240,7 +286,7 @@ describe("CALENDAR mutation target honors the day the user stated", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.text).not.toContain("multiple");
+    expect(result.text).toBe("modify approval queued");
     expect(service.modifyApproval).toHaveBeenCalledTimes(1);
     expect(service.modifyApproval).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -252,7 +298,7 @@ describe("CALENDAR mutation target honors the day the user stated", () => {
     );
   });
 
-  it("a stated day that matches no candidate still asks instead of not-found", async () => {
+  it("a stated day that matches no candidate cannot fall back to another day", async () => {
     const result = await runHandler({
       service,
       text: "cancel my haircut on sunday",
@@ -264,10 +310,130 @@ describe("CALENDAR mutation target honors the day the user stated", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.text).toContain("multiple");
-    expect(result.text).not.toContain("couldn't find");
+    expect(replyFacts(result)).toContain("couldn't find");
     expect(service.cancelApproval).not.toHaveBeenCalled();
   });
+
+  describe.each(["update_event", "delete_event"] as const)(
+    "%s enriched target identity",
+    (subaction) => {
+      const targetDetails = {
+        timeZone: OWNER_TIME_ZONE,
+        ...(subaction === "update_event"
+          ? { newTitle: "Updated appointment" }
+          : {}),
+      };
+
+      function expectNoMutation(targetService: StubService) {
+        expect(targetService.modifyApproval).not.toHaveBeenCalled();
+        expect(targetService.cancelApproval).not.toHaveBeenCalled();
+        expect(targetService.updateCalendarEvent).not.toHaveBeenCalled();
+        expect(targetService.deleteCalendarEvent).not.toHaveBeenCalled();
+      }
+
+      it("does not select Project A for an enriched Project B hint", async () => {
+        const projectA = localEvent({ ...HAIRCUT_FRIDAY, title: "Project A" });
+        const targetService = stubService([projectA]);
+        const result = await runHandler({
+          service: targetService,
+          text: `${subaction === "update_event" ? "rename" : "cancel"} Project B on August 14 2026`,
+          parameters: {
+            subaction,
+            query: "Project B August 14 2026 11:00",
+            details: targetDetails,
+          },
+        });
+        expectNoMutation(targetService);
+        expect(result.success).toBe(false);
+      });
+
+      it("cannot mutate the only title match when the user named another date", async () => {
+        const targetService = stubService([localEvent(HAIRCUT_FRIDAY)]);
+        const result = await runHandler({
+          service: targetService,
+          text: `${subaction === "update_event" ? "rename" : "cancel"} my haircut on August 15 2026`,
+          parameters: {
+            subaction,
+            query: "Haircut August 15 2026 6:00",
+            details: targetDetails,
+          },
+        });
+        expectNoMutation(targetService);
+        expect(result.success).toBe(false);
+      });
+
+      it("honors the target date carried only in an enriched planner hint", async () => {
+        const targetService = stubService([localEvent(HAIRCUT_FRIDAY)]);
+        const result = await runHandler({
+          service: targetService,
+          text:
+            subaction === "update_event"
+              ? "rename that appointment"
+              : "cancel that appointment",
+          parameters: {
+            subaction,
+            query: "Haircut August 15 2026 6:00",
+            details: targetDetails,
+          },
+        });
+        expectNoMutation(targetService);
+        expect(result.success).toBe(false);
+      });
+
+      it("keeps the richer hint's exact title and matching date usable", async () => {
+        const projectA = { ...HAIRCUT_FRIDAY, title: "Project A" };
+        const projectB = { ...HAIRCUT_SATURDAY, title: "Project B" };
+        const targetService = stubService([projectA, projectB]);
+        const result = await runHandler({
+          service: targetService,
+          text: `${subaction === "update_event" ? "rename" : "cancel"} Project B on August 15 2026`,
+          parameters: {
+            subaction,
+            query: "Project B August 15 2026 6:00",
+            details: targetDetails,
+          },
+        });
+        expect(result.success).toBe(true);
+        const approval =
+          subaction === "update_event"
+            ? targetService.modifyApproval
+            : targetService.cancelApproval;
+        expect(approval).toHaveBeenCalledTimes(1);
+        expect(approval).toHaveBeenCalledWith(
+          expect.objectContaining({ targetEvent: projectB }),
+        );
+        expect(targetService.updateCalendarEvent).not.toHaveBeenCalled();
+        expect(targetService.deleteCalendarEvent).not.toHaveBeenCalled();
+      });
+
+      it("keeps same-title events on the stated day ambiguous", async () => {
+        const secondFriday = {
+          ...HAIRCUT_FRIDAY,
+          id: "second-friday",
+          externalId: "evt-fri-later",
+          startAt: "2026-08-14T20:00:00.000Z",
+          endAt: "2026-08-14T20:30:00.000Z",
+        };
+        const targetService = stubService([
+          HAIRCUT_FRIDAY,
+          secondFriday,
+          HAIRCUT_SATURDAY,
+        ]);
+        const result = await runHandler({
+          service: targetService,
+          text: `${subaction === "update_event" ? "rename" : "cancel"} my haircut on August 14 2026`,
+          parameters: {
+            subaction,
+            query: "Haircut August 14 2026",
+            details: targetDetails,
+          },
+        });
+        expectNoMutation(targetService);
+        expect(result.success).toBe(false);
+        expect(replyFacts(result)).toContain("multiple");
+      });
+    },
+  );
 
   it("a day that only names where the event is going does not pick a target", async () => {
     // "to friday" is the new time, not the target — retargeting on it would
@@ -283,9 +449,91 @@ describe("CALENDAR mutation target honors the day the user stated", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.text).toContain("multiple");
+    expect(replyFacts(result)).toContain("multiple");
     expect(service.modifyApproval).not.toHaveBeenCalled();
   });
+
+  it("an enriched query cannot turn an update destination into the target date", async () => {
+    const result = await runHandler({
+      service,
+      text: "move my haircut to August 14 2026 at 2pm",
+      parameters: {
+        subaction: "update_event",
+        query: "Haircut August 14 2026 2pm",
+        details: { timeZone: OWNER_TIME_ZONE },
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(replyFacts(result)).toContain("multiple");
+    expect(service.modifyApproval).not.toHaveBeenCalled();
+    expect(service.updateCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "change that appointment to 2pm",
+    "move my haircut to August 15 2026 at 2pm",
+  ])(
+    "rejects a conflicting unique dated query on a destination-bearing update: %s",
+    async (text) => {
+      const targetService = stubService([localEvent(HAIRCUT_FRIDAY)]);
+      const result = await runHandler({
+        service: targetService,
+        text,
+        parameters: {
+          subaction: "update_event",
+          query: "Haircut August 15 2026",
+          details: {
+            timeZone: OWNER_TIME_ZONE,
+            newTitle: "Updated appointment",
+          },
+        },
+      });
+      expect(targetService.modifyApproval).not.toHaveBeenCalled();
+      expect(targetService.cancelApproval).not.toHaveBeenCalled();
+      expect(targetService.updateCalendarEvent).not.toHaveBeenCalled();
+      expect(targetService.deleteCalendarEvent).not.toHaveBeenCalled();
+      expect(result.success).toBe(false);
+    },
+  );
+
+  it.each([
+    {
+      text: "move my haircut on August 14 2026 to August 15 2026 at 2pm",
+      query: "Haircut August 15 2026",
+    },
+    {
+      text: "move my haircut to August 15 2026 at 2pm",
+      query: "Haircut",
+    },
+    {
+      text: "change that appointment to 2pm",
+      query: "Haircut August 14 2026",
+    },
+  ])(
+    "keeps an unambiguous unique update target usable: $text / $query",
+    async ({ text, query }) => {
+      const targetService = stubService([HAIRCUT_FRIDAY]);
+      const result = await runHandler({
+        service: targetService,
+        text,
+        parameters: {
+          subaction: "update_event",
+          query,
+          details: {
+            timeZone: OWNER_TIME_ZONE,
+            newTitle: "Updated appointment",
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(targetService.modifyApproval).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ targetEvent: HAIRCUT_FRIDAY }),
+      );
+      expect(targetService.cancelApproval).not.toHaveBeenCalled();
+      expect(targetService.updateCalendarEvent).not.toHaveBeenCalled();
+      expect(targetService.deleteCalendarEvent).not.toHaveBeenCalled();
+    },
+  );
 
   it("lists remaining candidates in one timezone", async () => {
     const result = await runHandler({
@@ -299,9 +547,9 @@ describe("CALENDAR mutation target honors the day the user stated", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.text).toContain("Aug 14, 11:00 AM PDT");
-    expect(result.text).toContain("Aug 15, 6:00 AM PDT");
-    expect(result.text).not.toContain("UTC");
+    expect(replyFacts(result)).toContain("Aug 14, 11:00 AM PDT");
+    expect(replyFacts(result)).toContain("Aug 15, 6:00 AM PDT");
+    expect(replyFacts(result)).not.toContain("UTC");
     expect(service.cancelApproval).not.toHaveBeenCalled();
   });
 });

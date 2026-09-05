@@ -32,6 +32,7 @@ import {
 	getStreamingContext,
 	runWithStreamingContext,
 } from "../streaming-context";
+import { createUnavailableGroundedActionReply } from "../types/action-reply";
 import type {
 	Action,
 	ActionResult,
@@ -1828,6 +1829,35 @@ async function runPlannerLoopIterations(
 		try {
 			evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		} catch (err) {
+			const noProvider =
+				err instanceof Error && err.name === "NoModelProviderConfiguredError";
+			if (
+				latestResult?.transcriptVisibility === "internal" &&
+				latestResult.effectReceipts?.length &&
+				(noProvider || isModelProviderError(err))
+			) {
+				// This action already settled, but intentionally left its reply to
+				// the evaluator. Reuse the non-replayable presentation-failure
+				// channel; neither retry the mutation nor promote internal facts to
+				// canned conversational text when the model is unavailable.
+				const replyFailure = createUnavailableGroundedActionReply({
+					kind: noProvider
+						? "no_provider"
+						: modelProviderErrorDetail(err)?.status === 429
+							? "rate_limited"
+							: "provider_issue",
+					code: "EVALUATOR_REPLY_GENERATION_FAILED",
+				}).failure;
+				// Downstream message and nested-planner boundaries consume the
+				// settled result's typed presentation failure to suppress recovery
+				// and post-turn hooks. Keep the original success/data/receipts intact.
+				latestResult.replyFailure = replyFailure;
+				return {
+					status: "finished",
+					trajectory,
+					terminalFailure: replyFailure,
+				};
+			}
 			// error-policy:J4 explicit user-facing degrade - only an EXPECTED
 			// provider/model failure degrades to the completed tool's truthful
 			// output; every other error shape propagates.

@@ -7,7 +7,8 @@
  * conversation into a structured `CalendarLlmPlan` (subaction, time window,
  * search queries), and the handler executes that plan against `CalendarService`
  * — read feed, next event, search, create/update/delete events, trip windows —
- * grounding the reply in real event data. `plugin-lifeops` consumes this as the
+ * providing receipt-bound evidence to the planner evaluator for its reply.
+ * `plugin-lifeops` consumes this as the
  * calendar assistant action.
  */
 import { createHash } from "node:crypto";
@@ -16,7 +17,6 @@ import type {
   ActionExample,
   ActionResult,
   EffectReceipt,
-  GroundedActionReply,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -24,12 +24,7 @@ import type {
   State,
 } from "@elizaos/core";
 import {
-  applyGroundedActionReply,
-  createUnavailableGroundedActionReply,
   describeUserReference,
-  isModelProviderError,
-  modelProviderErrorDetail,
-  NoModelProviderConfiguredError,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
   unwrapUserMessageText,
@@ -1316,65 +1311,6 @@ export function buildCalendarEventNotFoundFallback(
     : `i couldn't find any events to ${action} in that window. give me a title or a date.`;
 }
 
-async function renderCalendarActionReply(args: {
-  runtime: IAgentRuntime;
-  message: Memory;
-  state: State | undefined;
-  intent: string;
-  scenario: string;
-  fallback: string;
-  context?: Record<string, unknown>;
-}): Promise<GroundedActionReply> {
-  const { runtime, message, state, intent, scenario, fallback, context } = args;
-  const renderGroundedReply = deps().renderGroundedReply;
-  if (!renderGroundedReply) {
-    return createUnavailableGroundedActionReply({
-      kind: "no_provider",
-      code: "GROUNDED_REPLY_NO_RENDERER",
-    });
-  }
-  try {
-    return await renderGroundedReply({
-      runtime,
-      message,
-      state,
-      intent,
-      scenario,
-      fallback,
-      context,
-      additionalRules: [
-        "Mirror the user's phrasing for dates, times, ranges, and scheduling language when possible.",
-        "Prefer phrases like tomorrow morning, next week, later, earlier, free, busy, or the user's own wording over robotic calendar language.",
-        "Never surface raw ISO timestamps unless the user used raw ISO timestamps.",
-        "Preserve all concrete event facts from the context and canonical fallback.",
-        "If this is reply-only or a clarification, do not pretend you already changed the calendar.",
-      ],
-    });
-  } catch (error) {
-    // Reply delivery cannot erase an action already committed before rendering.
-    const noProvider = error instanceof NoModelProviderConfiguredError;
-    const detail = modelProviderErrorDetail(error);
-    if (!noProvider && !isModelProviderError(error)) {
-      runtime.reportError?.("calendar-reply", error, { scenario });
-    } else {
-      runtime.logger.warn(
-        { src: "plugin:calendar:reply", scenario, ...detail },
-        "Calendar reply unavailable; preserving the action outcome",
-      );
-    }
-    return createUnavailableGroundedActionReply({
-      kind: noProvider
-        ? "no_provider"
-        : detail?.status === 429
-          ? "rate_limited"
-          : "provider_issue",
-      code: noProvider
-        ? "GROUNDED_REPLY_NO_PROVIDER"
-        : "GROUNDED_REPLY_GENERATION_FAILED",
-    });
-  }
-}
-
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -1988,8 +1924,8 @@ function resolveTargetScopedText(
 }
 
 /**
- * The calendar day the user themselves named for the event being mutated, or
- * null when they named none.
+ * The target calendar day in the caller's authority-ordered text, or null when
+ * no target date is stated. An update's destination date is never a target.
  *
  * Live symptom: "cancel my haircut on friday" and "change my haircut on
  * saturday to 2pm" both answered "found two haircuts … which one?" even though
@@ -2031,13 +1967,30 @@ function calendarEventLocalDate(
 }
 
 /**
- * The single target-resolution chokepoint for update_event and delete_event:
- * fuzzy title match, then the day the user actually stated.
- *
- * The date pass only ever runs on an already-ambiguous set and only when it
- * keeps at least one candidate, so it can turn "which one?" into a resolved
- * target but can never turn a match into a not-found or retarget a unique
- * match.
+ * Planner title hints are often richer than the stored title: the model folds
+ * the date and time it was given into `query` ("Gym session September 8 2026
+ * 7:00" for "Gym session"), so requiring the title to contain the hint reported
+ * an existing event as not found. Match a complete normalized phrase in either
+ * direction, preserving word order and every character, including one-letter
+ * identifiers. Search-ranking tokenization is deliberately too lossy here.
+ */
+export function calendarTitleMatchesHint(title: string, hint: string): boolean {
+  const normalizedTitle = normalizeText(title);
+  const normalizedHint = normalizeText(hint);
+  if (!normalizedTitle || !normalizedHint) {
+    return false;
+  }
+  return (
+    ` ${normalizedTitle} `.includes(` ${normalizedHint} `) ||
+    ` ${normalizedHint} `.includes(` ${normalizedTitle} `)
+  );
+}
+
+/**
+ * Update/delete target lookup must honor both title identity and the stated
+ * target day, even when only one title matches. A date mismatch is not
+ * permission to mutate a different day's event. Destination-only dates on an
+ * update never identify its target, including when echoed into the query.
  */
 function resolveCalendarMutationCandidates(args: {
   action: "update" | "delete";
@@ -2049,28 +2002,42 @@ function resolveCalendarMutationCandidates(args: {
   const titleHint = args.titleHint;
   const byTitle = titleHint
     ? args.events.filter((event) =>
-        normalizeText(event.title).includes(normalizeText(titleHint)),
+        calendarTitleMatchesHint(event.title, titleHint),
       )
     : args.events;
-  if (byTitle.length < 2) {
+  if (byTitle.length === 0) {
     return byTitle;
   }
+  const hasDestinationClause = args.texts.some(
+    (text) => text && resolveTargetScopedText(args.action, text) !== text,
+  );
   const statedDate = resolveStatedTargetLocalDate({
     action: args.action,
     texts: args.texts,
     timeZone: args.timeZone,
   });
-  if (!statedDate) {
+  const queryDate =
+    !statedDate && titleHint
+      ? parseExplicitLocalDate(titleHint, args.timeZone)
+      : null;
+  // User target dates outrank the query. A destination-bearing update does
+  // not establish whether a query date identifies the source or destination:
+  // never use it to choose among several events, nor ignore a contradiction
+  // with the only matching event. Let the existing no-match/ambiguity paths
+  // ask the model to clarify instead of risking a different day's mutation.
+  const constrainedDate =
+    statedDate ??
+    (hasDestinationClause && byTitle.length > 1 ? null : queryDate);
+  if (!constrainedDate) {
     return byTitle;
   }
-  const onStatedDate = byTitle.filter(
+  return byTitle.filter(
     (event) =>
       compareLocalDates(
         calendarEventLocalDate(event, args.timeZone),
-        statedDate,
+        constrainedDate,
       ) === 0,
   );
-  return onStatedDate.length > 0 ? onStatedDate : byTitle;
 }
 
 function resolveCreateEventCalendarTimeZone(
@@ -3631,10 +3598,8 @@ export function formatCalendarSearchResults(
     if (!event) {
       return `No calendar events matched ${queryEcho} ${label}.`;
     }
-    // The fallback wording is intentionally generic ("calendar event") so it
-    // is correct in any language. The grounded LLM reply renderer is what
-    // gives this string its final natural phrasing — no English keyword
-    // regex picks the noun anymore.
+    // Keep the internal event label generic. The existing planner evaluator
+    // uses these facts and receipts to choose the final natural phrasing.
     return `Your matching calendar event is **${event.title}** (${formatCalendarMoment(event)}).`;
   }
   const lines = [
@@ -4118,7 +4083,7 @@ const calendarAction: CalendarHandlerAction = {
     "DO NOT use this action for email inbox work, drafting or sending emails — use MESSAGE with operation=triage, search_inbox, draft_reply, or send_draft (source=gmail for Gmail-specific work) instead. " +
     "DO NOT use this action for personal habits, goals, routines, or reminders — use OWNER_ROUTINES, OWNER_GOALS, or OWNER_REMINDERS instead. " +
     "DO NOT use this action to propose or suggest candidate meeting times to send to someone — use PROPOSE_MEETING_TIMES for requests like 'propose three times for a 30 min sync with X', 'suggest meeting slots', or 'find times that work next week'. The create_event subaction is only for booking a single known time on your own calendar. " +
-    "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
+    "This action returns authoritative outcome receipts and complete internal evidence for the evaluator's final grounded reply; do not pair it with a speculative REPLY action.",
   descriptionCompressed:
     "LifeOps calendar: view/search/create/query travel; not email/habits",
   contexts: ["calendar", "contacts", "tasks"],
@@ -4259,67 +4224,69 @@ const calendarAction: CalendarHandlerAction = {
       });
     }
     const service = resolveCalendarService(runtime);
+    // Complete evidence for the existing planner evaluator, not a second
+    // action-owned synthesis. The receipt supplied to respond is authoritative
+    // about applied/noop/failed state; facts and context are never delivered
+    // directly as conversational text.
+    const renderReply = (
+      scenario: string,
+      facts: string,
+      context?: Record<string, unknown>,
+    ) => ({
+      domain: "calendar",
+      intent,
+      scenario,
+      facts,
+      context: context ?? {},
+    });
     const respond = async <
       T extends NonNullable<ActionResult["data"]> | undefined,
     >(payload: {
       success: boolean;
-      text: string | GroundedActionReply;
+      text: string | ReturnType<typeof renderReply>;
+      interaction?: boolean;
       data?: T;
       effectReceipt: EffectReceipt;
     }): Promise<ActionResult> => {
       const effectReceipt = normalizeEffectReceipt(payload.effectReceipt);
-      const reply = payload.text;
-      const text =
-        typeof reply === "string"
-          ? reply.trim()
-          : reply.kind === "model"
-            ? reply.text.trim()
-            : "";
+      if (!payload.interaction || typeof payload.text !== "string") {
+        return {
+          success: payload.success,
+          transcriptVisibility: "internal",
+          turnComplete: false,
+          effectReceipts: [effectReceipt],
+          data: {
+            ...payload.data,
+            // A settled missing/ambiguous lookup must not run again with the
+            // same arguments. The planner may still choose a different target
+            // or another authorized operation using the complete evidence.
+            ...(!payload.success && effectReceipt.outcome === "noop"
+              ? { retryable: false }
+              : {}),
+            replyContext: toActionData(
+              typeof payload.text === "string"
+                ? renderReply("action_outcome", payload.text)
+                : payload.text,
+            ),
+          },
+        };
+      }
+      // Approval choices and permission cards are explicit interaction
+      // protocols. Preserve their exact text and binding, without synthesis.
+      const text = payload.text.trim();
       const result: ActionResult = {
         success: payload.success,
         text,
         userFacingText: text,
         verifiedUserFacing: true,
-        // A successful reply callback delivers this exact text, and the action
-        // description promises the final grounded reply. A calendar operation
-        // is a single-operation turn whose delivered text IS the answer — on
-        // success AND on failure ("calendar's acting up" is the complete
-        // honest outcome) — so declare it complete: the gated-evaluator skip
-        // keeps the model from re-rendering the delivery as a second message
-        // ("clear tomorrow." / "you're clear tomorrow.", or a failure
-        // paraphrase like "I couldn't verify... want me to try again?").
         turnComplete: true,
         effectReceipts: [effectReceipt],
         userFacingEffectReceiptIds: [effectReceipt.receiptId],
         ...(payload.data !== undefined ? { data: payload.data } : {}),
       };
-      const settled =
-        typeof reply === "string"
-          ? result
-          : applyGroundedActionReply(result, reply);
-      if (!settled.replyFailure) {
-        await callback?.({
-          text: settled.text,
-          source: "action",
-          action: "CALENDAR",
-        });
-      }
-      return settled;
+      await callback?.({ text, source: "action", action: "CALENDAR" });
+      return result;
     };
-    const renderReply = (
-      scenario: string,
-      fallback: string,
-      context?: Record<string, unknown>,
-    ) =>
-      renderCalendarActionReply({
-        runtime,
-        message,
-        state,
-        intent,
-        scenario,
-        fallback,
-        context,
-      });
 
     if (
       llmPlan.shouldAct === false &&
@@ -4626,6 +4593,7 @@ const calendarAction: CalendarHandlerAction = {
         return respond({
           success: true,
           text: approval.text,
+          interaction: true,
           effectReceipt: calendarApprovalReceipt(approval),
           data: {
             actionName: "CALENDAR",
@@ -4958,6 +4926,7 @@ const calendarAction: CalendarHandlerAction = {
         return respond({
           success: true,
           text: approval.text,
+          interaction: true,
           effectReceipt: calendarApprovalReceipt(approval),
           data: {
             actionName: "CALENDAR",
@@ -5202,6 +5171,7 @@ const calendarAction: CalendarHandlerAction = {
         return respond({
           success: true,
           text: approval.text,
+          interaction: true,
           effectReceipt: calendarApprovalReceipt(approval),
           data: {
             actionName: "CALENDAR",
@@ -5544,6 +5514,7 @@ const calendarAction: CalendarHandlerAction = {
           return respond({
             success: false,
             text: buildAppleCalendarPermissionRequestText(subaction),
+            interaction: true,
             effectReceipt: calendarFailedReceipt({
               message,
               operation: `calendar.${subaction}`,

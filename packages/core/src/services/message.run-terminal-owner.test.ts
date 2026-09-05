@@ -5,12 +5,13 @@
 
 import { v4 } from "uuid";
 import { describe, expect, it, vi } from "vitest";
+import { NoModelProviderConfiguredError } from "../runtime";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { TurnControllerRegistry } from "../runtime/turn-controller";
 import { getStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
-import type { IAgentRuntime, Memory } from "../types";
+import type { EffectReceipt, IAgentRuntime, Memory } from "../types";
 import { EventType, ModelType } from "../types";
 import {
 	applyGroundedActionReply,
@@ -199,6 +200,150 @@ function makeRuntime(options: {
 }
 
 describe("DefaultMessageService run-terminal owner", () => {
+	it.each(
+		[
+			{
+				label: "HTTP 429",
+				kind: "rate_limited",
+				error: () =>
+					Object.assign(new Error("Rate limit"), { statusCode: 429 }),
+			},
+			{
+				label: "HTTP 503",
+				kind: "provider_issue",
+				error: () =>
+					Object.assign(new Error("Unavailable"), { statusCode: 503 }),
+			},
+			{
+				label: "no provider",
+				kind: "no_provider",
+				error: () => new NoModelProviderConfiguredError(),
+			},
+		].flatMap((failure) => [
+			{ ...failure, outcome: "applied" as const },
+			{ ...failure, outcome: "noop" as const },
+		]),
+	)(
+		"stops message recovery and hooks after $outcome evidence plus evaluator $label",
+		async ({ kind, error, outcome }) => {
+			const { runtime, useModel, terminalPayloads } = makeRuntime({});
+			const receiptBase = {
+				receiptId: "calendar-delete-outcome-1",
+				operation: "calendar.event.delete",
+				resource: { kind: "calendar.event", id: "event-1" },
+				artifacts: [],
+				idempotency: { key: "delete-request-1", replayed: false },
+				observedAt: "2026-09-05T10:00:00.000Z",
+			};
+			const receipt: EffectReceipt =
+				outcome === "applied"
+					? {
+							...receiptBase,
+							outcome,
+							commit: {
+								kind: "durable",
+								id: "delete-1",
+								committedAt: receiptBase.observedAt,
+							},
+						}
+					: {
+							...receiptBase,
+							outcome,
+							reason: "The selected event was absent, so no mutation occurred.",
+						};
+			const stage1 = stage1Reply("");
+			Object.assign(stage1.toolCalls[0].arguments, {
+				contexts: ["general"],
+				candidateActionNames: ["CALENDAR"],
+				requiresTool: true,
+			});
+			let responseCalls = 0;
+			useModel.mockReset().mockImplementation(async (type) => {
+				if (type === ModelType.TEXT_EMBEDDING) return [0.1, 0.2, 0.3];
+				if (type === ModelType.RESPONSE_HANDLER) {
+					if (++responseCalls === 1) return stage1;
+					throw error();
+				}
+				if (type === ModelType.ACTION_PLANNER)
+					return {
+						text: "",
+						toolCalls: [{ id: "delete-1", name: "CALENDAR", arguments: {} }],
+					};
+				// The pre-fix message boundary incorrectly requests this extra
+				// recovery model after the evaluator already declared unavailability.
+				if (type === ModelType.TEXT_SMALL)
+					return JSON.stringify({
+						response: "The calendar operation has a recorded outcome.",
+						effectReceiptIds: [],
+					});
+				throw new Error(`Unexpected post-failure model: ${type}`);
+			});
+			const events = new Set(
+				outcome === "applied" ? ["event-1", "untouched"] : ["untouched"],
+			);
+			const handler = vi.fn(async () => {
+				if (outcome === "applied") expect(events.delete("event-1")).toBe(true);
+				return {
+					success: outcome === "applied",
+					transcriptVisibility: "internal" as const,
+					turnComplete: false,
+					effectReceipts: [receipt],
+					data: { deleted: outcome === "applied", retryable: false },
+				};
+			});
+			runtime.actions = [
+				{
+					name: "CALENDAR",
+					description: "Delete the selected calendar event.",
+					contexts: ["general"],
+					tags: ["write"],
+					validate: async () => true,
+					handler,
+				},
+			];
+			const callback = vi.fn(async () => []);
+			const result = await new DefaultMessageService().handleMessage(
+				runtime,
+				inputMessage("Delete the selected calendar event."),
+				callback,
+			);
+			await drainPostDeliveryTasks(runtime);
+			expect(
+				useModel.mock.calls
+					.map(([type]) => type)
+					.filter((type) => type !== ModelType.TEXT_EMBEDDING),
+			).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(result).toMatchObject({
+				responseContent: null,
+				terminalFailure: {
+					kind,
+					code: "EVALUATOR_REPLY_GENERATION_FAILED",
+					transient: false,
+				},
+				actionResults: [
+					{
+						success: outcome === "applied",
+						effectReceipts: [receipt],
+						replyFailure: { kind, transient: false },
+					},
+				],
+			});
+			expect([...events]).toEqual(["untouched"]);
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(callback).not.toHaveBeenCalled();
+			const modes = vi
+				.mocked(runtime.runActionsByMode)
+				.mock.calls.map(([mode]) => mode);
+			expect(modes).not.toContain("CONTEXT_AFTER");
+			expect(modes).not.toContain("ALWAYS_AFTER");
+			expect(terminalPayloads).toHaveLength(1);
+		},
+	);
+
 	it("ends a committed action with unavailable reply without post-turn models or action hooks", async () => {
 		const { runtime, useModel, terminalPayloads } = makeRuntime({});
 		const unavailable = createUnavailableGroundedActionReply({

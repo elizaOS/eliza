@@ -218,7 +218,7 @@ afterAll(async () => {
 });
 
 describe("CALENDAR receipt grounding over real PGlite", () => {
-  it("binds callback text to the persisted ICS snapshot timestamp", async () => {
+  it("hands off the persisted ICS snapshot with its authoritative timestamp", async () => {
     const source = await service.createIcsCalendarSource({
       name: "Family calendar",
       url: SOURCE_URL,
@@ -257,11 +257,6 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
       runTextModel: vi.fn(async () => null),
       runJsonModel: vi.fn(async () => null),
       recentConversationTexts: vi.fn(async () => []),
-      // Explicit deterministic presentation fixture; the database proof is real.
-      renderGroundedReply: async ({ fallback }) => ({
-        kind: "model",
-        text: fallback,
-      }),
     };
     const action = createCalendarActionRunner(actionDeps);
     const delivered: Content[] = [];
@@ -300,7 +295,8 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
     const persistedObservedAt = persisted.rows[0]?.synced_at;
     expect(result, JSON.stringify(result)).toMatchObject({
       success: true,
-      verifiedUserFacing: true,
+      transcriptVisibility: "internal",
+      turnComplete: false,
       effectReceipts: [
         {
           operation: "calendar.feed.read",
@@ -323,11 +319,16 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
     expect(result.effectReceipts?.[0]?.observedAt).toBe(
       synced.source.updatedAt,
     );
-    expect(delivered).toEqual([
-      expect.objectContaining({
-        text: result.userFacingText,
-        effectReceiptIds: [result.effectReceipts?.[0]?.receiptId],
-      }),
-    ]);
+    expect(result.data?.replyContext).toMatchObject({
+      domain: "calendar",
+      intent: actor.content.text,
+      scenario: "feed_results",
+      facts: expect.stringContaining("School pickup"),
+      context: { events: result.data?.events },
+    });
+    expect(result).not.toHaveProperty("text");
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("verifiedUserFacing");
+    expect(delivered).toEqual([]);
   }, 30_000);
 });

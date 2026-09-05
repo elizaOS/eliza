@@ -84,6 +84,24 @@ export async function completeLifeOpsEffect(
   result: ActionResult,
   receipt: EffectReceipt,
 ): Promise<ActionResult> {
+  const normalizedReceipt = normalizeEffectReceipt(receipt);
+  if (
+    result.replyFailure ||
+    (result.transcriptVisibility === "internal" &&
+      !result.text?.trim() &&
+      !result.userFacingText?.trim() &&
+      !result.modelReplyFallback?.trim())
+  ) {
+    // Preserve settled effects without inventing presentation. Typed renderer
+    // failures remain system statuses; explicit internal evidence remains
+    // available to the existing planner evaluator for its final response.
+    return {
+      ...result,
+      transcriptVisibility: "internal",
+      turnComplete: false,
+      effectReceipts: [normalizedReceipt],
+    };
+  }
   const text = result.text?.trim();
   if (!text) {
     throw new ElizaError(
@@ -110,8 +128,8 @@ export async function completeLifeOpsEffect(
     // model paraphrase). Sites that want the evaluator to add a genuinely
     // additive follow-up disclaim explicitly.
     turnComplete: result.turnComplete ?? true,
-    effectReceipts: [receipt],
-    userFacingEffectReceiptIds: [receipt.receiptId],
+    effectReceipts: [normalizedReceipt],
+    userFacingEffectReceiptIds: [normalizedReceipt.receiptId],
   };
   await callback?.({ text });
   return canonical;

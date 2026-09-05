@@ -35,6 +35,7 @@ import {
   logger,
   type Memory,
   ModelType,
+  quarantinePostDeliveryTasks,
   RoomHandlerQueue,
   stringToUuid,
   trackPostDeliveryTask,
@@ -2164,13 +2165,16 @@ describe("conversation stream SSE contract (#10712)", () => {
             actionResults: expectedReceipts,
           });
         });
-        expect(record.ended).toBe(false);
-        expect(
-          parseSsePayloads(record.writes).some(
-            (payload) => payload.type === "done",
-          ),
-        ).toBe(false);
-        expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+        await vi.waitFor(() => {
+          expect(record.ended).toBe(true);
+          expect(
+            parseSsePayloads(record.writes).some(
+              (payload) => payload.type === "done",
+            ),
+          ).toBe(true);
+        });
+        expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+        expect(ctx.state.runtime?.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(1);
       } finally {
         actionsFinished.resolve();
         bookkeepingGate.resolve();
@@ -2194,6 +2198,152 @@ describe("conversation stream SSE contract (#10712)", () => {
       expect(useModel).not.toHaveBeenCalled();
     },
   );
+
+  it("finishes durable SSE while post-delivery work keeps the next room turn fenced", async () => {
+    const postDeliveryGate = createDeferred();
+    const handled: string[] = [];
+    let roomState = "before reflection";
+    let firstReplyId: string | undefined;
+    const messageService = createViewShortcutMessageService();
+    messageService.handleMessage = async (runtime, message) => {
+      const text = String(message.content.text);
+      handled.push(text);
+      if (text === "first fenced turn") {
+        void trackPostDeliveryTask(
+          runtime,
+          "deferred-room-reflection",
+          async () => {
+            await postDeliveryGate.promise;
+            const lease = runtime.roomHandlerQueue.currentLease(ROOM_ID);
+            expect(runtime.roomHandlerQueue.ownsLease(ROOM_ID, lease)).toBe(
+              true,
+            );
+            roomState = "after reflection";
+          },
+        );
+      } else {
+        expect(roomState).toBe("after reflection");
+        const memories = await runtime.getMemories({
+          roomId: ROOM_ID,
+          tableName: "messages",
+        });
+        expect(memories).toContainEqual(
+          expect.objectContaining({
+            id: firstReplyId,
+            content: expect.objectContaining({
+              text: "Completed first fenced turn.",
+            }),
+          }),
+        );
+      }
+      return {
+        didRespond: true,
+        responseContent: { text: `Completed ${text}.` },
+        responseMessages: [],
+      };
+    };
+    requestPromptQueue.push("first fenced turn", "second fenced turn");
+    const first = createCtx(messageService);
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    const firstTurn = handleConversationRoutes(first.ctx);
+    let secondTurn: Promise<boolean> | undefined;
+    try {
+      await vi.waitFor(() => expect(first.record.ended).toBe(true));
+      const done = parseSsePayloads(first.record.writes).filter(
+        (payload) => payload.type === "done",
+      );
+      expect(done).toHaveLength(1);
+      expect(done[0]).toMatchObject({
+        fullText: "Completed first fenced turn.",
+        messageId: expect.any(String),
+      });
+      firstReplyId = done[0].messageId as string;
+      expect(roomState).toBe("before reflection");
+      expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(1);
+      // Server background suppression stays active; the browser receives done.
+      expect(first.state.activeChatTurnCount).toBe(1);
+
+      const second = createFollowupCtx(first.ctx, first.state);
+      secondTurn = handleConversationRoutes(second.ctx);
+      await vi.waitFor(() =>
+        expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(2),
+      );
+      expect(handled).toEqual(["first fenced turn"]);
+      expect(
+        parseSsePayloads(second.record.writes).some(
+          (payload) => payload.type === "done",
+        ),
+      ).toBe(false);
+      expect(persistConversationMemory).toHaveBeenCalledTimes(1);
+
+      postDeliveryGate.resolve();
+      await Promise.all([firstTurn, secondTurn]);
+      expect(handled).toEqual(["first fenced turn", "second fenced turn"]);
+      expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+      expect(first.state.activeChatTurnCount).toBe(0);
+      expect(runtime.reportError).not.toHaveBeenCalled();
+      expect(
+        parseSsePayloads(first.record.writes).filter(
+          (payload) => payload.type === "done",
+        ),
+      ).toHaveLength(1);
+      expect(
+        parseSsePayloads(second.record.writes).filter(
+          (payload) => payload.type === "done",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      postDeliveryGate.resolve();
+      await Promise.all([firstTurn, secondTurn]);
+    }
+  });
+
+  it("preserves delivered SSE and idempotency when the later room drain fails", async () => {
+    const messageService = createViewShortcutMessageService();
+    const handleMessage = vi.fn<
+      NonNullable<AgentRuntime["messageService"]>["handleMessage"]
+    >(async (runtime, _message, callback) => {
+      await callback?.({ text: "The action completed." });
+      // Quarantine is checked by the real post-delivery drain, after the route's
+      // onReplyReady callback has durably settled and delivered this result.
+      quarantinePostDeliveryTasks(runtime, new Error("reflection cancelled"));
+      return {
+        didRespond: true,
+        responseContent: { text: "The action completed." },
+        responseMessages: [],
+      };
+    });
+    messageService.handleMessage = handleMessage;
+    requestClientMessageId = crypto.randomUUID();
+    const { ctx, state, record } = createCtx(messageService);
+
+    const failure = await handleConversationRoutes(ctx).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    const payloads = parseSsePayloads(record.writes);
+    const done = payloads.filter((payload) => payload.type === "done");
+    expect(done).toHaveLength(1);
+    expect(done[0]).toMatchObject({ fullText: "The action completed." });
+    expect(payloads.some((payload) => payload.type === "error")).toBe(false);
+    expect(record.ended).toBe(true);
+    expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+    expect(failure).toMatchObject({ code: "POST_DELIVERY_DRAIN_CANCELLED" });
+    expect(state.activeChatTurnCount).toBe(0);
+    expect(state.runtime?.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+
+    const replay = createFollowupCtx(ctx, state);
+    await handleConversationRoutes(replay.ctx);
+    expect(
+      parseSsePayloads(replay.record.writes).find(
+        (payload) => payload.type === "done",
+      ),
+    ).toEqual(done[0]);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+  });
 
   it("keeps legacy reply_ready text-only when there are no action receipts", async () => {
     const { ctx, record } = createCtx();

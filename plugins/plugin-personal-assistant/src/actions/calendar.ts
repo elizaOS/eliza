@@ -1899,20 +1899,20 @@ export const calendarAction: Action & {
         "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
       required: false,
       subactions: ["update_preferences"],
+      // Shape is documented, not schema-enforced: the planner fills every key
+      // it sees, and a strict item schema rejected a whole `search_events`
+      // call over junk it invented here (live: startLocal "00"). The handler's
+      // normalizeLifeOpsMeetingPreferencesPatch strictly validates the entire
+      // requested array before update_preferences writes anything. Read
+      // operations do not consume this operation-specific field.
       schema: {
         type: "array" as const,
         items: {
           type: "object" as const,
           properties: {
             label: { type: "string" as const },
-            startLocal: {
-              type: "string" as const,
-              pattern: "^[0-2][0-9]:[0-5][0-9]$",
-            },
-            endLocal: {
-              type: "string" as const,
-              pattern: "^[0-2][0-9]:[0-5][0-9]$",
-            },
+            startLocal: { type: "string" as const },
+            endLocal: { type: "string" as const },
             daysOfWeek: {
               type: "array" as const,
               items: {
@@ -1922,7 +1922,6 @@ export const calendarAction: Action & {
               },
             },
           },
-          required: ["label", "startLocal", "endLocal"],
         },
       },
     },

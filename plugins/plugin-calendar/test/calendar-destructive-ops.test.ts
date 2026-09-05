@@ -10,11 +10,11 @@
  *   - no match                    → not-found reply, no approval
  *
  * The CalendarService is stubbed (feed fixtures + spied mutations); the fake
- * runtime has no `useModel`; an explicit deterministic presentation fixture
- * supplies canonical text. This is not evidence of a live model reply.
+ * runtime has no `useModel`; ordinary outcomes preserve internal evidence for
+ * the evaluator. Exact approval previews remain interactive controls.
  */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -27,10 +27,6 @@ function fakeDeps(service: StubService): CalendarActionDeps {
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async () => null),
     recentConversationTexts: vi.fn(async () => []),
-    renderGroundedReply: async ({ fallback }) => ({
-      kind: "model",
-      text: fallback,
-    }),
     mutationGateway: {
       schedule: service.scheduleApproval,
       modify: service.modifyApproval,
@@ -137,7 +133,6 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
 type StubService = ReturnType<typeof stubService>;
 
 function fakeRuntime(service: StubService): IAgentRuntime {
-  // The explicit fakeDeps renderer owns this test's deterministic presentation.
   return {
     agentId: "agent-1",
     logger: {
@@ -165,13 +160,61 @@ async function runHandler(args: {
   parameters: Record<string, unknown>;
 }) {
   const action = createCalendarActionRunner(fakeDeps(args.service));
-  return (await action.handler(
+  const callback = vi.fn(async () => []);
+  const result = await action.handler(
     fakeRuntime(args.service),
     message(args.text),
     undefined,
     { parameters: args.parameters },
-    undefined,
-  )) as { success: boolean; text: string };
+    callback,
+  );
+  if (!result) throw new Error("Expected a Calendar action result");
+  expect(result.effectReceipts).toHaveLength(1);
+  if (result.transcriptVisibility === "internal") {
+    expectInternalHandoff(result, callback);
+  } else {
+    expect(result.turnComplete).toBe(true);
+    expect(result.userFacingText).toBe(result.text);
+    expect(result.userFacingEffectReceiptIds).toEqual([
+      result.effectReceipts?.[0]?.receiptId,
+    ]);
+    expect(callback).toHaveBeenCalledExactlyOnceWith({
+      text: result.text,
+      source: "action",
+      action: "CALENDAR",
+    });
+  }
+  return result;
+}
+
+function expectInternalHandoff(
+  result: ActionResult,
+  callback: ReturnType<typeof vi.fn>,
+): void {
+  expect(callback).not.toHaveBeenCalled();
+  expect(result.turnComplete).toBe(false);
+  expect(result).not.toHaveProperty("text");
+  expect(result).not.toHaveProperty("userFacingText");
+  expect(result.data?.replyContext).toMatchObject({
+    domain: "calendar",
+    intent: expect.any(String),
+    scenario: expect.any(String),
+    facts: expect.stringMatching(/\S/),
+    context: expect.any(Object),
+  });
+}
+
+function replyFacts(result: ActionResult): string {
+  const replyContext = result.data?.replyContext;
+  if (
+    !replyContext ||
+    typeof replyContext !== "object" ||
+    Array.isArray(replyContext) ||
+    typeof replyContext.facts !== "string"
+  ) {
+    throw new Error("Expected Calendar internal reply facts");
+  }
+  return replyContext.facts;
 }
 
 describe("CALENDAR delete_event disambiguation", () => {
@@ -188,9 +231,9 @@ describe("CALENDAR delete_event disambiguation", () => {
       parameters: { subaction: "delete_event", query: "lunch" },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toContain("multiple");
-    expect(result.text).toContain("Lunch with Maya");
-    expect(result.text).toContain("Lunch with Grandma");
+    expect(replyFacts(result)).toContain("multiple");
+    expect(replyFacts(result)).toContain("Lunch with Maya");
+    expect(replyFacts(result)).toContain("Lunch with Grandma");
     expect(service.cancelApproval).not.toHaveBeenCalled();
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
@@ -248,12 +291,12 @@ describe("CALENDAR delete_event disambiguation", () => {
       parameters: { subaction: "delete_event", query: "standup" },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toContain("couldn't find");
+    expect(replyFacts(result)).toContain("couldn't find");
     expect(service.cancelApproval).not.toHaveBeenCalled();
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
-  it("delegates presentation without changing the grounded action result", async () => {
+  it("hands off grounded facts without invoking the action reply renderer", async () => {
     const renderGroundedReply = vi.fn(
       async ({ fallback }: { fallback: string }) => ({
         kind: "model" as const,
@@ -265,25 +308,32 @@ describe("CALENDAR delete_event disambiguation", () => {
       renderGroundedReply,
     });
 
-    const result = (await action.handler(
+    const callback = vi.fn(async () => []);
+    const result = await action.handler(
       fakeRuntime(service),
       message("delete the standup"),
       undefined,
       {
         parameters: { subaction: "delete_event", query: "standup" },
       },
-      undefined,
-    )) as { success: boolean; text: string };
-
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("Human-readable:");
-    expect(renderGroundedReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        intent: "delete the standup",
-        scenario: "delete_event_not_found",
-        fallback: expect.stringContaining("couldn't find"),
-      }),
+      callback,
     );
+    if (!result) throw new Error("Expected a Calendar action result");
+    expect(result.success).toBe(false);
+    expectInternalHandoff(result, callback);
+    expect(result.effectReceipts).toEqual([
+      expect.objectContaining({
+        operation: "calendar.event.delete",
+        outcome: "noop",
+      }),
+    ]);
+    expect(result.data?.replyContext).toMatchObject({
+      intent: "delete the standup",
+      scenario: "delete_event_not_found",
+      facts: expect.stringContaining("couldn't find"),
+      context: { titleHint: "standup" },
+    });
+    expect(renderGroundedReply).not.toHaveBeenCalled();
     expect(service.cancelApproval).not.toHaveBeenCalled();
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
@@ -303,7 +353,7 @@ describe("CALENDAR update_event disambiguation", () => {
       parameters: { subaction: "update_event", query: "lunch" },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toContain("multiple");
+    expect(replyFacts(result)).toContain("multiple");
     expect(service.modifyApproval).not.toHaveBeenCalled();
     expect(service.updateCalendarEvent).not.toHaveBeenCalled();
   });

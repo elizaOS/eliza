@@ -7,11 +7,11 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
-import { detailString } from "../src/internal/detail.js";
 import {
   type CalendarActionDeps,
   createCalendarActionRunner,
 } from "../src/index.js";
+import { detailString } from "../src/internal/detail.js";
 
 const CREATED_EVENT: LifeOpsCalendarEvent = {
   id: "agent-1:google:owner:calendar:primary:event-1",
@@ -130,6 +130,7 @@ async function runCreate(
     },
   };
   const action = createCalendarActionRunner(deps);
+  const callback = vi.fn(async () => []);
   const result = await action.handler(
     runtime,
     message(),
@@ -149,14 +150,36 @@ async function runCreate(
         },
       },
     },
-    undefined,
+    callback,
   );
+  if (!result) throw new Error("Expected a Calendar action result");
+  expect(result.effectReceipts).toHaveLength(1);
+  if (result.transcriptVisibility === "internal") {
+    expect(callback).not.toHaveBeenCalled();
+    expect(result.turnComplete).toBe(false);
+    expect(result).not.toHaveProperty("text");
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result.data?.replyContext).toMatchObject({
+      domain: "calendar",
+      intent: message().content.text,
+      scenario: expect.any(String),
+      facts: expect.stringMatching(/\S/),
+      context: expect.any(Object),
+    });
+  } else {
+    expect(result.turnComplete).toBe(true);
+    expect(result.userFacingText).toBe("travel schedule approval queued");
+    expect(result.userFacingEffectReceiptIds).toEqual([
+      result.effectReceipts?.[0]?.receiptId,
+    ]);
+    expect(callback).toHaveBeenCalledExactlyOnceWith({
+      text: "travel schedule approval queued",
+      source: "action",
+      action: "CALENDAR",
+    });
+  }
   return {
-    result: result as {
-      success: boolean;
-      text: string;
-      data: Record<string, unknown>;
-    },
+    result,
     reserveTravelBuffer,
     scheduleApproval,
     service,
@@ -265,7 +288,7 @@ describe("calendar travel reservation truth", () => {
     expect(reserveTravelBuffer).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(result.text).toContain("approval queued");
-    expect(result.data.travelBuffer).toMatchObject({ bufferMinutes: 25 });
+    expect(result.data?.travelBuffer).toMatchObject({ bufferMinutes: 25 });
   });
 
   it("blocks approval and provider mutation when travel cannot be prepared", async () => {
@@ -279,7 +302,9 @@ describe("calendar travel reservation truth", () => {
       await runCreate(computeTravelBuffer);
 
     expect(result.success).toBe(false);
-    expect(result.text).toContain("did not queue or create");
+    expect(result.data?.replyContext).toMatchObject({
+      facts: expect.stringContaining("did not queue or create"),
+    });
     expect(result.data).toMatchObject({
       error: "TRAVEL_TIME_UNAVAILABLE",
     });

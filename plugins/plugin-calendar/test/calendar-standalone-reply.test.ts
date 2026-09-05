@@ -1,7 +1,7 @@
 /**
- * Exercises the standalone action's real renderer over a deterministic model
- * boundary. Provider failure must not become canonical assistant prose or erase
- * the authoritative calendar snapshot. No live model claim is made here.
+ * Exercises the standalone action's internal handoff. A redundant reply model
+ * must not run or erase the authoritative calendar snapshot, regardless of
+ * provider availability. No live model claim is made here.
  */
 import type {
   ActionResult,
@@ -62,24 +62,44 @@ async function readCalendar(useModel?: IAgentRuntime["useModel"]) {
 }
 
 describe("standalone calendar reply provenance", () => {
-  it("delivers the model's response with the snapshot receipt", async () => {
+  function expectSnapshotHandoff(result: ActionResult, delivered: Content[]) {
+    expect(result).toMatchObject({
+      success: true,
+      transcriptVisibility: "internal",
+      turnComplete: false,
+      effectReceipts: [{ operation: "calendar.feed.read", outcome: "noop" }],
+      data: {
+        events: [],
+        state: "complete",
+        syncedAt: "2026-07-27T12:00:00.000Z",
+        replyContext: {
+          domain: "calendar",
+          intent: actor.content.text,
+          scenario: "feed_results",
+          facts: expect.stringMatching(/\S/),
+          context: { events: [] },
+        },
+      },
+    });
+    expect(result).not.toHaveProperty("text");
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("replyFailure");
+    expect(delivered).toEqual([]);
+  }
+
+  it("hands off the snapshot without requesting an action-owned model reply", async () => {
     const useModel = vi.fn(
       async () => "Your calendar is clear in that window.",
     );
     const { result, delivered } = await readCalendar(
       useModel as unknown as IAgentRuntime["useModel"],
     );
-    expect(result.success).toBe(true);
-    expect(result.userFacingText).toBe(
-      "Your calendar is clear in that window.",
-    );
-    expect(result.replyFailure).toBeUndefined();
-    expect(delivered).toHaveLength(1);
-    expect(useModel).toHaveBeenCalledOnce();
+    expectSnapshotHandoff(result, delivered);
+    expect(useModel).not.toHaveBeenCalled();
   });
 
   it.each(["rate_limited", "invalid", "no_provider"] as const)(
-    "preserves the read without fallback prose for %s",
+    "preserves the read without invoking a %s reply provider",
     async (mode) => {
       const useModel = vi.fn(async () => {
         if (mode === "rate_limited")
@@ -93,20 +113,9 @@ describe("standalone calendar reply provenance", () => {
           ? undefined
           : (useModel as unknown as IAgentRuntime["useModel"]),
       );
-      expect(result).toMatchObject({
-        success: true,
-        transcriptVisibility: "internal",
-        turnComplete: false,
-        replyFailure: {
-          kind: mode === "invalid" ? "provider_issue" : mode,
-          transient: false,
-        },
-        effectReceipts: [{ operation: "calendar.feed.read", outcome: "noop" }],
-      });
-      expect(result).not.toHaveProperty("userFacingText");
-      expect(delivered).toEqual([]);
+      expectSnapshotHandoff(result, delivered);
       expect(service.getCalendarFeed).toHaveBeenCalledOnce();
-      expect(useModel).toHaveBeenCalledTimes(mode === "no_provider" ? 0 : 1);
+      expect(useModel).not.toHaveBeenCalled();
     },
   );
 });

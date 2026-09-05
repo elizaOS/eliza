@@ -91,6 +91,8 @@ interface RawEvaluatorOutput {
 interface ParsedEvaluatorObject {
 	object: RawEvaluatorOutput | null;
 	parseError?: string;
+	/** The unparseable response is a tool invocation, not a malformed verdict. */
+	toolInvocation?: true;
 }
 
 const EVALUATOR_ENVELOPE_KEYS = new Set([
@@ -814,10 +816,27 @@ function renderEvaluatorModelInput(params: {
 }
 
 export function parseEvaluatorOutput(
-	raw: string | { text?: string; object?: unknown },
+	raw: EvaluatorModelResult,
 ): EvaluatorOutput {
 	const parsedResult = getStructuredEvaluatorObject(raw);
 	if (parsedResult.parseError) {
+		if (parsedResult.toolInvocation) {
+			// The model tried to ACT instead of judging. In substance that is a
+			// CONTINUE verdict — the recorded work is not finished — so it must not
+			// be reported as a protocol failure: the loop answers a protocol
+			// failure by relaying the last successful tool text as the final
+			// message (live: a calendar delete ended after its lookup step with
+			// "Your matching calendar event is …" while the evaluator had emitted
+			// the delete_event call). A plain CONTINUE replans through real tool
+			// dispatch; the invocation itself is never executed from here.
+			return {
+				success: false,
+				decision: "CONTINUE",
+				thought: `Invalid evaluator output: ${parsedResult.parseError}; the response is a tool invocation, so the recorded work is not finished. Replanning from recorded tool results.`,
+				parseError: parsedResult.parseError,
+				raw: {},
+			};
+		}
 		return {
 			success: false,
 			decision: "CONTINUE",
@@ -1217,9 +1236,37 @@ function recoverEvaluatorTextOutput(
 ): EvaluatorOutput {
 	if (!output.parseError) return output;
 	const text = rawText(raw).trim();
+	const structured =
+		(typeof raw === "object" ? raw.object : undefined) ??
+		tryParseJson(unwrapJsonFence(stripReasoningPrefixes(text).trim()));
+	if (
+		structured !== null &&
+		typeof structured === "object" &&
+		!isEvaluatorShapedObject(structured)
+	) {
+		// Whole JSON objects/arrays are structured model output, not free-form
+		// prose. A schema such as {"type":"object"} supplies no verdict about
+		// remaining work. Replan from the retained results rather than finishing
+		// with its bytes or relaying an earlier tool's partial answer. Explicit
+		// JSON inside a valid evaluator messageToUser never enters this recovery.
+		return {
+			...output,
+			success: false,
+			decision: "CONTINUE",
+			thought:
+				"Evaluator returned non-verdict JSON; replanning from recorded tool results.",
+			messageToUser: undefined,
+			protocolFailure: undefined,
+			parseError: undefined,
+			raw: { recoverySource: "non_verdict_json" },
+		};
+	}
 	if (!text) return output;
 
 	if (
+		// A structurally recognized tool attempt already requires replanning.
+		// Its companion prose must not be recovered as a finished answer.
+		output.protocolFailure !== true ||
 		containsToolAttemptObject(text) ||
 		containsInvocationDsl(text) ||
 		invokesTrajectoryTool(text, trajectory)
@@ -1230,6 +1277,7 @@ function recoverEvaluatorTextOutput(
 			decision: "CONTINUE",
 			thought:
 				"Evaluator emitted tool/action syntax instead of evaluator JSON; replanning from recorded tool results.",
+			protocolFailure: undefined,
 			parseError: undefined,
 			raw: { recoverySource: "tool_attempt_text" },
 		};
@@ -1611,15 +1659,23 @@ function containsToolAttemptObject(text: string): boolean {
 }
 
 function isToolAttemptObject(value: unknown): boolean {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
+	if (
+		!value ||
+		typeof value !== "object" ||
+		Array.isArray(value) ||
+		isEvaluatorShapedObject(value)
+	) {
 		return false;
 	}
 	const record = value as Record<string, unknown>;
+	for (const calls of [record.toolCalls, record.tool_calls]) {
+		if (Array.isArray(calls) && calls.some(isToolAttemptObject)) return true;
+	}
+	if (record.type === "function" && isToolAttemptObject(record.function)) {
+		return true;
+	}
 	const name = record.name ?? record.tool ?? record.action;
 	if (typeof name !== "string" || name.trim().length === 0) {
-		return false;
-	}
-	if (isEvaluatorShapedObject(record)) {
 		return false;
 	}
 	return (
@@ -1628,6 +1684,24 @@ function isToolAttemptObject(value: unknown): boolean {
 		"args" in record ||
 		"command" in record ||
 		"arguments" in record
+	);
+}
+
+/**
+ * Model output that is a tool invocation rather than a verdict: native XML tool
+ * markup, a JSON tool-call shape, a bare ACTION_NAME followed by a JSON args
+ * object, or an invocation DSL. An evaluator model reaches this shape by
+ * continuing the planner transcript it was shown (live: Qwen answered a
+ * calendar delete's evaluation with `<tool_call><function=CALENDAR>` …
+ * `delete_event`). These are the same screens that gate user-facing prose in
+ * {@link looksLikeUserFacingAnswer}.
+ */
+function looksLikeToolInvocation(text: string): boolean {
+	return (
+		containsToolCallShapedMarkup(text) ||
+		containsToolAttemptObject(text) ||
+		/^\s*[A-Z][A-Z0-9_]{2,}\s*\n\s*\{/.test(text) ||
+		containsInvocationDsl(text)
 	);
 }
 
@@ -1815,10 +1889,17 @@ function isEvaluatorShapedObject(value: unknown): value is RawEvaluatorOutput {
 }
 
 function getStructuredEvaluatorObject(
-	raw: string | { text?: string; object?: unknown },
+	raw: EvaluatorModelResult,
 ): ParsedEvaluatorObject {
 	if (typeof raw === "string") {
 		return parseEvaluatorText(raw);
+	}
+	if (Array.isArray(raw.toolCalls) && raw.toolCalls.some(isToolAttemptObject)) {
+		return {
+			object: null,
+			parseError: "evaluator returned native tool calls instead of a verdict",
+			toolInvocation: true,
+		};
 	}
 	if (
 		raw.object &&
@@ -1831,9 +1912,13 @@ function getStructuredEvaluatorObject(
 		// parse-error path so the loop sees a malformed evaluation and retries,
 		// instead of a silent default verdict.
 		if (!isEvaluatorShapedObject(raw.object)) {
+			const serialized = toWellFormedUnicode(JSON.stringify(raw.object));
 			return {
 				object: null,
-				parseError: `structured evaluator output is not evaluator-shaped: ${toWellFormedUnicode(JSON.stringify(raw.object))}`,
+				parseError: `structured evaluator output is not evaluator-shaped: ${serialized}`,
+				...(looksLikeToolInvocation(serialized)
+					? { toolInvocation: true }
+					: {}),
 			};
 		}
 		return { object: raw.object as RawEvaluatorOutput };
@@ -1901,6 +1986,7 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 			return {
 				object: null,
 				parseError: "JSON object is not evaluator-shaped",
+				...(looksLikeToolInvocation(candidate) ? { toolInvocation: true } : {}),
 			};
 		}
 		return { object: parsed };
@@ -1929,6 +2015,9 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 							object: null,
 							parseError:
 								"leading evaluator envelope followed by machine output (tool syntax), not a user-facing answer",
+							...(looksLikeToolInvocation(prose)
+								? { toolInvocation: true }
+								: {}),
 						};
 					}
 					record.messageToUser = prose;
@@ -1948,7 +2037,11 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 		if (labeled) {
 			return { object: labeled };
 		}
-		return { object: null, parseError: "response is not a single JSON object" };
+		return {
+			object: null,
+			parseError: "response is not a single JSON object",
+			...(looksLikeToolInvocation(candidate) ? { toolInvocation: true } : {}),
+		};
 	}
 }
 
