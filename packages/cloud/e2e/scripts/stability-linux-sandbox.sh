@@ -75,12 +75,17 @@ sandbox_cleanup() {
   set +e
   if [[ "$SANDBOX_UID" =~ ^[1-9][0-9]*$ ]]; then
     /usr/bin/pkill -KILL -u "$SANDBOX_UID" 2>/dev/null
+    local observation_status
     for _ in $(/usr/bin/seq 1 100); do
-      sandbox_uid_has_processes || break
+      sandbox_uid_has_processes
+      observation_status=$?
+      [ "$observation_status" -eq 0 ] || break
       /bin/sleep 0.02
     done
-    if sandbox_uid_has_processes; then
-      echo "[cloud-stability-sandbox] UID $SANDBOX_UID retained a process; identity, firewall, and ACL restrictions remain for operator cleanup" >&2
+    sandbox_uid_has_processes
+    observation_status=$?
+    if [ "$observation_status" -ne 1 ]; then
+      echo "[cloud-stability-sandbox] UID $SANDBOX_UID quiescence is unproven (observer status $observation_status); identity, firewall, and ACL restrictions remain for operator cleanup" >&2
       SANDBOX_CLEANUP_STATUS=1
       return "$SANDBOX_CLEANUP_STATUS"
     fi
@@ -137,6 +142,10 @@ sandbox_cleanup() {
       SANDBOX_CLEANUP_STATUS=1
     fi
   done
+  if [ "$SANDBOX_CLEANUP_STATUS" -ne 0 ]; then
+    echo "[cloud-stability-sandbox] restriction cleanup failed; UID $SANDBOX_UID remains reserved for operator cleanup" >&2
+    return "$SANDBOX_CLEANUP_STATUS"
+  fi
   if [ -n "$SANDBOX_USER" ]; then /usr/sbin/userdel "$SANDBOX_USER" 2>/dev/null || SANDBOX_CLEANUP_STATUS=1; fi
   if [[ "$SANDBOX_ROOT" = /var/tmp/eliza-stability-sandbox.* ]]; then /bin/rm -rf -- "$SANDBOX_ROOT" || SANDBOX_CLEANUP_STATUS=1; fi
   return "$SANDBOX_CLEANUP_STATUS"
