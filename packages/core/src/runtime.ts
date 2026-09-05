@@ -672,6 +672,23 @@ const LOCAL_EMBEDDING_PROVIDERS = new Set([
  * leaving the vector column at its default width, where later real vectors
  * would be silently dropped on dimension mismatch by the SQL adapter (#8769).
  */
+/**
+ * Per-agent record of which embedder produced the vectors in the store. Same
+ * width does not mean same space (gte-small and bge-small are both 384-dim and
+ * incompatible), so the runtime refuses to pin a different model at the same
+ * width until the operator performs a scoped backup + fresh-index cutover and
+ * acknowledges the new model with ELIZA_EMBEDDING_STORE_ACCEPT_MODEL.
+ */
+export const EMBEDDING_STORE_IDENTITY_CACHE_KEY = "embedding:store-identity";
+export const EMBEDDING_STORE_ACCEPT_MODEL_SETTING =
+	"ELIZA_EMBEDDING_STORE_ACCEPT_MODEL";
+export interface EmbeddingStoreIdentity {
+	provider: string;
+	modelLabel: string | null;
+	dimension: number;
+	recordedAt: string;
+}
+
 export class EmbeddingDimensionProbeError extends Error {
 	readonly attempts: readonly EmbeddingProbeAttempt[];
 	constructor(attempts: readonly EmbeddingProbeAttempt[]) {
@@ -3327,7 +3344,15 @@ export class AgentRuntime implements IAgentRuntime {
 					agentId: this.agentId,
 					attempts: error.attempts,
 				};
-				if (pendingLocalHandler) {
+				const pendingConfiguredHandler =
+					error.attempts.length === 1 &&
+					error.attempts[0]?.error === "no registered handler yet";
+				if (pendingConfiguredHandler) {
+					this.logger.info(
+						context,
+						"Configured TEXT_EMBEDDING provider has not registered yet; keeping embedding generation disabled until the deferred re-probe pins it",
+					);
+				} else if (pendingLocalHandler) {
 					this.logger.info(
 						context,
 						"Local TEXT_EMBEDDING handler will register during deferred plugin boot; keeping embedding generation disabled until the deferred probe",
@@ -11115,11 +11140,25 @@ ${section_end}`;
 			embeddingProvider,
 		);
 		if (allRegistrations.length === 0) {
-			throw new Error(
-				embeddingProvider
-					? `Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler`
-					: "No TEXT_EMBEDDING model registered",
-			);
+			if (embeddingProvider) {
+				// The configured provider can register in a later plugin wave (live
+				// 2026-09-05: plugin-embeddings auto-enables after the first probe).
+				// A hard error here aborted the whole bootstrap in a retry loop; a
+				// probe error keeps the runtime in embedding-disabled mode until the
+				// deferred re-probe finds the handler, and never silently pins a
+				// different provider than the one the operator configured.
+				this.disableEmbeddingGeneration(
+					`Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler yet`,
+				);
+				throw new EmbeddingDimensionProbeError([
+					{
+						provider: embeddingProvider,
+						modelKey: ModelType.TEXT_EMBEDDING,
+						error: "no registered handler yet",
+					},
+				]);
+			}
+			throw new Error("No TEXT_EMBEDDING model registered");
 		}
 
 		// EMBEDDING_PROVIDER=local is an ownership boundary, not a preference.
@@ -11231,8 +11270,22 @@ ${section_end}`;
 			}
 
 			await this.adapter.ensureEmbeddingDimension(embedding.length);
+			const modelLabel = await this.guardEmbeddingStoreIdentity(
+				registration.provider,
+				embedding.length,
+			);
 			this.pinnedEmbeddingProvider = registration.provider;
 			this.enableEmbeddingGeneration();
+			this.logger.info(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					provider: registration.provider,
+					modelLabel,
+					dimension: embedding.length,
+				},
+				"TEXT_EMBEDDING provider pinned",
+			);
 			// Reclaim any vectors left in a different dimension column — e.g. cloud
 			// 1536-dim embeddings after this agent switched to on-device gte-small
 			// (384-dim) — which a same-width search can never match again, then
@@ -11292,6 +11345,106 @@ ${section_end}`;
 		const probeError = new EmbeddingDimensionProbeError(attempts);
 		this.disableEmbeddingGeneration(probeError.message);
 		throw probeError;
+	}
+
+	/**
+	 * Best-effort model label for a pinned TEXT_EMBEDDING provider, read from
+	 * the settings that provider documents. Null when the provider exposes no
+	 * model setting; the identity guard then compares provider + width only.
+	 */
+	private embeddingModelLabelForProvider(provider: string): string | null {
+		const read = (key: string): string | null => {
+			const value = this.getSetting(key);
+			return typeof value === "string" && value.trim().length > 0
+				? value.trim()
+				: null;
+		};
+		switch (provider) {
+			case "embeddings":
+				return read("EMBEDDING_MODEL");
+			case "openai":
+				return read("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
+			case "elizacloud":
+				return read("ELIZAOS_CLOUD_EMBEDDING_MODEL");
+			default:
+				return LOCAL_EMBEDDING_PROVIDERS.has(provider)
+					? (read("LOCAL_EMBEDDING_MODEL") ?? read("EMBEDDING_MODEL"))
+					: null;
+		}
+	}
+
+	/**
+	 * Refuse to mix embedding spaces. Records which embedder owns this agent's
+	 * vectors on the first pin (legacy stores adopt the active embedder with a
+	 * warning because their model is unknowable), follows a width change (the
+	 * stale-dimension reconcile owns those vectors), tolerates a provider swap
+	 * that serves the same model, and fails clearly when a different model is
+	 * pinned at the same width without ELIZA_EMBEDDING_STORE_ACCEPT_MODEL naming
+	 * that model. Returns the active model label for the pin log.
+	 */
+	private async guardEmbeddingStoreIdentity(
+		provider: string,
+		dimension: number,
+	): Promise<string | null> {
+		const modelLabel = this.embeddingModelLabelForProvider(provider);
+		const next: EmbeddingStoreIdentity = {
+			provider,
+			modelLabel,
+			dimension,
+			recordedAt: new Date().toISOString(),
+		};
+		const describe = (identity: EmbeddingStoreIdentity): string =>
+			`${identity.provider}/${identity.modelLabel ?? "unknown-model"}@${identity.dimension}`;
+		const stored = await this.getCache<EmbeddingStoreIdentity>(
+			EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+		);
+		if (!stored) {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId, identity: next },
+				"No embedding store identity recorded for this agent; adopting the active embedder. If the existing vectors came from a different model, back up and rebuild a fresh index.",
+			);
+			await this.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
+			return modelLabel;
+		}
+		if (stored.dimension !== dimension) {
+			this.logger.info(
+				{ src: "agent", agentId: this.agentId, from: stored, to: next },
+				"Embedding width changed; the stale-dimension reconcile owns the old vectors",
+			);
+			await this.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
+			return modelLabel;
+		}
+		const sameModel =
+			stored.modelLabel !== null && modelLabel !== null
+				? stored.modelLabel === modelLabel
+				: stored.provider === provider;
+		if (sameModel) {
+			if (stored.provider !== provider || stored.modelLabel !== modelLabel) {
+				await this.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
+			}
+			return modelLabel;
+		}
+		const acknowledged = this.getSetting(EMBEDDING_STORE_ACCEPT_MODEL_SETTING);
+		const acceptedLabel = modelLabel ?? provider;
+		if (
+			typeof acknowledged === "string" &&
+			acknowledged.trim() === acceptedLabel
+		) {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId, from: stored, to: next },
+				"Embedding store identity changed with operator acknowledgement",
+			);
+			await this.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
+			return modelLabel;
+		}
+		const reason =
+			`Embedding model changed from ${describe(stored)} to ${describe(next)} at the same ${dimension}-dim width; refusing to mix vector spaces. ` +
+			`Back up the store, rebuild a fresh index for this agent, then set ${EMBEDDING_STORE_ACCEPT_MODEL_SETTING}=${acceptedLabel}.`;
+		this.disableEmbeddingGeneration(reason);
+		throw new ElizaError(reason, {
+			code: "EMBEDDING_STORE_MODEL_MISMATCH",
+			context: { agentId: this.agentId, stored, next },
+		});
 	}
 
 	registerTaskWorker(taskHandler: TaskWorker): void {
