@@ -94,11 +94,24 @@ export async function completeLifeOpsEffect(
   ) {
     // Preserve settled effects without inventing presentation. Typed renderer
     // failures remain system statuses; explicit internal evidence remains
-    // available to the existing planner evaluator for its final response.
+    // available to the planner's evaluation step for its final response.
+    // `turnComplete:false` is the contract for "evaluation required": keep it
+    // for failed receipts, reply failures and pauses that wait on the user.
+    // A settled successful effect keeps the action's own signal (omitted by
+    // actions that hand canonical receipt facts to the runtime's grounded
+    // render; owner ruling 2026-09-05), so this wrapper no longer forces every
+    // internal result back into a full evaluation.
+    const data = result.data as Record<string, unknown> | undefined;
+    const evaluationRequired =
+      Boolean(result.replyFailure) ||
+      result.success !== true ||
+      normalizedReceipt.outcome === "failed" ||
+      data?.requiresInput === true ||
+      data?.approvalRequired === true;
     return {
       ...result,
       transcriptVisibility: "internal",
-      turnComplete: false,
+      ...(evaluationRequired ? { turnComplete: false } : {}),
       effectReceipts: [normalizedReceipt],
     };
   }
