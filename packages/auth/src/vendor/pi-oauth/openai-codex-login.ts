@@ -46,16 +46,6 @@ export interface OAuthPrompt {
   placeholder?: string;
 }
 
-async function readOAuthFailureBody(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch (cause) {
-    // error-policy:J4 explicit diagnostic degrade — the non-2xx status remains
-    // authoritative when the optional response body cannot be read.
-    return `[response body unavailable: ${cause instanceof Error ? cause.message : String(cause)}]`;
-  }
-}
-
 async function createState(): Promise<string> {
   if (!isNodeLikeRuntime()) {
     throw new Error(
@@ -125,9 +115,126 @@ type TokenSuccess = {
    * account's CODEX_HOME to authenticate. */
   idToken?: string;
 };
-type TokenFailure = { type: "failed" };
+type TokenFailure = { type: "failed"; reason: string };
+type TokenResult = TokenSuccess | TokenFailure;
 
-async function exchangeAuthorizationCode(
+type TokenResponseContext =
+  | { mode: "exchange" }
+  | { mode: "refresh"; currentRefreshToken: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function failedTokenResponse(reason: string): TokenFailure {
+  return { type: "failed", reason };
+}
+
+function parseTokenResponse(
+  payload: unknown,
+  context: TokenResponseContext,
+): TokenResult {
+  if (!isRecord(payload)) {
+    return failedTokenResponse("response root must be an object");
+  }
+
+  const rawAccessToken = payload.access_token;
+  const rawRefreshToken = payload.refresh_token;
+  const rawExpiresIn = payload.expires_in;
+  const rawIdToken = payload.id_token;
+
+  if (!isNonBlankString(rawAccessToken)) {
+    return failedTokenResponse(
+      "missing or invalid access_token; expected a non-blank string",
+    );
+  }
+  if (
+    typeof rawExpiresIn !== "number" ||
+    !Number.isFinite(rawExpiresIn) ||
+    rawExpiresIn <= 0
+  ) {
+    return failedTokenResponse(
+      "missing or invalid expires_in; expected a positive finite number",
+    );
+  }
+
+  const expires = Date.now() + rawExpiresIn * 1000;
+  if (!Number.isFinite(expires)) {
+    return failedTokenResponse(
+      "invalid expires_in; absolute expiry exceeds the supported numeric range",
+    );
+  }
+
+  let refresh: string;
+  if (context.mode === "exchange") {
+    if (!isNonBlankString(rawRefreshToken)) {
+      return failedTokenResponse(
+        "missing or invalid refresh_token; expected a non-blank string",
+      );
+    }
+    refresh = rawRefreshToken;
+  } else if (rawRefreshToken === undefined || rawRefreshToken === null) {
+    refresh = context.currentRefreshToken;
+  } else if (!isNonBlankString(rawRefreshToken)) {
+    return failedTokenResponse(
+      "invalid refresh_token; expected a non-blank string when present",
+    );
+  } else {
+    refresh = rawRefreshToken;
+  }
+
+  let idToken: string | undefined;
+  if (rawIdToken !== undefined && rawIdToken !== null) {
+    if (typeof rawIdToken !== "string") {
+      return failedTokenResponse(
+        "invalid id_token; expected a string when present",
+      );
+    }
+    idToken = rawIdToken || undefined;
+  }
+
+  return {
+    type: "success",
+    access: rawAccessToken,
+    refresh,
+    expires,
+    ...(idToken ? { idToken } : {}),
+  };
+}
+
+async function readTokenResponse(
+  response: Response,
+  context: TokenResponseContext,
+): Promise<TokenResult> {
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    // error-policy:J3 provider JSON is untrusted; malformed JSON becomes an
+    // explicit failed result and no partial credential record is constructed.
+    const failure = failedTokenResponse("response body was not valid JSON");
+    logger.error(
+      { mode: context.mode, reason: failure.reason },
+      "[openai-codex] Token response invalid",
+    );
+    return failure;
+  }
+
+  const result = parseTokenResponse(payload, context);
+  if (result.type === "failed") {
+    logger.error(
+      { mode: context.mode, reason: result.reason },
+      "[openai-codex] Token response invalid",
+    );
+  }
+  return result;
+}
+
+export async function exchangeAuthorizationCode(
   code: string,
   verifier: string,
   redirectUri: string = REDIRECT_URI,
@@ -144,35 +251,13 @@ async function exchangeAuthorizationCode(
     }),
   });
   if (!response.ok) {
-    const text = await readOAuthFailureBody(response);
     logger.error(
-      `[openai-codex] code->token failed: ${response.status} ${text}`,
+      { mode: "exchange", status: response.status },
+      "[openai-codex] Token request returned a non-success status",
     );
-    return { type: "failed" };
+    return failedTokenResponse("provider returned a non-success status");
   }
-  const json = (await response.json()) as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-    id_token?: string;
-  };
-  if (
-    !json.access_token ||
-    !json.refresh_token ||
-    typeof json.expires_in !== "number"
-  ) {
-    logger.error(
-      `[openai-codex] token response missing fields: ${JSON.stringify(json)}`,
-    );
-    return { type: "failed" };
-  }
-  return {
-    type: "success",
-    access: json.access_token,
-    refresh: json.refresh_token,
-    expires: Date.now() + json.expires_in * 1000,
-    ...(json.id_token ? { idToken: json.id_token } : {}),
-  };
+  return readTokenResponse(response, { mode: "exchange" });
 }
 
 async function refreshAccessToken(
@@ -189,41 +274,21 @@ async function refreshAccessToken(
       }),
     });
     if (!response.ok) {
-      const text = await readOAuthFailureBody(response);
       logger.error(
-        `[openai-codex] Token refresh failed: ${response.status} ${text}`,
+        { mode: "refresh", status: response.status },
+        "[openai-codex] Token request returned a non-success status",
       );
-      return { type: "failed" };
+      return failedTokenResponse("provider returned a non-success status");
     }
-    const json = (await response.json()) as {
-      access_token?: string;
-      refresh_token?: string;
-      expires_in?: number;
-      id_token?: string;
-    };
-    if (!json.access_token || typeof json.expires_in !== "number") {
-      logger.error(
-        `[openai-codex] Token refresh response missing fields: ${JSON.stringify(
-          json,
-        )}`,
-      );
-      return { type: "failed" };
-    }
-    return {
-      type: "success",
-      access: json.access_token,
-      // RFC 6749 §6: a refresh response that omits refresh_token means
-      // "keep the current one". Failing here would discard a successful
-      // refresh and strand the account on an already-consumed token.
-      refresh: json.refresh_token ?? refreshToken,
-      expires: Date.now() + json.expires_in * 1000,
-      ...(json.id_token ? { idToken: json.id_token } : {}),
-    };
+    return readTokenResponse(response, {
+      mode: "refresh",
+      currentRefreshToken: refreshToken,
+    });
   } catch (error) {
     // error-policy:J1 provider boundary translation — refresh transport and
     // parse failures become the explicit failed token outcome.
     logger.error(`[openai-codex] Token refresh error: ${String(error)}`);
-    return { type: "failed" };
+    return failedTokenResponse("token refresh request failed");
   }
 }
 
