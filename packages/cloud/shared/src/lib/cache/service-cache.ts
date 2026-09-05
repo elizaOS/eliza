@@ -1,56 +1,17 @@
 /**
  * Service-level caching utilities.
  * Provides consistent caching patterns for frequently accessed data.
+ *
+ * Cache keys and TTLs live in `./keys` (`CacheKeys` / `CacheTTL`) and are NOT
+ * redefined here. This module used to export its own `CacheKeys`, which
+ * shadowed that canonical one from the same directory while building
+ * unversioned keys (`org:<id>:credits` against the canonical
+ * `org:<id>:credits:v1`) — so an import that picked the wrong `CacheKeys`
+ * wrote entries `CacheInvalidation` would never evict.
  */
 
 import { logger } from "../utils/logger";
 import { cache } from "./client";
-
-/**
- * Cache TTL configurations for different data types (in seconds).
- */
-export const CACHE_TTL = {
-  USER_PROFILE: 3600, // 1 hour
-  CHARACTER_LIST: 900, // 15 minutes
-  MODEL_PRICING: 86400, // 1 day
-  ORGANIZATION_SETTINGS: 3600, // 1 hour
-  API_KEY: 1800, // 30 minutes
-  CREDIT_BALANCE: 300, // 5 minutes
-  CONTAINER_STATUS: 60, // 1 minute
-  AGENT_STATUS: 120, // 2 minutes
-  STATISTICS: 300, // 5 minutes
-} as const;
-
-/**
- * Stale time configurations (time before background refresh) (in seconds).
- */
-export const CACHE_STALE_TIME = {
-  USER_PROFILE: 1800, // 30 minutes
-  CHARACTER_LIST: 450, // 7.5 minutes
-  MODEL_PRICING: 43200, // 12 hours
-  ORGANIZATION_SETTINGS: 1800, // 30 minutes
-  API_KEY: 900, // 15 minutes
-  CREDIT_BALANCE: 150, // 2.5 minutes
-  CONTAINER_STATUS: 30, // 30 seconds
-  AGENT_STATUS: 60, // 1 minute
-  STATISTICS: 150, // 2.5 minutes
-} as const;
-
-/**
- * Cache key builders for consistent key naming.
- */
-export const CacheKeys = {
-  userProfile: (userId: string) => `user:${userId}:profile`,
-  organizationSettings: (orgId: string) => `org:${orgId}:settings`,
-  characterList: (orgId: string) => `org:${orgId}:characters`,
-  character: (characterId: string) => `character:${characterId}`,
-  modelPricing: (provider?: string) => (provider ? `pricing:${provider}` : "pricing:all"),
-  apiKey: (keyId: string) => `apikey:${keyId}`,
-  creditBalance: (orgId: string) => `org:${orgId}:credits`,
-  containerStatus: (containerId: string) => `container:${containerId}:status`,
-  agentStatus: (agentId: string) => `agent:${agentId}:status`,
-  statistics: (orgId: string, type: string) => `stats:${orgId}:${type}`,
-} as const;
 
 /**
  * Generic caching wrapper for service methods.
