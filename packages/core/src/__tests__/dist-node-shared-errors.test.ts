@@ -93,6 +93,7 @@ describe("dist/node shared errors module identity", () => {
 				provider: "fixture",
 			});
 		} catch (error) {
+			// error-policy:J1 capture the thrown boundary value for host normalization.
 			thrown = error;
 		}
 		expect(thrown).toBeInstanceOf(root.ElizaError);

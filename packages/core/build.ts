@@ -791,9 +791,8 @@ const edgeRuntimeSourcesPlugin: BunPlugin = {
 const nodeExternals = ["dotenv", "sharp", "zod", "@hapi/shot"];
 
 // Runtime targets and public leaves emit independent bundles. With code
-// splitting off, each bundle
-// would inline its own copy of `src/errors.ts`, so an `ElizaError` thrown by a
-// leaf would fail `instanceof` against the root barrel's class. The plugin
+// splitting off, each bundle would inline its own copy of `src/errors.ts`.
+// An `ElizaError` thrown by a leaf would fail the root's `instanceof` check. The plugin
 // keeps every internal import of the errors module external behind a bare
 // sentinel specifier (Bun rewrites resolvable externals inconsistently), and
 // `rewriteSharedErrorsImports` then repoints each emitted bundle at the single
@@ -877,9 +876,7 @@ const sharedConfig = {
 	generateDts: true,
 };
 
-/**
- * Build for Node.js environment
- */
+/** Shares the canonical error artifact across concurrent target builds. */
 const canonicalErrorBuilds = new WeakMap<
 	typeof createBuildRunner,
 	Promise<void>
@@ -916,6 +913,7 @@ function buildCanonicalErrors(
 	return pending;
 }
 
+/** Builds the Node runtime and its public leaf entrypoints. */
 export async function buildNode(
 	runnerFactory: typeof createBuildRunner = createBuildRunner,
 ) {
