@@ -663,11 +663,16 @@ export const Field = brand<FieldProps>("field", function Field(props) {
           id={fieldId}
           aria-label={spec.label ?? spec.agent?.label}
           style={fieldTextStyle}
-          defaultValue={spec.value}
+          defaultValue={spec.value ?? ""}
           disabled={spec.disabled}
           onChange={(e) => props.onChange?.(e.target.value)}
           {...agentDataProps(spec.agent)}
         >
+          {!spec.options?.includes("") && (
+            <option value="" disabled hidden>
+              {spec.placeholder ?? ""}
+            </option>
+          )}
           {(spec.options ?? []).map((option) => (
             <option key={option} value={option}>
               {option}
