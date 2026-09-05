@@ -32,7 +32,7 @@ const EMPTY_RECOVERY = {
   unchanged: 0,
   failures: [],
 };
-const dispatchService = new ProvisioningJobService({
+const defaultDispatchService = new ProvisioningJobService({
   acquireProviderAdmission: async () => true,
   releaseProviderAdmission: async () => {},
 });
@@ -96,7 +96,7 @@ function makeJob(
  */
 function harness(
   job: Job,
-  service = dispatchService,
+  service = defaultDispatchService,
   suspendIntent?: {
     authorization: "user_request" | "billing_request";
     lifecycleRevision: number;
@@ -204,7 +204,7 @@ afterEach(() => {
   for (const s of serviceSpies.splice(0)) s.mockRestore();
 });
 
-async function run(type: string, service = dispatchService) {
+async function run(type: string, service = defaultDispatchService) {
   return service.processPendingJobs(1, {
     jobTypes: [type as ProvisioningJobType],
   });
@@ -1545,7 +1545,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("agent_suspend dispatch recovers the durable revision omitted by a user envelope", async () => {
     const job = makeJob(JOB_TYPES.AGENT_SUSPEND);
-    const ctx = harness(job, dispatchService, {
+    const ctx = harness(job, defaultDispatchService, {
       authorization: "user_request",
       lifecycleRevision: 7,
     });
@@ -1620,7 +1620,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("agent_suspend dispatch honors a billing intent promoted to user authority", async () => {
     const job = makeJob(JOB_TYPES.AGENT_SUSPEND, { authorization: "billing_request" });
-    const ctx = harness(job, dispatchService, {
+    const ctx = harness(job, defaultDispatchService, {
       authorization: "user_request",
       lifecycleRevision: 9,
     });

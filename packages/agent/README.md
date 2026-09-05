@@ -117,6 +117,35 @@ Git branch. Successful results include `provenance` identifying the actual
 metadata are returned when available; unavailable integrity stays `null`, and
 Git installs report the cloned commit.
 
+## Core relationships migration verification
+
+`migrateCoreRelationshipsToKnowledgeGraph` is the explicit, non-destructive
+operator boundary for inventorying the old Core `RelationshipsService`
+persistence for one agent. Run it with a `CoreRelationshipsMigrationDatabase` whose
+transaction callback owns one PostgreSQL-compatible session; the API does not
+accept a free statement executor that could drift across pooled connections.
+The migration locks the source tables before its serializable snapshot, inventories
+and archives the complete source rows, preserves the agent entity as the
+canonical `self` node, projects contacts, identities, typed edges, cadence,
+interactions, retirement state, audit receipts, and merge lineage, then reads
+back every source-to-target receipt.
+
+This is an operator-only maintenance operation. Its `SHARE ROW EXCLUSIVE` locks
+block normal writes to the legacy source tables for the duration of the copy, so
+run it only inside an explicit global maintenance window; it is not safe as an
+online tenant-by-tenant job while uncooperative source writers are active.
+
+Every successful run stops at `verified`; it does not alter source authority,
+reroute callers, install write fences, or delete source rows. Migration-owned
+entities and embedded identities carry deterministic provenance so a replay can
+apply source renames and removals without overwriting unrelated canonical data.
+A target collision, disappeared source record, ambiguous active edge, unreadable
+row, or failed readback rolls the transaction back and refuses verification.
+
+Changing production caller authority requires a separate design that coordinates
+all writers. This verification API intentionally does not provide or imply that
+capability.
+
 ## x402 at a glance
 
 Paid routes set `x402` on a `Route`. The middleware returns **402** with payment options and accepts on-chain proofs, facilitator payment IDs, or standard payment payloads (`PAYMENT-SIGNATURE` / `X-Payment`), then verifies and settles through a facilitator before running the handler.

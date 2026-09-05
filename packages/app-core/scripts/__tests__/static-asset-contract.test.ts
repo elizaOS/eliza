@@ -3,15 +3,22 @@
  * static asset manifest must match a pristine checkout (no implicit artifact
  * sync may be needed to make it green), and the overlay-only assets retired
  * with the eliza-archive sync must not resurface — neither as files nor as
- * references from production source. Runs against the real repository tree
- * and the real generator; no mocks.
+ * references from production source. The manifest case materializes tracked
+ * assets plus the real homepage generator in isolation so parallel builds
+ * cannot expose a half-synchronized public tree.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { validateStaticAssetManifest } from "../lib/static-asset-manifest.mjs";
+import { syncHomepageAssets } from "../../../app/scripts/sync-homepage-assets.mjs";
+import {
+  STATIC_ASSET_MANIFEST_REPO_PATH,
+  validateStaticAssetManifest,
+} from "../lib/static-asset-manifest.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -91,33 +98,75 @@ function isExemptFromReferenceScan(repoRelativePath: string): boolean {
   );
 }
 
+async function materializePristineAssetRoot(): Promise<string> {
+  const fixtureRoot = await mkdtemp(
+    path.join(tmpdir(), "eliza-static-asset-contract-"),
+  );
+  const trackedAssets = execFileSync(
+    "git",
+    [
+      "-C",
+      REPO_ROOT,
+      "ls-files",
+      "-z",
+      "--",
+      "packages/app/public",
+      "packages/homepage/public",
+    ],
+    { encoding: "utf8" },
+  )
+    .split("\0")
+    .filter(Boolean);
+  const fixturePaths = [...trackedAssets, STATIC_ASSET_MANIFEST_REPO_PATH];
+  await Promise.all(
+    fixturePaths.map(async (relativePath) => {
+      const destination = path.join(fixtureRoot, relativePath);
+      await mkdir(path.dirname(destination), { recursive: true });
+      await copyFile(path.join(REPO_ROOT, relativePath), destination);
+    }),
+  );
+  await syncHomepageAssets({
+    sourceRoot: path.join(fixtureRoot, "packages/homepage/public"),
+    destinationRoot: path.join(fixtureRoot, "packages/app/public"),
+  });
+  return fixtureRoot;
+}
+
 describe("static asset manifest contract (#16290)", () => {
-  it("checked-in manifest matches a pristine checkout with no overlay", () => {
-    const result = validateStaticAssetManifest(REPO_ROOT);
-    if (!result.ok) {
-      const expected = JSON.parse(result.expected ?? "{}");
-      const actual = JSON.parse(result.actual ?? "{}");
-      const detail = ["app", "homepage"]
-        .flatMap((tree) => {
-          const onDisk = new Set<string>(expected[tree] ?? []);
-          const inManifest = new Set<string>(actual[tree] ?? []);
-          return [
-            ...[...inManifest]
-              .filter((entry) => !onDisk.has(entry))
-              .map(
-                (entry) => `${tree}: manifest entry missing on disk: ${entry}`,
-              ),
-            ...[...onDisk]
-              .filter((entry) => !inManifest.has(entry))
-              .map((entry) => `${tree}: on disk but not in manifest: ${entry}`),
-          ];
-        })
-        .join("\n");
-      throw new Error(
-        `static asset manifest is ${result.reason}; run node packages/app-core/scripts/generate-static-asset-manifest.mjs\n${detail}`,
-      );
+  it("checked-in manifest matches a pristine checkout with no overlay", async () => {
+    const fixtureRoot = await materializePristineAssetRoot();
+    try {
+      const result = validateStaticAssetManifest(fixtureRoot);
+      if (!result.ok) {
+        const expected = JSON.parse(result.expected ?? "{}");
+        const actual = JSON.parse(result.actual ?? "{}");
+        const detail = ["app", "homepage"]
+          .flatMap((tree) => {
+            const onDisk = new Set<string>(expected[tree] ?? []);
+            const inManifest = new Set<string>(actual[tree] ?? []);
+            return [
+              ...[...inManifest]
+                .filter((entry) => !onDisk.has(entry))
+                .map(
+                  (entry) =>
+                    `${tree}: manifest entry missing on disk: ${entry}`,
+                ),
+              ...[...onDisk]
+                .filter((entry) => !inManifest.has(entry))
+                .map(
+                  (entry) => `${tree}: on disk but not in manifest: ${entry}`,
+                ),
+            ];
+          })
+          .join("\n");
+        throw new Error(
+          `static asset manifest is ${result.reason}; run node packages/app-core/scripts/generate-static-asset-manifest.mjs\n${detail}`,
+        );
+      }
+      expect(result.ok).toBe(true);
+    } finally {
+      await rm(fixtureRoot, { recursive: true, force: true });
     }
-    expect(result.ok).toBe(true);
   });
 
   it("retired overlay assets do not exist in the checkout", () => {

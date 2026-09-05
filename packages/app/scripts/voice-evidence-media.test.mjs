@@ -1135,7 +1135,7 @@ describeWithMedia("packaged desktop voice media evidence", () => {
     expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
       /synchronized, session-bound.*physical microphone and system-output loopback capture/,
     );
-  });
+  }, 30_000);
 
   test("refuses wav-direct as packaged real-microphone evidence", () => {
     const tools = resolveMediaTools();

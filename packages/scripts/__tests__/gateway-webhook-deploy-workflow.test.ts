@@ -501,6 +501,8 @@ describe("protected gateway-webhook deployment workflow", () => {
     expect(source).not.toContain('echo "$RAILWAY_TOKEN"');
   });
 
+  // Each fail-closed matrix executes the real workflow shell once per mutation.
+  // Loaded repository lanes need headroom for those sequential child processes.
   test("requires the complete protected-environment Blooio set", () => {
     for (const target of ["staging", "production"] as const) {
       const complete = verifyRailwayVariableInventory(target);

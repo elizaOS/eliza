@@ -20,10 +20,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fetchMock = vi.fn();
 const openExternalUrlMock = vi.fn();
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   client: {
     fetch: (path: string, init?: RequestInit) => fetchMock(path, init),
   },
+}));
+
+vi.mock("@elizaos/ui", () => ({
   Button: ({
     children,
     unstyled: _unstyled,

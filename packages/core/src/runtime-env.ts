@@ -27,6 +27,7 @@ const WILDCARD_BIND_RE = /^(0\.0\.0\.0|::|0:0:0:0:0:0:0:0)$/i;
 
 const API_BIND_KEYS = ["ELIZA_API_BIND"] as const;
 const API_TOKEN_KEYS = ["ELIZA_API_TOKEN"] as const;
+const LEGACY_SELF_API_TOKEN_KEYS = ["ELIZA_API_AUTH_TOKEN"] as const;
 const API_ALLOWED_ORIGINS_KEYS = [
 	"ELIZA_ALLOWED_ORIGINS",
 	"CORS_ORIGINS",
@@ -34,6 +35,7 @@ const API_ALLOWED_ORIGINS_KEYS = [
 const API_ALLOWED_HOSTS_KEYS = ["ELIZA_ALLOWED_HOSTS"] as const;
 const API_ALLOW_NULL_ORIGIN_KEYS = ["ELIZA_ALLOW_NULL_ORIGIN"] as const;
 const DISABLE_AUTO_API_TOKEN_KEYS = ["ELIZA_DISABLE_AUTO_API_TOKEN"] as const;
+export const API_EXPOSE_PORT_KEYS = ["ELIZA_API_EXPOSE_PORT"] as const;
 const DESKTOP_API_PORT_KEYS = ["ELIZA_API_PORT", "ELIZA_PORT"] as const;
 const DESKTOP_UI_PORT_KEYS = ["ELIZA_UI_PORT"] as const;
 const SINGLE_PROCESS_PORT_KEYS = ["ELIZA_PORT", "ELIZA_UI_PORT"] as const;
@@ -313,13 +315,20 @@ export function resolveUiPort(env: RuntimeEnvRecord = process.env): number {
 	return resolveDesktopUiPort(env);
 }
 
+/** Removes an optional leading `Bearer ` so stored and sent forms compare equal. */
+function stripBearerPrefix(value: string | null | undefined): string | null {
+	if (value == null) return null;
+	const stripped = value.replace(/^Bearer\s+/i, "").trim();
+	return stripped || null;
+}
+
 export function resolveApiSecurityConfig(
 	env: RuntimeEnvRecord = process.env,
 ): ResolvedApiSecurityConfig {
 	const bindHost = firstNonEmpty(env, API_BIND_KEYS) ?? DEFAULT_API_BIND_HOST;
 	return {
 		bindHost,
-		token: firstNonEmpty(env, API_TOKEN_KEYS),
+		token: stripBearerPrefix(firstNonEmpty(env, API_TOKEN_KEYS)),
 		disableAutoApiToken: parseEnabledFlag(env, DISABLE_AUTO_API_TOKEN_KEYS),
 		allowedOrigins: parseCsv(env, API_ALLOWED_ORIGINS_KEYS),
 		allowedHosts: parseCsv(env, API_ALLOWED_HOSTS_KEYS),
@@ -339,6 +348,36 @@ export function resolveApiToken(
 	env: RuntimeEnvRecord = process.env,
 ): string | null {
 	return resolveApiSecurityConfig(env).token;
+}
+
+/** Resolve the normalized credential used for same-process HTTP calls. */
+export function resolveSelfApiCredential(
+	env: RuntimeEnvRecord = process.env,
+): string | null {
+	const token =
+		firstWinningEnvString(env, API_TOKEN_KEYS)?.value ??
+		firstWinningEnvString(env, LEGACY_SELF_API_TOKEN_KEYS)?.value;
+	return stripBearerPrefix(token);
+}
+
+/** Build authorization headers for requests back to the local elizaOS API. */
+export function createSelfApiRequestHeaders(
+	env: RuntimeEnvRecord = process.env,
+): Record<string, string> {
+	const credential = resolveSelfApiCredential(env);
+	return credential ? { Authorization: `Bearer ${credential}` } : {};
+}
+
+/** Whether the API process is running under a development file watcher. */
+export function isDevApiWatchEnabled(
+	env: RuntimeEnvRecord = process.env,
+	execArgv: readonly string[] = process.execArgv,
+): boolean {
+	return (
+		execArgv.includes("--watch") ||
+		env.ELIZA_DESKTOP_API_WATCH === "1" ||
+		env.ELIZA_DEV_SOURCE_WATCH === "1"
+	);
 }
 
 export function resolveConfiguredApiToken(
@@ -389,6 +428,13 @@ export function resolveDisableAutoApiToken(
 	return resolveApiSecurityConfig(env).disableAutoApiToken;
 }
 
+/** Whether a local IPC runtime should also expose its HTTP listener. */
+export function resolveApiExposePort(
+	env: RuntimeEnvRecord = process.env,
+): boolean {
+	return parseEnabledFlag(env, API_EXPOSE_PORT_KEYS);
+}
+
 export function setApiToken(
 	env: RuntimeEnvRecord = process.env,
 	token: string,
@@ -427,15 +473,24 @@ export function syncResolvedApiPort(
 const MOBILE_PLATFORM_VALUES = new Set(["android", "ios"]);
 
 export function isMobilePlatform(env: RuntimeEnvRecord = process.env): boolean {
-	const raw = resolveEnvValue(env, "ELIZA_PLATFORM")?.trim().toLowerCase();
+	const raw = resolvePlatform(env);
 	if (!raw) return false;
 	return MOBILE_PLATFORM_VALUES.has(raw);
 }
 
 export function isAndroidMobile(env: RuntimeEnvRecord = process.env): boolean {
-	return (
-		resolveEnvValue(env, "ELIZA_PLATFORM")?.trim().toLowerCase() === "android"
-	);
+	return resolvePlatform(env) === "android";
+}
+
+export function isIosMobile(env: RuntimeEnvRecord = process.env): boolean {
+	return resolvePlatform(env) === "ios";
+}
+
+/** Resolve the normalized platform through canonical and branded env aliases. */
+export function resolvePlatform(
+	env: RuntimeEnvRecord = process.env,
+): string | undefined {
+	return resolveEnvValue(env, "ELIZA_PLATFORM")?.trim().toLowerCase();
 }
 
 export function resolveElizaRuntimeEnv(

@@ -1,22 +1,22 @@
 /**
- * Relationships plugin registration adds graph CRUD, planner context, schema,
- * and the dashboard viewer over the runtime knowledge graph service.
+ * Relationships plugin registration adds graph CRUD, planner context, a
+ * legacy-schema safety audit, and the dashboard viewer over the runtime-owned
+ * knowledge graph service.
  */
 import type { Plugin } from "@elizaos/core";
 
 import { entityAction } from "./actions/entity.js";
-import * as dbSchema from "./db/index.js";
 import { entityGraphProvider } from "./providers/entity-graph.js";
+import { LegacyRelationshipsSchemaAuditService } from "./services/legacy-schema-audit.js";
 
 export const relationshipsPlugin: Plugin = {
   name: "relationships",
   description:
-    "Relationships viewer + extras over the runtime knowledge graph. Provides the KNOWLEDGE_GRAPH action (create/read/list/log_interaction/set_relationship), the ENTITY_GRAPH planner-context provider, the /relationships viewer, and a drizzle pgSchema('app_relationships'). Identity claims and merges are deterministic authority operations, not agent actions. The graph stores are owned by @elizaos/agent's KnowledgeGraphService; contact orchestration stays in @elizaos/plugin-personal-assistant.",
+    "Relationships viewer + extras over the runtime knowledge graph. Provides the KNOWLEDGE_GRAPH action (create/read/list/log_interaction/set_relationship), the ENTITY_GRAPH planner-context provider, and the /relationships viewer. Identity claims and merges are deterministic authority operations, not agent actions. The graph stores are owned by @elizaos/agent's KnowledgeGraphService; contact orchestration stays in @elizaos/plugin-personal-assistant.",
   dependencies: ["@elizaos/plugin-sql"],
   actions: [entityAction],
   providers: [entityGraphProvider],
-  services: [],
-  schema: dbSchema,
+  services: [LegacyRelationshipsSchemaAuditService],
   views: [
     {
       id: "relationships",

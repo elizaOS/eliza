@@ -50,6 +50,15 @@ describe("CONNECTOR_ENV_MAP", () => {
     expect(CONNECTOR_ENV_MAP.whatsapp.sessionPath).toBe("WHATSAPP_AUTH_DIR");
   });
 
+  it("maps the complete Blooio connector onto plugin-imessage's canonical settings", () => {
+    expect(CONNECTOR_ENV_MAP.blooio).toMatchObject({
+      apiKey: "IMESSAGE_BLOOIO_API_KEY",
+      webhookSecret: "IMESSAGE_BLOOIO_WEBHOOK_SECRET",
+      fromNumber: "IMESSAGE_BLOOIO_FROM_NUMBER",
+      channelId: "IMESSAGE_BLOOIO_CHANNEL_ID",
+    });
+  });
+
   it("does not map any destination env key that isBlockedEnvKey would drop", () => {
     for (const envMap of Object.values(CONNECTOR_ENV_MAP)) {
       for (const envKey of Object.values(envMap)) {
@@ -312,7 +321,13 @@ describe("collectConnectorEnvVars", () => {
       msteams: { appId: "teams-id", appPassword: "teams-pw" },
       mattermost: { botToken: "mm-token", baseUrl: "https://mm.example" },
       googlechat: { serviceAccountKey: "{}" },
-      blooio: { apiKey: "bloo", fromNumber: "+100", webhookPort: 8080 },
+      blooio: {
+        apiKey: "bloo",
+        webhookSecret: "signing-secret",
+        fromNumber: "+100",
+        channelId: "channel-1",
+        webhookPort: 8080,
+      },
     });
 
     expect(env.TELEGRAM_BOT_TOKEN).toBe("tg");
@@ -327,9 +342,26 @@ describe("collectConnectorEnvVars", () => {
     expect(env.MATTERMOST_BOT_TOKEN).toBe("mm-token");
     expect(env.MATTERMOST_BASE_URL).toBe("https://mm.example");
     expect(env.GOOGLE_CHAT_SERVICE_ACCOUNT_KEY).toBe("{}");
+    expect(env.IMESSAGE_TRANSPORT).toBe("blooio");
+    expect(env.IMESSAGE_BLOOIO_API_KEY).toBe("bloo");
+    expect(env.IMESSAGE_BLOOIO_WEBHOOK_SECRET).toBe("signing-secret");
+    expect(env.IMESSAGE_BLOOIO_FROM_NUMBER).toBe("+100");
+    expect(env.IMESSAGE_BLOOIO_CHANNEL_ID).toBe("channel-1");
     expect(env.BLOOIO_API_KEY).toBe("bloo");
+    expect(env.BLOOIO_WEBHOOK_SECRET).toBe("signing-secret");
+    expect(env.BLOOIO_FROM_NUMBER).toBe("+100");
     expect(env.BLOOIO_PHONE_NUMBER).toBe("+100");
     expect(env.BLOOIO_WEBHOOK_PORT).toBe("8080");
+  });
+
+  it("selects the Blooio transport without fabricating absent service settings", () => {
+    const env = connectorEnv({ blooio: { apiKey: "bloo" } });
+
+    expect(env).toEqual({
+      IMESSAGE_TRANSPORT: "blooio",
+      IMESSAGE_BLOOIO_API_KEY: "bloo",
+      BLOOIO_API_KEY: "bloo",
+    });
   });
 
   it("lets WhatsApp sessionPath overwrite authDir, then the first enabled account overwrite both", () => {

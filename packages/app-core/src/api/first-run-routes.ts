@@ -44,6 +44,7 @@ import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
+import { prepareFirstRunConnectors } from "@elizaos/shared/first-run-config";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,
@@ -299,6 +300,14 @@ export async function handleFirstRunRoute(
       });
       return true;
     }
+    const connectorPreparation = prepareFirstRunConnectors(
+      loadElizaConfig(),
+      body,
+    );
+    if (!connectorPreparation.ok) {
+      sendJsonResponse(res, 400, { error: connectorPreparation.error });
+      return true;
+    }
     await extractAndPersistFirstRunApiKey(
       withoutAuthorityOwnedCloudCredential(body, devCloudAuthority),
     );
@@ -367,7 +376,23 @@ export async function handleFirstRunRoute(
 
         capturedCloudApiKey = resolvedCloudApiKey;
       }
+      const currentConnectorPreparation = prepareFirstRunConnectors(
+        config,
+        body,
+      );
+      if (!currentConnectorPreparation.ok) {
+        sendJsonResponse(res, 400, {
+          error: currentConnectorPreparation.error,
+        });
+        return true;
+      }
+      config.connectors = currentConnectorPreparation.connectors;
+      if (Object.keys(currentConnectorPreparation.env).length > 0) {
+        config.env ??= {};
+        Object.assign(config.env, currentConnectorPreparation.env);
+      }
       saveElizaConfig(config);
+      Object.assign(process.env, currentConnectorPreparation.env);
       // Durable first-run mutations preserve unrelated account state, while
       // the live process receives only the launcher-authoritative Cloud view.
       const operationalConfig = devCloudAuthority

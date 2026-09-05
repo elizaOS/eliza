@@ -20,6 +20,7 @@ import { build } from "esbuild";
 import { chromium } from "playwright";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const repoRoot = join(here, "../../../../../..");
 const stylesDir = join(here, "../../../styles");
 const outDir = join(here, "output-permission-priming");
 await mkdir(outDir, { recursive: true });
@@ -106,6 +107,15 @@ module.exports = { ElizaError };
 const stubCore = {
   name: "stub-core",
   setup(b) {
+    b.onResolve(
+      { filter: /^@elizaos\/core\/contracts\/first-run-options$/ },
+      () => ({
+        path: join(
+          repoRoot,
+          "packages/core/src/contracts/first-run-options.ts",
+        ),
+      }),
+    );
     b.onResolve({ filter: /^@elizaos\/core($|\/)/ }, () => ({ path: coreStub }));
   },
 };

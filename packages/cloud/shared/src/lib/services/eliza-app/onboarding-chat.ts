@@ -32,6 +32,7 @@ const ONBOARDING_REQUEST_TIMEOUT_MS = 10_000;
 // for retained session history while keeping a single internal hop within a
 // fixed Worker-memory budget; larger histories must be bounded or paginated.
 const ONBOARDING_RESPONSE_MAX_BYTES = 1024 * 1024;
+const ONBOARDING_BODY_READS_PER_TASK = 1_024;
 const REBUFFERED_RESPONSE_HEADERS = [
   "content-encoding",
   "content-length",
@@ -43,10 +44,25 @@ function onboardingAbortError(message: string, name: "AbortError" | "TimeoutErro
   return new DOMException(message, name);
 }
 
+function cancelUnownedOnboardingResponse(response: Response, reason: unknown): void {
+  // Once buffering locks the body, its reader owns cancellation and release.
+  if (!response.body || response.body.locked) return;
+  try {
+    void response.body.cancel(reason).catch((cause: unknown) => {
+      // error-policy:J6 The selected request failure is already observed by the caller.
+      logger.debug("[onboarding-chat] Failed to cancel an unowned response body", { cause });
+    });
+  } catch (cause) {
+    // error-policy:J6 A synchronous teardown error must not replace the request failure.
+    logger.debug("[onboarding-chat] Failed to cancel an unowned response body", { cause });
+  }
+}
+
 async function bufferOnboardingResponse(
   response: Response,
   signal: AbortSignal,
   throwIfAbortedOrExpired: () => void,
+  checkAfterTaskYield: () => Promise<void>,
 ): Promise<Response> {
   throwIfAbortedOrExpired();
   const rawContentLength = response.headers.get("content-length");
@@ -78,6 +94,7 @@ async function bufferOnboardingResponse(
   // transport-owned backing buffer or grow an unbounded chunk-object list.
   const body = new Uint8Array(ONBOARDING_RESPONSE_MAX_BYTES);
   let receivedBytes = 0;
+  let readsThisTask = 0;
   const cancelBody = (): void => {
     // error-policy:J6 The request already failed; cancellation only releases the response stream.
     reader.cancel(signal.reason).catch((cause: unknown) => {
@@ -89,13 +106,17 @@ async function bufferOnboardingResponse(
   signal.addEventListener("abort", cancelBody, { once: true });
   try {
     while (true) {
-      // An immediately-ready stream can starve the timer queue with an
-      // unbounded microtask chain, especially when chunks are empty. Enforce
-      // the monotonic wall-clock deadline inside the read loop as well.
+      // Check both the elapsed budget and task queue: deployed Worker clocks
+      // can remain frozen while a ready stream produces only microtasks.
       throwIfAbortedOrExpired();
       const next = await reader.read();
       throwIfAbortedOrExpired();
       if (next.done) break;
+      readsThisTask += 1;
+      if (readsThisTask === ONBOARDING_BODY_READS_PER_TASK) {
+        readsThisTask = 0;
+        await checkAfterTaskYield();
+      }
       // Empty fragments do not contribute to the bounded payload. Retaining
       // them would let a hostile stream grow the chunk-object inventory without
       // consuming any of the byte budget.
@@ -213,20 +234,57 @@ export async function onboardingFetch(
     }
   };
 
+  const checkAfterTaskYield = async (): Promise<void> => {
+    throwIfAbortedOrExpired();
+    let yieldTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Let native deadline and caller-abort callbacks run even when the
+      // monotonic clock is fixed; this cadence never limits response content.
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          yieldTimer = setTimeout(resolve, 0);
+        }),
+        abortPromise,
+      ]);
+      throwIfAbortedOrExpired();
+    } finally {
+      clearTimeout(yieldTimer);
+    }
+  };
+
+  let response: Response | undefined;
   try {
     if (controller.signal.aborted) return await abortPromise;
     throwIfAbortedOrExpired();
-    const response = await Promise.race([
-      stub.fetch(input, { ...init, signal: controller.signal }),
-      abortPromise,
-    ]);
+    const pending = stub.fetch(input, { ...init, signal: controller.signal });
+    void pending.then(
+      (lateResponse) => {
+        if (controller.signal.aborted) {
+          cancelUnownedOnboardingResponse(lateResponse, controller.signal.reason);
+        }
+      },
+      () => {
+        // error-policy:J5 The same transport rejection is observed by the race below.
+      },
+    );
+    response = await Promise.race([pending, abortPromise]);
     throwIfAbortedOrExpired();
     const buffered = await Promise.race([
-      bufferOnboardingResponse(response, controller.signal, throwIfAbortedOrExpired),
+      bufferOnboardingResponse(
+        response,
+        controller.signal,
+        throwIfAbortedOrExpired,
+        checkAfterTaskYield,
+      ),
       abortPromise,
     ]);
-    throwIfAbortedOrExpired();
+    // A short or bodyless response may never reach the read-loop cadence.
+    await checkAfterTaskYield();
     return buffered;
+  } catch (error) {
+    // error-policy:J6 Release a body not yet owned by a reader without replacing the selected failure.
+    if (response) cancelUnownedOnboardingResponse(response, error);
+    throw error;
   } finally {
     clearTimeout(timeout);
     init?.signal?.removeEventListener("abort", onCallerAbort);
@@ -1547,9 +1605,8 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
         });
         return "";
       });
-      throw new Error(
-        `memory copy failed (${rememberResponse.status}) ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
-      );
+      const detail = body ? ` ${truncateWellFormed(toWellFormedUnicode(body), 200)}` : "";
+      throw new Error(`memory copy failed (${rememberResponse.status})${detail}`);
     }
 
     return {

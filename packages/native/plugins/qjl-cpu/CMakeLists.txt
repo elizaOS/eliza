@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(qjl_cpu C)
 
+enable_testing()
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -126,6 +128,9 @@ target_compile_options(qjl_int8_smoke PRIVATE -O2 -Wall -Wextra)
 add_executable(qjl_avxvnni_smoke test/qjl_avxvnni_smoke.c)
 target_link_libraries(qjl_avxvnni_smoke PRIVATE qjl m)
 target_compile_options(qjl_avxvnni_smoke PRIVATE -O2 -Wall -Wextra)
+
+add_test(NAME qjl_int8_smoke COMMAND qjl_int8_smoke)
+add_test(NAME qjl_avxvnni_smoke COMMAND qjl_avxvnni_smoke)
 
 # qjl_fork_parity: dlopen the apothic/llama.cpp-1bit-turboquant fork's
 # libggml-cpu.so and assert quantize_row_qjl1_256 produces bit-exact

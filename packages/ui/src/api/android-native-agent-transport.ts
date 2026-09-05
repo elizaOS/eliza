@@ -17,6 +17,7 @@ import {
   type NativeStreamingAgentPlugin,
   supportsNativeStreaming,
 } from "./native-agent-stream";
+import { nativeHttpResultToResponse } from "./native-http-codec";
 import {
   type AgentRequestTransport,
   bodyToString,
@@ -353,33 +354,9 @@ export function createAndroidNativeAgentTransport(
         timeoutMs: context?.timeoutMs,
       });
 
-      return new Response(nativeResponseBody(result), {
-        status: result.status,
-        statusText: result.statusText ?? "",
-        headers: result.headers,
-      });
+      return nativeHttpResultToResponse(result);
     },
   };
-}
-
-/**
- * Reconstruct the response body from the native bridge result. Prefer the
- * lossless `bodyBase64` (raw bytes) so binary payloads survive; fall back to the
- * UTF-8 `body` string when the native side did not supply base64.
- */
-function nativeResponseBody(
-  result: NativeAgentRequestResult,
-): ArrayBuffer | string {
-  const base64 = result.bodyBase64;
-  if (typeof base64 === "string" && base64.length > 0) {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes.buffer;
-  }
-  return result.body ?? "";
 }
 
 function createNativeAgentUnavailableResponse(message: string): Response {

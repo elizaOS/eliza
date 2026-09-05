@@ -31,6 +31,7 @@ import * as pricingActual from "@/lib/pricing";
 import * as languageModelActual from "@/lib/providers/language-model";
 import * as creditsActual from "@/lib/services/credits";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
+import * as admissionActual from "@/lib/services/organization-inference-admission";
 import * as redeemableEarningsActual from "@/lib/services/redeemable-earnings";
 import * as usageActual from "@/lib/services/usage";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
@@ -145,6 +146,7 @@ mock.module("@/lib/services/credits", () => ({
 }));
 
 mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...admissionActual,
   InferenceAdmissionUnavailableError: class extends Error {},
   InferenceAffiliateCacheUnavailableError: class extends Error {},
   InferencePricingCacheUnavailableError: class extends Error {},

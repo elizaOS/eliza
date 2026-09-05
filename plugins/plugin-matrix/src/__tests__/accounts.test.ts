@@ -25,6 +25,14 @@ function runtimeWithSettings(
 }
 
 describe("Matrix account settings", () => {
+  it("preserves case-sensitive account IDs while sharing default selection", () => {
+    const runtime = runtimeWithSettings({
+      MATRIX_ACCOUNTS: JSON.stringify({ TeamBot: { homeserver: "https://matrix.example" } }),
+    });
+    expect(normalizeMatrixAccountId(" TeamBot ")).toBe("TeamBot");
+    expect(resolveDefaultMatrixAccountId(runtime)).toBe("TeamBot");
+  });
+
   it("fails closed for malformed MATRIX_ACCOUNTS JSON", () => {
     const runtime = runtimeWithSettings({
       MATRIX_ACCOUNTS: "{not-json",

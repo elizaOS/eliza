@@ -25,8 +25,8 @@ behind its OWNER/ADMIN role gate.
   cleanup outbox, feed preferences, and Google watch channels are
   calendar-native tables. `calendarPgSchema = pgSchema("app_calendar")` is
   registered via the plugin `schema` field, and `CalendarMigrationService`
-  performs a non-destructive one-time copy of any existing `app_lifeops` rows
-  (the plugin-finances carve pattern: skip if source missing / target non-empty,
+  performs a non-destructive one-time reconciliation of existing `app_lifeops`
+  rows (copy missing keys, fail on same-key drift, verify completeness, and
   never drop the source). Requires `@elizaos/plugin-sql` loaded first. Raw SQL
   must qualify table names with the `app_calendar.` prefix.
 - **Contract types live in `@elizaos/shared/contracts/calendar`** so `@elizaos/ui`

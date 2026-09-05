@@ -31,8 +31,16 @@ const linkVerifiedXOwnerIdentity = mock(async () => {
   callOrder.push("link");
 });
 
+const cacheClientActualModule = await import("@/lib/cache/client");
+
 mock.module("@/lib/cache/client", () => ({
-  cache: { get: cacheGet, del: cacheDel },
+  ...cacheClientActualModule,
+  cache: {
+    get: cacheGet,
+    del: cacheDel,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 mock.module("@/lib/services/twitter-automation", () => ({
   twitterAutomationService: { exchangeOAuth2Token, storeCredentials },

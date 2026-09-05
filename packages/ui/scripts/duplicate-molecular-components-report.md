@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 886 maintained React files. 101 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 887 maintained React files. 101 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -40,7 +40,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `SettingsRow` in `packages/ui/src/components/settings/settings-layout.tsx:298`
 - `ActionListRow` in `packages/ui/src/components/shared/ActionListRow.tsx:115`
 - `ReasoningCell` in `plugins/plugin-task-coordinator/src/orchestrator-reasoning.tsx:96`
-- Fingerprint: `sha256:fd78fc85a90ee454e7e021a6637ca7d81c7d1c48cd9491e96b99f3175784a020`
+- Fingerprint: `sha256:982159e726ae366cad541734d281ae30c74bbff4c06577ae8203a7786d25581c`
 - Decision: **distinct-domain-compositions**. Sidebar and settings rows share atomic controls but own different selection, status, and lifecycle contracts.
 
 ### dialog: button + dialog
@@ -48,7 +48,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `EditSkillModal` in `packages/ui/src/components/pages/skill-detail-panel.tsx:35`
 - `ConfirmDialog` in `packages/ui/src/components/ui/confirm-dialog.tsx:35`
 - `EventEditorDrawer` in `plugins/plugin-calendar/src/components/EventEditorDrawer.tsx:469`
-- Fingerprint: `sha256:947ceb36e16ef7a3aa4c0573a96769b3876c58f6564e858ac1f3bbb636e997ed`
+- Fingerprint: `sha256:7d8e1352a677365c5ff593aa06cecc62fb6ad5b2b4b7f2d6aa195a563c33c0db`
 - Decision: **distinct-domain-compositions**. The three dialogs own unrelated editing, confirmation, and calendar workflows.
 
 ### dialog: button + dialog + input
@@ -56,7 +56,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `SaveCommandModal` in `packages/ui/src/components/chat/SaveCommandModal.tsx:37`
 - `ChatConversationRenameDialog` in `packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx:41`
 - `PromptDialog` in `packages/ui/src/components/ui/confirm-dialog.tsx:95`
-- Fingerprint: `sha256:00ceb89f6fe73868413b0028529b0ad6edf2af5297e2c21084e59cc1026a2e7d`
+- Fingerprint: `sha256:baf8c850cab849f7ceb04e8ad6ff718d448b16337368fe64e9786a51414a8fa5`
 - Decision: **distinct-domain-compositions**. Command persistence, conversation renaming, and generic prompting have different validation, pending, error, and result contracts. Their stable shared behavior already belongs to Dialog, Input, and Button.
 
 ### list: badge + button + card
@@ -64,7 +64,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `CredentialsList` in `packages/ui/src/cloud/organization/credentials-list.tsx:78`
 - `MembersList` in `packages/ui/src/cloud/organization/members-list.tsx:53`
 - `PendingInvitesList` in `packages/ui/src/cloud/organization/pending-invites-list.tsx:42`
-- Fingerprint: `sha256:c31d0df24a1084c39b7dbc6d355666c54d88f8166c02a6a55bba547b6e91f30a`
+- Fingerprint: `sha256:2f31c5b3253f58727078819d94a3f16732986ed376b3fcb759da11ffb6c44d0b`
 - Decision: **distinct-domain-compositions**. The lists share canonical status, action, and surface atoms, but their item identity, loading, selection, and mutation contracts remain domain-specific.
 
 ### panel: button + card + input
@@ -72,47 +72,47 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `MessageSearchPanel` in `packages/ui/src/components/chat/message-search/MessageSearchPanel.tsx:50`
 - `TelegramAccountConnectorPanel` in `packages/ui/src/components/connectors/TelegramAccountConnectorPanel.tsx:72`
 - `DesktopTalkModePanel` in `packages/ui/src/components/settings/VoiceConfigView.tsx:64`
-- Fingerprint: `sha256:f7345abc1428d196ccedee6737be18b6f42af9f022aad9cb9a0d948ad8c6be6d`
+- Fingerprint: `sha256:4a7d6f88b5646c000931d32d3acd7c6fa62ebd23b2506bc7c79785d65f8afb6f`
 - Decision: **distinct-domain-compositions**. These panels use the canonical Card boundary but retain unrelated search, connector, and release workflows.
 
 ### card: badge + button + card + checkbox + dialog + spinner
 
 - `AccountCard` in `packages/ui/src/components/accounts/AccountCard.tsx:174`
 - `ConnectorAccountCard` in `packages/ui/src/components/connectors/ConnectorAccountCard.tsx:163`
-- Fingerprint: `sha256:4250aea273e79d484e15009ef24f27ec2e4ef7ffb9c3a9a50df793e44e46938a`
+- Fingerprint: `sha256:8ea2bedecb10b2882b60f474c9b054d420536fbf591659a331133a4a65f69de4`
 - Decision: **distinct-domain-compositions**. The credential-pool card owns priority ordering, provider usage windows, credential repair, and enabled opacity; the connector card owns selection/default state, capability grants, privacy/purpose, sync identity, and independent busy transitions. Their shared status, editing, controls, and confirmation behavior already comes from canonical atoms, while a shared slot shell would hide distinct state machines without removing domain logic.
 
 ### card: button + input
 
 - `ChoiceWidget` in `packages/ui/src/components/chat/widgets/ChoiceWidget.tsx:60`
 - `ConnectorCardWidget` in `packages/ui/src/components/chat/widgets/connector-card.tsx:83`
-- Fingerprint: `sha256:d117c0f4416d00578f8951dea1438e1314848151b99ba8432591a7f77bb3d93b`
+- Fingerprint: `sha256:c4da956164c8055bbd980c9578833a0ae0360feffa67f09a8357c6c854233dc1`
 - Decision: **distinct-domain-compositions**. Domain purchase, chat choice, and connector cards only coincide at a broad dependency signature.
 
 ### dialog: alert + button + card
 
 - `ContributeCredentialDialog` in `packages/ui/src/cloud/organization/contribute-credential-dialog.tsx:56`
 - `InviteMemberDialog` in `packages/ui/src/cloud/organization/invite-member-dialog.tsx:66`
-- Fingerprint: `sha256:d79bada7a8fe1a7748f1f3ed393b0ad8b5ea866611e2a11e24b9ad1b779b20c6`
+- Fingerprint: `sha256:6691c91cff13e2f52c953d92dbc15729b0939294fd4a3bad4d7609b488acf564`
 - Decision: **distinct-domain-compositions**. The dialogs share canonical feedback and surface atoms while retaining unrelated validation, confirmation, and completion lifecycles.
 
 ### form: button + input
 
 - `TriggerForm` in `packages/ui/src/components/pages/TriggerForm.tsx:231`
 - `TagEditor` in `packages/ui/src/components/ui/tag-editor.tsx:29`
-- Fingerprint: `sha256:ecc864434687a7ce763252d359cad9bdb85db187f1defa060a767d5e5df45290`
+- Fingerprint: `sha256:a5af09ea8b4b36eb029981ec0f59514fa21392631f693ca6c2717be06fb1c171`
 - Decision: **distinct-domain-compositions**. Trigger configuration and tag editing do not share a domain contract or meaningful layout beyond generic form controls.
 
 ### panel: button + input
 
 - `TelegramBotSetupPanel` in `packages/ui/src/components/connectors/TelegramBotSetupPanel.tsx:35`
 - `ReleaseNotesSection` in `packages/ui/src/components/release-center/sections.tsx:241`
-- Fingerprint: `sha256:7c11e8d4a6401f86006252780a6d7d428dc8d5ade6007d697bf320b213c709af`
+- Fingerprint: `sha256:ec039280f3434f35b9ebaf6933da18f63de754b08530e467b553a1bdc32717e9`
 - Decision: **distinct-domain-compositions**. Search, connector setup, and release-note panels have different interaction and state contracts.
 
 ### row: button + card + statusDot
 
 - `ChatConversationItem` in `packages/ui/src/components/composites/chat/chat-conversation-item.tsx:126`
 - `SidebarRailItem` in `packages/ui/src/components/composites/sidebar/sidebar-content.tsx:361`
-- Fingerprint: `sha256:f6d48d195f3dd4ea624645beeb9ab2db5ffd4c892685663a2498a8d0a9bfda91`
+- Fingerprint: `sha256:236a28db5d448c07bc5e53b5a99d01dcce8d13a80262b0781d4adebc69e3cac4`
 - Decision: **distinct-domain-compositions**. Rail rows compose the same atomic status indicator while preserving domain-specific navigation and selection behavior.

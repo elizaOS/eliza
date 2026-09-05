@@ -6,7 +6,7 @@
  * against a mocked runtime and AI SDK — no live API.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 function createRuntime() {
   return {
@@ -123,6 +123,16 @@ const TRAJECTORY_MESSAGES = [
     ],
   },
 ];
+
+// Load the cold dependency graph before a timed behavior can outlive its mocks.
+// Reset module instances so every test still installs and imports its own mocks.
+beforeAll(async () => {
+  try {
+    await import("../models/text");
+  } finally {
+    vi.resetModules();
+  }
+}, 120_000);
 
 afterEach(() => {
   vi.doUnmock("ai");

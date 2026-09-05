@@ -5,6 +5,7 @@
 
 import { beforeEach, expect, mock, test } from "bun:test";
 import { InferenceCredentialRevokedError } from "../inference-credential-revocation";
+import * as organizationInferenceAdmissionActual from "../organization-inference-admission";
 import type { ServiceConfig } from "./types";
 
 const legacyAuth = mock(async () => {
@@ -38,11 +39,19 @@ mock.module("../credits", () => ({
   InsufficientCreditsError: TestInsufficientCreditsError,
 }));
 mock.module("../organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference: admit,
-  InferenceAdmissionUnavailableError: class InferenceAdmissionUnavailableError extends Error {},
 }));
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
-  cache: { get: proxyCacheGet, set: proxyCacheSet },
+  ...cacheClientActualModule,
+  cache: {
+    get: proxyCacheGet,
+    set: proxyCacheSet,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 mock.module("../usage", () => ({
   usageService: { create: mock(async () => undefined) },

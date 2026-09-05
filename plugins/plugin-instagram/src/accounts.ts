@@ -4,10 +4,15 @@
  * JSON map, and `character.settings.instagram` — merging per field. Supplies
  * `InstagramService` the account id list and credentials for each configured account.
  */
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import {
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
+  ElizaError,
+  type IAgentRuntime,
+  selectDefaultConnectorAccountId,
+} from "@elizaos/core";
 import type { InstagramConfig } from "./types";
 
-export const DEFAULT_INSTAGRAM_ACCOUNT_ID = "default";
+export const DEFAULT_INSTAGRAM_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID;
 
 export type InstagramAccountConfig = Partial<InstagramConfig> & {
   accountId?: string;
@@ -153,10 +158,7 @@ export function resolveDefaultInstagramAccountId(runtime: IAgentRuntime): string
     stringSetting(runtime, "INSTAGRAM_ACCOUNT_ID");
   if (requested) return normalizeInstagramAccountId(requested);
 
-  const ids = listInstagramAccountIds(runtime);
-  return ids.includes(DEFAULT_INSTAGRAM_ACCOUNT_ID)
-    ? DEFAULT_INSTAGRAM_ACCOUNT_ID
-    : (ids[0] ?? DEFAULT_INSTAGRAM_ACCOUNT_ID);
+  return selectDefaultConnectorAccountId(listInstagramAccountIds(runtime));
 }
 
 export function readInstagramAccountId(...sources: unknown[]): string | undefined {

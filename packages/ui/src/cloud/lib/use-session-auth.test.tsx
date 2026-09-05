@@ -10,7 +10,7 @@
  * bypass, source precedence, and the re-read listeners.
  */
 
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capacitorState = { isNative: false };
@@ -113,6 +113,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
 });
 

@@ -1,4 +1,7 @@
-// Coordinates cloud service market data behavior behind route handlers.
+/**
+ * Translates provider-neutral market-data methods into priced Birdeye proxy
+ * requests while retaining provider response and retry semantics.
+ */
 import { logger } from "../../../utils/logger";
 import { getProxyConfig } from "../config";
 import { retryFetch } from "../fetch";
@@ -143,6 +146,7 @@ export async function executeMarketDataProviderRequest({
       timeoutMs: getProxyConfig().MARKET_DATA_TIMEOUT_MS,
       serviceTag: "Market Data",
       nonRetriableStatuses: [400, 404],
+      replayPolicy: "safe",
     });
 
     if (!response.ok) {

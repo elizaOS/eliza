@@ -176,6 +176,33 @@ describe("workspacePackageNeedsRuntimeBuild", () => {
 
     expect(workspacePackageNeedsRuntimeBuild(packageJsonPath)).toBe(true);
   });
+
+  it("ignores development-only source exports when runtime dist exists", () => {
+    const packageJsonPath = writeManifest("@elizaos/ui", {
+      exports: {
+        "./native-select": {
+          types: "./dist/components/ui/native-select.d.ts",
+          "eliza-source": {
+            types: "./src/components/ui/native-select.tsx",
+            import: "./src/components/ui/native-select.tsx",
+            default: "./src/components/ui/native-select.tsx",
+          },
+          import: "./dist/components/ui/native-select.js",
+          default: "./dist/components/ui/native-select.js",
+        },
+      },
+    });
+    const packageDir = path.dirname(packageJsonPath);
+    mkdirSync(path.join(packageDir, "dist", "components", "ui"), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(packageDir, "dist", "components", "ui", "native-select.js"),
+      "export const NativeSelect = {};\n",
+    );
+
+    expect(workspacePackageNeedsRuntimeBuild(packageJsonPath)).toBe(false);
+  });
 });
 
 describe("shouldKeepPackageRelativePath", () => {

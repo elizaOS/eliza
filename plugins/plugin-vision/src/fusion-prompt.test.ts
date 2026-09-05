@@ -100,7 +100,7 @@ describe("buildSceneDescriptionPrompt — detector fusion", () => {
     expect(payload.detectedObjects.at(-1)?.type).toBe("type-0");
   });
 
-  it("dedupes faces by label without dropping unique faces", () => {
+  it("dedupes faces by label without dropping distinct people", () => {
     const faces: RecognizedFace[] = [
       { label: "Alice", bbox: bbox(0, 0) },
       { label: "Alice", bbox: bbox(1, 1) },
@@ -120,6 +120,7 @@ describe("buildSceneDescriptionPrompt — detector fusion", () => {
     expect(labels.filter((l) => l === "Alice")).toHaveLength(1);
     expect(labels[0]).toBe("Alice");
     expect(labels.at(-1)).toBe("Person-14");
+    expect(labels).toContain("Person-14");
   });
 
   it("skips blank face labels", () => {

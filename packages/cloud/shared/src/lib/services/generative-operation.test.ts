@@ -1,6 +1,7 @@
 /** Deterministic unit coverage for paid-provider admission and dispatch ordering. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as organizationInferenceAdmissionActual from "./organization-inference-admission";
 
 const events: string[] = [];
 const settledCosts: number[] = [];
@@ -28,6 +29,7 @@ const admitOrganizationInference = mock(async () => {
 });
 
 mock.module("./organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference,
 }));
 

@@ -3,6 +3,7 @@
  * circadian state and the owner's personal baseline, so reminders and check-ins
  * can be scheduled against "after you wake" rather than a fixed clock time.
  */
+
 import type {
   LifeOpsAwakeProbability,
   LifeOpsCircadianState,
@@ -13,13 +14,13 @@ import type {
   LifeOpsScheduleInsight,
   LifeOpsScheduleRegularity,
 } from "@elizaos/shared";
+import { parseIsoMs, roundConfidence } from "./time-util.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
   formatInstantAsRfc3339InTimeZone,
   getZonedDateParts,
 } from "./time.js";
-import { parseIsoMs, roundConfidence } from "./time-util.js";
 
 type RelativeTimeScheduleFields = Pick<
   LifeOpsScheduleInsight,

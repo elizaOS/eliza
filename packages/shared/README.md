@@ -4,7 +4,7 @@ Shared cross-platform contract library for [elizaOS](https://github.com/elizaOS/
 
 ## What it is
 
-`@elizaos/shared` is the lowest-level internal library in the elizaOS monorepo that can be safely imported by both server-side (Node.js/Bun) and browser/React code. It contains:
+`@elizaos/shared` is the cross-host compatibility and utility library in the elizaOS monorepo. It can be safely imported by both server-side (Node.js/Bun) and browser/React code, and may depend on browser/edge-safe `@elizaos/core` exports while preserving established shared import paths. It contains:
 
 - **HTTP API contracts** — typed request/response shapes for every agent API route
 - **Configuration schema** — `ElizaConfig` and ~150 named sub-types covering agents, connectors, gateway, models, memory, TTS, auth, and more

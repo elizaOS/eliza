@@ -10,7 +10,10 @@ import {
   MAX_CHAT_MEDIA_RAW_BYTES,
   MAX_CHAT_UPLOAD_ATTACHMENTS,
 } from "@elizaos/shared";
-import type { ImageAttachment } from "../api/client-types-chat";
+import type {
+  ImageAttachment,
+  TransientClientMediaInput,
+} from "../api/client-types-chat";
 
 /**
  * Per-message attachment count cap. Sourced from the SAME shared constant the
@@ -346,7 +349,9 @@ function readFileAsBase64(file: File): Promise<string> {
  * non-allowlisted subtype), attach a thumbnail when worthwhile, and clamp the
  * name to the server's length cap so no field of the payload can 400.
  */
-async function fileToChatAttachment(file: File): Promise<ImageAttachment> {
+async function fileToChatAttachment(
+  file: File,
+): Promise<TransientClientMediaInput> {
   let data = await readFileAsBase64(file);
   let mimeType = file.type;
   if (imageNeedsReencode(file.type, data.length)) {
@@ -383,7 +388,7 @@ async function fileToChatAttachment(file: File): Promise<ImageAttachment> {
  */
 export function filesToImageAttachments(
   files: FileList | File[],
-): Promise<ImageAttachment[]> {
+): Promise<TransientClientMediaInput[]> {
   const supported = Array.from(files).filter(isSupportedChatUpload);
   // Enforce byte caps centrally so every caller (composer + continuous chat
   // overlay) drops oversized files rather than shipping them to the server.
@@ -396,7 +401,7 @@ export function filesToImageAttachments(
 
 /** Result of {@link intakeAttachmentFiles}: the read attachments plus drops. */
 export interface AttachmentIntakeResult {
-  attachments: ImageAttachment[];
+  attachments: TransientClientMediaInput[];
   droppedTooLarge: DroppedFile[];
   droppedOverCount: DroppedFile[];
 }

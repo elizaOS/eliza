@@ -1,9 +1,8 @@
 /**
- * Bundles the tsc output (`dist/esm/index.js`) into a browser IIFE
- * (`dist/plugin.js`, global `capacitorAgent`) and a CJS build
- * (`dist/plugin.cjs.js`) for the Capacitor plugin registry and `require()`
- * consumers; `@capacitor/core` is left external for both targets.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
+
 export default {
   input: "dist/esm/index.js",
   output: [
@@ -11,9 +10,7 @@ export default {
       file: "dist/plugin.js",
       format: "iife",
       name: "capacitorAgent",
-      globals: {
-        "@capacitor/core": "capacitorExports",
-      },
+      globals: { "@capacitor/core": "capacitorExports" },
       sourcemap: true,
       inlineDynamicImports: true,
     },

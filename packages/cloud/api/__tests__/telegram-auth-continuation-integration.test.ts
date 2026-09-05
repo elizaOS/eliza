@@ -15,10 +15,17 @@ const noProvisioning = {
   sandbox: null,
 };
 
+const cacheClientActualModule = await import(
+  "../../shared/src/lib/cache/client"
+);
+
 mock.module("../../shared/src/lib/cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: mock(async () => null),
     set: mock(async () => undefined),
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

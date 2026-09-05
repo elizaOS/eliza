@@ -132,7 +132,7 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     });
   }
 
-  it("preserves every normalized OCR line in the prompt", async () => {
+  it("preserves every distinct OCR line in the model prompt", async () => {
     const { runtime, useModel } = createRuntime({
       imageDescriptionResult: { description: "A long list." },
     });
@@ -140,6 +140,7 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     const fullScreenOCR = Array.from({ length: 60 }, (_, i) => `row ${i}`).join(
       "\n",
     );
+    // Model-facing OCR must remain complete rather than imposing a line cap.
     sceneWithOcr(service, fullScreenOCR);
     const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
       imageUrl: string,
@@ -158,7 +159,7 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     expect(prompt.detectedText).toBe(fullScreenOCR);
   });
 
-  it("preserves long OCR text in the prompt", async () => {
+  it("preserves OCR text beyond the retired character budget", async () => {
     const { runtime, useModel } = createRuntime({
       imageDescriptionResult: { description: "A wall of text." },
     });
@@ -166,6 +167,8 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     const fullScreenOCR = [0, 1, 2]
       .map((i) => `${i} ${"x".repeat(1000)}`)
       .join("\n");
+    // Three distinct ~1000-char lines prove the retired 2000-character cap is
+    // not reintroduced on the model-facing path.
     sceneWithOcr(service, fullScreenOCR);
     const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
       imageUrl: string,

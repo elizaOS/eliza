@@ -33,11 +33,16 @@ const cacheSet = mock(async (_key: string, user: typeof existingUser) => {
   cachedSessionUser = user;
 });
 
+const cacheClientActualModule = await import("./cache/client");
+
 mock.module("./cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: async () => cachedSessionUser,
     set: cacheSet,
     del: async () => undefined,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 mock.module("./auth/steward-client", () => ({

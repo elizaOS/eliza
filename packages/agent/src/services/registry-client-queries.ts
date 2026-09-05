@@ -6,6 +6,8 @@
  * hero-image URL resolution), app entries, and plugin list items. No I/O; every
  * input is an already-loaded registry map.
  */
+
+import { searchRegistryEntries } from "@elizaos/registry";
 import {
   hasAppInterface,
   packageNameToAppDisplayName,
@@ -84,50 +86,13 @@ export function scoreEntries<T extends RegistryPluginInfo>(
   extraNames?: (p: T) => string[],
   extraTerms?: (p: T) => string[],
 ): Array<{ p: T; s: number }> {
-  const lq = query.toLowerCase();
-  const terms = lq.split(/\s+/).filter((t) => t.length > 1);
-  const scored: Array<{ p: T; s: number }> = [];
-
-  for (const p of entries) {
-    const ln = p.name.toLowerCase();
-    const ld = p.description.toLowerCase();
-    const aliases = extraNames?.(p) ?? [];
-    let s = 0;
-
-    if (ln === lq || ln === `@elizaos/${lq}` || aliases.some((a) => a === lq))
-      s += 100;
-    else if (ln.includes(lq) || aliases.some((a) => a.includes(lq))) s += 50;
-    if (ld.includes(lq)) s += 30;
-    for (const t of p.topics) if (t.toLowerCase().includes(lq)) s += 25;
-    for (const t of extraTerms?.(p) ?? [])
-      if (t.toLowerCase().includes(lq)) s += 25;
-    for (const term of terms) {
-      if (ln.includes(term) || aliases.some((a) => a.includes(term))) s += 15;
-      if (ld.includes(term)) s += 10;
-      for (const t of p.topics) if (t.toLowerCase().includes(term)) s += 8;
-    }
-    if (s > 0) {
-      if (p.stars > 100) s += 3;
-      if (p.stars > 500) s += 3;
-      if (p.stars > 1000) s += 4;
-      scored.push({ p, s });
-    }
-  }
-
-  scored.sort((a, b) => {
-    const bS = typeof b.s === "number" && Number.isFinite(b.s) ? b.s : 0;
-    const aS = typeof a.s === "number" && Number.isFinite(a.s) ? a.s : 0;
-    const bStars =
-      typeof b.p.stars === "number" && Number.isFinite(b.p.stars)
-        ? b.p.stars
-        : 0;
-    const aStars =
-      typeof a.p.stars === "number" && Number.isFinite(a.p.stars)
-        ? a.p.stars
-        : 0;
-    return bS - aS || bStars - aStars || a.p.name.localeCompare(b.p.name);
-  });
-  return scored.slice(0, limit);
+  return searchRegistryEntries(
+    entries,
+    query,
+    limit,
+    extraNames,
+    extraTerms,
+  ).map(({ entry, score }) => ({ p: entry, s: score }));
 }
 
 export function toSearchResults<T extends RegistryPluginInfo>(

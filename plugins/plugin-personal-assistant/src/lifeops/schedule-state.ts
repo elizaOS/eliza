@@ -27,13 +27,13 @@ import {
 } from "@elizaos/shared";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
 import type { LifeOpsScheduleInsightRecord } from "./repository.js";
+import { parseIsoMs, roundConfidence } from "./time-util.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
   getLocalDateKey,
   getZonedDateParts,
 } from "./time.js";
-import { parseIsoMs, roundConfidence } from "./time-util.js";
 
 export const SCHEDULE_OBSERVATION_BUCKET_MINUTES = 30;
 export const SCHEDULE_OBSERVATION_LOOKBACK_MS = 48 * 60 * 60 * 1_000;

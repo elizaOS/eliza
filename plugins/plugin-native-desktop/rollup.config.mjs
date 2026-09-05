@@ -1,13 +1,8 @@
 /**
- * Bundles the tsc-compiled Desktop Capacitor plugin (`dist/esm/index.js`) into
- * the two artifact formats Capacitor consumers load: an IIFE for direct
- * `<script>` inclusion (`dist/plugin.js`) and CJS for bundler/Node consumption
- * (`dist/plugin.cjs.js`). `@capacitor/core` stays external so host apps supply
- * their own copy rather than bundling a second one.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
 import nodeResolve from "@rollup/plugin-node-resolve";
-
-const external = ["@capacitor/core"];
 
 export default [
   {
@@ -17,9 +12,7 @@ export default [
         file: "dist/plugin.js",
         format: "iife",
         name: "capacitorDesktop",
-        globals: {
-          "@capacitor/core": "capacitorExports",
-        },
+        globals: { "@capacitor/core": "capacitorExports" },
         sourcemap: true,
         inlineDynamicImports: true,
       },
@@ -30,7 +23,7 @@ export default [
         inlineDynamicImports: true,
       },
     ],
-    external,
+    external: ["@capacitor/core"],
     plugins: [nodeResolve()],
   },
 ];

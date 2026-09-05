@@ -1,11 +1,8 @@
 /**
- * Rollup config bundling the compiled `dist/esm/index.js` into the browser
- * IIFE (`dist/plugin.js`) and CommonJS (`dist/plugin.cjs.js`) distributables;
- * `@capacitor/core` is left external for the host app to resolve.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
 import nodeResolve from "@rollup/plugin-node-resolve";
-
-const external = ["@capacitor/core"];
 
 export default [
   {
@@ -15,9 +12,7 @@ export default [
         file: "dist/plugin.js",
         format: "iife",
         name: "capacitorElizaCamera",
-        globals: {
-          "@capacitor/core": "capacitorExports",
-        },
+        globals: { "@capacitor/core": "capacitorExports" },
         sourcemap: true,
         inlineDynamicImports: true,
       },
@@ -28,7 +23,7 @@ export default [
         inlineDynamicImports: true,
       },
     ],
-    external,
+    external: ["@capacitor/core"],
     plugins: [nodeResolve()],
   },
 ];

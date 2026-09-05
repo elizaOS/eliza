@@ -15,7 +15,7 @@ import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
+} from "@elizaos/agent/services/knowledge-graph";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

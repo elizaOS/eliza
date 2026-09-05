@@ -94,7 +94,10 @@ describe("GitHub bug-report title bound", () => {
   });
 
   it("keeps the posted title (prefix included) within 80 chars", async () => {
-    const description = "crash on startup ".repeat(10);
+    const description =
+      "Application window freezes after opening settings and returning to chat. ".repeat(
+        3,
+      );
     const { title } = await postBugReport(description);
 
     expect(title.startsWith("[Bug] ")).toBe(true);

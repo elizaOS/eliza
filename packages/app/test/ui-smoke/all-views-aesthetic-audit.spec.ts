@@ -8,6 +8,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
+  type AuditOcrControls,
+  bindAuditOcrControls,
+} from "../../scripts/lib/audit-capture-manifest";
+import {
   type AestheticMetricBudget,
   computeVerdict,
   evaluateAestheticMetricBudget,
@@ -332,6 +336,7 @@ interface ViewFinding {
   slug: string;
   viewport: string;
   path: string;
+  ocrControls: AuditOcrControls;
   consoleErrors: string[];
   /** User-visible loading persistence, overlap, or composer legibility failures. */
   renderStateIssues: string[];
@@ -2123,6 +2128,20 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             viewRoot.getByText("Connected", { exact: true }),
           ).toHaveCount(0);
         }
+        if (view.id === "calendar") {
+          await expect(
+            page
+              .getByRole("heading", { name: "Calendar", exact: true })
+              .filter({ visible: true }),
+            "Calendar owns its fullscreen header; the dynamic host must not add a second one",
+          ).toHaveCount(1);
+        }
+        if (view.id === "cloud") {
+          await expect(
+            page.getByTestId("view-header").filter({ visible: true }),
+            "The dynamic Cloud body must leave its normal header to the host",
+          ).toHaveCount(1);
+        }
         await settleHomeEntrance(page);
         const { readableChars, semanticReady, overlayPresent } = paint;
         const renderStateIssues = [
@@ -2157,6 +2176,36 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         // re-sample a few times so a momentarily-unpainted frame is not recorded
         // as a one-color "broken".
         const restPath = path.join(shotDir, `${view.slug}.png`);
+        const measureControls = () =>
+          page.evaluate(() => ({
+            width: window.innerWidth,
+            height: window.innerHeight,
+            rectangles: Array.from(
+              document.querySelectorAll(
+                'button, a[href], [role="button"], input[type="button"], input[type="submit"]',
+              ),
+            ).flatMap((element) => {
+              const style = getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              if (
+                style.display === "none" ||
+                style.visibility === "hidden" ||
+                Number(style.opacity) === 0 ||
+                rect.width <= 0 ||
+                rect.height <= 0
+              )
+                return [];
+              return [
+                {
+                  left: rect.left,
+                  top: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                },
+              ];
+            }),
+          }));
+        let controlGeometry = await measureControls();
         let buffer = await page.screenshot({ path: restPath, fullPage: false });
         let quality = await analyzeScreenshot(buffer).catch(() => null);
         for (
@@ -2165,12 +2214,14 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           attempt += 1
         ) {
           await page.waitForTimeout(800);
+          controlGeometry = await measureControls();
           buffer = await page.screenshot({ path: restPath, fullPage: false });
           quality = await analyzeScreenshot(buffer).catch(() => null);
         }
         const qualityIssues = quality
           ? screenshotQualityIssues(`${view.slug} ${vp.name}`, quality)
           : [];
+        const ocrControls = await bindAuditOcrControls(buffer, controlGeometry);
 
         const blueColors = await collectBlueColors(page).catch(() => []);
         const { violations: hoverViolations, hoverFailures } =
@@ -2219,6 +2270,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           slug: view.slug,
           viewport: vp.name,
           path: view.path,
+          ocrControls,
           viewType: view.viewType,
           bundleProvenance:
             bundleResponse?.headers()["x-eliza-view-bundle-provenance"],

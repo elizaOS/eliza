@@ -828,6 +828,7 @@
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/logger": "workspace:*",
         "@elizaos/prompts": "workspace:*",
+        "@elizaos/registry": "workspace:*",
         "@noble/ciphers": "2.2.0",
         "@noble/hashes": "2.2.0",
         "@openrouter/ai-sdk-provider": "^2.0.0",
@@ -1076,8 +1077,10 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/registry": "workspace:*",
+        "ajv": "^8.20.0",
         "chalk": "^6.0.0",
         "drizzle-orm": "0.45.2",
+        "json5": "^2.2.3",
         "react": "^19.0.0",
         "yaml": "^2.8.2",
         "zod": "^4.4.3",
@@ -1449,6 +1452,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@elizaos/vault": "workspace:*",
         "drizzle-orm": "0.45.2",
       },
@@ -2242,6 +2246,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.7.0",
         "ajv": "^8.17.1",
         "json5": "^2.2.3",
@@ -3295,6 +3300,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "jimp": "^1.6.0",
         "sharp": "^0.35.3",
       },

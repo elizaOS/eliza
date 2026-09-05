@@ -379,9 +379,23 @@ jobs:
           trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
           docker run --rm --detach --name "$container" \
             --env POSTGRES_HOST_AUTH_METHOD=trust --publish 5432:5432 postgres:16-alpine
-          # The image's temporary initialization server accepts Unix sockets
-          # before restarting. Wait for TCP, which the test uses.
-          until docker exec "$container" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; do
+          for attempt in $(seq 1 60); do
+            if [ "$(docker inspect --format '{{.State.Running}}' "$container")" != "true" ]; then
+              docker logs "$container"
+              echo "::error::PostgreSQL container exited before becoming ready."
+              exit 1
+            fi
+            # The image's initialization server accepts socket connections before
+            # it restarts into the published TCP server. Wait on TCP so the test
+            # cannot connect during that intentional restart window.
+            if docker exec "$container" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              docker logs "$container"
+              echo "::error::PostgreSQL did not become ready on TCP within 60 seconds."
+              exit 1
+            fi
             sleep 1
           done
           bun test --config=/dev/null --isolate \

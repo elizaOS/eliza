@@ -70,16 +70,16 @@ describe("task-agent adapter defaults", () => {
   });
 
   it("lets BENCHMARK_TASK_AGENT override the normal default for matrix runs", () => {
-    process.env.BENCHMARK_TASK_AGENT = "codex";
+    process.env.BENCHMARK_TASK_AGENT = "grok";
     process.env.ELIZA_ACP_DEFAULT_AGENT = "elizaos";
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "pi-agent";
     process.env.ELIZA_AGENT_SELECTION_STRATEGY = "fixed";
 
-    expect(resolvePinnedAdapter(undefined)).toBe("codex");
+    expect(resolvePinnedAdapter(undefined)).toBe("grok");
   });
 
   it("does not pin an adapter when selection strategy is dynamic", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "codex";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "grok";
     process.env.ELIZA_AGENT_SELECTION_STRATEGY = "dynamic";
 
     expect(resolvePinnedAdapter(undefined)).toBeUndefined();
@@ -367,8 +367,8 @@ describe("resolvePinnedAdapter", () => {
   });
 
   it("returns the configured adapter when default + fixed strategy", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "codex";
-    expect(resolvePinnedAdapter(undefined)).toBe("codex");
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "grok";
+    expect(resolvePinnedAdapter(undefined)).toBe("grok");
   });
 
   it("defaults to fixed strategy when the env var is unset", () => {
@@ -377,7 +377,7 @@ describe("resolvePinnedAdapter", () => {
   });
 
   it("returns undefined when strategy is non-fixed", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "codex";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "grok";
     process.env.ELIZA_AGENT_SELECTION_STRATEGY = "ranked";
     expect(resolvePinnedAdapter(undefined)).toBeUndefined();
   });
@@ -388,7 +388,7 @@ describe("resolvePinnedAdapter", () => {
   });
 
   it("normalises case", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "CODEX";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "CoDeX";
     expect(resolvePinnedAdapter(undefined)).toBe("codex");
   });
 });

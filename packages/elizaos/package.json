@@ -24,6 +24,8 @@
   ],
   "scripts": {
     "build": "bun run build.ts",
+    "generate:system-files": "node ../../packages/scripts/check-generated-system-files.mjs --write",
+    "check:system-files": "node ../../packages/scripts/check-generated-system-files.mjs",
     "clean": "node ../scripts/rm-path-recursive.mjs dist .turbo",
     "dev": "bun run build.ts --watch",
     "lint": "bunx @biomejs/biome check --write README.md build.ts package.json scripts src templates-manifest.json templates/min-plugin templates/min-project templates/project/.env.example templates/project/.gitignore templates/project/README.md templates/project/bunfig.toml templates/project/package.json templates/project/scripts templates/project/template.json templates/project/test tsconfig.json vitest.config.ts && cd templates/plugin && bunx @biomejs/biome check --write --unsafe . --config-path ./biome.json --vcs-enabled=false && cd ../project/apps/app && bunx @biomejs/biome check --write --unsafe . --config-path ./biome.json --vcs-enabled=false",

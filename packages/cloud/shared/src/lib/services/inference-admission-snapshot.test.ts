@@ -20,8 +20,16 @@ const cacheGet = mock(async () => cached);
 const cacheSet = mock(async (_key: string, value: typeof snapshot) => {
   cached = value;
 });
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
-  cache: { get: cacheGet, set: cacheSet },
+  ...cacheClientActualModule,
+  cache: {
+    get: cacheGet,
+    set: cacheSet,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 
 const getOrganizationBalanceSnapshot = mock(async () => ({

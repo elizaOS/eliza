@@ -344,7 +344,7 @@ describe("handleCloudAndCoreRouteGroup", () => {
     expect(pluginState).not.toHaveProperty("createTelemetrySpan");
   });
 
-  it("blocks the real disconnect handler under immutable staging authority", async () => {
+  it("rejects the real disconnect handler without mutating launcher-owned staging authority", async () => {
     for (const [key, value] of Object.entries(process.env)) {
       if (key.startsWith("ELIZAOS_CLOUD_") && value !== undefined) {
         vi.stubEnv(key, value);
@@ -385,9 +385,14 @@ describe("handleCloudAndCoreRouteGroup", () => {
     expect(args.res.statusCode).toBe(409);
     expect(saveConfig).not.toHaveBeenCalled();
     expect(args.state.config).toBe(durableConfig);
-    expect(durableConfig.cloud).toMatchObject({
-      apiKey: "persisted-prod-key",
-      serviceKey: "persisted-prod-service-key",
+    expect(durableConfig).toEqual({
+      keep: "durable",
+      cloud: {
+        enabled: true,
+        baseUrl: "https://api.eliza.app/api/v1",
+        apiKey: "persisted-prod-key",
+        serviceKey: "persisted-prod-service-key",
+      },
     });
   });
 

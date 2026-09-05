@@ -112,8 +112,25 @@ const ATOM_BY_NAME = new Map(
 const relative = (file) =>
   path.relative(repoRoot, file).replaceAll(path.sep, "/");
 
+const GENERATED_STATE_ROOTS = [
+  /^packages\/[^/]+\/\.vite(?:\/|$)/,
+  /^(?:packages|plugins)\/[^/]+\/\.eliza(?:\/|$)/,
+];
+
+export function compareCodePoints(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+export function isIgnoredGeneratedSourcePath(file) {
+  const normalized = file.replaceAll(path.sep, "/");
+  return GENERATED_STATE_ROOTS.some((pattern) => pattern.test(normalized));
+}
+
 export function isMaintainedSource(file) {
   const rel = relative(file);
+  if (isIgnoredGeneratedSourcePath(rel)) return false;
   const maintained =
     /^(packages|plugins)\//.test(rel) &&
     /\.[jt]sx?$/.test(rel) &&
@@ -138,6 +155,7 @@ export function isMaintainedSource(file) {
 
 function* walk(directory) {
   if (!fs.existsSync(directory)) return;
+  if (isIgnoredGeneratedSourcePath(relative(directory))) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     if (["node_modules", "dist", "build", ".git"].includes(entry.name))
       continue;
@@ -207,7 +225,7 @@ function jsxTags(node) {
     ts.forEachChild(current, visit);
   }
   visit(node);
-  return [...tags].sort();
+  return [...tags].sort(compareCodePoints);
 }
 
 function importsByLocalName(sourceFile) {
@@ -329,14 +347,14 @@ function atomicDependencies(tags, imports, file) {
       if (definition.rawHosts.includes(tag)) dependencies.add(atom);
     }
   }
-  return [...dependencies].sort();
+  return [...dependencies].sort(compareCodePoints);
 }
 
 export function buildInventory() {
   const files = [
     ...walk(path.join(repoRoot, "packages")),
     ...walk(path.join(repoRoot, "plugins")),
-  ].sort();
+  ].sort(compareCodePoints);
   const candidates = [];
   const exportedComponents = [];
   const rawHostUsage = Object.fromEntries(
@@ -431,9 +449,9 @@ export function buildInventory() {
 
   candidates.sort(
     (a, b) =>
-      a.atom.localeCompare(b.atom) ||
-      a.classification.localeCompare(b.classification) ||
-      a.file.localeCompare(b.file) ||
+      compareCodePoints(a.atom, b.atom) ||
+      compareCodePoints(a.classification, b.classification) ||
+      compareCodePoints(a.file, b.file) ||
       a.line - b.line,
   );
   for (const candidate of candidates) {
@@ -460,9 +478,9 @@ export function buildInventory() {
     scannedFiles: files.length,
     components: exportedComponents.sort(
       (a, b) =>
-        a.file.localeCompare(b.file) ||
+        compareCodePoints(a.file, b.file) ||
         a.line - b.line ||
-        a.name.localeCompare(b.name),
+        compareCodePoints(a.name, b.name),
     ),
     atoms,
     summary: {

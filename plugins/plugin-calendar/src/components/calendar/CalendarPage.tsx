@@ -5,7 +5,7 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { ViewHeader } from "@elizaos/ui/components";
+import { PluginPageFrame } from "@elizaos/ui/components";
 import type { JSX } from "react";
 import { useCallback, useState } from "react";
 import { CalendarSection } from "../CalendarSection.tsx";
@@ -18,10 +18,9 @@ export function CalendarPage(): JSX.Element {
   );
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden pt-[var(--safe-area-top,0px)]">
-      <ViewHeader title="Calendar" />
+    <PluginPageFrame title="Calendar" safeAreaTop>
       <div
-        className="min-h-0 min-w-0 flex-1 overflow-auto px-3 py-3 sm:px-5 sm:py-4"
+        className="h-full min-h-0 min-w-0 overflow-auto px-3 py-3 sm:px-5 sm:py-4"
         data-scroll-cert-scroller
       >
         <CalendarSection
@@ -30,6 +29,6 @@ export function CalendarPage(): JSX.Element {
           getPrimedEvent={getPrimedEvent}
         />
       </div>
-    </div>
+    </PluginPageFrame>
   );
 }

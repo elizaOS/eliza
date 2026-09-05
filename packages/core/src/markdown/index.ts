@@ -15,8 +15,13 @@ export {
 	parseFenceSpans,
 } from "./fences.js";
 export {
+	DEFAULT_FRONTMATTER_MAX_DEPTH,
+	type FrontmatterDocumentResult,
+	type FrontmatterParseErrorCode,
 	type ParsedFrontmatter,
+	type ParseFrontmatterDocumentOptions,
 	parseFrontmatterBlock,
+	parseFrontmatterDocument,
 } from "./frontmatter.js";
 
 export {

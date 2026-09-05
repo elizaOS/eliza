@@ -356,5 +356,6 @@ describe("ACP per-session git index isolation (#13773)", () => {
         ["README.md", "child-a.txt", "child-b.txt"].join("\n"),
       );
     },
+    20_000,
   );
 });

@@ -285,10 +285,12 @@ async function scanUnwiredControls(page: Page, label: string): Promise<void> {
       if (!el.closest("[data-agent-id]")) {
         const role = el.getAttribute("role");
         const aria = el.getAttribute("aria-label");
+        const text = el.textContent?.trim().replace(/\s+/g, " ").slice(0, 60);
+        const testId = el.getAttribute("data-testid");
         gaps.push(
           `${el.tagName.toLowerCase()}${role ? `[role=${role}]` : ""}${
-            aria ? `(${aria})` : ""
-          }`,
+            aria ? `(${aria})` : text ? `(${text})` : ""
+          }${testId ? `[data-testid=${testId}]` : ""}`,
         );
       }
     }

@@ -1332,7 +1332,7 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
 
   // This large serialization fixture can contend with parallel Vitest batches
   // on shared runners, so retain the explicit timeout.
-  it("preserves large bridge-owned captures while normalizing cycles and depth", {
+  it("preserves large bridge-owned captures while normalizing cycles", {
     timeout: 300_000,
   }, async () => {
     const { runtime, logger, execute } = makeRuntime();

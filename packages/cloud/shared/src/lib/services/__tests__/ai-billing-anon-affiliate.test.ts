@@ -234,6 +234,7 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
       { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
       1000,
       500,
+      { subscriptionFunded: false },
     );
 
     expect(reserve).toHaveBeenCalledTimes(1);
@@ -257,6 +258,7 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
       { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
       1000,
       500,
+      { subscriptionFunded: false },
     );
 
     const arg = reserve.mock.calls[0][0] as { estimatedCostMultiplier?: number };

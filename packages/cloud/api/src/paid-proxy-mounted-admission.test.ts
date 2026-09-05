@@ -137,8 +137,16 @@ mock.module("@/lib/services/credits", () => ({
 mock.module("@/lib/services/usage", () => ({
   usageService: { create: async () => undefined },
 }));
+const cacheClientActualModule = await import("@/lib/cache/client");
+
 mock.module("@/lib/cache/client", () => ({
-  cache: { get: async () => null, set: async () => undefined },
+  ...cacheClientActualModule,
+  cache: {
+    get: async () => null,
+    set: async () => undefined,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 mock.module("@/lib/services/proxy/pricing", () => ({
   calculateBatchCost: async () => 0.01,

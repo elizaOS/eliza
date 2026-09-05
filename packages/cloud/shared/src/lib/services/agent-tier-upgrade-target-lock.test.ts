@@ -26,6 +26,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import * as helpersActual from "../../db/helpers";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
+import { personalDedicatedUpgradeAuthorities } from "../../db/schemas/personal-dedicated-upgrade-authorities";
 import * as loggerActual from "../utils/logger";
 import * as apiKeysActual from "./api-keys";
 import * as managedConfigActual from "./managed-eliza-config";
@@ -117,6 +118,10 @@ function makeTx(txIndex: number) {
           }
           if (state.table === personalDedicatedAdoptionSelections) {
             events.push({ tx: txIndex, kind: "select-adoption-selection" });
+            return [];
+          }
+          if (state.table === personalDedicatedUpgradeAuthorities) {
+            events.push({ tx: txIndex, kind: "select-retained-authority" });
             return [];
           }
           events.push({ tx: txIndex, kind: "select-active-job" });
@@ -251,7 +256,7 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "lock",
       "select-live-target",
       "select-quarantined-marker",
-      "select-active-job",
+      "select-retained-authority",
       "select-adoption-selection",
       "select-adoption-candidate",
       "select-quota-count",
@@ -275,7 +280,7 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "lock",
       "select-live-target",
       "select-quarantined-marker",
-      "select-active-job",
+      "select-retained-authority",
       "select-adoption-selection",
       "select-adoption-candidate",
       "select-quota-count",

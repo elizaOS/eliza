@@ -11,7 +11,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { access, mkdir } from "node:fs/promises";
+import { access, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
@@ -569,6 +569,45 @@ export async function ocrImage(pngPath, opts = {}) {
   };
 }
 
+/**
+ * Recognize a measured control's actual pixels when page segmentation omitted
+ * its filled background. The caller retains the independent full-frame result;
+ * this transcript never supplies labels from DOM text or expectations.
+ * @param {Buffer|string} input
+ * @param {{left:number, top:number, width:number, height:number}} rectangle
+ * @param {{lang?:string, timeoutMs?:number}} [opts]
+ */
+export async function ocrImageRegion(input, rectangle, opts = {}) {
+  const bytes = Buffer.isBuffer(input) ? input : await readFile(input);
+  const metadata = await sharp(bytes).metadata();
+  if (
+    !metadata.width ||
+    !metadata.height ||
+    ![rectangle.left, rectangle.top, rectangle.width, rectangle.height].every(
+      Number.isSafeInteger,
+    ) ||
+    rectangle.left < 0 ||
+    rectangle.top < 0 ||
+    rectangle.width <= 0 ||
+    rectangle.height <= 0 ||
+    rectangle.left + rectangle.width > metadata.width ||
+    rectangle.top + rectangle.height > metadata.height
+  )
+    throw new Error("OCR control rectangle is outside the screenshot");
+  const engine = await resolveOcrEngine();
+  if (!engine.available)
+    throw new Error(`OCR engine unavailable: ${engine.reason}`);
+  const crop = await sharp(bytes).extract(rectangle).png().toBuffer();
+  const recognition = await recognizeWithEngine(
+    engine,
+    crop,
+    opts.lang ?? "eng",
+    opts.timeoutMs ?? 30_000,
+    "control-region",
+  );
+  return buildOcrAttempt("control-region", recognition);
+}
+
 /** Legacy visual-qa OCR shape: `{ text, note }`. */
 export async function ocrText(pngPath) {
   const result = await ocrImage(pngPath, { timeoutMs: 60_000 });
@@ -720,7 +759,12 @@ function runSystemTesseract(bin, input, lang, timeoutMs, mode) {
   return new Promise((resolve, reject) => {
     const readsStdin = Buffer.isBuffer(input);
     const inputArg = readsStdin ? "stdin" : input;
-    const pageSegMode = mode === "sparse-high-contrast" ? "11" : "3";
+    const pageSegMode =
+      mode === "control-region"
+        ? "7"
+        : mode === "sparse-high-contrast"
+          ? "11"
+          : "3";
     const child = spawn(
       bin,
       [inputArg, "stdout", "-l", lang, "--psm", pageSegMode, "tsv"],
@@ -838,14 +882,18 @@ async function getPackagedWorker(lang, timeoutMs, mode) {
       timeoutMs,
       `tesseract.js worker initialization timed out after ${timeoutMs}ms`,
     );
-    if (mode === "sparse-high-contrast") {
-      if (!tesseract.PSM?.SPARSE_TEXT) {
+    if (mode === "sparse-high-contrast" || mode === "control-region") {
+      const pageSegMode =
+        mode === "control-region"
+          ? tesseract.PSM?.SINGLE_LINE
+          : tesseract.PSM?.SPARSE_TEXT;
+      if (!pageSegMode) {
         await worker.terminate();
-        throw new Error("tesseract.js sparse-text segmentation is unavailable");
+        throw new Error(`tesseract.js ${mode} segmentation is unavailable`);
       }
       await withTimeout(
         worker.setParameters({
-          tessedit_pageseg_mode: tesseract.PSM.SPARSE_TEXT,
+          tessedit_pageseg_mode: pageSegMode,
         }),
         timeoutMs,
         `tesseract.js sparse-text configuration timed out after ${timeoutMs}ms`,

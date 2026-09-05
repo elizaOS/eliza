@@ -224,7 +224,7 @@ describe("generateDefaultAcceptanceCriteria", () => {
     expect(criteria[0]).toBe("only one concrete criterion");
   });
 
-  it("preserves every generated criterion", async () => {
+  it("preserves every concrete model-provided criterion", async () => {
     const many = Array.from({ length: 12 }, (_, i) => `criterion number ${i}`);
     const runtime = runtimeWithModel(JSON.stringify({ criteria: many }));
     const criteria = await generateDefaultAcceptanceCriteria(

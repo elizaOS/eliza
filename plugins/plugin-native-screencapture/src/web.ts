@@ -71,6 +71,9 @@ export class ScreenCaptureWeb extends WebPlugin {
   private mediaRecorder: MediaRecorder | null = null;
   private recordedChunks: Blob[] = [];
   private isRecording = false;
+  private isStartingRecording = false;
+  private rejectRecordingStop: ((error: Error) => void) | null = null;
+  private recordingStop: Promise<ScreenRecordingResult> | null = null;
   private isPaused = false;
   private recordingStartTime = 0;
   private pausedDuration = 0;
@@ -184,8 +187,31 @@ export class ScreenCaptureWeb extends WebPlugin {
     this.mediaStream = null;
   }
 
+  /** Release the entire display session; unlike camera recording, no preview owns its tracks. */
+  private finalizeRecordingTeardown(keepChunks = false): void {
+    if (this.recordingStateInterval) {
+      clearInterval(this.recordingStateInterval);
+      this.recordingStateInterval = null;
+    }
+    if (this.mediaRecorder) {
+      this.mediaRecorder.ondataavailable = null;
+      this.mediaRecorder.onerror = null;
+      this.mediaRecorder.onstop = null;
+      this.mediaRecorder = null;
+    }
+    this.rejectRecordingStop = null;
+    this.isRecording = false;
+    this.isPaused = false;
+    this.recordingStartTime = 0;
+    this.pausedDuration = 0;
+    if (!keepChunks) this.recordedChunks = [];
+    this.releaseMediaStream();
+  }
+
   async startRecording(options?: ScreenRecordingOptions): Promise<void> {
-    if (this.isRecording) throw new Error("Recording already in progress");
+    if (this.isRecording || this.isStartingRecording || this.recordingStop) {
+      throw new Error("Recording already in progress");
+    }
     if (options?.fps !== undefined) {
       assertPositiveFiniteNumber(options.fps, "fps");
     }
@@ -204,17 +230,15 @@ export class ScreenCaptureWeb extends WebPlugin {
     };
     if (options?.fps) videoConstraints.frameRate = { ideal: options.fps };
 
-    this.mediaStream = await getDisplayMedia({
-      video: videoConstraints,
-      audio: options?.captureSystemAudio !== false,
-    });
-
-    // Once the display stream is live the OS "sharing your screen" indicator is
-    // on. Treat the remaining setup as one transaction: any failure must
-    // release every acquired track and restore the idle state before the error
-    // reaches the caller.
+    // Reserve before asking for permission so another start cannot orphan the
+    // stream acquired by this request while either permission prompt is open.
+    this.isStartingRecording = true;
     let microphoneStream: MediaStream | null = null;
     try {
+      this.mediaStream = await getDisplayMedia({
+        video: videoConstraints,
+        audio: options?.captureSystemAudio !== false,
+      });
       if (options?.captureMicrophone) {
         microphoneStream = await navigator.mediaDevices.getUserMedia({
           audio: true,
@@ -242,9 +266,16 @@ export class ScreenCaptureWeb extends WebPlugin {
       };
 
       this.mediaRecorder.onerror = (event) => {
+        // error-policy:J4 a failed encoder ends the capture session visibly;
+        // callers awaiting stop must reject even if no stop event follows.
+        const error = new Error(
+          `Recording error: ${(event as ErrorEvent).message || "Unknown error"}`,
+        );
+        this.rejectRecordingStop?.(error);
+        this.finalizeRecordingTeardown();
         this.notifyListeners("error", {
           code: "RECORDING_ERROR",
-          message: `Recording error: ${(event as ErrorEvent).message || "Unknown error"}`,
+          message: error.message,
         });
       };
 
@@ -275,14 +306,10 @@ export class ScreenCaptureWeb extends WebPlugin {
       microphoneStream?.getTracks().forEach((track) => {
         track.stop();
       });
-      this.releaseMediaStream();
-      this.mediaRecorder = null;
-      this.recordedChunks = [];
-      this.isRecording = false;
-      this.isPaused = false;
-      this.recordingStartTime = 0;
-      this.pausedDuration = 0;
+      this.finalizeRecordingTeardown();
       throw err;
+    } finally {
+      this.isStartingRecording = false;
     }
 
     this.notifyListeners("recordingState", {
@@ -325,32 +352,27 @@ export class ScreenCaptureWeb extends WebPlugin {
   }
 
   async stopRecording(): Promise<ScreenRecordingResult> {
+    if (this.recordingStop) return this.recordingStop;
     if (!this.isRecording || !this.mediaRecorder) {
       throw new Error("Not recording");
     }
 
-    return new Promise((resolve, reject) => {
-      if (!this.mediaRecorder) {
+    const stopping = new Promise<ScreenRecordingResult>((resolve, reject) => {
+      const recorder = this.mediaRecorder;
+      if (!recorder) {
         reject(new Error("MediaRecorder not initialized"));
         return;
       }
 
       const duration = this.elapsedSeconds();
+      this.rejectRecordingStop = reject;
 
-      this.mediaRecorder.onstop = () => {
-        if (this.recordingStateInterval) {
-          clearInterval(this.recordingStateInterval);
-          this.recordingStateInterval = null;
-        }
-
-        this.isRecording = false;
-        this.isPaused = false;
-
-        this.releaseMediaStream();
-
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || "video/webm";
         const blob = new Blob(this.recordedChunks, {
-          type: this.mediaRecorder?.mimeType || "video/webm",
+          type: mimeType,
         });
+        this.finalizeRecordingTeardown(true);
         const url = URL.createObjectURL(blob);
 
         const video = document.createElement("video");
@@ -363,7 +385,7 @@ export class ScreenCaptureWeb extends WebPlugin {
             width: video.videoWidth,
             height: video.videoHeight,
             fileSize: blob.size,
-            mimeType: this.mediaRecorder?.mimeType || "video/webm",
+            mimeType,
           });
         };
 
@@ -374,7 +396,7 @@ export class ScreenCaptureWeb extends WebPlugin {
             width: 0,
             height: 0,
             fileSize: blob.size,
-            mimeType: this.mediaRecorder?.mimeType || "video/webm",
+            mimeType,
           });
         };
 
@@ -385,8 +407,21 @@ export class ScreenCaptureWeb extends WebPlugin {
         });
       };
 
-      this.mediaRecorder.stop();
+      try {
+        recorder.stop();
+      } catch (error) {
+        // error-policy:J2 stop failed before its completion event; release the
+        // session before preserving the original rejection for the caller.
+        this.finalizeRecordingTeardown();
+        reject(error);
+      }
     });
+    this.recordingStop = stopping;
+    try {
+      return await stopping;
+    } finally {
+      if (this.recordingStop === stopping) this.recordingStop = null;
+    }
   }
 
   async pauseRecording(): Promise<void> {

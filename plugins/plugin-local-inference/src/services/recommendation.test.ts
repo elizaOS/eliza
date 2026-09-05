@@ -214,4 +214,29 @@ describe("model-fit + smaller-fallback ladder (#8848)", () => {
 		expect(sel.model).not.toBeNull();
 		expect(MODEL_CATALOG.some((m) => m.id === sel.model?.id)).toBe(true);
 	});
+
+	it("preserves the runtime mobile ladder while requiring explicit ARM backend support", () => {
+		const supportedMobile = probe({
+			totalRamGb: 8,
+			arch: "arm64",
+			cpuFeatures: { neon: true },
+			mobile: { platform: "android" },
+		});
+		expect(
+			selectRecommendedModelForSlot("TEXT_SMALL", supportedMobile).model?.id,
+		).toBe("eliza-1-2b");
+		expect(
+			selectRecommendedModelForSlot("TEXT_LARGE", supportedMobile).model?.id,
+		).toBe("eliza-1-4b");
+
+		const unknownBackend = { ...supportedMobile, cpuFeatures: undefined };
+		const model = MODEL_CATALOG.find(({ id }) => id === "eliza-1-2b");
+		if (!model) throw new Error("2B catalog fixture is missing");
+		// RAM fit remains a hardware-size question; runtime recommendation admission
+		// separately requires a positively identified NEON CPU backend.
+		expect(assessCatalogModelFit(unknownBackend, model)).not.toBe("wontfit");
+		expect(
+			selectRecommendedModelForSlot("TEXT_SMALL", unknownBackend).model,
+		).toBeNull();
+	});
 });

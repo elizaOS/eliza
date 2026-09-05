@@ -4,6 +4,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as organizationInferenceAdmissionActual from "../organization-inference-admission";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -16,6 +17,7 @@ let releaseSettlement: (() => void) | undefined;
 let retainedTask: Promise<unknown> | undefined;
 
 mock.module("../organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference: async () => {
     events.push("admit");
     if (denyAdmission) throw new Error("cached standing denied");

@@ -102,12 +102,12 @@ const estimateInputTokens = mock();
 const recordUsageAnalytics = mock();
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
-  isSubscriptionFundedOrganization: mock(async () => false),
   InsufficientCreditsError: TestInsufficientCreditsError,
   billUsage,
   estimateInputTokens,
   getAffiliatePayoutSourceId: (context: { requestId?: string | null }) =>
     `affiliate:${context.requestId ?? "missing"}`,
+  isSubscriptionFundedOrganization: mock(async () => false),
   normalizeUsage: (
     usage:
       | {

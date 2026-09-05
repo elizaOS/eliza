@@ -483,7 +483,16 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
     return () =>
       jsonResponse(200, {
         success: true,
-        data: { identity: { id, displayName: "Eliza", runtime: "shared" } },
+        data: {
+          identity: {
+            id,
+            displayName: "Eliza",
+            runtime: "dedicated",
+            activeAgentId: "00000000-0000-4000-8000-000000000020",
+            apiBase:
+              "https://00000000-0000-4000-8000-000000000020.cloud.eliza.app",
+          },
+        },
       });
   }
 

@@ -131,10 +131,6 @@ export default defineConfig({
 				replacement: path.join(sharedSrc, "steward-session-client/index.ts"),
 			},
 			{
-				find: "@elizaos/shared/contracts",
-				replacement: path.join(sharedSrc, "contracts/index.ts"),
-			},
-			{
 				find: "@elizaos/shared/elizacloud/domain-contract",
 				replacement: path.join(sharedSrc, "elizacloud/domain-contract.ts"),
 			},
@@ -144,6 +140,10 @@ export default defineConfig({
 				// like steward-session-client above.
 				find: /^@elizaos\/shared\/elizacloud$/,
 				replacement: path.join(sharedSrc, "elizacloud/index.ts"),
+			},
+			{
+				find: /^@elizaos\/shared\/local-inference$/,
+				replacement: path.join(sharedSrc, "local-inference/index.ts"),
 			},
 			{
 				find: /^@elizaos\/shared\/contracts$/,
@@ -163,6 +163,10 @@ export default defineConfig({
 			},
 			{
 				find: /^@elizaos\/core\/(.*)\.js$/,
+				replacement: path.join(coreSrc, "$1.ts"),
+			},
+			{
+				find: /^@elizaos\/core\/(.*)$/,
 				replacement: path.join(coreSrc, "$1.ts"),
 			},
 			// Bare subpath exports must be pinned before the plain string alias

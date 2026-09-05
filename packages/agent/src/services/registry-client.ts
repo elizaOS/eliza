@@ -10,6 +10,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import { isRegistryCacheFresh } from "@elizaos/registry";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type { RegistryEndpoint } from "../config/types.eliza.ts";
@@ -145,7 +146,7 @@ async function readFileCache(): Promise<Map<
     };
     if (typeof parsed.fetchedAt !== "number" || !Array.isArray(parsed.plugins))
       return null;
-    if (Date.now() - parsed.fetchedAt > CACHE_TTL_MS) return null;
+    if (!isRegistryCacheFresh(parsed.fetchedAt, CACHE_TTL_MS)) return null;
     return new Map(parsed.plugins);
   } catch {
     return null;
@@ -272,7 +273,10 @@ async function loadRegistryPlugins(
 ): Promise<Map<string, RegistryPluginInfo>> {
   if (
     memoryCache &&
-    Date.now() - memoryCache.fetchedAt < (memoryCache.ttlMs ?? CACHE_TTL_MS)
+    isRegistryCacheFresh(
+      memoryCache.fetchedAt,
+      memoryCache.ttlMs ?? CACHE_TTL_MS,
+    )
   ) {
     return memoryCache.plugins;
   }

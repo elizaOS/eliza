@@ -34,8 +34,16 @@ mock.module("@/lib/services/user-mcps", () => ({
   },
 }));
 
+const cacheClientActualModule = await import("@/lib/cache/client");
+
 mock.module("@/lib/cache/client", () => ({
-  cache: { get: cacheGet, set: cacheSet },
+  ...cacheClientActualModule,
+  cache: {
+    get: cacheGet,
+    set: cacheSet,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({

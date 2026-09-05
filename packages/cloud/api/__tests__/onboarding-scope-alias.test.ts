@@ -21,10 +21,17 @@ const noProvisioning = {
 // The bridge under test must not depend on this: `cache.get` answers null for a
 // cache outage and for a plain miss alike, so a session that only survives in
 // the mirror is a session that disappears on the first bad minute.
+const cacheClientActualModule = await import(
+  "../../shared/src/lib/cache/client"
+);
+
 mock.module("../../shared/src/lib/cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: mock(async () => null),
     set: mock(async () => undefined),
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

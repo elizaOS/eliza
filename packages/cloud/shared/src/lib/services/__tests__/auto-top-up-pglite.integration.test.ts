@@ -445,8 +445,10 @@ beforeAll(async () => {
       id uuid PRIMARY KEY,
       name text NOT NULL,
       slug text NOT NULL UNIQUE,
-      credit_balance numeric(12,6) NOT NULL DEFAULT 0,
+      credit_balance numeric(16,6) NOT NULL DEFAULT 0,
       balance_revision bigint NOT NULL DEFAULT 0,
+      balance_decrease_revision bigint NOT NULL DEFAULT 0,
+      auto_top_up_covered_balance_decrease_revision bigint,
       settings jsonb NOT NULL DEFAULT '{}'::jsonb,
       stripe_customer_id text,
       billing_email text,
@@ -464,10 +466,15 @@ beforeAll(async () => {
       paid_work_fenced_at timestamp,
       is_active boolean NOT NULL DEFAULT true,
       created_at timestamp NOT NULL DEFAULT now(),
-      updated_at timestamp NOT NULL DEFAULT now()
+      updated_at timestamp NOT NULL DEFAULT now(),
+      CONSTRAINT credit_balance_non_negative CHECK (credit_balance >= 0),
+      CONSTRAINT organizations_account_lifecycle_state_check
+        CHECK (account_lifecycle_state IN ('active', 'deletion_recovery', 'deletion_irreversible'))
     );
     CREATE UNIQUE INDEX organizations_stripe_customer_authority_unique
       ON organizations(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+    CREATE INDEX organizations_account_deletion_request_idx
+      ON organizations(account_deletion_request_id);
     CREATE TABLE credit_transactions (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,

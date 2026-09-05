@@ -187,7 +187,7 @@ describe("POST /api/models/config validation", () => {
     const { ctx, json } = makeHarness("POST", {
       target: "coding",
       backend: "eliza-code",
-      model: "cerebras/gpt-oss-120b",
+      model: "eliza-local",
       effort: "high",
     });
     await handleModelConfigRoutes(ctx as never);
@@ -467,7 +467,7 @@ describe("POST /api/models/config coding writes", () => {
   });
 
   it("rejects the removed opencode backend without mutating config", async () => {
-    const { ctx, config, json } = makeHarness("POST", {
+    const { ctx, json, saveElizaConfig, config } = makeHarness("POST", {
       target: "coding",
       backend: "opencode",
       model: "cerebras/gpt-oss-120b",
@@ -478,6 +478,8 @@ describe("POST /api/models/config coding writes", () => {
     expect(status).toBe(400);
     expect(String(body.error)).toContain('Unknown backend "opencode"');
     expect((config as Record<string, unknown>).env).toBeUndefined();
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+    expect(config).toEqual({});
   });
 
   it("persists defaultBackend eliza-code under the orchestrator's elizaos spelling", async () => {
@@ -703,7 +705,8 @@ describe("GET /api/models/config activeChat", () => {
       Record<string, { value: string; source: string } | null>
     >;
     // Unpinned cloud tiers report the plugin's code defaults so the operator
-    // sees what actually serves from the plugin's current defaults.
+    // sees what actually serves from the current plugin defaults. Managed
+    // Cloud deliberately pins both text tiers to the same provider-native model.
     expect(targets.small?.ELIZAOS_CLOUD_SMALL_MODEL).toEqual({
       value: "gemma-4-31b",
       source: "default",

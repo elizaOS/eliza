@@ -1,7 +1,10 @@
-// Wires hosted Eliza agent validation behavior for cloud runtime services.
+/** Adapts shared MCP resource-selection validation to Cloud plugin result types. */
 import type { State } from "@elizaos/core";
-import { type McpProviderData, ResourceSelectionSchema, type ValidationResult } from "../types";
-import { validateJsonSchema } from "./json";
+import {
+  createMcpResourceSelectionFeedback,
+  validateMcpResourceSelection,
+} from "@elizaos/shared/mcp";
+import { type McpProviderData, type ValidationResult } from "../types";
 
 export interface ResourceSelection {
   serverName?: string;
@@ -11,7 +14,7 @@ export interface ResourceSelection {
 }
 
 export function validateResourceSelection(selection: unknown): ValidationResult<ResourceSelection> {
-  return validateJsonSchema<ResourceSelection>(selection, ResourceSelectionSchema);
+  return validateMcpResourceSelection(selection) as ValidationResult<ResourceSelection>;
 }
 
 export function createResourceSelectionFeedbackPrompt(
@@ -20,32 +23,10 @@ export function createResourceSelectionFeedbackPrompt(
   composedState: State,
   userMessage: string,
 ): string {
-  let description = "";
-
-  for (const [serverName, server] of Object.entries(composedState.values.mcp || {}) as [
-    string,
-    McpProviderData[string],
-  ][]) {
-    if (server.status !== "connected") continue;
-
-    for (const [uri, resource] of Object.entries(server.resources || {}) as [
-      string,
-      { description?: string; name?: string },
-    ][]) {
-      description += `Resource: ${uri} (Server: ${serverName})\n`;
-      description += `Name: ${resource.name || "No name"}\n`;
-      description += `Description: ${resource.description || "No description"}\n\n`;
-    }
-  }
-
-  return `Error parsing JSON: ${errorMessage}
-
-Your original response:
-${originalResponse}
-
-Please try again with valid JSON for resource selection.
-Available resources:
-${description}
-
-User request: ${userMessage}`;
+  return createMcpResourceSelectionFeedback({
+    originalResponse,
+    errorMessage,
+    providerData: (composedState.values.mcp ?? {}) as McpProviderData,
+    userMessage,
+  });
 }

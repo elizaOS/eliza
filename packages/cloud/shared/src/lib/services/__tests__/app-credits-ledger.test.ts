@@ -148,12 +148,17 @@ const cacheGet = mock(async () => null);
 const cacheSet = mock(async () => undefined);
 const cacheDel = mock(async () => undefined);
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: cacheGet,
     set: cacheSet,
     del: cacheDel,
     delete: cacheDel,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 
@@ -199,7 +204,6 @@ beforeEach(() => {
   cacheGet.mockResolvedValue(null);
   cacheSet.mockResolvedValue(undefined);
   cacheDel.mockResolvedValue(undefined);
-
   findAppById.mockResolvedValue(monetizedApp);
   findUserById.mockResolvedValue({ id: USER_ID, organization_id: ORG_ID });
   // This unit suite owns the legacy ledger seam. Atomic app-chat reservation
@@ -247,17 +251,19 @@ beforeEach(() => {
       organizationId: string;
       amount: number;
       metadata?: Record<string, unknown>;
-    }) => ({
-      success: true,
-      newBalance: 41.4,
-      transaction: {
-        id: "tx-2",
-        organization_id: args.organizationId,
-        type: "debit",
-        amount: String(-args.amount),
-        metadata: args.metadata ?? {},
-      },
-    }),
+    }) => {
+      return {
+        success: true,
+        newBalance: 41.4,
+        transaction: {
+          id: "tx-2",
+          organization_id: args.organizationId,
+          type: "debit",
+          amount: String(-args.amount),
+          metadata: args.metadata ?? {},
+        },
+      };
+    },
   );
   refundCredits.mockResolvedValue({ newBalance: 43.6 });
   markReservationSettled.mockResolvedValue(true);

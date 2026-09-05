@@ -65,6 +65,15 @@ export default defineConfig({
         ),
       },
       {
+        // Inbox route tests load Discord from source, whose deferred voice
+        // wiring must also resolve before workspace dist packages are built.
+        find: /^@elizaos\/plugin-meetings$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-meetings/src/index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/ui$/,
         replacement: path.join(monorepoRoot, "packages/ui/src/index.ts"),
       },
@@ -178,6 +187,13 @@ export default defineConfig({
       {
         find: /^@elizaos\/core\/security\/(.+)$/,
         replacement: path.join(monorepoRoot, "packages/core/src/security/$1"),
+      },
+      {
+        // Vitest deliberately omits Vite's `module` condition. Resolve this
+        // workspace package explicitly so parallel builds cannot remove its
+        // dist entry while an agent test imports core's prompt re-export.
+        find: /^@elizaos\/prompts$/,
+        replacement: path.join(monorepoRoot, "packages/prompts/src/index.ts"),
       },
       {
         find: /^@elizaos\/plugin-anthropic\/endpoint-config$/,

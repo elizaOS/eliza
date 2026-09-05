@@ -10,11 +10,16 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
+const cacheClientActualModule = await import("@/lib/cache/client");
+
 mock.module("@/lib/cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: mock(async () => null),
     set: mock(async () => undefined),
     del: mock(async () => undefined),
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

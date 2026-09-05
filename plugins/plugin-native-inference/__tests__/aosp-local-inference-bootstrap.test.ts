@@ -26,7 +26,6 @@ import {
   registerAospLlamaLoader,
   registerAospLoaderService,
   removeAospGeneratedStagingDir,
-  resolveAospCompletionBudget,
   shouldEvictChatForAvailMb,
   VOICE_COLOAD_KEEP_AVAIL_MB,
 } from "../src/aosp-local-inference-bootstrap";
@@ -773,46 +772,6 @@ describe("aospAsrAssetsPresent (TRANSCRIPTION registration gate)", () => {
     expect(
       withEnv({ ELIZA_STATE_DIR: root }, () => aospAsrAssetsPresent()),
     ).toBe(false);
-  });
-});
-
-describe("resolveAospCompletionBudget", () => {
-  it("uses every token remaining after the complete prompt when omitted", () => {
-    expect(
-      resolveAospCompletionBudget({
-        contextSize: 4096,
-        promptTokenCount: 1000,
-      }),
-    ).toBe(3096);
-  });
-
-  it("preserves an explicit supported request exactly", () => {
-    expect(
-      resolveAospCompletionBudget({
-        requestedMaxTokens: 2048,
-        contextSize: 4096,
-        promptTokenCount: 1000,
-      }),
-    ).toBe(2048);
-  });
-
-  it("rejects an oversized explicit request instead of clamping it", () => {
-    expect(() =>
-      resolveAospCompletionBudget({
-        requestedMaxTokens: 8192,
-        contextSize: 4096,
-        promptTokenCount: 1000,
-      }),
-    ).toThrow(/refusing to clamp/);
-  });
-
-  it("rejects a complete prompt that does not fit", () => {
-    expect(() =>
-      resolveAospCompletionBudget({
-        contextSize: 4096,
-        promptTokenCount: 4096,
-      }),
-    ).toThrow(/refusing to truncate/);
   });
 });
 

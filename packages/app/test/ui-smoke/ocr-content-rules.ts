@@ -35,6 +35,8 @@ export interface OcrResult {
   selectedMode?: string;
   /** Raw transcripts and confidences retained when the engine made multiple attempts. */
   attempts?: OcrAttempt[];
+  /** Independent transcripts; a required phrase cannot span separate controls. */
+  positiveSegments?: string[];
 }
 
 export interface OcrAttempt {
@@ -155,17 +157,19 @@ function containsExpectedText(haystack: string, label: string): boolean {
  * blank-pixel floors, and forbid-only policies cannot manufacture confidence.
  */
 export function positiveExpectationMatches(
-  haystack: string,
+  haystack: string | readonly string[],
   expectation?: OcrExpectation,
 ): boolean {
   if (!expectation) return false;
   const allLabels = expectation.requireAll ?? [];
   const anyLabels = expectation.requireAny ?? [];
   if (allLabels.length === 0 && anyLabels.length === 0) return false;
+  const segments = typeof haystack === "string" ? [haystack] : haystack;
+  const includes = (label: string) =>
+    segments.some((segment) => containsExpectedText(segment, label));
   return (
-    allLabels.every((label) => containsExpectedText(haystack, label)) &&
-    (anyLabels.length === 0 ||
-      anyLabels.some((label) => containsExpectedText(haystack, label)))
+    allLabels.every(includes) &&
+    (anyLabels.length === 0 || anyLabels.some(includes))
   );
 }
 
@@ -230,8 +234,14 @@ export function evaluateOcrContent({
   }
 
   const hay = normalize(ocr.text);
+  const positiveSegments = (ocr.positiveSegments ?? [ocr.text]).map(normalize);
+  const includesRequired = (label: string) =>
+    positiveSegments.some((segment) => containsExpectedText(segment, label));
   const blankPixels = !exemptFromBlank && ocr.pixelBlank === true;
-  const semanticAnchorsMatched = positiveExpectationMatches(hay, expectation);
+  const semanticAnchorsMatched = positiveExpectationMatches(
+    positiveSegments,
+    expectation,
+  );
   const ocrInconclusive =
     !exemptFromBlank &&
     !blankPixels &&
@@ -247,13 +257,10 @@ export function evaluateOcrContent({
   const forbiddenPresent: string[] = [];
   if (expectation && !ocrInconclusive && !blankPixels) {
     for (const label of expectation.requireAll ?? []) {
-      if (!containsExpectedText(hay, label)) missingRequired.push(label);
+      if (!includesRequired(label)) missingRequired.push(label);
     }
     const anyLabels = expectation.requireAny ?? [];
-    if (
-      anyLabels.length > 0 &&
-      !anyLabels.some((label) => containsExpectedText(hay, label))
-    ) {
+    if (anyLabels.length > 0 && !anyLabels.some(includesRequired)) {
       // Report the whole disjunction as one miss so the reason is legible.
       missingRequired.push(anyLabels.join(" | "));
     }

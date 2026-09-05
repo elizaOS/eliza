@@ -7,8 +7,8 @@ Entity and relationship knowledge graph for Eliza agents.
 Adds an entity / relationship knowledge graph to any Eliza agent: a single
 `KNOWLEDGE_GRAPH` umbrella action for non-identity graph CRUD, an `ENTITY_GRAPH` provider that injects a projection of
 the owner's ego-network into the planner each turn, a `/relationships` viewer
-(React component served as a bundled view), and a drizzle
-`pgSchema('app_relationships')` with `entities` and `relationships` tables.
+(React component served as a bundled view), and a read-only startup audit for
+the retired `app_relationships` schema.
 
 The graph stores (`EntityStore` / `RelationshipStore`) are owned by
 `@elizaos/agent`'s `KnowledgeGraphService`; this plugin consumes them via
@@ -41,25 +41,26 @@ The plugin is opt-in — add it to the agent's plugin list. It hard-depends on
   (people, organizations, identities, typed edges). Enabled in the desktop tab
   and the manager.
 
-**Schema**
-- `relationshipsSchema` / `entitiesTable` / `relationshipsTable`
-  (`src/db/schema.ts`) — `pgSchema("app_relationships")` with two tables:
-  - `entities` — `(id, kind, displayName, attrs jsonb, createdAt, updatedAt)`
-  - `relationships` — `(id, fromEntityId, toEntityId, kind, attrs jsonb, lastObservedAt)`
-  Exported from `src/index.ts` as `schema` (the drizzle schema object the
-  runtime registers migrations from).
+**Legacy schema audit**
+- `LegacyRelationshipsSchemaAuditService`
+  (`src/services/legacy-schema-audit.ts`) inventories the retired entities and
+  relationships tables without creating or altering them. It fails startup
+  closed when rows exist because the old schema lacks agent ownership and
+  cannot be imported safely without operator mapping.
 
 ## Layout
 
 ```
 src/
-  index.ts                  Plugin export; re-exports action + provider + schema + types
-  plugin.ts                 Plugin object (action + provider + schema + views)
+  index.ts                  Plugin export; re-exports action + provider + audit + types
+  plugin.ts                 Plugin object (action + provider + audit service + views)
   types.ts                  Entity / Relationship interfaces, ENTITY_OPS, constants
   actions/
     entity.ts               entityAction — KNOWLEDGE_GRAPH op dispatch
   providers/
     entity-graph.ts         entityGraphProvider — per-turn context projection
+  services/
+    legacy-schema-audit.ts  read-only retired-schema inventory and startup guard
   db/
     schema.ts               drizzle pgSchema + entitiesTable + relationshipsTable
     index.ts                re-exports schema.ts
@@ -101,9 +102,8 @@ needed.
 
 ## Conventions / gotchas
 
-- **`@elizaos/plugin-sql` must be loaded first.** Schema migrations for
-  `app_relationships` are registered via the plugin object's `schema` field
-  and require the SQL plugin's DB to be available.
+- **`@elizaos/plugin-sql` must be loaded first.** The legacy-schema audit
+  resolves the SQL database adapter during startup.
 - **`SELF_ENTITY_ID = "self"`** is the canonical id of the owner; all
   ego-network edges originate from `self`.
 - **Built-in entity kinds:** `person`, `organization`, `place`, `project`,
@@ -112,9 +112,9 @@ needed.
 - **Built-in relationship kinds:** `follows`, `colleague_of`, `partner_of`,
   `manages`, `managed_by`, `lives_at`, `works_at`, `knows`, `owns`. Open
   string with optional metadata schema in the registry.
-- **No migrations runner in this plugin.** Schema registration
-  (`schema: dbSchema` in the plugin object) tells the elizaOS runtime to
-  handle migrations. Do not add a manual migration runner here.
+- **Do not register the retired schema.** Preserve it only as an audit/import
+  source. Populated rows require an operator-provided agent ownership mapping;
+  an automatic cross-tenant import is unsafe.
 - **This plugin is NOT `ENTITY`.** The `KNOWLEDGE_GRAPH` action is the thin
   runtime graph-CRUD surface. The `ENTITY` action (rich Rolodex orchestration
   with LLM planner) belongs to `@elizaos/plugin-personal-assistant`. Keeping

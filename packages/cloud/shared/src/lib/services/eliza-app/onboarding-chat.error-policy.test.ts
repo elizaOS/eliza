@@ -13,12 +13,17 @@ const launchManagedElizaAgent = mock();
 let cloudEnv: Record<string, string | undefined> = {};
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: mock(async (key: string) => sessionCache.get(key) ?? null),
     set: mock(async (key: string, value: unknown) => {
       sessionCache.set(key, value);
     }),
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 
@@ -211,33 +216,247 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
   });
 
   test("enforces the wall-clock deadline across immediately-ready empty chunks", async () => {
-    let cancelled = false;
+    let now = 0;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    let confirmCancellation!: () => void;
+    const cancellation = new Promise<void>((resolve) => {
+      confirmCancellation = resolve;
+    });
     let emitted = 0;
     const stub = {
       fetch: async () =>
         new Response(
-          new ReadableStream<Uint8Array>({
-            pull(controller) {
-              if (emitted < 100_000) {
-                emitted += 1;
-                controller.enqueue(new Uint8Array(0));
-                return;
-              }
-              controller.close();
+          new ReadableStream<Uint8Array>(
+            {
+              pull(controller) {
+                if (emitted < 100_000) {
+                  emitted += 1;
+                  now += 0.25;
+                  controller.enqueue(new Uint8Array(0));
+                  return;
+                }
+                controller.close();
+              },
+              cancel() {
+                confirmCancellation();
+              },
             },
-            cancel() {
-              cancelled = true;
-            },
-          }),
+            { highWaterMark: 0 },
+          ),
         ),
     };
-    const startedAt = performance.now();
-    await expect(
-      onboardingFetch(stub, "https://onboarding.internal/resolve", undefined, 1),
-    ).rejects.toMatchObject({ name: "TimeoutError" });
-    expect(performance.now() - startedAt).toBeLessThan(1_000);
-    expect(emitted).toBeLessThan(100_000);
-    expect(cancelled).toBe(true);
+    try {
+      // Advance only when the owned reader requests a chunk. Cold imports or
+      // scheduling before dispatch must not replace the starvation scenario.
+      await expect(
+        onboardingFetch(stub, "https://onboarding.internal/resolve", undefined, 1),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+      expect(emitted).toBeGreaterThan(0);
+      expect(emitted).toBeLessThan(100_000);
+      // The abort race may settle before the reader's cancellation microtask.
+      await cancellation;
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("lets the real deadline run across ready chunks when the Worker clock is frozen", async () => {
+    const realNow = performance.now.bind(performance);
+    const clock = spyOn(performance, "now").mockReturnValue(0);
+    let sourceEndsAt = 0;
+    const response = new Response(
+      new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            // Finite even before the fix: the source closes after real CPU time.
+            if (realNow() >= sourceEndsAt) controller.close();
+            else {
+              controller.enqueue(new Uint8Array(0));
+            }
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+    );
+    try {
+      await expect(
+        onboardingFetch(
+          {
+            fetch: async () => {
+              sourceEndsAt = realNow() + 50;
+              return response;
+            },
+          },
+          "https://onboarding.internal/resolve",
+          undefined,
+          5,
+        ),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("checks the real deadline before returning a bodyless response with a frozen Worker clock", async () => {
+    const realNow = performance.now.bind(performance);
+    const clock = spyOn(performance, "now").mockReturnValue(0);
+    try {
+      await expect(
+        onboardingFetch(
+          {
+            fetch: async () => {
+              const end = realNow() + 20;
+              while (realNow() < end) {
+                // A synchronous transport turn cannot yield to the deadline.
+              }
+              return new Response(null, { status: 204 });
+            },
+          },
+          "https://onboarding.internal/resolve",
+          undefined,
+          5,
+        ),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("preserves every ordered byte across task-queue yields", async () => {
+    const expected = Uint8Array.from({ length: 4_096 }, (_, index) => index % 251);
+    let offset = 0;
+    const response = await onboardingFetch(
+      {
+        fetch: async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              pull(controller) {
+                if (offset === expected.length) controller.close();
+                else controller.enqueue(expected.subarray(offset, ++offset));
+              },
+            }),
+            {
+              status: 201,
+              headers: { "content-type": "application/octet-stream", "x-trace-id": "ordered-body" },
+            },
+          ),
+      },
+      "https://onboarding.internal/resolve",
+    );
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(expected);
+    expect(response.status).toBe(201);
+    expect(response.headers.get("x-trace-id")).toBe("ordered-body");
+  });
+
+  test("preserves the caller's exact reason when its timer interrupts ready chunks", async () => {
+    const clock = spyOn(performance, "now").mockReturnValue(0);
+    const caller = new AbortController();
+    const reason = new Error("caller cancelled a ready stream", {
+      cause: new Error("session ended"),
+    });
+    let emitted = 0;
+    const cancelled: unknown[] = [];
+    const timer = setTimeout(() => caller.abort(reason), 0);
+    try {
+      await expect(
+        onboardingFetch(
+          {
+            fetch: async () =>
+              new Response(
+                new ReadableStream<Uint8Array>(
+                  {
+                    pull(controller) {
+                      if (emitted === 4_096) controller.close();
+                      else {
+                        emitted += 1;
+                        controller.enqueue(new Uint8Array(0));
+                      }
+                    },
+                    cancel(cancelReason) {
+                      cancelled.push(cancelReason);
+                    },
+                  },
+                  { highWaterMark: 0 },
+                ),
+              ),
+          },
+          "https://onboarding.internal/resolve",
+          { signal: caller.signal },
+        ),
+      ).rejects.toBe(reason);
+      expect(cancelled).toEqual([reason]);
+      expect(emitted).toBeLessThan(4_096);
+    } finally {
+      clearTimeout(timer);
+      clock.mockRestore();
+    }
+  });
+
+  test("cancels a response acquired after its monotonic deadline without awaiting teardown", async () => {
+    let now = 0;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    const cancellationReasons: unknown[] = [];
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        cancel(reason) {
+          cancellationReasons.push(reason);
+          return new Promise<void>(() => {});
+        },
+      }),
+    );
+    let rejection: unknown;
+    try {
+      await onboardingFetch(
+        {
+          fetch: async () => {
+            // Headers arrive after the budget, before a reader owns the body.
+            now = 2;
+            return response;
+          },
+        },
+        "https://onboarding.internal/resolve",
+        undefined,
+        1,
+      ).catch((error) => {
+        rejection = error;
+      });
+    } finally {
+      clock.mockRestore();
+    }
+    expect(rejection).toMatchObject({ name: "TimeoutError" });
+    expect(cancellationReasons).toEqual([rejection]);
+    expect(response.body?.locked).toBe(false);
+  });
+
+  test("cancels a late response from a transport that ignores caller cancellation", async () => {
+    let releaseResponse!: (response: Response) => void;
+    const headers = new Promise<Response>((resolve) => {
+      releaseResponse = resolve;
+    });
+    const cancellationReasons: unknown[] = [];
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        cancel(reason) {
+          cancellationReasons.push(reason);
+          throw new Error("transport cancellation failed");
+        },
+      }),
+    );
+    const controller = new AbortController();
+    const pending = onboardingFetch(
+      { fetch: () => headers },
+      "https://onboarding.internal/resolve",
+      { signal: controller.signal },
+    );
+    const reason = new Error("caller stopped before headers");
+    controller.abort(reason);
+    await expect(pending).rejects.toBe(reason);
+    releaseResponse(response);
+    await headers;
+    // Let the response observer finish independently of the failed caller.
+    await Promise.resolve();
+    expect(cancellationReasons).toEqual([reason]);
+    expect(response.body?.locked).toBe(false);
   });
 
   test("preserves the caller reason when stream cancellation rejects differently", async () => {

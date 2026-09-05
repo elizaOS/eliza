@@ -3980,10 +3980,7 @@ export async function startApiServer(opts?: {
     ["system", "plugins"],
   );
 
-  // Warm per-provider model caches in background (non-blocking)
-  void getOrFetchAllProviders().catch((err) => {
-    logger.warn("[api] Provider cache warm-up failed:", err);
-  });
+  let providerCacheWarmupPromise: Promise<void> | null = null;
 
   let detachApiLogListener: (() => void) | null = null;
   const captureStructuredLog = (entry: LogEntry): void => {
@@ -4168,6 +4165,12 @@ export async function startApiServer(opts?: {
   // ── Deferred startup work (non-blocking) ────────────────────────────────
   // Keep API startup fast: listen first, then warm optional subsystems.
   const startDeferredStartupWork = async (): Promise<void> => {
+    providerCacheWarmupPromise ??= getOrFetchAllProviders()
+      .then(() => undefined)
+      .catch((err) => {
+        logger.warn("[api] Provider cache warm-up failed:", err);
+      });
+
     void registerBuiltinViews(state.runtime).catch((err) => {
       logger.warn(
         `[eliza-api] Built-in view registration failed after listen: ${
@@ -5294,6 +5297,12 @@ export async function startApiServer(opts?: {
       dispose: () => {
         state.connectorHealthMonitor?.stop();
         state.connectorHealthMonitor = null;
+      },
+    },
+    {
+      name: "provider model cache warm-up",
+      dispose: async () => {
+        await providerCacheWarmupPromise;
       },
     },
     {

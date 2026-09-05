@@ -826,6 +826,14 @@ describe("readCappedSkillPackage", () => {
 	});
 
 	it("closes a real catalog package peer when its body exceeds the deadline", async () => {
+		let markPackageRequested: (() => void) | undefined;
+		const packageRequested = new Promise<void>((resolve) => {
+			markPackageRequested = resolve;
+		});
+		let markPackageBytesWritten: (() => void) | undefined;
+		const packageBytesWritten = new Promise<void>((resolve) => {
+			markPackageBytesWritten = resolve;
+		});
 		let markPackageClosed: (() => void) | undefined;
 		const packageClosed = new Promise<void>((resolve) => {
 			markPackageClosed = resolve;
@@ -837,9 +845,12 @@ describe("readCappedSkillPackage", () => {
 				return;
 			}
 			if (request.url?.startsWith("/api/v1/download")) {
+				markPackageRequested?.();
 				response.once("close", () => markPackageClosed?.());
 				response.writeHead(200, { "content-type": "application/zip" });
-				response.write(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+				response.write(Buffer.from([0x50, 0x4b, 0x03, 0x04]), () =>
+					markPackageBytesWritten?.(),
+				);
 				return;
 			}
 			response.writeHead(404).end();
@@ -858,10 +869,12 @@ describe("readCappedSkillPackage", () => {
 		try {
 			await expect(
 				service.install("catalog-peer-stall", {
-					downloadTimeoutMs: 120,
+					downloadTimeoutMs: 5_000,
 					throwOnDownloadError: true,
 				}),
 			).rejects.toMatchObject({ code: "SKILL_DOWNLOAD_TIMEOUT" });
+			await expect(packageRequested).resolves.toBeUndefined();
+			await expect(packageBytesWritten).resolves.toBeUndefined();
 			await expect(packageClosed).resolves.toBeUndefined();
 			expect(storage.getPackage("catalog-peer-stall")).toBeUndefined();
 		} finally {
@@ -870,7 +883,7 @@ describe("readCappedSkillPackage", () => {
 				server.close((error) => (error ? reject(error) : resolve())),
 			);
 		}
-	});
+	}, 30_000);
 
 	it("bounds a stalled catalog-details body before package fetch or persistence", async () => {
 		let requestCount = 0;

@@ -4,7 +4,7 @@
  */
 
 import type { IAgentRuntime, Plugin, ProcessEnvLike } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, registerProviderModels } from "@elizaos/core";
 // Cloud account actions
 import { cloudAccountStatusAction } from "./actions/cloud-account-status";
 import { createCloudApiKeyAction } from "./actions/create-cloud-api-key";
@@ -142,15 +142,16 @@ export function registerTextInferenceModels(runtime: IAgentRuntime): void {
     );
     return;
   }
-  for (const [modelType, handler] of Object.entries(textInferenceModels)) {
-    runtime.registerModel(
+  registerProviderModels(
+    runtime,
+    elizaOSCloudPlugin.name,
+    Object.entries(textInferenceModels).map(([modelType, handler]) => ({
       modelType,
-      handler as Parameters<IAgentRuntime["registerModel"]>[1],
-      elizaOSCloudPlugin.name,
-      elizaOSCloudPlugin.priority,
-      { displayModel: textInferenceDisplayModels[modelType](runtime) }
-    );
-  }
+      handler: handler as Parameters<IAgentRuntime["registerModel"]>[1],
+      priority: elizaOSCloudPlugin.priority,
+      metadata: { displayModel: textInferenceDisplayModels[modelType](runtime) },
+    }))
+  );
 }
 
 export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
@@ -163,14 +164,15 @@ export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
     );
     return;
   }
-  for (const [modelType, handler] of Object.entries(cloudEmbeddingModels)) {
-    runtime.registerModel(
+  registerProviderModels(
+    runtime,
+    elizaOSCloudPlugin.name,
+    Object.entries(cloudEmbeddingModels).map(([modelType, handler]) => ({
       modelType,
-      handler as Parameters<IAgentRuntime["registerModel"]>[1],
-      elizaOSCloudPlugin.name,
-      elizaOSCloudPlugin.priority
-    );
-  }
+      handler: handler as Parameters<IAgentRuntime["registerModel"]>[1],
+      priority: elizaOSCloudPlugin.priority,
+    }))
+  );
 }
 
 export const elizaOSCloudPlugin: Plugin = {

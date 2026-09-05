@@ -26,7 +26,7 @@ import type {
   TextEmbeddingParams,
   TokenizeTextParams,
 } from "@elizaos/core";
-import { ElizaError, EventType, logger, ModelType } from "@elizaos/core";
+import { ElizaError, EventType, logger, ModelType, registerProviderModels } from "@elizaos/core";
 import {
   handleActionPlanner,
   handleImageDescription,
@@ -125,8 +125,9 @@ const mediaModels: NonNullable<Plugin["models"]> = {
 // override points them at an endpoint that serves them, so consumers (e.g.
 // plugin-discord's isImageDescriptionEnabled) skip gracefully instead of failing
 // on every attachment.
-function registerMediaModels(runtime: IAgentRuntime): void {
+export function registerMediaModels(runtime: IAgentRuntime): void {
   const cerebras = isCerebrasMode(runtime);
+  const registrations: Array<Parameters<typeof registerProviderModels>[2][number]> = [];
   for (const [modelType, handler] of Object.entries(mediaModels)) {
     if (
       cerebras &&
@@ -135,13 +136,13 @@ function registerMediaModels(runtime: IAgentRuntime): void {
       logger.info(`[OpenAI] Not registering ${modelType}: the Cerebras endpoint does not serve it`);
       continue;
     }
-    runtime.registerModel(
+    registrations.push({
       modelType,
-      handler as Parameters<IAgentRuntime["registerModel"]>[1],
-      openaiPlugin.name,
-      openaiPlugin.priority
-    );
+      handler: handler as Parameters<IAgentRuntime["registerModel"]>[1],
+      priority: openaiPlugin.priority,
+    });
   }
+  registerProviderModels(runtime, openaiPlugin.name, registrations);
 }
 
 function warnWhenApiKeyIsMissing(runtime: IAgentRuntime): void {

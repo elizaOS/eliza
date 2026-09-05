@@ -971,7 +971,7 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("Fast streaming stays smooth.");
   });
 
-  it("returns sanitized action result summaries for UI handoffs", async () => {
+  it("returns sanitized, complete action results for UI handoffs", async () => {
     const message = createChatMessage("create a workflow");
     const getActionResults = vi.fn(() => [
       {

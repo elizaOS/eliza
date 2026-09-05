@@ -35,6 +35,7 @@ import {
   PostFirstRunRequestSchema,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
+import { prepareFirstRunConnectors } from "@elizaos/shared/first-run-config";
 import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import {
@@ -268,6 +269,12 @@ export interface FirstRunServerState {
   chatConnectionPromise: Promise<void> | null;
 }
 
+export {
+  type BlooioFirstRunResolution,
+  type CanonicalBlooioConnectorConfig,
+  resolveBlooioFirstRunConfig,
+} from "@elizaos/shared/first-run-config";
+
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
@@ -388,6 +395,11 @@ export async function handleFirstRunRoutes(
       logger.warn(
         `[eliza-api] Failed to reload config before first-run: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+    const connectorPreparation = prepareFirstRunConnectors(config, body);
+    if (!connectorPreparation.ok) {
+      error(res, connectorPreparation.error, 400);
+      return true;
     }
     const configuredLanguage = ctx.normalizeCharacterLanguage(
       (body.language as string | undefined) ??
@@ -632,102 +644,11 @@ export async function handleFirstRunRoutes(
       process.env.GITHUB_TOKEN = body.githubToken.trim();
     }
 
-    // ── Connectors (Telegram, Discord, WhatsApp, Twilio, Blooio) ────────
-    if (!config.connectors) config.connectors = {};
-    const explicitConnectors = asRecord(body.connectors);
-    if (explicitConnectors) {
-      for (const [connectorName, connectorValue] of Object.entries(
-        explicitConnectors,
-      )) {
-        const nextConnector = asRecord(connectorValue);
-        if (!nextConnector) {
-          continue;
-        }
-        const currentConnector = asRecord(config.connectors[connectorName]);
-        config.connectors[connectorName] = {
-          ...(currentConnector ?? {}),
-          ...nextConnector,
-        } as import("../config/types.eliza.ts").ConnectorConfig;
-      }
-    }
-    if (
-      body.telegramToken &&
-      typeof body.telegramToken === "string" &&
-      body.telegramToken.trim()
-    ) {
-      config.connectors.telegram = { botToken: body.telegramToken.trim() };
-    }
-    if (
-      body.discordToken &&
-      typeof body.discordToken === "string" &&
-      body.discordToken.trim()
-    ) {
-      config.connectors.discord = { token: body.discordToken.trim() };
-    }
-    if (
-      body.whatsappSessionPath &&
-      typeof body.whatsappSessionPath === "string" &&
-      body.whatsappSessionPath.trim()
-    ) {
-      config.connectors.whatsapp = {
-        sessionPath: body.whatsappSessionPath.trim(),
-      };
-    }
-    if (
-      body.twilioAccountSid &&
-      typeof body.twilioAccountSid === "string" &&
-      body.twilioAccountSid.trim() &&
-      body.twilioAuthToken &&
-      typeof body.twilioAuthToken === "string" &&
-      body.twilioAuthToken.trim()
-    ) {
-      if (!config.env) config.env = {};
-      (config.env as Record<string, string>).TWILIO_ACCOUNT_SID = (
-        body.twilioAccountSid as string
-      ).trim();
-      (config.env as Record<string, string>).TWILIO_AUTH_TOKEN = (
-        body.twilioAuthToken as string
-      ).trim();
-      process.env.TWILIO_ACCOUNT_SID = (body.twilioAccountSid as string).trim();
-      process.env.TWILIO_AUTH_TOKEN = (body.twilioAuthToken as string).trim();
-      if (
-        body.twilioPhoneNumber &&
-        typeof body.twilioPhoneNumber === "string" &&
-        body.twilioPhoneNumber.trim()
-      ) {
-        (config.env as Record<string, string>).TWILIO_PHONE_NUMBER = (
-          body.twilioPhoneNumber as string
-        ).trim();
-        process.env.TWILIO_PHONE_NUMBER = (
-          body.twilioPhoneNumber as string
-        ).trim();
-      }
-    }
-    if (
-      body.blooioApiKey &&
-      typeof body.blooioApiKey === "string" &&
-      body.blooioApiKey.trim()
-    ) {
-      if (!config.env) config.env = {};
-      const trimmedKey = (body.blooioApiKey as string).trim();
-      (config.env as Record<string, string>).BLOOIO_API_KEY = trimmedKey;
-      process.env.BLOOIO_API_KEY = trimmedKey;
-
-      const blooioConnector: Record<string, string> = { apiKey: trimmedKey };
-
-      if (
-        body.blooioPhoneNumber &&
-        typeof body.blooioPhoneNumber === "string" &&
-        body.blooioPhoneNumber.trim()
-      ) {
-        const trimmedPhone = (body.blooioPhoneNumber as string).trim();
-        (config.env as Record<string, string>).BLOOIO_PHONE_NUMBER =
-          trimmedPhone;
-        process.env.BLOOIO_PHONE_NUMBER = trimmedPhone;
-        blooioConnector.fromNumber = trimmedPhone;
-      }
-
-      config.connectors.blooio = blooioConnector;
+    config.connectors = connectorPreparation.connectors;
+    if (Object.keys(connectorPreparation.env).length > 0) {
+      config.env ??= {};
+      Object.assign(config.env, connectorPreparation.env);
+      Object.assign(process.env, connectorPreparation.env);
     }
 
     const explicitFeatures = asRecord(body.features);

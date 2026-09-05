@@ -77,6 +77,10 @@ async function installJoinRoutes(page: Page): Promise<void> {
   });
 
   await page.route("**/api/v1/eliza/personal", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
     await fulfillJson(route, 503, {
       success: false,
       error: "Personal Eliza is temporarily unavailable.",
@@ -171,6 +175,7 @@ async function assertStableContrast(
   } else {
     expect(hover.backgroundColor).toBe(rest.backgroundColor);
   }
+  expect(hover.color).toBe(rest.color);
   expect(hover.ratio).toBeGreaterThanOrEqual(4.5);
   await cdp.send("CSS.forcePseudoState", {
     nodeId,

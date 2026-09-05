@@ -25,11 +25,16 @@ mock.module("../../db/helpers", () => ({
   },
 }));
 
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: async () => distributedCacheValue,
     set: async () => undefined,
     del: async () => undefined,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 
@@ -234,7 +239,7 @@ describe("verifyStewardTokenCached — token lifecycle claims", () => {
       { iat: now, exp: now },
       { iat: now + 0.5, exp: now + 60 },
       { iat: now, exp: now + 60.5 },
-      { iat: now + 301, exp: now + 601 },
+      { iat: now + 600, exp: now + 900 },
       { iat: now, exp: now + 60, nbf: now + 61 },
     ];
     for (const claims of invalidClaims) {

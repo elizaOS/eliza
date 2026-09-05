@@ -31,6 +31,7 @@ const STORY_AUTHENTICATED_SESSION: AuthStatusState = {
   session: { id: "story-session", kind: "local", expiresAt: null },
   access: { mode: "local", passwordConfigured: false, ownerConfigured: true },
 };
+const STORY_OWNER_ROLE = { role: "OWNER" } as const;
 
 /**
  * Publish the authenticated session BEFORE `children` render (a `useState`
@@ -49,8 +50,7 @@ export function WithAuthenticatedSession({
     return null;
   });
   useEffect(() => () => restoreAuth.current?.(), []);
-  // biome-ignore lint/a11y/useValidAriaRole: RoleProvider.role is a canonical role tier, not an ARIA role.
-  return <RoleProvider role="OWNER">{children}</RoleProvider>;
+  return <RoleProvider {...STORY_OWNER_ROLE}>{children}</RoleProvider>;
 }
 
 /**

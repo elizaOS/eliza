@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
+import * as organizationInferenceAdmissionActual from "@/lib/services/organization-inference-admission";
 
 const order: string[] = [];
 const waitUntilTasks: Promise<unknown>[] = [];
@@ -45,6 +46,7 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   }),
 }));
 mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference,
 }));
 mock.module("@/lib/services/ai-billing", () => ({ billUsage }));

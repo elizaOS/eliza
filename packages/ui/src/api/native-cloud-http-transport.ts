@@ -11,6 +11,7 @@ import {
   isElizaDedicatedAgentHostname,
 } from "@elizaos/shared/elizacloud";
 import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
+import { decodeNativeBase64 } from "./native-http-codec";
 import {
   type AgentRequestTransport,
   bodyToString,
@@ -151,12 +152,7 @@ function nativeRequestData(
 /** CapacitorHttp returns arraybuffer responses as base64 across the native bridge. */
 function responseBytes(data: unknown): ArrayBuffer {
   if (typeof data !== "string" || data.length === 0) return new ArrayBuffer(0);
-  const binary = globalThis.atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes.buffer as ArrayBuffer;
+  return decodeNativeBase64(data);
 }
 
 const nativeCloudHttpTransport: AgentRequestTransport = {

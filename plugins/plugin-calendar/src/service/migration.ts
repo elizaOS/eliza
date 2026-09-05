@@ -10,12 +10,15 @@
  * rows in `app_lifeops`, so on first boot we copy them across — once,
  * idempotently, and WITHOUT ever touching the source.
  *
- * Guards (per table, independently):
- *   1. Skip if the source table does not exist (fresh install / already dropped).
- *   2. Skip if the target table is non-empty (migration already ran, or the
- *      plugin owns live data).
- *   3. Otherwise copy every source row that is not already present in the target
- *      (a doubly-safe NOT EXISTS guard on the primary key).
+ * Each table is reconciled by primary key and verified before its durable
+ * carve-out receipt is committed. Source and target identities are normalized
+ * before reconciliation, including
+ * grant/account defaults and sync-state IDs from earlier calendar upgrades.
+ * Historical source schemas may predate additive connector and purge metadata;
+ * absent required columns fail closed.
+ * Verification uses `/v2` receipts so completed pre-verification `/v1`
+ * receipts cannot bypass repair; after `/v2` completes, owner deletions remain
+ * authoritative and are not repopulated on later startups.
  *
  * The source table is NEVER dropped or altered. Copies name the shared columns
  * explicitly so the calendar-owned target can add sync metadata without
@@ -23,7 +26,12 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { extractRows } from "@elizaos/shared/db/raw-sql";
+import {
+  assertCarveOutProjectionComplete,
+  type CarveOutDatabase,
+  createDrizzleCarveOutDatabase,
+  runCarveOutMigration,
+} from "@elizaos/plugin-sql";
 
 export const CALENDAR_MIGRATION_LOG_PREFIX = "[Calendar]";
 export const CALENDAR_MIGRATION_SERVICE_TYPE = "calendar_migration";
@@ -38,7 +46,7 @@ export const MIGRATED_CALENDAR_TABLES = [
 
 export type MigratedCalendarTable = (typeof MIGRATED_CALENDAR_TABLES)[number];
 
-const MIGRATED_CALENDAR_COLUMNS: Record<
+export const MIGRATED_CALENDAR_COLUMNS: Record<
   MigratedCalendarTable,
   readonly string[]
 > = {
@@ -86,13 +94,20 @@ const MIGRATED_CALENDAR_COLUMNS: Record<
   ],
 };
 
+const SOURCE_COLUMN_FALLBACKS: Readonly<Record<string, string>> = {
+  connector_account_id: "NULL",
+  grant_id: "NULL",
+  purge_resync_required: "FALSE",
+  purge_resync_reason: "NULL",
+};
+
 export type SqlExecutor = (
   sql: string,
 ) => Promise<Array<Record<string, unknown>>>;
 
 export interface TableMigrationResult {
   table: MigratedCalendarTable;
-  outcome: "copied" | "source-missing" | "target-non-empty";
+  outcome: "copied" | "source-missing" | "already-migrated";
 }
 
 /**
@@ -103,52 +118,29 @@ export interface TableMigrationResult {
 export async function ensureCalendarSourceIdentity(
   exec: SqlExecutor,
 ): Promise<void> {
+  for (const table of MIGRATED_CALENDAR_TABLES) {
+    await ensureCalendarTableSourceIdentity(exec, table);
+  }
+}
+
+function canonicalGrant(column: string, alternate: string): string {
+  return `COALESCE(${column}, ${alternate}, CASE
+    WHEN provider = 'apple_calendar' THEN 'apple-calendar'
+    ELSE 'legacy:' || provider || ':' || side
+  END)`;
+}
+
+async function ensureCalendarTableSourceIdentity(
+  exec: SqlExecutor,
+  table: MigratedCalendarTable,
+): Promise<void> {
   await exec(`
-    ALTER TABLE ${TARGET_SCHEMA}.life_calendar_sync_states
-      ADD COLUMN IF NOT EXISTS next_sync_token TEXT`);
-  await exec(`
-    UPDATE ${TARGET_SCHEMA}.life_calendar_events
-       SET grant_id = COALESCE(
-             grant_id,
-             connector_account_id,
-             CASE
-               WHEN provider = 'apple_calendar' THEN 'apple-calendar'
-               ELSE 'legacy:' || provider || ':' || side
-             END
-           ),
-           connector_account_id = COALESCE(
-             connector_account_id,
-             grant_id,
-             CASE
-               WHEN provider = 'apple_calendar' THEN 'apple-calendar'
-               ELSE 'legacy:' || provider || ':' || side
-             END
-           )
+    UPDATE ${TARGET_SCHEMA}.${quoteIdent(table)}
+       SET grant_id = ${canonicalGrant("grant_id", "connector_account_id")},
+           connector_account_id = ${canonicalGrant("connector_account_id", "grant_id")}
      WHERE grant_id IS NULL OR connector_account_id IS NULL`);
-  await exec(`
-    UPDATE ${TARGET_SCHEMA}.life_calendar_sync_states
-       SET grant_id = COALESCE(
-             grant_id,
-             connector_account_id,
-             CASE
-               WHEN provider = 'apple_calendar' THEN 'apple-calendar'
-               ELSE 'legacy:' || provider || ':' || side
-             END
-           ),
-           connector_account_id = COALESCE(
-             connector_account_id,
-             grant_id,
-             CASE
-               WHEN provider = 'apple_calendar' THEN 'apple-calendar'
-               ELSE 'legacy:' || provider || ':' || side
-             END
-           )
-     WHERE grant_id IS NULL OR connector_account_id IS NULL`);
-  await exec(`
-    UPDATE ${TARGET_SCHEMA}.life_calendar_sync_states
-       SET id = agent_id || ':' || provider || ':' || side || ':grant:' ||
-                grant_id || ':calendar:' || calendar_id`);
-  await exec(`
+  if (table === "life_calendar_events") {
+    await exec(`
     DO $calendar_source_identity$
     DECLARE
       constraint_name text;
@@ -181,6 +173,16 @@ export async function ensureCalendarSourceIdentity(
       END IF;
     END
     $calendar_source_identity$`);
+
+    return;
+  }
+  await exec(`
+    ALTER TABLE ${TARGET_SCHEMA}.life_calendar_sync_states
+      ADD COLUMN IF NOT EXISTS next_sync_token TEXT`);
+  await exec(`
+    UPDATE ${TARGET_SCHEMA}.life_calendar_sync_states
+       SET id = agent_id || ':' || provider || ':' || side || ':grant:' ||
+                grant_id || ':calendar:' || calendar_id`);
   await exec(`
     DO $calendar_sync_source_identity$
     DECLARE
@@ -441,14 +443,60 @@ async function sourceTableExists(
   return rows[0]?.present === true || rows[0]?.present === "true";
 }
 
-async function targetTableIsEmpty(
+async function sourceColumnProjection(
   exec: SqlExecutor,
   table: MigratedCalendarTable,
-): Promise<boolean> {
+): Promise<string> {
   const rows = await exec(
-    `SELECT NOT EXISTS (SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(table)}) AS empty`,
+    `SELECT column_name
+       FROM information_schema.columns
+      WHERE table_schema = '${SOURCE_SCHEMA}'
+        AND table_name = '${table}'`,
   );
-  return rows[0]?.empty === true || rows[0]?.empty === "true";
+  const available = new Set(
+    rows
+      .map((row) => row.column_name)
+      .filter((column): column is string => typeof column === "string"),
+  );
+  const missingRequired = MIGRATED_CALENDAR_COLUMNS[table].filter(
+    (column) =>
+      !available.has(column) && SOURCE_COLUMN_FALLBACKS[column] === undefined,
+  );
+  if (missingRequired.length > 0) {
+    throw new Error(
+      `${CALENDAR_MIGRATION_LOG_PREFIX} legacy ${SOURCE_SCHEMA}.${table} is missing required column(s): ${missingRequired.join(", ")}`,
+    );
+  }
+  const grant = available.has("grant_id") ? 's."grant_id"' : "NULL";
+  const account = available.has("connector_account_id")
+    ? 's."connector_account_id"'
+    : "NULL";
+  const canonicalGrantId = canonicalGrant(grant, account);
+  const expressions: Record<string, string> = {
+    grant_id: canonicalGrantId,
+    connector_account_id: canonicalGrant(account, grant),
+    ...(table === "life_calendar_sync_states"
+      ? {
+          id: `s.agent_id || ':' || s.provider || ':' || s.side || ':grant:' ||
+            ${canonicalGrantId} || ':calendar:' || s.calendar_id`,
+        }
+      : {}),
+  };
+  // Preserve unexpected source columns in verification so schema drift cannot
+  // silently drop a legacy value that the current copy list does not own.
+  const columns = Array.from(
+    new Set([...MIGRATED_CALENDAR_COLUMNS[table], ...available]),
+  );
+  return columns
+    .map((column) => {
+      const expression =
+        expressions[column] ??
+        (available.has(column)
+          ? `s.${quoteIdent(column)}`
+          : SOURCE_COLUMN_FALLBACKS[column]);
+      return `${expression} AS ${quoteIdent(column)}`;
+    })
+    .join(", ");
 }
 
 export async function migrateCalendarTable(
@@ -458,30 +506,54 @@ export async function migrateCalendarTable(
   if (!(await sourceTableExists(exec, table))) {
     return { table, outcome: "source-missing" };
   }
-  if (!(await targetTableIsEmpty(exec, table))) {
-    return { table, outcome: "target-non-empty" };
-  }
-
   const target = `${TARGET_SCHEMA}.${quoteIdent(table)}`;
   const source = `${SOURCE_SCHEMA}.${quoteIdent(table)}`;
   const columns = MIGRATED_CALENDAR_COLUMNS[table];
   const targetColumns = columns.map(quoteIdent).join(", ");
-  const sourceColumns = columns
-    .map((column) => `s.${quoteIdent(column)}`)
-    .join(", ");
-  await exec(
-    `INSERT INTO ${target} (${targetColumns})
-       SELECT ${sourceColumns} FROM ${source} AS s
-       WHERE NOT EXISTS (
-         SELECT 1 FROM ${target} AS t WHERE t.id = s.id
-       )`,
-  );
+  const sourceColumns = await sourceColumnProjection(exec, table);
+  await ensureCalendarTableSourceIdentity(exec, table);
+  const projectionTable = `calendar_projection_${globalThis.crypto.randomUUID().replaceAll("-", "")}`;
+  // A temporary snapshot lets copying and the shared verifier use precisely
+  // the same canonical identity while leaving legacy source rows untouched.
+  await exec(`CREATE TEMPORARY TABLE ${quoteIdent(projectionTable)} AS
+    SELECT ${sourceColumns} FROM ${source} AS s`);
+  try {
+    await exec(
+      `INSERT INTO ${target} (${targetColumns})
+         SELECT ${targetColumns} FROM pg_temp.${quoteIdent(projectionTable)} AS s
+         WHERE NOT EXISTS (
+           SELECT 1 FROM ${target} AS t WHERE t.id = s.id
+         )
+         ON CONFLICT (${quoteIdent("id")}) DO NOTHING`,
+    );
+    await assertCarveOutProjectionComplete(exec, {
+      migrationKey: `calendar/${table}/v2`,
+      source: { schema: "pg_temp", table: projectionTable },
+      target: { schema: TARGET_SCHEMA, table },
+      keyColumns: ["id"],
+    });
+  } catch (error) {
+    // error-policy:J2 preserve the copy/verification failure; transaction rollback
+    // removes the temporary projection if a SQL error aborted the transaction.
+    try {
+      await exec(`DROP TABLE IF EXISTS pg_temp.${quoteIdent(projectionTable)}`);
+    } catch (cleanupError) {
+      // error-policy:J6 the owning transaction rollback removes the temporary table.
+      logger.debug(
+        { error: cleanupError, table },
+        `${CALENDAR_MIGRATION_LOG_PREFIX} temporary projection cleanup deferred to rollback`,
+      );
+    }
+    throw error;
+  }
+  await exec(`DROP TABLE pg_temp.${quoteIdent(projectionTable)}`);
   return { table, outcome: "copied" };
 }
 
 export async function migrateCalendarTables(
-  exec: SqlExecutor,
+  database: CarveOutDatabase,
 ): Promise<TableMigrationResult[]> {
+  const exec = database.execute;
   await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
   await ensureIcsCalendarSourceTable(exec);
   await ensureIcsSecretCleanupTable(exec);
@@ -490,7 +562,18 @@ export async function migrateCalendarTables(
   await ensureLinkedCalendarEventTable(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_CALENDAR_TABLES) {
-    results.push(await migrateCalendarTable(exec, table));
+    const receipt = await runCarveOutMigration(database, {
+      key: `calendar/${table}/v2`,
+      sourceTables: [{ schema: SOURCE_SCHEMA, table }],
+      run: (execute) => migrateCalendarTable(execute, table),
+      outcome: (result) => result.outcome,
+      shouldComplete: (result) => result.outcome !== "source-missing",
+    });
+    results.push(
+      receipt.status === "completed"
+        ? receipt.value
+        : { table, outcome: "already-migrated" },
+    );
   }
   await ensureCalendarSourceIdentity(exec);
   return results;
@@ -498,6 +581,7 @@ export async function migrateCalendarTables(
 
 type RuntimeDb = {
   execute: (query: unknown) => Promise<unknown>;
+  transaction<T>(operation: (transaction: RuntimeDb) => Promise<T>): Promise<T>;
 };
 
 function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
@@ -530,11 +614,8 @@ export class CalendarMigrationService extends Service {
 
   private async run(): Promise<void> {
     const db = getRuntimeDb(this.runtime);
-    const { sql } = await import("drizzle-orm");
-    const exec: SqlExecutor = async (statement) =>
-      extractRows(await db.execute(sql.raw(statement)));
-
-    const results = await migrateCalendarTables(exec);
+    const database = await createDrizzleCarveOutDatabase(db);
+    const results = await migrateCalendarTables(database);
     const copied = results.filter((r) => r.outcome === "copied");
     if (copied.length > 0) {
       logger.info(

@@ -28,7 +28,13 @@ import { replaceIndexedNameTokens } from "./name-tokens";
 import type { TemplateType } from "./types/agent";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
-import { type Content, ContentType, type UUID } from "./types/primitives";
+import type { ModelRegistrationMetadata } from "./types/model";
+import {
+	type Content,
+	ContentType,
+	type JsonValue,
+	type UUID,
+} from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
 import type { State } from "./types/state";
 import { unwrapWholeCodeFence } from "./utils/code-fence.ts";
@@ -1432,3 +1438,137 @@ export {
 	isSyntheticConversationArtifactText,
 } from "./utils/synthetic-conversation-artifact";
 export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";
+
+export interface ProviderUsageLike {
+	promptTokens?: number;
+	completionTokens?: number;
+	inputTokens?: number;
+	outputTokens?: number;
+	totalTokens?: number;
+	cachedPromptTokens?: number;
+	cachedInputTokens?: number;
+	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
+	reasoningTokens?: number;
+	promptTokensDetails?: { cachedTokens?: number };
+	outputTokenDetails?: { reasoningTokens?: number };
+}
+
+export interface NormalizedProviderUsage {
+	promptTokens: number;
+	completionTokens: number;
+	totalTokens: number;
+	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
+	reasoningTokens?: number;
+}
+
+export interface ProviderErrorSummary {
+	name: string;
+	message: string;
+	status?: number;
+	code?: string;
+}
+
+/** Extracts only stable diagnostic fields, never response bodies or credentials. */
+export function summarizeProviderError(error: unknown): ProviderErrorSummary {
+	if (!(error instanceof Error)) {
+		return { name: "Error", message: String(error) };
+	}
+	const record = error as Error & {
+		status?: unknown;
+		statusCode?: unknown;
+		code?: unknown;
+	};
+	const status =
+		providerTokenCount(record.status) ?? providerTokenCount(record.statusCode);
+	return {
+		name: error.name || "Error",
+		message: error.message,
+		...(status !== undefined ? { status } : {}),
+		...(typeof record.code === "string" && record.code.trim()
+			? { code: record.code.trim() }
+			: {}),
+	};
+}
+
+function providerTokenCount(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0
+		? value
+		: undefined;
+}
+
+export function normalizeProviderUsage(
+	usage: ProviderUsageLike,
+): NormalizedProviderUsage {
+	const promptTokens =
+		providerTokenCount(usage.promptTokens) ??
+		providerTokenCount(usage.inputTokens) ??
+		0;
+	const completionTokens =
+		providerTokenCount(usage.completionTokens) ??
+		providerTokenCount(usage.outputTokens) ??
+		0;
+	const cacheReadInputTokens =
+		providerTokenCount(usage.cacheReadInputTokens) ??
+		providerTokenCount(usage.cachedPromptTokens) ??
+		providerTokenCount(usage.cachedInputTokens) ??
+		providerTokenCount(usage.promptTokensDetails?.cachedTokens);
+	const cacheCreationInputTokens = providerTokenCount(
+		usage.cacheCreationInputTokens,
+	);
+	const reasoningTokens =
+		providerTokenCount(usage.outputTokenDetails?.reasoningTokens) ??
+		providerTokenCount(usage.reasoningTokens);
+	return {
+		promptTokens,
+		completionTokens,
+		totalTokens:
+			providerTokenCount(usage.totalTokens) ?? promptTokens + completionTokens,
+		...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+		...(cacheCreationInputTokens !== undefined
+			? { cacheCreationInputTokens }
+			: {}),
+		...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
+	};
+}
+
+type ProviderModelHandler = (
+	runtime: IAgentRuntime,
+	params: Record<string, JsonValue | object>,
+) => Promise<JsonValue | object>;
+
+export interface ProviderModelRegistration {
+	modelType: string;
+	handler: ProviderModelHandler;
+	priority?: number;
+	metadata?: ModelRegistrationMetadata;
+}
+
+/** Validates a complete set before registering, avoiding partial duplicate setup. */
+export function registerProviderModels(
+	runtime: Pick<IAgentRuntime, "registerModel">,
+	provider: string,
+	registrations: readonly ProviderModelRegistration[],
+): void {
+	const normalizedProvider = provider.trim();
+	if (!normalizedProvider)
+		throw new Error("Model provider name must not be blank");
+	const seen = new Set<string>();
+	for (const registration of registrations) {
+		const modelType = registration.modelType.trim();
+		if (!modelType) throw new Error("Model type must not be blank");
+		if (seen.has(modelType))
+			throw new Error(`Duplicate model registration for ${modelType}`);
+		seen.add(modelType);
+	}
+	for (const registration of registrations) {
+		runtime.registerModel(
+			registration.modelType.trim(),
+			registration.handler,
+			normalizedProvider,
+			registration.priority,
+			registration.metadata,
+		);
+	}
+}

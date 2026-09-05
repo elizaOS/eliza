@@ -37,7 +37,10 @@ const loggerWarn = mock();
 let cloudEnv: Record<string, string | undefined> = {};
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   CacheClient: class CacheClient {
     private values = new Map<string, unknown>();
     isAvailable() {
@@ -59,6 +62,8 @@ mock.module("../../cache/client", () => ({
     set: mock(async (key: string, value: unknown) => {
       sessionCache.set(key, value);
     }),
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 
@@ -2195,7 +2200,7 @@ describe("runOnboardingChat", () => {
       }
     });
 
-    test("a failed remember error body read is logged without fabricating handoff success", async () => {
+    test("a failed remember response is logged without fabricating handoff success", async () => {
       const originalFetch = globalThis.fetch;
       globalThis.fetch = mock(async (_input: RequestInfo | URL, _init?: RequestInit) => {
         return {
@@ -2241,6 +2246,13 @@ describe("runOnboardingChat", () => {
             agentId: "agent-1",
             status: 502,
             error: "body stream broke",
+          }),
+        );
+        expect(loggerWarn).toHaveBeenCalledWith(
+          "[eliza-app onboarding] handoff memory copy failed",
+          expect.objectContaining({
+            agentId: "agent-1",
+            error: "memory copy failed (502)",
           }),
         );
       } finally {

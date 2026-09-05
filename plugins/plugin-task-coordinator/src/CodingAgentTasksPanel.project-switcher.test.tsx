@@ -22,7 +22,39 @@ vi.mock("@elizaos/ui/components", () => ({
   ViewBackButton: () => <button type="button">Back</button>,
 }));
 
-vi.mock("@elizaos/ui/components/ui/dropdown-menu", () => ({
+vi.mock("@elizaos/ui/api", () => ({
+  ApiError: class ApiError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  },
+  client: {
+    listProjects: () => calls.listProjects(),
+    listCodingAgentTaskThreads: (options: unknown) =>
+      calls.listCodingAgentTaskThreads(options),
+  },
+}));
+
+vi.mock("@elizaos/ui", () => ({
+  Button: ({
+    children,
+    ...rest
+  }: { children: ReactNode } & Record<string, unknown>) => (
+    <button type="button" {...rest}>
+      {children}
+    </button>
+  ),
+  Card: ({
+    children,
+    ...rest
+  }: { children: ReactNode } & Record<string, unknown>) => (
+    <div {...rest}>{children}</div>
+  ),
+  Input: (props: Record<string, unknown>) => <input {...props} />,
+  Separator: () => <hr />,
+  StatusPulseDot: () => <span />,
   DropdownMenu: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -48,57 +80,6 @@ vi.mock("@elizaos/ui/components/ui/dropdown-menu", () => ({
       {children}
     </button>
   ),
-}));
-
-vi.mock("@elizaos/ui", () => ({
-  ApiError: class ApiError extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-      super(message);
-      this.status = status;
-    }
-  },
-  Button: ({
-    children,
-    ...rest
-  }: { children: ReactNode } & Record<string, unknown>) => (
-    <button type="button" {...rest}>
-      {children}
-    </button>
-  ),
-  Card: ({
-    children,
-    ...rest
-  }: { children: ReactNode } & Record<string, unknown>) => (
-    <div {...rest}>{children}</div>
-  ),
-  Input: (props: Record<string, unknown>) => <input {...props} />,
-  Separator: (props: Record<string, unknown>) => <div {...props} />,
-  StatusPulseDot: (props: Record<string, unknown>) => <span {...props} />,
-  DropdownMenu: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuContent: ({
-    children,
-    ...rest
-  }: { children: ReactNode } & Record<string, unknown>) => (
-    <div {...rest}>{children}</div>
-  ),
-  DropdownMenuItem: ({
-    children,
-    onSelect,
-    ...rest
-  }: {
-    children: ReactNode;
-    onSelect?: () => void;
-  } & Record<string, unknown>) => (
-    <button type="button" onClick={() => onSelect?.()} {...rest}>
-      {children}
-    </button>
-  ),
   ChatEmptyStateWithRecommendations: ({
     title,
     testId,
@@ -106,11 +87,6 @@ vi.mock("@elizaos/ui", () => ({
     title: ReactNode;
     testId?: string;
   }) => <div data-testid={testId}>{title}</div>,
-  client: {
-    listProjects: () => calls.listProjects(),
-    listCodingAgentTaskThreads: (options: unknown) =>
-      calls.listCodingAgentTaskThreads(options),
-  },
   useAppSelectorShallow: () => ({ t: undefined, uiLanguage: "en" }),
 }));
 

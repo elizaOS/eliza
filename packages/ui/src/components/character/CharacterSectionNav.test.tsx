@@ -16,15 +16,15 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { FramedPage } from "../../layouts/framed-page";
+import { FramedPage } from "../../layouts";
 import {
   CharacterSectionNav,
   isCharacterSectionPath,
 } from "./CharacterSectionNav";
 
-function renderCharacterSectionNav(activePath: string) {
+function renderNavigation(activePath: string) {
   return render(
-    <FramedPage gutterOwner="framed-page">
+    <FramedPage gutterOwner="page-frame">
       <CharacterSectionNav activePath={activePath} />
     </FramedPage>,
   );
@@ -64,7 +64,7 @@ describe("isCharacterSectionPath", () => {
 
 describe("CharacterSectionNav", () => {
   it("renders a centered Character title header above the strip with an icon-only back", () => {
-    renderCharacterSectionNav("/character");
+    renderNavigation("/character");
     const header = screen.getByTestId("view-header");
     expect(
       within(header).getByRole("heading", { name: "Character" }),
@@ -75,7 +75,7 @@ describe("CharacterSectionNav", () => {
   });
 
   it("renders the four family tabs in order, and no Knowledge tab", () => {
-    renderCharacterSectionNav("/character");
+    renderNavigation("/character");
     const strip = screen.getByTestId("section-nav-character");
     const labels = within(strip)
       .getAllByRole("button")
@@ -92,7 +92,7 @@ describe("CharacterSectionNav", () => {
   });
 
   it("marks Personality active at the /character root", () => {
-    renderCharacterSectionNav("/character");
+    renderNavigation("/character");
     const strip = screen.getByTestId("section-nav-character");
     expect(
       within(strip)
@@ -108,7 +108,7 @@ describe("CharacterSectionNav", () => {
 
   it("marks Relationships active on both its canonical route and the legacy alias", () => {
     for (const path of ["/apps/relationships", "/character/relationships"]) {
-      renderCharacterSectionNav(path);
+      renderNavigation(path);
       const strip = screen.getByTestId("section-nav-character");
       expect(
         within(strip)
@@ -120,7 +120,7 @@ describe("CharacterSectionNav", () => {
   });
 
   it("navigates to a section route on click", () => {
-    renderCharacterSectionNav("/character");
+    renderNavigation("/character");
     const strip = screen.getByTestId("section-nav-character");
     fireEvent.click(within(strip).getByRole("button", { name: "Experience" }));
     expect(window.location.pathname).toBe("/character/experience");
@@ -128,7 +128,7 @@ describe("CharacterSectionNav", () => {
 
   it("does not renavigate when the active tab is clicked", () => {
     window.history.replaceState(null, "", "/character");
-    renderCharacterSectionNav("/character");
+    renderNavigation("/character");
     const strip = screen.getByTestId("section-nav-character");
     fireEvent.click(within(strip).getByRole("button", { name: "Personality" }));
     expect(window.location.pathname).toBe("/character");

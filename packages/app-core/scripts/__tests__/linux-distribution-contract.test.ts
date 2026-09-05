@@ -7,6 +7,7 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -175,17 +176,20 @@ describe("packaged ELF GLIBC compatibility", () => {
     mkdirSync(lazyDir, { recursive: true });
     const lazyLibrary = path.join(lazyDir, "libelizainference.so");
     elfExecutable(lazyLibrary, "lazy-inference");
+    const canonicalLazyLibrary = realpathSync(lazyLibrary);
+    const auditedFiles: string[] = [];
 
     expect(() =>
       inspectPackagedGlibcCompatibility(buildDir, {
-        readelfVersionInfo: (filePath: string) =>
-          filePath.endsWith(
-            path.join("native", "libelizainference.so"),
-          )
+        readelfVersionInfo: (filePath: string) => {
+          auditedFiles.push(filePath);
+          return filePath === canonicalLazyLibrary
             ? "Name: GLIBC_2.43"
-            : GLIBC_238_VERSION_INFO,
+            : GLIBC_238_VERSION_INFO;
+        },
       }),
     ).toThrow(/libelizainference\.so \(GLIBC_2\.43\)/);
+    expect(auditedFiles).toContain(canonicalLazyLibrary);
   });
 
   it("audits extensionless ELF files instead of relying on filename filters", () => {

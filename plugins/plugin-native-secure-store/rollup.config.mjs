@@ -1,4 +1,8 @@
-/** Bundles the browser fallback while leaving Capacitor owned by the host. */
+/**
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
+ */
+
 export default {
   input: "dist/esm/index.js",
   output: [

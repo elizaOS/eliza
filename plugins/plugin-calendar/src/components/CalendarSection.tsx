@@ -481,6 +481,72 @@ function AllDayBandCell({
   );
 }
 
+function TimedEventButton({
+  event,
+  position,
+  isSelected,
+  onSelectEvent,
+}: {
+  event: LifeOpsCalendarEvent;
+  position: EventPosition;
+  isSelected: boolean;
+  onSelectEvent: (event: LifeOpsCalendarEvent) => void;
+}) {
+  const color = paletteFor(event);
+  const eventControl = useAgentElement<HTMLButtonElement>({
+    id: `calendar-event-${event.id}`,
+    role: "list-item",
+    label: event.title,
+    group: "lifeops-calendar-events",
+    status: isSelected ? "active" : "inactive",
+    description: `Open the event ${event.title}`,
+    onActivate: () => onSelectEvent(event),
+  });
+
+  return (
+    <Button
+      ref={eventControl.ref}
+      variant="selection"
+      size="content"
+      data-state={isSelected ? "on" : "off"}
+      type="button"
+      onClick={() => onSelectEvent(event)}
+      onContextMenu={(mouseEvent) => {
+        mouseEvent.preventDefault();
+        onSelectEvent(event);
+      }}
+      aria-pressed={isSelected}
+      className="group absolute overflow-hidden"
+      layoutStyle={{
+        top: `calc(${position.topPct}% + 0.1rem)`,
+        height: `calc(${position.heightPct}% - 0.2rem)`,
+        left: `calc(${position.leftPct}% + 0.125rem)`,
+        width: `calc(${position.widthPct}% - 0.25rem)`,
+        minHeight: "1.5rem",
+      }}
+      visualStyle={{
+        background: color.bg,
+        borderColor: color.border,
+        color: color.text,
+      }}
+      {...eventControl.agentProps}
+    >
+      <div className="truncate text-[11px] font-semibold leading-tight">
+        {event.title}
+      </div>
+      <div className="mt-0.5 truncate text-[10px] leading-tight opacity-90">
+        <span>{formatTimeOfDay(event.startAt)}</span>
+        {event.location ? (
+          <>
+            <span className="mx-1 inline-block size-1 rounded-full bg-current opacity-60" />
+            <span>{event.location}</span>
+          </>
+        ) : null}
+      </div>
+    </Button>
+  );
+}
+
 function DayColumnGrid({
   day,
   events,
@@ -566,51 +632,15 @@ function DayColumnGrid({
 
       {/* events */}
       {positioned.map(({ event, position }) => {
-        const color = paletteFor(event);
         const isSelected = event.id === selectedEventId;
         return (
-          <Button
-            variant="selection"
-            size="content"
-            data-state={isSelected ? "on" : "off"}
-            data-agent-id={`calendar-event-${event.id}`}
-            data-agent-role="button"
-            data-agent-label={`${event.title} ${formatTimeOfDay(event.startAt)}`}
+          <TimedEventButton
             key={event.id}
-            type="button"
-            onClick={() => onSelectEvent(event)}
-            onContextMenu={(mouseEvent) => {
-              mouseEvent.preventDefault();
-              onSelectEvent(event);
-            }}
-            aria-pressed={isSelected}
-            className="group absolute overflow-hidden"
-            layoutStyle={{
-              top: `calc(${position.topPct}% + 0.1rem)`,
-              height: `calc(${position.heightPct}% - 0.2rem)`,
-              left: `calc(${position.leftPct}% + 0.125rem)`,
-              width: `calc(${position.widthPct}% - 0.25rem)`,
-              minHeight: "1.5rem",
-            }}
-            visualStyle={{
-              background: color.bg,
-              borderColor: color.border,
-              color: color.text,
-            }}
-          >
-            <div className="truncate text-[11px] font-semibold leading-tight">
-              {event.title}
-            </div>
-            <div className="mt-0.5 truncate text-[10px] leading-tight opacity-90">
-              <span>{formatTimeOfDay(event.startAt)}</span>
-              {event.location ? (
-                <>
-                  <span className="mx-1 inline-block size-1 rounded-full bg-current opacity-60" />
-                  <span>{event.location}</span>
-                </>
-              ) : null}
-            </div>
-          </Button>
+            event={event}
+            position={position}
+            isSelected={isSelected}
+            onSelectEvent={onSelectEvent}
+          />
         );
       })}
     </div>

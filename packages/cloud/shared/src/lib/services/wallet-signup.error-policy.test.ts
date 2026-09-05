@@ -17,6 +17,7 @@ const EVM_ADDRESS = `0x${"cd".repeat(20)}`;
 let getByWallet: (addr: string) => Promise<unknown>;
 let findBySlug: (slug: string) => Promise<unknown>;
 let orgCreate: (input: unknown) => Promise<unknown>;
+let orgUpdateInput: unknown;
 let userCreate: (input: { organization_id: string; role: string }) => Promise<unknown>;
 
 mock.module("../../db/repositories/organizations", () => ({
@@ -53,6 +54,17 @@ mock.module("../../db/helpers", () => ({
           }),
         }),
       }),
+      update: () => ({
+        set: (input: unknown) => ({
+          where: () => ({
+            returning: async () => {
+              orgUpdateInput = input;
+              const org = await findBySlug("wallet-slug");
+              return org ? [org] : [];
+            },
+          }),
+        }),
+      }),
     }),
 }));
 mock.module("./organizations", () => ({
@@ -79,6 +91,7 @@ beforeEach(() => {
   getByWallet = async () => null;
   findBySlug = async () => null;
   orgCreate = async () => null;
+  orgUpdateInput = undefined;
   userCreate = async () => {
     throw new Error("userCreate not configured");
   };
@@ -121,6 +134,7 @@ describe("wallet-signup fail-closed error policy", () => {
     expect(res.user.organization).toBe(racedOrg as never);
     expect(res.user.organization_id).toBe("org-raced");
     expect(organizationInput).toEqual(expect.objectContaining({ credit_balance: "5.00" }));
+    expect(orgUpdateInput).toEqual(expect.objectContaining({ credit_balance: "5.00" }));
     expect(res.initialCreditsGranted).toBe(true);
     expect(res.initialFreeCreditsUsd).toBe(5);
   });

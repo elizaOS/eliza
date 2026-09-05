@@ -816,7 +816,7 @@ describe("responses compatibility transformations", () => {
       headers: {
         Authorization: "Bearer eliza_test_key",
         "Content-Length": "999",
-        "X-Eliza-Trace-Id": "33333333-3333-4333-8333-333333333333",
+        "X-Eliza-Trace-Id": "33333333333343338333333333333333",
       },
       body: "{}",
     });
@@ -834,7 +834,7 @@ describe("responses compatibility transformations", () => {
     expect(request.headers.get("Authorization")).toBe("Bearer eliza_test_key");
     expect(request.headers.get("Content-Length")).toBeNull();
     expect(request.headers.get("X-Eliza-Trace-Id")).toBe(
-      "33333333-3333-4333-8333-333333333333",
+      "33333333333343338333333333333333",
     );
     const chatBody = (await request.json()) as Record<string, unknown>;
     expect(chatBody).toEqual({

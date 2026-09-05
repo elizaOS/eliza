@@ -3,7 +3,15 @@
 import { afterEach, expect, mock, test } from "bun:test";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 
-mock.module("../cache/client", () => ({ cache: {} }));
+const cacheClientActualModule = await import("../cache/client");
+
+mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
+  cache: {
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
+}));
 mock.module("./usage", () => ({ usageService: { create: mock() } }));
 const runFlatProviderOperation = mock(
   async (_context: unknown, _operation: unknown, dispatch: () => Promise<unknown>) => dispatch(),

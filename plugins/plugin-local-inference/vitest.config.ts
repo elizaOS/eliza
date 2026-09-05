@@ -11,10 +11,38 @@ export default defineConfig({
 	resolve: {
 		extensions: [".ts", ".tsx", ".mts", ".js", ".mjs", ".json"],
 		alias: {
-			// Pin the subpath before the bare core alias; otherwise Vite prefix-
-			// rewrites it to `index.node.ts/client-public` and fails with ENOTDIR.
+			// Pin every core subpath reachable through shared before the bare core
+			// alias; Vite treats string aliases as prefix matches and would otherwise
+			// rewrite them to `index.node.ts/<subpath>` and fail with ENOTDIR.
 			"@elizaos/core/client-public": fileURLToPath(
 				new URL("../../packages/core/src/client-public.ts", import.meta.url),
+			),
+			"@elizaos/core/contracts/cloud-topology": fileURLToPath(
+				new URL(
+					"../../packages/core/src/contracts/cloud-topology.ts",
+					import.meta.url,
+				),
+			),
+			"@elizaos/core/contracts/first-run-options": fileURLToPath(
+				new URL(
+					"../../packages/core/src/contracts/first-run-options.ts",
+					import.meta.url,
+				),
+			),
+			"@elizaos/core/contracts/service-routing": fileURLToPath(
+				new URL(
+					"../../packages/core/src/contracts/service-routing.ts",
+					import.meta.url,
+				),
+			),
+			"@elizaos/core/contracts/wallet": fileURLToPath(
+				new URL("../../packages/core/src/contracts/wallet.ts", import.meta.url),
+			),
+			"@elizaos/core/runtime-env": fileURLToPath(
+				new URL("../../packages/core/src/runtime-env.ts", import.meta.url),
+			),
+			"@elizaos/core/edge": fileURLToPath(
+				new URL("../../packages/core/src/index.edge.ts", import.meta.url),
 			),
 			"@elizaos/core": fileURLToPath(
 				new URL("../../packages/core/src/index.node.ts", import.meta.url),

@@ -33,7 +33,7 @@ const STATUS_PATH = "/api/voice/audio-frames/status";
 
 /** Diarization status GET is a short local-agent diagnostic hop. */
 const DIARIZATION_STATUS_TIMEOUT_MS = 15_000;
-let localAgentClient: ElizaClient | null = null;
+let localAgentClient: ElizaClient | undefined;
 
 function getLocalAgentClient(): ElizaClient {
   localAgentClient ??= new ElizaClient(MOBILE_LOCAL_AGENT_API_BASE);

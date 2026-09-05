@@ -21,22 +21,20 @@ import {
   describe,
   expect,
   mock,
-  spyOn,
   test,
 } from "bun:test";
-import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
+import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
 
 // These purchased-credit fixtures have no paid subscription. Keep the real
 // funding selector and reservation path while supplying that repository state.
-let entitlementLookup: ReturnType<typeof spyOn>;
+let restoreEntitlementLookup: ReturnType<
+  typeof mockNonSubscriberEntitlementLookup
+>;
 beforeEach(() => {
-  entitlementLookup = spyOn(
-    subscriptionEntitlementsRepository,
-    "find",
-  ).mockResolvedValue(undefined);
+  restoreEntitlementLookup = mockNonSubscriberEntitlementLookup();
 });
 afterEach(() => {
-  entitlementLookup.mockRestore();
+  restoreEntitlementLookup();
 });
 
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";

@@ -1,4 +1,7 @@
-// Coordinates cloud service rpc behavior behind route handlers.
+/**
+ * Routes priced EVM and Solana JSON-RPC requests through configured providers,
+ * including batch validation and provider-specific chain mapping.
+ */
 import { getCloudAwareEnv } from "../../../runtime/cloud-bindings";
 import { logger } from "../../../utils/logger";
 import { getProxyConfig } from "../config";
@@ -109,6 +112,37 @@ const EVM_NON_CACHEABLE_METHODS = new Set([
   "eth_maxPriorityFeePerGas",
   "eth_blobBaseFee",
 ]);
+
+// Filter polling consumes pending changes; creating/removing filters and
+// subscriptions also changes provider state even though no transaction is sent.
+const EVM_NON_REPLAYABLE_METHODS = new Set([
+  "eth_sendRawTransaction",
+  "eth_newFilter",
+  "eth_newBlockFilter",
+  "eth_newPendingTransactionFilter",
+  "eth_getFilterChanges",
+  "eth_uninstallFilter",
+  "eth_subscribe",
+  "eth_unsubscribe",
+]);
+
+function isReplayableEvmRequest(body: unknown): boolean {
+  return (
+    body !== null &&
+    typeof body === "object" &&
+    !Array.isArray(body) &&
+    "method" in body &&
+    typeof body.method === "string" &&
+    EVM_ALLOWED_METHODS.has(body.method) &&
+    !EVM_NON_REPLAYABLE_METHODS.has(body.method)
+  );
+}
+
+function isReplayableEvmBody(body: unknown): boolean {
+  return Array.isArray(body)
+    ? body.length > 0 && body.every(isReplayableEvmRequest)
+    : isReplayableEvmRequest(body);
+}
 
 /**
  * Extract method from JSON-RPC request body (EVM)
@@ -235,6 +269,7 @@ function buildEvmRpcHandler(chain: string): ServiceHandler {
         timeoutMs: getProxyConfig().ALCHEMY_TIMEOUT_MS,
         serviceTag: "EVM RPC",
         nonRetriableStatuses: [400, 404],
+        replayPolicy: isReplayableEvmBody(body) ? "idempotent" : "never",
       });
 
       if (!response.ok) {

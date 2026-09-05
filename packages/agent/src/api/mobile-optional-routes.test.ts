@@ -10,7 +10,6 @@ import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const configMock = vi.hoisted(() => ({
-  loadElizaConfig: vi.fn(() => ({})),
   loadEffectiveElizaConfig: vi.fn(() => ({})),
 }));
 
@@ -74,7 +73,6 @@ describe("handleMobileOptionalRoutes", () => {
     } else {
       process.env.ELIZA_DEVICE_BRIDGE_ENABLED = oldBridgeEnv;
     }
-    configMock.loadElizaConfig.mockReturnValue({});
     configMock.loadEffectiveElizaConfig.mockReturnValue({});
   });
 
@@ -142,9 +140,6 @@ describe("handleMobileOptionalRoutes", () => {
   it("does not force local runtime mode for device bridge cloud controllers", async () => {
     delete process.env.ELIZA_MOBILE_LOCAL_AGENT;
     process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
-    configMock.loadElizaConfig.mockReturnValue({
-      deploymentTarget: { runtime: "cloud" },
-    });
     configMock.loadEffectiveElizaConfig.mockReturnValue({
       deploymentTarget: { runtime: "cloud" },
     });

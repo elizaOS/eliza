@@ -147,6 +147,147 @@ describe("ScreenCaptureWeb", () => {
     FakeMediaRecorder.instances = [];
   });
 
+  it("reserves recording before the display permission prompt settles", async () => {
+    vi.useFakeTimers();
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    const track = new FakeTrack("video");
+    const stream = new FakeStream([track]);
+    let grantPermission: (stream: MediaStream) => void = () => {
+      throw new Error("Permission prompt has not opened");
+    };
+    const permission = new Promise<MediaStream>((resolve) => {
+      grantPermission = resolve;
+    });
+    const getDisplayMedia = vi.fn(() => permission);
+    setNavigator({
+      mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
+    });
+    const plugin = new ScreenCaptureWeb();
+
+    const first = plugin.startRecording();
+    const second = plugin.startRecording();
+    grantPermission(stream as unknown as MediaStream);
+    const results = await Promise.allSettled([first, second]);
+
+    expect(results.map((result) => result.status)).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(getDisplayMedia).toHaveBeenCalledTimes(1);
+    await plugin.stopRecording();
+    expect(track.stopped).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("releases the start reservation after display permission is denied", async () => {
+    vi.useFakeTimers();
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    const track = new FakeTrack("video");
+    const getDisplayMedia = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("permission denied"))
+      .mockResolvedValueOnce(new FakeStream([track]));
+    setNavigator({
+      mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
+    });
+    const plugin = new ScreenCaptureWeb();
+
+    await expect(plugin.startRecording()).rejects.toThrow("permission denied");
+    await plugin.startRecording();
+    await plugin.stopRecording();
+    expect(track.stopped).toBe(true);
+  });
+
+  it("tears down owned display and microphone tracks after recorder errors", async () => {
+    vi.useFakeTimers();
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    const displayTrack = new FakeTrack("video");
+    const audioTrack = new FakeTrack("audio");
+    const nextTrack = new FakeTrack("video");
+    const getDisplayMedia = vi
+      .fn()
+      .mockResolvedValueOnce(new FakeStream([displayTrack]))
+      .mockResolvedValueOnce(new FakeStream([nextTrack]));
+    setNavigator({
+      mediaDevices: {
+        getDisplayMedia,
+        getUserMedia: vi.fn(async () => new FakeStream([audioTrack])),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new ScreenCaptureWeb();
+    const errors = vi.fn();
+    await plugin.addListener("error", errors);
+    await plugin.startRecording({ captureMicrophone: true });
+    const failedRecorder = FakeMediaRecorder.instances[0];
+    failedRecorder.onerror?.(new Event("error"));
+
+    expect(displayTrack.stopped).toBe(true);
+    expect(audioTrack.stopped).toBe(true);
+    expect((await plugin.getRecordingState()).isRecording).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(errors).toHaveBeenCalledWith({
+      code: "RECORDING_ERROR",
+      message: expect.any(String),
+    });
+    await plugin.startRecording();
+    failedRecorder.onstop?.(new Event("stop"));
+    expect(nextTrack.stopped).toBe(false);
+    await plugin.stopRecording();
+    expect(nextTrack.stopped).toBe(true);
+  });
+
+  it("rejects a pending stop and releases capture when encoding fails", async () => {
+    vi.useFakeTimers();
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    const track = new FakeTrack("video");
+    setNavigator({
+      mediaDevices: {
+        getDisplayMedia: vi.fn(async () => new FakeStream([track])),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new ScreenCaptureWeb();
+    await plugin.startRecording();
+    const recorder = FakeMediaRecorder.instances[0];
+    recorder.stop.mockImplementation(() => undefined);
+    const stopped = plugin.stopRecording();
+    const rejected = expect(stopped).rejects.toThrow("Recording error");
+    recorder.onerror?.(new Event("error"));
+
+    await rejected;
+    expect(track.stopped).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("settles concurrent stops from the single queued recorder completion", async () => {
+    vi.useFakeTimers();
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    const track = new FakeTrack("video");
+    setNavigator({
+      mediaDevices: {
+        getDisplayMedia: vi.fn(async () => new FakeStream([track])),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new ScreenCaptureWeb();
+    await plugin.startRecording();
+    const recorder = FakeMediaRecorder.instances[0];
+    recorder.stop.mockImplementation(() => undefined);
+
+    const first = plugin.stopRecording();
+    const second = plugin.stopRecording();
+    expect(recorder.stop).toHaveBeenCalledTimes(1);
+    recorder.onstop?.(new Event("stop"));
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult).toEqual(secondResult);
+    expect(track.stopped).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("reports unsupported cleanly when optional browser capture APIs are absent", async () => {
     setNavigator({});
     vi.stubGlobal("MediaRecorder", undefined);

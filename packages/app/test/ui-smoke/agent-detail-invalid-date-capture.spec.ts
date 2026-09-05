@@ -18,6 +18,10 @@ import {
   seedStewardToken,
 } from "./helpers/cloud-audit-fixtures";
 
+const TEST_AUTH_ENABLED =
+  process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
+  process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true";
+
 test.use({ video: "on" });
 
 test.beforeEach(({ page }) => {
@@ -31,6 +35,10 @@ test.afterEach(async ({ page }, testInfo) => {
 test("agent detail page renders explicit fallbacks for a malformed agent timestamp", async ({
   page,
 }) => {
+  test.skip(
+    !TEST_AUTH_ENABLED,
+    "requires a renderer built with the explicit Playwright test-auth gate",
+  );
   await seedStewardToken(page);
   // The dashboard surface was consolidated behind the booted app shell
   // (0468c1850a): /cloud/* renders only after startup resolves, so seed a

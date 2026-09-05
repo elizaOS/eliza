@@ -4,7 +4,9 @@
 // could regress below the Apple-HIG 44px floor (the spatial filter chips
 // shipped at ~34px) with every gate green. This spec measures REAL
 // `boundingBox()` geometry on a coarse-pointer Pixel-7 viewport over the
-// spatial-view surfaces this repo's decomposed views actually render.
+// agent-addressable controls this repo's decomposed views actually render.
+// Some signed views use the spatial DOM adapter while others render the same
+// agent-element contract through ordinary shared controls.
 
 import { devices, expect, test } from "@playwright/test";
 import {
@@ -26,7 +28,7 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("every spatial-view button renders a >=44px hit target on touch viewports", async ({
+test("every decomposed-view agent button renders a >=44px hit target on touch viewports", async ({
   page,
 }) => {
   // /inbox renders the decomposed spatial view whose filter chips are the
@@ -34,9 +36,7 @@ test("every spatial-view button renders a >=44px hit target on touch viewports",
   // dedicated collection; the all-views geometry gate covers that surface.
   for (const path of ["/inbox"]) {
     await openAppPath(page, path);
-    const buttons = page.locator(
-      '[data-spatial-surface] button[data-spatial-kind="button"]',
-    );
+    const buttons = page.locator("button[data-agent-id]");
     await expect(buttons.first()).toBeVisible({ timeout: 60_000 });
     const count = await buttons.count();
     expect(count, `${path} should render spatial buttons`).toBeGreaterThan(0);
