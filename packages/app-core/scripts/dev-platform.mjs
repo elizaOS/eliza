@@ -767,7 +767,11 @@ function pushChild(name, cmd, args, cwd, extraEnv = {}) {
 
 async function launch() {
   const preferredApi = resolveDesktopApiPort(process.env);
-  const resolvedApiPort = await allocateFirstFreeLoopbackPort(preferredApi);
+  // An externally managed API already owns its port. Only reserve a new port
+  // when this process will actually launch the API that serves it.
+  const resolvedApiPort = skipApi
+    ? preferredApi
+    : await allocateFirstFreeLoopbackPort(preferredApi);
   if (resolvedApiPort !== preferredApi) {
     console.log(
       `[eliza] API port ${preferredApi} in use — using ${resolvedApiPort} (Vite proxy + Electrobun env updated)`,

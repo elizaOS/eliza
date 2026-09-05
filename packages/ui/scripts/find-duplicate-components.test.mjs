@@ -37,6 +37,17 @@ test("local Eliza runtime artifacts are outside maintained source", () => {
   );
 });
 
+test("Vite dependency cache is excluded from the maintained source boundary", () => {
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL("../../app/.vite/deps/vendor.tsx", import.meta.url),
+      ),
+    ),
+    false,
+  );
+});
+
 test("generated mobile platform bundles and staging roots are outside maintained source", () => {
   assert.equal(
     isMaintainedSource(

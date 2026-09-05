@@ -163,46 +163,6 @@ describe("BackgroundSettingsControls wallpaper gallery", () => {
     );
   });
 
-  it("brings the active wallpaper into view when the filmstrip opens", () => {
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: scrollIntoView,
-    });
-
-    try {
-      seed({
-        backgroundConfig: {
-          mode: "image",
-          color: "#ef5a1f",
-          imageUrl: "/bg-sunset.webp",
-        },
-      });
-      render(<BackgroundSettingsControls variant="filmstrip" />);
-
-      expect(
-        screen
-          .getByLabelText("Set background to Ember Night")
-          .getAttribute("aria-pressed"),
-      ).toBe("true");
-      expect(scrollIntoView).toHaveBeenCalledWith({
-        behavior: "auto",
-        block: "nearest",
-        inline: "center",
-      });
-    } finally {
-      if (originalScrollIntoView) {
-        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-          configurable: true,
-          value: originalScrollIntoView,
-        });
-      } else {
-        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
-      }
-    }
-  });
-
   it("keeps full wallpaper names legible in one labelled filmstrip", () => {
     const setBackgroundConfig = vi.fn();
     seed({ setBackgroundConfig });

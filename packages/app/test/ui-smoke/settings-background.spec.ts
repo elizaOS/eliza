@@ -494,6 +494,71 @@ test.describe("settings shares the unified app background (#9143)", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
+  test("reveals the selected wallpaper without shifting the detached settings window", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 760, height: 560 });
+    await seedSettingsBackgroundStorage(page, {
+      mode: "image",
+      color: "#ef5a1f",
+      imageUrl: "/bg-sunset.webp",
+    });
+    await installReadyDesktopStatusBridge(page);
+    await installSettingsBackgroundRoutes(page);
+    await openAppPath(page, "/settings?shell=settings");
+    const general = page.getByRole("button", { name: "General", exact: true });
+    await expect(general).toBeVisible();
+    const before = await general.boundingBox();
+    expect(before).not.toBeNull();
+    await general.click();
+    const gallery = page.getByTestId("background-catalog-gallery");
+    await expect(gallery).toBeVisible();
+    const selected = gallery.getByRole("button", {
+      name: "Set background to Ember Night",
+      exact: true,
+    });
+    await expect(selected).toHaveAttribute("aria-pressed", "true");
+    await expect
+      .poll(async () => {
+        const after = await general.boundingBox();
+        return after && before ? Math.abs(after.x - before.x) : Infinity;
+      })
+      .toBeLessThan(1);
+    const stripBounds = await gallery.boundingBox();
+    const selectedBounds = await selected.boundingBox();
+    expect(stripBounds).not.toBeNull();
+    expect(selectedBounds).not.toBeNull();
+    if (!stripBounds || !selectedBounds)
+      throw new Error("Wallpaper picker has no layout");
+    expect(selectedBounds.x).toBeGreaterThanOrEqual(stripBounds.x);
+    expect(selectedBounds.x + selectedBounds.width).toBeLessThanOrEqual(
+      stripBounds.x + stripBounds.width,
+    );
+    expect(
+      await gallery.evaluate((strip) => {
+        const offsets = [];
+        for (
+          let parent = strip.parentElement;
+          parent;
+          parent = parent.parentElement
+        ) {
+          offsets.push(parent.scrollLeft);
+        }
+        return offsets.every((offset) => offset === 0);
+      }),
+    ).toBe(true);
+    await screenshot(page, "detached-general-rest");
+    await selected.hover();
+    await screenshot(page, "detached-general-hover");
+    await page.setViewportSize(MOBILE_VIEWPORT);
+    await openAppPath(page, "/settings?shell=settings#appearance");
+    await expect(gallery).toBeVisible();
+    await expect(selected).toBeInViewport({ ratio: 1 });
+    await screenshot(page, "mobile-general-rest");
+    await selected.hover();
+    await screenshot(page, "mobile-general-hover");
+  });
+
   test("captures settings over shader + photo backgrounds and diagnoses the safe-area seam", async ({
     page,
   }) => {
