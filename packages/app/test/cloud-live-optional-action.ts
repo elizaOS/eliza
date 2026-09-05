@@ -168,11 +168,24 @@ export class CloudLiveOptionalActionDeadlineError extends Error {
   }
 }
 
+export class CloudLiveRequiredActionUnavailableError extends Error {
+  readonly code = "CLOUD_LIVE_REQUIRED_ACTION_UNAVAILABLE";
+
+  constructor(
+    readonly phase: CloudLiveOptionalActionPhase,
+    readonly action: CloudLiveOptionalActionName,
+  ) {
+    super(`[cloud-live] ${phase} required action unavailable`);
+    this.name = "CloudLiveRequiredActionUnavailableError";
+  }
+}
+
 interface ClickCloudLiveOptionalActionOptions {
   phase: CloudLiveOptionalActionPhase;
   action: CloudLiveOptionalActionName;
   offerTimeoutMs: number;
   actionTimeoutMs: number;
+  required?: boolean;
 }
 
 interface PrepareCloudLivePersonalIdentityOptions {
@@ -450,7 +463,15 @@ export async function clickCloudLiveOptionalAction(
         throw error;
       },
     );
-  if (!offered) return false;
+  if (!offered) {
+    if (options.required) {
+      throw new CloudLiveRequiredActionUnavailableError(
+        options.phase,
+        options.action,
+      );
+    }
+    return false;
+  }
 
   try {
     await target.click({ timeout: options.actionTimeoutMs });

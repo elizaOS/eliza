@@ -37,6 +37,7 @@ export interface CloudLivePreIdentityDiagnostic {
   runtimeCloudActionAttemptCount: number;
   runtimeCloudActionSuccessCount: number;
   runtimeCloudActionTimeoutCount: number;
+  runtimeCloudActionUnavailableCount: number;
   runtimeCloudRecoveryVisibleCount: number;
   personalIdentityRetryVisibleCount: number;
   approvalGrantedCount: number;
@@ -128,6 +129,7 @@ const CLOUD_LIVE_PRE_IDENTITY_DIAGNOSTIC_KEYS = [
   "runtimeCloudActionAttemptCount",
   "runtimeCloudActionSuccessCount",
   "runtimeCloudActionTimeoutCount",
+  "runtimeCloudActionUnavailableCount",
   "runtimeCloudRecoveryVisibleCount",
   "personalIdentityRetryVisibleCount",
   "approvalGrantedCount",
