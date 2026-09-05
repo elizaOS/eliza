@@ -22,6 +22,32 @@ const NOW = 1_000_000;
 const STALL = 180_000;
 
 describe("detectStalledSessions (#8901)", () => {
+  it("ignores promptable ready sessions at the default threshold", () => {
+    const sessions: WatchdogSessionView[] = [
+      {
+        id: "retained-ready",
+        status: "ready",
+        lastActivityMs: NOW - STALL,
+      },
+    ];
+
+    expect(detectStalledSessions(sessions, NOW, STALL)).toEqual([]);
+  });
+
+  it("flags in-flight work exactly at the default threshold", () => {
+    const sessions: WatchdogSessionView[] = [
+      {
+        id: "stalled-running",
+        status: "running",
+        lastActivityMs: NOW - STALL,
+      },
+    ];
+
+    expect(detectStalledSessions(sessions, NOW, STALL)).toEqual([
+      { id: "stalled-running", idleMs: STALL },
+    ]);
+  });
+
   it("flags active sessions idle beyond the threshold", () => {
     const sessions: WatchdogSessionView[] = [
       { id: "busy", status: "running", lastActivityMs: NOW - 10_000 },
@@ -37,6 +63,20 @@ describe("detectStalledSessions (#8901)", () => {
       { id: "done", status: "completed", lastActivityMs: NOW - 9_999_999 },
       { id: "err", status: "error", lastActivityMs: NOW - 9_999_999 },
     ];
+    expect(detectStalledSessions(sessions, NOW, STALL)).toEqual([]);
+  });
+
+  it("does not grill blocked, authenticating, or unknown lifecycle states", () => {
+    const sessions: WatchdogSessionView[] = [
+      { id: "blocked", status: "blocked", lastActivityMs: NOW - STALL },
+      {
+        id: "auth",
+        status: "authenticating",
+        lastActivityMs: NOW - STALL,
+      },
+      { id: "future", status: "future_status", lastActivityMs: NOW - STALL },
+    ];
+
     expect(detectStalledSessions(sessions, NOW, STALL)).toEqual([]);
   });
 });
@@ -57,7 +97,7 @@ describe("TaskWatchdogService.runOnce (#8901)", () => {
         {
           id: "stuck",
           status: "running",
-          lastActivityAt: new Date(NOW - 200_000),
+          lastActivityAt: new Date(NOW - STALL),
         },
         { id: "ok", status: "running", lastActivityAt: new Date(NOW - 1_000) },
       ],
@@ -74,6 +114,26 @@ describe("TaskWatchdogService.runOnce (#8901)", () => {
     // Second tick, still stalled → does NOT re-prod (grill once).
     await svc.runOnce(NOW + 1_000);
     expect(sendToSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("never prods retained ready sessions across repeated ticks", async () => {
+    const sendToSession = vi.fn(async () => ({}));
+    const acp = {
+      listSessions: async () => [
+        {
+          id: "retained-ready",
+          status: "ready",
+          lastActivityAt: new Date(NOW - STALL),
+        },
+      ],
+      sendToSession,
+    };
+    const svc = new TaskWatchdogService(makeRuntime(acp));
+
+    expect(await svc.runOnce(NOW)).toEqual([]);
+    expect(await svc.runOnce(NOW + STALL)).toEqual([]);
+    expect(sendToSession).not.toHaveBeenCalled();
+    expect(svc.getStalledSessionIds()).toEqual([]);
   });
 
   it("clears the prod flag when a session recovers, so a later stall re-grills", async () => {

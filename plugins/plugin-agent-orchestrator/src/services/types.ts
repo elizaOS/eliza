@@ -140,6 +140,27 @@ export const TERMINAL_SESSION_STATUSES: ReadonlySet<string> = new Set([
   "cancelled",
 ]);
 
+/** Whether a retained session is idle and can accept a new prompt. */
+export function isSessionPromptable(status: string): boolean {
+  return status === "ready";
+}
+
+/** Whether a live session has a prompt in flight and must not be reclaimed. */
+export function isSessionPromptInFlight(status: string): boolean {
+  return !isSessionPromptable(status) && !TERMINAL_SESSION_STATUSES.has(status);
+}
+
+const WATCHDOG_EXECUTION_SESSION_STATUSES: ReadonlySet<string> = new Set([
+  "running",
+  "busy",
+  "tool_running",
+]);
+
+/** Whether a session is executing work that can meaningfully stall. */
+export function isSessionExecuting(status: string): boolean {
+  return WATCHDOG_EXECUTION_SESSION_STATUSES.has(status);
+}
+
 export type SessionEventCallback = (
   sessionId: string,
   event: SessionEventName,
