@@ -156,7 +156,8 @@ async function runCreate(
   expect(result.effectReceipts).toHaveLength(1);
   if (result.transcriptVisibility === "internal") {
     expect(callback).not.toHaveBeenCalled();
-    expect(result.turnComplete).toBe(false);
+    // Settled internal results omit turnComplete (evaluation delegated); pauses keep false.
+    expect(result.turnComplete).not.toBe(true);
     expect(result).not.toHaveProperty("text");
     expect(result).not.toHaveProperty("userFacingText");
     expect(result.data?.replyContext).toMatchObject({

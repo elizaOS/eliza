@@ -66,7 +66,6 @@ describe("standalone calendar reply provenance", () => {
     expect(result).toMatchObject({
       success: true,
       transcriptVisibility: "internal",
-      turnComplete: false,
       effectReceipts: [{ operation: "calendar.feed.read", outcome: "noop" }],
       data: {
         events: [],

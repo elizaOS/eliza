@@ -210,7 +210,6 @@ function expectInternalHandoff(
   expect(delivered).toEqual([]);
   expect(result).toMatchObject({
     transcriptVisibility: "internal",
-    turnComplete: false,
     data: {
       replyContext: {
         domain: "calendar",
@@ -375,7 +374,6 @@ describe("CALENDAR effect receipt settlement", () => {
         success: true,
         effectReceipts: [{ operation, outcome }],
         transcriptVisibility: "internal",
-        turnComplete: false,
       });
       expectInternalHandoff(delivered, result);
       expect(result.data?.replyContext).toMatchObject({
@@ -433,7 +431,6 @@ describe("CALENDAR effect receipt settlement", () => {
     expect(result, JSON.stringify(result)).toMatchObject({
       success: true,
       transcriptVisibility: "internal",
-      turnComplete: false,
       data: {
         events: [EVENT],
         replyContext: {
@@ -1246,7 +1243,6 @@ describe("CALENDAR effect receipt settlement", () => {
     expect(result, JSON.stringify(result)).toMatchObject({
       success: true,
       transcriptVisibility: "internal",
-      turnComplete: false,
     });
     expectInternalHandoff(delivered, result);
     expect(getCalendarFeed).toHaveBeenCalledOnce();

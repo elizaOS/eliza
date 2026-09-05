@@ -5,6 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { createUnavailableGroundedActionReply } from "../../types/action-reply";
+import type { EffectReceipt } from "../../types/effects";
 import { ModelType } from "../../types/model";
 import { runPlannerLoop } from "../planner-loop";
 import type { PlannerRuntime, PlannerToolResult } from "../planner-types";
@@ -67,6 +68,16 @@ function harness(args: {
 			context: {
 				id: "compound-turn",
 				events: [
+					{
+						id: "current-message",
+						type: "message",
+						source: "user",
+						createdAt: 1,
+						message: {
+							role: "user",
+							content: "add gym session tuesday at 7am please",
+						},
+					},
 					{
 						id: "handler",
 						type: "message_handler",
@@ -598,35 +609,78 @@ describe("planner-declared pending work", () => {
 });
 
 describe("grounded receipt gate (single declared intent, one verified internal action)", () => {
-	const appliedReceipt = {
+	const appliedReceipt: EffectReceipt = {
 		receiptId: "calendar-receipt-1",
 		operation: "calendar.event.create",
 		resource: { kind: "calendar.event", id: "evt-1", version: '"eliza-1"' },
 		artifacts: [],
 		idempotency: { key: null, replayed: false },
 		observedAt: "2026-09-05T18:00:00.000Z",
-		outcome: "applied" as const,
+		outcome: "applied",
+		commit: {
+			kind: "durable",
+			id: "evt-1",
+			committedAt: "2026-09-05T18:00:00.000Z",
+		},
+	};
+	const readNoopReceipt: EffectReceipt = {
+		receiptId: "calendar-read-receipt-1",
+		operation: "calendar.event.search",
+		resource: { kind: "calendar.feed", id: "feed-1", version: "v1" },
+		artifacts: [],
+		idempotency: { key: null, replayed: false },
+		observedAt: "2026-09-05T18:00:00.000Z",
+		outcome: "noop",
+		reason:
+			"The operation read an authoritative calendar snapshot without changing it.",
+	};
+	const mutationNoopReceipt: EffectReceipt = {
+		...readNoopReceipt,
+		receiptId: "calendar-noop-receipt-1",
+		operation: "calendar.event.delete",
+		reason: "No matching event.",
+	};
+	const rolledBackReceipt: EffectReceipt = {
+		receiptId: "calendar-rollback-1",
+		operation: "calendar.event.create",
+		resource: { kind: "calendar.event", id: "evt-1", version: '"eliza-1"' },
+		artifacts: [],
+		idempotency: { key: null, replayed: false },
+		observedAt: "2026-09-05T18:00:01.000Z",
+		outcome: "rolled_back",
+		rollback: {
+			receiptId: "calendar-rollback-1",
+			revertedReceiptIds: ["calendar-receipt-1"],
+			rolledBackAt: "2026-09-05T18:00:01.000Z",
+		},
 	};
 	const internalCalendarResult = (
-		receipt: Record<string, unknown> = appliedReceipt,
-	): PlannerToolResult =>
-		({
-			success: true,
-			transcriptVisibility: "internal" as const,
-			effectReceipts: [receipt],
-			data: {
-				replyContext: {
-					domain: "calendar",
-					intent: "add gym session tuesday at 7am to my calendar",
-					scenario: "create_event_completed",
-					facts: "Created “Gym session” for Sep 8, 7:00 AM PDT.",
-				},
+		receipts: EffectReceipt[] = [appliedReceipt],
+		overrides: Partial<PlannerToolResult> = {},
+	): PlannerToolResult => ({
+		success: true,
+		transcriptVisibility: "internal",
+		effectReceipts: receipts,
+		data: {
+			replyContext: {
+				domain: "calendar",
+				intent: "add gym session tuesday at 7am to my calendar",
+				scenario: "create_event_completed",
+				facts: "Created “Gym session” for Sep 8, 7:00 AM PDT.",
 			},
-		}) as unknown as PlannerToolResult;
+		},
+		...overrides,
+	});
 	const modelCalls = (h: ReturnType<typeof harness>, type: string) =>
 		h.useModel.mock.calls.filter(([calledType]) => calledType === type).length;
+	const renderPromptOf = (h: ReturnType<typeof harness>) => {
+		const request = h.useModel.mock.calls.find(
+			([t]) => t === ModelType.TEXT_SMALL,
+		)?.[1] as { messages?: Array<{ content: string }> } | undefined;
+		return (request?.messages ?? []).map((m) => m.content).join("\n");
+	};
 
-	it("renders the reply from the receipt facts and skips the evaluator", async () => {
+	it("renders the reply from committed receipt facts, carries receipt ids and raw provenance, and skips the evaluator", async () => {
 		// Live 2026-09-05: the evaluator re-judged a verified calendar create with
 		// a 15K-token prompt (0.8–1.0 s) only to phrase facts the action had
 		// already produced.
@@ -644,16 +698,89 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		);
 		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
 		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
-		const renderRequest = h.useModel.mock.calls.find(
-			([t]) => t === ModelType.TEXT_SMALL,
-		)?.[1] as { messages?: Array<{ content: string }> };
-		const renderPrompt = (renderRequest?.messages ?? [])
-			.map((message) => message.content)
-			.join("\n");
-		expect(renderPrompt).toContain(
-			"Created “Gym session” for Sep 8, 7:00 AM PDT.",
+		expect(result.evaluator).toMatchObject({
+			decision: "FINISH",
+			success: true,
+			effectReceiptIds: ["calendar-receipt-1"],
+			raw: {
+				messageToUser: "Added your gym session for Tuesday at 7:00 AM.",
+				source: "grounded_receipt_render",
+			},
+		});
+		const prompt = renderPromptOf(h);
+		expect(prompt).toContain("Created “Gym session” for Sep 8, 7:00 AM PDT.");
+		expect(prompt).toContain(
+			"User's message: add gym session tuesday at 7am please",
 		);
-		expect(renderPrompt).toContain("never expose ids");
+		expect(prompt).toContain("Understood intent: add gym session to calendar");
+		expect(prompt).toContain("never expose ids");
+	});
+
+	it("gates a read whose receipt is a plain no-op without claiming a side effect", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [],
+			renders: ["You have a gym session on Tuesday at 7:00 AM."],
+			results: [
+				internalCalendarResult([readNoopReceipt], {
+					data: {
+						replyContext: {
+							domain: "calendar",
+							intent: "whats on my calendar tuesday?",
+							scenario: "search_events",
+							facts:
+								"Your matching calendar event is Gym session (Sep 8, 7:00 AM).",
+						},
+					},
+				}),
+			],
+			intents: ["list calendar events for tuesday"],
+		});
+		const result = await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
+		expect(result.evaluator?.effectReceiptIds).toBeUndefined();
+	});
+
+	it("keeps the full evaluator when the action set turnComplete:false", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [finish("Added your gym session for Tuesday at 7am.")],
+			renders: ["should not be used"],
+			results: [
+				internalCalendarResult([appliedReceipt], { turnComplete: false }),
+			],
+			intents: ["add gym session to calendar"],
+		});
+		await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+	});
+
+	it("keeps the full evaluator when a mutation only produced a non-replayed no-op", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [finish("I couldn't find that event.", false)],
+			renders: ["should not be used"],
+			results: [internalCalendarResult([mutationNoopReceipt])],
+			intents: ["delete the gym session"],
+		});
+		await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+	});
+
+	it("keeps the full evaluator when a receipt was rolled back", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [finish("The event was rolled back.", false)],
+			renders: ["should not be used"],
+			results: [internalCalendarResult([appliedReceipt, rolledBackReceipt])],
+			intents: ["add gym session to calendar"],
+		});
+		await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
 	});
 
 	it("keeps the full evaluator when Stage-1 declared more than one intent", async () => {
@@ -671,21 +798,25 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 	});
 
 	it("keeps the full evaluator when a receipt failed", async () => {
+		const failed: EffectReceipt = {
+			receiptId: "calendar-failed-1",
+			operation: "calendar.event.create",
+			resource: { kind: "calendar.event", id: "evt-1", version: '"eliza-1"' },
+			artifacts: [],
+			idempotency: { key: null, replayed: false },
+			observedAt: "2026-09-05T18:00:00.000Z",
+			outcome: "failed",
+			failure: {
+				code: "CALENDAR_SERVICE_400",
+				retryable: false,
+				acceptance: "unknown",
+			},
+		};
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [finish("The calendar rejected the event.", false)],
 			renders: ["should not be used"],
-			results: [
-				internalCalendarResult({
-					...appliedReceipt,
-					outcome: "failed",
-					failure: {
-						code: "CALENDAR_SERVICE_400",
-						retryable: false,
-						acceptance: "unknown",
-					},
-				}),
-			],
+			results: [internalCalendarResult([failed])],
 			intents: ["add gym session to calendar"],
 		});
 		await h.run();

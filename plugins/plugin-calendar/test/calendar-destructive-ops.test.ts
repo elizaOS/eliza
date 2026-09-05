@@ -192,7 +192,8 @@ function expectInternalHandoff(
   callback: ReturnType<typeof vi.fn>,
 ): void {
   expect(callback).not.toHaveBeenCalled();
-  expect(result.turnComplete).toBe(false);
+  // Settled internal results omit turnComplete (evaluation delegated); pauses keep false.
+  expect(result.turnComplete).not.toBe(true);
   expect(result).not.toHaveProperty("text");
   expect(result).not.toHaveProperty("userFacingText");
   expect(result.data?.replyContext).toMatchObject({

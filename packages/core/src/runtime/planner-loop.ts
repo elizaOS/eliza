@@ -43,7 +43,10 @@ import type {
 	ProviderDataRecord,
 } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
-import { hasAppliedUserFacingEffectProof } from "../types/effects";
+import {
+	hasAppliedUserFacingEffectProof,
+	revertedEffectReceiptIds,
+} from "../types/effects";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
@@ -2054,6 +2057,7 @@ async function runPlannerLoopIterations(
 						trajectory,
 						failures,
 						lastPlannerExplicitCompleted,
+						declaredIntent: declaredIntentsFromContext(plannerContext)[0],
 					})
 				: null;
 		if (groundedReceipt) {
@@ -2068,6 +2072,16 @@ async function runPlannerLoopIterations(
 					decision: "FINISH",
 					thought: GROUNDED_RECEIPT_GATED_EVALUATOR_THOUGHT,
 					messageToUser: rendered,
+					// Egress binds completion claims to committed receipt ids AND the
+					// model's own prose (raw.messageToUser); both travel with the
+					// synthesized verdict so delivery never rewrites the reply.
+					...(groundedReceipt.committedReceiptIds.length > 0
+						? { effectReceiptIds: groundedReceipt.committedReceiptIds }
+						: {}),
+					raw: {
+						messageToUser: rendered,
+						source: "grounded_receipt_render",
+					},
 				};
 				trajectory.evaluatorOutputs.push(
 					projectToolDiagnosticValue(
@@ -7150,21 +7164,36 @@ export const GROUNDED_RECEIPT_GATED_EVALUATOR_THOUGHT =
 
 interface GroundedReceiptReply {
 	domain: string;
-	intent: string;
+	/** The tool's own (possibly narrowed) intent argument. */
+	toolIntent: string;
+	/** Stage-1's declared intent, derived from the user's message. */
+	declaredIntent: string;
+	/** The user's message as sent this turn, from the planner context. */
+	userRequest: string;
 	scenario: string;
 	facts: string;
+	/** Receipts that prove a committed side effect (applied, or replayed noop). */
+	committedReceiptIds: readonly string[];
 }
+
+/** Receipts whose operation is a read: a non-replayed noop is a valid outcome, not missing proof. */
+const READ_EFFECT_OPERATION_PATTERN =
+	/(^|\.)(read|search|list|feed|show|get|lookup|find)(\.|$)/i;
 
 /**
  * The one shape the grounded receipt gate accepts: exactly one completed tool
- * step, successful, internal-transcript, carrying applied/noop effect receipts
- * and a replyContext with facts, nothing queued, nothing failed, no pause for
- * the user, and no planner-declared pending scope.
+ * step, successful, internal-transcript, that did NOT set `turnComplete:false`
+ * (the contract for "evaluation required"), carrying canonical receipts —
+ * applied commits or replayed no-ops for mutations, plain no-ops only for
+ * reads, nothing failed, previewed, rolled back or reverted — plus a
+ * replyContext with facts, nothing queued, nothing failed, no pause for the
+ * user, and no planner-declared pending scope.
  */
 function selectGroundedReceiptReply(args: {
 	trajectory: PlannerTrajectory;
 	failures: readonly FailureLike[];
 	lastPlannerExplicitCompleted: boolean | undefined;
+	declaredIntent: string | undefined;
 }): GroundedReceiptReply | null {
 	const { trajectory, failures } = args;
 	if (args.lastPlannerExplicitCompleted === false) return null;
@@ -7175,15 +7204,29 @@ function selectGroundedReceiptReply(args: {
 	const result = latestStep?.result;
 	if (!latestStep?.toolCall || !result || result.success !== true) return null;
 	if (result.transcriptVisibility !== "internal") return null;
+	// `false` explicitly requires evaluation; only omission delegates.
+	if (result.turnComplete === false) return null;
 	if (hasAwaitingUserInputMarker(result)) return null;
 	if (hasRequiresConfirmationMarker(result)) return null;
 	const receipts = result.effectReceipts ?? [];
 	if (receipts.length === 0) return null;
-	if (
-		receipts.some(
-			(receipt) => receipt.outcome !== "applied" && receipt.outcome !== "noop",
-		)
-	) {
+	const reverted = revertedEffectReceiptIds(receipts);
+	const committedReceiptIds: string[] = [];
+	for (const receipt of receipts) {
+		if (reverted.has(receipt.receiptId)) return null;
+		if (receipt.outcome === "applied") {
+			committedReceiptIds.push(receipt.receiptId);
+			continue;
+		}
+		if (receipt.outcome === "noop") {
+			if (receipt.idempotency.replayed) {
+				committedReceiptIds.push(receipt.receiptId);
+				continue;
+			}
+			if (READ_EFFECT_OPERATION_PATTERN.test(receipt.operation)) continue;
+			// A non-replayed no-op on a mutation proves nothing.
+			return null;
+		}
 		return null;
 	}
 	const data = result.data;
@@ -7200,15 +7243,37 @@ function selectGroundedReceiptReply(args: {
 	if (!facts || !domain) return null;
 	return {
 		domain,
-		intent: typeof record.intent === "string" ? record.intent.trim() : "",
+		toolIntent: typeof record.intent === "string" ? record.intent.trim() : "",
+		declaredIntent: args.declaredIntent?.trim() ?? "",
+		userRequest: latestUserRequestText(trajectory.context),
 		scenario: typeof record.scenario === "string" ? record.scenario.trim() : "",
 		facts,
+		committedReceiptIds,
 	};
 }
 
+/** The user's message for this turn as the planner context carries it. */
+function latestUserRequestText(context: ContextObject): string {
+	const events = Array.isArray(context.events) ? context.events : [];
+	for (let index = events.length - 1; index >= 0; index -= 1) {
+		const event = events[index] as
+			| { type?: unknown; message?: { role?: unknown; content?: unknown } }
+			| undefined;
+		if (event?.type !== "message" || event.message?.role !== "user") continue;
+		const content = event.message.content;
+		if (typeof content === "string") return content.trim();
+		if (content && typeof content === "object") {
+			const text = (content as { text?: unknown }).text;
+			if (typeof text === "string") return text.trim();
+		}
+	}
+	return "";
+}
+
 /**
- * Compact TEXT_SMALL render of an action's receipt facts. Null on any failure
- * or unsafe output so the caller falls back to the full evaluator.
+ * Compact TEXT_SMALL render of an action's receipt facts against the user's
+ * actual request. Null on any failure or unsafe output so the caller falls
+ * back to the full evaluator.
  */
 async function renderGroundedReceiptReply(
 	params: PlannerLoopParams,
@@ -7220,10 +7285,14 @@ async function renderGroundedReceiptReply(
 		).character?.name?.trim() || "the assistant";
 	const system = [
 		`You are ${agentName}. A ${reply.domain} operation the user asked for has just completed. Write the reply the user will read.`,
-		"Rules: plain everyday words in one or two short sentences; keep every date, time, name and number exactly as given; if the facts say something was not found, not changed, or needs the user's input, say that plainly instead of claiming it was done; never expose ids, field names, JSON, tool names, or receipt metadata; add no offers or follow-up questions the facts do not ask for.",
+		"Rules: plain everyday words in one or two short sentences; keep every date, time, name and number exactly as given; if the facts say something was not found, not changed, or needs the user's input, say that plainly instead of claiming it was done; if the facts cover only part of what the user asked, say what was done and name what was not; never expose ids, field names, JSON, tool names, or receipt metadata; add no offers or follow-up questions the facts do not ask for.",
 	].join("\n");
 	const user = [
-		reply.intent ? `User request: ${reply.intent}` : "",
+		reply.userRequest ? `User's message: ${reply.userRequest}` : "",
+		reply.declaredIntent ? `Understood intent: ${reply.declaredIntent}` : "",
+		reply.toolIntent && reply.toolIntent !== reply.userRequest
+			? `Operation performed for: ${reply.toolIntent}`
+			: "",
 		reply.scenario ? `Outcome type: ${reply.scenario}` : "",
 		"Authoritative facts (use only these; do not add, infer, or soften anything):",
 		reply.facts,

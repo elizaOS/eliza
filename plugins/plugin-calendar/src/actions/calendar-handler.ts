@@ -4331,10 +4331,20 @@ const calendarAction: CalendarHandlerAction = {
     }): Promise<ActionResult> => {
       const effectReceipt = normalizeEffectReceipt(payload.effectReceipt);
       if (!payload.interaction || typeof payload.text !== "string") {
+        // `turnComplete:false` is the core contract for "evaluation required";
+        // a settled successful operation with a canonical receipt omits it so
+        // the runtime may phrase the receipt facts directly (owner ruling
+        // 2026-09-05). Pauses for the user and failures keep the evaluation.
+        const pauseData = payload.data as Record<string, unknown> | undefined;
+        const settled =
+          payload.success &&
+          effectReceipt.outcome !== "failed" &&
+          pauseData?.requiresInput !== true &&
+          pauseData?.approvalRequired !== true;
         return {
           success: payload.success,
           transcriptVisibility: "internal",
-          turnComplete: false,
+          ...(settled ? {} : { turnComplete: false }),
           effectReceipts: [effectReceipt],
           data: {
             ...payload.data,
