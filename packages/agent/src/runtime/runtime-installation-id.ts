@@ -14,6 +14,7 @@ import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { UUID } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 
 const INSTALLATION_ID_FILENAME = "runtime-installation-id";
 const UUID_PATTERN =
@@ -135,7 +136,7 @@ function isSameOrDescendant(candidate: string, directory: string): boolean {
 function resolveAndroidStateBoundary(
   stateDirectory: string,
 ): AndroidStateBoundary | undefined {
-  if (process.env.ELIZA_PLATFORM?.trim().toLowerCase() !== "android") {
+  if (readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase() !== "android") {
     return undefined;
   }
   const configured = process.env.ELIZA_ANDROID_APP_DATA_DIR?.trim();
