@@ -526,10 +526,9 @@ describe("DefaultMessageService run-terminal owner", () => {
 		]);
 	});
 
-	it("releases the room lane before deferred post-turn work while RUN_ENDED still waits for it", async () => {
-		// Live 2026-09-05: the post-turn evaluator (a 17K-token model call, up to
-		// tens of seconds under 429s) ran inside the room-state RUN_ENDED barrier,
-		// so a follow-up message in the same room queued behind it.
+	it("keeps post-turn state writes ordered while visible delivery is already complete", async () => {
+		// ALWAYS_AFTER can mutate state used by the next turn. It cannot be
+		// classified as diagnostics simply to release the room lease earlier.
 		const afterGate = deferred();
 		const afterStarted = deferred();
 		const { runtime, terminalPayloads } = makeRuntime({});
@@ -559,10 +558,7 @@ describe("DefaultMessageService run-terminal owner", () => {
 		expect(result.trajectoryTerminalOwner).toBe("run");
 		await afterStarted.promise;
 
-		// Room-state work is done: the room drain returns while the post-turn
-		// hook is still running, and the next turn is admitted once the lease is
-		// released. The run has not been terminalized yet. A bounded race keeps
-		// the regression fast instead of hanging on the old behavior.
+		// Delivery is done, but the next turn must still wait for state writes.
 		const settledBefore = <T>(work: Promise<T>) =>
 			Promise.race([
 				work.then(() => "settled" as const),
@@ -570,16 +566,18 @@ describe("DefaultMessageService run-terminal owner", () => {
 					setTimeout(() => resolve("blocked"), 250),
 				),
 			]);
-		expect(
-			await settledBefore(drainRoomPostDeliveryTasks(runtime, ROOM_ID)),
-		).toBe("settled");
-		expect(pendingRoomPostDeliveryTaskCount(runtime, ROOM_ID)).toBe(0);
-		expect(await settledBefore(lease.release())).toBe("settled");
+		const roomDrain = drainRoomPostDeliveryTasks(runtime, ROOM_ID);
+		expect(await settledBefore(roomDrain)).toBe("blocked");
+		expect(pendingRoomPostDeliveryTaskCount(runtime, ROOM_ID)).toBeGreaterThan(
+			0,
+		);
 		const nextTurn = queue.acquire(ROOM_ID);
-		expect(await settledBefore(nextTurn)).toBe("settled");
+		expect(await settledBefore(nextTurn)).toBe("blocked");
 		expect(terminalPayloads).toEqual([]);
 
 		afterGate.release();
+		await roomDrain;
+		await lease.release();
 		await drainPostDeliveryTasks(runtime);
 		expect(terminalPayloads).toHaveLength(1);
 		await (await nextTurn).release();

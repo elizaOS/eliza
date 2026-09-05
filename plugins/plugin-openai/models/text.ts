@@ -57,6 +57,7 @@ import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
 import {
   getActionPlannerModel,
+  getApiKey,
   getBaseURL,
   getExperimentalTelemetry,
   getLargeModel,
@@ -2141,17 +2142,20 @@ function isSpuriousToolPairingRejection(error: unknown): boolean {
 }
 
 /**
- * Per-model rate-limit cooldown shared by every handler in this process. A
+ * Per-model rate-limit cooldown shared by a runtime's text handlers. A
  * provider that answers with a per-minute-bucket 429 (`Retry-After` beyond the
  * transient lane's cap) will reject the same concrete model until the window
  * resets; re-sending a 20-45K-token prompt to it — directly or through a
  * runtime fallback alias that resolves to the same model — only burns the
- * bucket further and delays the failover to another model. The memo is keyed
- * by endpoint + concrete model id (the unit the provider meters) and expires
- * at the provider's own `Retry-After`; it never blocks a different model.
+ * bucket further and delays failover. A runtime never inherits another
+ * runtime's cooldown; changing its endpoint or credential resets the memo.
+ * Entries expire at the provider's Retry-After and never block another model.
  */
 const RATE_LIMIT_COOLDOWN_MAX_MS = 120_000;
-const rateLimitCooldownUntil = new Map<string, number>();
+const rateLimitCooldowns = new WeakMap<
+  IAgentRuntime,
+  { endpoint: string; credential: string | undefined; models: Map<string, number> }
+>();
 
 class ProviderRateLimitCooldownError extends Error {
   readonly statusCode = 429;
@@ -2165,23 +2169,36 @@ class ProviderRateLimitCooldownError extends Error {
   }
 }
 
-function rateLimitCooldownKey(runtime: IAgentRuntime, modelName: string): string {
-  return `${getBaseURL(runtime)}::${modelName}`;
+function runtimeRateLimitCooldowns(runtime: IAgentRuntime): Map<string, number> {
+  const endpoint = getBaseURL(runtime);
+  const credential = getApiKey(runtime);
+  let cooldown = rateLimitCooldowns.get(runtime);
+  if (!cooldown || cooldown.endpoint !== endpoint || cooldown.credential !== credential) {
+    cooldown = { endpoint, credential, models: new Map() };
+    rateLimitCooldowns.set(runtime, cooldown);
+  }
+  for (const [model, until] of cooldown.models) {
+    if (until <= Date.now()) cooldown.models.delete(model);
+  }
+  return cooldown.models;
 }
 
-function assertModelNotCoolingDown(runtime: IAgentRuntime, modelName: string): void {
-  const key = rateLimitCooldownKey(runtime, modelName);
-  const until = rateLimitCooldownUntil.get(key);
+function assertModelNotCoolingDown(models: Map<string, number>, modelName: string): void {
+  const until = models.get(modelName);
   if (until === undefined) return;
   const remaining = until - Date.now();
   if (remaining <= 0) {
-    rateLimitCooldownUntil.delete(key);
+    models.delete(modelName);
     return;
   }
   throw new ProviderRateLimitCooldownError(modelName, remaining);
 }
 
-function noteRateLimitCooldown(runtime: IAgentRuntime, modelName: string, error: unknown): void {
+function noteRateLimitCooldown(
+  models: Map<string, number>,
+  modelName: string,
+  error: unknown
+): void {
   const status =
     (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
     (error as { status?: number } | undefined)?.status;
@@ -2189,18 +2206,12 @@ function noteRateLimitCooldown(runtime: IAgentRuntime, modelName: string, error:
   const retryAfter = rateLimitRetryAfterSeconds(error);
   if (retryAfter === undefined || retryAfter <= TRANSIENT_LANE_MAX_BACKOFF_SECONDS) return;
   const untilMs = Date.now() + Math.min(retryAfter * 1000, RATE_LIMIT_COOLDOWN_MAX_MS);
-  const key = rateLimitCooldownKey(runtime, modelName);
-  const existing = rateLimitCooldownUntil.get(key) ?? 0;
-  if (untilMs > existing) rateLimitCooldownUntil.set(key, untilMs);
+  const existing = models.get(modelName) ?? 0;
+  if (untilMs > existing) models.set(modelName, untilMs);
   logger.warn(
     { src: "plugin:openai", model: modelName, retryAfterSeconds: retryAfter },
     "[OpenAI] provider rate limit reached; holding this model until the window resets"
   );
-}
-
-/** @internal — test hook. */
-export function __INTERNAL_resetRateLimitCooldowns(): void {
-  rateLimitCooldownUntil.clear();
 }
 
 /** Longest wait the transient lanes will spend on one retry (see waitForTransientRetry). */
@@ -2646,6 +2657,9 @@ async function generateTextByModelType(
 ): Promise<string | TextStreamResult> {
   const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
   const openai = createOpenAIClient(runtime);
+  // Keep retries and their failures bound to this call's endpoint/credential,
+  // even if runtime settings change while the HTTP request is in flight.
+  const modelCooldowns = runtimeRateLimitCooldowns(runtime);
   const modelName = resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
   const usageProvider = getUsageProvider(runtime);
 
@@ -2847,7 +2861,7 @@ async function generateTextByModelType(
       details.response = "";
       const hasResponseTransform = preparedOutput?.transform !== undefined;
       const buffered = await recordLlmCall(runtime, details, async () => {
-        assertModelNotCoolingDown(runtime, modelName);
+        assertModelNotCoolingDown(modelCooldowns, modelName);
         const result = await consumeStreamWithTransientRetry(
           generateParams,
           hasResponseTransform ? undefined : params.onStreamChunk,
@@ -2859,7 +2873,7 @@ async function generateTextByModelType(
             streamTiming,
           }
         ).catch((error: unknown) => {
-          noteRateLimitCooldown(runtime, modelName, error);
+          noteRateLimitCooldown(modelCooldowns, modelName, error);
           throw error;
         });
         const text = restoreResponseText(result.text);
@@ -3190,14 +3204,14 @@ async function generateTextByModelType(
     generateParams
   );
   const result = await recordLlmCall(runtime, details, async () => {
-    assertModelNotCoolingDown(runtime, modelName);
+    assertModelNotCoolingDown(modelCooldowns, modelName);
     const result = await generateTextWithTransientRetry(generateParams, {
       model: modelName,
       retryState,
       maxRetries: 3,
       beforeAttempt: () => attestLlmInputSubstring(details),
     }).catch((error: unknown) => {
-      noteRateLimitCooldown(runtime, modelName, error);
+      noteRateLimitCooldown(modelCooldowns, modelName, error);
       throw error;
     });
     const restoredText = restoreResponseText(result.text);

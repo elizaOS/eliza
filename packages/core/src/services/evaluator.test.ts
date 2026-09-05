@@ -16,6 +16,7 @@ import {
 } from "../types";
 import { ChannelType } from "../types/primitives";
 import { EvaluatorService, runPostTurnEvaluators } from "./evaluator";
+import { getRoomTranscript } from "./evaluator-transcript";
 
 const LARGE_PROMPT_SECTION_CHARS = 130_000;
 
@@ -63,6 +64,41 @@ function schema() {
 }
 
 describe("EvaluatorService", () => {
+	it("shares transcript reads within a runtime but never across runtimes", async () => {
+		const first = makeRuntime();
+		const second = makeRuntime();
+		const message = makeMessage();
+		const firstHistory = [
+			{ ...message, content: { text: "First agent context" } },
+		];
+		const secondHistory = [
+			{ ...message, content: { text: "Second agent context" } },
+		];
+		vi.spyOn(first, "getMemories").mockResolvedValue(firstHistory);
+		vi.spyOn(second, "getMemories").mockResolvedValue(secondHistory);
+		const firstRead = getRoomTranscript(first, message);
+		expect(getRoomTranscript(first, message)).toBe(firstRead);
+		expect(await firstRead).toEqual(firstHistory);
+		expect(await getRoomTranscript(second, message)).toEqual(secondHistory);
+		expect(first.getMemories).toHaveBeenCalledTimes(1);
+		expect(second.getMemories).toHaveBeenCalledTimes(1);
+	});
+
+	it("retries a failed transcript read instead of caching an empty conversation", async () => {
+		const runtime = makeRuntime();
+		const message = makeMessage();
+		vi.spyOn(runtime, "getMemories")
+			.mockRejectedValueOnce(new Error("storage unavailable"))
+			.mockResolvedValue([message]);
+		await expect(getRoomTranscript(runtime, message)).rejects.toThrow(
+			"storage unavailable",
+		);
+		await expect(getRoomTranscript(runtime, message)).resolves.toEqual([
+			message,
+		]);
+		expect(runtime.getMemories).toHaveBeenCalledTimes(2);
+	});
+
 	it.each([ChannelType.VOICE_DM, ChannelType.VOICE_GROUP])(
 		"does not serialize %s turns behind optional post-turn reflection",
 		async (channelType) => {

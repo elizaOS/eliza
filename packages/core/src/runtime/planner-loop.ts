@@ -183,7 +183,7 @@ rules:
 - after WRITE or EDIT, run a successful narrow SHELL verification before finishing
 - do not claim success when a tool failed or verification is still pending
 - use messageToUser only for the final grounded result or a genuinely blocking question
-- every native tool call requires eliza_turn_scope: use more_work_pending until the final tool batch
+- every native tool call requires eliza_turn_scope: use the same value on every call in one batch, more_work_pending if a later batch is needed or final if this batch covers the full request; final does not skip result verification
 - when complete, call no tool and report changed files, verification, and limitations concisely
 
 context_object:
@@ -596,11 +596,9 @@ async function runPlannerLoopIterations(
 	// pending. A later explicit final declaration releases this authority.
 	let lastPlannerExplicitCompleted: boolean | undefined;
 	// The successful FINISH most recently rejected by the pending-scope rule. If
-	// the planner's next batch only repeats operations that already settled
-	// successfully in this trajectory, that FINISH was right and is delivered
-	// instead of replaying a mutation (live 2026-09-05: a single calendar delete
-	// declared more_work_pending, the correct FINISH was rejected, and the
-	// planner re-issued the same delete — a noop — before finally replying).
+	// the planner repeats settled operations, do not replay them. Repetition
+	// alone is not completion: the planner must explicitly release pending
+	// scope before that evaluator verdict can become the final response.
 	let pendingScopeRejectedFinish: EvaluatorOutput | undefined;
 	const correctPendingSuccessfulFinish = (
 		evaluator: EvaluatorOutput,
@@ -906,10 +904,21 @@ async function runPlannerLoopIterations(
 			}
 			if (pendingScopeRejectedFinish) {
 				if (batchOnlyRepeatsSettledWork(plannerOutput.toolCalls)) {
-					// The planner was asked to continue its declared pending work and
-					// answered by repeating operations that already succeeded: the
-					// pending declaration was wrong and the rejected verdict was right.
-					// Deliver it; never replay a settled mutation.
+					if (plannerOutput.completed !== true) {
+						appendPlannerModelFeedbackEvent(trajectory, {
+							id: `pending-scope-repeat:${iteration}`,
+							type: "instruction",
+							source: "planner-loop",
+							createdAt: Date.now(),
+							content:
+								"This batch only repeats successful recorded operations and was not executed again. " +
+								"Continue the outstanding parts of the user's request. If the entire request is already satisfied, " +
+								"explicitly declare final scope and answer from the recorded results instead of repeating the work.",
+						});
+						continue;
+					}
+					// The planner now explicitly agrees that the whole request is
+					// complete. Reuse the evaluator's generated reply without replay.
 					params.runtime.logger?.warn?.(
 						{
 							iteration,
@@ -2540,11 +2549,13 @@ const TURN_SCOPE_ARG_SCHEMA: JSONSchema = {
 	type: "string",
 	enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
 	description:
-		`"${TURN_SCOPE_FINAL}" when this batch of tool calls is everything the ` +
-		`user's request needs this turn; "${TURN_SCOPE_MORE_WORK_PENDING}" when ` +
-		"further tool calls will follow after these results — including any " +
-		"list/get/search call made to find an id or target for a later write " +
-		"(read-then-act). Stripped before the tool runs.",
+		"Scope of the entire batch, not this call's position. Use the same value " +
+		"on every call in one batch: " +
+		`"${TURN_SCOPE_FINAL}" when this batch covers the full request; ` +
+		`"${TURN_SCOPE_MORE_WORK_PENDING}" when a later batch is needed, including ` +
+		"a read whose results are needed to ground a later write. Another call " +
+		"already in this batch or a final conversational confirmation does not " +
+		"make the batch pending. Results are still verified. Stripped before the tool runs.",
 };
 
 /**

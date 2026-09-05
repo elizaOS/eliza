@@ -77,6 +77,66 @@ function harness(args: {
 }
 
 describe("planner-declared pending work", () => {
+	it("finishes a consistently final multi-call batch without another planner round", async () => {
+		const h = harness({
+			plans: [
+				{
+					text: "",
+					toolCalls: [call("READ", "final"), call("NAVIGATE", "final")],
+				},
+			],
+			evaluations: [
+				JSON.stringify({
+					thought:
+						"The requested read succeeded; the queued navigation remains.",
+					success: false,
+					decision: "NEXT_RECOMMENDED",
+					recommendedToolCallId: "navigate",
+				}),
+				finish("The record was read and the destination is open."),
+			],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ", "NAVIGATE"]);
+		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.finalMessage).toBe(
+			"The record was read and the destination is open.",
+		);
+		expect(result.trajectory.plannedQueue).toEqual([]);
+	});
+
+	it("keeps a conflicting batch pending until a later explicit final declaration", async () => {
+		const h = harness({
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						call("READ", "more_work_pending"),
+						call("CHECK", "final"),
+					],
+				},
+				{ text: "", toolCalls: [call("NAVIGATE", "final")] },
+			],
+			evaluations: [
+				finish("Only read."),
+				finish("Only checked."),
+				finish("All done."),
+			],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ", "CHECK", "NAVIGATE"]);
+		expect(result.finalMessage).toBe("All done.");
+		expect(h.useModel).toHaveBeenCalledTimes(5);
+		expect(result.trajectory.evaluatorOutputs.slice(0, 2)).toEqual([
+			expect.objectContaining({ decision: "CONTINUE", success: false }),
+			expect.objectContaining({ decision: "CONTINUE", success: false }),
+		]);
+	});
+
 	it("replans after a successful FINISH that abandons the declared next operation", async () => {
 		const h = harness({
 			plans: [
@@ -113,7 +173,7 @@ describe("planner-declared pending work", () => {
 		).toBeUndefined();
 	});
 
-	it("delivers the rejected FINISH instead of replaying a settled operation the planner repeats", async () => {
+	it("delivers the rejected FINISH when the planner explicitly releases pending scope without replay", async () => {
 		// Live 2026-09-05 (tj-9a419beee929da): a single calendar delete was
 		// declared more_work_pending, the evaluator's correct FINISH was rejected,
 		// and the replanned planner re-issued the same delete (a noop) before a
@@ -121,7 +181,7 @@ describe("planner-declared pending work", () => {
 		const h = harness({
 			plans: [
 				{ text: "", toolCalls: [call("DELETE", "more_work_pending")] },
-				{ text: "", toolCalls: [call("DELETE", "more_work_pending")] },
+				{ text: "", toolCalls: [call("DELETE", "final")] },
 			],
 			evaluations: [finish("Deleted the 7am gym session on Tuesday.")],
 		});
@@ -134,6 +194,27 @@ describe("planner-declared pending work", () => {
 			success: true,
 		});
 	});
+
+	it.each(["more_work_pending", undefined] as const)(
+		"does not finish an incomplete compound request when a repeated action has scope %s",
+		async (scope) => {
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("DELETE", "more_work_pending")] },
+					{ text: "", toolCalls: [call("DELETE", scope)] },
+					{ text: "", toolCalls: [call("NAVIGATE", "final")] },
+				],
+				evaluations: [
+					finish("Only deleted."),
+					finish("Deleted and opened the destination."),
+				],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["DELETE", "NAVIGATE"]);
+			expect(result.finalMessage).toBe("Deleted and opened the destination.");
+			expect(h.useModel).toHaveBeenCalledTimes(5);
+		},
+	);
 
 	it("preserves the queued batch after rejecting a premature successful FINISH", async () => {
 		const h = harness({

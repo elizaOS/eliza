@@ -14,13 +14,21 @@ import {
 import type { IAgentRuntime, Memory } from "../types";
 import { isSyntheticConversationArtifactMemory } from "../utils/synthetic-conversation-artifact.ts";
 
-const transcriptByMessage = new WeakMap<Memory, Promise<Memory[]>>();
+const transcriptsByRuntime = new WeakMap<
+	IAgentRuntime,
+	WeakMap<Memory, Promise<Memory[]>>
+>();
 
 /** Complete room transcript for the message's room, newest last. */
 export function getRoomTranscript(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<Memory[]> {
+	let transcriptByMessage = transcriptsByRuntime.get(runtime);
+	if (!transcriptByMessage) {
+		transcriptByMessage = new WeakMap();
+		transcriptsByRuntime.set(runtime, transcriptByMessage);
+	}
 	const existing = transcriptByMessage.get(message);
 	if (existing) return existing;
 	const loading = runtime

@@ -18,7 +18,6 @@ import {
   handleTextLarge,
   handleTextSmall,
   __INTERNAL_isTransientProviderError as isTransientProviderError,
-  __INTERNAL_resetRateLimitCooldowns as resetRateLimitCooldowns,
 } from "../models/text";
 
 vi.mock("ai", () => ({
@@ -50,7 +49,6 @@ function createRuntime(): IAgentRuntime {
 }
 
 beforeEach(() => {
-  resetRateLimitCooldowns();
   vi.stubEnv("OPENAI_API_KEY", "test-key");
   vi.stubEnv("OPENAI_BASE_URL", "https://api.cerebras.ai/v1");
   vi.stubEnv("OPENAI_SMALL_MODEL", "gemma-4-31b");
@@ -121,22 +119,67 @@ describe("per-model rate-limit cooldown", () => {
   }
 
   it("holds a model after a bucket 429 instead of re-sending, and keeps other models live", async () => {
+    const runtime = createRuntime();
     aiMocks.generateText.mockRejectedValueOnce(bucketExhausted());
-    await expect(handleTextSmall(createRuntime(), { prompt: "one" })).rejects.toMatchObject({
+    await expect(handleTextSmall(runtime, { prompt: "one" })).rejects.toMatchObject({
       statusCode: 429,
     });
     expect(aiMocks.generateText).toHaveBeenCalledTimes(1);
 
     // Same concrete model (gemma-4-31b) through the same handler: no HTTP call.
-    await expect(handleTextSmall(createRuntime(), { prompt: "two" })).rejects.toMatchObject({
+    await expect(handleTextSmall(runtime, { prompt: "two" })).rejects.toMatchObject({
       statusCode: 429,
       name: "ProviderRateLimitCooldownError",
     });
     expect(aiMocks.generateText).toHaveBeenCalledTimes(1);
 
     // A different concrete model (qwen-3.8-27b) is not held.
-    await handleTextLarge(createRuntime(), { prompt: "three" });
+    await handleTextLarge(runtime, { prompt: "three" });
     expect(aiMocks.generateText).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not impose one runtime's cooldown on another runtime", async () => {
+    aiMocks.generateText.mockRejectedValueOnce(bucketExhausted());
+    await expect(handleTextSmall(createRuntime(), { prompt: "one" })).rejects.toMatchObject({
+      statusCode: 429,
+    });
+    await handleTextSmall(createRuntime(), { prompt: "two" });
+    expect(aiMocks.generateText).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["OPENAI_API_KEY", "OPENAI_BASE_URL"])(
+    "resets cooldown when %s changes",
+    async (setting) => {
+      const runtime = createRuntime();
+      aiMocks.generateText.mockRejectedValueOnce(bucketExhausted());
+      await expect(handleTextSmall(runtime, { prompt: "one" })).rejects.toMatchObject({
+        statusCode: 429,
+      });
+      vi.stubEnv(
+        setting,
+        setting === "OPENAI_API_KEY" ? "rotated-test-key" : "https://alternate.example/v1"
+      );
+      await handleTextSmall(runtime, { prompt: "two" });
+      expect(aiMocks.generateText).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it("expires a cooldown at the provider's reset time", async () => {
+    const runtime = createRuntime();
+    const clock = vi.spyOn(Date, "now");
+    const now = Date.now();
+    try {
+      clock.mockReturnValue(now);
+      aiMocks.generateText.mockRejectedValueOnce(bucketExhausted());
+      await expect(handleTextSmall(runtime, { prompt: "one" })).rejects.toMatchObject({
+        statusCode: 429,
+      });
+      clock.mockReturnValue(now + 60_000);
+      await handleTextSmall(runtime, { prompt: "two" });
+      expect(aiMocks.generateText).toHaveBeenCalledTimes(2);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("does not hold a model after a burst 429 without a long Retry-After", async () => {
