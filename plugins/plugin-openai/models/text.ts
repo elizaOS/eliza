@@ -511,14 +511,17 @@ function resolveProviderOptions(
 
 function buildStructuredOutput(
   responseSchema: unknown,
-  modelType: ModelTypeName
-): PreparedStructuredOutput {
+  modelType: ModelTypeName,
+  cerebrasResponseSchema = false
+): PreparedStructuredOutput | undefined {
   if (
     responseSchema &&
     typeof responseSchema === "object" &&
     "responseFormat" in responseSchema &&
     "parseCompleteOutput" in responseSchema
   ) {
+    // Opaque SDK output contracts cannot be checked by the plain-schema walk.
+    if (cerebrasResponseSchema) return undefined;
     return { output: responseSchema as NativeOutput };
   }
 
@@ -527,10 +530,26 @@ function buildStructuredOutput(
       ? (responseSchema as { schema: unknown; name?: string; description?: string })
       : { schema: responseSchema };
   const preparedSchema = prepareResponseFormatSchema(schemaOptions.schema, modelType);
+  if (cerebrasResponseSchema && preparedSchema.transform) return undefined;
+  const compatibility = cerebrasResponseSchema ? { preservesShape: true } : undefined;
+  const sanitizedSchema = sanitizeJsonSchema(
+    preparedSchema.schema,
+    true,
+    "$",
+    undefined,
+    compatibility
+  );
+  // Keep the existing JSON-mode contract when strict normalization would
+  // change the returned shape or require an unsupported grammar construct.
+  if (compatibility && !compatibility.preservesShape) return undefined;
 
   return {
     output: Output.object({
-      schema: jsonSchema(sanitizeJsonSchema(preparedSchema.schema, true)),
+      schema: jsonSchema(
+        cerebrasResponseSchema
+          ? (normalizeSchemaForCerebras(sanitizedSchema, true) as JSONSchema7)
+          : sanitizedSchema
+      ),
       ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
       ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
     }) as NativeOutput,
@@ -1539,9 +1558,11 @@ function sanitizeJsonSchema(
   schema: unknown,
   isRoot = false,
   path = "$",
-  transforms?: RecordArgTransform[]
+  transforms?: RecordArgTransform[],
+  responseCompatibility?: { preservesShape: boolean }
 ): JSONSchema7 {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    if (responseCompatibility) responseCompatibility.preservesShape = false;
     // Bare-object fallback. In Cerebras mode `normalizeSchemaForCerebras`
     // closes this afterwards (explicit empty `properties` +
     // `additionalProperties: false`) — Cerebras's grammar compiler rejects a
@@ -1553,6 +1574,17 @@ function sanitizeJsonSchema(
 
   const record = schema as Record<string, unknown>;
   let sanitized: Record<string, unknown> = { ...record };
+  if (
+    responseCompatibility &&
+    (Array.isArray(record.type) ||
+      "$ref" in record ||
+      "nullable" in record ||
+      "dependentRequired" in record ||
+      (record.type === "array" &&
+        (!record.items || typeof record.items !== "object" || Array.isArray(record.items))))
+  ) {
+    responseCompatibility.preservesShape = false;
+  }
 
   // This is the single wire choke point — every response_format schema
   // (buildStructuredOutput) and every tool schema (normalizeNativeTools)
@@ -1567,11 +1599,13 @@ function sanitizeJsonSchema(
   if (typeof sanitized.type !== "string") {
     const inferredType = inferJsonSchemaType(sanitized, isRoot);
     if (inferredType) {
+      if (responseCompatibility) responseCompatibility.preservesShape = false;
       sanitized.type = inferredType;
     }
   }
 
   if (isRoot && hasIllegalStrictRoot(sanitized)) {
+    if (responseCompatibility) responseCompatibility.preservesShape = false;
     // Wrap the original schema under properties.value. Strict-tool callers
     // that unwrap arguments will see `{ value: <original> }`. The recursion
     // below normalises the wrapped child like any other property.
@@ -1590,7 +1624,13 @@ function sanitizeJsonSchema(
   ) {
     const properties: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(sanitized.properties as Record<string, unknown>)) {
-      properties[key] = sanitizeJsonSchema(value, false, `${path}.${key}`, transforms);
+      properties[key] = sanitizeJsonSchema(
+        value,
+        false,
+        `${path}.${key}`,
+        transforms,
+        responseCompatibility
+      );
     }
     sanitized.properties = properties;
 
@@ -1598,10 +1638,17 @@ function sanitizeJsonSchema(
     const existingRequired = Array.isArray(sanitized.required)
       ? sanitized.required.filter((key): key is string => typeof key === "string")
       : [];
-    sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
+    // Cerebras Qwen strict responses support genuinely optional fields. Other
+    // provider/tool paths retain their existing all-properties-required rule.
+    if (!responseCompatibility) {
+      sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
+    }
   }
 
   if (sanitized.type === "object" && sanitized.additionalProperties !== false) {
+    // An omitted additionalProperties also permits extra keys. Preserve the
+    // existing response contract unless the caller explicitly closed it.
+    if (responseCompatibility) responseCompatibility.preservesShape = false;
     // Strict-grammar providers reject open maps (schema-valued or `true`
     // additionalProperties) with a hard 400, and provider strictness is
     // proxy-blind (an agent on api.eliza.app with OPENAI_API_KEY may still
@@ -1658,20 +1705,30 @@ function sanitizeJsonSchema(
   if (sanitized.items) {
     sanitized.items = Array.isArray(sanitized.items)
       ? sanitized.items.map((item, i) =>
-          sanitizeJsonSchema(item, false, `${path}.items[${i}]`, transforms)
+          sanitizeJsonSchema(item, false, `${path}.items[${i}]`, transforms, responseCompatibility)
         )
-      : sanitizeJsonSchema(sanitized.items, false, `${path}.items`, transforms);
+      : sanitizeJsonSchema(
+          sanitized.items,
+          false,
+          `${path}.items`,
+          transforms,
+          responseCompatibility
+        );
   }
 
   for (const arrayKey of JSON_SCHEMA_ARRAY_KEYWORDS) {
     const value = sanitized[arrayKey];
     if (Array.isArray(value)) {
+      if (responseCompatibility && arrayKey !== "anyOf") {
+        responseCompatibility.preservesShape = false;
+      }
       sanitized[arrayKey] = value.map((item, index) =>
         sanitizeJsonSchema(
           item,
           false,
           arrayKey === "prefixItems" ? `${path}.items[${index}]` : path,
-          transforms
+          transforms,
+          responseCompatibility
         )
       );
     }
@@ -1684,6 +1741,9 @@ function sanitizeJsonSchema(
   // reverse argument restoration understands.
   for (const singleKey of JSON_SCHEMA_SINGLE_KEYWORDS) {
     if (singleKey === "additionalProperties") continue;
+    if (responseCompatibility && singleKey in sanitized) {
+      responseCompatibility.preservesShape = false;
+    }
     const value = sanitized[singleKey];
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const childPath =
@@ -1694,13 +1754,20 @@ function sanitizeJsonSchema(
           : singleKey === "unevaluatedProperties"
             ? `${path}.*`
             : path;
-      sanitized[singleKey] = sanitizeJsonSchema(value, false, childPath, transforms);
+      sanitized[singleKey] = sanitizeJsonSchema(
+        value,
+        false,
+        childPath,
+        transforms,
+        responseCompatibility
+      );
     }
   }
   for (const mapKey of JSON_SCHEMA_MAP_KEYWORDS) {
     if (mapKey === "properties") continue;
     const value = sanitized[mapKey];
     if (value && typeof value === "object" && !Array.isArray(value)) {
+      if (responseCompatibility) responseCompatibility.preservesShape = false;
       const walked: Record<string, unknown> = {};
       for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
         const childPath =
@@ -1709,7 +1776,7 @@ function sanitizeJsonSchema(
             : mapKey === "patternProperties"
               ? `${path}.*`
               : `${path}.${mapKey}.${key}`;
-        walked[key] = sanitizeJsonSchema(sub, false, childPath, transforms);
+        walked[key] = sanitizeJsonSchema(sub, false, childPath, transforms, responseCompatibility);
       }
       sanitized[mapKey] = walked;
     }
@@ -1717,12 +1784,13 @@ function sanitizeJsonSchema(
   for (const mixedMapKey of JSON_SCHEMA_MIXED_MAP_KEYWORDS) {
     const value = sanitized[mixedMapKey];
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    if (responseCompatibility) responseCompatibility.preservesShape = false;
     const walked: Record<string, unknown> = {};
     for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
       walked[key] =
         !sub || typeof sub !== "object" || Array.isArray(sub)
           ? sub
-          : sanitizeJsonSchema(sub, false, path, transforms);
+          : sanitizeJsonSchema(sub, false, path, transforms, responseCompatibility);
     }
     sanitized[mixedMapKey] = walked;
   }
@@ -2448,9 +2516,8 @@ async function generateTextByModelType(
         : { prompt: promptText };
   // AI SDK v6 derives the provider-level response format from its `output`
   // contract; a similarly named top-level setting is ignored by generateText.
-  // The Cerebras compatibility lane uses JSON mode with caller-side schema
-  // validation. A responseSchema alone must enable that mode; silently dropping
-  // it lets evaluator calls return tool markup instead of a decision envelope.
+  // Current Qwen supports strict response schemas without native tools. Other
+  // Cerebras contracts retain JSON mode with caller-side schema validation.
   const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown })
     .responseFormat;
   const responseFormatType =
@@ -2468,9 +2535,11 @@ async function generateTextByModelType(
   const sanitizedResponseSchema = paramsWithAttachments.responseSchema
     ? deepToWellFormedUnicode(paramsWithAttachments.responseSchema)
     : undefined;
+  const qwenResponseSchema =
+    cerebrasMode && modelName === "qwen-3.8-27b" && normalizedTools === undefined;
   const preparedOutput =
-    sanitizedResponseSchema && !cerebrasMode
-      ? buildStructuredOutput(sanitizedResponseSchema, modelType)
+    sanitizedResponseSchema && (!cerebrasMode || qwenResponseSchema)
+      ? buildStructuredOutput(sanitizedResponseSchema, modelType, qwenResponseSchema)
       : undefined;
   const requestedOutput: NativeOutput | undefined =
     preparedOutput?.output ??

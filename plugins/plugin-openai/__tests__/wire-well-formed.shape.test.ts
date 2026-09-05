@@ -168,7 +168,7 @@ describe("#18025: request bodies are well-formed strict JSON", () => {
     20_000
   );
 
-  it("sends JSON mode for Cerebras evaluator schemas without requiring a duplicate format flag", async () => {
+  it("sends strict Qwen schemas without requiring a duplicate format flag", async () => {
     vi.stubEnv("ELIZA_PROVIDER", "cerebras");
     vi.stubEnv("OPENAI_SMALL_MODEL", "qwen-3.8-27b");
     const result = await handleTextSmall(buildRuntime(), {
@@ -182,7 +182,17 @@ describe("#18025: request bodies are well-formed strict JSON", () => {
     } as never);
     expect(captured).toHaveLength(1);
     expect(assertStrictParseable(captured[0].bytes).response_format).toEqual({
-      type: "json_object",
+      type: "json_schema",
+      json_schema: {
+        name: "response",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: { goodField: { type: "string" } },
+          required: ["goodField"],
+          additionalProperties: false,
+        },
+      },
     });
     expect(result).toMatchObject({ text: '{"goodField":"value"}' });
   });

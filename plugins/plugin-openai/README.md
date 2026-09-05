@@ -209,6 +209,8 @@ Then set `OPENAI_BROWSER_BASE_URL=http://localhost:3000/openai`.
 
 Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras`. The default text model is `qwen-3.8-27b`, with `reasoning_effort: "none"` for interactive latency. Explicit reasoning settings remain supported; Eliza's `thinking: "off"` signal disables reasoning for planner/formatting calls. GPT-OSS and GLM retain their model-specific `"low"` defaults. `CEREBRAS_API_KEY` is accepted as an alias for `OPENAI_API_KEY`; embeddings and speech still require their own providers.
 
+Qwen3.8 calls without native tools send supported plain `responseSchema` objects as strict JSON Schema, preserving optional fields instead of requiring invented values. This follows the [Cerebras structured-output contract](https://inference-docs.cerebras.ai/capabilities/structured-outputs). Schemas that the existing normalizers cannot preserve (including open maps, root arrays/unions, nullable type lists, and opaque SDK output contracts) keep the existing JSON-mode behavior and caller-side validation. Other models, native-tool calls, and schema-less JSON requests are unchanged; this does not establish support for combining native tools with a response format.
+
 ## EvoLink compatibility
 
 Set `EVOLINK_API_KEY` to use EvoLink through its OpenAI-compatible endpoint. The plugin defaults to `https://direct.evolink.ai/v1` and `gpt-5.2`; set `EVOLINK_BASE_URL` or `EVOLINK_MODEL` to override either value.

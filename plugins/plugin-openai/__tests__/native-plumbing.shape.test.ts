@@ -1123,7 +1123,7 @@ describe("OpenAI native text plumbing", () => {
   });
 
   it.each([undefined, { type: "json_object" }])(
-    "honors Cerebras responseSchema with responseFormat=%j",
+    "retains legacy Cerebras JSON mode with responseFormat=%j",
     async (responseFormat) => {
       vi.stubEnv("ELIZA_PROVIDER", "cerebras");
       vi.stubEnv("CEREBRAS_API_KEY", "test-cerebras-key");
@@ -1135,6 +1135,7 @@ describe("OpenAI native text plumbing", () => {
 
       const { handleTextSmall } = await import("../models/text");
       await handleTextSmall(createRuntime(), {
+        model: "gpt-oss-120b",
         prompt: "json",
         ...(responseFormat ? { responseFormat } : {}),
         responseSchema: {
