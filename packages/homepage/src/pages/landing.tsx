@@ -928,7 +928,6 @@ function ContactSheet({
   );
 }
 
-const SESSION_STORAGE_KEY = "eliza_app_session";
 const COPY_CONFIRMATION_MS = 2_200;
 const HANDOFF_RECOVERY_MS = 5_000;
 
@@ -942,9 +941,8 @@ export default function LandingPage() {
   );
   const phoneCopyOperation = useRef(0);
   const browserWindow = typeof window === "undefined" ? null : window;
-  const signedIn =
-    browserWindow !== null &&
-    browserWindow.localStorage.getItem(SESSION_STORAGE_KEY) !== null;
+  // The homepage session key cannot attest the separate Cloud-app origin,
+  // so account CTAs stay neutral instead of inferring a Dashboard session.
   const productNavigation = resolveHomepageProductNavigation(
     browserWindow?.location.hostname ?? "",
   );
@@ -1079,17 +1077,9 @@ export default function LandingPage() {
         </a>
         <a
           className="landing-cta landing-cta--white landing-header-cta"
-          href={
-            signedIn
-              ? productNavigation.dashboardUrl
-              : productNavigation.signInUrl
-          }
+          href={productNavigation.signInUrl}
         >
-          {signedIn
-            ? t("homepage_eliza.landing.dashboard", {
-                defaultValue: "Dashboard",
-              })
-            : t("homepage_eliza.landing.signIn", { defaultValue: "Sign in" })}
+          {t("homepage_eliza.landing.signIn", { defaultValue: "Sign in" })}
         </a>
       </header>
       <main className="landing-hero">
@@ -1192,20 +1182,10 @@ export default function LandingPage() {
           setContactSheetOpen(false);
           void handleCallEliza();
         }}
-        accountHref={
-          signedIn
-            ? productNavigation.dashboardUrl
-            : productNavigation.signInUrl
-        }
-        accountLabel={
-          signedIn
-            ? t("homepage_eliza.landing.dashboard", {
-                defaultValue: "Open your dashboard",
-              })
-            : t("homepage_eliza.landing.signInCloud", {
-                defaultValue: "Sign in to Eliza Cloud",
-              })
-        }
+        accountHref={productNavigation.signInUrl}
+        accountLabel={t("homepage_eliza.landing.signInCloud", {
+          defaultValue: "Sign in to Eliza Cloud",
+        })}
       />
     </div>
   );
