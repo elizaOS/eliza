@@ -10,7 +10,6 @@
  * grep/rg evaluate caller patterns in a time-bounded worker because native
  * JavaScript regular-expression matching is synchronous.
  */
-import fsp from "node:fs/promises";
 import path from "node:path";
 import { runVfsSearchPattern } from "./vfs-search-pattern.ts";
 import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
@@ -261,7 +260,7 @@ async function mkdir(
   }
 
   for (const target of targets) {
-    await mkdirVirtualPath(vfs, resolveVirtualPath(cwd, target), parents);
+    await vfs.mkdir(resolveVirtualPath(cwd, target), { recursive: parents });
   }
   return { exitCode: 0, stdout: "", stderr: "" };
 }
@@ -495,40 +494,6 @@ function virtualPathMatchesTarget(filePath: string, target: string): boolean {
 
 function displayVirtualPath(virtualPath: string): string {
   return virtualPath.replace(/^\/+/, "") || ".";
-}
-
-async function mkdirVirtualPath(
-  vfs: VfsService,
-  virtualPath: string,
-  recursive: boolean,
-): Promise<void> {
-  const diskPath = vfs.resolveDiskPath(virtualPath);
-  await assertNoExistingSymlinkPath(vfs, diskPath);
-  await fsp.mkdir(diskPath, { recursive, mode: 0o700 });
-}
-
-async function assertNoExistingSymlinkPath(
-  vfs: VfsService,
-  diskPath: string,
-): Promise<void> {
-  const relative = path.relative(vfs.filesRoot, diskPath);
-  if (!relative) return;
-
-  let current = vfs.filesRoot;
-  for (const segment of relative.split(path.sep)) {
-    current = path.join(current, segment);
-    const stat = await fsp.lstat(current).catch((error) => {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw error;
-    });
-    if (!stat) return;
-    if (stat.isSymbolicLink()) {
-      throw new Error(`Symlinks are not allowed in the VFS: ${segment}`);
-    }
-    if (!stat.isDirectory()) {
-      throw new Error(`Path is not a directory: ${segment}`);
-    }
-  }
 }
 
 function resolveVirtualPath(cwd: string, input: string): string {
