@@ -476,14 +476,6 @@ export type DirectCurrentRequestCandidateKind =
 export interface DirectCurrentRequestCandidateInference {
 	names: string[];
 	kind: DirectCurrentRequestCandidateKind | null;
-	/**
-	 * Set when the resolved single reader is safe to execute as a deterministic
-	 * tool call (it emits its own verified user-facing text), letting the turn
-	 * skip the planner entirely. Currently only the calendar owner-read: its
-	 * query keywords tier-match the whole lifeops suite, and that planner tool
-	 * surface exceeds small provider context windows.
-	 */
-	deterministicDispatch?: true;
 }
 
 const EMPTY_DIRECT_CANDIDATE_INFERENCE: DirectCurrentRequestCandidateInference =
@@ -1372,17 +1364,7 @@ export function inferDirectCurrentRequestCandidateInference(
 			scheduledAdminDomain,
 		);
 		if (scheduledAdminAction) {
-			return {
-				names: [scheduledAdminAction],
-				kind: "owner-scheduled-admin",
-				// Calendar mutations dispatch deterministically for the same
-				// reason calendar reads do (see the owner-read branch below):
-				// the CALENDAR surface emits verified user-facing text, and the
-				// planner alternative tier-matches past small context windows.
-				...(scheduledAdminDomain === "calendar-events"
-					? { deterministicDispatch: true as const }
-					: {}),
-			};
+			return { names: [scheduledAdminAction], kind: "owner-scheduled-admin" };
 		}
 		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}
@@ -1446,19 +1428,7 @@ export function inferDirectCurrentRequestCandidateInference(
 			ownerReadDomain,
 		);
 		if (ownerReadAction) {
-			return {
-				names: [ownerReadAction],
-				kind: "owner-reads",
-				// The calendar reader returns verified user-facing text on its
-				// own, so the read can dispatch deterministically. Left on the
-				// planner path, "calendar"/"schedule"/"week" keywords tier-match
-				// the whole lifeops suite and the tool surface exceeds small
-				// provider context windows (observed live: the read died on the
-				// model-context ceiling while direct execution fits trivially).
-				...(ownerReadDomain === "calendar"
-					? { deterministicDispatch: true as const }
-					: {}),
-			};
+			return { names: [ownerReadAction], kind: "owner-reads" };
 		}
 		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}

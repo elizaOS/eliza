@@ -771,11 +771,6 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			).toEqual({
 				names: ["CALENDAR_FEED"],
 				kind: "owner-reads",
-				// Calendar reads dispatch deterministically (skip the planner):
-				// the reader emits verified user-facing text, and the planner
-				// alternative tier-matches the whole lifeops suite past small
-				// provider context windows.
-				deterministicDispatch: true,
 			});
 		}
 		// Lean stacks without the promoted feed retain the umbrella fallback.
@@ -787,7 +782,6 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		).toEqual({
 			names: ["CALENDAR"],
 			kind: "owner-reads",
-			deterministicDispatch: true,
 		});
 		// Navigation stays navigation.
 		expect(
@@ -810,7 +804,6 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			).toEqual({
 				names: ["CALENDAR"],
 				kind: "owner-scheduled-admin",
-				deterministicDispatch: true,
 			});
 		}
 		// A todo create with a mealtime noun stays off the calendar surface —
@@ -1612,10 +1605,6 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 			).toEqual({
 				names: [expected],
 				kind: "owner-scheduled-admin",
-				// Calendar mutations carry the deterministic-dispatch marker
-				// (verified user-facing text; planner alternative exceeds small
-				// context windows); other scheduled-admin owners do not.
-				...(expected === "CALENDAR" ? { deterministicDispatch: true } : {}),
 			});
 		}
 	});
