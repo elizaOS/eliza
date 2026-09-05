@@ -152,6 +152,7 @@ afterAll(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
@@ -382,6 +383,30 @@ describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
 });
 
 describe("handleCloudSttRoute (/api/asr/cloud proxy)", () => {
+  test.each([
+    ["1", "https://api-staging.eliza.app/api/v1/voice/stt"],
+    [undefined, "https://api.eliza.app/api/v1/voice/stt"],
+  ])(
+    "sends speech to the login environment for dev source %s",
+    async (devSource, expectedUrl) => {
+      vi.stubEnv("ELIZA_DEV_SOURCE", devSource);
+      vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", undefined);
+      vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", undefined);
+      upstreamResponse = () => Response.json({ text: "what time is it" });
+      const { res, state } = fakeRes();
+
+      await handleCloudSttRoute(
+        fakeReq("RIFF-audio", { "content-type": "audio/wav" }),
+        res,
+      );
+
+      expect(upstream[0].url).toBe(expectedUrl);
+      expect(upstream[0].headers.Authorization).toBe("Bearer test-cloud-key");
+      expect(state.statusCode).toBe(200);
+      expect(JSON.parse(String(state.body))).toEqual({ text: "what time is it" });
+    },
+  );
+
   test("retries an explicit cache-warming 503 before returning a transcript", async () => {
     let calls = 0;
     upstreamResponse = () => {
