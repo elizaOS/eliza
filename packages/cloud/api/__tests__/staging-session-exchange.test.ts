@@ -1394,6 +1394,40 @@ describe("rollback and legacy downgrade isolation", () => {
     expect((await exchange(code, verifier)).status).toBe(200);
   });
 
+  test("the QA exchange cannot recognize a legacy SSO code either", async () => {
+    // The mirror of the test above. `esso_` and `esqa_` are both five
+    // characters, so the prefix clause of `looksLikeStagingSessionCode` is the
+    // only thing separating the two families; without it a legacy bridge code
+    // would reach the versioned store and come back as 401/`invalid_code`
+    // instead of being refused on shape.
+    const response = await exchange(`esso_${"0".repeat(64)}`, null);
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { code: string }).code).toBe(
+      "missing_code",
+    );
+  });
+
+  test("each clause of the QA code shape refuses on its own", async () => {
+    // One case per clause, so no fixture masks another, and each asserts the
+    // 400/`missing_code` that says the store was never consulted — an unknown
+    // but well-formed `esqa_` code answers 401/`invalid_code` instead.
+    for (const [label, code] of [
+      ["empty", ""],
+      ["too short for any shape", "short"],
+      ["right length, wrong prefix", `eac__${"0".repeat(64)}`],
+      ["right prefix, non-hex body", `esqa_${"g".repeat(64)}`],
+      ["right prefix, uppercase-hex body", `esqa_${"A".repeat(64)}`],
+      ["right prefix, 63-hex body", `esqa_${"0".repeat(63)}`],
+      ["right prefix, 65-hex body", `esqa_${"0".repeat(65)}`],
+    ] as const) {
+      const response = await exchange(code, null);
+      expect(response.status, label).toBe(400);
+      expect(((await response.json()) as { code: string }).code, label).toBe(
+        "missing_code",
+      );
+    }
+  });
+
   test("bearer refresh refuses the non-renewable QA session", async () => {
     const token = await mintDerivedToken();
     const before = decodeJwt(token);
