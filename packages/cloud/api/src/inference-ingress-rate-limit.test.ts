@@ -97,6 +97,13 @@ describe("inference ingress rate limit", () => {
   test("bounds a stalled binding and observes its late rejection", async () => {
     let rejectBinding: ((error: Error) => void) | undefined;
     const { app, routeCalls } = createApp();
+    // The point of the deadline is that a stalled platform counter cannot delay
+    // inference. Without an elapsed-time bound this case passes at any deadline
+    // -- 2s and 4s both leave the suite green -- so the wait itself is asserted.
+    // The observed cost is the 20ms deadline plus ~2ms of overhead; the budget
+    // is deliberately loose so it fails on a regressed constant, not on a slow
+    // machine.
+    const startedAt = performance.now();
     const response = await app.fetch(
       request(),
       envWith({
@@ -107,8 +114,10 @@ describe("inference ingress rate limit", () => {
         },
       }),
     );
+    const elapsedMs = performance.now() - startedAt;
 
     expect(response.status).toBe(200);
+    expect(elapsedMs).toBeLessThan(250);
     expect(routeCalls()).toBe(1);
     rejectBinding?.(new Error("late binding rejection"));
     await new Promise((resolve) => setTimeout(resolve, 0));
