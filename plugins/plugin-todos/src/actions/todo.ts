@@ -44,6 +44,10 @@ interface TodoActionParameters {
   op?: unknown;
   id?: unknown;
   content?: unknown;
+  targetContent?: unknown;
+  matchIndex?: unknown;
+  allowDuplicate?: unknown;
+  confirm?: unknown;
   activeForm?: unknown;
   status?: unknown;
   parentTodoId?: unknown;
@@ -477,6 +481,38 @@ async function actionCreate({
   const status = readStatus(params.status) ?? "pending";
   const activeForm = readString(params.activeForm);
   const parentTodoId = readString(params.parentTodoId);
+  // Semantic dedup (#29690): creating content that already exists in the
+  // same entity scope is a no-op (returns the existing todo) instead of
+  // accumulating exact duplicates that a later visible-content mutation
+  // cannot disambiguate. Query via readCutoverState so the dedup read does
+  // not count as a public list() against the action contract. Skip dedup
+  // for an idempotent replay: the store's replay path must win so a
+  // replayed mutation returns its original receipt, not a dedup noop.
+  const records = await service.listMutationRecords({
+    entityId: scope.entityId,
+    agentId: scope.agentId,
+  });
+  const replayed = records.some((r) => r.idempotencyKey === idempotencyKey);
+  if (!replayed) {
+    const { todos: existingTodos } = await service.readCutoverState({
+      entityId: scope.entityId,
+      agentId: scope.agentId,
+    });
+    const prior = existingTodos.find((t) => t.content === content);
+    if (prior && !readBoolean(params.allowDuplicate)) {
+      return {
+        success: true,
+        text: `Already on your list: "${prior.content}".`,
+        data: {
+          action: "create" as const,
+          op: "noop" as const,
+          entityId: scope.entityId,
+          todo: prior,
+          deduplicated: true,
+        },
+      };
+    }
+  }
   const input: Omit<CreateTodoInput, "entityId" | "agentId"> = {
     roomId: scope.roomId,
     worldId: scope.worldId,
@@ -515,6 +551,11 @@ async function actionCreate({
   });
 }
 
+/** The visible locator a caller used for a content-addressed mutation. */
+function visibleLocator(params: TodoActionParameters): string {
+  return readString(params.targetContent) ?? readString(params.content) ?? "";
+}
+
 async function actionUpdate({
   service,
   scope,
@@ -523,10 +564,130 @@ async function actionUpdate({
   idempotencyKey,
 }: MutationActionHandlerArgs): Promise<ActionResult> {
   const id = readString(params.id);
+  // Visible-content resolver (#29690): Shared surfaces render todos without
+  // storage ids, so a follow-up mutation may address a todo by its exact
+  // visible content instead of an opaque id. Exact duplicate content is a
+  // no-op-or-explicit-update per the requested mutation; ambiguous matches
+  // return a bounded clarification.
+  if (!id) {
+    const resolved = await resolveTodoIdByVisibleContent(
+      service,
+      scope,
+      params,
+    );
+    if (!resolved.ok) return resolved.failure;
+    const resolvedId = resolved.id;
+    if (!resolvedId) {
+      return failure(
+        "not_found",
+        `No todo matching "${visibleLocator(params)}" is in the list.`,
+      );
+    }
+    return actionUpdateById({
+      service,
+      scope,
+      params,
+      callback,
+      idempotencyKey,
+      resolvedId,
+    });
+  }
+  return actionUpdateById({
+    service,
+    scope,
+    params,
+    callback,
+    idempotencyKey,
+    resolvedId: id,
+  });
+}
+
+/**
+ * Resolves a mutation's target todo when only visible content is available.
+ * Returns { ok: true, id } for an exact unique match, { ok: true, id: null }
+ * for no match, and { ok: false, failure } for an ambiguous match (bounded
+ * clarification with the matching contents).
+ */
+async function resolveTodoIdByVisibleContent(
+  service: TodoStore,
+  scope: { entityId: string; agentId: string },
+  params: TodoActionParameters,
+): Promise<
+  { ok: true; id: string | null } | { ok: false; failure: ActionResult }
+> {
+  // targetContent (when present) is the exact locator; content alone also
+  // locates when id is absent, but for update the caller may pass
+  // targetContent to locate while content carries the replacement text.
+  const content =
+    readString(params.targetContent) ?? readString(params.content);
+  if (!content) {
+    return {
+      ok: false,
+      failure: failure(
+        "missing_param",
+        "id, targetContent, or content is required for this mutation",
+      ),
+    };
+  }
+  const todos = await service.list({
+    entityId: scope.entityId,
+    agentId: scope.agentId,
+    includeCompleted: true,
+  });
+  const exact = todos.filter((t) => t.content === content);
+  if (exact.length === 0) return { ok: true, id: null };
+  if (exact.length === 1) return { ok: true, id: exact[0].id };
+  // Duplicate visible content: the clarification lists numbered matches and
+  // the planner may pick one with matchIndex (1-based, same as the list).
+  const matchIndex = readMatchIndex(params.matchIndex);
+  if (matchIndex !== undefined) {
+    const chosen = exact[matchIndex - 1];
+    if (chosen) return { ok: true, id: chosen.id };
+    return {
+      ok: false,
+      failure: failure(
+        "ambiguous_match",
+        `matchIndex ${matchIndex} is out of range: ${exact.length} todos match "${content}".`,
+      ),
+    };
+  }
+  return {
+    ok: false,
+    failure: failure(
+      "ambiguous_match",
+      `Multiple todos match "${content}": ${exact
+        .map((t, i) => `${i + 1}. ${t.content}`)
+        .join(", ")}. Pick one with matchIndex (1-based).`,
+    ),
+  };
+}
+
+function readMatchIndex(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^[1-9]\d*$/.test(value)) {
+    return Number(value);
+  }
+  return undefined;
+}
+
+async function actionUpdateById({
+  service,
+  scope,
+  params,
+  callback,
+  idempotencyKey,
+  resolvedId,
+}: MutationActionHandlerArgs & { resolvedId: string }): Promise<ActionResult> {
+  const id = resolvedId;
   if (!id) {
     return failure("missing_param", "id is required for action=update");
   }
   const patch: UpdateTodoInput = {};
+  // When the caller located this todo by targetContent, `content` is purely
+  // the replacement text (rename). When located by id or by content alone,
+  // `content` still updates in place.
   const content = readString(params.content);
   if (content !== undefined) patch.content = content;
   const activeForm = readString(params.activeForm);
@@ -589,9 +750,24 @@ async function actionSetStatus(
   action: "complete" | "cancel",
 ): Promise<ActionResult> {
   const { service, scope, params, callback, idempotencyKey } = args;
-  const id = readString(params.id);
+  let id = readString(params.id);
   if (!id) {
-    return failure("missing_param", `id is required for action=${action}`);
+    // Visible-content resolver (#29690): Shared surfaces render todos
+    // without storage ids, so complete/cancel may address a todo by its
+    // exact visible content.
+    const resolved = await resolveTodoIdByVisibleContent(
+      service,
+      scope,
+      params,
+    );
+    if (!resolved.ok) return resolved.failure;
+    if (!resolved.id) {
+      return failure(
+        "not_found",
+        `No todo matching "${visibleLocator(params)}" is in the list.`,
+      );
+    }
+    id = resolved.id;
   }
   const execution = await service.applyMutation({
     scope: { entityId: scope.entityId, agentId: scope.agentId },
@@ -627,9 +803,23 @@ async function actionDelete({
   callback,
   idempotencyKey,
 }: MutationActionHandlerArgs): Promise<ActionResult> {
-  const id = readString(params.id);
+  let id = readString(params.id);
   if (!id) {
-    return failure("missing_param", "id is required for action=delete");
+    // Visible-content resolver (#29690): delete may address a todo by its
+    // exact visible content on Shared surfaces.
+    const resolved = await resolveTodoIdByVisibleContent(
+      service,
+      scope,
+      params,
+    );
+    if (!resolved.ok) return resolved.failure;
+    if (!resolved.id) {
+      return failure(
+        "not_found",
+        `No todo matching "${visibleLocator(params)}" is in the list.`,
+      );
+    }
+    id = resolved.id;
   }
   const execution = await service.applyMutation({
     scope: { entityId: scope.entityId, agentId: scope.agentId },
@@ -697,9 +887,40 @@ async function actionList({
 async function actionClear({
   service,
   scope,
+  params,
   callback,
   idempotencyKey,
 }: MutationActionHandlerArgs): Promise<ActionResult> {
+  // Explicit confirmation gate (#29690): Shared clear is a destructive
+  // mutation and must not run from an unconfirmed planner turn. Without
+  // `confirm: true`, return a bounded preview of what would be cleared.
+  const confirmed = readBoolean(params.confirm) === true;
+  if (!confirmed) {
+    const todos = await service.list({
+      entityId: scope.entityId,
+      agentId: scope.agentId,
+      includeCompleted: true,
+    });
+    const preview = todos.map((t) => `- ${t.content}`).join("\n");
+    const text =
+      todos.length === 0
+        ? "Your list is already empty."
+        : `This will clear ${todos.length} todo${
+            todos.length === 1 ? "" : "s"
+          } from your list:\n${preview}\n\nReply with confirmation to clear them.`;
+    return {
+      success: true,
+      text,
+      data: {
+        actionName: "TODO" as const,
+        action: "clear" as const,
+        op: "preview" as const,
+        entityId: scope.entityId,
+        count: todos.length,
+        requiresConfirmation: true,
+      },
+    };
+  }
   const execution = await service.applyMutation({
     scope: { entityId: scope.entityId, agentId: scope.agentId },
     idempotencyKey,
@@ -807,9 +1028,31 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       },
       {
         name: "content",
-        description: "Imperative form, e.g. 'Add tests' (create/update).",
+        description:
+          "Imperative form, e.g. 'Add tests' (create/update; also locates a todo by visible content when id is absent for update/complete/cancel/delete).",
         required: false,
         schema: { type: "string" as const },
+      },
+      {
+        name: "targetContent",
+        description:
+          "Exact visible content locating the todo when id is absent (update/complete/cancel/delete). Distinct from content so an update can rename the located todo.",
+        required: false,
+        schema: { type: "string" as const },
+      },
+      {
+        name: "confirm",
+        description:
+          "Must be true for action=clear; otherwise clear returns a preview and requires explicit confirmation before mutating.",
+        required: false,
+        schema: { type: "boolean" as const },
+      },
+      {
+        name: "matchIndex",
+        description:
+          "1-based index selecting one duplicate when targetContent/content matches multiple todos (update/complete/cancel/delete).",
+        required: false,
+        schema: { type: "integer" as const, minimum: 1 },
       },
       {
         name: "activeForm",
