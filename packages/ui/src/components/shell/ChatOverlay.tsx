@@ -3401,8 +3401,9 @@ export function ChatOverlay({
   // Above the half detent the fill is opaque, so filtering its hidden backdrop
   // wastes paint work. Both maximize and restore stay above that boundary;
   // frost returns only when collapsing into the translucent composer.
-  const surfaceBackdropFilter = useTransform(surfaceBlackout, (t: number) =>
-    t >= 1 ? "none" : GLASS_SHEET_BACKDROP_FILTER,
+  const surfaceBackdropFilter = useTransform(
+    surfaceBlackout,
+    (t: number): string => (t >= 1 ? "none" : GLASS_SHEET_BACKDROP_FILTER),
   );
   const surfaceEdgeShadow = useTransform(fullBleedT, (t: number) =>
     liquidGlassEdgeShadow(1 - t),
