@@ -80,13 +80,21 @@ export function readCsrfTokenFromCookie(): string | null {
   return null;
 }
 
-/** Read a same-origin cookie or the native mirror for the request origin. */
+/** Read a same-host cookie or the native mirror for the request origin. */
 export function readCsrfTokenForUrl(url: string): string | null {
   const origin = csrfOrigin(url);
-  if (!origin) return null;
+  if (!origin || origin === "null") return null;
 
   const pageOrigin = csrfOrigin(globalThis.location?.href ?? "");
-  if (origin === pageOrigin) {
+  // Cookies are scoped by host, not port. Desktop renderers and their local
+  // API can use separate ports while sharing the same session cookie jar.
+  const target = new URL(origin);
+  const page = pageOrigin && pageOrigin !== "null" ? new URL(pageOrigin) : null;
+  if (
+    page &&
+    target.protocol === page.protocol &&
+    target.hostname === page.hostname
+  ) {
     const cookieToken = readCsrfTokenFromCookie();
     if (cookieToken) return cookieToken;
   }
