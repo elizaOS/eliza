@@ -501,4 +501,30 @@ describe("quarantine list stays in sync with the tree", () => {
       expect(existsSync(path.join(packageDir, suite))).toBe(true);
     }
   });
+
+  /**
+   * Same failure mode, second list. `DEFAULT_PROCESS_ISOLATED_SUITES` is only
+   * ever used to FILTER discovered files, so a renamed suite matches nothing
+   * and silently loses its process boundary. Unlike the quarantine list there
+   * is no runtime existence check for it, because a stale entry here still
+   * runs the suite — it just runs it batched with its alphabetical
+   * neighbours, where the top-level `mock.module` registrations this list
+   * exists to contain leak into them.
+   */
+  test("every DEFAULT_PROCESS_ISOLATED_SUITES entry exists (a rename must update the list, not silently batch)", () => {
+    const packageDir = path.resolve(import.meta.dir, "..");
+    for (const suite of DEFAULT_PROCESS_ISOLATED_SUITES) {
+      expect(existsSync(path.join(packageDir, suite))).toBe(true);
+    }
+  });
+
+  test("a renamed process-isolated suite stops getting its own batch", () => {
+    const stale = "src/lib/services/shared-runtime/renamed-away.test.ts";
+    const discovered = ["a.test.ts", "z.test.ts"];
+
+    const batches = buildTestBatches(discovered, [], { ordinary: 2, pglite: 1 }, [stale]);
+
+    expect(batches.some((batch) => batch.kind === "process-isolated")).toBe(false);
+    expect(batches).toEqual([{ kind: "ordinary", files: ["a.test.ts", "z.test.ts"] }]);
+  });
 });
