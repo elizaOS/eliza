@@ -42,11 +42,15 @@ export interface Vault {
   /**
    * Move an unreadable entry out of the active keyspace without decrypting or
    * deleting its stored bytes. This is a narrow recovery primitive for callers
-   * that already observed {@link VaultDecryptionError}; the quarantined row is
-   * retained in the vault database for forensic/manual recovery.
+   * that already observed {@link VaultDecryptionError}. The opaque entry
+   * identity from that exact failure is a compare-and-swap guard: a stale
+   * caller cannot quarantine a replacement written by another process. The
+   * quarantined row is retained in the vault database for forensic/manual
+   * recovery.
    */
   quarantineUnreadable(
     key: string,
+    expectedEntryIdentity: string,
     reason: string,
     caller?: string,
   ): Promise<boolean>;
@@ -99,14 +103,18 @@ export class VaultMissError extends Error {
 
 /** A stored secret exists but cannot be authenticated with the active key. */
 export class VaultDecryptionError extends Error {
+  /** Opaque identity of the exact persisted row that failed authentication. */
+  readonly entryIdentity: string | undefined;
+
   constructor(
     readonly key: string,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { readonly entryIdentity?: string },
   ) {
     super(
       `vault: failed to decrypt ${JSON.stringify(key)} (wrong master key or corrupt ciphertext)`,
       options,
     );
     this.name = "VaultDecryptionError";
+    this.entryIdentity = options?.entryIdentity;
   }
 }

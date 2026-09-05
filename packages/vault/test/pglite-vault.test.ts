@@ -20,6 +20,29 @@ import {
 import { VaultDecryptionError, VaultMissError } from "../src/vault.js";
 import { runtimeVaultCaller } from "./vitest-assertion-shim.js";
 
+function hasEntryIdentity(
+  error: VaultDecryptionError,
+): error is VaultDecryptionError & { readonly entryIdentity: string } {
+  return (
+    typeof error.entryIdentity === "string" && error.entryIdentity.length > 0
+  );
+}
+
+async function captureDecryptionFailure(
+  vault: PgliteVaultImpl,
+  key: string,
+): Promise<VaultDecryptionError & { readonly entryIdentity: string }> {
+  try {
+    await vault.get(key);
+  } catch (error) {
+    if (error instanceof VaultDecryptionError && hasEntryIdentity(error)) {
+      return error;
+    }
+    throw error;
+  }
+  throw new Error("expected vault decryption failure");
+}
+
 describe("PgliteVaultImpl", () => {
   let workDir: string;
   let vault: PgliteVaultImpl;
@@ -180,9 +203,14 @@ describe("PgliteVaultImpl", () => {
       masterKey: inMemoryMasterKey(wrongKey),
       auditPath: join(dir, "audit", "vault.jsonl"),
     });
-    await expect(v2.get("k")).rejects.toBeInstanceOf(VaultDecryptionError);
+    const failure = await captureDecryptionFailure(v2, "k");
     expect(
-      await v2.quarantineUnreadable("k", "test wrong-key recovery", "test"),
+      await v2.quarantineUnreadable(
+        "k",
+        failure.entryIdentity,
+        "test wrong-key recovery",
+        "test",
+      ),
     ).toBe(true);
     expect(await v2.has("k")).toBe(false);
     await v2.set("k", "replacement", { sensitive: true });
@@ -202,6 +230,100 @@ describe("PgliteVaultImpl", () => {
     expect(preserved.rows[0]?.ciphertext).not.toContain("secret-value");
     await db.close();
     await rm(dir, { recursive: true, force: true });
+  });
+
+  it("does not quarantine a healthy replacement for a stale failure", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vault-pglite-quarantine-cas-"));
+    const dataDir = join(dir, ".vault-pglite");
+    const auditPath = join(dir, "audit", "vault.jsonl");
+    const original = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+      auditPath,
+    });
+    await original.set("k", "unreadable-original", { sensitive: true });
+    await original.close();
+
+    const recovery = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+      auditPath,
+    });
+    const staleFailure = await captureDecryptionFailure(recovery, "k");
+    expect(
+      await recovery.quarantineUnreadable(
+        "k",
+        staleFailure.entryIdentity,
+        "first resolver",
+        "test:process-a",
+      ),
+    ).toBe(true);
+    await recovery.set("k", "healthy-replacement", { sensitive: true });
+
+    expect(
+      await recovery.quarantineUnreadable(
+        "k",
+        staleFailure.entryIdentity,
+        "stale second resolver",
+        "test:process-b",
+      ),
+    ).toBe(false);
+    expect(await recovery.get("k")).toBe("healthy-replacement");
+    await recovery.close();
+
+    const db = await PGlite.create(dataDir);
+    const quarantined = await db.query<{ n: string | number }>(
+      `SELECT COUNT(*) AS n FROM vault_quarantined_entries
+        WHERE original_key = $1`,
+      ["k"],
+    );
+    expect(Number(quarantined.rows[0]?.n)).toBe(1);
+    await db.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("keeps concurrent quarantine failures isolated and preserves both rows", async () => {
+    await vault.set("blocked", "retained-secret", { sensitive: true });
+    await vault.set("movable", "quarantined-secret", { sensitive: true });
+    await vault.close();
+    const dataDir = join(workDir, ".vault-pglite");
+    const setup = await PGlite.create(dataDir);
+    await setup.exec(
+      "ALTER TABLE vault_quarantined_entries ADD CONSTRAINT reject_blocked CHECK (original_key <> 'blocked')",
+    );
+    await setup.close();
+    vault = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+      auditPath: join(workDir, "audit", "vault.jsonl"),
+    });
+    const blocked = await captureDecryptionFailure(vault, "blocked");
+    const movable = await captureDecryptionFailure(vault, "movable");
+    const outcomes = await Promise.allSettled([
+      vault.quarantineUnreadable(
+        "blocked",
+        blocked.entryIdentity,
+        "forced insert failure",
+        "test",
+      ),
+      vault.quarantineUnreadable(
+        "movable",
+        movable.entryIdentity,
+        "concurrent recovery",
+        "test",
+      ),
+    ]);
+    expect(outcomes[0].status).toBe("rejected");
+    expect(outcomes[1]).toEqual({ status: "fulfilled", value: true });
+    expect(await vault.has("blocked")).toBe(true);
+    expect(await vault.has("movable")).toBe(false);
+    await vault.close();
+    const inspection = await PGlite.create(dataDir);
+    const retained = await inspection.query<{ original_key: string }>(
+      "SELECT original_key FROM vault_quarantined_entries",
+    );
+    expect(retained.rows).toEqual([{ original_key: "movable" }]);
+    await inspection.close();
   });
 
   it("rejects corrupt persisted rows instead of returning null-ish values", async () => {

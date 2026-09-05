@@ -296,9 +296,11 @@ export async function ensureAgentWallets(
       existing = await getAgentWalletDescriptor(vault, agentId, chain);
     } catch (error) {
       if (!(error instanceof VaultDecryptionError)) throw error;
+      if (!error.entryIdentity) throw error;
       const key = walletKey(agentId, chain);
       const quarantined = await vault.quarantineUnreadable(
         key,
+        error.entryIdentity,
         "agent wallet failed authenticated decryption during bootstrap",
         caller ?? "agent-wallets:bootstrap-repair",
       );
