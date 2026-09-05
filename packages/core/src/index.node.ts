@@ -119,6 +119,12 @@ export {
 	roleAction,
 	updateRoleAction,
 } from "./features/advanced-capabilities/actions/role";
+export {
+	buildFactKeywordsForStorage,
+	buildFactSearchText,
+	factLexicalSimilarity,
+	readStoredFactKeywords,
+} from "./features/advanced-capabilities/fact-keywords";
 export * from "./features/advanced-memory";
 export {
 	AUTONOMY_SERVICE_TYPE,

@@ -16,11 +16,15 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  buildFactKeywordsForStorage,
+  buildFactSearchText,
   MemoryType as CoreMemoryType,
   ElizaError,
+  factLexicalSimilarity,
   getRelatedEntityIds,
   logger,
   ModelType,
+  readStoredFactKeywords,
   toWellFormedUnicode,
   validateUuid,
 } from "@elizaos/core";
@@ -204,6 +208,142 @@ function toListItem(memory: Memory, type: MemoryType): MemoryListItem {
  */
 const EXPLICIT_MEMORY_CONFIDENCE = 0.95;
 
+/**
+ * Stage-1 persists `extract.facts` as lapsing `current/uncategorized` rows in
+ * parallel with the planner. When the same user message also routes to an
+ * explicit MEMORY create, the two writes race and the FACTS provider renders
+ * one claim twice. A Stage-1 row extracted from THIS message (its
+ * `metadata.messageId`) that lexically covers the explicit text is upgraded in
+ * place instead of getting a durable twin. Rows from other messages are never
+ * merged: lexical overlap alone cannot tell a restatement from a changed value.
+ */
+const STAGE_FACT_SOURCE = "facts_and_relationships_stage";
+const SAME_MESSAGE_UPGRADE_SIMILARITY = 0.42;
+
+function metadataRecord(memory: Memory): Record<string, unknown> {
+  const meta = memory.metadata;
+  return meta && typeof meta === "object" && !Array.isArray(meta)
+    ? (meta as Record<string, unknown>)
+    : {};
+}
+
+async function findSameMessageStageFact(
+  runtime: IAgentRuntime,
+  message: Memory,
+  text: string,
+  keywords: string[],
+): Promise<(Memory & { id: UUID }) | null> {
+  if (!message.id || !message.roomId || !message.entityId) return null;
+  const rows = await runtime.getMemories({
+    tableName: "facts",
+    roomId: message.roomId,
+    entityId: message.entityId,
+    authorEntityIds: [message.entityId],
+    unique: false,
+  });
+  let best: { memory: Memory & { id: UUID }; similarity: number } | null = null;
+  for (const row of rows) {
+    const meta = metadataRecord(row);
+    if (
+      !row.id ||
+      meta.source !== STAGE_FACT_SOURCE ||
+      meta.kind !== "current" ||
+      meta.messageId !== message.id
+    ) {
+      continue;
+    }
+    const similarity = factLexicalSimilarity(
+      [text, keywords],
+      [buildFactSearchText(row), readStoredFactKeywords(row)],
+    );
+    if (
+      similarity >= SAME_MESSAGE_UPGRADE_SIMILARITY &&
+      (!best || similarity > best.similarity)
+    ) {
+      best = { memory: row as Memory & { id: UUID }, similarity };
+    }
+  }
+  return best?.memory ?? null;
+}
+
+async function upgradeStageFact(
+  runtime: IAgentRuntime,
+  stageFact: Memory & { id: UUID },
+  next: {
+    text: string;
+    kind: string | undefined;
+    tags: string[];
+    keywords: string[];
+    createdAt: number;
+  },
+): Promise<ActionResult> {
+  const previousMeta = metadataRecord(stageFact);
+  const previousText =
+    typeof stageFact.content.text === "string" ? stageFact.content.text : "";
+  const previousCategory =
+    typeof previousMeta.category === "string" &&
+    previousMeta.category !== "uncategorized"
+      ? previousMeta.category
+      : undefined;
+  let embedding: number[] | undefined;
+  if (
+    previousText !== next.text &&
+    Array.isArray(stageFact.embedding) &&
+    stageFact.embedding.length > 0
+  ) {
+    const regenerated = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+      text: next.text,
+    });
+    if (!Array.isArray(regenerated) || regenerated.length === 0) {
+      return fail(
+        "Embedding model returned no vector.",
+        "MEMORY_EMBEDDING_FAILED",
+      );
+    }
+    embedding = regenerated;
+  }
+  await runtime.updateMemory({
+    id: stageFact.id,
+    content: { ...stageFact.content, text: next.text, source: "MEMORY" },
+    metadata: {
+      ...previousMeta,
+      type: CoreMemoryType.CUSTOM,
+      source: "MEMORY",
+      promotedFrom: STAGE_FACT_SOURCE,
+      ...(previousText && previousText !== next.text ? { previousText } : {}),
+      kind: "durable",
+      category: next.kind ?? previousCategory ?? "user_note",
+      confidence: EXPLICIT_MEMORY_CONFIDENCE,
+      keywords: [
+        ...new Set([...readStoredFactKeywords(stageFact), ...next.keywords]),
+      ],
+      verificationStatus: "self_reported",
+      lastConfirmedAt: new Date(next.createdAt).toISOString(),
+    } as Memory["metadata"],
+    ...(embedding ? { embedding } : {}),
+  });
+  return {
+    success: true,
+    text: `Stored memory ${stageFact.id}.`,
+    values: {
+      memoryId: stageFact.id,
+      kind: next.kind ?? null,
+      tagCount: next.tags.length,
+      upgradedStageFact: true,
+    },
+    data: {
+      actionName: "MEMORY",
+      op: "create" as const,
+      memoryId: stageFact.id,
+      text: next.text,
+      kind: next.kind ?? null,
+      tags: next.tags,
+      createdAt: next.createdAt,
+      upgradedFrom: STAGE_FACT_SOURCE,
+    },
+  };
+}
+
 async function doCreate(
   runtime: IAgentRuntime,
   message: Memory,
@@ -223,8 +363,24 @@ async function doCreate(
     : [];
 
   const agentId = runtime.agentId as UUID;
-  const memoryId = crypto.randomUUID() as UUID;
   const createdAt = Date.now();
+  const keywords = buildFactKeywordsForStorage(tags, text, kind ?? "");
+  const stageFact = await findSameMessageStageFact(
+    runtime,
+    message,
+    text,
+    keywords,
+  );
+  if (stageFact) {
+    return upgradeStageFact(runtime, stageFact, {
+      text,
+      kind,
+      tags,
+      keywords,
+      createdAt,
+    });
+  }
+  const memoryId = crypto.randomUUID() as UUID;
 
   // Persist where the recall read path looks. The FACTS provider — the only
   // default-on read path for user facts — scans the `facts` table scoped to
@@ -242,6 +398,7 @@ async function doCreate(
       metadata: {
         type: CoreMemoryType.CUSTOM,
         source: "MEMORY",
+        ...(message.id ? { messageId: message.id } : {}),
         kind: "durable",
         category: kind ?? "user_note",
         confidence: EXPLICIT_MEMORY_CONFIDENCE,

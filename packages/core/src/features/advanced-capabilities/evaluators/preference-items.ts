@@ -163,6 +163,26 @@ function isDurablePreferenceFact(memory: Memory): boolean {
 	return meta.category === "preference" && meta.kind !== "current";
 }
 
+/**
+ * Stage-1 stores the same turn's `extract.facts` as lapsing
+ * `current/uncategorized` rows. A row extracted from THIS message is the same
+ * observation the extractor is now classifying, so it is upgraded in place
+ * rather than shadowed by a durable twin. Other messages' rows are never
+ * merged: lexical overlap cannot tell a restatement from a changed value.
+ */
+function isSameMessageStageFact(
+	memory: Memory,
+	messageId: UUID | undefined,
+): boolean {
+	if (!messageId) return false;
+	const meta = memory.metadata as Record<string, unknown> | undefined;
+	return (
+		meta?.source === "facts_and_relationships_stage" &&
+		meta.kind === "current" &&
+		meta.messageId === messageId
+	);
+}
+
 function pickFactConfidence(memory: Memory): number {
 	const value = readFactMetadata(memory).confidence;
 	if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -344,12 +364,30 @@ async function applyAddPreferenceFact(
 	}
 	if (best?.memory.id) {
 		// Update-not-duplicate: a re-stated preference reinforces the existing
-		// row instead of creating a near-copy the provider would rank twice.
-		const nextMeta: CustomMetadata = {
-			...preserveFactMetadata(best.memory),
-			confidence: clamp01(pickFactConfidence(best.memory) + STRENGTHEN_DELTA),
-			lastConfirmedAt: nowIso(),
-		};
+		// row instead of creating a near-copy the provider would rank twice; a
+		// same-message Stage-1 observation is promoted to the durable preference.
+		const nextMeta: CustomMetadata = isSameMessageStageFact(
+			best.memory,
+			message.id,
+		)
+			? {
+					...preserveFactMetadata(best.memory),
+					kind: "durable",
+					category: "preference",
+					promotedBy: "preference_extractor",
+					keywords: [
+						...new Set([...readStoredFactKeywords(best.memory), ...keywords]),
+					],
+					confidence: clamp01(op.confidence ?? NEW_FACT_CONFIDENCE),
+					lastConfirmedAt: nowIso(),
+				}
+			: {
+					...preserveFactMetadata(best.memory),
+					confidence: clamp01(
+						pickFactConfidence(best.memory) + STRENGTHEN_DELTA,
+					),
+					lastConfirmedAt: nowIso(),
+				};
 		await runtime.updateMemory({ id: best.memory.id, metadata: nextMeta });
 		return { added: false, strengthened: true };
 	}
@@ -466,7 +504,11 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 								authorEntityIds: [message.entityId],
 								unique: false,
 							})
-						).filter(isDurablePreferenceFact)
+						).filter(
+							(memory) =>
+								isDurablePreferenceFact(memory) ||
+								isSameMessageStageFact(memory, message.id),
+						)
 					: prepared.knownPreferenceFacts;
 				const candidates: FactCandidate[] = freshFacts.map((memory) => ({
 					memory,

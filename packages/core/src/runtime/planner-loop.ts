@@ -3373,6 +3373,12 @@ async function recordGatedEvaluationStage(args: {
 				gated: true,
 				llmCallSkipped: true,
 				reason: args.reason ?? "explicit_terminal_reply",
+				...(args.output.effectReceiptIds?.length
+					? { effectReceiptIds: [...args.output.effectReceiptIds] }
+					: {}),
+				...(typeof args.output.raw?.source === "string"
+					? { source: args.output.raw.source }
+					: {}),
 			},
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);

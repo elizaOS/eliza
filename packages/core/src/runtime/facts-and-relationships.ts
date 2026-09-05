@@ -22,6 +22,9 @@ import { getEntityDetails } from "../entities.ts";
 import { ElizaError } from "../errors.ts";
 import {
 	buildFactKeywordsForStorage,
+	buildFactSearchText,
+	factLexicalSimilarity,
+	readStoredFactKeywords,
 	scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
 import { isMobilePlatform } from "../runtime-env";
@@ -633,6 +636,47 @@ interface PersistArgs {
 	parsed: FactsAndRelationshipsResult;
 }
 
+/**
+ * The explicit MEMORY tool may store the same user statement as a durable row
+ * while this stage is still deduplicating (both run off one Stage-1 response,
+ * so the model-side dedupe cannot see it). A durable row stamped with this
+ * message's id that lexically covers a candidate makes the lapsing Stage-1
+ * copy redundant; rows from other messages stay with the model-side dedupe.
+ */
+const SAME_MESSAGE_COVERAGE_SIMILARITY = 0.42;
+
+async function readSameMessageDurableFacts(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<Memory[]> {
+	if (!message.id || typeof runtime.getMemories !== "function") return [];
+	const rows = await runtime.getMemories({
+		tableName: "facts",
+		roomId: message.roomId,
+		entityId: message.entityId,
+		authorEntityIds: [message.entityId],
+		unique: false,
+	});
+	return rows.filter((row) => {
+		const meta = row.metadata as Record<string, unknown> | undefined;
+		return meta?.messageId === message.id && meta?.kind !== "current";
+	});
+}
+
+function coveredBySameMessageDurableFact(
+	fact: string,
+	keywords: string[],
+	durableFacts: readonly Memory[],
+): boolean {
+	return durableFacts.some(
+		(row) =>
+			factLexicalSimilarity(
+				[fact, keywords],
+				[buildFactSearchText(row), readStoredFactKeywords(row)],
+			) >= SAME_MESSAGE_COVERAGE_SIMILARITY,
+	);
+}
+
 async function persistFactsAndRelationships(
 	args: PersistArgs,
 ): Promise<{ facts: number; relationships: number }> {
@@ -642,10 +686,27 @@ async function persistFactsAndRelationships(
 	let relationshipsWritten = 0;
 
 	if (parsed.facts.length > 0 && typeof runtime.createMemory === "function") {
+		const sameMessageDurableFacts = await readSameMessageDurableFacts(
+			runtime,
+			message,
+		);
 		for (const factEntry of parsed.facts) {
 			const sanitized = sanitizePersistedFact(runtime, factEntry.fact);
 			if (!sanitized) continue;
 			const keywords = buildFactKeywordsForStorage(sanitized);
+			if (
+				coveredBySameMessageDurableFact(
+					sanitized,
+					keywords,
+					sameMessageDurableFacts,
+				)
+			) {
+				runtime.logger.debug(
+					{ messageId: message.id, fact: sanitized },
+					"[FactsStage] skipped a Stage-1 fact already stored durably for this message",
+				);
+				continue;
+			}
 			// Facts belong to the speaker the model attributed them to, resolved
 			// through the same room-entity grounding relationships use. Stamping
 			// message.entityId unconditionally credited every extracted fact to

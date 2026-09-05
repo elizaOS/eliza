@@ -177,6 +177,98 @@ async function runCreate(
   return runAction(runtime, message, { action: "create", ...parameters });
 }
 
+describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
+  function seedStageFact(
+    rows: StoredRow[],
+    fields: { text: string; messageId: UUID; keywords: string[] },
+  ): UUID {
+    const id = crypto.randomUUID() as UUID;
+    rows.push({
+      memory: {
+        id,
+        entityId: USER_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: fields.text, type: "fact" },
+        metadata: {
+          type: "custom",
+          source: "facts_and_relationships_stage",
+          messageId: fields.messageId,
+          tags: ["fact", "extracted", "stage1"],
+          keywords: fields.keywords,
+          kind: "current",
+          category: "uncategorized",
+          confidence: 0.6,
+          verificationStatus: "self_reported",
+        },
+        createdAt: Date.now() - 1_000,
+      } as Memory,
+      tableName: "facts",
+    });
+    return id;
+  }
+
+  it("upgrades the Stage-1 fact extracted from the same message instead of storing a durable twin", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    const stageId = seedStageFact(rows, {
+      text: "prefers oat milk in coffee",
+      messageId: message.id as UUID,
+      keywords: ["prefers", "oat", "milk", "coffee"],
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in their coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.values).toMatchObject({
+      memoryId: stageId,
+      upgradedStageFact: true,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].memory.content.text).toBe(
+      "User prefers oat milk in their coffee.",
+    );
+    expect(rows[0].memory.metadata).toMatchObject({
+      kind: "durable",
+      category: "preference",
+      source: "MEMORY",
+      promotedFrom: "facts_and_relationships_stage",
+      previousText: "prefers oat milk in coffee",
+      messageId: message.id,
+    });
+  });
+
+  it("never merges a Stage-1 fact extracted from a different message", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "prefers oat milk in cereal",
+      messageId: crypto.randomUUID() as UUID,
+      keywords: ["prefers", "oat", "milk", "cereal"],
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in their coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.metadata).toMatchObject({
+      kind: "current",
+      category: "uncategorized",
+    });
+    expect(rows[1].memory.metadata).toMatchObject({
+      kind: "durable",
+      source: "MEMORY",
+      messageId: message.id,
+    });
+  });
+});
+
 describe("MEMORY op:update", () => {
   it("updates a text-only memory without requiring an embedding provider", async () => {
     const { runtime, rows } = makeRuntime();
