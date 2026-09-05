@@ -194,9 +194,10 @@ export async function writeJsonResponse(
 	body: unknown,
 	status = 200,
 ): Promise<void> {
+	const serializedBody = JSON.stringify(body);
 	res.statusCode = status;
 	res.setHeader("Content-Type", "application/json");
-	res.end(JSON.stringify(body));
+	res.end(serializedBody);
 }
 
 export async function writeJsonError(
@@ -213,8 +214,15 @@ export function writeJsonResponseSafe(
 	status = 200,
 ): void {
 	void writeJsonResponse(res, body, status).catch((err) => {
-		// error-policy:J1 The response is already committed; logging is the only
-		// remaining observable transport-boundary signal.
+		// error-policy:J1 Pre-commit write failures become a terminated 500
+		// response; committed failures can only be emitted as boundary logs.
+		if (!res.headersSent && !res.writableEnded) {
+			logger.warn(
+				`[http] JSON response write failed before commit; returning 500: ${err}`,
+			);
+			writeJsonErrorSafe(res, "Failed to serialize response", 500);
+			return;
+		}
 		logger.warn(`[http] JSON response write failed: ${err}`);
 	});
 }
