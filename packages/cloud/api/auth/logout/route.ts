@@ -76,6 +76,7 @@ app.post("/", async (c) => {
   deleteCookie(c, "eliza-anon-session", { path: "/" });
 
   let strongRevocationFailed = false;
+  let ssoMarkerUnconfirmed = false;
   if (stewardToken && isInferenceStrongRevocationEnabled(c.env)) {
     try {
       const [claims, user] = await Promise.all([
@@ -124,18 +125,24 @@ app.post("/", async (c) => {
         logger.debug("[Logout] Stamped SSO bridge logout marker");
       }
     } catch (error) {
-      // error-policy:J6 best-effort teardown — cookies are already cleared, so
-      // THIS origin is logged out; but the cross-host logout barrier did not
-      // land, which is a security-relevant condition worth an alert, not a
-      // debug line. The bridge's own store reads fail closed while the store
-      // is down, narrowing the exposure to a post-recovery window bounded by
-      // the access-token TTL.
+      // error-policy:J1 boundary translation — this catch now determines the
+      // transport response (flag → structured 503 below) as well as logging a
+      // security-relevant condition at error level, not a teardown-only J6.
+      // Cookies are already cleared, so THIS origin is logged out; but the
+      // cross-host logout barrier did not land. The bridge's own store reads
+      // fail closed while the store is down, narrowing the exposure to a
+      // post-recovery window bounded by the access-token TTL.
       logger.error(
         "[Logout] FAILED to stamp SSO bridge logout marker — cross-host logout barrier not persisted",
         {
           error: error instanceof Error ? error.message : String(error),
         },
       );
+      // Fail closed (#29935): an unconfirmed marker means a refresh of the
+      // paired origin can re-plant the signed-out session, so the response
+      // must not claim a globally complete logout. The client treats only a
+      // 2xx as permission to navigate away from the authenticated surface.
+      ssoMarkerUnconfirmed = true;
     }
   }
 
@@ -161,7 +168,23 @@ app.post("/", async (c) => {
             ip: getRequestIp(c),
             user_agent: c.req.header("user-agent") ?? undefined,
             request_id: c.get("requestId"),
-            metadata: { method: "steward_session" },
+            // result stays "success" (this origin's cookies/sessions are
+            // torn down either way), but the marker flag must be visible to
+            // an auditor reading a success event next to an HTTP 503.
+            metadata: {
+              method: "steward_session",
+              ...(ssoMarkerUnconfirmed || strongRevocationFailed
+                ? {
+                    incomplete_logout: true,
+                    ...(ssoMarkerUnconfirmed
+                      ? { sso_marker_unconfirmed: true }
+                      : {}),
+                    ...(strongRevocationFailed
+                      ? { strong_revocation_unconfirmed: true }
+                      : {}),
+                  }
+                : {}),
+            },
           })
           // error-policy:J7 audit write is diagnostic; logout already succeeded via
           // the cookie clear above, so a dropped audit event is logged, not fatal.
@@ -189,6 +212,16 @@ app.post("/", async (c) => {
       {
         error: "Logout revocation is temporarily unavailable",
         code: "logout_revocation_unavailable" as const,
+      },
+      503,
+    );
+  }
+
+  if (ssoMarkerUnconfirmed) {
+    return c.json(
+      {
+        error: "Cross-host logout is not yet persisted; retry sign-out",
+        code: "logout_marker_unavailable" as const,
       },
       503,
     );

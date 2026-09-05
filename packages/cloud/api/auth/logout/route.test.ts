@@ -308,4 +308,158 @@ describe("POST /api/auth/logout cookie clearing", () => {
     expect(getCurrentUserMock).not.toHaveBeenCalled();
     expect(endAllUserSessionsMock).not.toHaveBeenCalled();
   });
+
+  test("REGRESSION (#29935): unconfirmed SSO marker after both write attempts → 503, not a 200 success", async () => {
+    // Fail closed: if both markSsoBridgeLogout attempts fail, the cross-host
+    // logout barrier is not persisted and a paired-origin refresh could
+    // re-plant the signed-out session. The route must not report success the
+    // client would treat as permission to navigate to /login.
+    readStewardSessionTokenMock.mockReturnValue("header.payload.signature");
+    markSsoBridgeLogoutMock.mockRejectedValue(new Error("store unavailable"));
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          origin: "https://cloud-staging.eliza.app",
+          authorization: "Bearer header.payload.signature",
+        },
+      },
+      { ENVIRONMENT: "staging", NODE_ENV: "production" },
+    );
+
+    expect(res.status).toBe(503);
+    expect((await res.json()) as unknown).toEqual({
+      error: "Cross-host logout is not yet persisted; retry sign-out",
+      code: "logout_marker_unavailable",
+    });
+    // Cookies are still cleared (this origin IS logged out) and the bounded
+    // retry actually ran: exactly two write attempts.
+    expect(deletedCookieNames(res)).toContain("steward-token-staging");
+    expect(markSsoBridgeLogoutMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("REGRESSION (#29935): a transient marker failure recovers on the bounded retry → 200", async () => {
+    readStewardSessionTokenMock.mockReturnValue("header.payload.signature");
+    // Reset the persistent rejection the previous test installed, then fail
+    // exactly the first write: the bounded retry must recover to a 200.
+    markSsoBridgeLogoutMock.mockResolvedValue(undefined);
+    markSsoBridgeLogoutMock.mockRejectedValueOnce(
+      new Error("transient store blip"),
+    );
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          origin: "https://cloud-staging.eliza.app",
+          authorization: "Bearer header.payload.signature",
+        },
+      },
+      { ENVIRONMENT: "staging", NODE_ENV: "production" },
+    );
+
+    expect(res.status).toBe(200);
+    expect(markSsoBridgeLogoutMock).toHaveBeenCalledTimes(2);
+    expect((await res.json()) as unknown).toEqual({
+      success: true,
+      message: "Logged out successfully",
+    });
+  });
+
+  test("combined failure: revocation 503 takes precedence and the marker failure is not double-reported", async () => {
+    // Pin the documented precedence: when both fail-closed flags are set the
+    // response is the revocation 503; the marker failure stays visible in the
+    // error log and the audit metadata, not the transport body.
+    readStewardSessionTokenMock.mockReturnValue("prod-token");
+    getCurrentUserMock.mockResolvedValue({
+      id: "user-1",
+      organization_id: "org-1",
+    });
+    markSsoBridgeLogoutMock.mockRejectedValue(new Error("store unavailable"));
+    revokeInferenceSessionsThroughMock.mockRejectedValue(
+      new Error("boundary unavailable"),
+    );
+    // Calls accumulate across tests (beforeEach clears only the marker mock).
+    revokeInferenceSessionsThroughMock.mockClear();
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api.elizacloud.ai",
+          origin: "https://eliza.app",
+          cookie: "steward-token=prod-token",
+        },
+      },
+      {
+        ENVIRONMENT: "production",
+        NODE_ENV: "production",
+        INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+      },
+    );
+
+    expect(res.status).toBe(503);
+    expect((await res.json()) as unknown).toEqual({
+      error: "Logout revocation is temporarily unavailable",
+      code: "logout_revocation_unavailable",
+    });
+    // Both failure paths still ran their bounded work before the response.
+    expect(markSsoBridgeLogoutMock).toHaveBeenCalledTimes(2);
+    expect(revokeInferenceSessionsThroughMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("characterization (#29935 review): a credential-less retry after a failed first attempt returns success with zero marker writes", async () => {
+    // Documents the pre-client-reorder gap: the first attempt 503s, but the
+    // develop client has already scrubbed the bearer/cookie by then, so the
+    // retry presents no credentials, the marker block is skipped entirely,
+    // and the route answers success while the barrier is still unstamped.
+    // This is why the client reorder (elizaOS/eliza#29936) is load-bearing —
+    // keep this test until that lands; if it ever fails, the sequencing
+    // changed and deserves a fresh look.
+    readStewardSessionTokenMock.mockReturnValue("header.payload.signature");
+    markSsoBridgeLogoutMock.mockRejectedValue(new Error("store unavailable"));
+
+    const first = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          origin: "https://cloud-staging.eliza.app",
+          authorization: "Bearer header.payload.signature",
+        },
+      },
+      { ENVIRONMENT: "staging", NODE_ENV: "production" },
+    );
+    expect(first.status).toBe(503);
+    expect(markSsoBridgeLogoutMock).toHaveBeenCalledTimes(2);
+
+    // Retry presents neither Authorization header nor cookie — the token
+    // reader is request-mocked, so reflect the absent credentials here.
+    markSsoBridgeLogoutMock.mockClear();
+    readStewardSessionTokenMock.mockReturnValue(null);
+    const second = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          origin: "https://cloud-staging.eliza.app",
+        },
+      },
+      { ENVIRONMENT: "staging", NODE_ENV: "production" },
+    );
+    expect(second.status).toBe(200);
+    expect(markSsoBridgeLogoutMock).not.toHaveBeenCalled();
+    expect((await second.json()) as unknown).toEqual({
+      success: true,
+      message: "Logged out successfully",
+    });
+  });
 });
