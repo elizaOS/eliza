@@ -550,10 +550,12 @@ export class EscalationService {
       }
     }
 
-    const maxRetries = resolveMaxRetries(config);
-    if (channels.length > 1 || maxRetries > 1) {
-      scheduleCheck(runtime, escalationId, waitMs);
-    }
+    // Always arm the next check. It is what notices an owner reply, and once
+    // the retry budget is spent it is what reaches the give-up branch that
+    // releases this state. Every later startEscalation coalesces into an
+    // unresolved escalation, so leaving one unarmed silences the owner channel
+    // for the rest of the process.
+    scheduleCheck(runtime, escalationId, waitMs);
 
     logger.info(
       `[escalation] Started ${escalationId}: channel=${channels[0]}, reason="${reason}"`,
@@ -632,7 +634,10 @@ export class EscalationService {
 
     await persistState(runtime, state);
 
-    if (state.currentStep + 1 < maxRetries) {
+    // `currentStep < maxRetries`, not `currentStep + 1 < maxRetries`: the check
+    // that carries currentStep up to maxRetries is the give-up check. Skipping
+    // it spends the retry budget and then strands the escalation unresolved.
+    if (state.currentStep < maxRetries) {
       scheduleCheck(runtime, escalationId, waitMs);
     }
   }

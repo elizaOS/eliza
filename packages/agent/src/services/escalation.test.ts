@@ -472,16 +472,21 @@ describe("EscalationService.startEscalation", () => {
     );
   });
 
-  test("does not schedule a follow-up when there is one channel and maxRetries is 1", async () => {
+  test("arms the give-up check even when there is one channel and maxRetries is 1", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     configState.current = {
       agents: {
         defaults: { escalation: { channels: ["client_chat"], maxRetries: 1 } },
       },
     };
-    const { runtime } = makeRuntime();
+    const { runtime } = makeRuntime({ handlers: ["client_chat"] });
     await EscalationService.startEscalation(runtime, "once", "no retry");
-    expect(vi.getTimerCount()).toBe(0);
+    expect(vi.getTimerCount()).toBe(1);
+
+    // The single attempt is already spent, so this check exists only to notice
+    // an owner reply and then release the escalation.
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
     expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(false);
   });
 
@@ -755,7 +760,7 @@ describe("EscalationService.resolve, cache, and rehydrate", () => {
 });
 
 describe("EscalationService timers", () => {
-  test("scheduled check advances the step and clears the timer bucket when it does not reschedule", async () => {
+  test("scheduled checks advance the step and keep a timer armed until the escalation resolves", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     configState.current = {
       agents: {
@@ -768,7 +773,7 @@ describe("EscalationService timers", () => {
         },
       },
     };
-    const { runtime } = makeRuntime();
+    const { runtime } = makeRuntime({ handlers: ["client_chat"] });
     const state = await EscalationService.startEscalation(
       runtime,
       "timer",
@@ -780,7 +785,86 @@ describe("EscalationService timers", () => {
 
     expect(state.currentStep).toBe(1);
     expect(state.resolved).toBe(false);
+    // Still unresolved, so a timer must still be pending — an unresolved
+    // escalation with no timer can never be retried, resolved, or replaced.
+    expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(state.currentStep).toBe(2);
+    expect(state.resolved).toBe(true);
     expect(EscalationService._hasPendingTimerBucket(AGENT_ID)).toBe(false);
+  });
+
+  test("the scheduled chain alone reaches the give-up branch and spends exactly maxRetries sends", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    configState.current = {
+      agents: {
+        defaults: {
+          escalation: {
+            channels: ["client_chat"],
+            maxRetries: 3,
+            waitMinutes: 5,
+          },
+        },
+      },
+    };
+    const { runtime, sends, cache } = makeRuntime({
+      handlers: ["client_chat"],
+    });
+    const state = await EscalationService.startEscalation(
+      runtime,
+      "Systemic failure DB_DOWN reported 3 times",
+      "first burst",
+    );
+
+    // Drive timers only: no manual checkEscalation call stands in for the
+    // scheduler the way the rest of this suite does.
+    for (let tick = 0; tick < 6; tick += 1) {
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+    }
+
+    expect(sends).toHaveLength(3);
+    expect(state.resolved).toBe(true);
+    expect(cache.has(CACHE_KEY)).toBe(false);
+    expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
+  });
+
+  test("a later failure starts a fresh escalation once the previous chain is spent", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    configState.current = {
+      agents: {
+        defaults: {
+          escalation: {
+            channels: ["client_chat"],
+            maxRetries: 3,
+            waitMinutes: 5,
+          },
+        },
+      },
+    };
+    const { runtime, sends } = makeRuntime({ handlers: ["client_chat"] });
+    const first = await EscalationService.startEscalation(
+      runtime,
+      "Systemic failure DB_DOWN reported 3 times",
+      "first burst",
+    );
+    for (let tick = 0; tick < 6; tick += 1) {
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+    }
+    sends.length = 0;
+
+    const second = await EscalationService.startEscalation(
+      runtime,
+      "Systemic failure MODEL_DOWN reported 3 times",
+      "second burst",
+    );
+
+    expect(second.id).not.toBe(first.id);
+    expect(second.resolved).toBe(false);
+    expect(second.reason).toBe("Systemic failure MODEL_DOWN reported 3 times");
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.content.text).toBe("second burst");
   });
 
   test("config load failure during start still uses the client_chat default", async () => {
