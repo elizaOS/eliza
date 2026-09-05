@@ -12,6 +12,8 @@
  * Pure transport glue — the plugin is passed in, so it unit-tests with a fake.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 export interface NativeStreamAgentRequestOptions {
   method?: string;
   path: string;
@@ -279,9 +281,13 @@ export async function createNativeStreamingResponse(
   })().then(undefined, (error: unknown) => {
     // error-policy:J2 add registration context while preserving the native
     // listener failure as the typed error cause.
-    const registrationError = new Error(
+    const registrationError = new ElizaError(
       "Native stream listener registration failed",
-      { cause: error },
+      {
+        code: "NATIVE_STREAM_LISTENER_REGISTRATION_FAILED",
+        cause: error,
+        context: { streamId, path: options.path },
+      },
     );
     // Registration happens after native dispatch. Settle the head and detach
     // every handle already acquired before preserving the boundary failure.
