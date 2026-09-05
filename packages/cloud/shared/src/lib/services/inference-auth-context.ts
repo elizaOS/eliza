@@ -546,7 +546,7 @@ function observeHydrationProjection(
       // Projection failures are already reported by the hydration boundary.
       if (!completed) return;
       const telemetry = Object.freeze({ ...completed, traceId: boundedTraceId(options.traceId) });
-      if (canonical) logger.info("[InferenceAuth] trace", telemetry);
+      if (canonical) logger.audit("[InferenceAuth] trace", telemetry);
       options.onCacheWriteTelemetry?.(telemetry);
     })
     .catch((error) => {
@@ -1129,7 +1129,7 @@ export async function resolveInferenceAuthContext(
       const observedWrite = cacheWrite.then(
         (write) => {
           const telemetry = freezeCacheWriteTrace(options.traceId, write, cacheWriteStartedAt);
-          logger.info("[InferenceAuth] trace", telemetry);
+          logger.audit("[InferenceAuth] trace", telemetry);
           options.onCacheWriteTelemetry?.(telemetry);
         },
         (error) => {
@@ -1190,7 +1190,8 @@ export async function resolveInferenceAuthContext(
     const nested = (
       options as ResolveInferenceAuthOptions & { [SUPPRESS_STANDING_DENIAL_LOG]?: true }
     )[SUPPRESS_STANDING_DENIAL_LOG];
-    logger.info(nested ? "[InferenceAuth] hydration trace" : "[InferenceAuth] trace", telemetry);
+    if (nested) logger.info("[InferenceAuth] hydration trace", telemetry);
+    else logger.audit("[InferenceAuth] trace", telemetry);
     options.onTelemetry?.(telemetry);
   }
 }

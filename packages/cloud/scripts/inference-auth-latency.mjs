@@ -100,6 +100,33 @@ function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Categorizes failed Tail validation without exposing raw parser or IO errors. */
+export function inferenceAuthTailFailureCode(error) {
+  const message = error instanceof Error ? error.message : "";
+  const exact = new Map([
+    ["Worker Tail output ended mid-record", "incomplete_stream"],
+    ["Worker Tail returned duplicate auth traces", "duplicate_auth_records"],
+    [
+      "Worker Tail returned duplicate auth cache-write traces",
+      "duplicate_deferred_writes",
+    ],
+    [
+      "Worker Tail omitted a deferred auth cache-write trace",
+      "missing_deferred_write",
+    ],
+    [
+      "Worker Tail returned an unexpected auth cache-write trace",
+      "unexpected_deferred_write",
+    ],
+  ]);
+  if (exact.has(message)) return exact.get(message);
+  if (/^Worker Tail omitted \d+ retained auth traces$/.test(message))
+    return "missing_auth_records";
+  if (message.startsWith("Worker auth ")) return "schema_mismatch";
+  if (error instanceof SyntaxError) return "invalid_json";
+  return "unclassified_failure";
+}
+
 function hasExactKeys(value, keys) {
   const actual = Object.keys(value).sort();
   const expected = [...keys].sort();
@@ -678,6 +705,7 @@ export async function waitForInferenceAuthTail({
     throw new Error("Invalid Worker Tail readiness configuration");
   }
   let routePropagationPending = false;
+  let lastTailFailure;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     let sample;
     try {
@@ -707,7 +735,14 @@ export async function waitForInferenceAuthTail({
     routePropagationPending = false;
     for (let poll = 0; poll < pollsPerAttempt; poll++) {
       await sleep(pollIntervalMs);
-      if (readTail().includes(sample.traceId)) return attempt;
+      try {
+        sanitizeInferenceAuthTail(readTail(), [sample.traceId], deploySha);
+        return attempt;
+      } catch (error) {
+        // error-policy:J3 readiness requires a complete sanitized audit record;
+        // partial delivery and rejected records remain explicitly unready.
+        lastTailFailure = error;
+      }
     }
   }
   if (routePropagationPending) {
@@ -716,7 +751,7 @@ export async function waitForInferenceAuthTail({
     );
   }
   throw new Error(
-    "Worker Tail did not observe an authenticated readiness trace",
+    `Worker Tail did not observe an authenticated readiness trace (${inferenceAuthTailFailureCode(lastTailFailure)})`,
   );
 }
 
