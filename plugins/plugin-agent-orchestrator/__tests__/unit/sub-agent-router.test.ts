@@ -2792,7 +2792,7 @@ describe("SubAgentRouter — change-set narration (GAP C)", () => {
         response:
           "[tool output: Read index.html]\n<h1>placeholder</h1>\n[/tool output]\nSearch for the image element.",
       });
-      await new Promise((r) => setTimeout(r, 200));
+      await vi.waitFor(() => expect(handleMessage).toHaveBeenCalled());
 
       const posted = handleMessage.mock.calls[0]?.[1];
       const text = String(posted?.content?.text ?? "");
