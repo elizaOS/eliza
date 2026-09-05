@@ -66,6 +66,14 @@ interface AuthorizedLeaseRequest extends LeaseRequest {
   credential: CredentialCheckRequest;
 }
 
+interface LeaseDispatchRequest extends LeaseRequest {
+  preProviderCancellationToken: string;
+}
+
+interface AuthorizedLeaseDispatchRequest extends AuthorizedLeaseRequest {
+  preProviderCancellationToken: string;
+}
+
 interface HydrateRequest {
   balanceUsd: number;
   balanceRevision: string;
@@ -764,7 +772,10 @@ export class InferenceAdmissionGate {
     }
   }
 
-  private async lease(request: LeaseRequest): Promise<Response> {
+  private async lease(
+    request: LeaseRequest,
+    preProviderCancellationToken?: string,
+  ): Promise<Response> {
     if (
       !validRequestId(request.requestId) ||
       !validId(request.organizationId) ||
@@ -772,6 +783,8 @@ export class InferenceAdmissionGate {
       balanceRevision(request.balanceRevision) === null ||
       !nonNegativeFinite(request.estimatedCostUsd) ||
       request.estimatedCostUsd === 0 ||
+      (preProviderCancellationToken !== undefined &&
+        !validTrimmedId(preProviderCancellationToken)) ||
       !validRecoveryContext(
         request.recovery,
         request.requestId,
@@ -815,6 +828,40 @@ export class InferenceAdmissionGate {
           409,
         );
       }
+      if (preProviderCancellationToken !== undefined) {
+        if (prior.phase === "recovering") {
+          return jsonError(
+            "Inference admission lease recovery is in progress",
+            409,
+          );
+        }
+        if (
+          prior.phase === "dispatched" &&
+          prior.preProviderCancellationToken !== preProviderCancellationToken
+        ) {
+          return jsonError(
+            "Inference admission dispatch capability does not match",
+            409,
+          );
+        }
+        const dispatched: ActiveLease = {
+          ...prior,
+          phase: "dispatched",
+          preProviderCancellationToken,
+          expiresAt: Date.now() + MAX_LEASE_AGE_MS,
+        };
+        await this.save(ledger, {
+          delete: [{ requestId: request.requestId, lease: prior }],
+          put: [{ requestId: request.requestId, lease: dispatched }],
+        });
+        return Response.json({
+          admitted: true,
+          dispatched: true,
+          duplicate: prior.phase === "dispatched",
+          availableUsd: ledger.availableUsd,
+          requiredUsd: request.estimatedCostUsd,
+        });
+      }
       await this.save(ledger);
       return Response.json({
         admitted: true,
@@ -849,7 +896,11 @@ export class InferenceAdmissionGate {
       estimatedCostUsd: request.estimatedCostUsd,
       createdAt: now,
       expiresAt: now + MAX_LEASE_AGE_MS,
-      phase: "leased",
+      phase:
+        preProviderCancellationToken === undefined ? "leased" : "dispatched",
+      ...(preProviderCancellationToken !== undefined && {
+        preProviderCancellationToken,
+      }),
       recovery: structuredClone(request.recovery),
     };
     ledger.activeLeaseCount++;
@@ -863,6 +914,7 @@ export class InferenceAdmissionGate {
     });
     return Response.json({
       admitted: true,
+      ...(preProviderCancellationToken !== undefined && { dispatched: true }),
       availableUsd: ledger.availableUsd,
       requiredUsd: request.estimatedCostUsd,
     });
@@ -870,6 +922,7 @@ export class InferenceAdmissionGate {
 
   private async authorizedLease(
     request: AuthorizedLeaseRequest,
+    preProviderCancellationToken?: string,
   ): Promise<Response> {
     if (
       !request.credential ||
@@ -879,7 +932,7 @@ export class InferenceAdmissionGate {
     }
     const denial = await this.credentialDenial(request.credential);
     if (denial) return denial;
-    return await this.lease(request);
+    return await this.lease(request, preProviderCancellationToken);
   }
 
   private async hydrate(request: HydrateRequest): Promise<Response> {
@@ -1032,7 +1085,14 @@ export class InferenceAdmissionGate {
     const ledger = cloneLedger(existing);
     const lease = await this.loadLease(request.requestId);
     if (!lease) {
-      return jsonError("Inference admission lease was not found", 409);
+      return Response.json(
+        {
+          success: false,
+          code: "inference_admission_lease_not_found",
+          error: "Inference admission lease was not found",
+        },
+        { status: 409 },
+      );
     }
     if (lease.phase === "recovering") {
       return jsonError(
@@ -1369,6 +1429,8 @@ export class InferenceAdmissionGate {
     let body:
       | LeaseRequest
       | AuthorizedLeaseRequest
+      | LeaseDispatchRequest
+      | AuthorizedLeaseDispatchRequest
       | HydrateRequest
       | SettleRequest
       | LeaseIdentityRequest
@@ -1384,6 +1446,8 @@ export class InferenceAdmissionGate {
       body = (await request.json()) as
         | LeaseRequest
         | AuthorizedLeaseRequest
+        | LeaseDispatchRequest
+        | AuthorizedLeaseDispatchRequest
         | HydrateRequest
         | SettleRequest
         | LeaseIdentityRequest
@@ -1408,6 +1472,20 @@ export class InferenceAdmissionGate {
       return await this.serializeRevocation(() =>
         this.serialize(() =>
           this.authorizedLease(body as AuthorizedLeaseRequest),
+        ),
+      );
+    }
+    if (path === "/lease-dispatched") {
+      const dispatch = body as LeaseDispatchRequest;
+      return await this.serialize(() =>
+        this.lease(dispatch, dispatch.preProviderCancellationToken),
+      );
+    }
+    if (path === "/lease-dispatched-authorized") {
+      const dispatch = body as AuthorizedLeaseDispatchRequest;
+      return await this.serializeRevocation(() =>
+        this.serialize(() =>
+          this.authorizedLease(dispatch, dispatch.preProviderCancellationToken),
         ),
       );
     }

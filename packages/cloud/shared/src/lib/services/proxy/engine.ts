@@ -283,6 +283,7 @@ export function createHandler(
               : combinedAdmission.credential;
             return credential ? { credential } : {};
           })(),
+          atomicProviderBoundary: true,
         });
       } else {
         const reservation = await creditsService.reserve({
@@ -386,23 +387,28 @@ export function createHandler(
       }
 
       let result: HandlerResult;
+      let providerDispatchStarted = false;
       try {
         // The durable dispatch marker is the last awaited operation before the
         // provider boundary. Auth, standing, pricing, balance, and the lease
         // all come from the caller's one combined admission projection.
         await settlement.markProviderDispatched?.();
+        providerDispatchStarted = true;
         result = await work({ body, auth, searchParams });
       } catch (error) {
-        // error-policy:J2 provider dispatch may have been accepted before the
-        // transport threw, so conservatively settle the marked admission.
+        // error-policy:J2 only accepted provider work settles unknown. A late
+        // atomic admission denial still owns its cancellation capability and
+        // releases the pre-provider lease with zero usage.
         const pending =
-          combinedAdmission?.mode === "combined"
+          combinedAdmission?.mode === "combined" && providerDispatchStarted
             ? settlement.settleUnknown()
             : settlement.settle(0);
         if (combinedAdmission?.mode === "combined") {
           void retainProxySettlement(pending, combinedAdmission.executionCtx, {
             serviceId: config.id,
-            operation: "provider_error",
+            operation: providerDispatchStarted
+              ? "provider_error"
+              : "provider_dispatch_admission_failed",
           });
         } else {
           await pending;

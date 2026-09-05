@@ -256,6 +256,7 @@ const handle: Handler<AppEnv> = async (c) => {
           cost: pricedMutation.cost,
           admissionSnapshot: caller.admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: true,
         });
       } catch (error) {
         const admissionError = asGenerativeCacheApiError(error);
