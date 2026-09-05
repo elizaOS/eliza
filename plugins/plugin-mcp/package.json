@@ -63,7 +63,7 @@
     "json5": "^2.2.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.11",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",

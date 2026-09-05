@@ -60,12 +60,12 @@
     "ai": "^7.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
-    "@types/bun": "^1.3.10",
+    "@biomejs/biome": "2.5.11",
+    "@types/bun": "^1.4.0",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",

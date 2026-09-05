@@ -65,10 +65,10 @@
     "@capacitor/core": "^8.3.1",
     "@capacitor/docgen": "^0.3.0",
     "@elizaos/native-plugin-shared-types": "workspace:*",
-    "rollup": "^4.62.4",
+    "rollup": "^4.63.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

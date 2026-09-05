@@ -90,7 +90,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.11",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@types/node": "^25.6.0",
     "@types/react": "^19.0.0",
@@ -100,8 +100,8 @@
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vite": "^8.0.0",
-    "vitest": "^4.1.10"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

@@ -81,18 +81,18 @@
     "@elizaos/auth": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.11",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/logger": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@types/bun": "^1.3.9",
+    "@types/bun": "^1.4.0",
     "@types/node": "^25.2.3",
-    "bun-types": "1.3.14",
+    "bun-types": "1.4.0",
     "git-workspace-service": "0.4.5",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",

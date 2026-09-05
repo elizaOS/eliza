@@ -38,7 +38,7 @@
     "puppeteer-core": "^24.43.1",
     "typescript": "^6.0.3",
     "web-ext": "^10.6.0",
-    "vitest": "^4.0.17"
+    "vitest": "^4.1.11"
   },
   "elizaos": {
     "scripts": {
