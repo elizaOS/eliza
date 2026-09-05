@@ -1949,6 +1949,34 @@ describe("useShellController — mic capture-failure notice", () => {
     expect(result.current.recording).toBe(false);
   });
 
+  it("ends hands-free when the capture reports an asynchronous failure", async () => {
+    let options: VoiceCaptureFactoryOptions | undefined;
+    createVoiceCaptureMock.mockImplementation((opts) => {
+      options = opts;
+      return {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        dispose: vi.fn(),
+        getAnalyser: vi.fn(() => null),
+      } as never;
+    });
+    const { result } = renderHook(() => useShellController());
+    await act(async () => result.current.toggleHandsFree());
+    await flushCaptureStart();
+    expect(result.current.handsFree).toBe(true);
+
+    const recognitionError = new Error("SpeechRecognition error: not-allowed");
+    recognitionError.name = "SpeechRecognitionError";
+    act(() => options?.onStateChange?.("error", recognitionError));
+
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.recording).toBe(false);
+    expect(result.current.micPermission).not.toBe("denied");
+    expect(appMock.value.setActionNotice).toHaveBeenCalledTimes(1);
+    await flushCaptureStart();
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+  });
+
   it("distinguishes a missing device (NotFoundError) from a denial", async () => {
     const missing = new Error("Requested device not found");
     missing.name = "NotFoundError";
