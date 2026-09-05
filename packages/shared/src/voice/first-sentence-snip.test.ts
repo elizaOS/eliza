@@ -29,6 +29,8 @@ describe("wordCount", () => {
   });
   it("counts contractions as one word", () => {
     expect(wordCount("it's")).toBe(1);
+    expect(wordCount("it’s")).toBe(1);
+    expect(wordCount("it‘s")).toBe(1);
     expect(wordCount("don't worry")).toBe(2);
   });
   it("counts hyphenated words as one word", () => {
@@ -101,6 +103,12 @@ describe("firstSentenceSnip — happy path", () => {
   });
   it("excludes a newline-only boundary from raw text and its end offset", () => {
     const r = firstSentenceSnip("Hello there\nSecond line.");
+    expect(r?.raw).toBe("Hello there");
+    expect(r?.normalized).toBe("hello there");
+    expect(r?.endOffset).toBe("Hello there".length);
+  });
+  it("excludes a carriage return boundary from raw text", () => {
+    const r = firstSentenceSnip("Hello there\rSecond line.");
     expect(r?.raw).toBe("Hello there");
     expect(r?.normalized).toBe("hello there");
     expect(r?.endOffset).toBe("Hello there".length);
