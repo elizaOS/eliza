@@ -602,6 +602,8 @@ export async function bootstrapDesktopSession(
         url,
         status: response.status,
         errorCode,
+        socketPath: socketHandle.socketPath,
+        socketConnected: socketHandle.wasConnected(),
       });
       return null;
     }

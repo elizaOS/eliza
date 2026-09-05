@@ -35,6 +35,10 @@ const alertVariants = cva(
           "border-status-warning/30 bg-status-warning-bg text-status-warning",
         dashboardError:
           "border-destructive/40 bg-destructive-subtle text-destructive",
+        toastError: "border-destructive/40 bg-card text-destructive shadow-lg",
+        toastSuccess:
+          "border-status-success/30 bg-card text-status-success shadow-lg",
+        toastInfo: "border-border bg-card text-txt shadow-lg",
         dangerConfirm: "border-danger/50 bg-destructive-subtle text-danger",
         inlineDestructive:
           "rounded-sm border border-destructive/40 bg-destructive/10 text-destructive",

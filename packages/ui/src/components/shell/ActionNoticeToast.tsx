@@ -13,10 +13,10 @@ export function ActionNoticeToast({
     <Alert
       variant={
         actionNotice.tone === "error"
-          ? "dashboardError"
+          ? "toastError"
           : actionNotice.tone === "success"
-            ? "dashboardSuccess"
-            : "default"
+            ? "toastSuccess"
+            : "toastInfo"
       }
       // A `role="status"` toast is a passive announcement with no
       // interactive controls (spinner + text only); at `z-[10000]` it sits
@@ -24,7 +24,7 @@ export function ActionNoticeToast({
       // eats clicks on whatever it overlaps (e.g. the bottom-center chat
       // pill) while it lingers. Let pointer events fall through to the UI
       // beneath it.
-      className="pointer-events-none bg-card shadow-lg fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 font-medium z-[10000] flex items-center gap-2.5 max-w-[min(92vw,28rem)]"
+      className="pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 font-medium z-[10000] flex items-center gap-2.5 max-w-[min(92vw,28rem)]"
       role="status"
       aria-live="polite"
       aria-busy={actionNotice.busy ? true : undefined}
