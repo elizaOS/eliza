@@ -12,6 +12,7 @@
  * Anything that mutates state stays in `container-billing/route.ts`. This
  * file only computes "what's the plan?".
  */
+import { ElizaError } from "@elizaos/core";
 
 export interface ContainerBillingPlanInput {
   /** Today's container cost in USD (already calculated from cpu/memory tier). */
@@ -50,11 +51,75 @@ export interface ContainerBillingPlan {
  *     keeps an earning agent self-funding ("survival economics" loop).
  *  3. If `earnings + credits < dailyCost`, return `action: "insufficient"`.
  *     The caller emits the 48-hour shutdown warning.
+ *
+ * Money math fails closed on garbage: non-finite inputs (NaN/±Infinity) in any
+ * field and a negative `dailyCost` throw `ElizaError`
+ * (`CONTAINER_BILLING_PLAN_INPUT_INVALID`) instead of returning a NaN-bearing
+ * plan — under float comparison a NaN `totalAvailable < dailyCost` is false,
+ * so the pre-fix function silently returned `action: "billed"` with NaN debit
+ * legs. A negative `currentBalance` falls through to the ordinary
+ * `totalAvailable < dailyCost` insufficiency path instead of throwing: the
+ * read at route.ts (`Number(org.credit_balance)`) has no other guard, so a
+ * non-finite parse must throw here, while a finite negative must keep the
+ * container on the warn/shutdown track rather than erroring the run.
  */
 export function computeContainerBillingPlan(
   input: ContainerBillingPlanInput,
 ): ContainerBillingPlan {
   const { dailyCost, currentBalance, ownerEarningsAvailable, payAsYouGoFromEarnings } = input;
+
+  for (const [field, value] of Object.entries({
+    dailyCost,
+    currentBalance,
+    ownerEarningsAvailable,
+  })) {
+    if (!Number.isFinite(value)) {
+      throw new ElizaError(
+        `Container billing plan input ${field} must be a finite number, received ${value}`,
+        {
+          code: "CONTAINER_BILLING_PLAN_INPUT_INVALID",
+          context: {
+            field,
+            value,
+            dailyCost,
+            currentBalance,
+            ownerEarningsAvailable,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+  }
+  if (dailyCost < 0) {
+    throw new ElizaError(
+      `Container billing plan input dailyCost must be >= 0, received ${dailyCost}`,
+      {
+        code: "CONTAINER_BILLING_PLAN_INPUT_INVALID",
+        context: { field: "dailyCost", value: dailyCost },
+        severity: "fatal",
+      },
+    );
+  }
+  if (ownerEarningsAvailable < 0) {
+    // Negative earnings are invalid data, not a live state:
+    // redeemable_earnings.available_balance is CHECK-constrained >= 0
+    // (0000_last_reavers.sql, `available_balance_non_negative`). This guard is
+    // defense-in-depth — getAvailableEarnings already throws on non-finite
+    // parses — and deliberately validates even when the toggle is off, because
+    // the input contract validates every field regardless of whether this
+    // call reads it (pinned by the suite).
+    throw new ElizaError(
+      `Container billing plan input ownerEarningsAvailable must be >= 0, received ${ownerEarningsAvailable}`,
+      {
+        code: "CONTAINER_BILLING_PLAN_INPUT_INVALID",
+        context: {
+          field: "ownerEarningsAvailable",
+          value: ownerEarningsAvailable,
+        },
+        severity: "fatal",
+      },
+    );
+  }
 
   const earningsEligible = payAsYouGoFromEarnings ? ownerEarningsAvailable : 0;
   const totalAvailable = currentBalance + earningsEligible;
