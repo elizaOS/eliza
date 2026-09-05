@@ -8,6 +8,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as actualAiBilling from "@/lib/services/ai-billing";
 
 const aiActual = require("ai") as Record<string, unknown>;
 
@@ -99,6 +100,10 @@ const billUsage = mock();
 const estimateInputTokens = mock();
 const recordUsageAnalytics = mock();
 mock.module("@/lib/services/ai-billing", () => ({
+  ...actualAiBilling,
+  // The route consults entitlements through this helper; the suite has no
+  // entitlements fixture, so pin the credit-funded path it exercises.
+  isSubscriptionFundedOrganization: async () => false,
   InsufficientCreditsError: TestInsufficientCreditsError,
   billUsage,
   estimateInputTokens,
@@ -385,6 +390,9 @@ describe("/v1/messages IAC fast path", () => {
       }),
       expect.any(Number),
       16,
+      // The reserve call carries the entitlement verdict resolved above the
+      // fast path; assert it so a silently flipped default is caught here.
+      expect.objectContaining({ subscriptionFunded: false }),
     );
     expect(generateText).toHaveBeenCalledTimes(1);
   });
