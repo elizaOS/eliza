@@ -348,6 +348,7 @@ function isMicPermissionDenialError(err: unknown): boolean {
       ? (err as { name: string }).name
       : "";
   const message = err instanceof Error ? err.message : String(err ?? "");
+  if (name === "SpeechRecognitionError") return false;
   const haystack = `${name} ${message}`.toLowerCase();
   return (
     haystack.includes("notallowed") ||
@@ -366,6 +367,9 @@ export function describeCaptureFailure(err: unknown): string {
       ? (err as { name: string }).name
       : "";
   const message = err instanceof Error ? err.message : String(err ?? "");
+  if (name === "SpeechRecognitionError") {
+    return "Speech recognition failed. Check your transcription provider in Settings → Models & Providers.";
+  }
   const haystack = `${name} ${message}`.toLowerCase();
   if (isMicPermissionDenialError(err)) {
     return "Microphone access was denied. Enable microphone permission in your browser or system settings to use voice.";
@@ -1534,8 +1538,21 @@ export function useShellController(): ShellController {
           // spoken turn never silently vanishes (#20483). Cloud STT throwing
           // at stop() lands here as the error state; surface one actionable
           // notice instead of letting the words evaporate.
-          if (state === "error" && error) {
-            setActionNotice(describeCaptureFailure(error), "error", 6000);
+          if (state === "error") {
+            if (captureRef.current !== handle) return;
+            if (handsFreeRef.current) {
+              saveContinuousChatMode(priorContinuousModeRef.current);
+              setHandsFree(false);
+              handsFreeRef.current = false;
+            }
+            if (error && isMicPermissionDenialError(error)) {
+              setMicPermission("denied");
+              micPermissionRef.current = "denied";
+            }
+            if (error && !captureFailureNoticedRef.current) {
+              captureFailureNoticedRef.current = true;
+              setActionNotice(describeCaptureFailure(error), "error", 6000);
+            }
           }
           if (state === "error" || state === "stopped" || state === "idle") {
             // Capture ended (clean stop, dispose, or error). Drop the handle and
