@@ -4,6 +4,7 @@
  * that the centralized classifier workflow path triggers every consumer lane.
  */
 import { describe, expect, it } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { CONFIGS, evaluate, parseGitNameStatus } from "../ci-path-gate.mjs";
 
@@ -173,4 +174,102 @@ describe("parseGitNameStatus", () => {
     );
     expect(() => parseGitNameStatus("M")).toThrow(/malformed git diff record/);
   });
+});
+
+/**
+ * A gate pattern that matches nothing on disk is silently inert: the lane it
+ * was meant to trigger simply never sees that surface. That is how
+ * `.github/workflows/classify-paths.yml` itself went unregistered above, and
+ * how `packages/app-core/scripts/docker-healthcheck.mjs` — a path that never
+ * existed in this repository — survived in the docker rule from the
+ * half-landed workflow consolidation (59ffb5ef60) until it was removed.
+ *
+ * So every pattern must resolve against the tracked tree. Patterns that
+ * deliberately anticipate a file the repo does not have yet go in the
+ * allowlist below, with the reason: naming a specific nonexistent file is a
+ * stale reference, while a conventional config glob is forward-looking.
+ */
+const PATTERNS_WITHOUT_TRACKED_MATCHES = new Map([
+  [
+    "vite.config.*",
+    "No root vite.config.* exists today; the scenario-pr toolchain rule keeps it so one added later triggers the lane without a gate edit. Root vitest.config.ts is matched by the sibling vitest.config.* pattern.",
+  ],
+]);
+
+function trackedFiles() {
+  const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+  }).trim();
+  return execFileSync("git", ["ls-files", "-z"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    maxBuffer: 1 << 28,
+  })
+    .split("\0")
+    .filter(Boolean);
+}
+
+/** Mirrors ci-path-gate.mjs's own glob translation. */
+function patternToRegExp(pattern) {
+  const sentinel = "\0";
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, sentinel)
+    .replace(/\*/g, "[^/]*")
+    .replaceAll(sentinel, "[\\s\\S]*");
+  return new RegExp(`^${escaped}$`);
+}
+
+function allPatterns() {
+  const entries = [];
+  for (const [configName, config] of Object.entries(CONFIGS)) {
+    const groups = [...(config.rules ?? [])];
+    if (config.failSafe) groups.push(config.failSafe);
+    for (const rule of groups) {
+      for (const pattern of rule.patterns ?? []) {
+        entries.push({
+          configName,
+          pattern,
+          reason: rule.reason ?? "fail-safe",
+        });
+      }
+    }
+  }
+  return entries;
+}
+
+describe("gate patterns resolve against the tracked tree", () => {
+  it("matches at least one tracked file for every pattern", () => {
+    const files = trackedFiles();
+    expect(files.length).toBeGreaterThan(1_000);
+
+    const inert = [];
+    for (const { configName, pattern, reason } of allPatterns()) {
+      if (PATTERNS_WITHOUT_TRACKED_MATCHES.has(pattern)) continue;
+      const regExp = patternToRegExp(pattern);
+      if (!files.some((file) => regExp.test(file))) {
+        inert.push(`${configName}: ${pattern} (${reason})`);
+      }
+    }
+
+    expect(inert).toEqual([]);
+  }, 120_000);
+
+  it("keeps the allowlist honest by dropping entries that start matching", () => {
+    const files = trackedFiles();
+    const known = new Set(allPatterns().map((entry) => entry.pattern));
+
+    for (const [pattern, why] of PATTERNS_WITHOUT_TRACKED_MATCHES) {
+      expect(
+        known.has(pattern),
+        `${pattern} is allowlisted but no rule uses it`,
+      ).toBe(true);
+      expect(why.length).toBeGreaterThan(20);
+      const regExp = patternToRegExp(pattern);
+      expect(
+        files.some((file) => regExp.test(file)),
+        `${pattern} now matches a tracked file; remove it from the allowlist`,
+      ).toBe(false);
+    }
+  }, 120_000);
 });
