@@ -440,6 +440,10 @@ function MemoryFeedPanel({
   const [error, setError] = useState<MemoryIssue | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const loadingMore = useRef(false);
+  // Raw tail of the last server page, independent of the client-side type
+  // filter. loadMore must page from here: deriving the keyset cursor from
+  // the filtered feed re-requests an all-filtered page forever (#30294).
+  const serverTailRef = useRef<{ createdAt: number; id: string } | null>(null);
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
@@ -466,6 +470,10 @@ function MemoryFeedPanel({
           }),
         );
         const memories = filterMemoriesByTypes(result.memories, typeFilter);
+        const rawTail = result.memories[result.memories.length - 1];
+        serverTailRef.current = rawTail
+          ? { createdAt: rawTail.createdAt, id: rawTail.id }
+          : null;
         if (before) {
           // Cap retained items so a long pagination session can't grow the
           // feed unboundedly. 500 covers many pages of scrollback while
@@ -510,8 +518,8 @@ function MemoryFeedPanel({
   }, FEED_POLL_MS);
 
   const loadMore = () => {
-    const last = feed[feed.length - 1];
-    if (last) void loadFeed({ createdAt: last.createdAt, id: last.id });
+    const tail = serverTailRef.current ?? feed[feed.length - 1];
+    if (tail) void loadFeed({ createdAt: tail.createdAt, id: tail.id });
   };
 
   if (loading && feed.length === 0) {
@@ -552,6 +560,39 @@ function MemoryFeedPanel({
   }
 
   if (feed.length === 0) {
+    // An empty filtered page with more server pages behind it is not "no
+    // memories": the type filter can hide a whole page, so keep offering
+    // "Load older" instead of dead-ending here (#30294).
+    const emptyAction = hasMore ? (
+      <div className="flex w-full flex-col gap-2">
+        <Button
+          type="button"
+          size="touch"
+          variant="outline"
+          className={`${MEMORY_FOCUS_CLASS} w-full`}
+          onClick={loadMore}
+        >
+          {t("memoryviewer.loadOlder", { defaultValue: "Load older" })}
+        </Button>
+        <Button
+          type="button"
+          className={MEMORY_FOCUS_CLASS}
+          data-chat-open="true"
+          onClick={dispatchChatOpen}
+        >
+          {t("memoryviewer.empty.askEliza", { defaultValue: "Ask Eliza" })}
+        </Button>
+      </div>
+    ) : (
+      <Button
+        type="button"
+        className={MEMORY_FOCUS_CLASS}
+        data-chat-open="true"
+        onClick={dispatchChatOpen}
+      >
+        {t("memoryviewer.empty.askEliza", { defaultValue: "Ask Eliza" })}
+      </Button>
+    );
     return (
       <MemoryStateSurface plain>
         <PagePanel.ContentState
@@ -565,16 +606,7 @@ function MemoryFeedPanel({
           description={t("memoryviewer.empty.description", {
             defaultValue: "Chat with Eliza and memories will appear here.",
           })}
-          action={
-            <Button
-              type="button"
-              className={MEMORY_FOCUS_CLASS}
-              data-chat-open="true"
-              onClick={dispatchChatOpen}
-            >
-              {t("memoryviewer.empty.askEliza", { defaultValue: "Ask Eliza" })}
-            </Button>
-          }
+          action={emptyAction}
         />
       </MemoryStateSurface>
     );
