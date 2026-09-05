@@ -46,6 +46,8 @@ const buttonVariants = cva(
         ghost:
           "text-txt-strong hover:bg-surface hover:text-txt-strong disabled:text-muted-strong",
         link: "text-accent underline-offset-4 hover:underline disabled:text-muted-strong",
+        linkMono:
+          "h-auto bg-transparent p-0 text-left font-mono text-xs text-txt-strong underline uppercase transition-colors hover:bg-surface hover:text-txt disabled:text-muted-strong",
         selection:
           "bg-transparent text-txt-strong hover:bg-accent-subtle data-[state=on]:bg-accent-subtle data-[state=on]:text-txt-strong",
         settingsRow:

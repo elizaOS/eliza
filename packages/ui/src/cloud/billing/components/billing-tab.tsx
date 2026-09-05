@@ -57,6 +57,7 @@ import {
   type BillingSnapshotViewState,
 } from "./active-compute-card";
 import { AutoTopUpCard } from "./auto-top-up-card";
+import { PaymentActivityCard } from "./payment-activity-card";
 
 // Lazy-loaded so its @solana/spl-token + @solana/web3.js imports — which eval
 // top-level PublicKey program-id constants through safe-buffer's Buffer() at
@@ -1133,6 +1134,11 @@ export function BillingTab({
           </div>
         </div>
       </Card>
+
+      {/* Payment activity: server-authoritative receipts + refund/dispute
+          states (#22966). Sits below invoice history because receipts are
+          deliberately not invoices. */}
+      <PaymentActivityCard />
     </div>
   );
 }

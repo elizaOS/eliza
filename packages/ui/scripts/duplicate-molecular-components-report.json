@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "sourceAtomicSchemaVersion": 1,
-  "scannedFiles": 886,
+  "scannedFiles": 889,
   "canonicalContracts": [
     {
       "id": "auth-result-shell",
@@ -108,7 +108,7 @@
       "maintainedReferences": 2
     }
   ],
-  "eligibleComponents": 101,
+  "eligibleComponents": 102,
   "clusters": [
     {
       "archetype": "row",

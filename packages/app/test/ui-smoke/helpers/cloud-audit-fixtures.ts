@@ -210,6 +210,90 @@ interface StubRule {
 const path_ = (p: string) => (pathname: string) => pathname === p;
 const prefix = (p: string) => (pathname: string) => pathname.startsWith(p);
 
+// Payment-state projection rows (PaymentStateRow shape from
+// cloud-shared payment-history.ts) covering every rendered state class.
+// Values mirror what the real service derives from receipts + reversal
+// ledger rows so the audited pixels match production-shaped data.
+const paymentStateRow = (overrides: {
+  id: string;
+  authorityId: string;
+  paymentState: string;
+  eventTimeKind?: string;
+  cumulativeRefundedChargeCurrency?: number;
+  cumulativeDisputedChargeCurrency?: number;
+  cumulativeClawbackCredits?: number;
+  reinstatedCredits?: number;
+  disputeReinstated?: boolean;
+  policyEffect?: unknown;
+  supportState?: string;
+}) => ({
+  surface: "checkout_order",
+  receiptId: null,
+  provider: "stripe",
+  amountCents: 1250,
+  currency: "USD",
+  eventTime: NOW_ISO,
+  eventTimeKind: "provider_settlement",
+  cumulativeRefundedChargeCurrency: 0,
+  cumulativeDisputedChargeCurrency: 0,
+  cumulativeClawbackCredits: 0,
+  reinstatedCredits: 0,
+  unrecoveredShortfallCredits: 0,
+  disputeReinstated: false,
+  policyEffect: null,
+  supportState: "none",
+  ...overrides,
+});
+
+const PAYMENT_STATE_SUCCEEDED = paymentStateRow({
+  id: "checkout_order:order-smoke-1",
+  authorityId: "order-smoke-1",
+  paymentState: "succeeded",
+});
+
+const PAYMENT_STATE_PARTIAL_REFUND = paymentStateRow({
+  id: "checkout_order:order-smoke-2",
+  authorityId: "order-smoke-2",
+  paymentState: "partially_refunded",
+  cumulativeRefundedChargeCurrency: 5,
+  eventTimeKind: "reversal_ledger_observation",
+  policyEffect: {
+    status: "unavailable",
+    reason: "refund_entitlement_policy_pending_22930",
+  },
+  supportState: "contact_support",
+});
+
+const PAYMENT_STATE_DISPUTE_REINSTATED = paymentStateRow({
+  id: "checkout_order:order-smoke-3",
+  authorityId: "order-smoke-3",
+  paymentState: "dispute_reinstated",
+  cumulativeDisputedChargeCurrency: 12.5,
+  cumulativeClawbackCredits: 12,
+  reinstatedCredits: 12,
+  disputeReinstated: true,
+  eventTimeKind: "reversal_ledger_observation",
+  policyEffect: {
+    status: "unavailable",
+    reason: "refund_entitlement_policy_pending_22930",
+  },
+  supportState: "contact_support",
+});
+
+const PAYMENT_STATE_FAILED = paymentStateRow({
+  id: "checkout_order:order-smoke-4",
+  authorityId: "order-smoke-4",
+  paymentState: "failed",
+  eventTimeKind: "server_creation",
+});
+
+const PAYMENT_STATE_PENDING = paymentStateRow({
+  id: "checkout_order:order-smoke-5",
+  authorityId: "order-smoke-5",
+  paymentState: "pending",
+  eventTimeKind: "server_creation",
+});
+
 // NOTE: table order matters — first match wins.
 const STUB_RULES: StubRule[] = [
   {
@@ -661,6 +745,45 @@ const STUB_RULES: StubRule[] = [
     },
   },
   { match: path_("/api/invoices/list"), body: { invoices: [] } },
+  {
+    // payment-activity-card.tsx: GET /api/v1/billing/payment-states →
+    // PaymentStateRow list (camelCase server projection). One row per
+    // rendered state class so the audit exercises every display variant.
+    match: path_("/api/v1/billing/payment-states"),
+    body: {
+      states: [
+        PAYMENT_STATE_SUCCEEDED,
+        PAYMENT_STATE_PARTIAL_REFUND,
+        PAYMENT_STATE_DISPUTE_REINSTATED,
+        PAYMENT_STATE_FAILED,
+        PAYMENT_STATE_PENDING,
+      ],
+      total: 5,
+    },
+  },
+  {
+    // PaymentStateDetailPage: GET /api/v1/billing/payment-states/:id.
+    // The list's rows are the detail targets so the linked flow is
+    // representative of what a user reaches from the card. The client sends
+    // encodeURIComponent(id), so the colon arrives percent-encoded and the
+    // matcher must compare the decoded pathname.
+    match: (p) =>
+      decodeURIComponent(p) ===
+      "/api/v1/billing/payment-states/checkout_order:order-smoke-1",
+    body: { state: PAYMENT_STATE_SUCCEEDED },
+  },
+  {
+    match: (p) =>
+      decodeURIComponent(p) ===
+      "/api/v1/billing/payment-states/checkout_order:order-smoke-2",
+    body: { state: PAYMENT_STATE_PARTIAL_REFUND },
+  },
+  {
+    match: (p) =>
+      decodeURIComponent(p) ===
+      "/api/v1/billing/payment-states/checkout_order:order-smoke-3",
+    body: { state: PAYMENT_STATE_DISPUTE_REINSTATED },
+  },
   {
     // InvoiceDetailPage: GET /api/invoices/:id → camelCase InvoiceApiPayload
     // (billing/types.ts), adapted to the snake_case InvoiceDto by the hook.

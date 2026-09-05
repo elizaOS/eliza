@@ -173,6 +173,12 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     route: "cloud/invoices/:id",
     auth: AUTH,
   },
+  {
+    slug: "cloud-payment-state-detail",
+    path: "/cloud/billing/payments/checkout_order:order-smoke-1",
+    route: "cloud/billing/payments/:id",
+    auth: AUTH,
+  },
   // organization/
   {
     slug: "cloud-organization",
