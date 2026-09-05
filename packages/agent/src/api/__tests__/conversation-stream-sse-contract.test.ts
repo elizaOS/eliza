@@ -36,6 +36,7 @@ import {
   ModelType,
   RoomHandlerQueue,
   stringToUuid,
+  trackPostDeliveryTask,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -2073,6 +2074,139 @@ describe("conversation stream SSE contract (#10712)", () => {
     );
     expect(payloads.some((payload) => payload.type === "done")).toBe(false);
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
+  it.each(["legacy", "delta-v2"] as const)(
+    "publishes finalized action receipts before room bookkeeping and done (%s)",
+    async (protocol) => {
+      requestStreamProtocol = protocol === "delta-v2" ? protocol : undefined;
+      const provisionalDelivered = createDeferred();
+      const actionsFinished = createDeferred();
+      const bookkeepingGate = createDeferred();
+      const finalText = "Browser is open. The page heading is Example Domain.";
+      const finalReceipt = {
+        success: true,
+        text: finalText,
+        data: { actionName: "BROWSER_NAVIGATE" },
+        values: {
+          viewId: "browser",
+          viewType: "gui",
+          viewPath: "/apps/browser",
+          completedActionHandoffId: "final-browser-handoff",
+          browser: { url: "https://example.com/" },
+        },
+      };
+      const expectedReceipts = [
+        {
+          actionName: "BROWSER_NAVIGATE",
+          success: true,
+          text: finalText,
+          values: {
+            viewId: "browser",
+            viewType: "gui",
+            viewPath: "/apps/browser",
+            completedActionHandoffId: "final-browser-handoff",
+            browser: { url: "https://example.com/" },
+          },
+        },
+      ];
+      const messageService = createViewShortcutMessageService();
+      messageService.handleMessage = async (runtime, _message, callback) => {
+        await callback?.(
+          { text: "Opening Browser.", actionStatus: "running" },
+          "BROWSER_NAVIGATE",
+        );
+        provisionalDelivered.resolve();
+        await actionsFinished.promise;
+        void trackPostDeliveryTask(
+          runtime,
+          "receipt-bookkeeping-test",
+          async () => {
+            await bookkeepingGate.promise;
+            // Late room work can mutate its original result, but the final client
+            // projection must already be a detached, recursively copied snapshot.
+            finalReceipt.values.viewId = "settings";
+            finalReceipt.values.browser.url = "https://example.org/";
+          },
+        );
+        return {
+          didRespond: true,
+          responseContent: { text: finalText },
+          responseMessages: [],
+          actionResults: [finalReceipt],
+        };
+      };
+      const { ctx, record, useModel } = createCtx(messageService);
+      vi.mocked(persistAssistantConversationMemory).mockClear();
+      const turn = handleConversationRoutes(ctx);
+      try {
+        await provisionalDelivered.promise;
+        const provisionalPayloads = parseSsePayloads(record.writes);
+        expect(provisionalPayloads).toContainEqual(
+          expect.objectContaining({ type: "token", provisional: true }),
+        );
+        expect(
+          provisionalPayloads.some(
+            (payload) =>
+              payload.type === "reply_ready" || payload.type === "done",
+          ),
+        ).toBe(false);
+        expect(
+          provisionalPayloads.some((payload) => "actionResults" in payload),
+        ).toBe(false);
+
+        actionsFinished.resolve();
+        await vi.waitFor(() => {
+          expect(parseSsePayloads(record.writes)).toContainEqual({
+            type: "reply_ready",
+            fullText: finalText,
+            actionResults: expectedReceipts,
+          });
+        });
+        expect(record.ended).toBe(false);
+        expect(
+          parseSsePayloads(record.writes).some(
+            (payload) => payload.type === "done",
+          ),
+        ).toBe(false);
+        expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+      } finally {
+        actionsFinished.resolve();
+        bookkeepingGate.resolve();
+        await turn;
+      }
+
+      const payloads = parseSsePayloads(record.writes);
+      const ready = payloads.filter(
+        (payload) => payload.type === "reply_ready",
+      );
+      const done = payloads.find((payload) => payload.type === "done");
+      expect(ready).toHaveLength(1);
+      expect(done?.actionResults).toEqual(expectedReceipts);
+      expect(done?.actionResults).toEqual(ready[0]?.actionResults);
+      expect(
+        payloads.findIndex((payload) => payload.type === "reply_ready"),
+      ).toBeLessThan(payloads.findIndex((payload) => payload.type === "done"));
+      expect(finalReceipt.values.viewId).toBe("settings");
+      expect(finalReceipt.values.browser.url).toBe("https://example.org/");
+      expect(record.ended).toBe(true);
+      expect(useModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps legacy reply_ready text-only when there are no action receipts", async () => {
+    const { ctx, record } = createCtx();
+
+    await handleConversationRoutes(ctx);
+
+    const payloads = parseSsePayloads(record.writes);
+    expect(payloads.find((payload) => payload.type === "reply_ready")).toEqual({
+      type: "reply_ready",
+      fullText: FINAL_TEXT,
+    });
+    expect(
+      payloads.find((payload) => payload.type === "done"),
+    ).not.toHaveProperty("actionResults");
   });
 
   it("carries a direct VIEWS shortcut result on the terminal done frame", async () => {

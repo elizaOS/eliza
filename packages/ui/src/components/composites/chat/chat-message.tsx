@@ -1089,7 +1089,7 @@ export const ChatMessage = memo(function ChatMessage({
             data-chat-selectable="true"
             className={cn(
               isFirstRun &&
-                "flex w-full flex-col gap-4 whitespace-normal text-chat-lead text-white",
+                "flex w-full flex-col gap-4 whitespace-normal text-chat-lead",
             )}
           >
             {renderContent?.(message, renderContext) ??
@@ -1102,12 +1102,8 @@ export const ChatMessage = memo(function ChatMessage({
     const bubbleExtraClassName = cn(
       // Tapping a bubble with actions reveals its row (pointer affordance).
       bubbleInteractive && "cursor-pointer",
-      // Give first-run the same conversational bubble structure as chat, with
-      // enough room and contrast for its next-step action. Intrinsic width keeps
-      // short greetings from stretching across the full onboarding column;
-      // longer copy still wraps at the row's existing 22rem maximum.
-      isFirstRun &&
-        "w-fit max-w-full rounded-2xl rounded-bl-md border border-white/20 bg-black/35 px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
+      // Intrinsic width keeps short greetings within the onboarding column.
+      isFirstRun && "w-fit max-w-full",
       // Ordinary assistant replies use shadcn's full-width ghost treatment.
       isFlatAssistant && "w-full px-0 py-1",
       // Align the user bubble's bordered text edge with the flat assistant

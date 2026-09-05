@@ -34,6 +34,18 @@ function observeNavigationEpoch(): void {
   observedWindow.addEventListener("hashchange", advanceNavigationEpoch);
 }
 
+/** Capture before a request so even navigation away and back wins over its reply. */
+export function captureCompletedActionNavigationFence(): () => boolean {
+  observeNavigationEpoch();
+  const initialWindow = observedWindow;
+  const initialEpoch = navigationEpoch;
+  const initialPath = getWindowNavigationPath();
+  return () =>
+    observedWindow === initialWindow &&
+    navigationEpoch === initialEpoch &&
+    getWindowNavigationPath() === initialPath;
+}
+
 function rememberHandledHandoff(id: string): void {
   pendingHandoffs.delete(id);
   handledHandoffs.delete(id);

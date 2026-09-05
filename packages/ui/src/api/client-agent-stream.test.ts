@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client";
 import { StreamGenerationError } from "./client-base";
+import type { ChatActionResultSummary } from "./client-types-chat";
 import type { AgentRequestTransport } from "./transport";
 
 describe("ElizaClient agent streaming transport", () => {
@@ -112,6 +113,18 @@ describe("ElizaClient agent streaming transport", () => {
   });
 
   it("renders an authoritative reply_ready snapshot while terminal bookkeeping continues", async () => {
+    const actionResults: ChatActionResultSummary[] = [
+      {
+        actionName: "BROWSER_NAVIGATE",
+        success: true,
+        values: {
+          subaction: "navigate",
+          targetId: "workspace",
+          viewId: "browser",
+          url: "https://example.com/",
+        },
+      },
+    ];
     const encoder = new TextEncoder();
     let releaseDone: (value: { done: boolean; value?: Uint8Array }) => void =
       () => {};
@@ -126,7 +139,7 @@ describe("ElizaClient agent streaming transport", () => {
         done: false,
         value: encoder.encode(
           'data: {"type":"token","text":"Opening notes...","fullText":"Opening notes...","provisional":true}\n\n' +
-            'data: {"type":"reply_ready","fullText":"Your notes are open."}\n\n',
+            `data: ${JSON.stringify({ type: "reply_ready", fullText: "Your notes are open.", actionResults })}\n\n`,
         ),
       })
       .mockImplementationOnce(() => delayedDone);
@@ -141,13 +154,22 @@ describe("ElizaClient agent streaming transport", () => {
     const client = new ElizaClient("http://agent.example:31337", "token");
     client.setRequestTransport({ request });
     const onToken = vi.fn();
+    const onReplyReady = vi.fn();
 
     let settled = false;
     const resultPromise = client
-      .streamChatEndpoint(
-        "/api/conversations/conversation-id/messages/stream",
+      .sendConversationMessageStream(
+        "conversation-id",
         "open notes",
         onToken,
+        "DM",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "ready-receipt-test",
+        onReplyReady,
       )
       .finally(() => {
         settled = true;
@@ -161,11 +183,13 @@ describe("ElizaClient agent streaming transport", () => {
       ),
     );
     expect(settled).toBe(false);
+    expect(onReplyReady).toHaveBeenCalledExactlyOnceWith(actionResults);
+    expect(cancel).not.toHaveBeenCalled();
 
     releaseDone({
       done: false,
       value: encoder.encode(
-        'data: {"type":"done","fullText":"Your notes are open.","agentName":"Eliza","messageId":"assistant-db-id"}\n\n',
+        `data: ${JSON.stringify({ type: "done", fullText: "Your notes are open.", agentName: "Eliza", messageId: "assistant-db-id", actionResults })}\n\n`,
       ),
     });
 
@@ -174,6 +198,7 @@ describe("ElizaClient agent streaming transport", () => {
       agentName: "Eliza",
       completed: true,
       messageId: "assistant-db-id",
+      actionResults,
     });
     expect(onToken).toHaveBeenNthCalledWith(
       1,
@@ -187,6 +212,188 @@ describe("ElizaClient agent streaming transport", () => {
       "Your notes are open.",
       false,
     );
+    expect(cancel).toHaveBeenCalledWith("elizaos-sse-terminal-done");
+    expect(onReplyReady).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["complete", "trailing", "interrupted"] as const)(
+    "delivers settled action receipts once with unchanged text (%s stream)",
+    async (ending) => {
+      const actionResults = [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { viewId: "notes", mode: "show" },
+        },
+      ];
+      const ready = {
+        type: "reply_ready",
+        fullText: "Notes is open.",
+        actionResults,
+      };
+      const packets = [
+        {
+          type: "token",
+          fullText: "Notes is open.",
+          provisional: true,
+          actionResults,
+        },
+        { type: "unknown", actionResults },
+        ...[
+          undefined,
+          null,
+          {},
+          [],
+          [null],
+          [1],
+          [{ success: "true" }],
+          [{ success: true, actionName: 1 }],
+          [{ success: true, values: [] }],
+          [{ success: true, error: {} }],
+          [{ success: true, text: false }],
+        ].map((invalid) => ({ ...ready, actionResults: invalid })),
+        ready,
+        ...(ending === "trailing" ? [] : [ready]),
+        ...(ending === "complete"
+          ? [{ type: "done", fullText: "Notes is open.", actionResults }]
+          : []),
+      ];
+      const body =
+        packets
+          .map((packet) => `data: ${JSON.stringify(packet)}`)
+          .join("\n\n") + (ending === "trailing" ? "" : "\n\n");
+      const client = new ElizaClient("http://agent.example:31337", "token");
+      client.setRequestTransport({
+        request: vi.fn(
+          async () =>
+            new Response(body, {
+              headers: { "content-type": "text/event-stream" },
+            }),
+        ),
+      });
+      const onReplyReady = vi.fn();
+      const onToken = vi.fn();
+      const result = await client.sendConversationMessageStream(
+        "conversation-id",
+        "open notes",
+        onToken,
+        "DM",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "ready-parser-test",
+        onReplyReady,
+      );
+      expect(onReplyReady).toHaveBeenCalledExactlyOnceWith(actionResults);
+      expect(result.completed).toBe(ending === "complete");
+      expect(result.actionResults).toEqual(
+        ending === "complete" ? actionResults : undefined,
+      );
+      expect(result.text).toBe("Notes is open.");
+    },
+  );
+
+  it("does not deliver a buffered action receipt after Stop", async () => {
+    const controller = new AbortController();
+    const packet = JSON.stringify({
+      type: "reply_ready",
+      fullText: "Notes is open.",
+      actionResults: [{ actionName: "VIEWS", success: true }],
+    });
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({
+        done: false,
+        value: new TextEncoder().encode(`data: ${packet}`),
+      })
+      .mockImplementationOnce(() => {
+        queueMicrotask(() => controller.abort());
+        return new Promise<never>(() => {});
+      });
+    const cancel = vi.fn(async () => {});
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({
+      request: vi.fn(
+        async () =>
+          ({
+            ok: true,
+            status: 200,
+            body: { getReader: () => ({ read, cancel }) },
+          }) as unknown as Response,
+      ),
+    });
+    const onReplyReady = vi.fn();
+    const result = await client.sendConversationMessageStream(
+      "conversation-id",
+      "open notes",
+      vi.fn(),
+      "DM",
+      controller.signal,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "ready-abort-test",
+      onReplyReady,
+    );
+    expect(onReplyReady).not.toHaveBeenCalled();
+    expect(result.completed).toBe(false);
+    expect(cancel).toHaveBeenCalledWith("elizaos-sse-client-abort");
+  });
+
+  it("retains the terminal receipt and closes the reader if a ready consumer throws", async () => {
+    const actionResults = [{ actionName: "VIEWS", success: true }];
+    const body = [
+      { type: "reply_ready", fullText: "Notes is open.", actionResults },
+      {
+        type: "done",
+        fullText: "Notes is open.",
+        actionResults,
+        messageId: "assistant-db-id",
+      },
+    ]
+      .map((packet) => `data: ${JSON.stringify(packet)}\n\n`)
+      .join("");
+    const read = vi.fn().mockResolvedValueOnce({
+      done: false,
+      value: new TextEncoder().encode(body),
+    });
+    const cancel = vi.fn(async () => {});
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({
+      request: vi.fn(
+        async () =>
+          ({
+            ok: true,
+            status: 200,
+            body: { getReader: () => ({ read, cancel }) },
+          }) as unknown as Response,
+      ),
+    });
+    const onReplyReady = vi.fn(() => {
+      throw new Error("renderer unavailable");
+    });
+    const result = await client.sendConversationMessageStream(
+      "conversation-id",
+      "open notes",
+      vi.fn(),
+      "DM",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "ready-consumer-test",
+      onReplyReady,
+    );
+    expect(result).toMatchObject({
+      completed: true,
+      actionResults,
+      messageId: "assistant-db-id",
+    });
+    expect(onReplyReady).toHaveBeenCalledTimes(1);
     expect(cancel).toHaveBeenCalledWith("elizaos-sse-terminal-done");
   });
 

@@ -523,6 +523,8 @@ declare module "./client-base" {
       onToolEvent?: (event: ChatToolCallEvent) => void,
       /** Additive: caller-supplied idempotency key reused across an auto-retry. */
       clientMessageId?: string,
+      /** Settled receipts before terminal bookkeeping; the stream stays open. */
+      onReplyReady?: (actionResults: ChatActionResultSummary[]) => void,
     ): Promise<{
       text: string;
       agentName: string;
@@ -1347,6 +1349,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
   onStatus?,
   onToolEvent?,
   clientMessageId?,
+  onReplyReady?,
 ) {
   return this.streamChatEndpoint(
     `/api/conversations/${encodeURIComponent(id)}/messages/stream`,
@@ -1359,6 +1362,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
     onStatus,
     onToolEvent,
     clientMessageId,
+    onReplyReady,
   );
 };
 

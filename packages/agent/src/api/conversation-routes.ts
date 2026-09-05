@@ -4638,6 +4638,11 @@ export async function handleConversationRoutes(
                 result.transcriptVisibility === "internal"
                   ? ""
                   : resolvedGenerationText,
+              // Generation already copied the finalized client receipts. Expose
+              // that same snapshot now; durable completion still belongs to done.
+              ...(result.actionResults?.length
+                ? { actionResults: result.actionResults }
+                : {}),
             });
             replyReadyPublished = true;
             // Bun's node:http compatibility layer can retain a small write
