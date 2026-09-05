@@ -2907,7 +2907,7 @@ export function NotificationsHomeCenter({
                     <span className="flex shrink-0 items-center gap-1">
                       <Button
                         type="button"
-                        variant="ghostMuted"
+                        variant="overlayEdge"
                         size="dense"
                         data-testid="notification-stack-collapse"
                         data-notification-stack-collapse=""
