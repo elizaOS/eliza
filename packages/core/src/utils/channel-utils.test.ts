@@ -6,10 +6,12 @@
  * @-mentioned it or spam every message in a group.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	formatLocationText,
 	listSenderLabelCandidates,
+	logAckFailure,
+	logTypingFailure,
 	normalizeChatType,
 	resolveMentionGating,
 	resolveMentionGatingWithBypass,
@@ -302,5 +304,64 @@ describe("resolveSenderLabel and listSenderLabelCandidates", () => {
 		expect(candidates).toContain("alice_w");
 		expect(candidates).toContain("u123");
 		expect(candidates).toContain("Alice (u123)");
+	});
+});
+
+describe("channel logging utilities", () => {
+	it("formats typing failure logs using formatError safely across error shapes", () => {
+		const log = vi.fn();
+		const nullProtoError = Object.assign(Object.create(null), {
+			message: "Rate limit exceeded",
+		});
+
+		// Proves that a null-prototype error (which crashes bare String(error))
+		// is safely formatted without throwing.
+		expect(() =>
+			logTypingFailure({
+				log,
+				channel: "discord",
+				target: "#general",
+				action: "start",
+				error: nullProtoError,
+			}),
+		).not.toThrow();
+
+		expect(log).toHaveBeenCalledWith(
+			"discord typing action=start failed target=#general: [object Object]",
+		);
+	});
+
+	it("formats ack cleanup failure logs using formatError safely with plain string/object errors", () => {
+		const log = vi.fn();
+		logAckFailure({
+			log,
+			channel: "slack",
+			target: "C123",
+			error: "Permission denied",
+		});
+
+		expect(log).toHaveBeenCalledWith(
+			"slack ack cleanup failed target=C123: Permission denied",
+		);
+
+		log.mockClear();
+		const poisoned = {
+			toString: () => {
+				throw new Error("poisoned toString");
+			},
+		};
+
+		expect(() =>
+			logAckFailure({
+				log,
+				channel: "slack",
+				target: "C123",
+				error: poisoned,
+			}),
+		).not.toThrow();
+
+		expect(log).toHaveBeenCalledWith(
+			"slack ack cleanup failed target=C123: [object Object]",
+		);
 	});
 });
