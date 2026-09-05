@@ -11,6 +11,10 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
+import {
+  type Eliza1TierId,
+  eliza1TierPublishStatus,
+} from "../../services/local-inference/catalog";
 import { selectRecommendedModels } from "../../services/local-inference/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
@@ -119,7 +123,10 @@ function pickRecommended(
   return (
     catalog.find(
       (model) =>
-        model.id.startsWith("eliza-1-") && !findInstalled(model, installed),
+        model.id.startsWith("eliza-1-") &&
+        !findInstalled(model, installed) &&
+        (model.publishStatus ??
+          eliza1TierPublishStatus(model.id as Eliza1TierId)) === "published",
     ) ?? null
   );
 }
