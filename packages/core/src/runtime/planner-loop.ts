@@ -4913,13 +4913,75 @@ function terminalMessageWithFailureAuthority(
 		unresolvedFailure,
 		failureReport,
 	);
-	if (trajectory.codingMode !== true) return failureNote;
+	if (trajectory.codingMode !== true) {
+		// A VERIFIED action-owned success after the failure is the turn's
+		// answer: the vetted action delivered its own user-facing text for a
+		// different operation than the one that failed (live 2026-09-05: a UI
+		// panel interaction failed, then CALENDAR create succeeded with "Done.
+		// Gym session is set for Tuesday at 7 AM." — the fallback replaced it,
+		// the forced synthesis call cost 1.5 s / 19K tokens and once shipped
+		// "No reply generated"). Keep that text; add the failed tool's OWN
+		// user-safe note when it has one, never the generic placeholder that
+		// would trigger the synthesis over a verified result.
+		const verifiedEvidence = verifiedToolOwnedSuccessTextsAfter(
+			trajectory,
+			unresolvedFailure,
+		);
+		if (verifiedEvidence.length === 0) return failureNote;
+		const verifiedText =
+			candidate !== undefined && verifiedEvidence.includes(candidate)
+				? candidate
+				: (verifiedEvidence[verifiedEvidence.length - 1] as string);
+		const ownedFailureNote = failedToolOwnedUserSafeText(unresolvedFailure);
+		return ownedFailureNote
+			? `${verifiedText}\n\n${ownedFailureNote}`
+			: verifiedText;
+	}
 	const successEvidence = toolOwnedSuccessEvidenceAfter(
 		trajectory,
 		unresolvedFailure,
 	);
 	if (successEvidence.length === 0) return failureNote;
 	return `${failureNote}\n\nWork that did complete: ${successEvidence.join(" ")}`;
+}
+
+/**
+ * User-facing texts of steps after `failedStep` whose action verified its own
+ * reply (`success`, `verifiedUserFacing`, non-empty `userFacingText`). Unlike
+ * {@link toolOwnedSuccessEvidenceAfter} this excludes planner-facing `text`
+ * and unverified results, so only vetted action-owned replies can stand as
+ * the turn's answer over an earlier failure.
+ */
+function verifiedToolOwnedSuccessTextsAfter(
+	trajectory: PlannerTrajectory,
+	failedStep: PlannerStep,
+): string[] {
+	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+	const failedIndex = steps.indexOf(failedStep);
+	if (failedIndex === -1) return [];
+	const evidence: string[] = [];
+	for (const step of steps.slice(failedIndex + 1)) {
+		const result = step.result;
+		if (
+			step.toolCall === undefined ||
+			isTerminalToolCall(step.toolCall) ||
+			result?.success !== true ||
+			result.verifiedUserFacing !== true
+		) {
+			continue;
+		}
+		const owned = sanitizePlannerMessage(result.userFacingText);
+		if (!owned || isUnsafeUserVisibleText(owned)) continue;
+		if (!evidence.includes(owned)) evidence.push(owned);
+	}
+	return evidence;
+}
+
+/** The failed step's own user-safe text, or undefined when it owns none. */
+function failedToolOwnedUserSafeText(step: PlannerStep): string | undefined {
+	const candidate = sanitizePlannerMessage(step.result?.userFacingText);
+	if (!candidate || isUnsafeUserVisibleText(candidate)) return undefined;
+	return candidate;
 }
 
 function codingToolTerminalFailure(
