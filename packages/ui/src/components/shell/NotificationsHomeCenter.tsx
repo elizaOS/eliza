@@ -158,43 +158,6 @@ export {
 
 /** The stack fan has enough travel to read clearly without feeling delayed. */
 export const STACK_FAN_SETTLE_MS = 300;
-const SCROLL_EDGE_EPSILON_PX = 1;
-
-export interface NotificationScrollFadeEdges {
-  overflow: boolean;
-  top: boolean;
-  bottom: boolean;
-}
-
-/**
- * Returns the hidden-content edges for a notification scrollport. A one-pixel
- * tolerance absorbs fractional layout and WebView scroll rounding without
- * leaving a mask stuck at either endpoint.
- */
-export function notificationScrollFadeEdges({
-  scrollTop,
-  scrollHeight,
-  clientHeight,
-}: {
-  scrollTop: number;
-  scrollHeight: number;
-  clientHeight: number;
-}): NotificationScrollFadeEdges {
-  const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
-  const overflow = maxScrollTop > SCROLL_EDGE_EPSILON_PX;
-  return {
-    overflow,
-    top: overflow && scrollTop > SCROLL_EDGE_EPSILON_PX,
-    bottom: overflow && scrollTop < maxScrollTop - SCROLL_EDGE_EPSILON_PX,
-  };
-}
-
-function syncNotificationScrollFade(scrollport: HTMLUListElement): void {
-  const edges = notificationScrollFadeEdges(scrollport);
-  scrollport.toggleAttribute("data-scroll-overflow", edges.overflow);
-  scrollport.toggleAttribute("data-scroll-fade-top", edges.top);
-  scrollport.toggleAttribute("data-scroll-fade-bottom", edges.bottom);
-}
 
 const STACK_FAN_LAYOUT_TRANSITION = {
   duration: STACK_FAN_SETTLE_MS / 1_000,
@@ -224,14 +187,9 @@ interface PendingStackFold {
  *
  *  - Every notification and stack peek uses one solid surface with a uniform
  *    outline. No per-card blur, refraction, or gradient rim is needed.
- *  - The scrollport exposes only the edge masks that represent hidden content:
- *    no mask without overflow, bottom-only at the top, both in the middle, and
- *    top-only at the end. Geometry observation keeps that contract reliable in
- *    Android WebViews that do not support CSS scroll timelines.
- *  - Where `animation-timeline: view()` is supported, each row also scales and
- *    fades slightly while crossing the scrollport edges — the depth cue of a
- *    platform notification shade. Progressive enhancement only; the fallback
- *    is the plain masked scroll.
+ *  - Ordinary scrolling clips rows without fading their fill, outline, or text
+ *    into the wallpaper. Only explicit shade and dismissal gestures animate
+ *    card visibility.
  *  - Rows hidden by the closed shade track pull distance with opacity and
  *    vertical settling, so the user's finger reveals content before release.
  *
@@ -395,50 +353,14 @@ const NOTIF_SCROLL_CSS = `
 .eliza-notif-clear-all[data-confirming] {
   width: 4rem;
 }
-/* A view-timeline animation reattaches from its entry keyframe when a transient
-   drag marker disappears. Preview groups retain their own marker through a
-   cancelled settle, so their parent opacity can finish cleanly before unmount;
-   expanded and committed-release projections likewise keep one presentation
-   owner until their handoff completes. */
-.eliza-notif-scroll [data-notification-pull-reveal] .eliza-notif-row,
-.eliza-notif-scroll[data-shade-dragging] .eliza-notif-row,
-.eliza-notif-scroll[data-shade-settling] .eliza-notif-row,
-.eliza-notif-scroll[data-shade-release-settling] .eliza-notif-row,
-.eliza-notif-scroll[data-shade-mode="expanded"] .eliza-notif-row {
-  animation: none !important;
-}
-.eliza-notif-scroll .eliza-notif-row.eliza-notif-pull-reveal,
-.eliza-notif-scroll .eliza-notif-row.eliza-notif-shade-transition {
-  animation: none;
-}
 .eliza-notif-scroll {
   isolation: isolate;
   scrollbar-width: none;
 }
-/* Edge fades describe content beyond the viewport, not generic decoration.
-   Explicit selectors keep the correct direction in WebViews without scroll
-   timelines and remove masking entirely when every row fits. */
-.eliza-notif-scroll[data-scroll-fade-top][data-scroll-fade-bottom] {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 calc(100% - 1.5rem), transparent 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 calc(100% - 1.5rem), transparent 100%);
-}
-.eliza-notif-scroll[data-scroll-fade-top]:not([data-scroll-fade-bottom]) {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 100%);
-}
-.eliza-notif-scroll[data-scroll-fade-bottom]:not([data-scroll-fade-top]) {
-  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 1.5rem), transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 1.5rem), transparent 100%);
-}
-.eliza-notif-scroll:not([data-scroll-overflow]) {
-  -webkit-mask-image: none;
-  mask-image: none;
-}
 /* Pull previews insert rows above the resting count. Disable scroll anchoring
    while that projection is mounted so Chromium cannot turn the insertion into
    a positive scrollTop and revoke a gesture the user already owns. The live
-   overshoot padding keeps translated cards inside the scrollport; the edge mask
-   returns after the release runway has settled. */
+   overshoot padding keeps translated cards inside the scrollport. */
 .eliza-notif-scroll[data-shade-preview],
 .eliza-notif-scroll[data-shade-mode="expanded"] {
   padding-bottom: calc(
@@ -452,12 +374,6 @@ const NOTIF_SCROLL_CSS = `
 }
 .eliza-notif-scroll[data-shade-dragging] {
   transition: none;
-}
-/* The scroll-edge mask is part of the settled material. Keeping it mounted
-   through direct manipulation lets cards fade continuously as they cross the
-   edge instead of changing every card's compositing on the first drag frame. */
-.eliza-notif-scroll[data-shade-release-settling] {
-  animation: none;
 }
 .eliza-notif-scroll [data-notification-group] {
   position: relative;
@@ -502,25 +418,6 @@ const NOTIF_SCROLL_CSS = `
 }
 .eliza-notif-stack-peek[data-swipe-promoting] {
   --eliza-notif-geometry-duration: ${NOTIFICATION_ROW_SETTLE_MS}ms;
-}
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .eliza-notif-scroll .eliza-notif-row {
-      animation:
-        eliza-notif-edge-in linear both,
-        eliza-notif-edge-out linear both;
-      animation-timeline: view(), view();
-      animation-range: entry, exit;
-    }
-    @keyframes eliza-notif-edge-in {
-      from { opacity: 0.3; transform: scale(0.94); }
-      to   { opacity: 1; transform: none; }
-    }
-    @keyframes eliza-notif-edge-out {
-      from { opacity: 1; transform: none; }
-      to   { opacity: 0.3; transform: scale(0.94); }
-    }
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .eliza-notif-center,
@@ -1117,57 +1014,6 @@ export function NotificationsHomeCenter({
   // shared visibility-gated ticker. The minute roll re-renders those text nodes
   // only - not this list, not the rows, not the glass surface.
   const scrollRef = useRef<HTMLUListElement | null>(null);
-  const handleListScroll = useCallback(
-    (event: React.UIEvent<HTMLUListElement>) => {
-      syncNotificationScrollFade(event.currentTarget);
-    },
-    [],
-  );
-  useLayoutEffect(() => {
-    const scrollport = scrollRef.current;
-    if (!scrollport || !surfaceReady || showHydrationFailure) return;
-
-    let syncFrame: number | null = null;
-    const sync = () => syncNotificationScrollFade(scrollport);
-    const scheduleSync = () => {
-      if (syncFrame !== null) window.cancelAnimationFrame(syncFrame);
-      syncFrame = window.requestAnimationFrame(() => {
-        syncFrame = null;
-        sync();
-      });
-    };
-    const resizeObserver =
-      typeof ResizeObserver === "function"
-        ? new ResizeObserver(scheduleSync)
-        : null;
-    const observeContent = () => {
-      // Mutations can replace entire groups. Release detached targets before
-      // observing the current children; otherwise the observer retains them.
-      resizeObserver?.disconnect();
-      resizeObserver?.observe(scrollport);
-      for (const child of Array.from(scrollport.children)) {
-        resizeObserver?.observe(child);
-      }
-    };
-    const mutationObserver =
-      typeof MutationObserver === "function"
-        ? new MutationObserver(() => {
-            observeContent();
-            scheduleSync();
-          })
-        : null;
-
-    sync();
-    observeContent();
-    mutationObserver?.observe(scrollport, { childList: true, subtree: true });
-    window.addEventListener("resize", scheduleSync);
-    return () => {
-      resizeObserver?.disconnect();
-      mutationObserver?.disconnect();
-      window.removeEventListener("resize", scheduleSync);
-      if (syncFrame !== null) window.cancelAnimationFrame(syncFrame);
-    };
-  }, [surfaceReady, showHydrationFailure]);
   const pullVisibleGroupsRef = useRef<HTMLElement[] | undefined>(undefined);
   const pointerPull = useRef<{
     id: number;
@@ -2819,7 +2665,6 @@ export function NotificationsHomeCenter({
         onPointerUp={onListPointerEnd}
         onPointerCancel={onListPointerCancel}
         onClickCapture={onListClickCapture}
-        onScroll={handleListScroll}
         onWheel={onListWheel}
         data-testid="home-notification-list"
         data-shade-mode={shadeExpanded ? "expanded" : "rested"}
