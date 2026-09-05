@@ -13,7 +13,7 @@ OpenAI model-provider plugin for [elizaOS](https://github.com/elizaos/eliza). Ad
 - **Deep research** — `ModelType.RESEARCH` via the OpenAI Responses API (`o3-deep-research` by default); returns annotated, multi-source research reports.
 - **Tokenizer** — encode/decode using js-tiktoken (browser-safe, no network calls).
 
-Works with any OpenAI-compatible endpoint: OpenAI, Cerebras, EvoLink, OpenRouter, local servers, etc.
+Works with any OpenAI-compatible endpoint: OpenAI, Cerebras, EvoLink, OpenRouter, OpenZoo, local servers, etc.
 
 ## Enabling the plugin
 
@@ -208,6 +208,28 @@ Then set `OPENAI_BROWSER_BASE_URL=http://localhost:3000/openai`.
 ## Cerebras compatibility
 
 Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` and the plugin automatically adapts: structured output uses `json_object` mode, `reasoning_effort` defaults to `"low"` for reasoning-capable models (to prevent empty responses), and `CEREBRAS_API_KEY` is accepted as an alias for `OPENAI_API_KEY`. Embeddings fall back to a deterministic local hash when no explicit embedding URL is set, since Cerebras does not provide an embeddings endpoint.
+
+## OpenZoo compatibility
+
+Run `npx openzoo@0.50.96` and point `OPENAI_BASE_URL` at `http://localhost:8402/v1` — the local proxy pays each request over x402 from a local burner wallet (`npx openzoo@0.50.96 address` / `npx openzoo@0.50.96 balance`; fund with USDC on Solana or Base). Source: [staccDOTsol/openzoo](https://github.com/staccDOTsol/openzoo) ([`openzoo` on npm](https://www.npmjs.com/package/openzoo)); the version is pinned here so this snippet stays reproducible.
+
+OpenZoo has no signup, and the proxy ignores the key: set `OPENAI_API_KEY` to any non-empty value (e.g. `sk-openzoo`). Two properties of the hosted gateway are checkable without installing anything or spending anything:
+
+```console
+$ curl -s -o /dev/null -w '%{http_code}\n' https://api.openzoo.fun/v1/models
+200
+
+$ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://api.openzoo.fun/v1/chat/completions \
+    -H 'Authorization: Bearer sk-openzoo' -H 'Content-Type: application/json' \
+    -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
+402
+```
+
+That is, `GET /v1/models` is free — it returns the model catalog, whose size changes as models come and go, so only the status code is asserted here — and a completion sent with only a bearer token is refused with `402` and an x402 `accepts` array rather than served. This plugin sends only a bearer token, so point it at the local proxy, which performs the x402 payment on each request.
+
+Usage telemetry attributes these requests to `openai`, since the plugin sees an OpenAI-compatible endpoint. Per-request billing attribution is available from the gateway's own receipts.
+
+> **Disclosure:** this section was contributed by the author of OpenZoo.
 
 ## EvoLink compatibility
 
