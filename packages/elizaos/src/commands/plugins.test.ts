@@ -49,7 +49,10 @@ describe("submitPluginToRegistry", () => {
   it.each([
     ["git+ssh://git@github.com/acme/plugin-weather.git"],
     ["ssh://git@github.com/acme/plugin-weather.git"],
+    ["git+ssh://git@github.com:22/acme/plugin-weather.git"],
     ["git://github.com/acme/plugin-weather.git"],
+    ["https://github.com/acme/plugin-weather.git/tree/main"],
+    ["https://github.com/acme/plugin-weather.git/blob/develop#readme"],
   ])("normalizes the npm repository url form %s", async (repositoryUrl) => {
     const dir = makePluginPackage({
       name: "@acme/plugin-weather",
