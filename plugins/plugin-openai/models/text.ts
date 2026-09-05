@@ -2469,7 +2469,13 @@ interface BufferedStreamResult {
 
 type StreamAttemptTiming = {
   onChunk: (event: {
-    chunk: { type: string; text?: string; delta?: string; inputTextDelta?: string };
+    chunk: {
+      type: string;
+      text?: string;
+      delta?: string;
+      inputTextDelta?: string;
+      rawValue?: unknown;
+    };
   }) => void;
   delivery: () => void;
 };
@@ -2521,11 +2527,47 @@ function createStreamTiming(
       const record = (name: string) =>
         observeStreamTiming(runtime, () => timer.recordSpan(name, 0, meta));
       record("openai.stream.mode");
+      let providerObserved = false;
+      let providerTimingObserved = false;
       let sdkObserved = false;
       let delivered = false;
       return {
         onChunk: ({ chunk }) =>
           observeStreamTiming(runtime, () => {
+            if (chunk.type === "raw") {
+              // This is the first parsed SSE frame, not the first network byte.
+              // Inspect only numeric timing fields; never retain the raw payload.
+              if (!providerObserved) {
+                providerObserved = true;
+                record("openai.stream.first-provider-event");
+              }
+              const raw = chunk.rawValue;
+              if (
+                providerTimingObserved ||
+                !raw ||
+                typeof raw !== "object" ||
+                !("time_info" in raw)
+              )
+                return;
+              const info = raw.time_info;
+              if (!info || typeof info !== "object" || Array.isArray(info)) return;
+              const durations: Record<string, number> = {};
+              for (const [field, name] of [
+                ["queue_time", "queueMs"],
+                ["prompt_time", "promptMs"],
+                ["completion_time", "completionMs"],
+                ["total_time", "totalMs"],
+              ]) {
+                const seconds = (info as Record<string, unknown>)[field];
+                if (typeof seconds === "number" && seconds >= 0 && Number.isFinite(seconds * 1000))
+                  durations[name] = seconds * 1000;
+              }
+              if (Object.keys(durations).length > 0) {
+                providerTimingObserved = true;
+                timer.recordSpan("openai.stream.provider-timing", 0, { ...meta, ...durations });
+              }
+              return;
+            }
             if (sdkObserved || (chunk.type !== "text-delta" && chunk.type !== "tool-input-delta"))
               return;
             const delta =
@@ -2590,7 +2632,7 @@ async function consumeStreamWithTransientRetry(
         onError: ({ error }: { error: unknown }) => {
           capturedError = error;
         },
-        ...(attemptTiming ? { onChunk: attemptTiming.onChunk } : {}),
+        ...(attemptTiming ? { onChunk: attemptTiming.onChunk, includeRawChunks: true } : {}),
       });
       let text = "";
       for await (const chunk of result.textStream) {
@@ -2972,7 +3014,7 @@ async function generateTextByModelType(
         onError: ({ error }: { error: unknown }) => {
           capturedStreamError = error;
         },
-        ...(attemptTiming ? { onChunk: attemptTiming.onChunk } : {}),
+        ...(attemptTiming ? { onChunk: attemptTiming.onChunk, includeRawChunks: true } : {}),
       });
       // Companion promises can reject at the same instant as the first stream
       // pull. Observe them before that pull so an owner abort never becomes an

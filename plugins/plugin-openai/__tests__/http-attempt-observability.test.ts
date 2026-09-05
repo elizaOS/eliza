@@ -244,11 +244,12 @@ describe("HTTP attempt observability", () => {
       }
       expect(beforeTail.map((span) => span.name)).toEqual([
         "openai.stream.mode",
+        "openai.stream.first-provider-event",
         "openai.stream.first-sdk-delta",
         "openai.stream.first-adapter-delivery",
       ]);
       expect(beforeTail.every((span) => span.durationMs === 0)).toBe(true);
-      expect(beforeTail.slice(1).map((span) => span.startMs)).toEqual([100, 100]);
+      expect(beforeTail.slice(1).map((span) => span.startMs)).toEqual([100, 100, 100]);
       expect(new Set(beforeTail.map((span) => span.meta?.streamCallId)).size).toBe(1);
       expect(beforeTail[0]?.meta).toMatchObject({
         mode: structured ? "live-structured" : "live-text",
@@ -258,13 +259,125 @@ describe("HTTP attempt observability", () => {
       });
       expect(
         timer.summary().spans.filter((span) => span.name.startsWith("openai.stream."))
-      ).toHaveLength(3);
+      ).toHaveLength(4);
       const timing = JSON.stringify(beforeTail);
       for (const secret of [PRIVATE_PROMPT, PRIVATE_KEY, first, second])
         expect(timing).not.toContain(secret);
       expect(logs.serialized()).not.toContain(PRIVATE_KEY);
     }
   );
+
+  it("distinguishes a provider's non-text frame from its first text and keeps only valid numeric timings", async () => {
+    const logs = diagnostics();
+    vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "0");
+    const timer = new InferenceTurnTimer({ turnId: "provider-frame", label: "fixture" });
+    let releaseText!: () => void;
+    const textReady = new Promise<void>((resolve) => {
+      releaseText = resolve;
+    });
+    const encoder = new TextEncoder();
+    const frame = (delta: object, time_info?: object) =>
+      encoder.encode(
+        `data: ${JSON.stringify({
+          id: "provider-frame-fixture",
+          object: "chat.completion.chunk",
+          created: 0,
+          model: "fixture",
+          choices: [{ index: 0, delta, finish_reason: time_info ? "stop" : null }],
+          ...(time_info ? { time_info } : {}),
+        })}\n\n`
+      );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream({
+              async start(controller) {
+                controller.enqueue(frame({ role: "assistant" }));
+                await textReady;
+                controller.enqueue(frame({ content: "Complete reply." }));
+                controller.enqueue(
+                  frame(
+                    {},
+                    {
+                      queue_time: PRIVATE_KEY,
+                      prompt_time: -1,
+                      completion_time: null,
+                      total_time: 1e308,
+                    }
+                  )
+                );
+                controller.enqueue(
+                  frame(
+                    {},
+                    {
+                      queue_time: 0.2,
+                      prompt_time: 0.05,
+                      completion_time: 0.01,
+                      total_time: 0.26,
+                      private: PRIVATE_PROMPT,
+                      created: PRIVATE_HEADER,
+                    }
+                  )
+                );
+                // Repeated provider metadata must not grow diagnostic state or replace
+                // the first complete timing report with untrusted values.
+                controller.enqueue(frame({}, { queue_time: PRIVATE_KEY, total_time: -1 }));
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                controller.close();
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } }
+          )
+      )
+    );
+    const chunks: string[] = [];
+    const consumed = runWithInferenceTiming(timer, async () => {
+      const result = await handleResponseHandler(runtime(), {
+        model: "fixture",
+        prompt: PRIVATE_PROMPT,
+        stream: true,
+        onStreamChunk: (chunk) => {
+          chunks.push(chunk);
+        },
+      });
+      if (typeof result === "string" || !result.textStream) throw new Error("Expected stream");
+      let text = "";
+      for await (const chunk of result.textStream) text += chunk;
+      return text;
+    });
+    try {
+      await vi.waitFor(() =>
+        expect(
+          timer.summary().spans.some((span) => span.name === "openai.stream.first-provider-event")
+        ).toBe(true)
+      );
+      expect(chunks).toEqual([]);
+      expect(
+        timer.summary().spans.some((span) => span.name === "openai.stream.first-sdk-delta")
+      ).toBe(false);
+    } finally {
+      releaseText();
+    }
+    expect(await consumed).toBe("Complete reply.");
+    expect(chunks).toEqual(["Complete reply."]);
+    const spans = timer.summary().spans;
+    expect(spans.filter((span) => span.name === "openai.stream.first-provider-event")).toHaveLength(
+      1
+    );
+    const reports = spans.filter((span) => span.name === "openai.stream.provider-timing");
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.meta).toMatchObject({
+      queueMs: 200,
+      promptMs: 50,
+      completionMs: 10,
+      totalMs: 260,
+    });
+    for (const privateText of [PRIVATE_KEY, PRIVATE_HEADER, PRIVATE_PROMPT, "Complete reply."])
+      expect(JSON.stringify(spans)).not.toContain(privateText);
+    expect(logs.serialized()).not.toContain(PRIVATE_KEY);
+  });
 
   it("resolves all endpoint variants without logging endpoint values", () => {
     const logs = diagnostics();
