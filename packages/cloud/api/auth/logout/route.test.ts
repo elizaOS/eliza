@@ -12,7 +12,10 @@ const getCurrentUserMock = mock(
 const readStewardSessionTokenMock = mock((): string | null => null);
 const endAllUserSessionsMock = mock(async () => undefined);
 const verifyStewardTokenMock = mock(
-  async (): Promise<{ userId: string; issuedAt: number } | null> => ({
+  async (
+    _env: unknown,
+    _token: string,
+  ): Promise<{ userId: string; issuedAt: number } | null> => ({
     userId: "steward-1",
     issuedAt: 100,
   }),
@@ -216,6 +219,57 @@ describe("POST /api/auth/logout cookie clearing", () => {
     );
   });
 
+  for (const boundary of ["bridge", "inference"] as const) {
+    test(`retains the cookie needed to retry an unconfirmed ${boundary} logout`, async () => {
+      readStewardSessionTokenMock.mockReturnValue("stale.bearer.signature");
+      verifyStewardTokenMock.mockImplementation(async (_env, token) =>
+        token === "valid.cookie.signature"
+          ? { userId: "cookie-user", issuedAt: 200 }
+          : null,
+      );
+      getCurrentUserMock.mockResolvedValue({
+        id: "cookie-user",
+        organization_id: "cookie-org",
+      });
+      if (boundary === "bridge") {
+        markSsoBridgeLogoutMock
+          .mockRejectedValueOnce(new Error("store unavailable"))
+          .mockRejectedValueOnce(new Error("store unavailable"));
+      } else {
+        revokeInferenceSessionsThroughMock.mockRejectedValueOnce(
+          new Error("store unavailable"),
+        );
+      }
+      let cookie = "steward-token-staging=valid.cookie.signature";
+      const request = () =>
+        app.request(
+          "/",
+          {
+            method: "POST",
+            headers: {
+              host: "api-staging.elizacloud.ai",
+              origin: "https://cloud-staging.eliza.app",
+              authorization: "Bearer stale.bearer.signature",
+              cookie,
+            },
+          },
+          {
+            ENVIRONMENT: "staging",
+            NODE_ENV: "production",
+            INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+          },
+        );
+      const failed = await request();
+      expect(failed.status).toBe(503);
+      // Apply the route's cookie deletion exactly as a browser would before retrying.
+      if (deletedCookieNames(failed).includes("steward-token-staging"))
+        cookie = "";
+      const retried = await request();
+      expect(retried.status).toBe(200);
+      expect(deletedCookieNames(retried)).toContain("steward-token-staging");
+    });
+  }
+
   test("strong rollout commits the session cutoff before reporting logout success", async () => {
     readStewardSessionTokenMock.mockReturnValue("prod-token");
     getCurrentUserMock.mockResolvedValue({
@@ -250,7 +304,7 @@ describe("POST /api/auth/logout cookie clearing", () => {
     );
   });
 
-  test("strong rollout clears cookies but returns 503 when the cutoff is unconfirmed", async () => {
+  test("strong rollout preserves retry credentials when the cutoff is unconfirmed", async () => {
     readStewardSessionTokenMock.mockReturnValue("prod-token");
     getCurrentUserMock.mockResolvedValue({
       id: "user-1",
@@ -278,7 +332,7 @@ describe("POST /api/auth/logout cookie clearing", () => {
     );
 
     expect(res.status).toBe(503);
-    expect(deletedCookieNames(res)).toContain("steward-token");
+    expect(deletedCookieNames(res)).not.toContain("steward-token");
     expect((await res.json()) as unknown).toEqual({
       error: "Logout revocation is temporarily unavailable",
       code: "logout_revocation_unavailable",

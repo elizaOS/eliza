@@ -45,6 +45,7 @@
  * next sync), and the explicit app-origin logout marker prevents a bounce.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import {
   readStoredStewardToken,
@@ -686,8 +687,12 @@ export async function signOutFromSsoBridgedHost(
       Promise.resolve(undefined);
   const response = await serverLogout;
   if (response && !response.ok) {
-    throw new Error(
+    throw new ElizaError(
       `Eliza Cloud could not end the browser session (${response.status}).`,
+      {
+        code: "HOSTED_LOGOUT_UNCONFIRMED",
+        context: { status: response.status, hostname },
+      },
     );
   }
   await clearStaleStewardSession();

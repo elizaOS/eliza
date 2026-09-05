@@ -543,6 +543,69 @@ describe("cache independence — the guarantees may not depend on atomic cache o
 });
 
 describe("logout stays logged out (cross-host)", () => {
+  test("logout retries survive a real marker-store outage and then block the paired host", async () => {
+    const { sql } = await import("drizzle-orm");
+    const { dbWrite } = await import("@/db/client");
+    const { default: logout } = await import("../auth/logout/route");
+    const userId = "logout-retry-cookie-user";
+    const cookieToken = await mintToken(userId, { iatOffsetSec: -10 });
+    const staleBearer = await mintToken(userId, { iatOffsetSec: -7200 });
+    const pair = await makeVerifierPair();
+    const pendingCode = await mintCode(cookieToken, pair.challenge);
+    let cookie = `steward-token-test=${cookieToken}`;
+    const requestLogout = () =>
+      logout.request(
+        "/",
+        {
+          method: "POST",
+          headers: {
+            host: "api.eliza.app",
+            origin: "https://eliza.app",
+            authorization: `Bearer ${staleBearer}`,
+            cookie,
+          },
+        },
+        ENV,
+      );
+
+    // Removing the real table makes both persistence attempts fail without a
+    // mock replacing the route, credential verifier, service or database client.
+    await dbWrite.execute(
+      sql`ALTER TABLE sso_bridge_logout_markers RENAME TO sso_bridge_logout_markers_unavailable`,
+    );
+    try {
+      const failed = await requestLogout();
+      expect(failed.status).toBe(503);
+      if (
+        failed.headers
+          .getSetCookie()
+          .some(
+            (value) =>
+              value.startsWith("steward-token-test=") &&
+              /Max-Age=0/i.test(value),
+          )
+      )
+        cookie = "";
+    } finally {
+      await dbWrite.execute(
+        sql`ALTER TABLE sso_bridge_logout_markers_unavailable RENAME TO sso_bridge_logout_markers`,
+      );
+    }
+    const retried = await requestLogout();
+    expect(retried.status).toBe(200);
+    expect(
+      retried.headers
+        .getSetCookie()
+        .some(
+          (value) =>
+            value.startsWith("steward-token-test=") && /Max-Age=0/i.test(value),
+        ),
+    ).toBe(true);
+    const bridged = await exchange(pendingCode, pair.verifier);
+    expect(bridged.status).toBe(401);
+    expect(await bridged.json()).toMatchObject({ code: "session_ended" });
+  });
+
   test("after an explicit logout, pre-logout tokens can neither mint nor exchange; a fresh login bridges again", async () => {
     const userId = "user-logout";
     const preLogoutToken = await mintToken(userId, { iatOffsetSec: -10 });

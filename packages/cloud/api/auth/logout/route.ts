@@ -4,6 +4,7 @@
  * Also invalidates Redis caches to ensure immediate token invalidation.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 import { deleteCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
@@ -67,25 +68,6 @@ app.post("/", async (c) => {
   let verifiedClaims: Awaited<ReturnType<typeof verifyStewardTokenCached>> =
     null;
 
-  // Clear cookies FIRST. Clearing them is what actually logs the user out, and
-  // it must happen even if the server-side teardown below fails (a transient DB
-  // error during logout must not leave the session cookies in place — that was
-  // the prior behavior, which left users "still logged in" after a failed
-  // logout). The session-record teardown + cache invalidation are best-effort
-  // hygiene (caches expire on their own TTL).
-  const domain = cookieDomainForHost(c.req.header("host"));
-  const stewardOpts = domain ? { path: "/", domain } : { path: "/" };
-  // Non-production clears only its suffixed pair. The unsuffixed legacy names
-  // are production's live cookies on the shared parent domain; deleting them
-  // from staging/dev signs the user out of production.
-  // In production the scoped names already ARE the historical unsuffixed names,
-  // so a single set of deleteCookie calls covers both eras. The separate legacy
-  // clear block was redundant (#14130).
-  deleteCookie(c, cookieNames.token, stewardOpts);
-  deleteCookie(c, cookieNames.refreshToken, stewardOpts);
-  deleteCookie(c, cookieNames.authed, stewardOpts);
-  deleteCookie(c, "eliza-anon-session", { path: "/" });
-
   // Stamp the cross-host SSO logout marker FIRST and in its own guarded block:
   // the sso-bridge legs and the cookie-planting session-sync endpoint refuse
   // tokens issued before this moment, so an explicit logout cannot be silently
@@ -111,7 +93,9 @@ app.post("/", async (c) => {
         }
       }
       if (!verifiedClaims) {
-        throw new Error("Presented Steward token could not be verified");
+        throw new ElizaError("Presented Steward token could not be verified", {
+          code: "LOGOUT_CREDENTIAL_UNVERIFIED",
+        });
       }
       try {
         await markSsoBridgeLogout(verifiedClaims.userId);
@@ -122,10 +106,8 @@ app.post("/", async (c) => {
       }
       logger.debug("[Logout] Stamped SSO bridge logout marker");
     } catch (error) {
-      // error-policy:J1 boundary translation — cookies are already cleared,
-      // but without the cross-host barrier a surviving paired-origin session
-      // can immediately restore them. Report a retryable failure instead of
-      // authorizing the client to navigate away as though logout were durable.
+      // error-policy:J1 preserve retry credentials and return a failure until
+      // the cross-host barrier has been durably confirmed.
       logger.error(
         "[Logout] FAILED to stamp SSO bridge logout marker — cross-host logout barrier not persisted",
         {
@@ -152,15 +134,39 @@ app.post("/", async (c) => {
         verifiedClaims.issuedAt,
       );
     } catch (error) {
-      // error-policy:J1 cookies are already cleared, but the server must not
-      // claim a globally complete logout until the strong inference boundary
-      // confirms that the presented session generation is denied.
+      // error-policy:J1 preserve retry credentials until the strong inference
+      // boundary confirms that the presented session generation is denied.
       logger.error("[Logout] Strong inference-session revocation failed", {
         error: error instanceof Error ? error.message : String(error),
       });
       logoutRevocationFailed = true;
     }
   }
+
+  if (logoutRevocationFailed) {
+    return c.json(
+      {
+        error: "Logout revocation is temporarily unavailable",
+        code: "logout_revocation_unavailable" as const,
+      },
+      503,
+    );
+  }
+
+  // Clear browser credentials only after durable revocation is confirmed.
+  // A failed attempt must preserve the cookie needed to authenticate its retry.
+  const domain = cookieDomainForHost(c.req.header("host"));
+  const stewardOpts = domain ? { path: "/", domain } : { path: "/" };
+  // Non-production clears only its suffixed pair. The unsuffixed legacy names
+  // are production's live cookies on the shared parent domain; deleting them
+  // from staging/dev signs the user out of production.
+  // In production the scoped names already ARE the historical unsuffixed names,
+  // so a single set of deleteCookie calls covers both eras. The separate legacy
+  // clear block was redundant (#14130).
+  deleteCookie(c, cookieNames.token, stewardOpts);
+  deleteCookie(c, cookieNames.refreshToken, stewardOpts);
+  deleteCookie(c, cookieNames.authed, stewardOpts);
+  deleteCookie(c, "eliza-anon-session", { path: "/" });
 
   try {
     // Only tear down caches/sessions when the request presented a Steward JWT
@@ -204,16 +210,6 @@ app.post("/", async (c) => {
       {
         error: error instanceof Error ? error.message : String(error),
       },
-    );
-  }
-
-  if (logoutRevocationFailed) {
-    return c.json(
-      {
-        error: "Logout revocation is temporarily unavailable",
-        code: "logout_revocation_unavailable" as const,
-      },
-      503,
     );
   }
 
