@@ -348,6 +348,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       {!selection.cloudRuntimeLocked ? (
         <ModelConfigurationPanel
           activeChatProvider={activeChatCatalogProvider}
+          showChatModels={
+            !isSubscriptionProviderSelectionId(resolvedSelectedId)
+          }
         />
       ) : null}
 
