@@ -1422,7 +1422,10 @@ function KnowledgeDocumentsViewForAuthority({
           }
           action={addControl}
         >
-          {!documentsUnavailable && !loadIssue && !hasSearchQuery ? (
+          {!documentsUnavailable &&
+          !loadIssue &&
+          !hasSearchQuery &&
+          (visibleFacets.length > 1 || showScopeFilter) ? (
             <div
               data-slot="settings-row"
               className="flex min-h-14 w-full items-center justify-between gap-2 px-3 py-2"
