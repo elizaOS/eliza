@@ -38,22 +38,24 @@ function isTaskServiceLike(service: unknown): service is TaskServiceLike {
   );
 }
 
-let runDueTasksInFlight: Promise<void> | null = null;
+const runDueTasksInFlight = new WeakMap<TaskServiceLike, Promise<void>>();
 
 async function runDueTasksOnce(service: TaskServiceLike): Promise<{
   coalesced: boolean;
 }> {
-  if (runDueTasksInFlight !== null) {
-    await runDueTasksInFlight;
+  const existing = runDueTasksInFlight.get(service);
+  if (existing !== undefined) {
+    await existing;
     return { coalesced: true };
   }
 
-  runDueTasksInFlight = service.runDueTasks();
+  const promise = service.runDueTasks();
+  runDueTasksInFlight.set(service, promise);
   try {
-    await runDueTasksInFlight;
+    await promise;
     return { coalesced: false };
   } finally {
-    runDueTasksInFlight = null;
+    runDueTasksInFlight.delete(service);
   }
 }
 

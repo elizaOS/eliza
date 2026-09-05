@@ -111,4 +111,40 @@ describe("handleBackgroundTasksRoute", () => {
     await expect(handleBackgroundTasksRoute(ctx)).resolves.toBe(false);
     expect(json).not.toHaveBeenCalled();
   });
+
+  it("does not coalesce runs for different service instances", async () => {
+    let resolveA: (() => void) | undefined;
+    let resolveB: (() => void) | undefined;
+    const runA = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveA = resolve;
+        }),
+    );
+    const runB = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveB = resolve;
+        }),
+    );
+    const runtimeA = { getService: vi.fn(() => ({ runDueTasks: runA })) };
+    const runtimeB = { getService: vi.fn(() => ({ runDueTasks: runB })) };
+    const ctxA = makeCtx("POST", "/api/background/run-due-tasks", runtimeA);
+    const ctxB = makeCtx("POST", "/api/background/run-due-tasks", runtimeB);
+    const pA = handleBackgroundTasksRoute(ctxA.ctx);
+    const pB = handleBackgroundTasksRoute(ctxB.ctx);
+    resolveA?.();
+    resolveB?.();
+    await Promise.all([pA, pB]);
+    expect(runA).toHaveBeenCalledOnce();
+    expect(runB).toHaveBeenCalledOnce();
+    expect(ctxA.json).toHaveBeenCalledWith(
+      ctxA.ctx.res,
+      expect.objectContaining({ ok: true, coalesced: false }),
+    );
+    expect(ctxB.json).toHaveBeenCalledWith(
+      ctxB.ctx.res,
+      expect.objectContaining({ ok: true, coalesced: false }),
+    );
+  });
 });
