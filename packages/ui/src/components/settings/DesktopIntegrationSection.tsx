@@ -10,6 +10,8 @@ import { ElizaError } from "@elizaos/core";
 import * as React from "react";
 import { invokeDesktopBridgeRequest } from "../../bridge";
 import { useAppSelector } from "../../state";
+import { ChatHotkeySettingsGroup } from "./ChatHotkeySettingsGroup";
+import { DesktopShortcutsSection } from "./DesktopShortcutsSection";
 import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "./settings-layout";
 
@@ -121,7 +123,6 @@ export function DesktopIntegrationSection() {
     <SettingsStack>
       <SettingsGroup
         title={t("settings.desktop", { defaultValue: "Desktop app" })}
-        footer="These controls are available when Eliza is running as a desktop app."
       >
         <SettingsSwitchRow
           agentId="general-launch-on-login"
@@ -137,6 +138,8 @@ export function DesktopIntegrationSection() {
           onCheckedChange={setLaunchOnLogin}
         />
       </SettingsGroup>
+      <ChatHotkeySettingsGroup />
+      <DesktopShortcutsSection />
     </SettingsStack>
   );
 }
