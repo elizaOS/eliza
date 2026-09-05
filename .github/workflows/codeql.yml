@@ -236,6 +236,6 @@ jobs:
           config-file: ./.github/codeql-generated-config.yml
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938
         with:
           category: /language:javascript-typescript/shard:${{ matrix.shard }}
