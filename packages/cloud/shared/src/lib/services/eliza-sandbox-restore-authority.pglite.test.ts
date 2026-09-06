@@ -24,6 +24,7 @@ import {
   agentSandboxesRepository,
   type ProvisioningAdmissionCapture,
 } from "../../db/repositories/agent-sandboxes";
+import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
 import {
   type AgentBackupDeltaData,
   type AgentBackupStateData,
@@ -443,6 +444,8 @@ beforeAll(async () => {
     for (const ddl of PROVISIONING_JOB_TEST_TABLES) {
       await dbWrite.execute(sql.raw(ddl));
     }
+    const { getPgliteClientForTests } = await import("../../db/client");
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   } catch {
     pgliteReady = false;
   }
