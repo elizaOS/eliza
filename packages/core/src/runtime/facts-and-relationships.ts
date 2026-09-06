@@ -765,8 +765,11 @@ async function persistFactsAndRelationships(
 		typeof runtime.createMemory === "function"
 	) {
 		for (const rel of parsed.relationships) {
-			const normalized = resolveRedactedRelationshipEnds(
+			const normalized = humanizeRelationshipEnds(
 				normalizeRelationshipForPersistence(rel),
+				roomEntities,
+				runtime,
+				message,
 			);
 			if (!normalized) continue;
 			const sourceEntityId = resolveRelationshipEntityId(
@@ -899,21 +902,49 @@ function normalizeRelationshipForPersistence(
 const REDACTION_PLACEHOLDER_PATTERN = /^\[REDACTED:[A-Z0-9_]+\]$/;
 
 /**
- * The extraction prompt redacts the owner's entity id, and the model echoes
- * the placeholder back as a relationship end ("[REDACTED:ELIZA_ADMIN_ENTITY_ID]
- * has_dog Biscuit" was stored live 2026-09-06 05:38). A placeholder subject is
- * the speaker and becomes "User"; a placeholder object names nobody and drops
- * the relationship.
+ * Relationship ends must read as names. The model returns the speaker as the
+ * prompt's redaction placeholder or as a raw entity uuid (live 2026-09-06
+ * 05:38 and 05:47: "[REDACTED:ELIZA_ADMIN_ENTITY_ID] has_dog Biscuit" was
+ * stored — the uuid form is redacted only when written). The speaker becomes
+ * "User", the agent its character name, a room participant its first name;
+ * an end that resolves to nobody drops the relationship.
  */
-function resolveRedactedRelationshipEnds(
+function humanizeRelationshipEnds(
 	normalized: { subject: string; predicate: string; object: string } | null,
+	entities: readonly RoomEntityRef[],
+	runtime: IAgentRuntime,
+	message: Memory,
 ): { subject: string; predicate: string; object: string } | null {
 	if (!normalized) return null;
-	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.object)) return null;
-	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.subject)) {
-		return { ...normalized, subject: "User" };
+	const humanize = (
+		value: string,
+	): { value: string; fromId: boolean } | null => {
+		const uuid = asUuidOrNull(value);
+		const placeholder = REDACTION_PLACEHOLDER_PATTERN.test(value);
+		if (!uuid && !placeholder) return { value, fromId: false };
+		if (placeholder || uuid === message.entityId) {
+			return { value: "User", fromId: true };
+		}
+		if (uuid === runtime.agentId) {
+			return { value: runtime.character.name ?? "Agent", fromId: true };
+		}
+		const entity = entities.find((candidate) => candidate.id === uuid);
+		const name = entity?.names.find((candidate) => candidate.trim().length > 0);
+		return name ? { value: name, fromId: true } : null;
+	};
+	const subject = humanize(normalized.subject);
+	const object = humanize(normalized.object);
+	if (!subject || !object) return null;
+	// An id or placeholder object that resolves to the subject's own person is
+	// the speaker talking about themselves, not a relationship to anyone.
+	if (
+		object.fromId &&
+		normalizeForComparison(subject.value) ===
+			normalizeForComparison(object.value)
+	) {
+		return null;
 	}
-	return normalized;
+	return { ...normalized, subject: subject.value, object: object.value };
 }
 
 function sanitizePersistedFact(runtime: IAgentRuntime, value: string): string {

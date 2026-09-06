@@ -805,6 +805,64 @@ describe("runFactsAndRelationshipsStage", () => {
 		expect(params.messages?.[1]?.content).not.toContain("room_entities:");
 	});
 
+	it("renders uuid relationship ends as names: the speaker's own id becomes User, a room entity its name", async () => {
+		const speaker = makeMessage().entityId as string;
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{ subject: speaker, predicate: "has_dog", object: "Biscuit" },
+					{
+						subject: "user",
+						predicate: "works_with",
+						object: "00000000-0000-0000-0000-0000000000a1",
+					},
+					{
+						subject: "user",
+						predicate: "knows",
+						object: "99999999-0000-0000-0000-000000000000",
+					},
+				],
+				thought: "three rels",
+			}),
+		);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: {
+				relationships: [
+					{ subject: speaker, predicate: "has_dog", object: "Biscuit" },
+					{
+						subject: "user",
+						predicate: "works_with",
+						object: "00000000-0000-0000-0000-0000000000a1",
+					},
+					{
+						subject: "user",
+						predicate: "knows",
+						object: "99999999-0000-0000-0000-000000000000",
+					},
+				],
+			},
+		});
+		expect(result.written.relationships).toBe(2);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({ text: "User has_dog Biscuit" }),
+			}),
+			"facts",
+			true,
+		);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({ text: "user works_with Alice" }),
+			}),
+			"facts",
+			true,
+		);
+	});
+
 	it("stores a redaction-placeholder subject as the speaker and drops a placeholder object", async () => {
 		// Live 2026-09-06 05:38: the model echoed the prompt's redacted owner id
 		// back as the subject and "[REDACTED:ELIZA_ADMIN_ENTITY_ID] has_dog
