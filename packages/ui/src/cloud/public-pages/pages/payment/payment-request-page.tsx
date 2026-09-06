@@ -12,6 +12,7 @@
  * and revalidated against the server immediately before checkout navigation.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { AlertCircle, CreditCard, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -372,7 +373,7 @@ export default function PaymentRequestPage() {
     !deadlinePassed &&
     Boolean(paymentRequest.hostedUrl);
   const expiresLabel = formatDeadline(deadline);
-  const shortId = paymentRequest.id.slice(0, 8);
+  const shortId = truncateWellFormed(toWellFormedUnicode(paymentRequest.id), 8);
   const provider = providerLabel(paymentRequest.provider, t);
   const displayedError: PageError | null = hasInvalidPayableDeadline
     ? { kind: "invalid-deadline" }

@@ -9,6 +9,7 @@
  * resolves + presents the shared character and links into the app chat.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -163,7 +164,7 @@ export default function PublicChatPage() {
           />
         ) : (
           <div className="mx-auto flex size-20 items-center justify-center rounded-full border border-border bg-bg-elevated text-2xl font-semibold text-muted">
-            {character.name.slice(0, 2).toUpperCase()}
+            {truncateWellFormed(toWellFormedUnicode(character.name), 2).toUpperCase()}
           </div>
         )}
         <div className="space-y-2">
