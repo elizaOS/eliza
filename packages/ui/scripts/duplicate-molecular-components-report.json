@@ -108,7 +108,7 @@
       "maintainedReferences": 2
     }
   ],
-  "eligibleComponents": 101,
+  "eligibleComponents": 100,
   "clusters": [
     {
       "archetype": "row",

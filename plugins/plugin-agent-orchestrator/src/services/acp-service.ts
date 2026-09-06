@@ -270,7 +270,9 @@ function isIncompletePromptStopReason(stopReason: string | undefined): boolean {
 }
 
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
-const SUCCESSOR_CODEX_ACP_PACKAGE = "@agentclientprotocol/codex-acp@1.1.2";
+const SUCCESSOR_CODEX_ACP_PACKAGE = "@agentclientprotocol/codex-acp@1.10.0";
+const PREVIOUS_SUCCESSOR_CODEX_ACP_COMMAND =
+  "npx -y @agentclientprotocol/codex-acp@1.1.2";
 const LEGACY_CODEX_ACP_COMMAND = "npx -y @zed-industries/codex-acp@0.14.0";
 const DECLARED_SUCCESSOR_CODEX_ACP_COMMAND = `npx -y ${SUCCESSOR_CODEX_ACP_PACKAGE}`;
 
@@ -298,6 +300,7 @@ export function resolveCodexAcpCommand(
   if (
     !trimmed ||
     trimmed === LEGACY_CODEX_ACP_COMMAND ||
+    trimmed === PREVIOUS_SUCCESSOR_CODEX_ACP_COMMAND ||
     trimmed === DECLARED_SUCCESSOR_CODEX_ACP_COMMAND
   ) {
     return fallback;
@@ -973,6 +976,7 @@ export class AcpService extends Service {
       resolveCancellationRequested: () => void;
     }
   >();
+  private readonly reclaimingSessionIds = new Set<string>();
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
   private readonly nativeClients = new Map<string, NativeAcpClient>();
@@ -2409,8 +2413,14 @@ export class AcpService extends Service {
   ): Promise<PromptResult> {
     this.ensureStarted();
     const session = await this.requireSession(sessionId);
-    if (this.promptTurns.has(sessionId)) {
-      throw new Error(`ACP session is already busy: ${sessionId}`);
+    if (
+      this.promptTurns.has(sessionId) ||
+      this.reclaimingSessionIds.has(sessionId)
+    ) {
+      throw new ElizaError(`ACP session is already busy: ${sessionId}`, {
+        code: "ACP_SESSION_BUSY",
+        context: { sessionId },
+      });
     }
     let resolveSettled: () => void = () => undefined;
     const settled = new Promise<void>((resolve) => {
@@ -3137,6 +3147,35 @@ export class AcpService extends Service {
 
   async stopSession(sessionId: string): Promise<void> {
     await this.closeSession(sessionId);
+  }
+
+  /** Stop a promptable session without racing a follow-up prompt. */
+  async stopPromptableSession(
+    sessionId: string,
+    beforeStop?: () => Promise<void>,
+  ): Promise<boolean> {
+    const selected = await this.requireSession(sessionId);
+    if (
+      selected.status !== "ready" ||
+      this.promptTurns.has(sessionId) ||
+      this.reclaimingSessionIds.has(sessionId)
+    ) {
+      return false;
+    }
+    // No await between eligibility and claim: sendPrompt checks the same set
+    // before installing its turn, so exactly one side wins the session.
+    this.reclaimingSessionIds.add(sessionId);
+    try {
+      const fresh = await this.requireSession(sessionId);
+      if (fresh.status !== "ready" || this.promptTurns.has(sessionId)) {
+        return false;
+      }
+      await beforeStop?.();
+      await this.closeSession(sessionId);
+      return true;
+    } finally {
+      this.reclaimingSessionIds.delete(sessionId);
+    }
   }
 
   private async closeInitialTaskSession(sessionId: string): Promise<void> {
@@ -4517,6 +4556,32 @@ export class AcpService extends Service {
     }
 
     if (sessionId && method === "session/update") {
+      if (sessionUpdate === "session_info_update") {
+        const meta = asRecord(updateBlock?._meta);
+        const air = asRecord(asRecord(meta?.jetbrains)?.air);
+        const diagnostic = asRecord(air?.sessionFailure);
+        if (
+          diagnostic &&
+          typeof diagnostic.title === "string" &&
+          (diagnostic.severity === "warning" || diagnostic.severity === "error")
+        ) {
+          this.emitSessionEvent(sessionId, "diagnostic", { diagnostic });
+          this.log(
+            diagnostic.severity === "warning" ? "warn" : "error",
+            diagnostic.title,
+            { sessionId, diagnostic },
+          );
+          if (diagnostic.severity === "error") {
+            this.runtime.reportError(
+              "AcpService.nativeDiagnostic",
+              new ElizaError(diagnostic.title, {
+                code: "ACP_SESSION_DIAGNOSTIC",
+                context: { sessionId, diagnostic },
+              }),
+            );
+          }
+        }
+      }
       // agent_message_chunk: content.text streams
       const content = asRecord(updateBlock?.content);
       const role = stringifyMaybe(

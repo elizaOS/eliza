@@ -73,7 +73,7 @@
   },
   "dependencies": {
     "@octokit/rest": "^22.0.0",
-    "smthrs": "0.34.0",
+    "smthrs": "0.35.0",
     "coding-agent-adapters": "0.16.3",
     "drizzle-orm": "0.45.2",
     "effect": "4.0.0-beta.105",
@@ -183,7 +183,7 @@
         "type": "string",
         "description": "Native ACP command used for Codex sessions when ELIZA_ACP_TRANSPORT=native. The manifest default and legacy @zed-industries default select the isolated managed successor; any other custom command is executed verbatim.",
         "required": false,
-        "default": "npx -y @agentclientprotocol/codex-acp@1.1.2",
+        "default": "npx -y @agentclientprotocol/codex-acp@1.10.0",
         "sensitive": false
       },
       "ELIZA_CODEX_ACP_SANDBOX_MODE": {

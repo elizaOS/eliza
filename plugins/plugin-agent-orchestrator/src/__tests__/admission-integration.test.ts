@@ -127,10 +127,36 @@ class FakeAcp {
     return this.sessions.get(id) ?? null;
   }
 
+  async updateSessionMetadata(
+    id: string,
+    patch: Record<string, unknown>,
+  ): Promise<void> {
+    const session = this.sessions.get(id);
+    if (session) session.metadata = { ...session.metadata, ...patch };
+  }
+
+  setSessionStatus(id: string, status: SessionInfo["status"]): void {
+    const session = this.sessions.get(id);
+    if (session) session.status = status;
+  }
+
   async stopSession(id: string): Promise<void> {
     const s = this.sessions.get(id);
     if (s) s.status = "stopped";
     this.handler?.(id, "stopped", {});
+  }
+
+  async stopPromptableSession(
+    id: string,
+    beforeStop?: () => Promise<void>,
+  ): Promise<boolean> {
+    const selected = await this.getSession(id);
+    if (selected?.status !== "ready") return false;
+    await beforeStop?.();
+    const fresh = await this.getSession(id);
+    if (fresh?.status !== "ready") return false;
+    await this.stopSession(id);
+    return true;
   }
 
   onSessionEvent(cb: EventHandler): () => void {
@@ -277,8 +303,8 @@ describe("admission queue integration (#13772)", () => {
     });
     await service.start();
 
-    // Task A takes the only worker slot; its ACP session is keepAlive (stays
-    // `running` at the transport even after the task finishes).
+    // Task A takes the only worker slot; its retained ACP session returns to
+    // promptable idle after the task finishes.
     const a = await newTask(store, "a");
     await service.spawnAgentForTask(a);
     const liveSession = acp.listSessions()[0];
@@ -288,6 +314,7 @@ describe("admission queue integration (#13772)", () => {
     // keepAlive session now pins a slot with no live work. Mark it done directly
     // in the store to model that.
     await store.updateTask(a, { status: "done" });
+    if (liveSession) acp.setSessionStatus(liveSession.id, "ready");
 
     // Task B queues behind the pinned slot, then a drain reclaims A's idle
     // session and dispatches B.
@@ -306,6 +333,63 @@ describe("admission queue integration (#13772)", () => {
     expect(
       acp.listSessions().find((s) => s.id === liveSession?.id)?.status,
     ).toBe("stopped");
+  });
+
+  it("does not reclaim a busy retained follow-up under cap-1 pressure", async () => {
+    const acp = new FakeAcp(1);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = new OrchestratorTaskService(makeRuntime(acp) as never, {
+      store,
+    });
+    await service.start();
+
+    const a = await newTask(store, "busy-follow-up");
+    await service.spawnAgentForTask(a);
+    const retained = acp.listSessions()[0];
+    expect(retained).toBeDefined();
+    await store.updateTask(a, { status: "done" });
+    if (retained) acp.setSessionStatus(retained.id, "busy");
+
+    const b = await newTask(store, "queued-behind-follow-up");
+    const queued = await service.spawnAgentForTask(b);
+    expect(queued?.admission?.state).toBe("queued");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect((await acp.getSession(retained?.id ?? ""))?.status).toBe("busy");
+    expect((await service.getAdmissionSnapshot()).queueDepth).toBe(1);
+  });
+
+  it("does not stamp or stop a candidate claimed by a follow-up", async () => {
+    class PromptRaceAcp extends FakeAcp {
+      override async stopPromptableSession(id: string): Promise<boolean> {
+        this.setSessionStatus(id, "busy");
+        return false;
+      }
+    }
+
+    const acp = new PromptRaceAcp(1);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = new OrchestratorTaskService(makeRuntime(acp) as never, {
+      store,
+    });
+    await service.start();
+
+    const a = await newTask(store, "ready-race");
+    await service.spawnAgentForTask(a);
+    const retained = acp.listSessions()[0];
+    expect(retained).toBeDefined();
+    await store.updateTask(a, { status: "done" });
+    if (retained) acp.setSessionStatus(retained.id, "ready");
+    const b = await newTask(store, "queued-during-race");
+    const queued = await service.spawnAgentForTask(b);
+    expect(queued?.admission?.state).toBe("queued");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect((await acp.getSession(retained?.id ?? ""))?.status).toBe("busy");
+    expect((await service.getAdmissionSnapshot()).queueDepth).toBe(1);
+    const survivor = await acp.getSession(retained?.id ?? "");
+    expect(survivor?.metadata?.adminStopReason).toBeUndefined();
+    expect(survivor?.metadata?.adminStopStampedAt).toBeUndefined();
   });
 
   it("spawns the read-only verifier at full worker cap via system headroom", async () => {

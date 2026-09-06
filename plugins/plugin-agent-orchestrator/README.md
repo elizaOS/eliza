@@ -31,7 +31,7 @@ export ELIZA_ACP_TRANSPORT=native
 export ELIZA_ACP_DEFAULT_AGENT=elizaos
 export ELIZA_ELIZAOS_ACP_COMMAND="eliza-code-acp"
 export ELIZA_PI_AGENT_ACP_COMMAND="pi-agent"
-export ELIZA_CODEX_ACP_COMMAND="npx -y @agentclientprotocol/codex-acp@1.1.2"
+export ELIZA_CODEX_ACP_COMMAND="npx -y @agentclientprotocol/codex-acp@1.10.0"
 export ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
 ```
 
@@ -157,7 +157,7 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_ACP_WARM_SPAWN` | unset | Set to `1` to keep one pre-initialized native `elizaos` child ready. It starts without session credentials, accepts one authenticated environment claim, and is disposed after that session; unclaimed children are recycled after two minutes. |
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command. |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command. |
-| `ELIZA_CODEX_ACP_COMMAND` | `npx -y @agentclientprotocol/codex-acp@1.1.2` | Native Codex ACP command. The manifest default and the legacy `@zed-industries` default select the isolated managed successor; any other custom command is executed verbatim. |
+| `ELIZA_CODEX_ACP_COMMAND` | `npx -y @agentclientprotocol/codex-acp@1.10.0` | Native Codex ACP command. The manifest default and the legacy `@zed-industries` default select the isolated managed successor; any other custom command is executed verbatim. |
 | `ELIZA_CODEX_ACP_SANDBOX_MODE` / `ELIZA_CODEX_SANDBOX_MODE` | unset | Optional managed Codex ACP sandbox mode: `read-only`, `workspace-write`, or `danger-full-access`. The successor receives these as `INITIAL_AGENT_MODE`; custom commands are not rewritten. |
 | `ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE` | unset (required when Landlock unavailable) | Codex ACP sandbox mode used when Linux Landlock is unavailable. No default — unset/invalid throws `CODEX_NO_LANDLOCK_NO_FALLBACK` rather than widening to host access. |
 | `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
@@ -232,7 +232,7 @@ These live smokes ship with the repo:
 
 ```bash
 # Native AcpService against Codex ACP. No global acpx is required; the default
-# native Codex command is `npx -y @agentclientprotocol/codex-acp@1.1.2`.
+# native Codex command is `npx -y @agentclientprotocol/codex-acp@1.10.0`.
 # Authenticate Codex first.
 bun run build
 RUN_LIVE_NATIVE_ACP=1 bun run test:e2e:native
@@ -249,7 +249,7 @@ RUN_LIVE_ACPX=1 ELIZA_ACP_TRANSPORT=cli bun run test -- __tests__/live/sub-agent
 ```
 
 `live-native-acp-smoke.mjs` exercises the default native path by spawning a
-real Codex ACP session through `npx -y @agentclientprotocol/codex-acp@1.1.2`,
+real Codex ACP session through `npx -y @agentclientprotocol/codex-acp@1.10.0`,
 sending "what is 7 + 8?", and verifying `task_complete` fires with response
 `"15"`. The Vitest wrapper is skipped unless `RUN_LIVE_NATIVE_ACP=1` is set;
 when enabled, it requires `NATIVE ACP SMOKE PASSED`.

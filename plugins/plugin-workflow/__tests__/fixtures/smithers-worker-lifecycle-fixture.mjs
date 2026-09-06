@@ -37,6 +37,9 @@ if (mode === 'ignore-termination') {
     emit({ kind: 'result', result: { runId: payload.runId, status: 'finished' } });
     process.exit(0);
   }, 100);
+} else if (mode === 'event-before-result') {
+  emit({ kind: 'event', event: { type: 'TaskStarted' } });
+  emit({ kind: 'result', result: { runId: payload.runId, status: 'finished' } });
 } else if (mode === 'oversized-stdout-line') {
   process.stdout.write('x'.repeat(Number(payload.input.outputBytes)));
 } else {
