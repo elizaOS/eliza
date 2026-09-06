@@ -27,12 +27,13 @@ function readVastConfiguration(name: string): string | null {
   return getProviderKey(name);
 }
 
+const EndpointUrlSchema = z.url({ protocol: /^https?$/ });
 const EndpointEntrySchema = z.union([
-  z.string().min(1),
+  EndpointUrlSchema,
   z
     .object({
-      baseUrl: z.string().min(1).optional(),
-      url: z.string().min(1).optional(),
+      baseUrl: EndpointUrlSchema.optional(),
+      url: EndpointUrlSchema.optional(),
       apiKey: z.string().min(1).optional(),
       apiKeyEnv: z.string().min(1).optional(),
       apiModelId: z.string().min(1).optional(),

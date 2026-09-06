@@ -144,6 +144,16 @@ test("provider factory rejects malformed routing before dispatch and preserves v
       expect(calls).toEqual([]);
     }
     delete process.env.VAST_FALLBACK_MODEL_MAP_JSON;
+    for (const endpoint of ["   ", "not-a-url", "/relative", "ftp://example.com", "https://"]) {
+      for (const config of [endpoint, { baseUrl: endpoint }, { url: endpoint }]) {
+        process.env.VAST_ENDPOINTS_JSON = JSON.stringify({ [model]: config });
+        expect(() => getVastProvider(model)).toThrow("VAST_ENDPOINTS_JSON");
+        expect(calls).toEqual([]);
+      }
+    }
+    process.env.VAST_ENDPOINTS_JSON = JSON.stringify({
+      [model]: { url: process.env.VAST_BASE_URL, model: "your_placeholder_model" },
+    });
     const messages = [{ role: "user" as const, content: "Complete routing request payload" }];
     const response = await getVastProvider(model).chatCompletions({
       model,
