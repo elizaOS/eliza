@@ -7,7 +7,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startEliza } from "./eliza.ts";
 import {
   _resetAgentHostBridge,
@@ -23,13 +23,23 @@ async function getBootIntegrityKey(key: string): Promise<string> {
   return integrityKey;
 }
 
+const savedIntegrityKey = process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
 const savedStateDir = process.env.ELIZA_STATE_DIR;
 const savedProfileResolver = process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER;
 const savedCerebrasKey = process.env.CEREBRAS_API_KEY;
 let stateDir: string | null = null;
 
+beforeEach(() => {
+  delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+});
+
 afterEach(async () => {
   _resetAgentHostBridge();
+  if (savedIntegrityKey === undefined) {
+    delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+  } else {
+    process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY = savedIntegrityKey;
+  }
   if (savedStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
   else process.env.ELIZA_STATE_DIR = savedStateDir;
   if (savedProfileResolver === undefined) {
