@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { AgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import type { DispatchRouteArgs } from "./dispatch-route.ts";
 import { dispatchApiRoute, registerInProcessApi } from "./in-process-api.ts";
 import { createRouteKernel } from "./route-kernel.ts";
@@ -16,6 +20,70 @@ function request(runtime: object): DispatchRouteArgs {
 }
 
 describe("full API dispatch over local IPC", () => {
+  it("uses the production server registration, authentication and chat validation across runtime replacement and close", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "eliza-ipc-kernel-"));
+    vi.stubEnv("ELIZA_STATE_DIR", root);
+    vi.stubEnv("ELIZA_CONFIG_PATH", path.join(root, "eliza.json"));
+    vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", path.join(root, "eliza.json"));
+    vi.stubEnv("ELIZA_API_TOKEN", "valid");
+    vi.stubEnv("ELIZA_API_AUTH_TOKEN", "");
+    vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
+    vi.stubEnv("ELIZA_DEVICE_BRIDGE_ENABLED", "0");
+    const runtime = new AgentRuntime({ logLevel: "fatal", plugins: [] });
+    const replacement = new AgentRuntime({ logLevel: "fatal", plugins: [] });
+    let api:
+      | Awaited<ReturnType<typeof import("./server.ts").startApiServer>>
+      | undefined;
+    try {
+      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      await replacement.initialize({
+        allowNoDatabase: true,
+        skipMigrations: true,
+      });
+      const { startApiServer } = await import("./server.ts");
+      expect((await dispatchApiRoute(request(runtime))).status).toBe(503);
+      api = await startApiServer({
+        runtime,
+        skipListen: true,
+        skipDeferredStartupWork: true,
+      });
+      for (const headers of [{}, { authorization: "Bearer wrong" }]) {
+        expect(
+          (await dispatchApiRoute({ ...request(runtime), headers })).status,
+        ).toBe(401);
+      }
+      const invalidChat = await dispatchApiRoute({
+        ...request(runtime),
+        body: "{}",
+      });
+      expect(invalidChat.status).toBe(400);
+      expect(invalidChat.body).toMatchObject({
+        error: {
+          type: "invalid_request_error",
+          message:
+            "messages must be an array containing at least one user message",
+        },
+      });
+      api.updateRuntime(replacement);
+      expect((await dispatchApiRoute(request(runtime))).status).toBe(503);
+      expect(
+        (await dispatchApiRoute({ ...request(replacement), body: "{}" }))
+          .status,
+      ).toBe(400);
+      await api.close();
+      api = undefined;
+      expect((await dispatchApiRoute(request(replacement))).status).toBe(503);
+    } finally {
+      await api?.close();
+      for (const current of [runtime, replacement]) {
+        await current.stop({ fast: true });
+        await current.close();
+      }
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
   it("keeps kernel authentication, body/query bytes and streaming events", async () => {
     const runtime = {};
     const chunks: Buffer[] = [];
