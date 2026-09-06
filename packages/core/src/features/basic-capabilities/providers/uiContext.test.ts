@@ -29,7 +29,7 @@ describe("UI_CONTEXT", () => {
 
 		expect(result.text).toContain("view: notes");
 		expect(result.text).toContain("path: /notes");
-		expect(result.text).toContain("subview: general");
+		expect(result.text).toContain("subview_id: general");
 		expect(result.text).toContain(
 			"view_capabilities: view-actions, inspect-view",
 		);
