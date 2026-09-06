@@ -399,10 +399,10 @@ function expectAppliedMutation(
   resourceId?: string,
 ): void {
   expect(result.success).toBe(true);
-  expect(result.verifiedUserFacing).toBe(true);
-  expect(result.userFacingText).toBe(result.text);
-  expect(result.turnComplete).toBe(true);
-  expect(result.continueChain).toBe(false);
+  expect(result.verifiedUserFacing).toBeUndefined();
+  expect(result.userFacingText).toBeUndefined();
+  expect(result.modelReplyRequired).toBe(true);
+  expect(result.continueChain).toBeUndefined();
   expect(result.data).toMatchObject({ actionName: "TODO", action, op: action });
   expect(result.effectReceipts).toHaveLength(1);
   const receipt = result.effectReceipts?.[0];
@@ -422,7 +422,7 @@ function expectAppliedMutation(
   expect(receipt.commit.kind).toBe("durable");
   expect(receipt.commit.committedAt).toBe(receipt.observedAt);
   expect(Number.isNaN(Date.parse(receipt.observedAt))).toBe(false);
-  expect(result.userFacingEffectReceiptIds).toEqual([receipt.receiptId]);
+  expect(result.userFacingEffectReceiptIds).toBeUndefined();
 }
 
 describe("TODO action", () => {
@@ -499,8 +499,8 @@ describe("TODO action", () => {
       });
       expect(clear.effectReceipts).toBeUndefined();
       expect(clear.verifiedUserFacing).toBeUndefined();
-      expect(clear.turnComplete).toBe(true);
-      expect(clear.continueChain).toBe(false);
+      expect(clear.modelReplyRequired).toBe(true);
+      expect(clear.continueChain).toBeUndefined();
     });
 
     it("replays one committed mutation with a stable noop receipt", async () => {
@@ -524,7 +524,8 @@ describe("TODO action", () => {
       expect(service.rows).toHaveLength(1);
       expect(replay.text).toBe(first.text);
       expect(replay.data).toEqual(first.data);
-      expect(replay.continueChain).toBe(false);
+      expect(replay.continueChain).toBeUndefined();
+      expect(replay.modelReplyRequired).toBe(true);
       expect(replay.effectReceipts?.[0]).toMatchObject({
         receiptId: first.effectReceipts?.[0]?.receiptId,
         outcome: "noop",
@@ -579,7 +580,7 @@ describe("TODO action", () => {
       expect(result.effectReceipts?.[0]?.idempotency.key).toBe(
         "todos:v1:connector-message-2:1",
       );
-      expect(result.continueChain).toBe(false);
+      expect(result.continueChain).toBeUndefined();
     });
   });
 
@@ -626,10 +627,9 @@ describe("TODO action", () => {
         status,
       });
       expect(result.text).toBe(expected);
-      // markCanonicalCallback only preserves the do-not-paraphrase reply when
-      // the delivered text matches userFacingText byte for byte.
-      expect(result.userFacingText).toBe(expected);
-      expect(delivered).toEqual([expected]);
+      // The result is model evidence; no canned callback is delivered.
+      expect(result.userFacingText).toBeUndefined();
+      expect(delivered).toEqual([]);
     });
 
     it.each([
@@ -649,37 +649,37 @@ describe("TODO action", () => {
         status,
       });
       expect(result.text).toBe(expected);
-      expect(result.userFacingText).toBe(expected);
-      expect(delivered).toEqual([expected]);
+      expect(result.userFacingText).toBeUndefined();
+      expect(delivered).toEqual([]);
     });
 
     it("complete and cancel name the state the store committed", async () => {
       const completeId = await seed("Buy trash bags");
       const completed = await confirm({ action: "complete", id: completeId });
       expect(completed.result.text).toBe('Marked "Buy trash bags" done.');
-      expect(completed.result.userFacingText).toBe(completed.result.text);
-      expect(completed.delivered).toEqual([completed.result.text]);
+      expect(completed.result.userFacingText).toBeUndefined();
+      expect(completed.delivered).toEqual([]);
 
       const cancelId = await seed("Return the ladder");
       const cancelled = await confirm({ action: "cancel", id: cancelId });
       expect(cancelled.result.text).toBe('Cancelled "Return the ladder".');
-      expect(cancelled.result.userFacingText).toBe(cancelled.result.text);
-      expect(cancelled.delivered).toEqual([cancelled.result.text]);
+      expect(cancelled.result.userFacingText).toBeUndefined();
+      expect(cancelled.delivered).toEqual([]);
     });
 
     it("delete names the row it removed", async () => {
       const id = await seed("Buy trash bags");
       const { result, delivered } = await confirm({ action: "delete", id });
       expect(result.text).toBe('Deleted "Buy trash bags" from your list.');
-      expect(result.userFacingText).toBe(result.text);
-      expect(delivered).toEqual([result.text]);
+      expect(result.userFacingText).toBeUndefined();
+      expect(delivered).toEqual([]);
     });
 
     it("clear counts what it removed and says so when nothing was there", async () => {
       await seed("Buy trash bags");
       const one = await confirm({ action: "clear" });
       expect(one.result.text).toBe("Cleared 1 todo from your list.");
-      expect(one.result.userFacingText).toBe(one.result.text);
+      expect(one.result.userFacingText).toBeUndefined();
 
       await seed("a");
       await seed("b");
@@ -716,8 +716,8 @@ describe("TODO action", () => {
         content,
       });
       expect(result.text).toBe(expected);
-      expect(result.userFacingText).toBe(expected);
-      expect(delivered).toEqual([expected]);
+      expect(result.userFacingText).toBeUndefined();
+      expect(delivered).toEqual([]);
       expect(result.text).not.toContain("\n");
     });
 
@@ -739,8 +739,8 @@ describe("TODO action", () => {
       expect(encodedContent).toContain("\\u202e");
       expect(encodedContent).toContain("\\u2069");
       expect(JSON.parse(encodedContent)).toBe(content);
-      expect(result.userFacingText).toBe(text);
-      expect(delivered).toEqual([text]);
+      expect(result.userFacingText).toBeUndefined();
+      expect(delivered).toEqual([]);
     });
   });
 

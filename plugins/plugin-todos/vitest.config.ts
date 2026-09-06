@@ -28,6 +28,12 @@ export default defineConfig({
     alias: [
       { find: /^@elizaos\/core\/edge$/, replacement: coreEdgeSource },
       { find: /^@elizaos\/prompts$/, replacement: promptsSource },
+      {
+        find: /^@elizaos\/core\/errors$/,
+        replacement: fileURLToPath(
+          new URL("../../packages/core/src/errors.ts", import.meta.url),
+        ),
+      },
       ...baseAliases,
     ],
   },
