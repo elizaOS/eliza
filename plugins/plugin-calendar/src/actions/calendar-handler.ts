@@ -5653,16 +5653,31 @@ const calendarAction: CalendarHandlerAction = {
       // events" returns "no events today" even when the calendar has
       // dozens of upcoming items. We apply this regardless of whether the
       // chat LLM picked feed or search_events because both subactions go
+      // A relocation's search looks for the event where it is now: the
+      // planner's window, the LLM window and any day named after "to" in the
+      // intent all describe the destination (live 2026-09-06 07:04,
+      // tj-88ef86e2239eff: intent "…so I can move it to Thursday at 6pm"
+      // windowed the search to Thursday and the Wednesday lesson was missed).
       const relocationLookup =
         subaction === "search_events" &&
         isRelocationRequest(messageText(message));
+      const lookupIntent = relocationLookup
+        ? resolveTargetScopedText("update", intent)
+        : intent;
       const baseResolved = resolveCalendarWindow(
-        intent,
+        lookupIntent,
         relocationLookup ? undefined : details,
         subaction === "search_events",
         relocationLookup ? undefined : llmPlan,
         planningTimeZone,
       );
+      if (relocationLookup && !baseResolved.explicitWindow) {
+        baseResolved.request = {
+          ...baseResolved.request,
+          ...buildWideLookupRange(planningTimeZone),
+        };
+        baseResolved.label = "across your calendar";
+      }
       const request = baseResolved.request;
       const label = baseResolved.label;
       const hasExplicitWindow = baseResolved.explicitWindow;
