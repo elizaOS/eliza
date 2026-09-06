@@ -114,7 +114,7 @@ Top-level tabs as of current content:
 
 ## Conventions / gotchas
 
-- This package has no TypeScript source. All content is `.md` / `.mdx`. Do not add a `src/` directory or TypeScript code here.
+- This package publishes documentation, not a TypeScript library. Keep content in `.md` / `.mdx` and validation tooling in `test/`; do not add a production `src/` library here.
 - `docs.json` navigation paths are case-sensitive and must exactly match file paths on disk.
 - The test suite checks every internal link; broken links will fail CI. Always run tests after adding or renaming pages.
 - Public content must appear in `docs.json`. Internal plans and transient

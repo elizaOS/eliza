@@ -120,7 +120,7 @@ bun run --cwd packages/skills clean       # rm -rf dist
 ## Conventions and Gotchas
 
 - **Name must equal directory name.** The loader validates this and warns on mismatch. Names are lowercase `[a-z0-9-]+`, max 64 chars, no leading/trailing/consecutive hyphens.
-- **Description is required.** A skill with a missing or blank description is silently dropped by the loader.
+- **Description is required.** A skill with a missing or blank description is omitted with a warning diagnostic.
 - **Curated learning loop.** Agent-generated skills land in `curated/proposed/` and require human promotion via `promoteSkill(name)` (or the Settings UI) before they load. This prevents untrusted agent output from injecting itself into the prompt.
 - **Symlinks are resolved.** The loader follows symlinks using `statSync`; duplicate real paths are deduplicated.
 - **`serializeSkillFile` is for the learning loop.** Call it to rewrite a SKILL.md after refining provenance/content. It serializes frontmatter as YAML and preserves the body.

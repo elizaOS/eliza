@@ -60,7 +60,7 @@ plugin is the deliberate exception because it reimplements the 1966 chatbot.
 
 ```bash
 bun install            # install workspaces, prepare submodules, patches, and fused inference
-bun run install:light  # alias of bun install (the implicit artifact sync is retired)
+bun run install:light  # alias of bun install
 bun run dev            # start the API and Eliza app development UI
 bun run start          # start the standalone agent host
 bun run build          # build the workspace through Turbo
@@ -117,26 +117,8 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 | `bun run voice:interactive` | `bun run --cwd packages/app-core voice:interactive` |
 | `bun run voice:duet` | `bun run --cwd packages/app-core voice:duet` |
 | `bun run voice:create-profile` | `bun run --cwd packages/app-core voice:create-profile` |
-| `bun run smartglasses:hardware:doctor` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:status` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:validate` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:prove` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:prove:watch` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:prove:noble` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:prove:noble:watch` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:dev:hardware` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:dev:simulator` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:simulator` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:smoke:simulator` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
 | `bun run test:ci:live` | `bun run test:live` |
-| `bun run test:lint` | retired with its aggregate tooling; no direct replacement |
 | `bun run test:lint:no-vi-mocks` | `bun run audit:test-integrity:no-vi-mocks` |
-| `bun run test:lint:lane-coverage` | retired with its tooling; no replacement |
-| `bun run test:lint:test-integrity` | retired with its tooling; no replacement |
-| `bun run test:lint:test-integrity:self-test` | retired with its tooling; no replacement |
-| `bun run verify:smartglasses-software` | retired with the removed smartglasses tooling; no replacement |
-| `bun run personality:judge` | retired with the removed personality benchmark tooling; no replacement |
-| `bun run personality:bench:calibrate` | retired with the removed personality benchmark tooling; no replacement |
 | `bun run lint:all` | `bun run verify` |
 | `bun run build:typescript` | `node packages/scripts/run-turbo.mjs run build` |
 | `bun run audit:mvp-board` | `bun run mvp:closeout-audit` |
@@ -378,32 +360,15 @@ invalid-input, concurrency, authorization, and adversarial paths where they are
 meaningful. A mock or stub standing in for the system under test is useful for
 unit coverage but is not end-to-end proof.
 
-Coverage is a diagnostic signal, not a reason to create work. Do not open an
-issue or PR solely because a file, export, branch, or line is uncovered. Run
-speculative audits before filing; open a narrowly scoped issue only after
-finding a concrete defect, regression, risk, or missing consumer-visible
-capability with an affected caller and observable acceptance result. Do not
-create per-file, per-package, or inventory-only issues whose acceptable outcome
-is “no change.”
-
-A test-only PR must name the realistic regression it prevents, the consumer or
-external boundary that would observe the failure, and why existing higher-level
-coverage does not own the contract. A red result produced by changing the
-asserted literal is not evidence of value. Do not add tests whose material
-assertions only copy constants, names, labels, copy, URLs, CSS classes, visual
-tokens, array lengths, object keys, or implementation literals; check that an
-export, type-shaped object, class, function, property, file, asset, generated
-catalog entry, barrel re-export, or fixture exists; introspect schema or metadata
-descriptors without exercising their database, parser, transport, migration,
-or consumer; prove TypeScript assignability at runtime; snapshot deterministic
-fixtures; restate the implementation; or assert a mock that replaces the system
-under test. Line, branch, and module coverage increases do not justify these
-tests.
-
-Narrow exceptions exist for externally versioned wire values, security
-allowlists, migration contracts, and generated-artifact integrity. Even then,
-exercise or validate the external boundary rather than mirroring its source
-declaration. Close or replace test-only PRs that fail this quality gate.
+Apply the [issue and test quality gate](CONTRIBUTING.md#issue-and-test-quality-gate):
+coverage alone does not justify an issue or test. Findings must identify an
+observable defect or missing capability and its affected consumer. Tests must
+exercise that contract rather than mirror implementation literals, inspect
+exports or metadata, or assert a mock that replaces the system under test.
+Retain externally versioned wire, security, migration, and generated-artifact
+checks when they validate the actual boundary. Remove or replace redundant
+tests; a test-only PR must explain the regression it prevents and why existing
+higher-level coverage does not own it.
 
 ### Evidence bundles and review
 
@@ -439,39 +404,24 @@ for an orange resting control's hover state. The full visual contract lives in
 ## GitHub workflow and definition of done
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before claiming coordinated work or
-opening a pull request. Issues define scoped acceptance criteria; GitHub
-Projects track live ownership and status; discussions coordinate across work;
-the pull request carries the implementation and proof. Do not move a card to
-`Done` unless the board explicitly grants that authority.
+opening a pull request; its issue, coordination, evidence, and merge rules apply.
 
-- Open an issue before a non-trivial change.
+- Open an issue for a concrete finding before a non-trivial change.
 - Use a `feat/`, `fix/`, `docs/`, or `chore/` branch and target `develop`.
 - Before opening or updating a PR, fetch and rebase on `origin/develop`, resolve
-  every conflict, run `bun install`, and run `bun run verify`.
-- Never push feature or fix work directly to `develop`.
+  conflicts, run `bun install`, and run `bun run verify`.
+- Ship through a PR; never push feature or fix work directly to `develop`.
+- Do not move a Project card to `Done` without the board's explicit authority.
+- Deliver working capability with no TODO, stub, fabricated success, or
+  undocumented follow-up in scope.
 
-A reviewer must be able to verify the behavior without reading the code:
-
-1. Exercise the real path and inspect the result yourself. Green automation is
-   not a substitute for reviewing the generated artifact, pixels, audio, logs,
-   model trajectory, database row, scheduled item, or on-chain result.
-2. Use real integrations for end-to-end evidence. When agent behavior changes,
-   record live-model inputs and outputs; when a native/device/connector path
-   changes, run it on the real supported target.
-3. Leave no TODO, stub, fabricated success, or undocumented follow-up in the
-   delivered scope.
-
-For frontend-testable work, include before/after full-page desktop and mobile
-screenshots, an MP4 walkthrough, backend logs, frontend console/network logs,
-and any applicable live-model trajectories. Use `bun run test:matrix:review`
-for the full verified evidence bundle, `bun run test:e2e:record:review` for scoped UI
-recording, and the platform capture commands documented in `CONTRIBUTING.md` for
-native targets. Build, install, and verify the current revision before capture;
-capture tools do not prove that the installed application is current.
-
-Evidence belongs inline in the issue and PR, not committed to the repository.
-Prefer JPG screenshots, MP4 video, and collapsible log blocks. Mark a genuinely
-inapplicable evidence row `N/A` with a reason rather than leaving it blank.
+Exercise the real path and inspect its result yourself. Follow the
+[contribution evidence requirements](CONTRIBUTING.md#evidence) for live-model
+trajectories, integrations, desktop/mobile captures, recordings, and logs.
+Build and install the current revision before capture, inspect every artifact,
+and attach evidence inline in the issue and PR rather than committing it.
+Mark inapplicable evidence `N/A` with a reason. Green automation alone does not
+prove the observed behavior.
 
 ## Security and contribution references
 
