@@ -28,6 +28,7 @@ import {
   validateDeletionSecretReceipt,
   validateDeletionVolumeCapture,
   validateDeletionVolumeReceipt,
+  validateDeletionVpnReceipt,
 } from "../../db/repositories/agent-deletion-resource-manifest";
 import {
   admitLocalRetentionInTransaction,
@@ -59,6 +60,7 @@ import type {
   AgentDeletionResourceReceipt,
   AgentDeletionVolumeCapture,
   AgentDeletionVolumeReceipt,
+  AgentDeletionVpnReceipt,
 } from "../../db/schemas/agent-sandboxes";
 import {
   type AgentBackupStateData,
@@ -138,6 +140,11 @@ import {
   elizaCodingContainerImageAdvisoryLockSql,
   elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
+import {
+  type HeadscaleEnrollmentAuthority,
+  mergeHeadscaleEnrollmentAuthority,
+  parseHeadscaleEnrollmentAuthority,
+} from "./headscale-client";
 import {
   applyManagedAgentInferenceEnvDefaults,
   type ManagedElizaEnvironmentResult,
@@ -1439,6 +1446,7 @@ type ReplacementCleanupLocator = {
   replacementAttemptId: string | null;
   containerId: string | null;
   vpnNodeId: string | null;
+  vpnAuthority: HeadscaleEnrollmentAuthority | null;
   vpnNodeName: string | null;
   previousVpnNodeId: string | null;
   vpnRegistrationStartedAt: Date | null;
@@ -2879,21 +2887,11 @@ export class ElizaSandboxService {
       sandbox: precheck.sandboxId,
     });
 
-    // Phase 2 — bounded container + VPN teardown, run OUTSIDE the write-lock /
-    // transaction. provider.stopForDeletion() removes the container and cleans
-    // up the headscale route (each internally bounded), but an EARLY hang (SSH connect /
-    // provider init) was unbounded — a single stuck node could hang this delete
-    // past the 300s job watchdog and wedge the entire provisioning worker
-    // (fail-closed on every provision).
-    //
-    // Provider errors are captured as values so `withTimeout` rejects ONLY on a
-    // genuine hang. A real stop failure on a REACHABLE node still escalates
-    // (returns failure / retry), since the container may still be running; an
-    // "already gone" failure is ignorable and we proceed.
-    // Whether the container is PROVEN not running. A bounded timeout completes the
-    // delete but abandons a container that may still be running, so it is not
-    // proof — releasing its slot would let the scheduler pack new containers
-    // onto a box still running the old ones.
+    // Compute teardown runs outside the transaction. Captured placements use
+    // exact-ID removal; their VPN, secret and volume receipts settle separately
+    // below. Legacy providers may still include route teardown in their stop.
+    // A timeout or unreachable host cannot release capacity: only a proven
+    // stop/absence permits this deletion generation's exactly-once release.
     let containerProvenNotRunning = true;
     let reconciliationReason: string | null = null;
 
@@ -3018,6 +3016,33 @@ export class ElizaSandboxService {
           },
         };
       }
+    }
+
+    const vpnManifest = deletionOwnership.resourceManifest;
+    if (
+      containerProvenNotRunning &&
+      vpnManifest?.resources.vpn.state === "unknown" &&
+      vpnManifest.servingPlacement?.locator.vpnAuthority?.node
+    ) {
+      const provider = await this.getProvider();
+      if (!provider.cleanupDeletionVpn)
+        return { success: false, error: "Provider cannot retire the captured VPN registration" };
+      const receipt = await withTimeout(
+        provider.cleanupDeletionVpn(vpnManifest),
+        SANDBOX_DELETE_STOP_TIMEOUT_MS,
+        `agent-delete VPN cleanup ${agentId}`,
+      );
+      const lifecycleRevision = await this.persistDeletionResourceObservation(
+        agentId,
+        orgId,
+        deletionOwnership,
+        { kind: "vpn", value: receipt },
+      );
+      deletionOwnership = {
+        ...deletionOwnership,
+        lifecycleRevision,
+        resourceManifest: { ...vpnManifest, resources: { ...vpnManifest.resources, vpn: receipt } },
+      };
     }
 
     const volumeManifest = deletionOwnership.resourceManifest;
@@ -3553,7 +3578,8 @@ export class ElizaSandboxService {
     observation:
       | { kind: "volume"; value: AgentDeletionVolumeCapture }
       | { kind: "volume_retirement"; value: AgentDeletionVolumeReceipt }
-      | { kind: "secrets"; value: AgentDeletionResourceReceipt },
+      | { kind: "secrets"; value: AgentDeletionResourceReceipt }
+      | { kind: "vpn"; value: AgentDeletionVpnReceipt },
   ): Promise<number> {
     return dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
@@ -3587,13 +3613,17 @@ export class ElizaSandboxService {
           });
       } else if (observation.kind === "volume_retirement") {
         validateDeletionVolumeReceipt(manifest, observation.value);
+      } else if (observation.kind === "vpn") {
+        validateDeletionVpnReceipt(manifest, observation.value);
       } else {
         validateDeletionSecretReceipt(manifest, observation.value);
       }
       const resources =
-        observation.kind !== "secrets"
-          ? { ...manifest.resources, volume: observation.value }
-          : { ...manifest.resources, secrets: observation.value };
+        observation.kind === "vpn"
+          ? { ...manifest.resources, vpn: observation.value }
+          : observation.kind === "secrets"
+            ? { ...manifest.resources, secrets: observation.value }
+            : { ...manifest.resources, volume: observation.value };
       const [updated] = await tx
         .update(agentSandboxes)
         .set({
@@ -4613,6 +4643,7 @@ export class ElizaSandboxService {
           replacement_cleanup_attempt_id: null,
           replacement_cleanup_container_id: null,
           replacement_cleanup_vpn_node_id: null,
+          replacement_cleanup_vpn_authority: null,
           replacement_cleanup_vpn_node_name: null,
           replacement_cleanup_preserved_vpn_node_id: null,
           replacement_cleanup_vpn_registration_started_at: null,
@@ -12009,6 +12040,7 @@ export class ElizaSandboxService {
             replacement_cleanup_attempt_id = NULL,
             replacement_cleanup_container_id = NULL,
             replacement_cleanup_vpn_node_id = ${blueMeta.previousVpnNodeId ?? null},
+            replacement_cleanup_vpn_authority = NULL,
             replacement_cleanup_vpn_node_name = NULL,
             replacement_cleanup_preserved_vpn_node_id = NULL,
             replacement_cleanup_vpn_registration_started_at = NULL,
@@ -12029,6 +12061,7 @@ export class ElizaSandboxService {
             AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${cleanupLocator.replacementAttemptId}
             AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${cleanupLocator.containerId}
             AND replacement_cleanup_vpn_node_id IS NOT DISTINCT FROM ${cleanupLocator.vpnNodeId}
+            AND replacement_cleanup_vpn_authority IS NOT DISTINCT FROM ${cleanupLocator.vpnAuthority ? JSON.stringify(cleanupLocator.vpnAuthority) : null}::jsonb
             AND replacement_cleanup_vpn_node_name IS NOT DISTINCT FROM ${cleanupLocator.vpnNodeName}
             AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${cleanupLocator.previousVpnNodeId}
             AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${cleanupLocator.vpnRegistrationStartedAt}
@@ -12534,6 +12567,7 @@ export class ElizaSandboxService {
             replacement_cleanup_attempt_id = NULL,
             replacement_cleanup_container_id = NULL,
             replacement_cleanup_vpn_node_id = ${blueMeta.previousVpnNodeId ?? null},
+            replacement_cleanup_vpn_authority = NULL,
             replacement_cleanup_vpn_node_name = NULL,
             replacement_cleanup_preserved_vpn_node_id = NULL,
             replacement_cleanup_vpn_registration_started_at = NULL,
@@ -12553,6 +12587,7 @@ export class ElizaSandboxService {
             AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${cleanupLocator.replacementAttemptId}
             AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${cleanupLocator.containerId}
             AND replacement_cleanup_vpn_node_id IS NOT DISTINCT FROM ${cleanupLocator.vpnNodeId}
+            AND replacement_cleanup_vpn_authority IS NOT DISTINCT FROM ${cleanupLocator.vpnAuthority ? JSON.stringify(cleanupLocator.vpnAuthority) : null}::jsonb
             AND replacement_cleanup_vpn_node_name IS NOT DISTINCT FROM ${cleanupLocator.vpnNodeName}
             AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${cleanupLocator.previousVpnNodeId}
             AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${cleanupLocator.vpnRegistrationStartedAt}
@@ -12804,6 +12839,7 @@ export class ElizaSandboxService {
       | "replacement_cleanup_attempt_id"
       | "replacement_cleanup_container_id"
       | "replacement_cleanup_vpn_node_id"
+      | "replacement_cleanup_vpn_authority"
       | "replacement_cleanup_vpn_node_name"
       | "replacement_cleanup_preserved_vpn_node_id"
       | "replacement_cleanup_vpn_registration_started_at"
@@ -12822,6 +12858,7 @@ export class ElizaSandboxService {
       rec.replacement_cleanup_attempt_id,
       rec.replacement_cleanup_container_id,
       rec.replacement_cleanup_vpn_node_id,
+      rec.replacement_cleanup_vpn_authority,
       rec.replacement_cleanup_vpn_node_name,
       rec.replacement_cleanup_preserved_vpn_node_id,
       rec.replacement_cleanup_vpn_registration_started_at,
@@ -12852,6 +12889,13 @@ export class ElizaSandboxService {
       replacementAttemptId: rec.replacement_cleanup_attempt_id,
       containerId: rec.replacement_cleanup_container_id,
       vpnNodeId: rec.replacement_cleanup_vpn_node_id,
+      vpnAuthority:
+        rec.replacement_cleanup_vpn_authority == null
+          ? null
+          : parseHeadscaleEnrollmentAuthority(
+              rec.replacement_cleanup_vpn_authority,
+              rec.replacement_cleanup_vpn_node_id,
+            ),
       vpnNodeName: rec.replacement_cleanup_vpn_node_name,
       previousVpnNodeId: rec.replacement_cleanup_preserved_vpn_node_id,
       vpnRegistrationStartedAt,
@@ -12920,6 +12964,10 @@ export class ElizaSandboxService {
       replacementAttemptId: metadata.replacementAttemptId,
       containerId: metadata.containerId ?? null,
       vpnNodeId: metadata.vpnNodeId ?? null,
+      vpnAuthority:
+        metadata.vpnAuthority == null
+          ? null
+          : parseHeadscaleEnrollmentAuthority(metadata.vpnAuthority, metadata.vpnNodeId ?? null),
       vpnNodeName,
       previousVpnNodeId: metadata.previousVpnNodeId ?? null,
       vpnRegistrationStartedAt,
@@ -12949,6 +12997,10 @@ export class ElizaSandboxService {
       replacementAttemptId: cleanupError.replacementAttemptId,
       containerId: cleanupError.containerId,
       vpnNodeId: cleanupError.vpnNodeId,
+      vpnAuthority:
+        cleanupError.vpnAuthority == null
+          ? null
+          : parseHeadscaleEnrollmentAuthority(cleanupError.vpnAuthority, cleanupError.vpnNodeId),
       vpnNodeName: cleanupError.vpnNodeName,
       previousVpnNodeId: cleanupError.previousVpnNodeId,
       vpnRegistrationStartedAt,
@@ -12960,6 +13012,7 @@ export class ElizaSandboxService {
     existing: ReplacementCleanupLocator,
     incoming: Omit<ReplacementCleanupLocator, "createdAt">,
   ): void {
+    mergeHeadscaleEnrollmentAuthority(existing.vpnAuthority, incoming.vpnAuthority);
     const same =
       existing.sandboxId === incoming.sandboxId &&
       existing.nodeId === incoming.nodeId &&
@@ -12999,7 +13052,9 @@ export class ElizaSandboxService {
       const incoming = this.replacementLocatorFromHandle(handle);
       this.assertSameReplacementIdentity(existing, incoming);
       return (
-        existing.containerId === incoming.containerId && existing.vpnNodeId === incoming.vpnNodeId
+        existing.containerId === incoming.containerId &&
+        existing.vpnNodeId === incoming.vpnNodeId &&
+        (existing.vpnAuthority?.node == null) === (incoming.vpnAuthority?.node == null)
       );
     } catch {
       // error-policy:J3 replacement identity validation — a mismatch is the
@@ -13017,6 +13072,7 @@ export class ElizaSandboxService {
       return (
         left.containerId === right.containerId &&
         left.vpnNodeId === right.vpnNodeId &&
+        (left.vpnAuthority?.node == null) === (right.vpnAuthority?.node == null) &&
         left.createdAt.getTime() === right.createdAt.getTime()
       );
     } catch {
@@ -13070,12 +13126,22 @@ export class ElizaSandboxService {
         this.assertSameReplacementIdentity(existing, incoming);
         const containerId = existing.containerId ?? incoming.containerId;
         const vpnNodeId = existing.vpnNodeId ?? incoming.vpnNodeId;
-        if (containerId === existing.containerId && vpnNodeId === existing.vpnNodeId) return;
+        const vpnAuthority = mergeHeadscaleEnrollmentAuthority(
+          existing.vpnAuthority,
+          incoming.vpnAuthority,
+        );
+        if (
+          containerId === existing.containerId &&
+          vpnNodeId === existing.vpnNodeId &&
+          JSON.stringify(vpnAuthority) === JSON.stringify(existing.vpnAuthority)
+        )
+          return;
         const enriched = await tx.execute<{ id: string }>(sql`
           UPDATE ${agentSandboxes}
           SET
             replacement_cleanup_container_id = ${containerId},
             replacement_cleanup_vpn_node_id = ${vpnNodeId},
+            replacement_cleanup_vpn_authority = ${vpnAuthority ? JSON.stringify(vpnAuthority) : null}::jsonb,
             updated_at = NOW()
           WHERE id = ${agentId}
             AND organization_id = ${orgId}
@@ -13086,6 +13152,7 @@ export class ElizaSandboxService {
             AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${existing.replacementAttemptId}
             AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${existing.containerId}
             AND replacement_cleanup_vpn_node_id IS NOT DISTINCT FROM ${existing.vpnNodeId}
+            AND replacement_cleanup_vpn_authority IS NOT DISTINCT FROM ${existing.vpnAuthority ? JSON.stringify(existing.vpnAuthority) : null}::jsonb
             AND replacement_cleanup_vpn_node_name IS NOT DISTINCT FROM ${existing.vpnNodeName}
             AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${existing.previousVpnNodeId}
             AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${existing.vpnRegistrationStartedAt}
@@ -13137,6 +13204,7 @@ export class ElizaSandboxService {
           replacement_cleanup_attempt_id = ${incoming.replacementAttemptId},
           replacement_cleanup_container_id = ${incoming.containerId},
           replacement_cleanup_vpn_node_id = ${incoming.vpnNodeId},
+          replacement_cleanup_vpn_authority = ${incoming.vpnAuthority ? JSON.stringify(incoming.vpnAuthority) : null}::jsonb,
           replacement_cleanup_vpn_node_name = ${incoming.vpnNodeName},
           replacement_cleanup_preserved_vpn_node_id = ${incoming.previousVpnNodeId},
           replacement_cleanup_vpn_registration_started_at = ${incoming.vpnRegistrationStartedAt},
@@ -13183,12 +13251,22 @@ export class ElizaSandboxService {
       this.assertSameReplacementIdentity(existing, incoming);
       const containerId = existing.containerId ?? incoming.containerId;
       const vpnNodeId = existing.vpnNodeId ?? incoming.vpnNodeId;
-      if (containerId === existing.containerId && vpnNodeId === existing.vpnNodeId) return;
+      const vpnAuthority = mergeHeadscaleEnrollmentAuthority(
+        existing.vpnAuthority,
+        incoming.vpnAuthority,
+      );
+      if (
+        containerId === existing.containerId &&
+        vpnNodeId === existing.vpnNodeId &&
+        JSON.stringify(vpnAuthority) === JSON.stringify(existing.vpnAuthority)
+      )
+        return;
       const persisted = await tx.execute<{ id: string }>(sql`
         UPDATE ${agentSandboxes}
         SET
           replacement_cleanup_container_id = ${containerId},
           replacement_cleanup_vpn_node_id = ${vpnNodeId},
+            replacement_cleanup_vpn_authority = ${vpnAuthority ? JSON.stringify(vpnAuthority) : null}::jsonb,
           updated_at = NOW()
         WHERE id = ${agentId}
           AND organization_id = ${orgId}
@@ -13199,6 +13277,7 @@ export class ElizaSandboxService {
           AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${existing.replacementAttemptId}
           AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${existing.containerId}
           AND replacement_cleanup_vpn_node_id IS NOT DISTINCT FROM ${existing.vpnNodeId}
+            AND replacement_cleanup_vpn_authority IS NOT DISTINCT FROM ${existing.vpnAuthority ? JSON.stringify(existing.vpnAuthority) : null}::jsonb
           AND replacement_cleanup_vpn_node_name IS NOT DISTINCT FROM ${existing.vpnNodeName}
           AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${existing.previousVpnNodeId}
           AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${existing.vpnRegistrationStartedAt}
@@ -13315,6 +13394,7 @@ export class ElizaSandboxService {
           replacement_cleanup_attempt_id: null,
           replacement_cleanup_container_id: null,
           replacement_cleanup_vpn_node_id: null,
+          replacement_cleanup_vpn_authority: null,
           replacement_cleanup_vpn_node_name: null,
           replacement_cleanup_preserved_vpn_node_id: null,
           replacement_cleanup_vpn_registration_started_at: null,
@@ -13509,6 +13589,7 @@ export class ElizaSandboxService {
       {
         replacementAttemptId: locator.replacementAttemptId,
         containerId: locator.containerId,
+        vpnAuthority: locator.vpnAuthority,
         vpnNodeName: locator.vpnNodeName,
         previousVpnNodeId: locator.previousVpnNodeId,
         vpnRegistrationStartedAt: locator.vpnRegistrationStartedAt?.toISOString() ?? null,
@@ -13557,6 +13638,7 @@ export class ElizaSandboxService {
           replacement_cleanup_attempt_id = NULL,
           replacement_cleanup_container_id = NULL,
           replacement_cleanup_vpn_node_id = NULL,
+          replacement_cleanup_vpn_authority = NULL,
           replacement_cleanup_vpn_node_name = NULL,
           replacement_cleanup_preserved_vpn_node_id = NULL,
           replacement_cleanup_vpn_registration_started_at = NULL,
@@ -13572,6 +13654,7 @@ export class ElizaSandboxService {
           AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${locator.replacementAttemptId}
           AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${locator.containerId}
           AND replacement_cleanup_vpn_node_id IS NOT DISTINCT FROM ${locator.vpnNodeId}
+            AND replacement_cleanup_vpn_authority IS NOT DISTINCT FROM ${locator.vpnAuthority ? JSON.stringify(locator.vpnAuthority) : null}::jsonb
           AND replacement_cleanup_vpn_node_name IS NOT DISTINCT FROM ${locator.vpnNodeName}
           AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${locator.previousVpnNodeId}
           AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${locator.vpnRegistrationStartedAt}

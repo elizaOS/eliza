@@ -5,6 +5,7 @@ import {
   parseDeletionVolumeCaptureOutput,
   validateDeletionSecretReceipt,
   validateDeletionVolumeReceipt,
+  validateDeletionVpnReceipt,
 } from "../../db/repositories/agent-deletion-resource-manifest";
 import type { AgentDeletionResourceManifest } from "../../db/schemas/agent-sandboxes";
 import { DockerSandboxProvider } from "./docker-sandbox-provider";
@@ -14,6 +15,7 @@ import {
   getReplacementSecretArtifactsCleanupReceipt,
 } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
+import { headscaleClient } from "./headscale-client";
 
 afterEach(() => mock.restore());
 const agentId = "11111111-1111-4111-8111-111111111111";
@@ -142,5 +144,116 @@ test.each(["valid", "lost-ack", "wrong-receipt", "recovery-required", "uncapture
         receipt,
       ),
     ).toThrow("differs from captured authority");
+  },
+);
+
+test("issued cleanup receipts cannot cross VPN enrollment authority changes", async () => {
+  const manifest = deletionManifest();
+  const ssh = Object.create(DockerSSHClient.prototype) as DockerSSHClient;
+  spyOn(DockerSSHClient, "createDedicated").mockReturnValue(ssh);
+  spyOn(ssh, "disconnect").mockResolvedValue(undefined);
+  spyOn(ssh, "exec").mockResolvedValue(getReplacementSecretArtifactsCleanupReceipt(attemptId));
+  const provider = new DockerSandboxProvider();
+  manifest.servingPlacement!.locator.vpnNodeId = "42";
+  const legacyReceipt = await provider.cleanupDeletionSecretArtifacts(manifest);
+  manifest.servingPlacement!.locator.vpnAuthority = null;
+  validateDeletionSecretReceipt(manifest, legacyReceipt);
+  const authority = {
+    server: {
+      apiUrl: "https://vpn.fixture.invalid",
+      enrollmentUser: "staging",
+      publicKey: `mkey:${"1".repeat(64)}`,
+    },
+    node: { id: "42", machineKey: `mkey:${"2".repeat(64)}`, createdAt: "2026-09-06T00:00:00.000Z" },
+  };
+  manifest.servingPlacement!.locator.vpnNodeId = "42";
+  manifest.servingPlacement!.locator.vpnAuthority = authority;
+  expect(() => validateDeletionSecretReceipt(manifest, legacyReceipt)).toThrow();
+  const scopedReceipt = await provider.cleanupDeletionSecretArtifacts(manifest);
+  validateDeletionSecretReceipt(manifest, scopedReceipt);
+  for (const changed of [
+    {
+      server: { ...authority.server, apiUrl: "https://other.fixture.invalid" },
+      node: authority.node,
+    },
+    { server: { ...authority.server, enrollmentUser: "production" }, node: authority.node },
+    { server: { ...authority.server, publicKey: `mkey:${"3".repeat(64)}` }, node: authority.node },
+    { server: authority.server, node: { ...authority.node, machineKey: `mkey:${"4".repeat(64)}` } },
+    {
+      server: authority.server,
+      node: { ...authority.node, createdAt: "2020-01-01T00:00:00.000Z" },
+    },
+    { server: authority.server, node: null },
+    null,
+  ]) {
+    manifest.servingPlacement!.locator.vpnAuthority = changed;
+    expect(() => validateDeletionSecretReceipt(manifest, scopedReceipt)).toThrow();
+  }
+  manifest.servingPlacement!.locator.vpnAuthority = {
+    node: {
+      createdAt: authority.node.createdAt,
+      machineKey: authority.node.machineKey,
+      id: authority.node.id,
+    },
+    server: {
+      publicKey: authority.server.publicKey,
+      enrollmentUser: authority.server.enrollmentUser,
+      apiUrl: authority.server.apiUrl,
+    },
+  };
+  validateDeletionSecretReceipt(manifest, scopedReceipt);
+  manifest.servingPlacement!.locator.vpnNodeId = "43";
+  expect(() => validateDeletionSecretReceipt(manifest, scopedReceipt)).toThrow(
+    "disagrees with the placement node",
+  );
+});
+
+test.each(["valid", "unavailable", "wrong-node", "unknown", "missing"] as const)(
+  "deletion VPN provider preserves scoped absence (%s)",
+  async (scenario) => {
+    const manifest = deletionManifest();
+    const authority = {
+      server: {
+        apiUrl: "https://vpn.fixture.invalid",
+        enrollmentUser: "staging",
+        publicKey: `mkey:${"1".repeat(64)}`,
+      },
+      node: {
+        id: "42",
+        machineKey: `mkey:${"2".repeat(64)}`,
+        createdAt: "2026-09-06T00:00:00.000Z",
+      },
+    };
+    manifest.servingPlacement!.locator.vpnNodeId = "42";
+    manifest.servingPlacement!.locator.vpnAuthority =
+      scenario === "missing"
+        ? null
+        : { ...authority, node: scenario === "unknown" ? null : authority.node };
+    const remove = spyOn(headscaleClient, "deleteNodeForAuthority").mockImplementation(
+      async (expected) => {
+        expect(expected).toEqual(authority);
+        if (scenario === "unavailable") throw new Error("Headscale readback unavailable");
+        return {
+          state: "absent",
+          authority:
+            scenario === "wrong-node"
+              ? { ...authority, node: { ...authority.node, id: "43" } }
+              : authority,
+          observedAt: new Date().toISOString(),
+        };
+      },
+    );
+    const operation = new DockerSandboxProvider().cleanupDeletionVpn(manifest);
+    if (scenario !== "valid") {
+      await expect(operation).rejects.toThrow();
+      if (scenario === "unknown" || scenario === "missing") expect(remove).not.toHaveBeenCalled();
+      return;
+    }
+    const receipt = await operation;
+    validateDeletionVpnReceipt(manifest, receipt);
+    expect(() =>
+      validateDeletionVpnReceipt({ ...manifest, deletionAttemptId: crypto.randomUUID() }, receipt),
+    ).toThrow();
+    expect(receipt.authority).toEqual(authority);
   },
 );

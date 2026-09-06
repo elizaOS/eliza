@@ -19,6 +19,7 @@ import { agentComputeStopIntents } from "../schemas/agent-compute-stop-intents";
 import type {
   AgentDeletionResourceReceipt,
   AgentDeletionVolumeReceipt,
+  AgentDeletionVpnReceipt,
 } from "../schemas/agent-sandboxes";
 import { type AgentLocalStateRetention, agentSandboxes } from "../schemas/agent-sandboxes";
 import { jobExecutionLeases } from "../schemas/job-execution-leases";
@@ -1332,6 +1333,14 @@ test("secret cleanup receipt commits only for its captured deletion revision and
     })
     .where(eq(organizations.id, authority.organizationId));
   const attempt = crypto.randomUUID();
+  const vpnAuthority = {
+    server: {
+      apiUrl: "https://vpn.fixture.invalid",
+      enrollmentUser: "staging",
+      publicKey: `mkey:${"1".repeat(64)}`,
+    },
+    node: { id: "42", machineKey: `mkey:${"2".repeat(64)}`, createdAt: "2026-09-06T00:00:00.000Z" },
+  };
   await dbWrite
     .update(agentSandboxes)
     .set({
@@ -1350,6 +1359,8 @@ test("secret cleanup receipt commits only for its captured deletion revision and
           nodeHostKeyFingerprint: captured.hostKeyFingerprint,
           replacementAttemptId: attempt,
           replacementSecretCleanupVersion: 1,
+          vpnNodeId: "42",
+          vpnAuthority,
         },
       },
     })
@@ -1367,7 +1378,8 @@ test("secret cleanup receipt commits only for its captured deletion revision and
       owner: Ownership,
       observation:
         | { kind: "volume"; value: ReturnType<typeof parseDeletionVolumeCaptureOutput> }
-        | { kind: "volume_retirement"; value: AgentDeletionVolumeReceipt },
+        | { kind: "volume_retirement"; value: AgentDeletionVolumeReceipt }
+        | { kind: "vpn"; value: AgentDeletionVpnReceipt },
     ) => Promise<number>;
     persistDeletionSecretReceipt: (
       id: string,
@@ -1569,6 +1581,47 @@ test("secret cleanup receipt commits only for its captured deletion revision and
     .where(eq(agentSandboxes.id, authority.agentId));
   expect(retired.deletion_resource_manifest?.resources.volume).toEqual(absence);
   expect(retired.deletion_resource_manifest?.resources.vpn).toEqual({ state: "unknown" });
+  const vpnReceipt: AgentDeletionVpnReceipt = {
+    state: "absent",
+    authorityHash: deletionResourceAuthorityHash(retired.deletion_resource_manifest!),
+    observedAt: new Date().toISOString(),
+    providerReceipt: "HEADSCALE_NODE_ABSENT_V1",
+    authority: vpnAuthority,
+  };
+  const vpnOwner = {
+    deletionAttemptId: retired.deletion_attempt_id!,
+    lifecycleRevision: retired.lifecycle_revision,
+  };
+  await expect(
+    service.persistDeletionResourceObservation(
+      authority.agentId,
+      authority.organizationId,
+      finalOwner,
+      { kind: "vpn", value: vpnReceipt },
+    ),
+  ).rejects.toThrow("lost its lifecycle authority");
+  await expect(
+    service.persistDeletionResourceObservation(
+      authority.agentId,
+      authority.organizationId,
+      vpnOwner,
+      { kind: "vpn", value: { ...vpnReceipt, authorityHash: "f".repeat(64) } },
+    ),
+  ).rejects.toThrow("differs from captured authority");
+  await service.persistDeletionResourceObservation(
+    authority.agentId,
+    authority.organizationId,
+    vpnOwner,
+    { kind: "vpn", value: vpnReceipt },
+  );
+  await service.prepareAgentDelete(authority.agentId, authority.organizationId, "account_deletion");
+  const [settled] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  expect(settled.deletion_resource_manifest?.resources.vpn).toEqual(vpnReceipt);
+  expect(settled.deletion_resource_manifest?.resources.volume).toEqual(absence);
+  expect(settled.deletion_resource_manifest?.resources.secrets).toEqual(receipt);
 });
 
 test.each(["active", "recovery", "missing-request", "active-flag", "invalid-revision"])(

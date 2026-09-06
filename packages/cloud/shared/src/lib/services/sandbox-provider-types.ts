@@ -6,12 +6,14 @@ import type {
   AgentDeletionResourceReceipt,
   AgentDeletionVolumeCapture,
   AgentDeletionVolumeReceipt,
+  AgentDeletionVpnReceipt,
 } from "../../db/schemas/agent-sandboxes";
 import {
   type AgentExecutionTier,
   type AgentSandboxPlacementLocator,
   CONTAINER_BACKED_EXECUTION_TIERS,
 } from "../../db/schemas/agent-sandboxes";
+import type { HeadscaleEnrollmentAuthority } from "./headscale-client";
 
 export type ContainerBackedExecutionTier = (typeof CONTAINER_BACKED_EXECUTION_TIERS)[number];
 
@@ -181,6 +183,7 @@ export class SandboxReplacementCleanupUnresolvedError extends ElizaError {
   readonly restoreAttemptId: string | null;
   readonly containerId: string | null;
   readonly vpnNodeId: string | null;
+  readonly vpnAuthority: HeadscaleEnrollmentAuthority | null;
   readonly vpnNodeName: string | null;
   readonly previousVpnNodeId: string | null;
   readonly vpnRegistrationStartedAt: string | null;
@@ -227,6 +230,7 @@ export class SandboxReplacementCleanupUnresolvedError extends ElizaError {
     this.restoreAttemptId = locator.restoreAttemptId ?? null;
     this.containerId = locator.containerId ?? null;
     this.vpnNodeId = locator.vpnNodeId ?? null;
+    this.vpnAuthority = locator.vpnAuthority ?? null;
     this.vpnNodeName = locator.vpnNodeName ?? null;
     this.previousVpnNodeId = locator.previousVpnNodeId ?? null;
     this.vpnRegistrationStartedAt = locator.vpnRegistrationStartedAt ?? null;
@@ -301,6 +305,7 @@ export interface SandboxProvider {
   cleanupDeletionVolume?(
     manifest: AgentDeletionResourceManifest,
   ): Promise<AgentDeletionVolumeReceipt>;
+  cleanupDeletionVpn?(manifest: AgentDeletionResourceManifest): Promise<AgentDeletionVpnReceipt>;
   cleanupDeletionSecretArtifacts?(
     manifest: AgentDeletionResourceManifest,
   ): Promise<AgentDeletionResourceReceipt>;

@@ -105,10 +105,19 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
       const attemptId = crypto.randomUUID();
       const nodeRecordId = crypto.randomUUID();
       const registeredAt = "2026-09-06T00:00:00.000Z";
+      const vpnAuthority = {
+        server: {
+          apiUrl: "https://vpn.fixture.invalid",
+          enrollmentUser: "staging",
+          publicKey: `mkey:${"1".repeat(64)}`,
+        },
+        node: { id: "42", machineKey: `mkey:${"2".repeat(64)}`, createdAt: registeredAt },
+      };
       await dbWrite.execute(sql`UPDATE agent_sandboxes SET
       replacement_cleanup_sandbox_id = ${containerName}, replacement_cleanup_node_id = 'node-1',
       replacement_cleanup_container_name = ${containerName}, replacement_cleanup_attempt_id = ${attemptId},
       replacement_cleanup_container_id = ${"a".repeat(64)}, replacement_cleanup_vpn_node_id = '42',
+      replacement_cleanup_vpn_authority = ${JSON.stringify(vpnAuthority)}::jsonb,
       replacement_cleanup_vpn_node_name = ${containerName}, replacement_cleanup_vpn_registration_started_at = ${registeredAt},
       replacement_cleanup_allocation_counted = true, replacement_cleanup_created_at = now()
       WHERE id = ${id}`);
@@ -134,6 +143,7 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
             replacementAttemptId: attemptId,
             containerId: "a".repeat(64),
             vpnNodeId: "42",
+            vpnAuthority,
             vpnNodeName: containerName,
             vpnRegistrationStartedAt: registeredAt,
             allocationCounted: true,
@@ -157,6 +167,7 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
       });
       expect(row?.replacement_cleanup_sandbox_id).toBeNull();
       expect(row?.replacement_cleanup_vpn_node_id).toBeNull();
+      expect(row?.replacement_cleanup_vpn_authority).toBeNull();
       expect(row?.serving_placement).toMatchObject({
         version: 1,
         volumePath: `/data/agents/${id}`,
@@ -170,6 +181,7 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
           nodeSshUser: "operator",
           nodeHostKeyFingerprint: "SHA256:captured",
           vpnNodeId: "42",
+          vpnAuthority,
           vpnRegistrationStartedAt: registeredAt,
           replacementSecretCleanupVersion: 1,
         },

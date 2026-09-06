@@ -982,3 +982,97 @@ test("a failed job that never claimed the stopped agent also waits before readmi
   expect(pending).toHaveLength(1);
   expect(pending[0].id).toBe(retry.job.id);
 });
+
+test("replacement VPN authority survives lease loss and rejects conflicting callback identities", async () => {
+  const authority = await providerAuthority();
+  const { sandbox } = await agentSandboxesRepository.admitPaymentResumeProvisioning(authority);
+  const callbacks = elizaSandboxService["replacementCleanupCallbacks"](
+    authority.agentId,
+    authority.organizationId,
+    {
+      status: "provisioning",
+      environmentRevision: sandbox.environment_revision,
+      sandboxId: sandbox.sandbox_id,
+      nodeId: sandbox.node_id,
+      containerName: sandbox.container_name,
+    },
+    authority,
+  );
+  const server = {
+    apiUrl: "https://vpn.fixture.invalid",
+    enrollmentUser: "staging",
+    publicKey: `mkey:${"1".repeat(64)}`,
+  };
+  const node = {
+    id: "42",
+    machineKey: `mkey:${"2".repeat(64)}`,
+    createdAt: new Date().toISOString(),
+  };
+  const intent: SandboxHandle = {
+    sandboxId: crypto.randomUUID(),
+    bridgeUrl: "http://fixture.invalid",
+    healthUrl: "http://fixture.invalid/health",
+    metadata: {
+      provider: "docker",
+      nodeId: "fixture-node",
+      hostname: "fixture.invalid",
+      containerName: "fixture-container",
+      replacementAttemptId: crypto.randomUUID(),
+      allocationCounted: false,
+      vpnAuthority: { server, node: null },
+    },
+  };
+  const read = async () => {
+    const [row] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, authority.agentId));
+    return row;
+  };
+  await callbacks.onReplacementCreateIntent(intent);
+  expect((await read()).replacement_cleanup_vpn_authority).toEqual({ server, node: null });
+  await dbWrite
+    .update(jobExecutionLeases)
+    .set({ expires_at: new Date(Date.now() - 1000) })
+    .where(eq(jobExecutionLeases.job_id, authority.jobId));
+  const created = {
+    ...intent,
+    metadata: { ...intent.metadata, containerId: "created-before-lease-loss" },
+  };
+  await callbacks.onReplacementCreated(created);
+  const registered = {
+    ...created,
+    metadata: { ...created.metadata, vpnNodeId: node.id, vpnAuthority: { server, node } },
+  };
+  await callbacks.onReplacementVpnRegistered(registered);
+  const persisted = await read();
+  expect(persisted.replacement_cleanup_vpn_authority).toEqual({ server, node });
+  expect(persisted.replacement_cleanup_vpn_node_id).toBe(node.id);
+  expect(persisted.lifecycle_revision).toBeGreaterThan(sandbox.lifecycle_revision);
+  await callbacks.onReplacementCreated(created);
+  expect((await read()).replacement_cleanup_vpn_authority).toEqual({ server, node });
+  for (const changed of [
+    { server: { ...server, apiUrl: "https://other.fixture.invalid" }, node },
+    { server: { ...server, enrollmentUser: "production" }, node },
+    { server: { ...server, publicKey: `mkey:${"3".repeat(64)}` }, node },
+    { server, node: { ...node, machineKey: `mkey:${"4".repeat(64)}` } },
+    { server, node: { ...node, createdAt: "2020-01-01T00:00:00.000Z" } },
+    null,
+  ]) {
+    await expect(
+      callbacks.onReplacementVpnRegistered({
+        ...registered,
+        metadata: { ...registered.metadata, vpnAuthority: changed },
+      }),
+    ).rejects.toMatchObject({ code: "HEADSCALE_ENROLLMENT_AUTHORITY_CHANGED" });
+    expect((await read()).replacement_cleanup_vpn_authority).toEqual({ server, node });
+    expect((await read()).lifecycle_revision).toBe(persisted.lifecycle_revision);
+  }
+  await expect(
+    callbacks.onReplacementVpnRegistered({
+      ...registered,
+      metadata: { ...registered.metadata, vpnNodeId: "43" },
+    }),
+  ).rejects.toMatchObject({ code: "HEADSCALE_ENROLLMENT_NODE_MISMATCH" });
+  expect((await read()).replacement_cleanup_vpn_node_id).toBe("42");
+});

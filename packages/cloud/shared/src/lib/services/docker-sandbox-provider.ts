@@ -13,6 +13,7 @@ import {
   parseDeletionVolumeCaptureOutput,
   validateDeletionVolumeCapture,
   validateDeletionVolumeReceipt,
+  validateDeletionVpnReceipt,
 } from "../../db/repositories/agent-deletion-resource-manifest";
 import { servingDeletionAuthority } from "../../db/repositories/agent-serving-placement";
 import type {
@@ -20,6 +21,7 @@ import type {
   AgentDeletionResourceReceipt,
   AgentDeletionVolumeCapture,
   AgentDeletionVolumeReceipt,
+  AgentDeletionVpnReceipt,
 } from "../../db/schemas/agent-sandboxes";
 import {
   buildDeletionVolumeCaptureCommand,
@@ -29,6 +31,11 @@ import {
   getDeletionVolumeCleanupReceipt,
   parseDockerCreateAttemptCleanupReceipt,
 } from "./docker-sandbox-utils";
+import {
+  type HeadscaleEnrollmentAuthority,
+  mergeHeadscaleEnrollmentAuthority,
+  parseHeadscaleEnrollmentAuthority,
+} from "./headscale-client";
 
 export {
   buildExactRestoreBootFencedCommand,
@@ -210,6 +217,7 @@ export interface DockerSandboxMetadata {
   headscaleIp?: string;
   /** Exact Headscale identity for strict replacement cleanup. */
   vpnNodeId?: string;
+  vpnAuthority?: HeadscaleEnrollmentAuthority;
   /** Deterministic Headscale name used to recover a pre-enrichment crash. */
   vpnNodeName?: string;
   /** Lower bound for identifying this attempt's Headscale registration. */
@@ -633,6 +641,13 @@ function replacementCleanupLocatorFromHandle(
     restoreAttemptId: optionalLocatorString(metadata.restoreAttemptId),
     containerId: optionalLocatorString(metadata.containerId),
     vpnNodeId: optionalLocatorString(metadata.vpnNodeId),
+    vpnAuthority:
+      metadata.vpnAuthority == null
+        ? null
+        : parseHeadscaleEnrollmentAuthority(
+            metadata.vpnAuthority,
+            optionalLocatorString(metadata.vpnNodeId),
+          ),
     vpnNodeName: optionalLocatorString(metadata.vpnNodeName),
     previousVpnNodeId: optionalLocatorString(metadata.previousVpnNodeId),
     vpnRegistrationStartedAt: optionalLocatorString(metadata.vpnRegistrationStartedAt),
@@ -2343,6 +2358,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       actual: SandboxReplacementCleanupLocator,
       stage: "created" | "vpn" | "final",
     ): void => {
+      mergeHeadscaleEnrollmentAuthority(expected.vpnAuthority ?? null, actual.vpnAuthority ?? null);
       const driftedKey = immutableReplacementKeys.find(
         (key) => (expected[key] ?? null) !== (actual[key] ?? null),
       );
@@ -3336,6 +3352,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       : {};
     const replacementPlacementMetadata = {
       ...nodePlacementMetadata,
+      vpnAuthority: undefined as HeadscaleEnrollmentAuthority | undefined,
       ...(remoteCompletionTracker ? { replacementSecretCleanupVersion: 1 as const } : {}),
     };
 
@@ -3395,6 +3412,11 @@ export class DockerSandboxProvider implements SandboxProvider {
     // Collect VPN env vars separately to avoid mutating the caller's environmentVars.
     if (headscaleEnabled) {
       try {
+        // Capture the service before enrollment can create or retire registrations.
+        replacementPlacementMetadata.vpnAuthority = {
+          server: await headscaleClient.captureServerAuthority(),
+          node: null,
+        };
         const vpnSetup = await headscaleIntegration.prepareContainerVPN({
           agentId,
           agentName,
@@ -4059,6 +4081,16 @@ export class DockerSandboxProvider implements SandboxProvider {
         // a stale identity under the same deterministic name.
         if (registration) {
           vpnNodeId = registration.nodeId;
+          const enrollment = replacementPlacementMetadata.vpnAuthority;
+          if (!enrollment) {
+            throw new ElizaError("Headscale enrollment has no captured server identity", {
+              code: "HEADSCALE_ENROLLMENT_AUTHORITY_MISSING",
+            });
+          }
+          replacementPlacementMetadata.vpnAuthority = await headscaleClient.captureNodeAuthority(
+            enrollment.server,
+            vpnNodeId,
+          );
         }
         if (registration && remoteCompletionTracker) {
           try {
@@ -4934,7 +4966,29 @@ export class DockerSandboxProvider implements SandboxProvider {
           });
         }
       }
-      if (locator.vpnNodeId) {
+      if (locator.vpnAuthority != null) {
+        const authority = parseHeadscaleEnrollmentAuthority(
+          locator.vpnAuthority,
+          locator.vpnNodeId ?? null,
+        );
+        if (authority.node === null) {
+          throw new ElizaError("Replacement VPN registration identity requires reconciliation", {
+            code: "SANDBOX_REPLACEMENT_VPN_AUTHORITY_UNRESOLVED",
+            context: {
+              containerName: locator.containerName,
+              replacementAttemptId: locator.replacementAttemptId,
+            },
+          });
+        }
+        await withTimeout(
+          headscaleClient.deleteNodeForAuthority({
+            server: authority.server,
+            node: authority.node,
+          }),
+          HEADSCALE_CLEANUP_TIMEOUT_MS,
+          "replacement scoped headscale cleanup",
+        );
+      } else if (locator.vpnNodeId) {
         if (!isCanonicalHeadscaleNodeId(locator.vpnNodeId)) {
           throw new ElizaError(
             `[docker-sandbox] Cannot clean invalid Headscale node id ${JSON.stringify(locator.vpnNodeId)}`,
@@ -5472,6 +5526,34 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
       return parseDeletionVolumeCaptureOutput(manifest, output);
     });
+  }
+
+  async cleanupDeletionVpn(
+    manifest: AgentDeletionResourceManifest,
+  ): Promise<AgentDeletionVpnReceipt> {
+    const locator = manifest.servingPlacement?.locator;
+    const captured = parseHeadscaleEnrollmentAuthority(
+      locator?.vpnAuthority,
+      locator?.vpnNodeId ?? null,
+    );
+    if (!captured.node)
+      throw new ElizaError("Deletion VPN registration identity requires reconciliation", {
+        code: "SANDBOX_DELETE_VPN_AUTHORITY_UNRESOLVED",
+      });
+    const authorityHash = deletionResourceAuthorityHash(manifest);
+    const observed = await headscaleClient.deleteNodeForAuthority({
+      server: captured.server,
+      node: captured.node,
+    });
+    const receipt: AgentDeletionVpnReceipt = {
+      state: "absent",
+      authorityHash,
+      authority: observed.authority,
+      observedAt: observed.observedAt,
+      providerReceipt: "HEADSCALE_NODE_ABSENT_V1",
+    };
+    validateDeletionVpnReceipt(manifest, receipt);
+    return receipt;
   }
 
   async cleanupDeletionSecretArtifacts(

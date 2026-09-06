@@ -47,6 +47,10 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type {
+  HeadscaleEnrollmentAuthority,
+  HeadscaleNodeAuthority,
+} from "../../lib/services/headscale-client";
 import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
 import { organizations } from "./organizations";
 import { userCharacters } from "./user-characters";
@@ -102,6 +106,7 @@ export interface AgentSandboxPlacementLocator {
   restoreAttemptId?: string | null;
   containerId?: string | null;
   vpnNodeId?: string | null;
+  vpnAuthority?: HeadscaleEnrollmentAuthority | null;
   vpnNodeName?: string | null;
   previousVpnNodeId?: string | null;
   vpnRegistrationStartedAt?: string | null;
@@ -124,6 +129,10 @@ export interface AgentDeletionResourceReceipt {
   authorityHash: string;
   observedAt: string;
   providerReceipt: string;
+}
+/** Scoped Headscale inventory readback proves the captured registration absent. */
+export interface AgentDeletionVpnReceipt extends AgentDeletionResourceReceipt {
+  authority: HeadscaleNodeAuthority;
 }
 export type AgentDeletionResourceObservation = { state: "unknown" } | AgentDeletionResourceReceipt;
 
@@ -161,7 +170,7 @@ export interface AgentDeletionResourceManifest {
   localStateRetention: AgentLocalStateRetention | null;
   resources: {
     volume: { state: "unknown" } | AgentDeletionVolumeCapture | AgentDeletionVolumeReceipt;
-    vpn: { state: "unknown" };
+    vpn: { state: "unknown" } | AgentDeletionVpnReceipt;
     secrets: AgentDeletionResourceObservation;
   };
 }
@@ -542,6 +551,9 @@ export const agentSandboxes = pgTable(
     replacement_cleanup_attempt_id: uuid("replacement_cleanup_attempt_id"),
     replacement_cleanup_container_id: text("replacement_cleanup_container_id"),
     replacement_cleanup_vpn_node_id: text("replacement_cleanup_vpn_node_id"),
+    replacement_cleanup_vpn_authority: jsonb(
+      "replacement_cleanup_vpn_authority",
+    ).$type<HeadscaleEnrollmentAuthority>(),
     replacement_cleanup_vpn_node_name: text("replacement_cleanup_vpn_node_name"),
     replacement_cleanup_preserved_vpn_node_id: text("replacement_cleanup_preserved_vpn_node_id"),
     replacement_cleanup_vpn_registration_started_at: timestamp(

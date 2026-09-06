@@ -254,6 +254,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "replacement_cleanup_attempt_id" uuid,
   "replacement_cleanup_container_id" text,
   "replacement_cleanup_vpn_node_id" text,
+  "replacement_cleanup_vpn_authority" jsonb,
   "replacement_cleanup_vpn_node_name" text,
   "replacement_cleanup_preserved_vpn_node_id" text,
   "replacement_cleanup_vpn_registration_started_at" timestamptz,

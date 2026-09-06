@@ -44,6 +44,13 @@ import { organizations } from "../../../db/schemas/organizations";
 import { users } from "../../../db/schemas/users";
 import { apiKeysService } from "../api-keys";
 import { AGENT_ORPHAN_RECONCILER_CONFIG } from "../docker-node-workloads";
+import { DockerSandboxProvider } from "../docker-sandbox-provider";
+import {
+  getDeletionVolumeCleanupReceipt,
+  getReplacementSecretArtifactsCleanupReceipt,
+} from "../docker-sandbox-utils";
+import { DockerSSHClient } from "../docker-ssh";
+import { headscaleClient } from "../headscale-client";
 import {
   type OrphanReconcilerNode,
   reconcileOrphanContainers,
@@ -377,3 +384,155 @@ describe("deleteAgent releases the node slot only when the workload is proven no
 test("pglite schema applied — never a silent skip", () => {
   expect(pgliteReady).toBe(true);
 });
+
+test(
+  "account deletion retains resource receipts across VPN failure before retiring the volume",
+  async () => {
+    expect(pgliteReady).toBe(true);
+    const { service, agentId, orgId, nodeId } = await seedPlacedAgent();
+    const containerName = `agent-${agentId}`;
+    const containerId = "a".repeat(64);
+    const attemptId = crypto.randomUUID();
+    const [node] = await dbWrite
+      .update(dockerNodes)
+      .set({ host_key_fingerprint: "SHA256:fixture" })
+      .where(eq(dockerNodes.node_id, nodeId))
+      .returning();
+    const authority = {
+      server: {
+        apiUrl: "https://vpn.fixture.invalid",
+        enrollmentUser: "staging",
+        publicKey: `mkey:${"1".repeat(64)}`,
+      },
+      node: {
+        id: "42",
+        machineKey: `mkey:${"2".repeat(64)}`,
+        createdAt: "2026-09-06T00:00:00.000Z",
+      },
+    };
+    await dbWrite
+      .update(organizations)
+      .set({
+        account_lifecycle_state: "deletion_irreversible",
+        account_lifecycle_revision: 2,
+        account_deletion_request_id: crypto.randomUUID(),
+        is_active: false,
+      })
+      .where(eq(organizations.id, orgId));
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        sandbox_id: containerName,
+        container_name: containerName,
+        serving_placement: {
+          version: 1,
+          volumePath: `/data/agents/${agentId}`,
+          locator: {
+            sandboxId: containerName,
+            containerName,
+            containerId,
+            nodeId,
+            nodeRecordId: node.id,
+            nodeHostname: node.hostname,
+            nodeSshPort: node.ssh_port,
+            nodeSshUser: node.ssh_user,
+            nodeHostKeyFingerprint: "SHA256:fixture",
+            replacementAttemptId: attemptId,
+            replacementSecretCleanupVersion: 1,
+            vpnNodeId: "42",
+            vpnAuthority: authority,
+          },
+        },
+      })
+      .where(eq(agentSandboxes.id, agentId));
+    const read = async () =>
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, agentId)))[0];
+    const events: string[] = [];
+    const ssh = Object.create(DockerSSHClient.prototype) as DockerSSHClient;
+    const connect = spyOn(DockerSSHClient, "createDedicated").mockReturnValue(ssh);
+    const disconnect = spyOn(ssh, "disconnect").mockResolvedValue(undefined);
+    const exec = spyOn(ssh, "exec").mockImplementation(async (command) => {
+      if (command.includes("ELIZA_DELETION_VOLUME_V1")) {
+        events.push("capture");
+        return `ELIZA_DELETION_VOLUME_V1|${crypto.randomUUID()}|8|101|8|102|/data/agents/${agentId}`;
+      }
+      if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
+        events.push("secrets");
+        return getReplacementSecretArtifactsCleanupReceipt(attemptId);
+      }
+      if (command.includes("ELIZA_DELETION_VOLUME_ABSENT_V1")) {
+        events.push("volume");
+        const row = await read();
+        const manifest = row.deletion_resource_manifest!;
+        expect(manifest.resources.vpn.state).toBe("absent");
+        expect(manifest.resources.secrets.state).toBe("absent");
+        if (manifest.resources.volume.state !== "captured")
+          throw new Error("Volume capture missing");
+        return getDeletionVolumeCleanupReceipt(manifest.resources.volume);
+      }
+      if (command.includes("docker container inspect")) {
+        events.push("compute");
+        expect(command).toContain(containerId);
+        expect(["captured", "absent"]).toContain(
+          (await read()).deletion_resource_manifest?.resources.volume.state,
+        );
+        return "absent";
+      }
+      throw new Error("Unexpected deletion SSH command");
+    });
+    let failVpn = true;
+    const vpn = spyOn(headscaleClient, "deleteNodeForAuthority").mockImplementation(
+      async (expected) => {
+        events.push("vpn");
+        expect(expected).toEqual(authority);
+        const row = await read();
+        expect(row.deletion_resource_manifest?.resources.secrets.state).toBe("absent");
+        if (failVpn) throw new Error("VPN provider unavailable");
+        return { state: "absent", authority, observedAt: new Date().toISOString() };
+      },
+    );
+    const legacyVpn = spyOn(headscaleClient, "deleteNode").mockRejectedValue(
+      new Error("Legacy VPN deletion must not run"),
+    );
+    const revoke = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined);
+    service["_provider"] = new DockerSandboxProvider();
+    try {
+      await expect(
+        service.deleteAgent(agentId, orgId, { authorization: "account_deletion" }),
+      ).rejects.toThrow("VPN provider unavailable");
+      expect(events).toEqual(["capture", "compute", "secrets", "vpn"]);
+      const retained = await read();
+      expect(retained.deletion_resource_manifest?.resources.volume.state).toBe("captured");
+      expect(retained.deletion_resource_manifest?.resources.secrets.state).toBe("absent");
+      expect(retained.deletion_resource_manifest?.resources.vpn.state).toBe("unknown");
+      expect(await nodeCount(nodeId)).toBe(1);
+      failVpn = false;
+      events.length = 0;
+      revoke.mockRejectedValueOnce(new Error("Credential revocation unavailable"));
+      await expect(
+        service.deleteAgent(agentId, orgId, { authorization: "account_deletion" }),
+      ).rejects.toThrow("Credential revocation unavailable");
+      expect(events).toEqual(["compute", "vpn", "volume"]);
+      const cleaned = await read();
+      expect(cleaned.deletion_resource_manifest?.resources.volume.state).toBe("absent");
+      expect(cleaned.deletion_resource_manifest?.resources.vpn.state).toBe("absent");
+      events.length = 0;
+      const result = await service.deleteAgent(agentId, orgId, {
+        authorization: "account_deletion",
+      });
+      expect(result).toMatchObject({ success: true, rowDeleted: true });
+      expect(events).toEqual(["compute"]);
+      expect(await read()).toBeUndefined();
+      expect(await nodeCount(nodeId)).toBe(1);
+      expect(legacyVpn).not.toHaveBeenCalled();
+    } finally {
+      connect.mockRestore();
+      disconnect.mockRestore();
+      exec.mockRestore();
+      vpn.mockRestore();
+      legacyVpn.mockRestore();
+      revoke.mockRestore();
+    }
+  },
+  PGLITE_TIMEOUT,
+);

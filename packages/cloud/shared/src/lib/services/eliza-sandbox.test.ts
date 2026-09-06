@@ -162,6 +162,7 @@ type TestReplacementLocator = {
   replacementAttemptId: string | null;
   containerId: string | null;
   vpnNodeId: string | null;
+  vpnAuthority: null;
   vpnNodeName: string | null;
   previousVpnNodeId: string | null;
   vpnRegistrationStartedAt: Date | null;
@@ -219,6 +220,7 @@ function replacementLocatorFromTestHandle(
     replacementAttemptId,
     containerId: typeof metadata.containerId === "string" ? metadata.containerId : null,
     vpnNodeId: typeof metadata.vpnNodeId === "string" ? metadata.vpnNodeId : null,
+    vpnAuthority: null,
     vpnNodeName: typeof metadata.vpnNodeName === "string" ? metadata.vpnNodeName : null,
     previousVpnNodeId:
       typeof metadata.previousVpnNodeId === "string" ? metadata.previousVpnNodeId : null,
@@ -653,6 +655,7 @@ function customSandbox(): AgentSandbox {
     replacement_cleanup_attempt_id: null,
     replacement_cleanup_container_id: null,
     replacement_cleanup_vpn_node_id: null,
+    replacement_cleanup_vpn_authority: null,
     replacement_cleanup_vpn_node_name: null,
     replacement_cleanup_preserved_vpn_node_id: null,
     replacement_cleanup_vpn_registration_started_at: null,
@@ -2816,6 +2819,7 @@ describe("ElizaSandboxService unresolved replacement fence authority", () => {
         replacement_cleanup_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         replacement_cleanup_container_id: null,
         replacement_cleanup_vpn_node_id: null,
+        replacement_cleanup_vpn_authority: null,
         replacement_cleanup_vpn_node_name: null,
         replacement_cleanup_preserved_vpn_node_id: null,
         replacement_cleanup_vpn_registration_started_at: null,

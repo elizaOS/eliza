@@ -8,6 +8,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import { z } from "zod";
 import { logger } from "../utils/logger";
 
 const HEADSCALE_API_URL = process.env.HEADSCALE_API_URL || "http://localhost:8081";
@@ -211,6 +212,119 @@ export function compareHeadscaleIds(a: { id: string }, b: { id: string }): numbe
   return bVal - aVal || String(b.id).localeCompare(String(a.id));
 }
 
+/** Public service identity; API credentials stay in configuration and may rotate independently. */
+export interface HeadscaleServerAuthority {
+  apiUrl: string;
+  enrollmentUser: string;
+  publicKey: string;
+}
+
+const serverPublicKeySchema = z.object({
+  publicKey: z
+    .string()
+    .regex(/^mkey:[0-9a-f]{64}$/)
+    .refine((value) => value !== `mkey:${"0".repeat(64)}`),
+});
+
+const nodeIdSchema = z
+  .string()
+  .refine(
+    (value) =>
+      /^[1-9][0-9]*$/.test(value) &&
+      (value.length < 20 || (value.length === 20 && value <= "18446744073709551615")),
+  );
+const nodeIdentitySchema = z.object({
+  id: nodeIdSchema,
+  machineKey: serverPublicKeySchema.shape.publicKey,
+  createdAt: z.iso.datetime({ offset: true }),
+});
+const nodeAuthoritySchema = z.object({
+  server: z.object({
+    apiUrl: z.string(),
+    enrollmentUser: z.string(),
+    publicKey: serverPublicKeySchema.shape.publicKey,
+  }),
+  node: nodeIdentitySchema,
+});
+
+/** Stable registration identity excludes node keys that can rotate during normal operation. */
+export type HeadscaleNodeAuthority = z.infer<typeof nodeAuthoritySchema>;
+export interface HeadscaleNodeAbsenceReceipt {
+  state: "absent";
+  authority: HeadscaleNodeAuthority;
+  observedAt: string;
+}
+
+const enrollmentAuthoritySchema = nodeAuthoritySchema.extend({
+  node: nodeIdentitySchema.nullable(),
+});
+export type HeadscaleEnrollmentAuthority = z.infer<typeof enrollmentAuthoritySchema>;
+
+/** Decode durable enrollment scope without supplying missing identity from current configuration. */
+export function parseHeadscaleEnrollmentAuthority(
+  value: unknown,
+  expectedNodeId?: string | null,
+): HeadscaleEnrollmentAuthority {
+  const parsed = enrollmentAuthoritySchema.safeParse(value);
+  if (!parsed.success)
+    throw new ElizaError("Headscale enrollment authority is invalid", {
+      code: "HEADSCALE_ENROLLMENT_AUTHORITY_INVALID",
+    });
+  if (
+    expectedNodeId !== undefined &&
+    parsed.data.node !== null &&
+    parsed.data.node.id !== expectedNodeId
+  )
+    throw new ElizaError("Headscale enrollment authority disagrees with the placement node", {
+      code: "HEADSCALE_ENROLLMENT_NODE_MISMATCH",
+    });
+  return parsed.data;
+}
+
+/** Registration may enrich a recorded server scope once; retries cannot replace that scope or node. */
+export function mergeHeadscaleEnrollmentAuthority(
+  existing: HeadscaleEnrollmentAuthority | null,
+  incoming: HeadscaleEnrollmentAuthority | null,
+): HeadscaleEnrollmentAuthority | null {
+  if (existing === null && incoming === null) return null;
+  if (
+    !existing ||
+    !incoming ||
+    existing.server.apiUrl !== incoming.server.apiUrl ||
+    existing.server.enrollmentUser !== incoming.server.enrollmentUser ||
+    existing.server.publicKey !== incoming.server.publicKey ||
+    (existing.node !== null &&
+      incoming.node !== null &&
+      (existing.node.id !== incoming.node.id ||
+        existing.node.machineKey !== incoming.node.machineKey ||
+        existing.node.createdAt !== incoming.node.createdAt))
+  ) {
+    throw new ElizaError("Headscale enrollment authority changed after intent admission", {
+      code: "HEADSCALE_ENROLLMENT_AUTHORITY_CHANGED",
+    });
+  }
+  return existing.node ? existing : incoming;
+}
+
+/** Validate every inventory ID before selecting one registration or proving its absence. */
+function findNodeInAuthoritativeInventory(
+  nodes: HeadscaleNode[],
+  nodeId: string,
+): HeadscaleNode | null {
+  const ids = new Set<string>();
+  let found: HeadscaleNode | null = null;
+  for (const node of nodes) {
+    const parsed = z.object({ id: nodeIdSchema }).safeParse(node);
+    if (!parsed.success || ids.has(parsed.data.id))
+      throw new ElizaError("Headscale inventory contains invalid or duplicate node identities", {
+        code: "HEADSCALE_NODE_INVENTORY_INVALID",
+      });
+    ids.add(parsed.data.id);
+    if (parsed.data.id === nodeId) found = node;
+  }
+  return found;
+}
+
 export class HeadscaleClient {
   private baseUrl: string;
   private apiKey: string;
@@ -220,6 +334,133 @@ export class HeadscaleClient {
     this.baseUrl = opts?.apiUrl || HEADSCALE_API_URL;
     this.apiKey = opts?.apiKey || HEADSCALE_API_KEY;
     this.user = opts?.user || HEADSCALE_USER;
+  }
+
+  private configuredAuthorityScope(): Pick<HeadscaleServerAuthority, "apiUrl" | "enrollmentUser"> {
+    const url = new URL(this.baseUrl);
+    if (
+      !["https:", "http:"].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      !this.user.trim()
+    ) {
+      throw new ElizaError("Headscale authority configuration is invalid", {
+        code: "HEADSCALE_AUTHORITY_CONFIG_INVALID",
+      });
+    }
+    return { apiUrl: url.href.replace(/\/+$/, ""), enrollmentUser: this.user };
+  }
+
+  /** Observe the Noise key through the configured endpoint without transmitting an API credential. */
+  async captureServerAuthority(): Promise<HeadscaleServerAuthority> {
+    const scope = this.configuredAuthorityScope();
+    const response = await fetch(`${scope.apiUrl}/key?v=39`, {
+      method: "GET",
+      redirect: "error",
+      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    });
+    if (!response.ok)
+      throw new HeadscaleHttpError(response.status, "GET", "/key?v=39", response.statusText);
+    const parsed = serverPublicKeySchema.safeParse(await response.json());
+    if (!parsed.success)
+      throw new ElizaError("Headscale server identity response is invalid", {
+        code: "HEADSCALE_SERVER_IDENTITY_INVALID",
+      });
+    return { ...scope, publicKey: parsed.data.publicKey };
+  }
+
+  /** A stored authority can constrain the configured service, never select a credential destination. */
+  async requireServerAuthority(expected: HeadscaleServerAuthority): Promise<void> {
+    const expectedKey = expected.publicKey;
+    const scope = this.configuredAuthorityScope();
+    if (scope.apiUrl !== expected.apiUrl || scope.enrollmentUser !== expected.enrollmentUser) {
+      throw new ElizaError("Headscale cleanup scope differs from captured authority", {
+        code: "HEADSCALE_SERVER_AUTHORITY_MISMATCH",
+      });
+    }
+    const observed = await this.captureServerAuthority();
+    if (observed.publicKey !== expectedKey) {
+      throw new ElizaError("Headscale server key differs from captured authority", {
+        code: "HEADSCALE_SERVER_AUTHORITY_MISMATCH",
+      });
+    }
+  }
+
+  /** Reject inventory observations made across a detected server identity change. */
+  async listNodesForAuthority(expected: HeadscaleServerAuthority): Promise<HeadscaleNode[]> {
+    const authority = { ...expected };
+    await this.requireServerAuthority(authority);
+    const nodes = await this.listNodesStrict();
+    await this.requireServerAuthority(authority);
+    return nodes;
+  }
+
+  /** Capture a discovered registration only under the server identity that admitted enrollment. */
+  async captureNodeAuthority(
+    server: HeadscaleServerAuthority,
+    nodeId: string,
+  ): Promise<HeadscaleNodeAuthority> {
+    if (!nodeIdSchema.safeParse(nodeId).success)
+      throw new ElizaError("Headscale registration ID is invalid", {
+        code: "HEADSCALE_NODE_ID_INVALID",
+      });
+    const expectedServer = { ...server };
+    const node = findNodeInAuthoritativeInventory(
+      await this.listNodesForAuthority(expectedServer),
+      nodeId,
+    );
+    const parsed = nodeIdentitySchema.safeParse(node);
+    if (!parsed.success)
+      throw new ElizaError("Headscale registration identity is unavailable", {
+        code: "HEADSCALE_NODE_IDENTITY_UNAVAILABLE",
+      });
+    return { server: expectedServer, node: parsed.data };
+  }
+
+  /** Remove only the captured registration and settle uncertain responses through scoped inventory. */
+  async deleteNodeForAuthority(
+    expected: HeadscaleNodeAuthority,
+  ): Promise<HeadscaleNodeAbsenceReceipt> {
+    const parsed = nodeAuthoritySchema.safeParse(expected);
+    if (!parsed.success)
+      throw new ElizaError("Headscale deletion authority is malformed", {
+        code: "HEADSCALE_NODE_AUTHORITY_INVALID",
+      });
+    const authority = parsed.data;
+    const before = findNodeInAuthoritativeInventory(
+      await this.listNodesForAuthority(authority.server),
+      authority.node.id,
+    );
+    if (before) {
+      const identity = nodeIdentitySchema.safeParse(before);
+      if (
+        !identity.success ||
+        identity.data.machineKey !== authority.node.machineKey ||
+        identity.data.createdAt !== authority.node.createdAt
+      )
+        throw new ElizaError("Headscale node differs from captured registration", {
+          code: "HEADSCALE_NODE_AUTHORITY_MISMATCH",
+        });
+      let deletionFailure: unknown;
+      try {
+        await this.deleteNode(authority.node.id);
+      } catch (error) {
+        // error-policy:J1 The scoped readback below settles uncertain deletion; presence remains an error.
+        deletionFailure = error;
+      }
+      const remaining = findNodeInAuthoritativeInventory(
+        await this.listNodesForAuthority(authority.server),
+        authority.node.id,
+      );
+      if (remaining)
+        throw new ElizaError("Headscale node retirement remains unresolved", {
+          code: "HEADSCALE_NODE_RETIREMENT_UNPROVEN",
+          cause: deletionFailure,
+        });
+    }
+    return { state: "absent", authority, observedAt: new Date().toISOString() };
   }
 
   // -------------------------------------------------------------------------
@@ -549,7 +790,7 @@ export class HeadscaleClient {
    * All requests include the Bearer token and an abort timeout.
    */
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
+    const url = `${this.baseUrl.replace(/\/+$/, "")}${path}`;
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.apiKey}`,
@@ -558,6 +799,7 @@ export class HeadscaleClient {
     const init: RequestInit = {
       method,
       headers,
+      redirect: "error",
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     };
 

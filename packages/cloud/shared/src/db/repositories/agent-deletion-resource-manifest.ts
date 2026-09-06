@@ -6,12 +6,17 @@ import {
   getDeletionVolumeCleanupReceipt,
   getReplacementSecretArtifactsCleanupReceipt,
 } from "../../lib/services/docker-sandbox-utils";
+import {
+  mergeHeadscaleEnrollmentAuthority,
+  parseHeadscaleEnrollmentAuthority,
+} from "../../lib/services/headscale-client";
 import type {
   AgentDeletionResourceManifest,
   AgentDeletionResourcePolicy,
   AgentDeletionResourceReceipt,
   AgentDeletionVolumeCapture,
   AgentDeletionVolumeReceipt,
+  AgentDeletionVpnReceipt,
   AgentSandbox,
 } from "../schemas/agent-sandboxes";
 
@@ -51,13 +56,15 @@ const volumeCaptureSchema = z.object({
 });
 const volumeReceiptSchema = secretReceiptSchema.extend({ capture: volumeCaptureSchema });
 const resourceStatesSchema = z.object({
-  // VPN has no completion protocol yet; persisted JSON cannot invent support.
   volume: z.union([
     z.object({ state: z.literal("unknown") }),
     volumeCaptureSchema,
     volumeReceiptSchema,
   ]),
-  vpn: z.object({ state: z.literal("unknown") }),
+  vpn: z.union([
+    z.object({ state: z.literal("unknown") }),
+    secretReceiptSchema.extend({ authority: z.unknown() }),
+  ]),
   secrets: z.union([z.object({ state: z.literal("unknown") }), secretReceiptSchema]),
 });
 
@@ -136,6 +143,8 @@ export function assertDeletionResourceManifestOwner(
     validateDeletionVolumeCapture(manifest, manifest.resources.volume);
   if (manifest.resources.volume.state === "absent")
     validateDeletionVolumeReceipt(manifest, manifest.resources.volume);
+  if (manifest.resources.vpn.state === "absent")
+    validateDeletionVpnReceipt(manifest, manifest.resources.vpn);
   if (manifest.resources.secrets.state === "absent")
     validateDeletionSecretReceipt(manifest, manifest.resources.secrets);
 }
@@ -146,6 +155,10 @@ function resourceIdentity(
   serving: AgentDeletionResourceManifest["servingPlacement"],
 ): string {
   const locator = serving?.locator;
+  const vpnAuthority =
+    locator?.vpnAuthority == null
+      ? null
+      : parseHeadscaleEnrollmentAuthority(locator.vpnAuthority, locator.vpnNodeId ?? null);
   return JSON.stringify([
     retained && [
       retained.agentId,
@@ -179,6 +192,22 @@ function resourceIdentity(
       locator.previousVpnNodeId,
       locator.vpnRegistrationStartedAt,
     ],
+    // Preserve hashes of issued scope-less receipts; a newly captured scope changes authority.
+    ...(vpnAuthority
+      ? [
+          [
+            "headscale-enrollment-v1",
+            vpnAuthority.server.apiUrl,
+            vpnAuthority.server.enrollmentUser,
+            vpnAuthority.server.publicKey,
+            vpnAuthority.node && [
+              vpnAuthority.node.id,
+              vpnAuthority.node.machineKey,
+              vpnAuthority.node.createdAt,
+            ],
+          ],
+        ]
+      : []),
   ]);
 }
 
@@ -303,4 +332,35 @@ export function validateDeletionVolumeReceipt(
     });
   }
   validateDeletionVolumeCapture(manifest, parsed.data.capture);
+}
+
+/** Accept only scoped registration absence for the immutable deletion manifest. */
+export function validateDeletionVpnReceipt(
+  manifest: AgentDeletionResourceManifest,
+  receipt: AgentDeletionVpnReceipt,
+): void {
+  const parsed = secretReceiptSchema.safeParse(receipt);
+  const locator = manifest.servingPlacement?.locator;
+  if (
+    !parsed.success ||
+    !locator?.vpnAuthority ||
+    parsed.data.providerReceipt !== "HEADSCALE_NODE_ABSENT_V1" ||
+    parsed.data.authorityHash !== deletionResourceAuthorityHash(manifest) ||
+    Date.parse(parsed.data.observedAt) > Date.now()
+  ) {
+    throw new ElizaError("Deletion VPN receipt differs from captured authority", {
+      code: "AGENT_DELETE_VPN_RECEIPT_INVALID",
+      context: { agentId: manifest.agentId },
+    });
+  }
+  const captured = parseHeadscaleEnrollmentAuthority(
+    locator.vpnAuthority,
+    locator.vpnNodeId ?? null,
+  );
+  const observed = parseHeadscaleEnrollmentAuthority(receipt.authority, locator.vpnNodeId ?? null);
+  if (!captured.node || !observed.node)
+    throw new ElizaError("Deletion VPN receipt lacks a captured registration", {
+      code: "AGENT_DELETE_VPN_RECEIPT_INVALID",
+    });
+  mergeHeadscaleEnrollmentAuthority(captured, observed);
 }

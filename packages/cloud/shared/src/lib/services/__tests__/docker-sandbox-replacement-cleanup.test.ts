@@ -64,6 +64,33 @@ const HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS = [
   "CONTAINERS_PUBLIC_BASE_DOMAIN",
 ] as const;
 
+const VPN_SERVER_AUTHORITY = {
+  apiUrl: "https://headscale.example.test",
+  enrollmentUser: "agent",
+  publicKey: `mkey:${"1".repeat(64)}`,
+};
+const VPN_NODE_AUTHORITY = {
+  server: VPN_SERVER_AUTHORITY,
+  node: {
+    id: EXACT_VPN_NODE_ID,
+    machineKey: `mkey:${"2".repeat(64)}`,
+    createdAt: REGISTRATION_STARTED_AT,
+  },
+};
+
+/** Substitute the remote Headscale observation while exercising actual provider orchestration. */
+function stubVpnAuthority(events?: string[]) {
+  spyOn(headscaleClient, "captureServerAuthority").mockImplementation(async () => {
+    events?.push("vpn-server-authority");
+    return VPN_SERVER_AUTHORITY;
+  });
+  spyOn(headscaleClient, "captureNodeAuthority").mockImplementation(async (server, nodeId) => {
+    expect(server).toEqual(VPN_SERVER_AUTHORITY);
+    events?.push("vpn-node-authority");
+    return { server, node: { ...VPN_NODE_AUTHORITY.node, id: nodeId } };
+  });
+}
+
 function inspectLine(id: string, attempt: string, name = CONTAINER_NAME): string {
   return `${id}|${attempt}|/${name}|${CONTAINER_CREATED_AT}\n`;
 }
@@ -1135,6 +1162,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       events.push("steward");
       return { tenantId: "tenant-test", isNew: false };
     });
+    stubVpnAuthority(events);
     spyOn(headscaleIntegration, "prepareContainerVPN").mockImplementation(async () => {
       events.push("headscale-prepare");
       throw new Error("Headscale preauth unavailable");
@@ -1201,7 +1229,12 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(failure).toBeInstanceOf(Error);
     expect(failure).not.toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
     expect((failure as Error).message).toContain("Headscale preauth unavailable");
-    expect(events).toEqual(["attempt-started", "steward", "headscale-prepare"]);
+    expect(events).toEqual([
+      "attempt-started",
+      "steward",
+      "vpn-server-authority",
+      "headscale-prepare",
+    ]);
     expect(persistIntent).not.toHaveBeenCalled();
     expect(persistSettlement).not.toHaveBeenCalled();
     expect(increment).not.toHaveBeenCalled();
@@ -1719,6 +1752,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       tenantId: "tenant-test",
       isNew: false,
     });
+    stubVpnAuthority();
     spyOn(headscaleIntegration, "prepareContainerVPN").mockResolvedValue({
       preAuthKey: "preauth-test",
       envVars: {
@@ -1848,6 +1882,43 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       ).toBe(true);
       containerTailnetIp = "100.64.0.42";
 
+      const authorityFailure = new Error("registration identity readback unavailable");
+      spyOn(headscaleClient, "captureNodeAuthority").mockRejectedValue(authorityFailure);
+      const persistUnknownNode = mock(async (candidate: SandboxHandle) => {
+        expect(candidate.metadata?.vpnNodeId).toBe(EXACT_VPN_NODE_ID);
+        expect(candidate.metadata?.vpnAuthority).toEqual({
+          server: VPN_SERVER_AUTHORITY,
+          node: null,
+        });
+      });
+      const unknownNode = await replacementProvider()
+        .create(
+          replacementCreateConfig({
+            replacementAttemptId: ATTEMPT_ID,
+            dockerImage: "eliza-agent:test",
+            environmentVars: { ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1" },
+            reclaimStaleVpnNode: false,
+            onReplacementCreateAttemptStarted: async () => {},
+            onReplacementCreateIntent: async () => {},
+            onReplacementCreated: async () => {},
+            onReplacementVpnRegistered: persistUnknownNode,
+            onReplacementCreateSettled: async () => {
+              throw new Error("Unresolved registration cannot publish success");
+            },
+          }),
+        )
+        .catch((caught: unknown) => caught);
+      expect(unknownNode).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+      expect((unknownNode as SandboxReplacementCleanupUnresolvedError).vpnAuthority).toEqual({
+        server: VPN_SERVER_AUTHORITY,
+        node: null,
+      });
+      expect((unknownNode as SandboxReplacementCleanupUnresolvedError).vpnNodeId).toBe(
+        EXACT_VPN_NODE_ID,
+      );
+      expect(persistUnknownNode).toHaveBeenCalledTimes(1);
+      stubVpnAuthority();
+
       const renameFailure = new Error("rename response was lost");
       for (const scenario of ["unresolved", "unknown"] as const) {
         renameCompletion =
@@ -1946,6 +2017,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       tenantId: "tenant-test",
       isNew: false,
     });
+    stubVpnAuthority();
     const prepareVpn = spyOn(headscaleIntegration, "prepareContainerVPN").mockRejectedValue(
       new Error("Headscale must remain disabled"),
     );
@@ -2145,6 +2217,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       events.push("steward");
       return { tenantId: "tenant-test", isNew: false };
     });
+    stubVpnAuthority(events);
     spyOn(headscaleIntegration, "prepareContainerVPN").mockImplementation(async () => {
       events.push("headscale-prepare");
       return {
@@ -2245,6 +2318,21 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(events.indexOf("attempt-started")).toBeLessThan(events.indexOf("steward"));
     expect(events.indexOf("attempt-started")).toBeLessThan(events.indexOf("headscale-prepare"));
     expect(events.indexOf("attempt-started")).toBeLessThan(events.indexOf("ssh-client"));
+    expect(events.indexOf("vpn-server-authority")).toBeLessThan(
+      events.indexOf("headscale-prepare"),
+    );
+    expect(events.indexOf("vpn-registration")).toBeLessThan(events.indexOf("vpn-node-authority"));
+    expect(events.indexOf("vpn-node-authority")).toBeLessThan(events.indexOf("persist-vpn"));
+    expect(callbackHandles[0]?.metadata?.vpnAuthority).toEqual({
+      server: VPN_SERVER_AUTHORITY,
+      node: null,
+    });
+    expect(callbackHandles[1]?.metadata?.vpnAuthority).toEqual({
+      server: VPN_SERVER_AUTHORITY,
+      node: null,
+    });
+    expect(callbackHandles[2]?.metadata?.vpnAuthority).toEqual(VPN_NODE_AUTHORITY);
+    expect(handle.metadata?.vpnAuthority).toEqual(VPN_NODE_AUTHORITY);
     expect(events.indexOf("headscale-prepare")).toBeLessThan(events.indexOf("persist-intent"));
     expect(events.indexOf("steward-register")).toBeLessThan(events.indexOf("persist-intent"));
     expect(events.indexOf("network-ready")).toBeLessThan(events.indexOf("persist-intent"));
@@ -2326,6 +2414,46 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(deleteVpn).toHaveBeenCalledWith("1442");
     expect(decrement).not.toHaveBeenCalled();
   });
+
+  for (const observed of [true, false]) {
+    test(`scoped replacement VPN cleanup ${observed ? "uses captured registration" : "retains unknown registration authority"}`, async () => {
+      stubNodeLookup();
+      stubSsh(async (command) =>
+        command.includes("docker inspect --format") ? inspectLine(CONTAINER_ID, ATTEMPT_ID) : "",
+      );
+      const legacyDelete = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+      const scopedDelete = spyOn(headscaleClient, "deleteNodeForAuthority").mockResolvedValue({
+        state: "absent",
+        authority: VPN_NODE_AUTHORITY,
+        observedAt: new Date().toISOString(),
+      });
+      const authority = {
+        server: VPN_SERVER_AUTHORITY,
+        node: observed ? VPN_NODE_AUTHORITY.node : null,
+      };
+      const operation = replacementProvider().stopOnSpecificNodeForReplacement(
+        NODE.node_id,
+        CONTAINER_NAME,
+        EXACT_VPN_NODE_ID,
+        { ...replacementIdentity(), vpnAuthority: authority },
+      );
+      if (observed) {
+        await operation;
+        expect(scopedDelete).toHaveBeenCalledWith(VPN_NODE_AUTHORITY);
+      } else {
+        const failure = await operation.catch((caught: unknown) => caught);
+        expect(failure).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+        expect((failure as SandboxReplacementCleanupUnresolvedError).vpnAuthority).toEqual(
+          authority,
+        );
+        expect((failure as Error).cause).toMatchObject({
+          code: "SANDBOX_REPLACEMENT_VPN_AUTHORITY_UNRESOLVED",
+        });
+        expect(scopedDelete).not.toHaveBeenCalled();
+      }
+      expect(legacyDelete).not.toHaveBeenCalled();
+    });
+  }
 
   test("rejects a malformed secret-cleanup receipt before inspecting Docker or mutating Headscale", async () => {
     stubNodeLookup();
