@@ -1088,6 +1088,13 @@ export const ChatMessage = memo(function ChatMessage({
               children ??
               message.text}
           </div>
+          {isAssistant && message.interrupted ? (
+            <div className="mt-2">
+              <Badge variant="outline" tone="danger">
+                {labels.responseInterrupted ?? "Response interrupted"}
+              </Badge>
+            </div>
+          ) : null}
         </>
       );
 

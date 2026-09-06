@@ -38,7 +38,11 @@ import type {
 	ProviderDataRecord,
 } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
-import { hasAppliedUserFacingEffectProof } from "../types/effects";
+import {
+	hasAppliedUserFacingEffectProof,
+	resolveAppliedUserFacingEffectReceipts,
+	resolveUserFacingEffectReceipts,
+} from "../types/effects";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
@@ -1900,15 +1904,28 @@ async function runPlannerLoopIterations(
 			iteration,
 			redactDiagnosticText,
 		);
-		// A malformed evaluator reply cannot complete work the planner explicitly
-		// left pending. Retain its CONTINUE decision so the next model call sees
-		// the committed receipt and resumes the remaining authorized clauses.
-		const protocolFailureRelay =
+		// A malformed evaluator reply cannot complete explicitly pending work.
+		// A retryable boundary failure also permits replanning from the complete
+		// outcome; the model must choose safe recovery rather than having the loop
+		// replay a mutation. Existing failure and execution limits still apply.
+		const unresolvedFailure =
+			latestUnresolvedFailedNonTerminalToolStep(trajectory);
+		const retryableFailure =
+			unresolvedFailure?.result?.failureProvenance?.retryable === true;
+		const pendingInteraction =
+			retryableFailure && unresolvedFailure
+				? latestActionablePendingInteractionAfter(trajectory, unresolvedFailure)
+				: undefined;
+		const shouldReplanPendingWork =
 			(lastPlannerExplicitCompleted === false ||
 				trajectory.plannedQueue.length > 0) &&
-			!latestUnresolvedFailedNonTerminalToolStep(trajectory)
-				? undefined
-				: deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
+			(!unresolvedFailure || retryableFailure);
+		const protocolFailureRelay =
+			evaluator.protocolFailure === true && pendingInteraction !== undefined
+				? pendingInteraction
+				: shouldReplanPendingWork
+					? undefined
+					: deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
 		if (protocolFailureRelay) {
 			params.runtime.logger?.warn?.(
 				{ iteration, protocolFailure: true },
@@ -5912,11 +5929,14 @@ function missingInputPlannerTerminalCandidates(
 function deterministicRequiresConfirmationRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	for (const step of [...trajectory.steps].reverse()) {
+	const steps = allTrajectorySteps(trajectory);
+	for (let index = steps.length - 1; index >= 0; index--) {
+		const step = steps[index];
 		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
 		const result = step.result;
 		if (!result) continue;
 		if (!hasRequiresConfirmationMarker(result)) continue;
+		if (previewWasCommitted(step, index, steps)) continue;
 
 		const candidate = sanitizePlannerMessage(
 			result.userFacingText ?? result.text,
@@ -5997,6 +6017,52 @@ function allTrajectorySteps(
 	return [...(trajectory.archivedSteps ?? []), ...trajectory.steps];
 }
 
+/** A later bound commit supersedes only the same keyed operation preview. */
+function previewWasCommitted(
+	previewStep: PlannerStep,
+	previewIndex: number,
+	steps: PlannerStep[],
+): boolean {
+	if (!previewStep.result || !previewStep.toolCall) return false;
+	const previewReceipts = resolveUserFacingEffectReceipts(previewStep.result);
+	if (
+		!previewReceipts?.length ||
+		previewReceipts.some(
+			(receipt) =>
+				receipt.outcome !== "preview" || receipt.idempotency.key === null,
+		)
+	)
+		return false;
+	const allReceipts = steps.flatMap(
+		(step) => step.result?.effectReceipts ?? [],
+	);
+	return previewReceipts.every((preview) =>
+		steps.some((step, index) => {
+			if (
+				index <= previewIndex ||
+				step.result?.success !== true ||
+				step.toolCall?.name.toUpperCase() !==
+					previewStep.toolCall?.name.toUpperCase()
+			)
+				return false;
+			// Require proof owned by this later result, then check all-turn rollback.
+			const committed = resolveAppliedUserFacingEffectReceipts(step.result);
+			if (
+				!committed ||
+				!resolveAppliedUserFacingEffectReceipts(step.result, allReceipts)
+			)
+				return false;
+			return (
+				committed.some(
+					(receipt) =>
+						receipt.operation === preview.operation &&
+						receipt.idempotency.key === preview.idempotency.key,
+				) === true
+			);
+		}),
+	);
+}
+
 /**
  * Returns the canonical user-facing text from a trajectory whose
  * `verifiedUserFacing` opt-in is unambiguous: exactly one completed tool step
@@ -6007,7 +6073,8 @@ function allTrajectorySteps(
  * second tool emitted a verified canonical reply must still echo the verified
  * reply. LifeOps can draft more than once while refining a request; the latest
  * verified preview is the user-complete state even though `success:false`
- * correctly records that nothing was persisted yet.
+ * correctly records that nothing was persisted yet. A later canonical commit
+ * for every keyed preview operation releases that preview's reply authority.
  *
  * Tools that emit structured data the evaluator could paraphrase
  * incorrectly (paths, ids, counts, numeric metrics) set the flag so the
@@ -6019,7 +6086,9 @@ function allTrajectorySteps(
 export function singleVerifiedUserFacingToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	for (const step of allTrajectorySteps(trajectory).reverse()) {
+	const steps = allTrajectorySteps(trajectory);
+	for (let index = steps.length - 1; index >= 0; index--) {
+		const step = steps[index];
 		const result = step.result;
 		if (
 			result?.verifiedUserFacing === true &&
@@ -6028,7 +6097,10 @@ export function singleVerifiedUserFacingToolResultText(
 			const verifiedConfirmationPreviewText = getNonEmptyString(
 				result.userFacingText,
 			);
-			if (verifiedConfirmationPreviewText) {
+			if (
+				verifiedConfirmationPreviewText &&
+				!previewWasCommitted(step, index, steps)
+			) {
 				return verifiedConfirmationPreviewText;
 			}
 		}
@@ -6225,10 +6297,12 @@ function combinedVerifiedToolTextAndProse(
 	modelText: string | undefined,
 ): string | undefined {
 	if (!verifiedToolText || !modelText) return undefined;
-	const hasVerifiedConfirmationPreview = trajectory.steps.some(
-		(step) =>
+	const steps = allTrajectorySteps(trajectory);
+	const hasVerifiedConfirmationPreview = steps.some(
+		(step, index) =>
 			step.result?.verifiedUserFacing === true &&
-			hasRequiresConfirmationMarker(step.result),
+			hasRequiresConfirmationMarker(step.result) &&
+			!previewWasCommitted(step, index, steps),
 	);
 	if (hasVerifiedConfirmationPreview) return undefined;
 	const verified = verifiedToolText.trim();
@@ -6893,11 +6967,11 @@ function hasInFlightActionClaim(candidate: string): boolean {
 			);
 			const precedingRequest =
 				/^\s*(?:if|when|once|after)\s+you\b/i.test(before) &&
-				/\b(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
+				/\b(?:say|tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
 					before,
 				);
 			const followingRequest =
-				/\b(?:if|when|once|after)\s+you\s+(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
+				/\b(?:if|when|once|after)\s+you\s+(?:say|tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
 					after,
 				);
 			const requestedInput =

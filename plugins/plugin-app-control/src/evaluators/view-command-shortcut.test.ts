@@ -71,8 +71,6 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 		["mở lịch", "calendar"],
 		["buksan ang calendar", "calendar"],
 		["open my inbox", "inbox"],
-		["check my messages", "inbox"],
-		["revisa mi correo", "inbox"],
 		["show my wallet", "wallet"],
 		["abre ajustes", "settings"],
 		["打开设置", "settings"],
@@ -188,5 +186,63 @@ describe("viewCommandShortcutEvaluator — overrides weak-model STOP", () => {
 				parentActionHints: ["LIST_CLOUD_APPS"],
 			}),
 		).toBeNull();
+	});
+});
+
+describe("standalone shortcut applicability preserves domain planning", () => {
+	const requests = [
+		"check my notes",
+		"revisa mis tareas",
+		"check my messages",
+		"revisa mi correo",
+		"Do not change views. List my todos and tell me if any are due. Do not create, update, or delete anything.",
+		"Please quote the phrase open calendar in my note",
+		"What does open settings mean?",
+		"Open calendar and create a meeting tomorrow",
+		'"open settings"',
+		'open "settings"',
+		'"open cloud apps"',
+		'"go back"',
+		"Open settings then list my todos",
+		"Please open settings and tell me which account is connected",
+		"打开设置然后列出我的待办事项",
+		"カレンダーを開いてから予定を作成して",
+		"abre ajustes y lista mis tareas",
+	];
+	for (const hasOwner of [false, true]) {
+		it.each(requests)(
+			`leaves complete request %j untouched (owner registered: ${hasOwner})`,
+			async (text) => {
+				const context = ctx(text, {
+					extraActions: hasOwner ? ["OWNER_TODOS", "NOTES"] : [],
+					candidateActions: hasOwner ? ["OWNER_TODOS", "NOTES"] : ["REPLY"],
+					parentActionHints: hasOwner ? ["OWNER_TODOS", "NOTES"] : [],
+				});
+				const before = structuredClone(context);
+				expect(await viewCommandShortcutEvaluator.shouldRun(context)).toBe(
+					false,
+				);
+				expect(
+					await viewCommandShortcutEvaluator.evaluate(context),
+				).toBeUndefined();
+				expect(context).toEqual(before);
+			},
+		);
+	}
+	it.each([
+		"can you show me my calendar",
+		"can you please open calendar",
+		"could you open calendar please",
+	])("routes standalone courtesy %j", async (text) => {
+		const patch = await run(text, {
+			extraActions: ["OWNER_TODOS"],
+			candidateActions: ["OWNER_TODOS"],
+			parentActionHints: ["OWNER_TODOS"],
+		});
+		expect(patch?.deterministicToolCall).toEqual({
+			name: "VIEWS",
+			params: { action: "show", view: "calendar" },
+		});
+		expect(patch?.clearCandidateActions).toBe(true);
 	});
 });

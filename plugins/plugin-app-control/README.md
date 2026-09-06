@@ -17,6 +17,8 @@ background, settings, model, agent-profile, and runtime management.
 
 **VIEWS** — Full view management. The agent can navigate to any UI view contributed by any loaded plugin; report the currently-open view; search views by name; open the view manager; broadcast events to mounted views; interact with a view (click, get state, focus, etc.); pin a view as a desktop tab; open a view in a separate window; and create, edit, or delete view plugins through a coding-agent backed flow.
 
+Contextual visual continuation is selected before planning from the authorized live view catalog. It adds navigation alongside domain work; opening Calendar never proves that an event was drafted or saved. The same turn receives the VIEWS navigation result before its final reply. Catalog results describe only views authorized for the caller: an absent destination is unavailable to that caller, with an unknown cause. Omission must not be presented as proof that the view does not exist globally or that no role restriction applies.
+
 **BACKGROUND** — Unified background control. The agent can set a named color or hex color, use an uploaded image, generate a background image from a prompt, undo the previous background, redo an undone change, or reset to default. It broadcasts a `background:apply` view event that the always-mounted app background applies to the shared `BackgroundConfig` store.
 
 **RUNTIMES** — Owner-gated Devices & Runtimes lifecycle. It lists saved

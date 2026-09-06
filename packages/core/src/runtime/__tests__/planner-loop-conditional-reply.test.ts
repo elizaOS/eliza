@@ -57,6 +57,8 @@ describe("conditional offers after completed navigation", () => {
 	it.each([
 		"If you have a first thought in mind, tell me what to write and I'll put it up now.",
 		"Once you choose a title, I will save the note.",
+		"If you want, say go and I'll retry from the description updates in order.",
+		"If you say go, I will retry the update.",
 		`Just say "note that..." and I'll write it down.`,
 		"Just say “note that...” and I’ll write it down.",
 		`Once you choose the title "I will not panic.", I will save the note.`,

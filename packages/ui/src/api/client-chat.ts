@@ -1111,7 +1111,8 @@ ElizaClient.prototype.getConversationMessages = async function (
   );
   return {
     messages: response.messages.map((message) => {
-      if (message.role !== "assistant") return message;
+      if (message.role !== "assistant" || message.interrupted === true)
+        return message;
       const text = this.normalizeAssistantText(message.text);
       return text === message.text ? message : { ...message, text };
     }),

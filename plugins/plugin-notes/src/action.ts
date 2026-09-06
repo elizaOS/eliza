@@ -124,6 +124,13 @@ function committed(text: string, data: Record<string, unknown>): ActionResult {
 
 export const notesAction: Action = {
   name: "NOTES",
+  tags: [
+    "resource:tracked-work",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+  ],
   contexts: ["notes", "general"],
   similes: [
     "NOTE",
@@ -197,7 +204,7 @@ export const notesAction: Action = {
         : notes.length === 0
           ? "You don't have any notes yet."
           : `You have ${notes.length} ${notes.length === 1 ? "note" : "notes"}.`;
-      return committed(fallback, {
+      const result = committed(fallback, {
         op,
         count: matches.length,
         total: notes.length,
@@ -209,6 +216,21 @@ export const notesAction: Action = {
           color,
         })),
       });
+      if (matches.length > 0) return result;
+      // The read establishes this exact scoped absence, not an empty day or
+      // another resource's state. Let the existing single-tool completion
+      // contract preserve it; a paraphrase cannot inherit read authority.
+      return {
+        ...result,
+        userFacingText: fallback,
+        verifiedUserFacing: true,
+        turnComplete: true,
+        modelReplyRequired: false,
+        data: {
+          ...result.data,
+          claimGrounding: ["empty_tracked_state"],
+        },
+      };
     }
 
     // ONE user-authored field, per the package contract: the label is derived

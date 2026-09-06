@@ -13,6 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
 import type { PlannerToolResult } from "../runtime/planner-loop";
 import type {
@@ -25,6 +26,7 @@ import type {
 } from "../types";
 import { ModelType } from "../types";
 import { ChannelType } from "../types/primitives";
+import { PROVIDER_CONTEXT_OVERFLOW } from "../utils/model-errors";
 import {
 	answerlessToolTurnReport,
 	DefaultMessageService,
@@ -47,7 +49,7 @@ const EVALUATOR_FAILURE = new Error(
 	"[cli-inference:sdk] subscription rate limit reached: session limit hit",
 );
 
-function stageOneToolTurn() {
+function stageOneToolTurn(replyEffectStatus: "none" | "non_applied" = "none") {
 	return {
 		text: "",
 		toolCalls: [
@@ -61,6 +63,7 @@ function stageOneToolTurn() {
 					intents: ["look up entry"],
 					candidateActionNames: ["LOOKUP"],
 					replyText: "",
+					replyEffectStatus,
 					facts: [],
 					relationships: [],
 					addressedTo: [],
@@ -111,6 +114,7 @@ const activeRuntimes: AgentRuntime[] = [];
 
 async function createHarness(options: {
 	actionResult: Record<string, unknown>;
+	actionGate?: (roomId: UUID) => Promise<void>;
 }): Promise<Harness> {
 	const runtime = new AgentRuntime({
 		character: createCharacter({
@@ -146,7 +150,10 @@ async function createHarness(options: {
 			},
 		],
 		validate: async () => true,
-		handler: async () => options.actionResult as never,
+		handler: async (_runtime, message) => {
+			await options.actionGate?.(message.roomId);
+			return options.actionResult as never;
+		},
 	};
 	runtime.registerAction(calendarAction);
 
@@ -230,6 +237,284 @@ describe("planner-loop death after a completed tool", () => {
 			}),
 		);
 	});
+
+	it("propagates out-of-band Stop instead of rescuing settled tool text", async () => {
+		let announce!: (roomId: UUID) => void;
+		const entered = new Promise<UUID>((resolve) => {
+			announce = resolve;
+		});
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const harness = await createHarness({
+			actionResult: {
+				success: true,
+				userFacingText: USER_FACING,
+				modelReplyRequired: true,
+			},
+			actionGate: async (roomId) => {
+				announce(roomId);
+				await gate;
+			},
+		});
+		const pending = new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, "look up the eliza-test entry"),
+			harness.callback,
+			{ onStreamChunk: async () => undefined },
+		);
+		const rejection = expect(pending).rejects.toMatchObject({
+			code: "TURN_ABORTED",
+		});
+		const roomId = await entered;
+		expect(
+			harness.runtime.turnControllers.abortTurn(roomId, "ui-chat-stop"),
+		).toBe(true);
+		release();
+		await rejection;
+		expect(visibleTexts(harness.callbacks)).toEqual([]);
+		expect(harness.reportedScopes).not.toContain("MessageService.plannerLoop");
+	});
+
+	it("never delivers the preliminary navigation promise after Stop during planning", async () => {
+		let announce!: () => void;
+		const entered = new Promise<void>((resolve) => {
+			announce = resolve;
+		});
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let actionCalls = 0;
+		const harness = await createHarness({
+			actionResult: { success: true },
+			actionGate: async () => {
+				actionCalls++;
+			},
+		});
+		const stageOne = stageOneToolTurn();
+		stageOne.toolCalls[0].arguments.replyText =
+			"Switching you to the calendar view now.";
+		harness.runtime.responseHandlerEvaluators.push({
+			name: "navigation-planning-admission",
+			priority: 100,
+			shouldRun: () => true,
+			evaluate: () => ({ reply: "On it.", requiresTool: true }),
+		});
+		harness.runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			async () => stageOne,
+			"stop-test",
+			200,
+		);
+		harness.runtime.registerModel(
+			ModelType.ACTION_PLANNER,
+			async () => {
+				announce();
+				await gate;
+				throw new Error("provider stopped after cancellation");
+			},
+			"stop-test",
+			200,
+		);
+		const pending = new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, "look up the requested entry"),
+			harness.callback,
+		);
+		const rejection = expect(pending).rejects.toMatchObject({
+			code: "TURN_ABORTED",
+		});
+		await entered;
+		const [roomId] = harness.runtime.turnControllers.activeRoomIds();
+		expect(roomId).toBeDefined();
+		expect(
+			harness.runtime.turnControllers.abortTurn(roomId, "ui-chat-stop"),
+		).toBe(true);
+		release();
+		await rejection;
+		expect(actionCalls).toBe(0);
+		expect(visibleTexts(harness.callbacks)).toEqual([]);
+		expect(harness.reportedScopes).not.toContain("MessageService.plannerLoop");
+	});
+
+	it("does not rescue a partial result when the default tool-call budget stops a batch", async () => {
+		const savedItems: number[] = [];
+		const harness = await createHarness({
+			actionResult: {
+				success: true,
+				text: "Item saved.",
+				data: { userFacingText: "Item saved." },
+			},
+		});
+		harness.runtime.actions[0].handler = async (
+			_runtime,
+			_message,
+			_state,
+			options,
+		) => {
+			const item = options?.parameters?.item;
+			if (typeof item !== "number") throw new Error("Missing requested item");
+			savedItems.push(item);
+			return {
+				success: true,
+				text: "Item saved.",
+				data: { userFacingText: "Item saved.", item },
+			};
+		};
+		harness.runtime.actions[0].parameters?.push({
+			name: "item",
+			description: "Distinct requested item",
+			required: true,
+			schema: { type: "number" },
+		});
+		let stageOne = true;
+		harness.runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			async () => {
+				if (stageOne) {
+					stageOne = false;
+					return stageOneToolTurn();
+				}
+				return JSON.stringify({
+					success: true,
+					decision: "NEXT_RECOMMENDED",
+					thought: "The remaining distinct entries still need saving.",
+					recommendedToolCallId: `save-${savedItems.length}`,
+				});
+			},
+			"limit-test",
+			200,
+		);
+		const reportedErrors: unknown[] = [];
+		const reportError = harness.runtime.reportError.bind(harness.runtime);
+		harness.runtime.reportError = (scope, error, context) => {
+			reportedErrors.push(error);
+			return reportError(scope, error, context);
+		};
+		harness.runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async () => {
+				return "The tool-call budget was reached before all requested entries could be saved.";
+			},
+			"limit-test",
+			200,
+		);
+		harness.runtime.registerModel(
+			ModelType.ACTION_PLANNER,
+			async () => ({
+				toolCalls: Array.from({ length: 17 }, (_, i) => ({
+					id: `save-${i}`,
+					name: "LOOKUP",
+					args: { action: "create", item: i },
+				})),
+			}),
+			"limit-test",
+			200,
+		);
+		await new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(
+				harness.runtime,
+				"Save all seventeen distinct requested entries in order.",
+			),
+			harness.callback,
+		);
+		expect(savedItems).toEqual(Array.from({ length: 16 }, (_, i) => i));
+		expect(reportedErrors).toContainEqual(
+			expect.objectContaining({
+				name: "TrajectoryLimitExceeded",
+				kind: "tool_calls",
+				max: 16,
+				observed: 17,
+			}),
+		);
+		expect(harness.callbacks).toContainEqual(
+			expect.objectContaining({ failureKind: "planner_exhaustion" }),
+		);
+		expect(visibleTexts(harness.callbacks)).not.toContain("Item saved.");
+		expect(harness.sent).toContainEqual(
+			expect.objectContaining({ failureKind: "planner_exhaustion" }),
+		);
+	});
+
+	it.each([false, true])(
+		"preserves the provider context boundary with a settled tool: %s",
+		async (settled) => {
+			let actionCalls = 0;
+			const harness = await createHarness({
+				actionResult: {
+					success: true,
+					text: USER_FACING,
+					data: { userFacingText: USER_FACING },
+				},
+				actionGate: async () => {
+					actionCalls++;
+				},
+			});
+			const stageOne = stageOneToolTurn("non_applied");
+			const preliminary =
+				"Setting it up: 25 pushups, 3 a day, no fixed times, counted whenever you get them in.";
+			stageOne.toolCalls[0].arguments.replyText = settled ? "" : preliminary;
+			const overflow = new ElizaError(
+				"Complete planner request exceeds provider capacity",
+				{
+					code: PROVIDER_CONTEXT_OVERFLOW,
+					context: { requestedTokens: 177751, limit: 131072 },
+				},
+			);
+			harness.runtime.registerModel(
+				ModelType.TEXT_SMALL,
+				async () => {
+					throw overflow;
+				},
+				"overflow-test",
+				200,
+			);
+			let stageCalls = 0;
+			harness.runtime.registerModel(
+				ModelType.RESPONSE_HANDLER,
+				async () => {
+					if (stageCalls++ === 0) return stageOne;
+					throw overflow;
+				},
+				"overflow-test",
+				200,
+			);
+			const completeRequest =
+				"look up the requested entry " +
+				"complete background context ".repeat(600) +
+				"END-OF-COMPLETE-REQUEST";
+			let plannerCalls = 0;
+			harness.runtime.registerModel(
+				ModelType.ACTION_PLANNER,
+				async (_runtime, params) => {
+					plannerCalls++;
+					expect(JSON.stringify(params)).toContain(completeRequest);
+					if (settled) return plannerCalendarCall();
+					throw overflow;
+				},
+				"overflow-test",
+				200,
+			);
+			await new DefaultMessageService().handleMessage(
+				harness.runtime,
+				makeMessage(harness.runtime, completeRequest),
+				harness.callback,
+			);
+			expect(plannerCalls).toBeGreaterThan(0);
+			expect(actionCalls).toBe(settled ? 1 : 0);
+			expect(harness.callbacks).toContainEqual(
+				expect.objectContaining({
+					failureKind: "context_overflow",
+					transient: false,
+				}),
+			);
+			expect(visibleTexts(harness.callbacks)).not.toContain(preliminary);
+			expect(visibleTexts(harness.callbacks)).not.toContain(USER_FACING);
+		},
+	);
 
 	it("delivers the completed tool's user-facing result instead of the canned failure", async () => {
 		const harness = await createHarness({

@@ -46,8 +46,9 @@ of applying the effect twice.
 **Host adapters**
 - `todosPlugin` (default export) — Node plugin plus the dashboard view. Requires
   `@elizaos/plugin-sql`; `TODO` defaults to `ADMIN`, `CURRENT_TODOS` to `USER`.
-- `todosRuntimePlugin` (`./plugin`) — UI-free Node plugin for runtimes that do
-  not load dashboard bundles.
+- `./plugin` default — Node-safe descriptor with the dashboard declaration;
+  it imports no React components. Named `todosRuntimePlugin` remains the
+  headless descriptor for callers that intentionally omit dashboard views.
 - `createTodosEdgePlugin` (`./edge`) — Worker-safe action/provider plugin with
   an injected `TodoStore`. Its server-owned Shared-agent boundary admits
   `GUEST` principals; the host remains responsible for authenticating and
@@ -55,7 +56,7 @@ of applying the effect twice.
 
 **Views**
 - `TodosView` (`src/components/todos/TodosView.tsx`) — three-lane dashboard view
-  registered only by the default Node entry.
+  registered by both default Node entries through one shared descriptor.
 
 **Schema**
 - `todos.todos` — current Todo rows, including hierarchy and room/world
@@ -68,7 +69,7 @@ of applying the effect twice.
 ```
 src/
   index.ts                  Default Node plugin + dashboard view and public exports
-  plugin.ts                 UI-free Node plugin
+  plugin.ts                 Node-safe descriptors and dashboard metadata
   edge.ts                   Worker-safe factory and edge public exports
   store.ts                  Storage-neutral TodoStore and mutation contracts
   sql-store.ts              Canonical tenant-safe Drizzle/Postgres implementation

@@ -5,8 +5,8 @@ models, active agent profiles, and built-in settings.
 
 ## Purpose / role
 
-This opt-in plugin registers nine actions, no `shortcuts` entries, three evaluators
-(including a deterministic exact-command pre-planner evaluator), two providers,
+This opt-in plugin registers nine actions, no `shortcuts` entries, three response-handler evaluators
+(including deterministic exact-command and contextual pre-planner evaluators), two providers,
 and four services. Dashboard operations use authenticated
 loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered through the existing
 port resolver.
@@ -30,7 +30,8 @@ port resolver.
 
 | Name | File | Description |
 |---|---|---|
-| `viewContextEvaluator` | `src/evaluators/view-context.ts` | Model-assisted contextual navigation when no explicit view command matched. |
+| `viewContextPlanningEvaluator` | `src/evaluators/view-context-planning.ts` | Selects an authorized live-catalog destination before planning and adds VIEWS without removing domain candidates. The action queue owns execution and same-turn receipts. |
+| `viewContextEvaluator` | `src/evaluators/view-context.ts` | Legacy compatibility export; the first-party plugin does not register this post-response navigator. |
 | `viewCommandShortcutEvaluator` | `src/evaluators/view-command-shortcut.ts` | Registered zero-model fast path for exact standalone view commands. It installs one deterministic `VIEWS` call before the planner; contextual and compound requests still remain model-owned. |
 | `createChoiceShortcutEvaluator` | `src/evaluators/create-choice-shortcut.ts` | Routes replies to pending app/view creation choices without another model decision. |
 | `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | Compatibility export for downstream users; the first-party plugin leaves focused-view mutation follow-ups to Stage 1 and the planner. |
@@ -104,7 +105,8 @@ src/
   components/
     ViewManagerSpatialView.tsx    Presentational spatial view-manager component
   evaluators/
-    view-context.ts               contextual view selection
+    view-context.ts               legacy post-response compatibility export
+    view-context-planning.ts      live-catalog in-turn contextual selection
     view-command-shortcut.ts      deterministic explicit-command routing
     create-choice-shortcut.ts     pending create-choice routing
     view-followup-routing.ts      compatibility mutation-follow-up evaluator; not registered by the plugin
@@ -209,3 +211,22 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+Contextual navigation preserves the entire original request and keeps domain
+operations in the planner. Planner-owned VIEWS steps pass
+`navigationIntent=planner-step` and a `navigationStepId`; each target is resolved
+against the current catalog, preserving registration, availability, and role
+gates. Navigation receipts remain separate from event, note, or task effects.
+
+The contextual evaluator binds navigation permission to the incoming message,
+room, and actor through core StreamingContext. Nested model scopes preserve that
+policy and cancellation signal. Tool parameters cannot relax a deny constraint.
+The same policy applies to manager,
+close (including aliases), window, pin, and split/tile navigation, with another
+check at the shell transport boundary; read and domain modes remain independent.
+Planner steps require an explicit allow. Catalog requests and the final dispatch
+observe cancellation. Show/open outcomes and alternate-mode denials use
+`data.navigation.stepId`;
+`delivered` requires the matching completed-action handoff receipt, while missing,
+negative, or malformed delivery remains explicit. Stable handoff IDs scope replay
+to the same message, actor, client, step, and destination.

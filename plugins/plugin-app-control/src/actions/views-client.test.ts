@@ -13,7 +13,10 @@ const coreMock = vi.hoisted(() => ({
 	resolveServerOnlyPort: vi.fn(() => 3456),
 }));
 
-vi.mock("@elizaos/core", () => coreMock);
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return { ...actual, ...coreMock };
+});
 
 function jsonResponse(body: unknown) {
 	return new Response(JSON.stringify(body), {

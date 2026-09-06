@@ -30,6 +30,25 @@ const BOOTSTRAP_REVIEWED_REASON =
 type Mode = "preview" | "execute";
 type JsonRecord = Record<string, unknown>;
 
+/** Correlates the account-scoped preview with worker records without publishing an agent ID. */
+export async function canonicalContainerNameSha256(
+  agentId: string,
+): Promise<string> {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      agentId,
+    )
+  ) {
+    throw new PersonalDedicatedRereviewOperatorError(
+      "container_correlation_identity_invalid",
+    );
+  }
+  const { getContainerName } = await import(
+    "@elizaos/cloud-shared/lib/services/docker-sandbox-utils"
+  );
+  return createHash("sha256").update(getContainerName(agentId)).digest("hex");
+}
+
 export class PersonalDedicatedRereviewOperatorError extends Error {
   constructor(readonly code: string) {
     super(code);
@@ -806,48 +825,53 @@ async function defaultReportAccountLifecycle(apiKey: string): Promise<void> {
   const evidence = {
     schemaVersion: 1,
     kind: "account-lifecycle",
-    agents: agentRows.map((agent) => ({
-      ...diagnoseRereviewTarget(agent),
-      updatedAt: agent.updated_at,
-      selected: selectionRows.some(
-        (row) => row.dedicated_agent_id === agent.id,
-      ),
-      activationBound: authorityRows.some(
-        (row) => row.dedicated_agent_id === agent.id,
-      ),
-      cutoverActivated: authorityRows.some(
-        (row) =>
-          row.dedicated_agent_id === agent.id &&
-          row.cutover_activated_at !== null,
-      ),
-      jobs: jobRows
-        .filter((row) => row.agent_id === agent.id)
-        .map((job) => {
-          if (
-            ![
-              "pending",
-              "in_progress",
-              "completed",
-              "failed",
-              "cancelled",
-            ].includes(job.status)
-          ) {
-            throw new PersonalDedicatedRereviewOperatorError(
-              "diagnostic_job_status_invalid",
-            );
-          }
-          return {
-            status: job.status,
-            failure: classifyManagedDedicatedProvisionFailure(
-              job.error,
-              "lifecycle job error",
-            ),
-            attempts: job.attempts,
-            retryableRequeues: job.retryable_requeues,
-            updatedAt: job.updated_at,
-          };
-        }),
-    })),
+    agents: await Promise.all(
+      agentRows.map(async (agent) => ({
+        ...diagnoseRereviewTarget(agent),
+        canonicalContainerNameSha256: await canonicalContainerNameSha256(
+          agent.id,
+        ),
+        updatedAt: agent.updated_at,
+        selected: selectionRows.some(
+          (row) => row.dedicated_agent_id === agent.id,
+        ),
+        activationBound: authorityRows.some(
+          (row) => row.dedicated_agent_id === agent.id,
+        ),
+        cutoverActivated: authorityRows.some(
+          (row) =>
+            row.dedicated_agent_id === agent.id &&
+            row.cutover_activated_at !== null,
+        ),
+        jobs: jobRows
+          .filter((row) => row.agent_id === agent.id)
+          .map((job) => {
+            if (
+              ![
+                "pending",
+                "in_progress",
+                "completed",
+                "failed",
+                "cancelled",
+              ].includes(job.status)
+            ) {
+              throw new PersonalDedicatedRereviewOperatorError(
+                "diagnostic_job_status_invalid",
+              );
+            }
+            return {
+              status: job.status,
+              failure: classifyManagedDedicatedProvisionFailure(
+                job.error,
+                "lifecycle job error",
+              ),
+              attempts: job.attempts,
+              retryableRequeues: job.retryable_requeues,
+              updatedAt: job.updated_at,
+            };
+          }),
+      })),
+    ),
   };
   process.stdout.write(`${JSON.stringify(evidence)}\n`);
 }

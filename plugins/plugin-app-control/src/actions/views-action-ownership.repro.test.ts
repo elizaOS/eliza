@@ -354,7 +354,9 @@ describe("VIEWS action ownership after planner selection", () => {
 
 		expect(result).toMatchObject({
 			success: false,
-			text: expect.stringContaining('No view matches "retired-ledger".'),
+			text: expect.stringContaining(
+				'No view matches "retired-ledger" in the caller-authorized catalog.',
+			),
 		});
 		expect(listViews).toHaveBeenCalledTimes(1);
 		expect(
