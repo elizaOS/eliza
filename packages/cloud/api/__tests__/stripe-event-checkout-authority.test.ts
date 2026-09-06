@@ -269,6 +269,7 @@ describe("Stripe Checkout queue authority", () => {
           data: {
             object: {
               id: "pi_bypass",
+              invoice: null,
               metadata: {
                 organization_id: "attacker-org",
                 credits: "9999.00",
