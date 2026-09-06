@@ -234,6 +234,12 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     expect(result).not.toBe(message);
     expect(result.content.text).toContain("<contextual_documents>");
     expect(result.content.text).toContain("set inference markup");
+    // The user's own words survive under the inbound-security stamp so
+    // relevance gates test the request, not the instruction wrapper.
+    expect(
+      (result.content.metadata as { userPayloadText?: string } | undefined)
+        ?.userPayloadText,
+    ).toBe(message.content.text);
     const [, , searchMode] = documents.searchDocuments.mock.calls[0];
     expect(searchMode).toBe("keyword");
   });
