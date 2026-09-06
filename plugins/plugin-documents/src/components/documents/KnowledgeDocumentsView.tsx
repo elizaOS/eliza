@@ -1391,7 +1391,7 @@ function KnowledgeDocumentsViewForAuthority({
       <label
         htmlFor={fileInputId}
         data-testid="knowledge-add"
-        className={`inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-[10px] bg-accent/12 px-3 text-[13px] font-semibold text-accent transition-colors hover:bg-accent/20 ${
+        className={`inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3 text-sm font-medium text-muted-strong transition-colors hover:text-txt-strong ${
           uploading ? "pointer-events-none opacity-60" : ""
         }`}
       >
@@ -1417,7 +1417,7 @@ function KnowledgeDocumentsViewForAuthority({
         />
       ) : null}
       {hiddenFileInput}
-      <div className="custom-scrollbar eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4">
+      <div className="custom-scrollbar eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4 pt-4">
         <SettingsGroup
           title={
             hasSearchQuery

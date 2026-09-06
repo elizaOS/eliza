@@ -920,16 +920,12 @@ function WalletBalancesUnavailableInline({ onRetry }: { onRetry: () => void }) {
 
 function WalletBalancesLoadingState() {
   return (
-    <div
-      role="status"
+    <PagePanel.Loading
+      heading="Loading wallet…"
       aria-label="Loading wallet balances"
       data-testid="wallet-balances-loading"
-      className="flex min-h-40 w-full items-center rounded-xl border border-border bg-card px-4 py-5"
-    >
-      <div className="w-full">
-        <ListSkeleton rows={2} rowClassName="h-11" />
-      </div>
-    </div>
+      variant="panel"
+    />
   );
 }
 

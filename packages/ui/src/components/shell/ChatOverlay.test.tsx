@@ -124,7 +124,7 @@ import {
 } from "../../state/useStreamingText";
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
-import { ViewHeader } from "../shared/ViewHeader";
+import { ViewBackButton } from "../shared/ViewHeader";
 import { ChatOverlay, PillHandle } from "./ChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
@@ -753,7 +753,7 @@ describe("ChatOverlay", () => {
       fireEvent.focus(screen.getByLabelText("message"));
 
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Message Playwright Smoke",
+        "Hey Eliza…",
       );
 
       expect(
@@ -1869,7 +1869,7 @@ describe("ChatOverlay", () => {
         return (
           <>
             {notesOpen ? (
-              <ViewHeader title="Notes" onBack={() => setNotesOpen(false)} />
+              <ViewBackButton onBack={() => setNotesOpen(false)} />
             ) : (
               <h1>Home</h1>
             )}

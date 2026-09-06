@@ -960,7 +960,7 @@ describe("ChatOverlay first-run gating", () => {
     // The composer unlocks.
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
-    expect(input.placeholder).toBe("Message Eliza");
+    expect(input.placeholder).toBe("Hey Eliza…");
     input.focus();
     expect(document.activeElement).toBe(input);
     fireEvent.change(input, { target: { value: "What should I do next?" } });

@@ -53,7 +53,8 @@ function useDelayElapsed(active: boolean, delayMs: number): boolean {
 }
 
 function brandName(): string {
-  return getBootConfig().branding?.appName ?? "Eliza";
+  const name = getBootConfig().branding?.appName;
+  return !name || name === "Eliza" ? "elizaOS" : name;
 }
 
 function isManagedDesktopStartupSurface(): boolean {

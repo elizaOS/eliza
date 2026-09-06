@@ -16,6 +16,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import {
+  ArrowLeft,
   ArrowRight,
   EllipsisVertical,
   ExternalLink,
@@ -56,7 +57,6 @@ import {
 } from "../../utils/browser-tabs-renderer-registry";
 import { BrowserSessionPolicyPanel } from "../browser/BrowserSessionPolicyPanel";
 import { PagePanel } from "../composites/page-panel";
-import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
@@ -2559,6 +2559,27 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     workspace.mode,
   ]);
 
+  const backSelectedBrowserWorkspaceTab = useCallback(async () => {
+    if (!selectedTab) return;
+    const nativeTag = electrobunWebviewRefs.current.get(selectedTab.id);
+    if (nativeTag) {
+      nativeTag.executeJavascript("history.back()");
+      return;
+    }
+    const result = await client.fetch<{ tab?: BrowserWorkspaceTab }>(
+      "/api/browser-workspace/command",
+      {
+        method: "POST",
+        body: JSON.stringify({ subaction: "back", id: selectedTab.id }),
+      },
+    );
+    if (result.tab) {
+      setLocationInput(result.tab.url);
+      setLocationDirty(false);
+      await loadWorkspace({ preferTabId: result.tab.id, silent: true });
+    }
+  }, [selectedTab, loadWorkspace]);
+
   const tabsLabel = t("browserworkspace.Tabs", {
     defaultValue: "Tabs",
   });
@@ -2633,16 +2654,35 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   const navNode = (
     <div className="flex items-center gap-0 px-0.5 py-1 md:grid md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-x-2 md:gap-y-1 md:px-2 md:py-0.5">
       <TooltipHint
-        content={t("common.backToLauncher", {
-          defaultValue: "Back to launcher",
+        content={t("browserworkspace.Back", {
+          defaultValue: "Back",
         })}
       >
-        <ViewBackButton
-          label={t("common.backToLauncher", {
-            defaultValue: "Back to launcher",
-          })}
-          className="shrink-0"
-        />
+        <BrowserNavButton
+          agentId="back"
+          agentLabel="Back"
+          agentDescription="Go back in the active browser tab"
+          group="browser-nav"
+          onActivate={() =>
+            void runBrowserWorkspaceAction(
+              "navigate:back",
+              backSelectedBrowserWorkspaceTab,
+            )
+          }
+          onClick={() =>
+            void runBrowserWorkspaceAction(
+              "navigate:back",
+              backSelectedBrowserWorkspaceTab,
+            )
+          }
+          aria-label={t("browserworkspace.Back", { defaultValue: "Back" })}
+          disabled={!selectedTab || busyAction !== null}
+          variant="ghost"
+          size="icon"
+          className="size-11 shrink-0"
+        >
+          <ArrowLeft className="size-4" aria-hidden />
+        </BrowserNavButton>
       </TooltipHint>
       {/* Folded tabs (#13596): one compact count control opens the switcher —
           no permanent tab strip. It names the active tab so the user always
@@ -2924,27 +2964,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
           </DropdownMenuContent>
         </DropdownMenu>
       </span>
-    </div>
-  );
-
-  const minimalNavNode = (
-    <div className="grid h-12 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center px-2">
-      <TooltipHint
-        content={t("common.backToLauncher", {
-          defaultValue: "Back to launcher",
-        })}
-      >
-        <ViewBackButton
-          label={t("common.backToLauncher", {
-            defaultValue: "Back to launcher",
-          })}
-          className="shrink-0"
-        />
-      </TooltipHint>
-      <h1 className="truncate text-center text-sm font-semibold text-txt">
-        {t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
-      </h1>
-      <span aria-hidden />
     </div>
   );
 
@@ -3342,12 +3361,14 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       tabIndex={-1}
       className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-3 overflow-hidden bg-bg px-4 pt-[calc(var(--safe-area-top,0px)+0.75rem)] pb-[calc(1rem+var(--eliza-chat-clearance,5.25rem))] lg:px-6 lg:pt-[calc(var(--safe-area-top,0px)+1.5rem)] lg:pb-[calc(1.5rem+var(--eliza-chat-clearance,5.25rem))]"
     >
-      <div
-        data-testid="browser-workspace-toolbar"
-        className="shrink-0 overflow-hidden rounded-2xl border border-border bg-card"
-      >
-        {showMinimalToolbar ? minimalNavNode : navNode}
-      </div>
+      {!showMinimalToolbar && (
+        <div
+          data-testid="browser-workspace-toolbar"
+          className="shrink-0 overflow-hidden rounded-2xl border border-border bg-card"
+        >
+          {navNode}
+        </div>
+      )}
       <div
         data-testid="browser-workspace-surface-panel"
         className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card"
