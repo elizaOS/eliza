@@ -30,7 +30,10 @@ import {
   savePersistedActiveServer,
 } from "../state/persistence";
 import { ElizaClient } from "./client-base";
-import { verifyDirectCloudStewardSession } from "./client-cloud";
+import {
+  getCloudAuthToken,
+  verifyDirectCloudStewardSession,
+} from "./client-cloud";
 
 function jsonResponse(
   status: number,
@@ -49,6 +52,49 @@ afterEach(() => {
 });
 
 describe("getPersonalSharedEliza", () => {
+  it.each([false, true])(
+    "drops an authoritatively rejected personal-agent credential (native=%s)",
+    async (native) => {
+      capacitorState.isNative = native;
+      localStorage.setItem("steward_session_token", "rejected-credential");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => jsonResponse(401, { error: "Unauthorized" })),
+      );
+      capacitorHttpRequestMock.mockResolvedValue({
+        status: 401,
+        data: { error: "Unauthorized" },
+        headers: {},
+      });
+      await expect(
+        new ElizaClient().getPersonalSharedEliza({
+          cloudApiBase: "https://api.eliza.app",
+          authToken: "rejected-credential",
+        }),
+      ).rejects.toMatchObject({ status: 401 });
+      expect(getCloudAuthToken()).toBeNull();
+    },
+  );
+
+  it("preserves a newer sign-in when an earlier personal-agent request is rejected", async () => {
+    localStorage.setItem("steward_session_token", "old-credential");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        localStorage.setItem("steward_session_token", "new-credential");
+        return jsonResponse(401, { error: "Unauthorized" });
+      }),
+    );
+    await expect(
+      new ElizaClient().getPersonalSharedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "old-credential",
+      }),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(getCloudAuthToken()).toBe("new-credential");
+    localStorage.removeItem("steward_session_token");
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
