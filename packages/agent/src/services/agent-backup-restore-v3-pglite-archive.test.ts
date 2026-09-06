@@ -14,6 +14,7 @@ import {
 } from "@elizaos/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { extractAgentBackupRestoreV3CandidateDatabase } from "./agent-backup-restore-v3-candidate-database";
+import { validateAgentBackupRestoreV3CandidateDatabase } from "./agent-backup-restore-v3-candidate-database-validation";
 import {
   type AgentBackupRestoreV3CandidateFs,
   openAgentBackupRestoreV3CandidateFs,
@@ -181,6 +182,32 @@ function parse(
 }
 
 describe("physical PGlite archive", () => {
+  it("never validates an archive containing corrupt physical database control files", async () => {
+    const { input, attemptRoot } = await extractionFixture();
+    await expect(
+      validateAgentBackupRestoreV3CandidateDatabase({
+        ...input,
+        control: { ...control(), deadlineEpochMs: Date.now() + 15_000 },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      fs.stat(
+        path.join(
+          attemptRoot,
+          ".restore-v3-component-c1.database-validated.json",
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      fs.stat(path.join(attemptRoot, ".restore-v3-database-validation")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(
+      await fs.readFile(
+        path.join(attemptRoot, "components/database/PG_VERSION"),
+        "utf8",
+      ),
+    ).toBe("17\n");
+  }, 20_000);
   it("never publishes extraction on payload mismatch, then safely replays the correct finish", async () => {
     const { input, finish } = await extractionFixture();
     await expect(
@@ -310,6 +337,35 @@ describe("physical PGlite archive", () => {
         control: control(),
       }),
     ).toEqual(result);
+    const beforeValidation = await fs.stat(
+      path.join(attemptRoot, result.outputDirectory, "PG_VERSION"),
+    );
+    const validation = await validateAgentBackupRestoreV3CandidateDatabase({
+      candidateFs: candidate,
+      session: SESSION,
+      receipt,
+      control: control(),
+    });
+    expect(validation.extractionFinishSha256).toBe(result.finishSha256);
+    expect(validation.serverVersion).toMatch(/^[1-9][0-9]{4,5}$/);
+    expect(
+      await validateAgentBackupRestoreV3CandidateDatabase({
+        candidateFs: candidate,
+        session: SESSION,
+        receipt,
+        control: control(),
+      }),
+    ).toEqual(validation);
+    expect(
+      (
+        await fs.stat(
+          path.join(attemptRoot, result.outputDirectory, "PG_VERSION"),
+        )
+      ).mtimeMs,
+    ).toBe(beforeValidation.mtimeMs);
+    await expect(
+      fs.stat(path.join(attemptRoot, ".restore-v3-database-validation")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
     const restored = new PGlite(path.join(attemptRoot, result.outputDirectory));
     databases.add(restored);
     expect(
@@ -328,7 +384,7 @@ describe("physical PGlite archive", () => {
         )
       ).rows,
     ).toEqual([{ count: 1 }]);
-  }, 60_000);
+  }, 90_000);
 
   it.each([
     "../escape",
