@@ -113,16 +113,16 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
     name: "OpenRouter",
     category: "chat",
     description:
-      "OpenRouter credits or BYOK for model inference, with bounded model discovery. Coding-agent spawning is not wired yet.",
-    eligibility: ["model inference", "API key"],
+      "OpenRouter credits or BYOK for model inference and coding agents. Choose a model when starting a coding agent.",
+    eligibility: ["model inference", "code-agent", "API key"],
   },
   {
     id: "xai-api",
     name: "xAI API",
     category: "chat",
     description:
-      "Metered xAI API access for Grok model inference; separate from Grok subscription login. Coding-agent spawning is not wired yet.",
-    eligibility: ["model inference", "API key"],
+      "Metered xAI API access for Grok model inference and coding agents; separate from Grok subscription login.",
+    eligibility: ["model inference", "code-agent", "API key"],
   },
 ];
 

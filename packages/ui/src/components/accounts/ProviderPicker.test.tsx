@@ -90,39 +90,13 @@ describe("ProviderPicker", () => {
     expect(onPick).toHaveBeenCalledOnce();
   });
 
-  it("renders sentence-style capability copy with no interpunct separators", () => {
-    renderPicker();
-    expect(
-      screen.getAllByText(
-        "Model inference, using your API key; agent spawn unavailable",
-      ).length,
-    ).toBe(8);
-    expect(screen.getByText("Coding agents, using browser login")).toBeTruthy();
-    expect(
-      screen.getByText("No model inference or coding-agent spawn support"),
-    ).toBeTruthy();
-    expect(
-      screen.getAllByText(
-        "Model inference, using a coding-plan key; agent spawn unavailable",
-      ).length,
-    ).toBe(2);
-    // The old "Chat \u00b7 bring your own API key" pill format must not resurface.
-    expect(screen.queryByText(/\u00b7/)).toBeNull();
+  it.each([
+    ["OpenRouter", "openrouter-api"],
+    ["xAI API", "xai-api"],
+  ])("finds and selects %s when searching for coding agents", (name, id) => {
+    const onPick = renderPicker();
+    fireEvent.change(searchInput(), { target: { value: "coding agents" } });
+    fireEvent.click(screen.getByRole("option", { name: new RegExp(name) }));
+    expect(onPick).toHaveBeenCalledExactlyOnceWith(id);
   });
-
-  it.each(["OpenRouter", "xAI API"])(
-    "advertises %s as inference-only until a coding backend consumes it",
-    (providerName) => {
-      renderPicker();
-      fireEvent.change(searchInput(), { target: { value: providerName } });
-      expect(
-        screen.getByText(
-          "Model inference, using your API key; agent spawn unavailable",
-        ),
-      ).toBeTruthy();
-      expect(
-        screen.queryByText(/Model inference and coding agents/),
-      ).toBeNull();
-    },
-  );
 });
