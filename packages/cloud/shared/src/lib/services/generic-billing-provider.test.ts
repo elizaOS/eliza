@@ -93,6 +93,10 @@ function fixture(binding = merchant) {
     invoiceAmountRemaining: 0,
     pendingInvoiceItem: false,
     deletionPaymentStatus: null as string | null,
+    deletionCharges: [] as Array<{ id: string; customer: string; livemode: boolean }>,
+    deletionRefunds: [] as Array<{ id: string; charge: string; status: string | null }>,
+    deletionChargePages: false,
+    deletionRefundPages: false,
 
     customerFailure: false,
     customerMissing: false,
@@ -550,7 +554,38 @@ function fixture(binding = merchant) {
               ]
             : [],
         };
-      else if (url.pathname === "/v1/invoices/in_one")
+      else if (url.pathname === "/v1/charges") {
+        const later = url.searchParams.has("starting_after");
+        result = {
+          object: "list",
+          url: url.pathname,
+          has_more: state.deletionChargePages && !later,
+          data: (state.deletionChargePages
+            ? later
+              ? state.deletionCharges.slice(1)
+              : state.deletionCharges.slice(0, 1)
+            : state.deletionCharges
+          ).map((charge) => ({ ...charge, object: "charge" })),
+        };
+      } else if (
+        url.pathname === "/v1/refunds" &&
+        method === "GET" &&
+        state.deletionCharges.length > 0
+      ) {
+        const refunds = state.deletionRefunds.filter(
+          (refund) => refund.charge === url.searchParams.get("charge"),
+        );
+        const later = url.searchParams.has("starting_after");
+        const paged = state.deletionRefundPages && refunds.length > 1;
+        result = {
+          object: "list",
+          url: url.pathname,
+          has_more: paged && !later,
+          data: (paged ? (later ? refunds.slice(1) : refunds.slice(0, 1)) : refunds).map(
+            (refund) => ({ ...refund, object: "refund" }),
+          ),
+        };
+      } else if (url.pathname === "/v1/invoices/in_one")
         result = {
           id: "in_one",
           object: "invoice",
@@ -1882,6 +1917,60 @@ describe("bound customer deletion", () => {
       foreign.provider.deleteBoundCustomer(scope, "cus_one", foreign.deletion, async () => {}),
     ).rejects.toThrow("another customer");
     expect(deletes(foreign)).toHaveLength(0);
+  });
+  test("pending refunds on later charge and refund pages prevent customer deletion", async () => {
+    for (const status of ["pending", "requires_action", null, "unexpected"]) {
+      const f = setup();
+      f.state.deletionCharges = [
+        { id: "ch_earlier", customer: "cus_one", livemode: false },
+        { id: "ch_later", customer: "cus_one", livemode: false },
+      ];
+      f.state.deletionRefunds = [
+        { id: "re_earlier", charge: "ch_later", status: "succeeded" },
+        { id: "re_later", charge: "ch_later", status },
+      ];
+      f.state.deletionChargePages = true;
+      f.state.deletionRefundPages = true;
+      await expect(
+        f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {}),
+      ).rejects.toThrow();
+      expect(deletes(f)).toHaveLength(0);
+      expect(
+        f.requests.some(
+          (request) =>
+            request.path === "/v1/charges" && request.query.get("starting_after") === "ch_earlier",
+        ),
+      ).toBe(true);
+      expect(
+        f.requests.some(
+          (request) =>
+            request.path === "/v1/refunds" && request.query.get("starting_after") === "re_earlier",
+        ),
+      ).toBe(true);
+    }
+  });
+  test("terminal refund processing permits deletion while foreign charge ownership blocks it", async () => {
+    for (const status of ["succeeded", "failed", "canceled"]) {
+      const f = setup();
+      f.state.deletionCharges = [{ id: "ch_one", customer: "cus_one", livemode: false }];
+      f.state.deletionRefunds = [{ id: "re_one", charge: "ch_one", status }];
+      expect(
+        (await f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {})).value
+          .status,
+      ).toBe("deleted");
+      expect(deletes(f)).toHaveLength(1);
+    }
+    for (const charge of [
+      { id: "ch_one", customer: "cus_other", livemode: false },
+      { id: "ch_one", customer: "cus_one", livemode: true },
+    ]) {
+      const f = setup();
+      f.state.deletionCharges = [charge];
+      await expect(
+        f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {}),
+      ).rejects.toThrow("another customer or billing mode");
+      expect(deletes(f)).toHaveLength(0);
+    }
   });
   test("already-deleted customer yields read-only evidence and does not invoke mutation authority", async () => {
     const f = setup();

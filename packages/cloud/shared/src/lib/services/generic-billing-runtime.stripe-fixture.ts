@@ -705,12 +705,14 @@ export function createRuntimeStripeFixture() {
             }
           }
           if (
-            ["/v1/invoices", "/v1/invoiceitems", "/v1/payment_intents"].includes(url.pathname) &&
+            ["/v1/invoices", "/v1/invoiceitems", "/v1/payment_intents", "/v1/charges"].includes(
+              url.pathname,
+            ) &&
             method === "GET"
           ) {
             if ([...subscriptions.values()].some((row) => row.invoiceId !== null))
               throw new Error(
-                "Customer inventory fixture requires explicit invoice/payment rows for invoiced subscriptions",
+                "Customer inventory fixture requires explicit invoice/payment/charge rows for invoiced subscriptions",
               );
             return Response.json({ object: "list", has_more: false, url: url.pathname, data: [] });
           }

@@ -1029,6 +1029,55 @@ export function createGenericBillingProvider(
         );
         fail("CUSTOMER_OBLIGATIONS", "Customer deletion has uninvoiced provider items");
       }
+      // Charge expansion includes only recent refunds; exhaust both collections before closure.
+      for await (const raw of stripe.charges.list(
+        { customer: customerId, limit: 100 },
+        options(),
+      )) {
+        const charge = parse(
+          z.object({
+            id,
+            object: z.literal("charge"),
+            customer: expandableId,
+            livemode: z.boolean(),
+          }),
+          raw,
+        );
+        requireValue(
+          charge.customer === customerId && charge.livemode === merchant.livemode,
+          "BINDING",
+          "Customer deletion charge belongs to another customer or billing mode",
+        );
+        for await (const rawRefund of stripe.refunds.list(
+          { charge: charge.id, limit: 100 },
+          options(),
+        )) {
+          const refund = parse(
+            z.object({
+              id,
+              object: z.literal("refund"),
+              charge: expandableId,
+              status: z
+                .enum(["pending", "requires_action", "succeeded", "failed", "canceled"])
+                .nullable(),
+            }),
+            rawRefund,
+          );
+          requireValue(
+            refund.charge === charge.id,
+            "BINDING",
+            "Customer deletion refund belongs to another charge",
+          );
+          // Terminal processing does not assert successful reimbursement; the retained journal owns that outcome.
+          requireValue(
+            refund.status === "succeeded" ||
+              refund.status === "failed" ||
+              refund.status === "canceled",
+            "CUSTOMER_OBLIGATIONS",
+            "Customer deletion has an unresolved provider refund",
+          );
+        }
+      }
       for await (const raw of stripe.paymentIntents.list(
         { customer: customerId, limit: 100 },
         options(),
