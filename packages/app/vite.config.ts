@@ -48,6 +48,7 @@ import {
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
+import { androidCloudWalletTelemetryPlugin } from "./vite/android-cloud-wallet-telemetry.ts";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
 import { configureDevApiProxy } from "./vite/dev-http-proxy.ts";
@@ -2537,6 +2538,7 @@ export default defineConfig(({ command, mode }) => ({
     devViewStudioPlugin(),
     androidCloudRendererEntryPlugin(),
     androidCloudCuratedAssetsPlugin(),
+    androidCloudWalletTelemetryPlugin(IS_ANDROID_CLOUD_RENDERER_BUILD),
     androidCloudRendererPolicyPlugin(),
     forcedHostModeFlagGuardPlugin(),
     productionBuildStampGuardPlugin(),

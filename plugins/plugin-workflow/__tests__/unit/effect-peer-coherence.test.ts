@@ -24,6 +24,7 @@ interface FamilyManifest {
   version: string;
   dependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
 }
 
 interface ResolvedFamilyManifest extends FamilyManifest {
@@ -33,7 +34,17 @@ interface ResolvedFamilyManifest extends FamilyManifest {
 /** Resolve the installed manifest that `fromFile` can reach through its
  *  nearest node_modules chain. Reading the manifest path directly also covers
  *  packages whose export map intentionally has no root entry point. */
-function resolvedManifest(fromFile: string, name: string): ResolvedFamilyManifest {
+function resolvedManifest(fromFile: string, name: string): ResolvedFamilyManifest;
+function resolvedManifest(
+  fromFile: string,
+  name: string,
+  optional: boolean
+): ResolvedFamilyManifest | null;
+function resolvedManifest(
+  fromFile: string,
+  name: string,
+  optional = false
+): ResolvedFamilyManifest | null {
   let dir = path.dirname(fromFile);
   for (;;) {
     const manifestPath = path.join(dir, 'node_modules', name, 'package.json');
@@ -44,6 +55,7 @@ function resolvedManifest(fromFile: string, name: string): ResolvedFamilyManifes
     }
     const parent = path.dirname(dir);
     if (parent === dir) {
+      if (optional) return null;
       throw new Error(`cannot resolve ${name}'s package.json from ${fromFile}`);
     }
     dir = parent;
@@ -98,8 +110,15 @@ describe('spawned-worker Effect family peer coherence (#18810)', () => {
       if (seen.has(name)) continue;
       const isFamily = FAMILY.has(name);
       if (!isFamily && name !== 'smthrs' && !name.startsWith('@smthrs/')) continue;
+      const optional =
+        dependent.dependencies?.[name] === undefined &&
+        dependent.peerDependenciesMeta?.[name]?.optional === true;
+      const resolved = resolvedManifest(entryOf(dependent), name, optional);
+      // Optional peers absent from this install are not part of the worker's
+      // loaded family. Installed optional peers still receive every check.
+      if (resolved === null) continue;
       seen.add(name);
-      chain.push(resolvedManifest(entryOf(dependent), name));
+      chain.push(resolved);
     }
   }
 

@@ -20,6 +20,7 @@ import {
   type RealTestRuntimeResult,
 } from "../../test/helpers/runtime.js";
 import { ownerTodosAction } from "../actions/owner-surfaces.js";
+import { LifeOpsRepository } from "./repository.js";
 import { LifeOpsService } from "./service.js";
 import { executeRawSql } from "./sql.js";
 
@@ -77,6 +78,9 @@ describe("durable owner definition creation identity", () => {
     );
     await host.cleanup();
     await start();
+    // This harness disables the scheduler that normally owns bootstrap. Run
+    // the real compatibility migration before exercising upgraded writes.
+    await LifeOpsRepository.bootstrapSchema(host.runtime);
     const created = await service.createDefinition(
       request("Migrated operation", "migrated"),
     );

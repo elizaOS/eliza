@@ -18,6 +18,7 @@ import {
 
 import os from "node:os";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import * as clack from "@clack/prompts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTemplateById, getTemplatesDir } from "../manifest.js";
@@ -366,10 +367,11 @@ describe("upgrade applies the rendered template", () => {
       expect.stringContaining("Conflicts: 1"),
       "Upgrade result",
     );
-    expect(console.log).toHaveBeenCalledWith(
-      "Skipped files with local changes:",
-    );
-    expect(console.log).toHaveBeenCalledWith(`  - ${target}`);
+    const output = vi
+      .mocked(console.log)
+      .mock.calls.map(([message]) => stripVTControlCharacters(String(message)));
+    expect(output).toContain("Skipped files with local changes:");
+    expect(output).toContain(`  - ${target}`);
   });
 });
 

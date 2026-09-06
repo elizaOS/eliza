@@ -1,9 +1,11 @@
-import { test, expect } from "bun:test";
+/** Verifies APK provenance against real ZIP entries and changed packaged bytes. */
+
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { expect, test } from "vitest";
 import { packagedRuntimeFiles } from "./apk-runtime-provenance.mjs";
 
 test("records packaged bytes after native stripping and asset renaming", () => {

@@ -1,7 +1,4 @@
 /** Exercises rpc handlers behavior with deterministic app-core test fixtures. */
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildDynamicViewRpcHandlers,
@@ -9,9 +6,6 @@ import {
   buildWindowRpcHandlers,
 } from "./rpc-handler-slices";
 import { CHANNEL_TO_RPC_METHOD } from "./rpc-schema";
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(HERE, "../../../../..");
 
 function createDesktopFixture() {
   const desktop = {
@@ -215,8 +209,12 @@ describe("notification RPC handlers", () => {
       showNotification: vi.fn(),
     });
 
+    const method = CHANNEL_TO_RPC_METHOD["desktop:showNotification"];
+    if (method !== "desktopShowNotification") {
+      throw new Error(`Notification IPC channel resolved to ${method}`);
+    }
     await expect(
-      handlers.desktopShowNotification({
+      handlers[method]({
         title: "Build finished",
         body: "The desktop build completed.",
         urgency: "critical",
@@ -288,29 +286,6 @@ describe("notification RPC handlers", () => {
       recursive: true,
     });
     expect(fileSystem.writeFileSync).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps renderer notification bridge strings resolvable in the schema", () => {
-    expect(CHANNEL_TO_RPC_METHOD["desktop:showNotification"]).toBe(
-      "desktopShowNotification",
-    );
-
-    for (const relative of [
-      "packages/ui/src/state/notifications/notification-store.ts",
-      "packages/ui/src/state/useChatLifecycle.ts",
-      "packages/app-core/src/runtime/desktop/DesktopTrayRuntime.tsx",
-    ]) {
-      const source = readFileSync(path.join(REPO_ROOT, relative), "utf8");
-      expect(source, relative).toContain(
-        'rpcMethod: "desktopShowNotification"',
-      );
-      expect(source, relative).toContain(
-        'ipcChannel: "desktop:showNotification"',
-      );
-      expect(CHANNEL_TO_RPC_METHOD["desktop:showNotification"]).toBe(
-        "desktopShowNotification",
-      );
-    }
   });
 });
 

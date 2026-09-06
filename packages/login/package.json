@@ -90,6 +90,10 @@
   },
   "elizaos": {
     "scripts": {
+      "buildOnInstall": {
+        "sentinel": "dist/sdk/index.js",
+        "order": 4
+      },
       "testLanes": [
         "server"
       ]

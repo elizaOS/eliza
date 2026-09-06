@@ -125,7 +125,7 @@ describe.skipIf(!ffmpeg.available)("actual terminal video frame", () => {
     await expectGreen(image);
   });
 
-  it("falls back when trailing audio leaves no video frame after the seek", async () => {
+  it("preserves the final video frame when audio continues past it", async () => {
     if (!ffmpeg.available) throw new Error(ffmpeg.reason);
     const video = await makeVideo(
       "audio-tail",
