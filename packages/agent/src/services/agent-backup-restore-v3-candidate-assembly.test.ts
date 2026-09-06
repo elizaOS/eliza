@@ -26,6 +26,7 @@ import {
   openAgentBackupRestoreV3CandidateFs,
 } from "./agent-backup-restore-v3-candidate-fs";
 import { stageAgentBackupRestoreV3CandidateRecord } from "./agent-backup-restore-v3-candidate-records";
+import { createAgentBackupRestoreV3ProcessMaterializer } from "./agent-backup-restore-v3-materializer-process";
 
 const roots = new Set<string>();
 const candidates = new Set<AgentBackupRestoreV3CandidateFs>();
@@ -49,7 +50,7 @@ const platformOptions = () =>
     ? {}
     : { testOnlyAllowNonLinuxFdEmulation: true as const };
 
-async function fixture(realDatabase = false) {
+async function fixture(realDatabase = false, processTransport = false) {
   const root = await fs.mkdtemp(
     path.join(await fs.realpath(os.tmpdir()), "restore-v3-assembly-"),
   );
@@ -64,6 +65,10 @@ async function fixture(realDatabase = false) {
     ...platformOptions(),
   });
   candidates.add(candidateFs);
+  const materializer = createAgentBackupRestoreV3ProcessMaterializer({
+    candidateFs,
+    ...platformOptions(),
+  });
   const session: AgentBackupRestoreV3StagingSession = Object.freeze({
     restoreAttemptId: randomUUID(),
     operationId: randomUUID(),
@@ -111,27 +116,31 @@ async function fixture(realDatabase = false) {
           bytes.subarray(offsetBytes, offsetBytes + 256 * 1024),
         );
         try {
-          await stageAgentBackupRestoreV3CandidateRecord({
-            candidateFs,
-            session,
-            control: control(),
-            record: {
-              componentIndex,
-              componentName: descriptor.name,
-              dataIndex: dataFrameCount++,
-              offsetBytes,
-              payload,
-              entry: filePath
-                ? {
-                    path: filePath,
-                    fileOffsetBytes: offsetBytes,
-                    fileSizeBytes: bytes.length,
-                    mode: componentIndex === 4 ? 0o400 : 0o600,
-                    mtimeMs: 0,
-                  }
-                : null,
-            },
-          });
+          const record = {
+            componentIndex,
+            componentName: descriptor.name,
+            dataIndex: dataFrameCount++,
+            offsetBytes,
+            payload,
+            entry: filePath
+              ? {
+                  path: filePath,
+                  fileOffsetBytes: offsetBytes,
+                  fileSizeBytes: bytes.length,
+                  mode: componentIndex === 4 ? 0o400 : 0o600,
+                  mtimeMs: 0,
+                }
+              : null,
+          };
+          if (processTransport)
+            await materializer.stageRecord(session, record, control());
+          else
+            await stageAgentBackupRestoreV3CandidateRecord({
+              candidateFs,
+              session,
+              control: control(),
+              record,
+            });
         } finally {
           payload.fill(0);
         }
@@ -180,6 +189,7 @@ async function fixture(realDatabase = false) {
   return {
     root,
     attemptRoot,
+    materializer,
     input: { candidateFs, session, receipt, control: control() },
   };
 }
@@ -194,6 +204,66 @@ afterEach(async () => {
 });
 
 describe("five-component candidate assembly", () => {
+  it("transports every component through private Agent processes without booting a runtime", async () => {
+    const { root, attemptRoot, input, materializer } = await fixture(
+      true,
+      true,
+    );
+    for (const receipt of input.receipt.components) {
+      expect(
+        await materializer.finishComponent(input.session, receipt, control()),
+      ).toEqual(receipt);
+    }
+    expect(
+      await materializer.assembleCandidate(
+        input.session,
+        input.receipt,
+        control(),
+      ),
+    ).toEqual(input.receipt);
+    const markerPath = path.join(
+      attemptRoot,
+      ".restore-v3-candidate-assembled.json",
+    );
+    const marker = await fs.readFile(markerPath, "utf8");
+    const inode = (await fs.stat(markerPath, { bigint: true })).ino;
+    expect(
+      await materializer.assembleCandidate(
+        input.session,
+        input.receipt,
+        control(),
+      ),
+    ).toEqual(input.receipt);
+    expect(await fs.readFile(markerPath, "utf8")).toBe(marker);
+    expect((await fs.stat(markerPath, { bigint: true })).ino).toBe(inode);
+    expect(marker).not.toContain(input.session.executionToken);
+    expect(
+      await fs.readFile(
+        path.join(attemptRoot, "components/character/character.json"),
+      ),
+    ).toEqual(Buffer.from(CHARACTER));
+    expect(
+      await fs.readFile(path.join(attemptRoot, "components/media/photo.bin")),
+    ).toEqual(Buffer.from(MEDIA));
+    expect(
+      await fs.readFile(
+        path.join(attemptRoot, "components/state-files/plugin/state.json"),
+      ),
+    ).toEqual(Buffer.from(STATE));
+    expect(
+      await fs.readFile(path.join(attemptRoot, "components/vault/vault.json")),
+    ).toEqual(Buffer.from(VAULT));
+    const probe = path.join(root, "probe");
+    await fs.cp(path.join(attemptRoot, "components/database"), probe, {
+      recursive: true,
+    });
+    const db = new PGlite(probe);
+    databases.add(db);
+    expect((await db.query("SELECT id, fact FROM assembly_fact")).rows).toEqual(
+      [{ id: 1, fact: FACT }],
+    );
+  }, 150_000);
+
   it("resumes partial materialization, replays on a fresh FS authority, and rejects later tamper", async () => {
     const { root, attemptRoot, input } = await fixture(true);
     const character = input.receipt.components[0];
