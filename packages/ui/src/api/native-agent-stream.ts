@@ -12,6 +12,7 @@
  * Pure transport glue — the plugin is passed in, so it unit-tests with a fake.
  */
 
+import { ElizaError } from "@elizaos/core/errors";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { abortableResponse } from "./abortable-request";
 
@@ -208,15 +209,19 @@ export async function createNativeStreamingResponse(
     }
   };
 
-  // Terminal on a SUCCESSFUL native completion (the resolution, not just the
-  // rejection failStream handles): if the head never arrived, settle it with a
-  // 200 so the caller gets a Response, then close the body. Idempotent — a
-  // later `agentStreamComplete` sees `detached` and no-ops.
+  const missingResponseError = (): ElizaError =>
+    new ElizaError("Native stream completed without HTTP response headers", {
+      code: "NATIVE_STREAM_RESPONSE_MISSING",
+      context: { streamId, path: options.path },
+    });
+
+  // Native completion confirms transport completion, not an HTTP status. A
+  // missing response event cannot establish whether the server accepted the request.
   const finishStream = (): void => {
     if (detached) return;
     if (!headSettled) {
-      headSettled = true;
-      resolveHead(new Response(body, { status: 200 }));
+      failStream(missingResponseError());
+      return;
     }
     if (controller) {
       controller.close();
@@ -272,19 +277,11 @@ export async function createNativeStreamingResponse(
   const onComplete = (event: unknown): void => {
     const e = event as NativeStreamCompleteEvent;
     if (!e || e.streamId !== streamId || detached) return;
-    // Always settle the head before touching the body — a terminal event that
-    // beats the response (empty stream completing head-first, or a dropped head
-    // event) must still resolve/reject the caller's promise, never leave it
-    // hanging. A failure can't yield a Response, so it rejects; a success
-    // resolves a 200 and falls through to close the body.
+    // A terminal event without response metadata must fail promptly rather
+    // than hang or turn an unknown server status into an apparent success.
     if (!headSettled) {
-      headSettled = true;
-      if (e.error) {
-        rejectHead(new Error(e.error));
-        detach();
-        return;
-      }
-      resolveHead(new Response(body, { status: 200 }));
+      failStream(e.error ? new Error(e.error) : missingResponseError());
+      return;
     }
     if (controller) {
       if (e.error) controller.error(new Error(e.error));
