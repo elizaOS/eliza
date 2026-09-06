@@ -5,7 +5,7 @@
  * PGlite validation children) before releasing authority or exiting.
  */
 
-import { Socket } from "node:net";
+import type { Buffer } from "node:buffer";
 import { openAgentBackupRestoreV3CandidateFs } from "./agent-backup-restore-v3-candidate-fs";
 import { createAgentBackupRestoreV3CandidateMaterializer } from "./agent-backup-restore-v3-candidate-materializer";
 import {
@@ -16,16 +16,18 @@ import {
 
 process.umask(0o077);
 const abort = new AbortController();
-const parent = new Socket({ fd: 3, readable: true, writable: false });
 const disconnect = () => {
   abort.abort();
   process.stdin.destroy();
 };
-parent.on("end", disconnect);
-parent.on("error", disconnect);
-parent.on("data", disconnect);
+process.stdin.on("end", disconnect);
+process.stdin.on("error", disconnect);
 process.stdout.on("error", disconnect);
-parent.resume();
+
+const trailingInput = (bytes: Buffer) => {
+  bytes.fill(0);
+  disconnect();
+};
 
 async function main(): Promise<void> {
   const emulation = process.argv.slice(2);
@@ -40,6 +42,10 @@ async function main(): Promise<void> {
   )
     throw materializerWireError("INPUT_INVALID");
   const { request, payload } = await readMaterializerRequest(process.stdin);
+  // SSH/Docker expose stdin, not arbitrary inherited descriptors. Keeping this
+  // same pipe open lets transport disconnect cancel an already-dispatched effect.
+  process.stdin.on("data", trailingInput);
+  process.stdin.resume();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     const remaining = request.deadlineEpochMs - Date.now();
@@ -123,5 +129,6 @@ await main()
   })
   .finally(() => {
     process.stdout.removeListener("error", disconnect);
-    parent.destroy();
+    process.stdin.removeListener("data", trailingInput);
+    process.stdin.destroy();
   });
