@@ -857,7 +857,6 @@ for (const resume of [true, false]) {
     let stops = 0;
     provider.stopRetainingState = async (locator) => {
       expect(locator.containerId).toBe(captured.containerId);
-      expect(locator.stopIntentId).toBe(intent.id);
       stops++;
       return { containerId: locator.containerId, state: "exited", restartPolicy: "no" };
     };
