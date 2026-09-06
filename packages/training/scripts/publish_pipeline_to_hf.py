@@ -9,8 +9,8 @@ dataset repo under ``pipeline/`` so a fresh Vast.ai box can:
     bash scripts/train_vast.sh ...
 
 Companion to ``publish_dataset_to_hf.py`` (data) and
-``publish.publish_eliza1_model_repo`` (trained bundles). The wave2 cleanup
-consolidated all three under ``scripts/publish/``: see
+``publish.publish_eliza1_model_repo`` (trained bundles). Public entry points live
+under ``scripts/publish/``: see
 ``scripts/publish/publish_pipeline.py``, ``scripts/publish/publish_dataset.py``,
 and ``scripts/publish/publish_model.py``. Those wrappers forward here.
 
@@ -227,23 +227,6 @@ def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
         for block in iter(lambda: fh.read(chunk), b""):
             h.update(block)
     return h.hexdigest()
-
-
-def _remote_sha256(api, repo_id: str, path_in_repo: str) -> str | None:
-    try:
-        info = api.repo_info(repo_id, repo_type="dataset", files_metadata=True)
-    except Exception:
-        return None
-    for sibling in getattr(info, "siblings", []) or []:
-        if sibling.rfilename != path_in_repo:
-            continue
-        lfs = getattr(sibling, "lfs", None)
-        if lfs:
-            return getattr(lfs, "sha256", None) or (
-                lfs.get("sha256") if isinstance(lfs, dict) else None
-            )
-        return None
-    return None
 
 
 def publish(files: list[PipelineFile], repo_id: str, public: bool) -> int:

@@ -783,24 +783,6 @@ def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
     return h.hexdigest()
 
 
-def _remote_sha256(api, repo_id: str, path_in_repo: str) -> str | None:
-    """Return remote LFS SHA256 if the file exists on HF, else None."""
-    try:
-        info = api.repo_info(repo_id, repo_type="dataset", files_metadata=True)
-    except Exception:
-        return None
-    for sibling in getattr(info, "siblings", []) or []:
-        if sibling.rfilename != path_in_repo:
-            continue
-        lfs = getattr(sibling, "lfs", None)
-        if lfs:
-            return getattr(lfs, "sha256", None) or (
-                lfs.get("sha256") if isinstance(lfs, dict) else None
-            )
-        return None
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Publish
 # ---------------------------------------------------------------------------
