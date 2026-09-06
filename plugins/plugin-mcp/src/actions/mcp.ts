@@ -21,7 +21,7 @@ import {
 import type { McpService } from "../service";
 import { resourceSelectionTemplate } from "../templates/resourceSelectionTemplate";
 import { MCP_SERVICE_NAME, type McpServer, type McpServerInfo } from "../types";
-import { handleMcpError } from "../utils/error";
+import { handleMcpError, McpError } from "../utils/error";
 import { handleNoToolAvailable } from "../utils/handler";
 import {
   handleResourceAnalysis,
@@ -237,7 +237,7 @@ async function handleCallTool(
 
     const result = await mcpService.callTool(serverName, toolName, toolArguments);
 
-    const { toolOutput, hasAttachments, attachments } = processToolResult(
+    const { toolOutput, hasAttachments, attachments, isError } = processToolResult(
       result,
       serverName,
       toolName,
@@ -256,8 +256,46 @@ async function handleCallTool(
       attachments,
       composedState,
       mcpProvider,
-      callback
+      callback,
+      isError
     );
+
+    const data = {
+      actionName: "MCP",
+      op: "call_tool" as const,
+      serverName,
+      toolName,
+      toolArgumentsJson: JSON.stringify(toolArguments),
+      reasoning: selection.reasoning,
+      output: toolOutput,
+      attachmentCount: attachments?.length ?? 0,
+      isError,
+    };
+
+    if (isError) {
+      // The MCP server returned a structured failure (CallToolResult.isError).
+      // The user was still informed via handleToolResponse, but the planner must
+      // see a distinct failure rather than a fabricated success (repo error
+      // policy: "Do not catch and continue with fabricated success").
+      return {
+        text: `Tool ${serverName}/${toolName} reported an error. Reasoned response: ${replyMemory.content.text}`,
+        values: {
+          success: false,
+          toolExecuted: true,
+          toolErrored: true,
+          serverName,
+          toolName,
+          hasAttachments,
+          output: toolOutput,
+        },
+        data,
+        success: false,
+        error: new McpError(
+          `MCP tool '${serverName}/${toolName}' returned an error result: ${toolOutput}`,
+          "TOOL_EXECUTION_ERROR"
+        ),
+      };
+    }
 
     return {
       text: `Successfully called tool: ${serverName}/${toolName}. Reasoned response: ${replyMemory.content.text}`,
@@ -269,16 +307,7 @@ async function handleCallTool(
         hasAttachments,
         output: toolOutput,
       },
-      data: {
-        actionName: "MCP",
-        op: "call_tool",
-        serverName,
-        toolName,
-        toolArgumentsJson: JSON.stringify(toolArguments),
-        reasoning: selection.reasoning,
-        output: toolOutput,
-        attachmentCount: attachments?.length ?? 0,
-      },
+      data,
       success: true,
     };
   } catch (error) {

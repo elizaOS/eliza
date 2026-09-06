@@ -104,3 +104,46 @@ describe("processToolResult attachment ids", () => {
     expect(toolOutput).toBe("hello");
   });
 });
+
+describe("processToolResult error signal (#30037)", () => {
+  it("surfaces isError=true from a spec-compliant errored CallToolResult", () => {
+    const out = processToolResult(
+      { content: [{ type: "text", text: "Error: upstream API returned 500" }], isError: true },
+      "srv",
+      "toolX",
+      runtime,
+      messageEntityId
+    );
+
+    // The error detail is still carried, but the failure flag must no longer be
+    // dropped: the caller needs it to avoid fabricating success on the planner.
+    expect(out.toolOutput).toBe("Error: upstream API returned 500");
+    expect(out.isError).toBe(true);
+    expect(Object.keys(out)).toContain("isError");
+  });
+
+  it("reports isError=false for a normal successful result", () => {
+    const out = processToolResult(
+      { content: [{ type: "text", text: "the answer is 42" }] },
+      "srv",
+      "toolX",
+      runtime,
+      messageEntityId
+    );
+
+    expect(out.toolOutput).toBe("the answer is 42");
+    expect(out.isError).toBe(false);
+  });
+
+  it("treats an explicit isError=false the same as an absent flag", () => {
+    const out = processToolResult(
+      { content: [{ type: "text", text: "ok" }], isError: false },
+      "srv",
+      "toolX",
+      runtime,
+      messageEntityId
+    );
+
+    expect(out.isError).toBe(false);
+  });
+});
