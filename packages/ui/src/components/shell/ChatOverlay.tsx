@@ -3102,9 +3102,14 @@ export function ChatOverlay({
     }
     const panel = getPanelElement();
     const root = document.documentElement;
-    if (sheetOpen) return; // Keep the last resting value while the sheet is open.
+    // The committed detent stays collapsed during a pull-up, and switches back
+    // before the closing spring finishes. Neither is a resting measurement.
+    if (sheetOpen || !sheetSettled) return;
     if (!panel) return;
     const publish = () => {
+      // Motion and pointer refs update before React's effect cleanup. Ignore
+      // resize deliveries from that interval instead of resizing routed views.
+      if (draggingRef.current || threadHeight.get() > 0) return;
       const h =
         panel.getBoundingClientRect().height + CHAT_CLEARANCE_REST_GAP_PX;
       // Cap it: a mid-collapse frame can report the open panel height, and
@@ -3119,7 +3124,7 @@ export function ChatOverlay({
     const ro = new ResizeObserver(publish);
     ro.observe(panel);
     return () => ro.disconnect();
-  }, [sheetOpen, getPanelElement]);
+  }, [sheetOpen, sheetSettled, getPanelElement, threadHeight]);
 
   // Inline clearance is deliberately zero. Routed pages retain their full
   // reading width while block-axis clearance keeps their final content above
