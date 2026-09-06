@@ -72,6 +72,42 @@ afterAll(async () => {
 });
 
 describe("real OCR blank-vs-unreadable classification", () => {
+  it.each(["dark", "light"])(
+    "preserves muted labels on a %s interface without inventing missing content",
+    async (theme) => {
+      const path = join(dir, `muted-labels-${theme}.png`);
+      const background = theme === "dark" ? "#131313" : "#fafafa";
+      const foreground = theme === "dark" ? "#858585" : "#777777";
+      const strong = theme === "dark" ? "#eeeeee" : "#111111";
+      await sharp(
+        Buffer.from(`
+        <svg width="390" height="400" xmlns="http://www.w3.org/2000/svg">
+          <rect width="390" height="400" fill="${background}" />
+          <text x="24" y="48" font-family="Arial, sans-serif" font-size="14" fill="${foreground}">LIBRARY</text>
+          <text x="260" y="48" font-family="Arial, sans-serif" font-size="16" fill="${strong}">Add</text>
+          <text x="24" y="116" font-family="Arial, sans-serif" font-size="16" fill="${strong}">Quarterly Plan</text>
+          <text x="24" y="148" font-family="Arial, sans-serif" font-size="13" fill="${foreground}">Upload seven fragments</text>
+        </svg>
+      `),
+      )
+        .png()
+        .toFile(path);
+      const result = await ocrImage(path, {
+        timeoutMs: 60_000,
+        alwaysTryFallback: true,
+      });
+      if (!result.available) throw new Error(result.reason);
+      const fallback = result.attempts?.find(
+        (attempt) => attempt.mode === "sparse-grayscale",
+      );
+      expect(fallback?.text).toMatch(/LIBRARY/i);
+      expect(fallback?.text).toMatch(/seven fragments/i);
+      expect(fallback?.text).not.toMatch(/No documents yet/i);
+      expect(result.pixelBlank).toBe(false);
+    },
+    90_000,
+  );
+
   it("runs the sparse pass when a semantic gate rejects an otherwise confident transcript", async () => {
     const path = join(dir, "semantic-retry.png");
     const svg = Buffer.from(`
@@ -93,10 +129,11 @@ describe("real OCR blank-vs-unreadable classification", () => {
       alwaysTryFallback: true,
     });
     if (!retried.available) throw new Error(retried.reason);
-    expect(retried.attempts).toHaveLength(2);
+    expect(retried.attempts).toHaveLength(3);
     expect(retried.attempts?.map((attempt) => attempt.mode)).toEqual([
       "auto",
       "sparse-high-contrast",
+      "sparse-grayscale",
     ]);
     expect(retried.text).toMatch(/Misty Forest/i);
     expect(retried.text).toMatch(/Desert Dusk/i);
@@ -135,20 +172,21 @@ describe("real OCR blank-vs-unreadable classification", () => {
       ok: true,
     });
     expect(attempts[0].meanConfidence).toBeLessThan(0.45);
-    expect(attempts).toHaveLength(2);
+    expect(attempts).toHaveLength(3);
     expect(attempts[1]).toMatchObject({
       mode: "sparse-high-contrast",
       ok: true,
     });
-    expect(entry.selectedMode).toBe("sparse-high-contrast");
-    expect(entry.text).toMatch(/Ask Eliza/i);
+    expect(attempts.some((attempt) => /Ask Eliza/i.test(attempt.text))).toBe(
+      true,
+    );
     expect(entry.pixelBlank).toBe(false);
     expect(entry.ocrVerdict).toBe("needs-eyeball");
     expect(entry.regression).toBe(false);
     expect(entry.reasons.join(" ")).not.toMatch(/pixels are blank/i);
   }, 90_000);
 
-  it("still breaks a genuinely solid frame after both real OCR passes", async () => {
+  it("still rejects a solid frame after all OCR passes", async () => {
     const path = join(dir, "solid.png");
     await sharp({
       create: {

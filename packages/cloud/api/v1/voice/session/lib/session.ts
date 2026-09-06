@@ -2226,8 +2226,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.llmAbort.abort();
       this.llmAbort = null;
     }
-    this.pendingOverlapTurn?.abort.abort();
-    this.pendingOverlapTurn = null;
     // 4. Drop pending phrase aggregation.
     if (this.phrase) {
       this.phrase.reset();
