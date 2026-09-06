@@ -3,7 +3,7 @@
  * browser callback into the narrow payload Steward verifies server-side.
  */
 
-import type { StewardTelegramLoginPayload } from "@stwd/sdk";
+import type { LoginTelegramLoginPayload } from "@elizaos/login";
 import { useEffect, useRef, useState } from "react";
 
 const TELEGRAM_WIDGET_SCRIPT = "https://telegram.org/js/telegram-widget.js?22";
@@ -20,7 +20,7 @@ type TelegramCallbackWindow = Window &
 /** Reject malformed widget messages before they reach the Steward SDK. */
 export function parseTelegramLoginPayload(
   value: unknown,
-): StewardTelegramLoginPayload | null {
+): LoginTelegramLoginPayload | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -32,7 +32,7 @@ export function parseTelegramLoginPayload(
     return null;
   }
   if (entries.length === 0 || entries.length > 32) return null;
-  const payload = Object.create(null) as StewardTelegramLoginPayload;
+  const payload = Object.create(null) as LoginTelegramLoginPayload;
   for (const [key, field] of entries) {
     if (
       key.length === 0 ||
@@ -87,7 +87,7 @@ export function configuredTelegramBotUsername(): string | undefined {
 interface TelegramLoginWidgetProps {
   botUsername: string;
   disabled?: boolean;
-  onAuth: (payload: StewardTelegramLoginPayload) => void;
+  onAuth: (payload: LoginTelegramLoginPayload) => void;
   onError: (message: string) => void;
 }
 

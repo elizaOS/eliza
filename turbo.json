@@ -275,6 +275,7 @@
     },
     "@elizaos/cloud-shared#typecheck": {
       "dependsOn": [
+        "@elizaos/login#build",
         "@elizaos/plugin-cloud-apps#build",
         "@elizaos/plugin-doordash#build",
         "@elizaos/plugin-scheduling#build",

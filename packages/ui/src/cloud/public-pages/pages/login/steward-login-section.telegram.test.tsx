@@ -22,8 +22,8 @@ const harness = vi.hoisted(() => ({
   storedToken: null as string | null,
 }));
 
-vi.mock("@stwd/sdk", () => ({
-  StewardAuth: class {
+vi.mock("@elizaos/login", () => ({
+  LoginAuth: class {
     getSession() {
       return null;
     }
@@ -49,7 +49,7 @@ vi.mock("@stwd/sdk", () => ({
       return harness.signInWithTelegram(payload, config);
     }
   },
-  StewardApiError: class extends Error {},
+  LoginApiError: class extends Error {},
 }));
 
 vi.mock("@elizaos/shared/steward-session-client", () => ({

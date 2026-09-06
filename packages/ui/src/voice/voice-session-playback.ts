@@ -446,8 +446,11 @@ export async function createVoiceSessionPlayback(
             jsReadOffset += 1;
             jsHandoffReadOffset += 1;
             jsCrossfadePosition += 1;
-            consumedSamples += 1;
+            consumedSamples += 2;
             if (jsCrossfadePosition >= jsCrossfadeSamples) {
+              consumedSamples +=
+                jsHandoffQueue.reduce((sum, pcm) => sum + pcm.length, 0) -
+                jsHandoffReadOffset;
               jsHandoffQueue = [];
               jsHandoffReadOffset = 0;
               handoffCompleted = true;
@@ -459,6 +462,7 @@ export async function createVoiceSessionPlayback(
           } else if (oldSample !== null) {
             ch[i] = oldSample;
             jsHandoffReadOffset += 1;
+            consumedSamples += 1;
           } else {
             ch[i] = 0;
           }
@@ -675,6 +679,9 @@ export async function createVoiceSessionPlayback(
           sequence: ++lastSubmittedSequence,
         });
       } else {
+        sinkQueuedSamples -=
+          jsHandoffQueue.reduce((sum, pcm) => sum + pcm.length, 0) -
+          jsHandoffReadOffset;
         jsHandoffQueue = jsQueue.splice(0);
         jsHandoffReadOffset = jsReadOffset;
         jsReadOffset = 0;

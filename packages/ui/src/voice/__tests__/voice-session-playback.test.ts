@@ -397,6 +397,7 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     expect(transition[10]).toBeCloseTo(0, 1);
     expect(transition[20]).toBeCloseTo(-0.8, 2);
     expect(completed).toHaveBeenCalledTimes(1);
+    expect(pb.getStats().queuedSamples).toBe(10);
     await pb.stop();
   });
   it.each(["autoplay", "startup reserve"])(

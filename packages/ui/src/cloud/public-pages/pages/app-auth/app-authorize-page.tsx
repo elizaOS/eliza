@@ -3,7 +3,7 @@
  * `AuthorizeContent` component (the shared authorize UI).
  *
  * `AuthorizeContent` calls `useAuth()` / renders `<StewardLogin>` from
- * `@stwd/react`, both of which require an ancestor Steward `<StewardProvider>`.
+ * `@elizaos/ui`, both of which require an ancestor Steward `<StewardProvider>`.
  * As a `public: true` route this page renders WITHOUT the per-route Steward
  * wrapper (see `CloudRouteElement`), so it must mount the shell's
  * `StewardAuthProvider` itself — otherwise `useAuth()` throws "must be used

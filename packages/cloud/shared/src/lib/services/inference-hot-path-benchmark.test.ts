@@ -91,17 +91,19 @@ mock.module("./inference-api-key-auth", () => ({
 }));
 mock.module("./admin", () => ({
   adminService: {
-    shouldBlockUser: async () => {
+    shouldBlockUserConsistent: async () => {
       moderationCalls++;
       return false;
+    },
+    shouldBlockUser: async () => {
+      throw new Error("Inference refresh must not use cached moderation standing");
     },
   },
 }));
 mock.module("./content-moderation", () => ({
   contentModerationService: {
     shouldBlockUser: async () => {
-      moderationCalls++;
-      return false;
+      throw new Error("Inference refresh must use primary admin moderation authority");
     },
   },
 }));
@@ -166,11 +168,13 @@ describe("inference hot-path benchmark", () => {
     expect(admissionLoadCalls).toBe(1); // one admission projection load (IAC v2)
     expect(appScopeCalls).toBe(1); // one app-key scope load (IAC v2)
     expect(revocationBoundaryCalls).toBe(1);
+    expect(usageCalls).toBe(1);
     getSpy.mockRestore();
   });
 
   test("WARM hit = exactly 1 cache read, 0 writes, 0 auth, 0 moderation", async () => {
     await resolveInferenceAuthContext(req()); // populate (cold)
+    expect(usageCalls).toBe(1);
 
     const getSpy = spyOn(cache, "getWithOutcome");
     const setSpy = spyOn(cache, "setWithOutcome");
@@ -180,6 +184,7 @@ describe("inference hot-path benchmark", () => {
     admissionLoadCalls = 0;
     appScopeCalls = 0;
     revocationBoundaryCalls = 0;
+    usageCalls = 0;
 
     const warm = await resolveInferenceAuthContext(req());
 
