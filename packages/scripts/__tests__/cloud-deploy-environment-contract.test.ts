@@ -3,7 +3,7 @@
  * host-inventory, and shared-secret drift without inspecting protected values.
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 const repoRoot = new URL("../../../", import.meta.url);
 
@@ -89,6 +89,40 @@ const cloudWorkerSecretNames = [
   ...workerSecretNames,
   "TUNNEL_HOSTNAME_SIGNING_SECRET",
 ] as const;
+
+// The repository pins the Wrangler CLI in the root `overrides` block, and every
+// protected Worker-secret path runs that exact version through `bunx`. Those
+// call sites — and the assertions covering them — spell the version as a
+// constant, so bumping the pin alone would silently leave CI on the old CLI.
+// Tie the two together rather than repeating a literal.
+const rootPackageJson = JSON.parse(read("package.json")) as {
+  overrides?: Record<string, string>;
+};
+const pinnedWranglerVersion = rootPackageJson.overrides?.wrangler;
+
+// The Pages and AASA edge paths sit on 4.100.0, re-introduced after
+// `02e44bb10c` removed that pin for crashing under `bunx`. Whether that still
+// reproduces is a maintainer call and not something this contract should
+// decide, so record the exception instead of changing it — frozen by file and
+// count, so the set can only shrink deliberately.
+const legacyWranglerCallSites: Record<string, number> = {
+  ".github/workflows/cloud-cf-release.yml": 4,
+  ".github/workflows/deploy-aasa.yml": 3,
+};
+
+function wranglerCallSites(): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  const dir = ".github/workflows";
+  for (const entry of readdirSync(new URL(dir, repoRoot)).sort()) {
+    if (!entry.endsWith(".yml") && !entry.endsWith(".yaml")) continue;
+    const path = `${dir}/${entry}`;
+    const versions = [
+      ...read(path).matchAll(/bunx wrangler@(\d+\.\d+\.\d+)/g),
+    ].map((match) => match[1]);
+    if (versions.length > 0) found.set(path, versions);
+  }
+  return found;
+}
 
 const requiredAuthWorkerSecretNames = [
   "OIDC_CLIENTS",
@@ -892,5 +926,37 @@ describe("canonical cloud deployment environment contract", () => {
       '--environment "${' + '{ steps.env.outputs.environment }}"',
     );
     expect(verify.run).toContain("--require-beacon");
+  });
+
+  test("runs the Wrangler CLI at the root-pinned version everywhere but the recorded legacy paths", () => {
+    expect(pinnedWranglerVersion).toMatch(/^\d+\.\d+\.\d+$/);
+
+    const legacyCounts: Record<string, number> = {};
+    for (const [path, versions] of wranglerCallSites()) {
+      for (const version of versions) {
+        if (version === pinnedWranglerVersion) continue;
+        legacyCounts[path] = (legacyCounts[path] ?? 0) + 1;
+      }
+    }
+
+    // Every non-pinned call site is one of the recorded legacy ones, and there
+    // are exactly as many as recorded — a new stray version, or one more
+    // legacy invocation, fails here rather than reaching a protected deploy.
+    expect(legacyCounts).toEqual(legacyWranglerCallSites);
+
+    // The protected Worker-secret paths still invoke Wrangler, and every one of
+    // those invocations is the pinned version — an empty list would satisfy a
+    // "no legacy versions here" check vacuously, so assert the count too.
+    const sites = wranglerCallSites();
+    for (const [path, count] of [
+      [".github/workflows/cloud-cf-deploy.yml", 1],
+      [".github/workflows/activate-personal-shared-telegram-edge.yml", 1],
+      [".github/workflows/cloud-cf-release.yml", 6],
+    ] as const) {
+      const pinned = (sites.get(path) ?? []).filter(
+        (version) => version === pinnedWranglerVersion,
+      );
+      expect(pinned.length, path).toBe(count);
+    }
   });
 });
