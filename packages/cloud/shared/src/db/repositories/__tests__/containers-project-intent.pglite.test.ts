@@ -3,7 +3,9 @@
  * in-process PGlite. Parallel callers share the production repository and SQL;
  * no provider or network boundary is used.
  */
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -82,13 +84,15 @@ beforeAll(async () => {
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
       )`,
-      `INSERT INTO organizations (id, credit_balance) VALUES ('${ORG_ID}', 0)`,
-      `INSERT INTO organization_config (id, organization_id, settings)
-       VALUES ('00000000-0000-4000-8000-000000000003', '${ORG_ID}', '{"max_containers":2}')`,
     ];
     for (const statement of ddl) {
       await dbWrite.execute(statement);
     }
+    const { getPgliteClientForTests } = await import("../../client");
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
+    await dbWrite.execute(`INSERT INTO organizations (id, credit_balance) VALUES ('${ORG_ID}', 0)`);
+    await dbWrite.execute(`INSERT INTO organization_config (id, organization_id, settings)
+       VALUES ('00000000-0000-4000-8000-000000000003', '${ORG_ID}', '{"max_containers":2}')`);
   } catch (error) {
     ready = false;
     console.error("[containers-project-intent] PGlite setup failed", error);
@@ -186,3 +190,20 @@ describe("ContainersRepository project intent", () => {
 test("PGlite schema applied — never a silent skip", () => {
   expect(ready).toBe(true);
 });
+
+test(
+  "corrupt persisted legacy balance cannot authorize a new container",
+  async () => {
+    expect(ready).toBe(true);
+    await dbWrite.execute("DELETE FROM containers");
+    await dbWrite.execute(`UPDATE organizations SET credit_balance='NaN' WHERE id='${ORG_ID}'`);
+    try {
+      expect((await repository.checkQuota(ORG_ID)).availability).toBe("unavailable");
+      await expect(repository.createWithQuotaCheck(candidate("corrupt-balance"))).rejects.toThrow();
+      expect(await countRows()).toBe(0);
+    } finally {
+      await dbWrite.execute(`UPDATE organizations SET credit_balance=0 WHERE id='${ORG_ID}'`);
+    }
+  },
+  TIMEOUT,
+);

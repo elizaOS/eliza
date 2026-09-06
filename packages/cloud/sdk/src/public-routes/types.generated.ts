@@ -155,6 +155,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/apps/{id}/analytics": { id: string | number };
   "GET /api/v1/apps/{id}/analytics/requests": { id: string | number };
   "GET /api/v1/apps/{id}/backup": { id: string | number };
+  "GET /api/v1/apps/{id}/billing/account": { id: string | number };
   "GET /api/v1/apps/{id}/characters": { id: string | number };
   "GET /api/v1/apps/{id}/charges": { id: string | number };
   "GET /api/v1/apps/{id}/charges/{chargeId}": {
@@ -413,6 +414,13 @@ export interface PublicRoutePathParams {
   "GET /api/v1/solana/token-accounts/{address}": { address: string | number };
   "GET /api/v1/solana/transactions/{address}": { address: string | number };
   "GET /api/v1/steward/tenants/credentials": Record<never, never>;
+  "GET /api/v1/subscriptions/cancel/{commandId}": {
+    commandId: string | number;
+  };
+  "GET /api/v1/subscriptions/cancel/undo/{commandId}": {
+    commandId: string | number;
+  };
+  "GET /api/v1/subscriptions/commands": Record<never, never>;
   "GET /api/v1/subscriptions/plans": Record<never, never>;
   "GET /api/v1/telegram/chats": Record<never, never>;
   "GET /api/v1/telegram/scan-chats": Record<never, never>;
@@ -529,6 +537,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/approval-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/approval-requests/{id}/deny": { id: string | number };
   "POST /api/v1/apps": Record<never, never>;
+  "POST /api/v1/apps/{id}/billing/registration": { id: string | number };
   "POST /api/v1/apps/{id}/charges": { id: string | number };
   "POST /api/v1/apps/{id}/charges/{chargeId}/checkout": {
     id: string | number;
@@ -776,6 +785,8 @@ export interface PublicRoutePathParams {
   "POST /api/v1/solana/rpc": Record<never, never>;
   "POST /api/v1/steward/tenants": Record<never, never>;
   "POST /api/v1/stripe/checkout": Record<never, never>;
+  "POST /api/v1/subscriptions/cancel": Record<never, never>;
+  "POST /api/v1/subscriptions/cancel/undo": Record<never, never>;
   "POST /api/v1/telegram/connect": Record<never, never>;
   "POST /api/v1/telegram/scan-chats": Record<never, never>;
   "POST /api/v1/topup/10": Record<never, never>;
@@ -952,6 +963,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/apps/{id}/analytics": never;
   "GET /api/v1/apps/{id}/analytics/requests": never;
   "GET /api/v1/apps/{id}/backup": never;
+  "GET /api/v1/apps/{id}/billing/account": never;
   "GET /api/v1/apps/{id}/characters": never;
   "GET /api/v1/apps/{id}/charges": never;
   "GET /api/v1/apps/{id}/charges/{chargeId}": never;
@@ -1115,6 +1127,9 @@ export interface PublicRouteHeaders {
   "GET /api/v1/solana/token-accounts/{address}": never;
   "GET /api/v1/solana/transactions/{address}": never;
   "GET /api/v1/steward/tenants/credentials": never;
+  "GET /api/v1/subscriptions/cancel/{commandId}": never;
+  "GET /api/v1/subscriptions/cancel/undo/{commandId}": never;
+  "GET /api/v1/subscriptions/commands": never;
   "GET /api/v1/subscriptions/plans": never;
   "GET /api/v1/telegram/chats": never;
   "GET /api/v1/telegram/scan-chats": never;
@@ -1214,6 +1229,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/approval-requests/{id}/cancel": never;
   "POST /api/v1/approval-requests/{id}/deny": never;
   "POST /api/v1/apps": never;
+  "POST /api/v1/apps/{id}/billing/registration": never;
   "POST /api/v1/apps/{id}/charges": never;
   "POST /api/v1/apps/{id}/charges/{chargeId}/checkout": never;
   "POST /api/v1/apps/{id}/chat": never;
@@ -1387,6 +1403,8 @@ export interface PublicRouteHeaders {
   "POST /api/v1/solana/rpc": never;
   "POST /api/v1/steward/tenants": never;
   "POST /api/v1/stripe/checkout": never;
+  "POST /api/v1/subscriptions/cancel": never;
+  "POST /api/v1/subscriptions/cancel/undo": never;
   "POST /api/v1/telegram/connect": never;
   "POST /api/v1/telegram/scan-chats": never;
   "POST /api/v1/topup/10": never;

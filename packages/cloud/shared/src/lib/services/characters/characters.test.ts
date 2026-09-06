@@ -5,12 +5,67 @@
  * invalid provided username must fail as caller error (400 ValidationError),
  * never a raw 500. Transaction traces prove automatic and explicit claims use
  * the same global advisory lock before their scan/check and insert;
- * repositories and cache are mocked while username utilities run unmocked.
+ * repositories, cache and the primary quota-read boundary are controlled while
+ * username utilities and resource-limit validation run unmocked. Real quota
+ * persistence/concurrency belongs to characters-quota.pglite integration tests.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { UserCharacterCreateTransactionContract } from "../../../db/repositories/characters";
 import type { NewUserCharacter } from "../../../db/schemas/user-characters";
+import * as quotaActual from "../organization-quota-policy";
+
+let characterLimit: bigint | null = 5n;
+const quotaReadTransactions: unknown[] = [];
+mock.module("../organization-quota-policy", () => ({
+  ...quotaActual,
+  readOrganizationQuotaPolicyInTransaction: async (
+    tx: unknown,
+    organizationId: string,
+  ): Promise<quotaActual.OrganizationQuotaPolicy> => {
+    if (organizationId !== ORG_ID) throw new Error("Unexpected quota tenant");
+    quotaReadTransactions.push(tx);
+    authorityTrace.push("policy-read");
+    const unavailable = { status: "unavailable" as const, code: "RESOURCE_POLICY_UNAVAILABLE" };
+    return {
+      authority: {
+        generation: "1",
+        source: "legacy",
+        sourceSubscriptionId: null,
+        sourceRevision: null,
+        projectionRevision: null,
+        catalogVersion: null,
+        effectiveFrom: "2026-01-01T00:00:00.000Z",
+        effectiveUntil: null,
+      },
+      tier: { status: "unavailable", code: "UNUSED_TIER_BOUNDARY" },
+      subscriptionFunded: false,
+      tierSourceCreditTotal: "0",
+      observedAt: new Date().toISOString(),
+      balance: { status: "available", value: { balanceUsd: 0, revision: "1" } },
+      overrides: { completionsRpm: null, embeddingsRpm: null, standardRpm: null, strictRpm: null },
+      limits: {
+        characters:
+          characterLimit === null
+            ? unavailable
+            : {
+                status: "available",
+                limit: characterLimit,
+                source: "organizations.credit_balance",
+              },
+        sandboxes: unavailable,
+        nonEagerSandboxes: unavailable,
+        containers: unavailable,
+        apps: unavailable,
+        storage: unavailable,
+      },
+    };
+  },
+}));
+
+afterAll(() => {
+  mock.module("../organization-quota-policy", () => quotaActual);
+});
 
 const REPOSITORY_CREATE_REQUIRES_TRANSACTION: UserCharacterCreateTransactionContract = true;
 
@@ -150,6 +205,8 @@ function baseData(overrides: Record<string, unknown> = {}): NewUserCharacter {
 
 describe("CharactersService.create — username handling (#13637 class)", () => {
   beforeEach(() => {
+    characterLimit = 5n;
+    quotaReadTransactions.length = 0;
     usernameExistsCalls.length = 0;
     createCalls.length = 0;
     characterCreateTransactions.length = 0;
@@ -189,6 +246,7 @@ describe("CharactersService.create — username handling (#13637 class)", () => 
 
     expect(transactionContexts).toHaveLength(1);
     expect(characterCreateTransactions).toEqual([transactionContexts[0]]);
+    expect(quotaReadTransactions).toEqual([transactionContexts[0]]);
     expect(agentCreateTransactions).toEqual([transactionContexts[0]]);
   });
 
@@ -211,6 +269,7 @@ describe("CharactersService.create — username handling (#13637 class)", () => 
 
     expect(authorityTrace).toEqual([
       "organization-lock",
+      "policy-read",
       "configure-timeouts",
       "username-lock",
       "username-scan",
@@ -225,6 +284,26 @@ describe("CharactersService.create — username handling (#13637 class)", () => 
     expect(lockSql).toContain("cloud-character");
     expect(lockSql).toContain("username-claim");
   });
+
+  test.each([0n, null])(
+    "unusable quota %s fails before username claims and both inserts",
+    async (limit) => {
+      characterLimit = limit;
+      const { charactersService } = await import("./characters");
+      await expect(
+        charactersService.create(baseData({ username: "quota-denied" }), METERED_POLICY),
+      ).rejects.toMatchObject({
+        code: limit === null ? "RESOURCE_POLICY_UNAVAILABLE" : "CLOUD_CHARACTER_QUOTA_EXCEEDED",
+      });
+      expect(quotaReadTransactions).toEqual([transactionContexts[0]]);
+      expect(authorityTrace).toEqual(["organization-lock", "policy-read"]);
+      expect(usernameExistsCalls).toEqual([]);
+      expect(usernameScanTransactions).toEqual([]);
+      expect(createCalls).toEqual([]);
+      expect(agentCreateCalls).toEqual([]);
+      expect(cacheDelCalls).toEqual([]);
+    },
+  );
 
   test("too-short provided username throws ValidationError -> 400, not a plain Error/500", async () => {
     const { charactersService } = await import("./characters");
@@ -256,6 +335,7 @@ describe("CharactersService.create — username handling (#13637 class)", () => 
     expect(usernameExistsCalls).toEqual(["valid-name"]);
     expect(authorityTrace).toEqual([
       "organization-lock",
+      "policy-read",
       "configure-timeouts",
       "username-lock",
       "username-exists",

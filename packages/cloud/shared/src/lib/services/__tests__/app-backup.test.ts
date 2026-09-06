@@ -22,7 +22,12 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
+import {
+  closeDatabaseConnectionsForTests,
+  dbWrite,
+  getPgliteClientForTests,
+} from "../../../db/client";
+import { installOrganizationPolicyTestSchema } from "../../../db/repositories/organization-policy-test-fixture";
 import { apiKeys } from "../../../db/schemas/api-keys";
 import { appConfig } from "../../../db/schemas/app-config";
 import { appEarnings } from "../../../db/schemas/app-earnings";
@@ -74,6 +79,7 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   } catch (error) {
     pgliteReady = false;
     console.error("[app-backup.test] PGlite/pushSchema unavailable — skipping.", error);
@@ -94,7 +100,7 @@ describe("App config backup/restore", () => {
     const { orgId, userId } = await seed();
 
     // Create + monetize a source app.
-    const { app: source } = await appsService.create({
+    const { app: source, apiKey: sourceApiKey } = await appsService.create({
       name: "My Monetized App",
       description: "sells widgets",
       organization_id: orgId,
@@ -172,6 +178,7 @@ describe("App config backup/restore", () => {
     // No secret fields leak into the snapshot.
     expect(JSON.stringify(backup)).not.toContain("api_key");
     expect(JSON.stringify(backup)).not.toContain(source.id);
+    expect(JSON.stringify(backup)).not.toContain(sourceApiKey);
 
     // Restore → a NEW app with the config + monetization pricing reapplied.
     const {
@@ -182,6 +189,7 @@ describe("App config backup/restore", () => {
     expect(restored.id).not.toBe(source.id);
     expect(restored.slug).not.toBe(source.slug);
     expect(apiKey).toBeTruthy();
+    expect(apiKey).not.toBe(sourceApiKey);
     expect(restored.name).toContain("My Monetized App");
 
     const restoredFresh = await appsService.getById(restored.id);

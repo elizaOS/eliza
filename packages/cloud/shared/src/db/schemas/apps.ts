@@ -253,6 +253,11 @@ export const apps = pgTable(
   },
   (table) => ({
     slug_idx: index("apps_slug_idx").on(table.slug),
+    billing_owner_unique: uniqueIndex("apps_billing_owner_idx").on(
+      table.id,
+      table.organization_id,
+      table.created_by_user_id,
+    ),
     organization_idx: index("apps_organization_idx").on(table.organization_id),
     created_by_idx: index("apps_created_by_idx").on(table.created_by_user_id),
     affiliate_code_idx: index("apps_affiliate_code_idx").on(table.affiliate_code),

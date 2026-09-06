@@ -9,6 +9,11 @@
  * are set. Every method returns a concrete DTO — no `unknown` in public signatures.
  */
 
+import type {
+  AppBillingAccountResponse,
+  AppBillingEnvironment,
+  AppBillingRegistrationResponse,
+} from "./app-billing-account.js";
 import { isCliLoginSessionId } from "./cli-login.js";
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { pollUntil } from "./poll.js";
@@ -126,7 +131,10 @@ import {
   type ListX402PaymentRequestsResponse,
   type ModelListResponse,
   type OpenApiSpec,
+  type OrganizationSubscriptionCancellationRequest,
+  type OrganizationSubscriptionCancellationResponse,
   type PairingTokenResponse,
+  type PendingSubscriptionCommandsResponse,
   type PollGatewayRelayResponse,
   type RedemptionBalanceResponse,
   type RegenerateAppApiKeyResponse,
@@ -500,6 +508,75 @@ export class ElizaCloudClient {
     return this.v1.requestData<ModelListResponse>("GET", "/models", {
       skipAuth: true,
     });
+  }
+
+  registerAppBilling(
+    appId: string,
+    environment: AppBillingEnvironment,
+  ): Promise<AppBillingRegistrationResponse> {
+    return this.v1.requestData(
+      "POST",
+      `/apps/${encodeURIComponent(appId)}/billing/registration`,
+      { json: { environment } },
+    );
+  }
+
+  getAppBillingAccount(
+    appId: string,
+    environment: AppBillingEnvironment,
+  ): Promise<AppBillingAccountResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/apps/${encodeURIComponent(appId)}/billing/account?environment=${encodeURIComponent(environment)}`,
+    );
+  }
+
+  /** Requires a current organization owner/admin session; schedules cancellation at period end. */
+  submitOrganizationSubscriptionCancellation(
+    input: OrganizationSubscriptionCancellationRequest,
+  ): Promise<OrganizationSubscriptionCancellationResponse> {
+    return this.v1.requestData("POST", "/subscriptions/cancel", {
+      json: input,
+    });
+  }
+
+  /** Reads the durable command outcome without repeating a provider mutation. */
+  readOrganizationSubscriptionCancellation(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionCancellationResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/cancel/${encodeURIComponent(commandId)}`,
+    );
+  }
+
+  /** Requires a current organization owner/admin session; undoes a scheduled cancellation before period end. */
+  submitOrganizationSubscriptionCancellationUndo(
+    input: OrganizationSubscriptionCancellationRequest,
+  ): Promise<OrganizationSubscriptionCancellationResponse> {
+    return this.v1.requestData("POST", "/subscriptions/cancel/undo", {
+      json: input,
+    });
+  }
+
+  /** Reads the durable command outcome without repeating a provider mutation. */
+  readOrganizationSubscriptionCancellationUndo(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionCancellationResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/cancel/undo/${encodeURIComponent(commandId)}`,
+    );
+  }
+
+  /** Reads one pending-command page; command state may change before a following page is requested. */
+  listPendingOrganizationSubscriptionCommands(input: {
+    limit: number;
+    cursor?: string;
+  }): Promise<PendingSubscriptionCommandsResponse> {
+    const query = new URLSearchParams({ limit: String(input.limit) });
+    if (input.cursor !== undefined) query.set("cursor", input.cursor);
+    return this.v1.requestData("GET", `/subscriptions/commands?${query}`);
   }
 
   getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {

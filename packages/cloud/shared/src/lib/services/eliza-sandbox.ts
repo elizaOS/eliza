@@ -703,7 +703,7 @@ export class ElizaSandboxService {
       return dbWrite.transaction(async (tx) => {
         await configureElizaLifecycleTransaction(tx);
         await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
-        await assertOrgAgentQuota(tx, params.organizationId, cap);
+        await assertOrgAgentQuota(tx, params.organizationId, cap, params.quotaMode);
 
         const [created] = await tx
           .insert(agentSandboxes)
@@ -748,7 +748,12 @@ export class ElizaSandboxService {
       // (#11023 residual). Enforce the same per-org ceiling, still under the
       // org advisory lock.
       if (params.maxNonTerminalAgents !== undefined) {
-        await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
+        await assertOrgAgentQuota(
+          tx,
+          params.organizationId,
+          params.maxNonTerminalAgents,
+          params.quotaMode,
+        );
       }
 
       const [created] = await tx
@@ -827,6 +832,7 @@ export class ElizaSandboxService {
           tx,
           createParams.organizationId,
           createParams.maxNonTerminalAgents,
+          createParams.quotaMode,
         );
       }
 

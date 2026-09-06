@@ -20,6 +20,7 @@ import {
   organizationEntitlements,
 } from "../schemas/organization-entitlements";
 import { organizations } from "../schemas/organizations";
+import { advanceOrganizationPolicyGeneration } from "./organization-policy-generation";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 export const SUBSCRIPTION_ENTITLEMENT_CONFLICT = "SUBSCRIPTION_ENTITLEMENT_CONFLICT";
@@ -309,6 +310,15 @@ export class SubscriptionEntitlementsRepository {
           organizationId: input.organizationId,
         });
       }
+      await advanceOrganizationPolicyGeneration(tx, {
+        organizationId: input.organizationId,
+        reason: "entitlement",
+        actor: "system:subscription",
+        change: {
+          projectionRevision: nextRevision,
+          sourceRevision: input.sourceSubscriptionRevision,
+        },
+      });
       return { entitlement, replayed: false };
     }
 
@@ -333,6 +343,15 @@ export class SubscriptionEntitlementsRepository {
         expectedRevision: input.expectedProjectionRevision,
       });
     }
+    await advanceOrganizationPolicyGeneration(tx, {
+      organizationId: input.organizationId,
+      reason: "entitlement",
+      actor: "system:subscription",
+      change: {
+        projectionRevision: nextRevision,
+        sourceRevision: input.sourceSubscriptionRevision,
+      },
+    });
     return { entitlement, replayed: false };
   }
 }

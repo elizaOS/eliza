@@ -168,6 +168,47 @@ const markInferenceAdmissionLeaseDispatched = mock(async () => undefined);
 class TestInferenceBalanceCacheWarmingError extends Error {}
 class TestInferenceAdmissionGateUnavailableError extends Error {}
 
+const policyStamp = () => ({
+  generation: "1",
+  source: "legacy" as const,
+  sourceSubscriptionId: null,
+  sourceRevision: null,
+  projectionRevision: null,
+  catalogVersion: null,
+  effectiveFrom: new Date(0).toISOString(),
+  effectiveUntil: null,
+});
+const policyTier = {
+  tierName: "free",
+  completionsRpm: 60,
+  embeddingsRpm: 60,
+  standardRpm: 60,
+  strictRpm: 60,
+};
+const readPolicy = mock(async () => ({
+  authority: policyStamp(),
+  subscriptionFunded,
+  tier: { status: "available" as const, value: policyTier },
+  balance: { status: "available" as const, value: { balanceUsd: gateBalance, revision: "1" } },
+  limits: {},
+  observedAt: new Date().toISOString(),
+}));
+mock.module("../../db/helpers", () => ({
+  dbRead: {},
+  dbWrite: {},
+  writeTransaction: async (operation: (tx: object) => Promise<unknown>) => operation({}),
+}));
+mock.module("../../db/repositories/organization-policy-generation", () => ({
+  lockOrganizationPolicy: async () => undefined,
+}));
+mock.module("./organization-quota-policy", () => ({
+  readOrganizationQuotaPolicyInTransaction: readPolicy,
+  requireOrganizationRateTier: (policy: { tier: { value: typeof policyTier } }) =>
+    policy.tier.value,
+  requireOrganizationPolicyBalance: (policy: {
+    balance: { value: { balanceUsd: number; revision: string } };
+  }) => policy.balance.value,
+}));
 mock.module("./ai-billing", () => ({
   reserveCredits,
   reserveFlatUsageCredits,
@@ -282,6 +323,7 @@ async function hydratePricing(model: string): Promise<void> {
 }
 
 beforeEach(() => {
+  readPolicy.mockClear();
   __clearPersistedPricingCache();
   gateBalance = 50;
   eligible = true;
@@ -353,8 +395,9 @@ test("subscriber inference bypasses every optimistic purchased-only lane", async
   const admission = await admitOrganizationInference({
     ...admissionParams(model, []),
     admissionSnapshot: {
+      authority: policyStamp(),
       subscriptionFunded: true,
-      balance: { balanceUsd: 50, balanceAt: Date.now(), balanceRevision: "snapshot-1" },
+      balance: { balanceUsd: 50, balanceAt: Date.now(), balanceRevision: "1" },
       rateLimits: { completionsRpm: 60, embeddingsRpm: 60, standardRpm: 60, strictRpm: 60 },
     },
   });
@@ -377,7 +420,7 @@ test("subscriber cache miss resolves authority before purchased-credit admission
   expect(admission.mode).toBe("synchronous_reservation");
   expect(reserveCredits).toHaveBeenCalledTimes(1);
   expect(reserveCredits.mock.calls[0]?.[3]).toEqual({ subscriptionFunded: true });
-  expect(isSubscriptionFundedOrganization).toHaveBeenCalledTimes(1);
+  expect(readPolicy).toHaveBeenCalledTimes(1);
 });
 
 test("subscriber inference bypasses purchased-credit admission", async () => {
@@ -386,8 +429,9 @@ test("subscriber inference bypasses purchased-credit admission", async () => {
   const admission = await admitOrganizationInference({
     ...admissionParams(nextModel(), []),
     admissionSnapshot: {
+      authority: policyStamp(),
       subscriptionFunded: true,
-      balance: { balanceUsd: 50, balanceAt: Date.now(), balanceRevision: "snapshot-2" },
+      balance: { balanceUsd: 50, balanceAt: Date.now(), balanceRevision: "2" },
       rateLimits: { completionsRpm: 60, embeddingsRpm: 60, standardRpm: 60, strictRpm: 60 },
     },
   });

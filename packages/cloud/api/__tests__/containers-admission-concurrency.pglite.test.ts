@@ -20,6 +20,7 @@ import {
 } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Hono } from "hono";
+import { installOrganizationPolicyTestSchema } from "@/db/repositories/organization-policy-test-fixture";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import type { AccountBillingSnapshot } from "../../shared/src/types/account-billing-snapshot";
 
@@ -433,6 +434,10 @@ beforeAll(async () => {
     "@/db/client"
   ));
   await pushIntegrationSchema();
+  const { getPgliteClientForTests } = await import("@/db/client");
+  await installOrganizationPolicyTestSchema((query) =>
+    getPgliteClientForTests().exec(query),
+  );
 
   await dbWrite.insert(schemas.organizations).values({
     id: ORGANIZATION_ID,

@@ -34,7 +34,18 @@
  * `chat-completions-streaming-credit-leak.test.ts` (#15412's suite).
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
+
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
 import { APICallError } from "ai";
 
 // Spread the real module so other test files importing from "ai" are not
@@ -86,7 +97,7 @@ const resolveInferenceAuthContext = mock(
   async (): Promise<InferenceAuthResolution> => ({
     kind: "authorized",
     ctx: {
-      v: 3,
+      v: 4,
       cachedAt: 0,
       userId: USER,
       orgId: ORG,
@@ -168,15 +179,24 @@ const reserveCredits = mock(async () => {
   if (!routeReservation) throw new Error("routeReservation not set");
   return routeReservation;
 });
-// The mocked auth context carries no admission snapshot, so admission pays the
-// authoritative entitlement read; this harness has no subscription schema.
-const isSubscriptionFundedOrganization = mock(async () => false);
+let policyDatabase: typeof import("@/db/client");
+beforeAll(async () => {
+  policyDatabase = await import("@/db/client");
+  const pg = policyDatabase.getPgliteClientForTests();
+  await pg.exec("CREATE TABLE organizations(id uuid PRIMARY KEY)");
+  const { installOrganizationPolicyTestSchema } = await import(
+    "@/db/repositories/organization-policy-test-fixture"
+  );
+  await installOrganizationPolicyTestSchema((query) => pg.exec(query));
+  await pg.exec(
+    `INSERT INTO organizations(id,credit_balance) VALUES('${ORG}',100)`,
+  );
+});
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
   billUsage,
   recordUsageAnalytics,
   reserveCredits,
-  isSubscriptionFundedOrganization,
 }));
 
 // Import the route AFTER the mocks so it binds to the stubs.
@@ -185,7 +205,8 @@ const { __messagesStreamingCreditTestHooks } = messagesRouteModule;
 const messagesRoute = messagesRouteModule.default;
 const { handleStream, handleNonStream } = __messagesStreamingCreditTestHooks;
 
-afterAll(() => {
+afterAll(async () => {
+  await policyDatabase.closeDatabaseConnectionsForTests();
   mock.module("ai", () => aiActual);
   mock.module(
     "@/lib/middleware/rate-limit-hono-cloudflare",
@@ -341,7 +362,7 @@ beforeEach(() => {
   resolveInferenceAuthContext.mockResolvedValue({
     kind: "authorized",
     ctx: {
-      v: 3,
+      v: 4,
       cachedAt: 0,
       userId: USER,
       orgId: ORG,
