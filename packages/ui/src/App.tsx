@@ -976,7 +976,7 @@ function resolveActiveViewSurface({
   if (appShellPageForTab) {
     return {
       manifest: resolveRoutedSurfaceManifest(appShellPageForTab),
-      viewId: appShellPageForTab.id,
+      viewId: appShellPageForTab.agentViewId ?? appShellPageForTab.id,
     };
   }
 
@@ -985,7 +985,7 @@ function resolveActiveViewSurface({
       manifest: resolveRoutedSurfaceManifest(
         dynamicPage.registration ?? dynamicPage,
       ),
-      viewId: dynamicPage.id,
+      viewId: dynamicPage.registration?.agentViewId ?? dynamicPage.id,
     };
   }
 
@@ -1011,7 +1011,10 @@ function resolveActiveViewSurface({
   // branches.
   const builtinManifest = resolveBuiltinRoutedViewManifest(tab);
   if (builtinManifest) {
-    return { manifest: builtinManifest, viewId: resolveBuiltinTabId(tab) };
+    return {
+      manifest: builtinManifest,
+      viewId: tab === "tasks" ? "projects" : resolveBuiltinTabId(tab),
+    };
   }
 
   const builtinDescriptor = resolveBuiltinRouteDescriptor(tab);
@@ -1460,7 +1463,11 @@ function buildStaticTabRenderers(): Record<
     browser: wrapOverlayAware(<LazyBrowserWorkspaceView />),
     stream: wrap(<LazyStreamView />),
     "pendant-transcript": wrapOverlayAware(<LazyPendantTranscriptView />),
-    tasks: wrapOverlayAware(<LazyTasksPageView />),
+    tasks: wrapOverlayAware(
+      <ShellViewAgentSurface viewId="projects">
+        <LazyTasksPageView />
+      </ShellViewAgentSurface>,
+    ),
     automations: wrapOverlayAware(<LazyAutomationsFeed />),
     plugins: withHeader("plugins", <LazyPluginsPageView />),
     skills: withHeader("skills", <LazySkillsView />),

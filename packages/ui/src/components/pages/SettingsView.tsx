@@ -8,6 +8,7 @@
  * plus normal product visibility; `initialSection` deep-links a specific
  * section. Also reusable in modal form (`inModal`).
  */
+
 import { isViewVisible } from "@elizaos/core";
 import { isPermissionId, type PermissionId } from "@elizaos/shared";
 import {
@@ -19,6 +20,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useAgentElement } from "../../agent-surface";
+import { reportUserViewSwitch } from "../../chat/view-navigation-report";
 import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
 import { getBootConfig } from "../../config/boot-config-store";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -512,6 +514,10 @@ export function SettingsView({
   const displayedSectionDef = isWideSettings
     ? desktopSectionDef
     : activeSectionDef;
+
+  useEffect(() => {
+    reportUserViewSwitch("settings", "/settings", displayedSectionDef?.id);
+  }, [displayedSectionDef?.id]);
 
   // Mobile keeps the uniform top bar: the hub shows "Settings" and a section
   // shows its title with a back action. Connector detail is one level deeper

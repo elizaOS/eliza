@@ -836,7 +836,7 @@ export interface ViewCapability {
 export interface ViewScopedActionStep {
 	/** The interact capability this step dispatches. */
 	kind: "agent-fill" | "agent-click" | "agent-focus";
-	/** `useAgentElement` id in the declaring view this step acts on. */
+	/** `useAgentElement` id in the declaring view; may contain `{{param}}` target tokens. */
 	target: string;
 	/**
 	 * Value to fill. Required when `kind === "agent-fill"`, ignored otherwise.
@@ -878,7 +878,7 @@ export interface ViewScopedAction {
 	 */
 	steps: ViewScopedActionStep[];
 	/**
-	 * Action parameter names referenced by `{{param}}` tokens in step values.
+	 * Action parameter names referenced by `{{param}}` tokens in step values or targets.
 	 * Declared so the planner surfaces them and the host can validate presence
 	 * before dispatching. Empty when the action's steps are fully literal.
 	 */

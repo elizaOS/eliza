@@ -18,6 +18,7 @@ import {
 } from "./view-navigation-report";
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/");
   rawRequestMock.mockReset();
   rawRequestMock.mockResolvedValue(new Response("{}"));
 });
@@ -48,6 +49,16 @@ describe("rendered view lifecycle reports", () => {
       },
       { allowNonOk: true, timeoutMs: 15_000 },
     );
+  });
+
+  it("reports the displayed Settings subsection from the current hash", () => {
+    window.history.replaceState(null, "", "/settings#appearance");
+    reportUserViewSwitch("settings", "/settings");
+    expect(JSON.parse(rawRequestMock.mock.calls[0][1].body)).toEqual({
+      source: "user",
+      path: "/settings",
+      subview: "appearance",
+    });
   });
 
   it("clears all scoped capabilities on Home and launcher routes", () => {

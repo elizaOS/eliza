@@ -89,7 +89,7 @@ export const CALENDAR_VIEW_CAPABILITIES: ViewCapability[] = [
   {
     id: "get-events",
     description:
-      "List calendar events for a day or short range as structured data from the unified feed (built-in plus connected Google, Microsoft, Apple, and ICS calendars).",
+      "List calendar events for a day or short range as structured data from the unified feed (built-in plus connected Google, Microsoft, Apple, and ICS calendars). This reads stored events; it does not select or display a calendar day.",
     params: {
       date: DATE_PARAM,
       days: DAYS_PARAM,

@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
 import { BUILTIN_VIEWS } from "./builtin-views.ts";
 
 const SOURCE_ORDER_IDS = [
+  "wallet",
+  "projects",
   "camera",
   "device-control",
   "chat",
@@ -74,6 +76,8 @@ describe("BUILTIN_VIEWS", () => {
       "browser",
       "camera",
       "device-control",
+      "wallet",
+      "projects",
       "character",
       "documents",
       "automations",

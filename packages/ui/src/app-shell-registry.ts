@@ -33,6 +33,8 @@ export type AppShellPageAvailability = "always" | "managed-cloud";
 export interface AppShellPageRegistration {
   /** Stable id, scoped to the owning plugin (e.g. `"wallet.inventory"`). */
   id: string;
+  /** Canonical backend view id when it differs from this shell registration id. */
+  agentViewId?: string;
   /** Owning plugin id. */
   pluginId: string;
   /** Display label in the tab bar / nav. */
@@ -227,7 +229,11 @@ export function appShellAgentSurfaceDescriptor(
 ): RegisteredAgentSurfaceDescriptor {
   return {
     kind: "app-shell",
-    viewId: requireStableAgentViewId(page.id, "app-shell", page.pluginId),
+    viewId: requireStableAgentViewId(
+      page.agentViewId ?? page.id,
+      "app-shell",
+      page.pluginId,
+    ),
     ownerId: page.pluginId,
     path: page.path,
   };

@@ -23,6 +23,7 @@ registerAppRoutePluginLoader(
 
 registerAppShellPage({
   id: "wallet.inventory",
+  agentViewId: "wallet",
   pluginId: "app-wallet",
   label: "Wallet",
   viewKind: "system",

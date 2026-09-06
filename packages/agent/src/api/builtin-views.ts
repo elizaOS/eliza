@@ -11,6 +11,35 @@ import type { ViewDeclaration } from "@elizaos/core";
 
 export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
+    id: "wallet",
+    viewKind: "system",
+    label: "Wallet",
+    description:
+      "Wallet holdings screen. Display inspection is available without enabling transaction execution.",
+    icon: "Wallet",
+    path: "/wallet",
+    order: 40,
+    tags: ["wallet", "portfolio", "holdings"],
+    responseContext: { primaryContext: "wallet" },
+    visibleInManager: true,
+    desktopTabEnabled: true,
+  },
+  {
+    id: "projects",
+    viewKind: "system",
+    label: "Projects",
+    description:
+      "Coding tasks and generated apps, with task progress and results",
+    icon: "Folder",
+    path: "/apps/tasks",
+    order: 41,
+    tags: ["projects", "coding", "tasks"],
+    responseContext: { primaryContext: "code" },
+    relatedActions: ["TASKS"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+  },
+  {
     id: "camera",
     viewKind: "preview",
     label: "Camera",
