@@ -436,7 +436,7 @@ export function CloudView(props: CloudViewProps = {}): ReactNode {
         ) : null}
         <Button
           type="button"
-          className="hover:bg-accent-muted"
+          className="hover:bg-accent-muted hover:text-white"
           onClick={() => navigateInternal("/settings")}
         >
           Connect in Settings
