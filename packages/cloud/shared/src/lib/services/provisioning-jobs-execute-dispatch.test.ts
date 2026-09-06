@@ -429,6 +429,18 @@ describe("executeJob dispatch — success path per job type marks the job comple
         expect(res.succeeded).toBe(1);
         expect(res.failed).toBe(0);
         expect(res.retried).toBe(0);
+        if (arm.type === JOB_TYPES.AGENT_RESUME) {
+          const leaseOwner = ctx.leaseSpy.mock.calls.at(-1)?.[1];
+          expect(leaseOwner).toEqual(expect.any(String));
+          expect(serviceSpies.at(-1)).toHaveBeenCalledWith(AGENT, ORG, {
+            agentId: AGENT,
+            organizationId: ORG,
+            userId: ctx.job.user_id,
+            jobId: ctx.job.id,
+            executionGeneration: ctx.job.execution_generation,
+            executionOwnerId: leaseOwner,
+          });
+        }
         const completed = completedCall(ctx);
         if (arm.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
           expect(completed).toBeUndefined();
