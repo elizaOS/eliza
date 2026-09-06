@@ -197,9 +197,14 @@ describe("v5 runtime failure before a respond decision", () => {
 	});
 
 	it("still surfaces the failure reply on private DM channels", async () => {
-		const { result, visibleTexts } = await runTurn(
+		const { runtime, result, visibleTexts } = await runTurn(
 			makeMessage({ channelType: ChannelType.DM }),
 			makeRoom(ChannelType.DM),
+		);
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"MessageService.v5Runtime",
+			RATE_LIMIT_ERROR,
+			expect.objectContaining({ diagnosticOnly: true }),
 		);
 
 		expect(result.didRespond).toBe(true);
