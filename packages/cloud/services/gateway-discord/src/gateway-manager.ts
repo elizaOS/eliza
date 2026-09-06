@@ -1,9 +1,8 @@
 /** Coordinates multi-tenant Discord gateway connections and event routing. */
 import {
-  GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
   gatewayTokenRefreshDelayMs,
   gatewayTokenRetryDelayMs,
-  parseGatewayTokenResponse,
+  requestGatewayToken,
 } from "@elizaos/cloud-services-common/gateway-auth";
 import { Redis } from "@upstash/redis";
 import {
@@ -561,7 +560,7 @@ export class GatewayManager {
     const acquisitionStartedAt = Date.now();
     logger.info("Acquiring JWT token", { podName: this.config.podName });
 
-    const response = await fetchWithTimeout(
+    const data = await requestGatewayToken(
       `${this.config.elizaCloudUrl}/api/internal/auth/token`,
       {
         method: "POST",
@@ -573,16 +572,9 @@ export class GatewayManager {
           pod_name: this.config.podName,
           service: "discord-gateway",
         }),
-        timeout: GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
       },
     );
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to acquire token: ${response.status} - ${error}`);
-    }
-
-    const data = parseGatewayTokenResponse(await response.json());
     if (lifecycleGeneration !== this.authLifecycleGeneration) {
       throw new Error("Auth lifecycle changed during token acquisition");
     }
