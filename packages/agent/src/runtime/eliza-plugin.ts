@@ -222,11 +222,11 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           create: { description: "Store a memory. Supply text to save." },
           update: {
             description:
-              "Replace an existing memory. Supply text with the full replacement content, confirm:true, and either memoryId or a unique query. Search first when the target is ambiguous.",
+              "Correct saved knowledge. Search the subject's existing facts first and reconcile every record affected by the user's correction, preserving unrelated facts in each full replacement text. Every update call MUST include its target memoryId from the search (or a unique query), replacement text, and confirm:true. Updating one record does not correct other contradictory records; verify the saved facts before reporting completion.",
           },
           delete: {
             description:
-              "Delete an existing memory. Supply confirm:true and either memoryId or a unique query.",
+              "Delete saved knowledge the user asked to forget. Supply confirm:true and either memoryId or a unique query. If the tool returns candidates, review their full text and delete only records expressing the requested claim by memoryId. Shared source messages can contain unrelated facts; preserve those. Verify the requested claim is gone before reporting completion.",
           },
         },
       }).map((action) => {

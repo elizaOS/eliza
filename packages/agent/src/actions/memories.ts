@@ -177,24 +177,16 @@ function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
 }
 
 /**
- * Letter-abbreviation dots and clock spacing are removed before matching so a
- * user's "6am" finds the extractor's "6a.m." and "6 am" (live 2026-09-06
- * 02:36: "forget that I usually wake up at 6am" scanned 20 rows and matched
- * nothing against "The user usually wakes up at 6a.m."). Only a dot that
- * follows a single letter and precedes a letter or the end of the token goes
- * ("a.m.", "p.m.", "U.S."); dots between digits ("1.5mg", "v1.2") and inside
- * words ("example.com") stay, so "15mg" cannot match a 1.5 mg dose (review
- * 2026-09-06, Discussion 30659).
+ * Normalize complete 12-hour clock tokens only. Dotted identifiers and
+ * numeric punctuation retain their mutation-target identity.
  */
 function normalizeMatchText(text: string): string {
   return text
     .toLowerCase()
     .replace(
-      /(?<![\p{L}\p{N}])(\p{L})\.(?=\p{L}\.|\p{L}(?![\p{L}\p{N}])|\s|$)/gu,
-      "$1",
-    )
-    .replace(/(?<=\d)([ap])\.m\b\.?/gu, "$1m")
-    .replace(/(\d)\s+([ap]m)\b/gu, "$1$2");
+      /(?<![\p{L}\p{N}_.:/-])((?:0?[1-9]|1[0-2])(?::[0-5]\d)?)[ \t]*([ap])\.?m\.?(?![\p{L}\p{N}_.:/-])/gu,
+      "$1$2m",
+    );
 }
 
 /** Distinct content terms of a query: length >= 2, stop words removed. */
@@ -1077,22 +1069,33 @@ async function doUpdate(
     }
     existingMemories = [existing];
   } else {
+    const type =
+      params.type && MEMORY_TYPES.includes(params.type)
+        ? params.type
+        : undefined;
     const scan = await collectCandidates(runtime, {
-      type:
-        params.type && MEMORY_TYPES.includes(params.type)
-          ? params.type
-          : undefined,
+      type,
+      tables: type ? [type] : FORGET_BY_QUERY_TABLES,
       entityId: message.entityId,
       query,
     });
     const matched = scan.matches.filter((candidate) => {
+      // Stage 1 may already have stored the requested change as an observation.
+      // Updating that observation cannot fulfill a request to correct prior facts.
+      if (
+        message.id &&
+        candidate.memory.metadata?.source === "facts_and_relationships_stage" &&
+        "messageId" in candidate.memory.metadata &&
+        candidate.memory.metadata.messageId === message.id
+      )
+        return false;
       const candidateText =
         (candidate.memory.content as { text?: string } | undefined)?.text ?? "";
       return scoreText(candidateText, query ?? "") >= 1;
     });
     if (matched.length === 0) {
       return fail(
-        `No stored memory matches "${query}". ${describeCompleteScan(scan)}`,
+        `No prior stored memory matches "${query}". ${describeCompleteScan(scan)} Search saved facts for the subject, then update the existing records by id. An observation extracted from this update request is not an existing target.`,
         "MEMORY_NOT_FOUND",
       );
     }
@@ -1114,7 +1117,7 @@ async function doUpdate(
       return {
         success: false,
         text: [
-          `Query "${query}" matches ${distinctTexts.size} distinct memories. Update by memoryId instead:`,
+          `Query "${query}" matches ${distinctTexts.size} distinct memories. Review all candidates and update each record affected by the user's correction by memoryId, preserving unrelated facts in each replacement:`,
           ...lines,
         ].join("\n"),
         data: { error: "MEMORY_AMBIGUOUS_QUERY" },
@@ -1188,34 +1191,6 @@ async function doUpdate(
   };
 }
 
-/**
- * The requester's own fact rows that carry the same messageId as `existing`
- * — the post-turn extractor's restatements of the claim being deleted.
- */
-async function sameMessageSiblingFacts(
-  runtime: IAgentRuntime,
-  message: Memory,
-  existing: Memory,
-): Promise<Memory[]> {
-  const messageId = (existing.metadata as { messageId?: unknown } | undefined)
-    ?.messageId;
-  if (typeof messageId !== "string" || !messageId) return [];
-  if (!message.entityId || existing.entityId !== message.entityId) return [];
-  const scan = await collectCandidates(runtime, {
-    tables: ["facts"],
-    entityId: message.entityId,
-  });
-  return scan.matches
-    .filter(
-      (c) =>
-        c.memory.id !== existing.id &&
-        c.memory.entityId === message.entityId &&
-        (c.memory.metadata as { messageId?: unknown } | undefined)
-          ?.messageId === messageId,
-    )
-    .map((c) => c.memory);
-}
-
 async function doDelete(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1244,22 +1219,11 @@ async function doDelete(
     await runtime.deleteMemory(memoryId);
     const forgottenText =
       typeof existing.content.text === "string" ? existing.content.text : "";
-    // Same claim, other shapes: the requester's own fact rows born from the
-    // same message go with it (live 2026-09-06 05:48, tj-430cbd113761c9: two
-    // deletes by id left the extractor's "has_dog Biscuit" row and the next
-    // "what is my dog's name?" answered "Biscuit").
-    const siblings = await sameMessageSiblingFacts(runtime, message, existing);
-    for (const sibling of siblings) {
-      if (sibling.id) await runtime.deleteMemory(sibling.id);
-    }
     return {
       success: true,
       transcriptVisibility: "internal",
-      text:
-        siblings.length === 0
-          ? `Forgot memory ${memoryId}: ${toWellFormedUnicode(existing.content.text ?? "")}`
-          : `Forgot memory ${memoryId}: ${toWellFormedUnicode(existing.content.text ?? "")} (and ${siblings.length} related record(s) from the same message: ${siblings.map((m) => `"${toWellFormedUnicode(String(m.content.text ?? ""))}"`).join("; ")})`,
-      values: { memoryId, deletedCount: 1 + siblings.length },
+      text: `Forgot memory ${memoryId}: ${toWellFormedUnicode(existing.content.text ?? "")}`,
+      values: { memoryId },
       effectReceipts: [
         memoryMutationReceipt({
           operation: "memory.delete",
@@ -1382,11 +1346,9 @@ async function doDeleteByQuery(
     };
   }
 
-  // The post-turn extractor stores the same claim in other shapes ("has_dog
-  // Biscuit" beside "user's dog is named Biscuit") under the same messageId.
-  // Forgetting the claim forgets the requester's own fact rows born from that
-  // same message too, or the bot keeps "knowing" what it just said it forgot
-  // (live 2026-09-06 05:40, tj-3cc2db2e607c9e).
+  // One source message can contain both another rendering of this claim and
+  // unrelated facts. Partial retrieval overlap is not deletion authority;
+  // expose these candidates to the planner before changing any records.
   const messageIdOf = (c: MemoryCandidate): string | undefined => {
     const value = (c.memory.metadata as { messageId?: unknown } | undefined)
       ?.messageId;
@@ -1409,9 +1371,25 @@ async function doDeleteByQuery(
       c.memory.entityId === message.entityId &&
       forgottenMessageIds.has(messageIdOf(c) ?? ""),
   );
+  if (sameMessageSiblings.length > 0) {
+    const candidates = [...matched, ...sameMessageSiblings].map((candidate) =>
+      toListItem(candidate.memory, candidate.type),
+    );
+    return {
+      success: false,
+      text: [
+        `No records were deleted. The source message also produced other partially matching facts. Review these candidates and delete only records expressing the user's requested claim by memoryId; preserve other facts even when they came from the same message.`,
+        ...candidates.map(
+          (item) =>
+            `- [${item.type}] ${item.id}: ${toWellFormedUnicode(item.text)}`,
+        ),
+      ].join("\n"),
+      data: { error: "MEMORY_AMBIGUOUS_QUERY", candidates },
+    };
+  }
 
   const deleted: MemoryListItem[] = [];
-  for (const c of [...matched, ...sameMessageSiblings]) {
+  for (const c of matched) {
     const id = c.memory.id;
     if (!id) continue;
     await runtime.deleteMemory(id);
@@ -1549,7 +1527,7 @@ export const memoryAction: Action = {
     {
       name: "text",
       description:
-        "create: REQUIRED — the content to remember, as a complete sentence (never leave it empty and never put it in query). update: replacement text body for the memory.",
+        "create: REQUIRED — the content to remember, as a complete sentence (never leave it empty and never put it in query). update: complete replacement text for the existing record; preserve every unrelated fact. When correcting saved knowledge, search the subject and reconcile all affected records before reporting completion.",
       required: false,
       requiredForSubactions: ["create", "update"],
       schema: { type: "string" as const },

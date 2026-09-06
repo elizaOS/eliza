@@ -2892,14 +2892,6 @@ function verifiedCrossRoomContent(memory: Memory): string {
 const PLANNER_MAX_OWN_REPLY_TURNS = 4;
 
 /**
- * Voice needs enough immediate dialogue for natural follow-ups without sending
- * an arbitrarily old room transcript before every spoken reply. The existing
- * current-turn boundary tells the model that older messages remain searchable,
- * so this is a bounded live window rather than lossy deletion.
- */
-const VOICE_PRIOR_DIALOGUE_WINDOW_MESSAGES = 24;
-
-/**
  * Structural marker for an assistant memory whose text is a tool-derived
  * answer rather than plain dialogue: it carries merged action-callback
  * history, or its recorded actions include a real tool (anything beyond the
@@ -2940,7 +2932,7 @@ function appendPriorDialogueEvents(
 	if (!Array.isArray(recentMessages)) {
 		return;
 	}
-	const completeDialogue = recentMessages
+	const dialogue = recentMessages
 		.filter((memory): memory is Memory => {
 			if (!memory || typeof memory !== "object") return false;
 			const m = memory as Memory;
@@ -2996,10 +2988,6 @@ function appendPriorDialogueEvents(
 				: 0;
 			return aTime - bTime;
 		});
-	const dialogue =
-		currentMessage.content.channelType === ChannelType.VOICE_DM
-			? completeDialogue.slice(-VOICE_PRIOR_DIALOGUE_WINDOW_MESSAGES)
-			: completeDialogue;
 	// Bound how many of the agent's own turns render (newest win): the planner
 	// needs the immediate question/preview a continuation refers to, not the
 	// agent's whole side of a long conversation.

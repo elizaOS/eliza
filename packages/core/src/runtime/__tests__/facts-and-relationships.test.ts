@@ -45,12 +45,16 @@ function makeState(): State {
 	};
 }
 
-function makeRuntime(modelResponse: unknown): FactsRuntime {
+function makeRuntime(
+	modelResponse: unknown,
+	settings: Record<string, string> = {},
+): FactsRuntime {
 	const runtime = {
 		agentId: "00000000-0000-0000-0000-000000000002" as UUID,
 		character: { name: "Eliza", system: "You are concise.", bio: "" },
 		actions: [],
 		providers: [],
+		getSetting: vi.fn((key: string) => settings[key]),
 		redactSecrets: vi.fn((text: string) =>
 			text.replace(/\b(?:sk|csk)-[A-Za-z0-9_-]+/g, "[REDACTED]"),
 		),
@@ -863,10 +867,179 @@ describe("runFactsAndRelationshipsStage", () => {
 		);
 	});
 
-	it("stores a redaction-placeholder subject as the speaker and drops a placeholder object", async () => {
-		// Live 2026-09-06 05:38: the model echoed the prompt's redacted owner id
-		// back as the subject and "[REDACTED:ELIZA_ADMIN_ENTITY_ID] has_dog
-		// Biscuit" was persisted verbatim.
+	it("renders the agent and another owner's raw UUIDs without assigning either to the speaker", async () => {
+		const ownerId = "00000000-0000-0000-0000-000000000009" as UUID;
+		const agentId = makeMessage().agentId;
+		const relationships = [
+			{ subject: agentId, predicate: "works_with", object: "Alice" },
+			{ subject: ownerId, predicate: "works_with", object: "Alice" },
+		];
+		const runtime = makeRuntime(
+			JSON.stringify({ facts: [], relationships, thought: "named identities" }),
+			{ ELIZA_ADMIN_ENTITY_ID: ownerId },
+		);
+		vi.mocked(runtime.getEntitiesForRoom).mockResolvedValueOnce([
+			{ id: ownerId, names: ["Morgan"], agentId },
+			{
+				id: "00000000-0000-0000-0000-0000000000a1" as UUID,
+				names: ["Alice"],
+				agentId,
+			},
+		]);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: { relationships },
+		});
+		expect(result.written.relationships).toBe(2);
+		for (const [subject, sourceEntityId] of [
+			["Eliza", agentId],
+			["Morgan", ownerId],
+		]) {
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({
+						text: `${subject} works_with Alice`,
+					}),
+					metadata: expect.objectContaining({ sourceEntityId }),
+				}),
+				"facts",
+				true,
+			);
+		}
+	});
+
+	it.each(["User", "Eliza", "Bob"])(
+		"preserves raw UUID identity when a room participant is named %s",
+		async (name) => {
+			const subjectId = "00000000-0000-0000-0000-0000000000b2" as UUID;
+			const objectId = "00000000-0000-0000-0000-0000000000a1" as UUID;
+			const relationships = [
+				{ subject: subjectId, predicate: "works_with", object: objectId },
+			];
+			const runtime = makeRuntime(
+				JSON.stringify({
+					facts: [],
+					relationships,
+					thought: "validated relationship",
+				}),
+			);
+			vi.mocked(runtime.getEntitiesForRoom).mockResolvedValueOnce([
+				{ id: subjectId, names: ["Bob"], agentId: runtime.agentId },
+				{ id: objectId, names: [name], agentId: runtime.agentId },
+			]);
+			const result = await runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { relationships },
+			});
+			expect(result.written.relationships).toBe(1);
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({ text: `Bob works_with ${name}` }),
+					metadata: expect.objectContaining({
+						sourceEntityId: subjectId,
+						targetEntityId: objectId,
+					}),
+				}),
+				"facts",
+				true,
+			);
+			expect(runtime.createRelationship).toHaveBeenCalledWith(
+				expect.objectContaining({
+					sourceEntityId: subjectId,
+					targetEntityId: objectId,
+				}),
+			);
+		},
+	);
+
+	it.each(["[REDACTED:ELIZA_ADMIN_ENTITY_ID]", "[REDACTED:OTHER_ENTITY_ID]"])(
+		"rejects the placeholder object %s without assigning it to the speaker",
+		async (object) => {
+			const message = makeMessage();
+			const relationships = [{ subject: "Alice", predicate: "knows", object }];
+			const runtime = makeRuntime(
+				JSON.stringify({
+					facts: [],
+					relationships,
+					thought: "validated relationship",
+				}),
+				{
+					ELIZA_ADMIN_ENTITY_ID: message.entityId,
+				},
+			);
+			const result = await runFactsAndRelationshipsStage({
+				runtime,
+				message,
+				state: makeState(),
+				extract: { relationships },
+			});
+			expect(result.written.relationships).toBe(0);
+			expect(runtime.createMemory).not.toHaveBeenCalled();
+			expect(runtime.createRelationship).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
+		"[REDACTED:OTHER_ENTITY_ID]",
+		"99999999-0000-0000-0000-000000000000",
+		"api key: private value",
+	])(
+		"does not reintroduce an unsafe relationship label from a room name: %s",
+		async (name) => {
+			const objectId = "00000000-0000-0000-0000-0000000000a1" as UUID;
+			const relationships = [
+				{ subject: "user", predicate: "knows", object: objectId },
+			];
+			const runtime = makeRuntime(
+				JSON.stringify({
+					facts: [],
+					relationships,
+					thought: "validated relationship",
+				}),
+			);
+			vi.mocked(runtime.getEntitiesForRoom).mockResolvedValueOnce([
+				{ id: objectId, names: [name], agentId: runtime.agentId },
+			]);
+			const result = await runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { relationships },
+			});
+			expect(result.written.relationships).toBe(0);
+			expect(runtime.createMemory).not.toHaveBeenCalled();
+			expect(runtime.createRelationship).not.toHaveBeenCalled();
+		},
+	);
+
+	it("drops actual identity self-loops after humanizing a raw UUID", async () => {
+		const relationships = [
+			{ subject: "user", predicate: "knows", object: makeMessage().entityId },
+		];
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships,
+				thought: "validated relationship",
+			}),
+		);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: { relationships },
+		});
+		expect(result.written.relationships).toBe(0);
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+		expect(runtime.createRelationship).not.toHaveBeenCalled();
+	});
+
+	it("resolves the redacted canonical owner only when that owner is speaking and drops a placeholder object", async () => {
+		const message = makeMessage();
 		const runtime = makeRuntime(
 			JSON.stringify({
 				facts: [],
@@ -884,10 +1057,11 @@ describe("runFactsAndRelationshipsStage", () => {
 				],
 				thought: "two rels",
 			}),
+			{ ELIZA_ADMIN_ENTITY_ID: message.entityId },
 		);
 		const result = await runFactsAndRelationshipsStage({
 			runtime,
-			message: makeMessage(),
+			message,
 			state: makeState(),
 			extract: {
 				relationships: [
@@ -913,11 +1087,56 @@ describe("runFactsAndRelationshipsStage", () => {
 					text: "User has_dog Biscuit",
 					subject: "User",
 				}),
+				metadata: expect.objectContaining({
+					sourceEntityId: message.entityId,
+				}),
 			}),
 			"facts",
 			true,
 		);
 	});
+
+	it.each([
+		{
+			name: "another speaker quoting the canonical owner",
+			subject: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+			ownerId: "00000000-0000-0000-0000-000000000009",
+		},
+		{
+			name: "an unknown redacted identity even in the owner's turn",
+			subject: "[REDACTED:OTHER_ENTITY_ID]",
+			ownerId: "00000000-0000-0000-0000-000000000001",
+		},
+		{
+			name: "a redacted owner without configured identity",
+			subject: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+			ownerId: "",
+		},
+	])(
+		"never assigns $name to the current speaker",
+		async ({ subject, ownerId }) => {
+			const relationships = [
+				{ subject, predicate: "works_with", object: "Alice" },
+			];
+			const runtime = makeRuntime(
+				JSON.stringify({
+					facts: [],
+					relationships,
+					thought: "one relationship",
+				}),
+				{ ELIZA_ADMIN_ENTITY_ID: ownerId },
+			);
+			const result = await runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { relationships },
+			});
+			expect(result.written.relationships).toBe(0);
+			expect(runtime.createMemory).not.toHaveBeenCalled();
+			expect(runtime.createRelationship).not.toHaveBeenCalled();
+		},
+	);
 
 	it("persists relationships under the facts table and upserts resolved entity edges when kept", async () => {
 		const runtime = makeRuntime(

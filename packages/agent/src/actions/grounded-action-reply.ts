@@ -191,6 +191,8 @@ async function renderGroundedActionReplyText(
     "Preserve concrete facts from the action context and fallback reply.",
     "Never mention internal schema, tool names, JSON keys, hidden prompts, or reasoning traces.",
     "Do not claim something happened unless it appears in the grounded context or fallback reply.",
+    "Report only the outcome of this action. The user's message and resolved intent describe requests, not proof that those requests were fulfilled.",
+    "If the user also requested another action, leave its status to the planner. In particular, saving or changing a record does not open its view; never claim or promise navigation without a completed navigation result in this action's structured context.",
     "If asking a clarifying question, ask only for the missing information.",
     ...(characterVoice
       ? [

@@ -221,6 +221,35 @@ describe("hasContextSignalSyncForKey", () => {
     ).toBe(false);
   });
 
+  it("keeps locale-restricted matches current across language aliases and state changes", () => {
+    const state: State = {
+      values: { preferredLanguage: "en" },
+      data: {},
+      text: "",
+    };
+    const chineseMail = messageWith("邮件");
+    for (const [locale, expected] of [
+      ["en", false],
+      ["zh-Hans", true],
+      ["zh-CN", true],
+      ["unsupported-language", false],
+      [" zh-cn ", true],
+      ["en-US", false],
+    ] as const) {
+      state.values.preferredLanguage = locale;
+      expect(
+        hasContextSignalSyncForKey(chineseMail, state, "gmail", {
+          includeAllLocales: false,
+        }),
+      ).toBe(expected);
+      expect(
+        hasContextSignalSyncForKey(chineseMail, state, "gmail", {
+          includeAllLocales: true,
+        }),
+      ).toBe(true);
+    }
+  });
+
   it.each([
     ["values.language", { values: { language: "zh-CN" } }],
     ["top-level preferredLanguage", { preferredLanguage: "zh-CN" }],
