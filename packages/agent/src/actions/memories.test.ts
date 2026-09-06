@@ -537,6 +537,45 @@ describe("MEMORY op:delete by query scope", () => {
     expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
   });
 
+  it("never lets a dot-stripped decimal, version or domain collide with a stored fact", async () => {
+    // Review 2026-09-06 (Discussion 30659): only letter abbreviations (a.m.,
+    // U.S.) lose their dots; 1.5mg, v1.2 and example.com keep their identity.
+    const cases: Array<[string, string]> = [
+      ["User takes a 1.5mg dose nightly.", "takes 15mg dose nightly"],
+      [
+        "User runs firmware v1.2 on the router.",
+        "runs firmware v12 on the router",
+      ],
+      [
+        "User's blog lives at example.com today.",
+        "blog lives at examplecom today",
+      ],
+    ];
+    for (const [stored, query] of cases) {
+      const { runtime, rows } = makeRuntime();
+      seedFact(rows, { text: stored, entityId: USER_ID });
+      const result = await runAction(runtime, makeMessage(), {
+        action: "delete",
+        query,
+        confirm: true,
+      });
+      expect(result.success).toBe(false);
+      expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(1);
+    }
+  });
+
+  it("keeps a UUID-shaped search query as a filter instead of adopting it as the id", async () => {
+    const { runtime, rows } = makeRuntime();
+    const id = seedFact(rows, { text: "User likes jazz.", entityId: USER_ID });
+    seedFact(rows, { text: "User likes hiking.", entityId: USER_ID });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: String(id),
+    });
+    expect(result.success).toBe(true);
+    expect(result.values).toMatchObject({ count: 0 });
+  });
+
   it("treats a UUID-shaped query as the memory id when memoryId is absent", async () => {
     const { runtime, rows } = makeRuntime();
     const id = seedFact(rows, {

@@ -177,16 +177,23 @@ function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
 }
 
 /**
- * Abbreviation dots and clock spacing are removed before matching so a
+ * Letter-abbreviation dots and clock spacing are removed before matching so a
  * user's "6am" finds the extractor's "6a.m." and "6 am" (live 2026-09-06
  * 02:36: "forget that I usually wake up at 6am" scanned 20 rows and matched
- * nothing against "The user usually wakes up at 6a.m.", the planner then
- * issued two deletes without a query and the turn errored).
+ * nothing against "The user usually wakes up at 6a.m."). Only a dot that
+ * follows a single letter and precedes a letter or the end of the token goes
+ * ("a.m.", "p.m.", "U.S."); dots between digits ("1.5mg", "v1.2") and inside
+ * words ("example.com") stay, so "15mg" cannot match a 1.5 mg dose (review
+ * 2026-09-06, Discussion 30659).
  */
 function normalizeMatchText(text: string): string {
   return text
     .toLowerCase()
-    .replace(/(?<=[\p{L}\p{N}])\.(?=[\p{L}\p{N}]|\s|$)/gu, "")
+    .replace(
+      /(?<![\p{L}\p{N}])(\p{L})\.(?=\p{L}\.|\p{L}(?![\p{L}\p{N}])|\s|$)/gu,
+      "$1",
+    )
+    .replace(/(?<=\d)([ap])\.m\b\.?/gu, "$1m")
     .replace(/(\d)\s+([ap]m)\b/gu, "$1$2");
 }
 
@@ -1422,11 +1429,16 @@ export const memoryAction: Action = {
     _state,
     options,
   ): Promise<ActionResult> => {
-    const params = adoptUuidQueryAsMemoryId(
-      ((options as HandlerOptions | undefined)?.parameters ??
-        {}) as MemoryParams,
-    );
-    const op = normalizeMemoryOp(params);
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
+      {}) as MemoryParams;
+    const op = normalizeMemoryOp(rawParams);
+    // Search keeps a UUID-shaped query as a filter; only a mutation may read
+    // it as the record id (review 2026-09-06: adopting it before every op made
+    // MEMORY_SEARCH query=<uuid> an unfiltered scan).
+    const params =
+      op === "update" || op === "delete"
+        ? adoptUuidQueryAsMemoryId(rawParams)
+        : rawParams;
     if (!op) {
       return fail(
         `op/subaction is required and must be one of ${MEMORY_OPS.join(", ")}.`,
@@ -1518,9 +1530,8 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        "search: filter text. update/delete: REQUIRED — the wording of the memory to change or forget (a few distinctive words are enough), or its id from a previous search.",
+        "search: filter text. update/delete: the wording of the memory to change or forget (a few distinctive words are enough) when memoryId is not given; one of query or memoryId is required.",
       required: false,
-      requiredForSubactions: ["update", "delete"],
       schema: { type: "string" as const },
     },
     {
