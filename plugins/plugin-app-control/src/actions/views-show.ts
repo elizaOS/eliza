@@ -837,6 +837,9 @@ export async function runViewsShow({
 		completedActionHandoffId,
 	);
 
+	const navigationSucceeded =
+		result.ok &&
+		(!completedActionDelivery || result.completedActionDelivered === true);
 	const navigation: NavigationReceipt = {
 		label: navigationLabel,
 		...(view.path ? { path: view.path } : {}),
@@ -864,14 +867,16 @@ export async function runViewsShow({
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}${result.subview ? ` subview=${result.subview}` : ""}`,
 	);
 	return {
-		success: result.ok,
+		success: navigationSucceeded,
 		text: JSON.stringify(navigation),
 		// Navigation has already been handed to the shell. A confirmed success
 		// requests exactly one post-tool model reply so the acknowledgement stays
 		// natural and model-owned without an evaluator/planner retry loop. Failed or
 		// unconfirmed navigation retains full evaluation and recovery.
 		transcriptVisibility: "internal",
-		...(result.ok ? { modelReplyRequired: true } : { turnComplete: false }),
+		...(navigationSucceeded
+			? { modelReplyRequired: true }
+			: { turnComplete: false }),
 		values: {
 			mode: "show",
 			viewId: view.id,

@@ -150,6 +150,9 @@ describe("navigation execution policy", () => {
 		it(`keeps ${mode} client receipt distinct from delivery`, async () => {
 			reply = mode;
 			const result = await turn(() => show());
+			expect(result.success).toBe(false);
+			expect(result.modelReplyRequired).toBeUndefined();
+			expect(result.turnComplete).toBe(false);
 			expect(result.data).toMatchObject({
 				navigation: {
 					status: mode === "malformed" ? "malformed" : "not-delivered",
@@ -254,3 +257,56 @@ for (const alias of ["CLOSE_VIEW", "CLOSE_ALL_VIEWS"] as const) {
 		});
 	});
 }
+
+it("keeps an undelivered HTTP navigation in the planner's failure path", async () => {
+	const { runPlannerLoop, TURN_SCOPE_ARG, TURN_SCOPE_FINAL } = await import(
+		"../../../../packages/core/src/runtime/planner-loop"
+	);
+	reply = "false";
+	let evaluations = 0;
+	let modelCalls = 0;
+	const result = await turn(() =>
+		runPlannerLoop({
+			runtime: {
+				useModel: async () => {
+					modelCalls++;
+					return modelCalls === 1
+						? {
+								text: "",
+								toolCalls: [
+									{
+										id: "navigate",
+										name: "VIEWS",
+										arguments: {
+											...options,
+											action: "show",
+											[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+										},
+									},
+								],
+							}
+						: { text: "Calendar is open.", toolCalls: [] };
+				},
+			},
+			context: { id: "undelivered-navigation" },
+			tools: [
+				{ name: "VIEWS", description: "Navigate to the requested surface." },
+			],
+			executeToolCall: async () => show(),
+			evaluate: async () => {
+				evaluations++;
+				return {
+					success: false,
+					decision: "FINISH",
+					thought: "The originating client did not receive the navigation.",
+					messageToUser:
+						"I could not open Calendar because the originating client did not receive the navigation.",
+				};
+			},
+		}),
+	);
+	expect(posts).toHaveLength(1);
+	expect(evaluations).toBe(1);
+	expect(result.finalMessage).not.toBe("Calendar is open.");
+	expect(result.finalMessage).toContain("could not open Calendar");
+});

@@ -506,7 +506,7 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.values).not.toHaveProperty("completedActionHandoffId");
 		});
 
-		it("keeps terminal fallback enabled for a malformed success receipt", async () => {
+		it("keeps malformed delivery on the planner failure path", async () => {
 			installNavigateCapture();
 			vi.mocked(globalThis.fetch).mockResolvedValue(
 				new Response("{", {
@@ -533,7 +533,9 @@ describe("view switching — VIEWS action resolver", () => {
 				vi.fn(),
 			);
 
-			expect(result?.success).toBe(true);
+			expect(result?.success).toBe(false);
+			expect(result?.modelReplyRequired).toBeUndefined();
+			expect(result?.turnComplete).toBe(false);
 			expect(result?.values).not.toHaveProperty("completedActionDelivered");
 		});
 
