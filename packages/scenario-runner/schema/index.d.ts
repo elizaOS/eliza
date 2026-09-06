@@ -588,8 +588,8 @@ export type ScenarioRoomSpec = {
 };
 
 /**
- * Live-only personality expectation consumed by
- * `scripts/personality-bench-bridge.mjs` (not by the runner itself).
+ * Personality expectation metadata for external evaluators. The scenario
+ * runner preserves this authoring contract but does not evaluate it.
  */
 export type ScenarioPersonalityExpect = {
   bucket: string;
