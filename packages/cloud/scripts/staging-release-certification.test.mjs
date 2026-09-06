@@ -55,7 +55,7 @@ function fixture() {
       status: "completed",
       conclusion: "success",
       event: "push",
-      head_branch: "develop",
+      head_branch: "staging",
       head_sha: sourceSha,
       path: CERTIFICATION_WORKFLOW,
       repository: { full_name: "elizaOS/eliza" },
@@ -108,7 +108,7 @@ describe("staging release certification payload", () => {
       workflow: CERTIFICATION_WORKFLOW,
       environment: "staging",
       event: "push",
-      ref: "refs/heads/develop",
+      ref: "refs/heads/staging",
       source_sha: sourceSha,
       tree_sha: treeSha,
       artifact: {
@@ -294,12 +294,12 @@ describe("staging release certification CLI", () => {
 });
 
 describe("Cloud CF workflow staging certification gate", () => {
-  test("emits a certificate only after a successful canonical develop release", () => {
+  test("emits a certificate only after a successful canonical staging release", () => {
     const block = jobBlock(workflow, "certify-staging-release");
     expect(block).toContain("needs: release");
     expect(block).toContain("github.event_name == 'push'");
     expect(block).toContain("github.event_name == 'workflow_dispatch'");
-    expect(block).toContain("github.ref == 'refs/heads/develop'");
+    expect(block).toContain("github.ref == 'refs/heads/staging'");
     expect(block).toContain("needs.release.result == 'success'");
     expect(block).toContain("git rev-parse 'HEAD^{tree}'");
     expect(block).toContain("staging-release-certification.mjs create");
@@ -323,7 +323,7 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(validate).toContain(
       '(.event == "push" or .event == "workflow_dispatch")',
     );
-    expect(validate).toContain('head_branch == "develop"');
+    expect(validate).toContain('head_branch == "staging"');
     expect(validate).toContain(
       'path == ".github/workflows/cloud-cf-deploy.yml"',
     );
@@ -377,7 +377,7 @@ describe("Cloud CF workflow staging certification gate", () => {
       `git show "\${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.mjs"`,
     );
     expect(validate).toContain('--policy-sha "$POLICY_SHA"');
-    expect(validate).toContain("Certified develop policy bytes admitted");
+    expect(validate).toContain("Certified staging policy bytes admitted");
   });
 
   test("rechecks the trusted policy and all authorities inside the mutation job", () => {
@@ -412,7 +412,7 @@ describe("Cloud CF workflow staging certification gate", () => {
   test("fails closed before mutation when trusted policy or authority evidence drifts", () => {
     const migrate = jobBlock(releaseWorkflow, "migrate-db");
     expect(migrate).toContain(
-      "Certified recovery policy is no longer contained in develop",
+      "Certified recovery policy is no longer contained in staging",
     );
     expect(migrate).toContain(
       "Protected audit and migration database authorities differ",
@@ -436,9 +436,9 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(authorize).toContain("secrets.CLOUDFLARE_ACCOUNT_ID");
     expect(authorize).toContain(`hyperdrive/configs/\${candidate_id}`);
     expect(authorize).toContain('--hyperdrive-json "$response"');
-    expect(authorize).toContain("develop:refs/remotes/origin/develop");
+    expect(authorize).toContain("staging:refs/remotes/origin/staging");
     expect(authorize).toContain(
-      'git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/develop',
+      'git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/staging',
     );
     expect(authorize).toContain(
       "audit-production-railway-database-authority.ts",
@@ -461,7 +461,7 @@ describe("Cloud CF workflow staging certification gate", () => {
   test("fails closed on absent, expired, digestless, or noncanonical artifacts", () => {
     const block = jobBlock(workflow, "validate-staging-certification");
     expect(block).toContain(
-      "No unexpired successful develop Cloud certification",
+      "No unexpired successful staging Cloud certification",
     );
     expect(block).toContain("select(.expired == false)");
     expect(block).toContain('test("^sha256:[0-9a-f]{64}$")');

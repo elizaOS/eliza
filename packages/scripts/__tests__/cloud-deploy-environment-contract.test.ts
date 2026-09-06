@@ -340,7 +340,7 @@ describe("canonical cloud deployment environment contract", () => {
       "production",
       "unknown",
     ]) {
-      for (const branch of ["develop", "main", "feature/test"]) {
+      for (const branch of ["develop", "staging", "main", "feature/test"]) {
         const result = spawnSync("bash", ["-c", script], {
           env: {
             PATH: process.env.PATH,
@@ -352,8 +352,9 @@ describe("canonical cloud deployment environment contract", () => {
         const allowed =
           environment === "production"
             ? branch === "main"
-            : ["development", "staging"].includes(environment) &&
-              branch === "develop";
+            : environment === "development"
+              ? branch === "develop"
+              : environment === "staging" && branch === "staging";
         expect(result.status === 0).toBe(allowed);
       }
     }
@@ -612,7 +613,12 @@ describe("canonical cloud deployment environment contract", () => {
       const env = {
         PATH: process.env.PATH,
         TARGET_ENVIRONMENT: environment,
-        TF_VAR_deploy_branch: environment === "production" ? "main" : "develop",
+        TF_VAR_deploy_branch:
+          environment === "production"
+            ? "main"
+            : environment === "development"
+              ? "develop"
+              : "staging",
         TF_VAR_apps_base_domain: `apps${suffix}.eliza.app`,
         TF_VAR_cloud_api_origin: `https://api${suffix}.eliza.app`,
         TF_VAR_canonical_headscale_hostname: `headscale${suffix}.eliza.app`,

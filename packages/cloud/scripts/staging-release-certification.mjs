@@ -1,7 +1,7 @@
 /**
  * Creates and verifies GitHub-bound staging release certifications.
  *
- * The certificate binds a successful develop release to its Git tree rather
+ * The certificate binds a successful staging release to its Git tree rather
  * than its commit SHA so a byte-identical main promotion can be admitted. The
  * verifier also requires the immutable GitHub artifact and originating run
  * metadata; the JSON payload alone is never an authority.
@@ -17,7 +17,7 @@ export const CERTIFICATION_SCHEMA =
 export const CERTIFICATION_WORKFLOW = ".github/workflows/cloud-cf-deploy.yml";
 export const CERTIFICATION_ENVIRONMENT = "staging";
 export const CERTIFICATION_EVENTS = ["push", "workflow_dispatch"];
-export const CERTIFICATION_REF = "refs/heads/develop";
+export const CERTIFICATION_REF = "refs/heads/staging";
 export const CERTIFICATION_ARTIFACT_PREFIX = "cloud-staging-certification-v1-";
 export const CERTIFICATION_FILENAME = "staging-cloud-certification.json";
 export const CERTIFICATION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -163,7 +163,7 @@ export function verifyStagingReleaseCertification({
     !CERTIFICATION_EVENTS.includes(cert.event) ||
     cert.ref !== CERTIFICATION_REF
   ) {
-    fail("certificate is not from an admitted develop release");
+    fail("certificate is not from an admitted staging release");
   }
   requireString(cert.source_sha, "certificate source SHA", SHA40);
   requireString(cert.tree_sha, "certificate tree SHA", SHA40);
@@ -207,10 +207,10 @@ export function verifyStagingReleaseCertification({
   if (
     !CERTIFICATION_EVENTS.includes(runMetadata.event) ||
     runMetadata.event !== cert.event ||
-    runMetadata.head_branch !== "develop" ||
+    runMetadata.head_branch !== "staging" ||
     runMetadata.path !== CERTIFICATION_WORKFLOW
   ) {
-    fail("originating run is not the canonical develop Cloud workflow");
+    fail("originating run is not the canonical staging Cloud workflow");
   }
   const runRepository = requireRecord(
     runMetadata.repository,

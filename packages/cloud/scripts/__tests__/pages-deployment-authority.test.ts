@@ -15,7 +15,7 @@ import {
 const sourceSha = "87da9c8ba169440f0fb21dc613f7bc425c8014b6";
 const deploymentId = "3d07ff31-d66e-4cf0-948c-3f44cd9ed23d";
 const deploymentUrl = "https://5f02a912.eliza-app.pages.dev";
-const aliasUrl = "https://develop.eliza-app.pages.dev";
+const aliasUrl = "https://staging.eliza-app.pages.dev";
 const apiOrigin = "https://api-staging.eliza.app";
 const buildId = "a".repeat(64);
 const indexHtmlSha256 = "b".repeat(64);
@@ -32,7 +32,7 @@ function wranglerRecord(
       "pages",
       "deploy",
       "--project-name=eliza-app",
-      "--branch=develop",
+      "--branch=staging",
       `--commit-hash=${sourceSha}`,
       "--commit-dirty=false",
     ],
@@ -68,7 +68,7 @@ function authority() {
   return parseWranglerPagesDeploymentOutput(wranglerRecord(), {
     expectedProject: "eliza-app",
     expectedCommit: sourceSha,
-    expectedBranch: "develop",
+    expectedBranch: "staging",
     expectedAlias: aliasUrl,
     expectedEnvironment: "preview",
     expectedProductionBranch: "main",
@@ -186,7 +186,7 @@ describe("Pages deployment authority", () => {
       sourceSha,
       workflow: { runId: 32500000001, runAttempt: 2 },
       project: "eliza-app",
-      branch: "develop",
+      branch: "staging",
       pagesEnvironment: "preview",
       productionBranch: "main",
       deploymentUrl,
@@ -204,7 +204,7 @@ describe("Pages deployment authority", () => {
       parseWranglerPagesDeploymentOutput(`${wranglerRecord()}{}\n`, {
         expectedProject: "eliza-app",
         expectedCommit: sourceSha,
-        expectedBranch: "develop",
+        expectedBranch: "staging",
         expectedAlias: aliasUrl,
         expectedEnvironment: "preview",
         expectedProductionBranch: "main",
@@ -218,7 +218,7 @@ describe("Pages deployment authority", () => {
         {
           expectedProject: "eliza-app",
           expectedCommit: sourceSha,
-          expectedBranch: "develop",
+          expectedBranch: "staging",
           expectedAlias: aliasUrl,
           expectedEnvironment: "preview",
           expectedProductionBranch: "main",
@@ -231,7 +231,7 @@ describe("Pages deployment authority", () => {
       parseWranglerPagesDeploymentOutput(wranglerRecord({ unexpected: true }), {
         expectedProject: "eliza-app",
         expectedCommit: sourceSha,
-        expectedBranch: "develop",
+        expectedBranch: "staging",
         expectedAlias: aliasUrl,
         expectedEnvironment: "preview",
         expectedProductionBranch: "main",
@@ -247,7 +247,7 @@ describe("Pages deployment authority", () => {
       parseWranglerPagesDeploymentOutput(withoutSession, {
         expectedProject: "eliza-app",
         expectedCommit: sourceSha,
-        expectedBranch: "develop",
+        expectedBranch: "staging",
         expectedAlias: aliasUrl,
         expectedEnvironment: "preview",
         expectedProductionBranch: "main",
@@ -267,7 +267,7 @@ describe("Pages deployment authority", () => {
           {
             expectedProject: "eliza-app",
             expectedCommit: sourceSha,
-            expectedBranch: "develop",
+            expectedBranch: "staging",
             expectedAlias: aliasUrl,
             expectedEnvironment: "preview",
             expectedProductionBranch: "main",
@@ -284,7 +284,7 @@ describe("Pages deployment authority", () => {
       "pages",
       "deploy",
       "--project-name=eliza-app",
-      "--branch=develop",
+      "--branch=staging",
       `--commit-hash=${sourceSha}`,
       "--commit-dirty=false",
     ];
@@ -300,7 +300,7 @@ describe("Pages deployment authority", () => {
           : argument,
       ),
       validArgs.map((argument) =>
-        argument === "--branch=develop" ? "--branch=main" : argument,
+        argument === "--branch=staging" ? "--branch=main" : argument,
       ),
       validArgs.slice(0, -1),
       [...validArgs, "--skip-caching"],
@@ -313,7 +313,7 @@ describe("Pages deployment authority", () => {
           {
             expectedProject: "eliza-app",
             expectedCommit: sourceSha,
-            expectedBranch: "develop",
+            expectedBranch: "staging",
             expectedAlias: aliasUrl,
             expectedEnvironment: "preview",
             expectedProductionBranch: "main",
@@ -330,13 +330,13 @@ describe("Pages deployment authority", () => {
       ["deployment_trigger", { metadata: { commit_hash: "c".repeat(40) } }],
       ["alias", "https://other.eliza-app.pages.dev"],
       ["environment", "production"],
-      ["production_branch", "develop"],
+      ["production_branch", "staging"],
     ] as const) {
       expect(() =>
         parseWranglerPagesDeploymentOutput(wranglerRecord({ [field]: value }), {
           expectedProject: "eliza-app",
           expectedCommit: sourceSha,
-          expectedBranch: "develop",
+          expectedBranch: "staging",
           expectedAlias: aliasUrl,
           expectedEnvironment: "preview",
           expectedProductionBranch: "main",

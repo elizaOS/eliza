@@ -91,7 +91,7 @@ describe("personal Dedicated staging re-review workflow", () => {
         cmd: ["bash", "-c", guard.run],
         env: {
           ...process.env,
-          REF_NAME: "refs/heads/develop",
+          REF_NAME: "refs/heads/staging",
           EXPECTED_COMMIT: "a".repeat(40),
           CHECKED_OUT_COMMIT: "a".repeat(40),
           MODE: "execute",
