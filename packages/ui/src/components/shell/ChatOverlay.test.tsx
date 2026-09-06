@@ -4875,6 +4875,49 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
     return body as HTMLElement;
   }
 
+  it("shows interrupted receipts as status without a pending spinner or invented prose", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({
+          responding: false,
+          messages: [
+            {
+              id: "empty-interruption",
+              role: "assistant",
+              content: "",
+              interrupted: true,
+              createdAt: 1,
+            },
+            {
+              id: "partial-interruption",
+              role: "assistant",
+              content: "The model's partial reply",
+              interrupted: true,
+              createdAt: 2,
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    const empty = assistantTurnBody("empty-interruption");
+    const partial = assistantTurnBody("partial-interruption");
+    for (const body of [empty, partial]) {
+      expect(body.dataset.phase).toBe("interrupted");
+      expect(
+        body.querySelector('[data-testid="turn-status-indicator"]'),
+      ).toBeNull();
+      expect(body.textContent).toContain("(Response interrupted)");
+    }
+    expect(empty.dataset.hasMessageText).toBe("false");
+    expect(empty.textContent).toBe("(Response interrupted)");
+    expect(partial.dataset.hasMessageText).toBe("true");
+    expect(partial.textContent).toBe(
+      "The model's partial reply(Response interrupted)",
+    );
+  });
+
   it("marks parsed prose, not attachment or inline-widget chrome, as message text", () => {
     const form = JSON.stringify({
       id: "trip-details",

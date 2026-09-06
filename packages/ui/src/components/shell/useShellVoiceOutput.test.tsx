@@ -178,6 +178,60 @@ describe("useShellVoiceOutput", () => {
     expect(hoisted.queueAssistantSpeech).not.toHaveBeenCalled();
   });
 
+  it.each(["", "The request was interrupted."])(
+    "does not speak an interrupted reply or fall back to history (%j)",
+    (text) => {
+      const { rerender } = render({ ...BASE, lastTurnVoice: true });
+      const messages = [
+        assistantMsg("old", "An earlier reply."),
+        { ...assistantMsg("failed", text), interrupted: true },
+      ];
+      rerender({
+        ...BASE,
+        lastTurnVoice: true,
+        conversationMessages: messages,
+      });
+      expect(hoisted.queueAssistantSpeech).not.toHaveBeenCalled();
+      rerender({
+        ...BASE,
+        lastTurnVoice: true,
+        conversationMessages: [
+          ...messages,
+          assistantMsg("next", "A new reply."),
+        ],
+      });
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledExactlyOnceWith(
+        "next",
+        "A new reply.",
+        true,
+        { replace: true },
+      );
+    },
+  );
+
+  it.each(["stream", "persisted"])(
+    "stops queued streaming speech when its reply becomes interrupted as %s",
+    (finalId) => {
+      const { rerender } = render({
+        ...BASE,
+        lastTurnVoice: true,
+        chatSending: true,
+        conversationMessages: [assistantMsg("stream", "A partial reply.")],
+      });
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
+      rerender({
+        ...BASE,
+        lastTurnVoice: true,
+        chatSending: false,
+        conversationMessages: [
+          { ...assistantMsg(finalId, "A partial reply."), interrupted: true },
+        ],
+      });
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
+      expect(hoisted.stopSpeaking).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("does not re-speak the same assistant message", () => {
     const messages = [userMsg("u1", "hi"), assistantMsg("a1", "Hello.")];
     const { rerender } = render({

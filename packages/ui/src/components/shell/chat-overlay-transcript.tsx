@@ -12,6 +12,7 @@ import {
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "../../first-run/first-run-greeting";
 import { cn } from "../../lib/utils";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { CapabilityHandoffBlock } from "../chat/CapabilityHandoffBlock";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
@@ -57,6 +58,7 @@ function OverlayAssistantTurnBody({
   message: ChatMessageData;
   turnStatus: ChatTurnStatus | null;
 }) {
+  const { t } = useTranslation();
   // Liveness consumes this marker as a prose-reply signal, so derive it from
   // the same normalized segments InlineWidgetText renders, not widget chrome.
   const renderedSegments = useParsedSegments(
@@ -70,11 +72,16 @@ function OverlayAssistantTurnBody({
     <MessageAttachments attachments={message.attachments} />
   ) : null;
   const pending =
+    !message.interrupted &&
     !message.text.trim() &&
     !message.attachments?.length &&
     !message.secretRequest &&
     !message.capabilityHandoff;
-  const phase = pending ? "status" : "reply";
+  const phase = message.interrupted
+    ? "interrupted"
+    : pending
+      ? "status"
+      : "reply";
   return (
     <div
       className="grid min-h-[1.4375rem] w-full min-w-0"
@@ -99,6 +106,16 @@ function OverlayAssistantTurnBody({
             <div className="pointer-events-auto">
               <CapabilityHandoffBlock request={message.capabilityHandoff} />
             </div>
+          ) : null}
+          {message.interrupted ? (
+            <p
+              className={cn(
+                "text-sm text-muted-strong",
+                hasRenderedProse && "mt-1",
+              )}
+            >
+              {t("chatmessage.ResponseInterrupte")}
+            </p>
           ) : null}
         </div>
       )}

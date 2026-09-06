@@ -203,6 +203,24 @@ describe("selectVisibleShellMessages (#9141 gap 4 windowing)", () => {
 });
 
 describe("filterRenderableShellMessages", () => {
+  it("retains empty interrupted assistant receipts without retaining unconfirmed empty rows", () => {
+    const interrupted: ShellMessage = {
+      ...msg("interrupted", "assistant", ""),
+      interrupted: true,
+    };
+    const emptyAssistant = msg("empty-assistant", "assistant", "");
+    const emptyUser: ShellMessage = {
+      ...msg("empty-user", "user", ""),
+      interrupted: true,
+    };
+    expect(
+      filterRenderableShellMessages(
+        [emptyAssistant, interrupted, emptyUser],
+        "idle",
+      ),
+    ).toEqual([interrupted]);
+  });
+
   it("keeps persisted persona greetings in the canonical transcript", () => {
     const greeting: ShellMessage = {
       ...msg("greeting", "assistant", "Welcome back. What should we build?"),

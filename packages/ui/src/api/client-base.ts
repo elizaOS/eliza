@@ -127,6 +127,7 @@ type StreamChatEvent = {
   userMessageId?: string;
   assistantEphemeral?: boolean;
   historyRefreshRequired?: boolean;
+  interrupted?: boolean;
   message?: string;
   thought?: string;
   noResponseReason?: string;
@@ -258,6 +259,7 @@ type StreamChatState = {
   doneUserMessageId: string | null;
   doneAssistantEphemeral: boolean;
   doneHistoryRefreshRequired: boolean;
+  doneInterrupted: boolean;
   doneThought: string | null;
   doneNoResponseReason: "ignored" | null;
   doneUsage: ChatTokenUsage | undefined;
@@ -461,6 +463,9 @@ function applyStreamChatDoneEvent(
   }
   if (parsed.historyRefreshRequired === true) {
     state.doneHistoryRefreshRequired = true;
+  }
+  if (parsed.interrupted === true) {
+    state.doneInterrupted = true;
   }
   if (typeof parsed.thought === "string" && parsed.thought.trim()) {
     state.doneThought = parsed.thought;
@@ -2851,8 +2856,14 @@ export class ElizaClient {
 
   // --- Text normalization helpers (used by chat domain methods) ---
 
-  normalizeAssistantText(text: string): string {
+  normalizeAssistantText(
+    text: string,
+    options?: { interrupted?: boolean },
+  ): string {
     if (typeof text !== "string") return GENERIC_NO_RESPONSE_TEXT;
+    // Interrupted receipts contain only the text generated before cancellation;
+    // their typed status must not become an invented reply or rewrite a partial.
+    if (options?.interrupted === true) return text;
     const stripped = stripAssistantStageDirections(
       extractAssistantReplyText(text) ?? text,
     );
@@ -2918,6 +2929,7 @@ export class ElizaClient {
     text: string;
     agentName: string;
     completed: boolean;
+    interrupted?: boolean;
     transcriptVisibility?: "internal";
     reasoning?: string;
     noResponseReason?: "ignored";
@@ -2998,6 +3010,7 @@ export class ElizaClient {
       doneUserMessageId: null,
       doneAssistantEphemeral: false,
       doneHistoryRefreshRequired: false,
+      doneInterrupted: false,
       doneThought: null,
       doneNoResponseReason: null,
       doneUsage: undefined,
@@ -3139,11 +3152,14 @@ export class ElizaClient {
       streamState.doneNoResponseReason === "ignored" ||
       (!streamState.receivedDone && rawReplyText.trim().length === 0)
         ? ""
-        : this.normalizeAssistantText(rawReplyText);
+        : this.normalizeAssistantText(rawReplyText, {
+            interrupted: streamState.doneInterrupted,
+          });
     return {
       text: resolvedText,
       agentName: streamState.doneAgentName ?? "Eliza",
       completed: streamState.receivedDone,
+      ...(streamState.doneInterrupted ? { interrupted: true } : {}),
       ...(streamState.doneTranscriptVisibility
         ? { transcriptVisibility: streamState.doneTranscriptVisibility }
         : {}),
