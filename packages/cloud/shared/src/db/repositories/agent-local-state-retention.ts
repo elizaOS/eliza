@@ -1,5 +1,5 @@
 /**
- * Admits local-state retention under the payment stop's primary lifecycle and
+ * Admits local-state retention under a stop's primary lifecycle and
  * execution lease. Retention commits before provider effects; retries preserve
  * the captured container identity and carry only their own revision change.
  */
@@ -43,7 +43,7 @@ const locatorSchema = z
   })
   .strict();
 
-export interface PaymentLocalRetentionAuthority {
+export interface LocalRetentionStopAuthority {
   agentId: string;
   organizationId: string;
   jobId: string;
@@ -52,10 +52,11 @@ export interface PaymentLocalRetentionAuthority {
 }
 
 /** The supplied transaction must commit before any retained stop is sent. */
-export async function admitPaymentLocalRetentionInTransaction(
+export async function admitLocalRetentionInTransaction(
   tx: DbTransaction,
-  authority: PaymentLocalRetentionAuthority,
+  authority: LocalRetentionStopAuthority,
   captured: AgentLocalStateRetention,
+  authorization: "billing_request" | "user_request" = "billing_request",
 ): Promise<{ kind: "funded" } | { kind: "retained"; retention: AgentLocalStateRetention }> {
   const parsed = locatorSchema.safeParse(captured);
   if (!parsed.success || captured.agentId !== authority.agentId) {
@@ -93,7 +94,7 @@ export async function admitPaymentLocalRetentionInTransaction(
         eq(agentComputeStopIntents.agent_id, authority.agentId),
         eq(agentComputeStopIntents.organization_id, authority.organizationId),
         eq(agentComputeStopIntents.job_id, authority.jobId),
-        eq(agentComputeStopIntents.authorization, "billing_request"),
+        eq(agentComputeStopIntents.authorization, authorization),
         inArray(agentComputeStopIntents.status, [
           "pending",
           "dispatching",
@@ -131,7 +132,7 @@ export async function admitPaymentLocalRetentionInTransaction(
     agent.replacement_cleanup_attempt_id ||
     agent.replacement_cleanup_container_id
   ) {
-    throw new ElizaError("Payment stop no longer owns local retention admission", {
+    throw new ElizaError("Stop no longer owns local retention admission", {
       code: "AGENT_LOCAL_RETENTION_AUTHORITY_CHANGED",
       context: { agentId: authority.agentId, jobId: authority.jobId },
     });
@@ -139,7 +140,9 @@ export async function admitPaymentLocalRetentionInTransaction(
   if (agent.local_state_retention) {
     const existing = agent.local_state_retention;
     if (
-      (existing.stopIntentId !== captured.stopIntentId && existing.state !== "resumed") ||
+      (existing.stopIntentId !== captured.stopIntentId &&
+        existing.state !== "resumed" &&
+        authorization !== "user_request") ||
       existing.containerId !== captured.containerId ||
       existing.nodeRecordId !== captured.nodeRecordId ||
       existing.nodeId !== captured.nodeId ||
@@ -155,8 +158,8 @@ export async function admitPaymentLocalRetentionInTransaction(
       authority.organizationId,
       await readPostLockDatabaseNow(tx),
     );
-    if (funding === "funded") return { kind: "funded" };
-    if (existing.state === "resumed") {
+    if (funding === "funded" && authorization === "billing_request") return { kind: "funded" };
+    if (existing.state === "resumed" || existing.stopIntentId !== captured.stopIntentId) {
       if (agent.node_id !== existing.nodeId || agent.container_name !== existing.containerName) {
         throw new ElizaError("Resumed local state no longer matches the active placement", {
           code: "AGENT_LOCAL_RETENTION_PLACEMENT_CHANGED",
@@ -221,7 +224,7 @@ export async function admitPaymentLocalRetentionInTransaction(
     authority.organizationId,
     await readPostLockDatabaseNow(tx),
   );
-  if (funding === "funded") return { kind: "funded" };
+  if (funding === "funded" && authorization === "billing_request") return { kind: "funded" };
   const [retained] = await tx
     .update(agentSandboxes)
     .set({ local_state_retention: parsed.data })
@@ -268,4 +271,102 @@ export async function assertRetainedNodePublicationAuthorityInTransaction(
       code: "AGENT_LOCAL_RETENTION_NODE_PUBLICATION_CHANGED",
       context: { nodeRecordId: retention.nodeRecordId, agentId: retention.agentId },
     });
+}
+
+export interface ManualLocalResumeAuthority extends LocalRetentionStopAuthority {
+  userId: string;
+}
+
+/** Locks a manual resume's owned placement and live execution before provider effects. */
+export async function lockManualRetainedResumeInTransaction(
+  tx: DbTransaction,
+  authority: ManualLocalResumeAuthority,
+  purpose: "provider" | "cleanup",
+) {
+  await configureElizaLifecycleTransaction(tx);
+  await tx.execute(elizaProvisionAdvisoryLockSql(authority.organizationId, authority.agentId));
+  const [agent] = await tx
+    .select()
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.id, authority.agentId),
+        eq(agentSandboxes.organization_id, authority.organizationId),
+        eq(agentSandboxes.user_id, authority.userId),
+        eq(agentSandboxes.lifecycle_job_id, authority.jobId),
+        eq(agentSandboxes.lifecycle_execution_generation, authority.executionGeneration),
+        isNull(agentSandboxes.deletion_attempt_id),
+        isNull(agentSandboxes.deletion_started_at),
+        isNull(agentSandboxes.deleted_at),
+        isNull(agentSandboxes.pool_status),
+        inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+        inArray(agentSandboxes.status, ["running", "stopped", "disconnected", "error"]),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  const [execution] = await tx
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.id, authority.jobId),
+        eq(jobs.type, "agent_resume"),
+        eq(jobs.status, "in_progress"),
+        eq(jobs.agent_id, authority.agentId),
+        eq(jobs.organization_id, authority.organizationId),
+        eq(jobs.user_id, authority.userId),
+        eq(jobs.execution_generation, authority.executionGeneration),
+        isNull(jobs.execution_quiesced_at),
+        sql`NOT (${jobs.data} ? 'paymentResume')`,
+        sql`EXISTS (SELECT 1 FROM ${jobExecutionLeases}
+      WHERE job_id = ${authority.jobId} AND execution_generation = ${authority.executionGeneration}
+        AND owner_id = ${authority.executionOwnerId} AND expires_at > clock_timestamp())`,
+      ),
+    )
+    .limit(1);
+  const [stop] = await tx
+    .select({ id: agentComputeStopIntents.id })
+    .from(agentComputeStopIntents)
+    .where(
+      and(
+        eq(agentComputeStopIntents.agent_id, authority.agentId),
+        eq(agentComputeStopIntents.organization_id, authority.organizationId),
+        inArray(agentComputeStopIntents.status, [
+          "pending",
+          "dispatching",
+          "retry",
+          "terminal_attention",
+        ]),
+      ),
+    )
+    .limit(1);
+  if (
+    !agent ||
+    !execution ||
+    stop ||
+    !agent.local_state_retention ||
+    agent.local_state_retention.state === "stop_pending" ||
+    agent.replacement_cleanup_sandbox_id ||
+    agent.replacement_cleanup_attempt_id ||
+    agent.replacement_cleanup_container_id
+  ) {
+    throw new ElizaError("Manual resume no longer owns settled retained state", {
+      code: "AGENT_LOCAL_RETENTION_MANUAL_AUTHORITY_CHANGED",
+      context: { agentId: authority.agentId, jobId: authority.jobId },
+    });
+  }
+  if (purpose === "provider") {
+    const funding = await agentBillingRepository.settlePaymentResumeFundingInTransaction(
+      tx,
+      authority.agentId,
+      authority.organizationId,
+      await readPostLockDatabaseNow(tx),
+    );
+    if (funding !== "funded")
+      throw new ElizaError("Manual retained resume requires settled funding", {
+        code: "AGENT_LOCAL_RETENTION_MANUAL_FUNDING_REQUIRED",
+      });
+  }
+  return agent;
 }

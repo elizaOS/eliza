@@ -5558,7 +5558,16 @@ export class ProvisioningJobService {
             executionGeneration: job.execution_generation,
             executionOwnerId: this.executionOwnerId,
           }
-        : undefined,
+        : job.execution_generation
+          ? {
+              agentId: data.agentId,
+              organizationId: data.organizationId,
+              userId: data.userId,
+              jobId: job.id,
+              executionGeneration: job.execution_generation,
+              executionOwnerId: this.executionOwnerId,
+            }
+          : undefined,
     );
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;

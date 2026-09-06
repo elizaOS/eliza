@@ -21,7 +21,7 @@ import {
   carryConfirmedStopReceiptAcrossClaimInTransaction,
   releaseAgentLifecycleBindingInTransaction,
 } from "./agent-compute-stop-intents";
-import { admitPaymentLocalRetentionInTransaction } from "./agent-local-state-retention";
+import { admitLocalRetentionInTransaction } from "./agent-local-state-retention";
 
 beforeAll(async () => {
   for (const statement of PROVISIONING_JOB_TEST_TABLES) await dbWrite.execute(sql.raw(statement));
@@ -146,43 +146,30 @@ async function seed(balance = "0.000000") {
 test("commits protection and carries the stop intent across its own revision", async () => {
   const { authority, captured } = await seed();
   expect(
-    (
-      await dbWrite.transaction((tx) =>
-        admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-      )
-    ).kind,
+    (await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured)))
+      .kind,
   ).toBe("retained");
   const [row] = await dbWrite.select().from(agentSandboxes);
   const [intent] = await dbWrite.select().from(agentComputeStopIntents);
   expect(row.local_state_retention?.containerId).toBe(captured.containerId);
   expect(row.lifecycle_revision).toBe(8);
   expect(intent.lifecycle_revision).toBe(row.lifecycle_revision);
-  await dbWrite.transaction((tx) =>
-    admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-  );
+  await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured));
   expect((await dbWrite.select().from(agentSandboxes))[0].lifecycle_revision).toBe(8);
 });
 test("funded accounts acquire no stop protection, including refill after admission", async () => {
   const { authority, captured } = await seed("10.000000");
   expect(
-    (
-      await dbWrite.transaction((tx) =>
-        admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-      )
-    ).kind,
+    (await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured)))
+      .kind,
   ).toBe("funded");
   expect((await dbWrite.select().from(agentSandboxes))[0].local_state_retention).toBeNull();
   await dbWrite.update(organizations).set({ credit_balance: "0" });
-  await dbWrite.transaction((tx) =>
-    admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-  );
+  await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured));
   await dbWrite.update(organizations).set({ credit_balance: "10" });
   expect(
-    (
-      await dbWrite.transaction((tx) =>
-        admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-      )
-    ).kind,
+    (await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured)))
+      .kind,
   ).toBe("funded");
   expect((await dbWrite.select().from(agentSandboxes))[0].local_state_retention).not.toBeNull();
 });
@@ -190,18 +177,16 @@ test("expired lease cannot create retention", async () => {
   const { authority, captured } = await seed();
   await dbWrite.update(jobExecutionLeases).set({ expires_at: new Date(0) });
   await expect(
-    dbWrite.transaction((tx) => admitPaymentLocalRetentionInTransaction(tx, authority, captured)),
+    dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured)),
   ).rejects.toThrow("no longer owns");
   expect((await dbWrite.select().from(agentSandboxes))[0].local_state_retention).toBeNull();
 });
 test("a different container cannot overwrite the only retained state", async () => {
   const { authority, captured } = await seed();
-  await dbWrite.transaction((tx) =>
-    admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-  );
+  await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured));
   await expect(
     dbWrite.transaction((tx) =>
-      admitPaymentLocalRetentionInTransaction(tx, authority, {
+      admitLocalRetentionInTransaction(tx, authority, {
         ...captured,
         containerId: "b".repeat(64),
       }),
@@ -218,15 +203,13 @@ test("a newer lifecycle mutation wins before retention admission", async () => {
     .set({ status: "disconnected" })
     .where(eq(agentSandboxes.id, authority.agentId));
   await expect(
-    dbWrite.transaction((tx) => admitPaymentLocalRetentionInTransaction(tx, authority, captured)),
+    dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured)),
   ).rejects.toThrow("no longer owns");
 });
 
 test("the real suspension service commits a retained stop and its confirmation", async () => {
   const { authority, captured } = await seed();
-  await dbWrite.transaction((tx) =>
-    admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-  );
+  await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured));
   let stopped = false;
   const provider: SandboxProvider = {
     async create() {
@@ -267,9 +250,7 @@ test("the real suspension service commits a retained stop and its confirmation",
 
 test("a lost stop result preserves pending state and a retry confirms the same container", async () => {
   const { authority, captured } = await seed();
-  await dbWrite.transaction((tx) =>
-    admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-  );
+  await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured));
   let attempts = 0;
   const provider: SandboxProvider = {
     async create() {
@@ -322,9 +303,7 @@ test("a lost stop result preserves pending state and a retry confirms the same c
 
 async function suspendedResumeFixture() {
   const { authority, captured } = await seed();
-  await dbWrite.transaction((tx) =>
-    admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-  );
+  await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured));
   const provider: SandboxProvider = {
     async create() {
       throw new Error("Retained recovery must not create");
@@ -431,7 +410,7 @@ test("funding lost during retained readiness prevents publication and stops the 
   };
   await expect(
     service.executeResume(authority.agentId, authority.organizationId, authority),
-  ).rejects.toThrow("Retained payment recovery failed");
+  ).rejects.toThrow("Retained container recovery failed");
   expect(stopped).toBe(true);
   const [agent] = await dbWrite.select().from(agentSandboxes);
   expect(agent.status).toBe("stopped");
@@ -441,9 +420,7 @@ test("funding lost during retained readiness prevents publication and stops the 
 
 test("refill after a lost stop response resumes the same container under the owning stop job", async () => {
   const { authority, captured } = await seed();
-  await dbWrite.transaction((tx) =>
-    admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-  );
+  await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured));
   let running = true;
   const provider: SandboxProvider = {
     async create() {
@@ -503,9 +480,7 @@ test("refill after a lost stop response resumes the same container under the own
 
 test("pending-stop refill cannot publish after its worker lease expires during readiness", async () => {
   const { authority, captured } = await seed();
-  await dbWrite.transaction((tx) =>
-    admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-  );
+  await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured));
   await dbWrite.update(organizations).set({ credit_balance: "10" });
   const provider: SandboxProvider = {
     async create() {
@@ -602,9 +577,7 @@ test("a later payment lapse transfers retained ownership without changing the co
 
 test("pending retention survives release and a new execution claim without accepting unrelated revisions", async () => {
   const { authority, captured } = await seed();
-  await dbWrite.transaction((tx) =>
-    admitPaymentLocalRetentionInTransaction(tx, authority, captured),
-  );
+  await dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured));
   await dbWrite.transaction((tx) =>
     releaseAgentLifecycleBindingInTransaction(tx, { ...authority, preserveConfirmedStop: true }),
   );
@@ -628,7 +601,7 @@ test("pending retention survives release and a new execution claim without accep
   await dbWrite.update(jobs).set({ execution_generation: newGeneration });
   await dbWrite.update(jobExecutionLeases).set({ execution_generation: newGeneration });
   const retried = await dbWrite.transaction((tx) =>
-    admitPaymentLocalRetentionInTransaction(
+    admitLocalRetentionInTransaction(
       tx,
       { ...authority, executionGeneration: newGeneration },
       captured,
@@ -636,7 +609,7 @@ test("pending retention survives release and a new execution claim without accep
   );
   expect(retried.kind).toBe("retained");
   await expect(
-    dbWrite.transaction((tx) => admitPaymentLocalRetentionInTransaction(tx, authority, captured)),
+    dbWrite.transaction((tx) => admitLocalRetentionInTransaction(tx, authority, captured)),
   ).rejects.toThrow("no longer owns");
   expect(
     (await dbWrite.select().from(agentComputeStopIntents))[0].provider_confirmed_at,
@@ -722,9 +695,258 @@ test("node metadata changing during readiness cannot publish retained recovery e
   };
   await expect(
     service.executeResume(authority.agentId, authority.organizationId, authority),
-  ).rejects.toThrow("Retained payment recovery failed");
+  ).rejects.toThrow("Retained container recovery failed");
   const [agent] = await dbWrite.select().from(agentSandboxes);
   expect(agent.status).toBe("stopped");
   expect(agent.bridge_url).toBeNull();
   expect(agent.local_state_retention?.hostname).toBe(captured.hostname);
+});
+
+async function manualResumeFixture() {
+  const fixture = await suspendedResumeFixture();
+  const { intentId: _intentId, lifecycleRevision: _revision, ...authority } = fixture.authority;
+  await dbWrite
+    .update(agentComputeStopIntents)
+    .set({ resume_job_id: null, resume_started_at: null });
+  return { ...fixture, authority };
+}
+
+test("manual resume publishes the same protected container without automatic payment authority", async () => {
+  const { service, authority, captured } = await manualResumeFixture();
+  const result = await service.executeResume(
+    authority.agentId,
+    authority.organizationId,
+    authority,
+  );
+  expect(result).toEqual({ success: true, containerStarted: true, reprovisioned: false });
+  const [agent] = await dbWrite.select().from(agentSandboxes);
+  expect(agent.status).toBe("running");
+  expect(agent.billing_status).toBe("active");
+  expect(agent.bridge_url).toBe(captured.bridgeUrl);
+  expect(agent.local_state_retention?.containerId).toBe(captured.containerId);
+  expect(agent.local_state_retention?.state).toBe("resumed");
+});
+
+for (const rejection of ["expired lease", "unfunded", "new stop", "missing authority"] as const) {
+  test(`manual retained resume rejects ${rejection} before starting compute`, async () => {
+    const { service, provider, authority } = await manualResumeFixture();
+    let starts = 0;
+    provider.resumeRetainedContainer = async (locator) => {
+      starts++;
+      return { containerId: locator.containerId, state: "running", restartPolicy: "no" };
+    };
+    if (rejection === "expired lease")
+      await dbWrite.update(jobExecutionLeases).set({ expires_at: new Date(0) });
+    if (rejection === "unfunded") await dbWrite.update(organizations).set({ credit_balance: "0" });
+    if (rejection === "new stop") {
+      const [agent] = await dbWrite.select().from(agentSandboxes);
+      await dbWrite.insert(agentComputeStopIntents).values({
+        agent_id: authority.agentId,
+        organization_id: authority.organizationId,
+        lifecycle_revision: agent.lifecycle_revision,
+        authorization: "user_request",
+      });
+    }
+    await expect(
+      service.executeResume(
+        authority.agentId,
+        authority.organizationId,
+        rejection === "missing authority" ? undefined : authority,
+      ),
+    ).rejects.toThrow();
+    expect(starts).toBe(0);
+    expect((await dbWrite.select().from(agentSandboxes))[0].status).toBe("stopped");
+  });
+}
+
+test("manual resume loses funding during readiness and stops its exact container", async () => {
+  const { service, provider, authority, captured } = await manualResumeFixture();
+  let stopped = false;
+  provider.checkHealth = async () => {
+    await dbWrite.update(organizations).set({ credit_balance: "0" });
+    return true;
+  };
+  provider.stopRetainingState = async (locator) => {
+    expect(locator.containerId).toBe(captured.containerId);
+    stopped = true;
+    return { containerId: locator.containerId, state: "exited", restartPolicy: "no" };
+  };
+  await expect(
+    service.executeResume(authority.agentId, authority.organizationId, authority),
+  ).rejects.toThrow("Retained container recovery failed");
+  expect(stopped).toBe(true);
+  const [agent] = await dbWrite.select().from(agentSandboxes);
+  expect(agent.status).toBe("stopped");
+  expect(agent.bridge_url).toBeNull();
+  expect(agent.local_state_retention?.containerId).toBe(captured.containerId);
+});
+
+test("manual resume cannot publish or tear down after losing its execution during readiness", async () => {
+  const { service, provider, authority } = await manualResumeFixture();
+  let stops = 0;
+  provider.checkHealth = async () => {
+    await dbWrite.update(jobExecutionLeases).set({ expires_at: new Date(0) });
+    return true;
+  };
+  provider.stopRetainingState = async (locator) => {
+    stops++;
+    return { containerId: locator.containerId, state: "exited", restartPolicy: "no" };
+  };
+  await expect(
+    service.executeResume(authority.agentId, authority.organizationId, authority),
+  ).rejects.toThrow("Retained container recovery failed");
+  expect(stops).toBe(0);
+  const [agent] = await dbWrite.select().from(agentSandboxes);
+  expect(agent.status).toBe("stopped");
+  expect(agent.bridge_url).toBeNull();
+});
+
+async function manualStopFixture(resume = true) {
+  const fixture = await manualResumeFixture();
+  if (resume)
+    await fixture.service.executeResume(
+      fixture.authority.agentId,
+      fixture.authority.organizationId,
+      fixture.authority,
+    );
+  const jobId = crypto.randomUUID();
+  const executionGeneration = crypto.randomUUID();
+  await dbWrite.update(jobs).set({ status: "completed", execution_quiesced_at: new Date() });
+  await dbWrite.insert(jobs).values({
+    id: jobId,
+    type: "agent_suspend",
+    status: "in_progress",
+    data: {},
+    agent_id: fixture.authority.agentId,
+    organization_id: fixture.authority.organizationId,
+    user_id: fixture.authority.userId,
+    execution_generation: executionGeneration,
+  });
+  await dbWrite.insert(jobExecutionLeases).values({
+    job_id: jobId,
+    execution_generation: executionGeneration,
+    owner_id: fixture.authority.executionOwnerId,
+    expires_at: new Date(Date.now() + 60_000),
+  });
+  const [agent] = await dbWrite
+    .update(agentSandboxes)
+    .set({ lifecycle_job_id: jobId, lifecycle_execution_generation: executionGeneration })
+    .returning();
+  const [intent] = await dbWrite
+    .insert(agentComputeStopIntents)
+    .values({
+      agent_id: agent.id,
+      organization_id: agent.organization_id,
+      job_id: jobId,
+      lifecycle_revision: agent.lifecycle_revision,
+      authorization: "user_request",
+    })
+    .returning();
+  return {
+    ...fixture,
+    intent,
+    revision: agent.lifecycle_revision,
+    authority: { ...fixture.authority, jobId, executionGeneration },
+  };
+}
+
+for (const resume of [true, false]) {
+  test(`manual stop preserves ${resume ? "resumed" : "already stopped"} state despite positive funding`, async () => {
+    const { service, provider, authority, captured, revision, intent } =
+      await manualStopFixture(resume);
+    let stops = 0;
+    provider.stopRetainingState = async (locator) => {
+      expect(locator.containerId).toBe(captured.containerId);
+      expect(locator.stopIntentId).toBe(intent.id);
+      stops++;
+      return { containerId: locator.containerId, state: "exited", restartPolicy: "no" };
+    };
+    provider.resumeRetainedContainer = async () => {
+      throw new Error("User stop must not restart funded compute");
+    };
+    const result = await service.executeSuspend(
+      authority.agentId,
+      authority.organizationId,
+      authority.jobId,
+      "user_request",
+      revision,
+      authority,
+    );
+    expect(result.containerStopped).toBe(true);
+    expect(stops).toBe(1);
+    const [agent] = await dbWrite.select().from(agentSandboxes);
+    expect(agent.status).toBe("stopped");
+    expect(agent.bridge_url).toBeNull();
+    expect(agent.local_state_retention?.containerId).toBe(captured.containerId);
+    expect(agent.local_state_retention?.stopIntentId).toBe(intent.id);
+    expect(agent.local_state_retention?.state).toBe("stopped");
+    const [confirmed] = await dbWrite
+      .select()
+      .from(agentComputeStopIntents)
+      .where(eq(agentComputeStopIntents.id, intent.id));
+    expect(confirmed.authorization).toBe("user_request");
+    expect(confirmed.status).toBe("provider_confirmed");
+  });
+}
+
+test("manual retained stop retains ownership after a lost provider response and retries the same identity", async () => {
+  const { service, provider, authority, captured, revision, intent } = await manualStopFixture();
+  provider.stopRetainingState = async () => {
+    throw new Error("Lost SSH response");
+  };
+  await expect(
+    service.executeSuspend(
+      authority.agentId,
+      authority.organizationId,
+      authority.jobId,
+      "user_request",
+      revision,
+      authority,
+    ),
+  ).rejects.toThrow("Lost SSH response");
+  const [agent] = await dbWrite.select().from(agentSandboxes);
+  expect(agent.local_state_retention?.state).toBe("stop_pending");
+  expect(agent.local_state_retention?.stopIntentId).toBe(intent.id);
+  expect(agent.local_state_retention?.containerId).toBe(captured.containerId);
+  provider.stopRetainingState = async (locator) => {
+    expect(locator.containerId).toBe(captured.containerId);
+    return { containerId: locator.containerId, state: "exited", restartPolicy: "no" };
+  };
+  const [currentIntent] = await dbWrite
+    .select()
+    .from(agentComputeStopIntents)
+    .where(eq(agentComputeStopIntents.id, intent.id));
+  const result = await service.executeSuspend(
+    authority.agentId,
+    authority.organizationId,
+    authority.jobId,
+    "user_request",
+    currentIntent.lifecycle_revision,
+    authority,
+  );
+  expect(result.containerStopped).toBe(true);
+});
+
+test("expired manual stop lease cannot stop the retained container or take its ownership", async () => {
+  const { service, provider, authority, captured, revision } = await manualStopFixture();
+  let stops = 0;
+  provider.stopRetainingState = async (locator) => {
+    stops++;
+    return { containerId: locator.containerId, state: "exited", restartPolicy: "no" };
+  };
+  await dbWrite.update(jobExecutionLeases).set({ expires_at: new Date(0) });
+  await expect(
+    service.executeSuspend(
+      authority.agentId,
+      authority.organizationId,
+      authority.jobId,
+      "user_request",
+      revision,
+      authority,
+    ),
+  ).rejects.toThrow();
+  expect(stops).toBe(0);
+  const [agent] = await dbWrite.select().from(agentSandboxes);
+  expect(agent.status).toBe("running");
+  expect(agent.local_state_retention?.stopIntentId).toBe(captured.stopIntentId);
 });
