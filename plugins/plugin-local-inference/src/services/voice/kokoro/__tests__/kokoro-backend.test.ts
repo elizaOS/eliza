@@ -1,5 +1,5 @@
 /** Covers the Kokoro TTS backend including streaming time-to-first-audio. Deterministic, mock runtime. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { scoreFirstResponseLatency } from "../../e2e-harness";
 import type {
 	AudioSink,
@@ -44,7 +44,11 @@ function makePhrase(text: string): Phrase {
 	};
 }
 
-function makeBackend(opts?: { totalSamples?: number; chunkCount?: number }): {
+function makeBackend(opts?: {
+	totalSamples?: number;
+	chunkCount?: number;
+	phonemizer?: KokoroPhonemizer;
+}): {
 	backend: KokoroTtsBackend;
 	runtime: KokoroMockRuntime;
 } {
@@ -62,13 +66,86 @@ function makeBackend(opts?: { totalSamples?: number; chunkCount?: number }): {
 			sampleRate: 24000,
 		},
 		defaultVoiceId: KOKORO_DEFAULT_VOICE_ID,
-		phonemizer: fixedPhonemizer(),
+		phonemizer: opts?.phonemizer ?? fixedPhonemizer(),
 		streamingChunkSamples: 1200, // 50ms — re-chunks the mock output
 	});
 	return { backend, runtime };
 }
 
 describe("KokoroTtsBackend", () => {
+	it("synthesizes every ordered segment of a long utterance and its final tail", async () => {
+		const phonemizer: KokoroPhonemizer = {
+			id: "length-aware",
+			async phonemize(text) {
+				return {
+					ids: Int32Array.from(Array.from(text, () => 43)),
+					phonemes: text,
+				};
+			},
+		};
+		const { backend, runtime } = makeBackend({ phonemizer });
+		const calls = vi.spyOn(runtime, "synthesize");
+		const text = `${"A complete sentence stays in order. ".repeat(45)}The final words must be spoken.`;
+		const audio = await backend.synthesize({
+			phrase: makePhrase(text),
+			preset: makePreset(KOKORO_DEFAULT_VOICE_ID),
+			cancelSignal: { cancelled: false },
+		});
+		expect(calls.mock.calls.map(([input]) => input.text).join("")).toBe(text);
+		expect(
+			calls.mock.calls.every(
+				([input]) => Array.from(input.phonemes.phonemes).length <= 510,
+			),
+		).toBe(true);
+		expect(calls.mock.calls.length).toBeGreaterThan(1);
+		expect(audio.pcm.length).toBe(9600 * calls.mock.calls.length);
+	});
+
+	it("rejects an oversized final word before emitting an otherwise valid prefix", async () => {
+		const phonemizer: KokoroPhonemizer = {
+			id: "length-aware",
+			async phonemize(text) {
+				return {
+					ids: Int32Array.from(Array.from(text, () => 43)),
+					phonemes: text,
+				};
+			},
+		};
+		const { backend, runtime } = makeBackend({ phonemizer });
+		const onChunk = vi.fn();
+		await expect(
+			backend.synthesizeStream({
+				phrase: makePhrase(`A valid opening. ${"a".repeat(511)}`),
+				preset: makePreset(KOKORO_DEFAULT_VOICE_ID),
+				cancelSignal: { cancelled: false },
+				onChunk,
+			}),
+		).rejects.toMatchObject({ code: "KOKORO_PHRASE_TOO_LARGE" });
+		expect(runtime.calls).toBe(0);
+		expect(onChunk).not.toHaveBeenCalled();
+	});
+
+	it("cancels between long-utterance segments without dispatching the suffix", async () => {
+		const phonemizer: KokoroPhonemizer = {
+			id: "length-aware",
+			async phonemize(text) {
+				return {
+					ids: Int32Array.from(Array.from(text, () => 43)),
+					phonemes: text,
+				};
+			},
+		};
+		const { backend, runtime } = makeBackend({ phonemizer });
+		const result = await backend.synthesizeStream({
+			phrase: makePhrase("A complete sentence. ".repeat(80)),
+			preset: makePreset(KOKORO_DEFAULT_VOICE_ID),
+			cancelSignal: { cancelled: false },
+			onChunk: (chunk) => !chunk.isFinal,
+		});
+		expect(result.cancelled).toBe(true);
+		expect(runtime.calls).toBe(1);
+	});
+
 	it("contracts only grammatically safe I am forms for Kokoro", () => {
 		expect(prepareKokoroSpeakText("I am ready.")).toBe("I'm ready.");
 		expect(prepareKokoroSpeakText("Yes, I am here.")).toBe("Yes, I'm here.");
