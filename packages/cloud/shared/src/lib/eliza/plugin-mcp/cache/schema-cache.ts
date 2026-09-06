@@ -14,6 +14,7 @@
 import { logger } from "@elizaos/core";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { createHash } from "crypto";
+import { envInt } from "../../../env-int";
 import type { CachedServerSchema, McpServerConfig } from "../types";
 
 const CACHE_KEY_PREFIX = "mcp:schema:v1";
@@ -65,7 +66,7 @@ export class McpSchemaCache {
     const enabled = process.env.MCP_SCHEMA_CACHE_ENABLED === "true";
     const url = process.env.MCP_CACHE_REDIS_URL;
     const token = process.env.MCP_CACHE_REDIS_TOKEN;
-    this.ttl = parseInt(process.env.MCP_SCHEMA_CACHE_TTL || String(DEFAULT_TTL), 10);
+    this.ttl = envInt(process.env.MCP_SCHEMA_CACHE_TTL, DEFAULT_TTL);
 
     if (!enabled) {
       logger.debug("[McpSchemaCache] Disabled");

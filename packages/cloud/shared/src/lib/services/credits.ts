@@ -19,6 +19,7 @@ import {
 import { CacheInvalidation } from "../cache/invalidation";
 import { invalidateOrganizationCache } from "../cache/organizations-cache";
 import { canSendLowCreditsEmail, markLowCreditsEmailSent } from "../email/utils/rate-limiter";
+import { envInt } from "../env-int";
 import { calculateCost, getProviderFromModel } from "../pricing";
 import { PROVIDER_DEFAULT_MAX_RETRIES, PROVIDER_MAX_BACKOFF_DELAY_MS } from "../providers/_http";
 import { getRequestTaskDefer } from "../runtime/request-context";
@@ -1064,7 +1065,7 @@ export class CreditsService {
       return;
     }
 
-    const threshold = parseInt(process.env.LOW_CREDITS_THRESHOLD || "1000", 10);
+    const threshold = envInt(process.env.LOW_CREDITS_THRESHOLD, 1000);
     const status = classifyCreditBalance(newBalance, threshold);
     if (!status) {
       return;
@@ -1091,7 +1092,7 @@ export class CreditsService {
     currentBalance: number,
   ): Promise<void> {
     try {
-      const threshold = parseInt(process.env.LOW_CREDITS_THRESHOLD || "1000", 10);
+      const threshold = envInt(process.env.LOW_CREDITS_THRESHOLD, 1000);
 
       if (currentBalance <= 0 || currentBalance > threshold) {
         return;
