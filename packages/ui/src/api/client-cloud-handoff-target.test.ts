@@ -146,6 +146,42 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
     });
 
     expect(getCloudCompatAgent).not.toHaveBeenCalled();
+    // The poll this test is named for: absent a dedicated target, the probe
+    // must read `agentId` — an assertion that fails if the probe short-circuits
+    // to null instead of polling at all.
+    expect(fetch).toHaveBeenCalledWith(
+      `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/v1/eliza/agents/agent-self`,
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
+      }),
+    );
+  });
+
+  it("still switches when the source IS a shared adapter and a dedicated target is given", async () => {
+    // The Phase-1 migration itself: shared-adapter source plus a separately
+    // provisioned dedicated target. Guards the `!dedicatedAgentId` term of the
+    // short-circuit — without it every real handoff times out.
+    const adapterBase =
+      "https://elizacloud.ai/api/v1/eliza/agents/00000000-0000-4000-8000-00000000000a";
+    const { client } = fakeClient({ "dedicated-1": runningDedicated() });
+    const onSwitch = vi.fn();
+    const result = await client.startCloudAgentHandoff({
+      agentId: "shared-1",
+      sharedApiBase: adapterBase,
+      conversationId: "shared-1",
+      dedicatedAgentId: "dedicated-1",
+      cloudApiBase: "https://www.elizacloud.ai",
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 200,
+      log: () => {},
+    });
+
+    expect(onSwitch).toHaveBeenCalledWith("https://dedicated-1.elizacloud.ai");
+    expect(
+      result.status === "switched" || result.status === "switched-empty",
+    ).toBe(true);
   });
 
   it("uses the agent-scoped local Cloud proxy when no public agent URL exists", async () => {
@@ -197,7 +233,68 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
   });
 
   it("does not treat a shared row on the local UUID proxy as dedicated", async () => {
-    const sharedId = "00000000-0000-4000-8000-000000000001";
+    // `dedicatedAgentId` bypasses the shared-adapter short-circuit so this
+    // case reaches the execution-tier check, and the mock answers the whole
+    // switch path (detail, health, messages) so that check is the only thing
+    // standing between this fixture and a completed switch.
+    const dedicatedId = "00000000-0000-4000-8000-000000000001";
+    const cloudApiBase = "http://127.0.0.1:8787";
+    const localDedicatedBase = `${cloudApiBase}/api/v1/eliza/agents/${dedicatedId}`;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === localDedicatedBase) {
+        return {
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: {
+              id: dedicatedId,
+              status: "running",
+              executionTier: "shared",
+              webUiUrl: null,
+            },
+          }),
+        };
+      }
+      if (url === `${localDedicatedBase}/api/health`) {
+        return { status: 200, json: async () => ({ ready: true }) };
+      }
+      if (url.endsWith("/messages")) {
+        return { status: 200, json: async () => ({ messages: [] }) };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { client } = fakeClient({});
+    const onSwitch = vi.fn();
+    const result = await client.startCloudAgentHandoff({
+      agentId: "shared-1",
+      sharedApiBase: SHARED_BASE,
+      conversationId: "shared-1",
+      dedicatedAgentId: dedicatedId,
+      cloudApiBase,
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 20,
+      log: () => {},
+    });
+
+    expect(result.status).toBe("timed-out");
+    expect(onSwitch).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      `${localDedicatedBase}/api/health`,
+      expect.anything(),
+    );
+  });
+
+  it("never switches a shared adapter in place when the control plane omits executionTier", async () => {
+    // Older control planes omit `executionTier`, so the tier check cannot
+    // stop this path; the shared-adapter short-circuit is the only guard.
+    // The mock answers the whole switch path so that short-circuit is what
+    // this fixture observes: without it the handoff switches in place.
+    const sharedId = "00000000-0000-4000-8000-000000000002";
     const cloudApiBase = "http://127.0.0.1:8787";
     const localSharedBase = `${cloudApiBase}/api/v1/eliza/agents/${sharedId}`;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -207,14 +304,15 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
           status: 200,
           json: async () => ({
             success: true,
-            data: {
-              id: sharedId,
-              status: "running",
-              executionTier: "shared",
-              webUiUrl: null,
-            },
+            data: { id: sharedId, status: "running", webUiUrl: null },
           }),
         };
+      }
+      if (url === `${localSharedBase}/api/health`) {
+        return { status: 200, json: async () => ({ ready: true }) };
+      }
+      if (url.endsWith("/messages")) {
+        return { status: 200, json: async () => ({ messages: [] }) };
       }
       throw new Error(`unexpected fetch ${url}`);
     });
@@ -237,7 +335,7 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
     expect(result.status).toBe("timed-out");
     expect(onSwitch).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalledWith(
-      `${localSharedBase}/api/health`,
+      localSharedBase,
       expect.anything(),
     );
   });
