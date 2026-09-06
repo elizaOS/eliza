@@ -337,6 +337,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       subview?: string;
     };
   } | null = null;
+  private readonly overlapRequests = new Set<AbortController>();
   /**
    * Resolves once the active canonical response stream has finished reading
    * and persisting its model turn. An overlap request may prepare while the
@@ -1336,7 +1337,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private commitTurn(transcript: string): void {
     if (
       this.continuousHandoffEnabled &&
-      this.currentVoiceTurnId &&
+      (this.currentVoiceTurnId || this.pendingOverlapTurn) &&
       transcript.trim() !== ""
     ) {
       this.startOverlapTurn(transcript.trim());
@@ -1372,12 +1373,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       },
     ).then(
       () => undefined,
+      // error-policy:J5 runResponseTurn reports failures through voice error
+      // frames; the sequencing barrier must still release the next request.
       () => undefined,
     );
   }
 
   private startOverlapTurn(transcript: string): void {
-    this.pendingOverlapTurn?.abort.abort();
     const traceId = this.mintTraceId("turn");
     const abort = new AbortController();
     const pending = {
@@ -1387,14 +1389,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       replyText: null,
       handoffRequested: false,
     };
+    this.overlapRequests.add(abort);
     this.pendingOverlapTurn = pending;
     this.send({ t: "stt_final", text: transcript, traceId });
     this.send({ t: "user_eos", traceId });
-    void this.prepareOverlapReply(pending);
+    const previousResponse = this.activeResponseModelSettled;
+    this.activeResponseModelSettled = this.prepareOverlapReply(
+      pending,
+      previousResponse,
+    );
   }
 
   private async prepareOverlapReply(
     pending: NonNullable<VoiceSession["pendingOverlapTurn"]>,
+    previousResponse: Promise<void>,
   ): Promise<void> {
     let replyText = "";
     let firstText = false;
@@ -1402,13 +1410,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // The existing response may still be streaming model output even though
       // its first TTS audio is already audible. Serializing this boundary keeps
       // canonical conversation writes ordered while still allowing the next
-      // model request to overlap the remainder of old audio playback.
-      await this.activeResponseModelSettled;
-      if (
-        pending.abort.signal.aborted ||
-        this.pendingOverlapTurn !== pending ||
-        this.closed
-      ) {
+      // model request to overlap the remainder of old audio playback. Every
+      // finalized utterance reaches canonical history, even when a newer
+      // utterance has taken ownership of the next audible reply.
+      await previousResponse;
+      if (pending.abort.signal.aborted || this.closed) {
         return;
       }
       const result = await streamElizaConversation(
@@ -1459,14 +1465,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.send({ t: "next_reply_ready", traceId: pending.traceId });
       if (!this.currentVoiceTurnId) this.beginPreparedOverlapHandoff();
     } catch (error) {
-      if (pending.abort.signal.aborted || this.pendingOverlapTurn !== pending)
-        return;
+      // error-policy:J1 Report a failed overlap at the voice transport boundary.
+      if (pending.abort.signal.aborted || this.closed) return;
       logger.warn("[voice-session] overlapping response preparation failed", {
         traceId: pending.traceId,
         errorClass: error instanceof Error ? error.name : typeof error,
       });
-      this.pendingOverlapTurn = null;
+      if (this.pendingOverlapTurn === pending) this.pendingOverlapTurn = null;
       this.send({ t: "error", code: "llm_error", retryable: true });
+    } finally {
+      this.overlapRequests.delete(pending.abort);
     }
   }
 
@@ -1554,6 +1562,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.send({ t: "speaking_end", traceId });
         this.finishTurn(traceId);
       },
+      onFlushComplete: () => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        this.beginPreparedOverlapHandoff();
+      },
       onProviderError: (error) => {
         if (this.currentVoiceTurnId !== traceId) return;
         this.send({
@@ -1565,7 +1577,21 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       },
     });
     this.ttsStream = stream;
-    stream.sendPhrase({ text, continueContext: false });
+    const aggregator = new PhraseAggregator({
+      minEmitChars: 1,
+      preferWordBoundaryAtMax: true,
+    });
+    const phrases = aggregator.push(text);
+    const tail = aggregator.flush();
+    if (tail !== null) phrases.push(tail);
+    for (const [index, phrase] of phrases.entries()) {
+      const continues = index < phrases.length - 1;
+      stream.sendPhrase({
+        text: phrase,
+        continueContext: continues,
+        ...(continues ? { flush: true } : {}),
+      });
+    }
   }
 
   /** Speak a fixed live opener while the first agent context is warming. */
@@ -1878,6 +1904,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           sendTtsPhrase(ensureTts(), {
             text: pendingPhrase,
             continueContext: true,
+            flush: true,
           });
           pendingPhrase = null;
         }
@@ -1985,8 +2012,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         if (this.currentVoiceTurnId !== traceId) return;
         this.noteLlmDelta(traceId);
         modelOutputChars += delta.length;
-        this.assistantReferenceText =
-          `${this.assistantReferenceText}${delta}`.slice(-2_000);
+        this.assistantReferenceText += delta;
         if (SPOKEN_TRANSCRIPT_RE.test(delta)) {
           modelSpeakableContentSeen = true;
         }
@@ -2179,6 +2205,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
    */
   private interrupt(reason: "acoustic" | "explicit"): void {
     this.clearAssistantPlaybackSuppression();
+    for (const abort of this.overlapRequests) abort.abort();
+    this.overlapRequests.clear();
+    this.pendingOverlapTurn = null;
     const traceId = this.currentVoiceTurnId;
     if (!traceId) return; // nothing speaking/thinking to interrupt.
     this.emitTurnMetrics(traceId, "interrupted");
@@ -2197,8 +2226,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.llmAbort.abort();
       this.llmAbort = null;
     }
-    this.pendingOverlapTurn?.abort.abort();
-    this.pendingOverlapTurn = null;
     // 4. Drop pending phrase aggregation.
     if (this.phrase) {
       this.phrase.reset();
@@ -2281,6 +2308,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     if (this.closed) return;
     this.clearAssistantPlaybackSuppression();
     this.closed = true;
+    for (const abort of this.overlapRequests) abort.abort();
+    this.overlapRequests.clear();
+    this.pendingOverlapTurn = null;
     this.state = "closed";
     logger.info("[voice-session] session closed", {
       sessionId: this.sessionId,
@@ -2411,7 +2441,7 @@ function isLikelyAssistantEcho(
   assistantReference: string,
 ): boolean {
   const heard = normalizeVoiceWords(transcript);
-  const reference = normalizeVoiceWords(assistantReference).slice(-120);
+  const reference = normalizeVoiceWords(assistantReference);
   if (heard.length < 3 || reference.length < heard.length) return false;
   for (let start = 0; start <= reference.length - heard.length; start += 1) {
     let matches = 0;

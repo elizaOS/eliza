@@ -20,6 +20,8 @@
  * Tests inject a fake AudioContext to drive the real queue/flush/unlock code.
  */
 
+import { logger } from "@elizaos/logger";
+
 import { resolveAudioWorkletModuleUrl } from "./audio-worklet-module-urls";
 import {
   constructBrowserAudioContext,
@@ -344,9 +346,12 @@ export async function createVoiceSessionPlayback(
   const emitStats = (reason: VoiceSessionPlaybackStatsReason): void => {
     try {
       options.onStats?.({ reason, stats: snapshotStats() });
-    } catch (ignoredError) {
-      // error-policy:J7 Diagnostics must never interrupt audible playback.
-      void ignoredError;
+    } catch (error) {
+      // error-policy:J7 Browser diagnostics must warn without interrupting playback.
+      logger.warn(
+        { error },
+        "[VoiceSessionPlayback] Playback statistics callback failed",
+      );
     }
   };
 
@@ -651,6 +656,17 @@ export async function createVoiceSessionPlayback(
     },
     beginHandoff(crossfadeMs: number) {
       if (stopped) return;
+      // All old-response samples must enter the handoff queue before new
+      // response audio, including samples held for autoplay or startup reserve.
+      // Suspended contexts accept queued samples without making them audible.
+      drainPreUnlock();
+      while (startQueue.length > 0) {
+        const samples = startQueue.shift();
+        if (!samples) continue;
+        startQueueSamples -= samples.length;
+        pushSamples(samples);
+      }
+      startQueueSamples = 0;
       const boundedMs = Math.min(250, Math.max(20, crossfadeMs));
       if (backend === "audioworklet" && workletNode) {
         workletNode.port.postMessage({

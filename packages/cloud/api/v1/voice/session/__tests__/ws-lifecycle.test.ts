@@ -2448,7 +2448,10 @@ describe("voice-session WS lifecycle", () => {
     const client = new FakeClientSocket();
     const reply =
       "The assistant is speaking a deliberately long first clause for overlap testing. " +
-      "It keeps talking while the human asks a new and unrelated question.";
+      "It keeps talking while the human asks a new and unrelated question. " +
+      "Additional generated explanation remains queued beyond the audible opening. ".repeat(
+        40,
+      );
     await connectSession({
       client,
       fetchImpl: makeSseFetch([reply]),
@@ -2506,6 +2509,25 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     expect(client.controlTypes()).toContain("handoff_requested");
     expect(client.controlTypes()).toContain("handoff_completed");
+
+    const handoffsBeforeThirdTurn = client.controlFrames.filter(
+      (frame) => frame.t === "handoff_completed",
+    ).length;
+    const sonic = FakeCartesiaSocket.instances.at(-1)!;
+    expect(
+      sonic.sent
+        .map((message) => JSON.parse(message))
+        .some((message) => message.flush === true && message.continue === true),
+    ).toBe(true);
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "Please now explain a completely different topic");
+    await flush();
+    await flush();
+    sonic.emitFlushDone();
+    await flush();
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "handoff_completed"),
+    ).toHaveLength(handoffsBeforeThirdTurn + 1);
   });
 
   test("continuous handoff reports human double-talk only after assistant audio starts", async () => {
@@ -2600,6 +2622,189 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("next_reply_ready");
   });
 
+  test("continuous handoff preserves two finalized utterances while old model output is streaming", async () => {
+    const client = new FakeClientSocket();
+    const first = makeControlledCanonicalChunkFetch();
+    const second = makeCanonicalChunkFetch([
+      "The prepared follow-up is safe to hand off now.",
+    ]);
+    let fetchCalls = 0;
+    const transcripts: string[] = [];
+    const fetchImpl = (async (...args: Parameters<typeof fetch>) => {
+      transcripts.push(JSON.parse(String(args[1]?.body)).text);
+      fetchCalls += 1;
+      return fetchCalls === 1 ? first.fetchImpl(...args) : second(...args);
+    }) as typeof fetch;
+    await connectSession({
+      client,
+      fetchImpl,
+      acousticBargeInEnabled: false,
+      allowContinuousHandoff: true,
+    });
+    client.clientSend(
+      JSON.stringify({
+        t: "audio_capabilities",
+        mode: "continuous_handoff",
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        referenceAwarePlayback: true,
+      }),
+    );
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "start the long response");
+    await first.ready;
+    first.enqueueChunk(
+      "The first canonical response becomes audible as a complete sentence after crossing the shared phrase ceiling. A second complete sentence preserves natural prosody while its model stream remains open long enough to prove ordered conversation writes. ",
+    );
+    await flush();
+    await flush();
+    expect(client.controlTypes()).toContain("assistant_playing");
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "prepare a follow-up without racing history");
+    await flush();
+    expect(fetchCalls).toBe(1);
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "retain this second follow-up too");
+    await flush();
+    expect(fetchCalls).toBe(1);
+
+    first.finish();
+    await flush();
+    await flush();
+    expect(transcripts).toEqual([
+      "start the long response",
+      "prepare a follow-up without racing history",
+      "retain this second follow-up too",
+    ]);
+    expect(client.controlTypes()).toContain("next_reply_ready");
+  });
+
+  test.each(["barge_in", "bye"] as const)(
+    "%s cancels queued finalized utterances before dispatch",
+    async (control) => {
+      const client = new FakeClientSocket();
+      const first = makeControlledCanonicalChunkFetch();
+      const second = makeCanonicalChunkFetch([
+        "The prepared follow-up is safe to hand off now.",
+      ]);
+      let fetchCalls = 0;
+      const transcripts: string[] = [];
+      const fetchImpl = (async (...args: Parameters<typeof fetch>) => {
+        transcripts.push(JSON.parse(String(args[1]?.body)).text);
+        fetchCalls += 1;
+        return fetchCalls === 1 ? first.fetchImpl(...args) : second(...args);
+      }) as typeof fetch;
+      await connectSession({
+        client,
+        fetchImpl,
+        acousticBargeInEnabled: false,
+        allowContinuousHandoff: true,
+      });
+      client.clientSend(
+        JSON.stringify({
+          t: "audio_capabilities",
+          mode: "continuous_handoff",
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          referenceAwarePlayback: true,
+        }),
+      );
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "start the long response");
+      await first.ready;
+      first.enqueueChunk(
+        "The first canonical response becomes audible as a complete sentence after crossing the shared phrase ceiling. A second complete sentence preserves natural prosody while its model stream remains open long enough to prove ordered conversation writes. ",
+      );
+      await flush();
+      await flush();
+      expect(client.controlTypes()).toContain("assistant_playing");
+
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "prepare a follow-up without racing history");
+      await flush();
+      expect(fetchCalls).toBe(1);
+
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "retain this second follow-up too");
+      await flush();
+      expect(fetchCalls).toBe(1);
+
+      client.clientSend(JSON.stringify({ t: control }));
+      await flush();
+      await flush();
+      expect(transcripts).toEqual(["start the long response"]);
+      expect(client.controlTypes()).not.toContain("next_reply_ready");
+    },
+  );
+
+  test.each([false, true])(
+    "later overlap waits for canonical persistence to settle (playback ended: %s)",
+    async (playbackEnded) => {
+      const client = new FakeClientSocket();
+      const first = makeCanonicalChunkFetch([
+        "The first response is still playing while follow-up requests arrive.",
+      ]);
+      const pending = makeControlledCanonicalChunkFetch();
+      const replacement = makeCanonicalChunkFetch([
+        "The replacement reply follows the settled prior request.",
+      ]);
+      let fetchCalls = 0;
+      const fetchImpl = (async (...args: Parameters<typeof fetch>) => {
+        fetchCalls += 1;
+        if (fetchCalls === 1) return first(...args);
+        if (fetchCalls === 2) return pending.fetchImpl(...args);
+        return replacement(...args);
+      }) as typeof fetch;
+      await connectSession({
+        client,
+        fetchImpl,
+        acousticBargeInEnabled: false,
+        allowContinuousHandoff: true,
+      });
+      client.clientSend(
+        JSON.stringify({
+          t: "audio_capabilities",
+          mode: "continuous_handoff",
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          referenceAwarePlayback: true,
+        }),
+      );
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "start a response");
+      await flush();
+      await flush();
+      expect(client.controlTypes()).toContain("assistant_playing");
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "prepare the first follow-up");
+      await pending.ready;
+      try {
+        if (playbackEnded) {
+          FakeCartesiaSocket.instances.at(-1)!.emitDone();
+          await flush();
+        }
+        ink.emitTurn("turn.start");
+        ink.emitTurn("turn.end", "replace that with the next follow-up");
+        await flush();
+        expect(fetchCalls).toBe(2);
+      } finally {
+        pending.enqueueChunk(
+          "The prior follow-up is committed before the next request.",
+        );
+        pending.finish();
+      }
+      await flush();
+      expect(fetchCalls).toBe(3);
+    },
+  );
   test("half duplex drops speaker echo through playback and bounded settle", async () => {
     let nowMs = Date.now();
     const client = new FakeClientSocket();

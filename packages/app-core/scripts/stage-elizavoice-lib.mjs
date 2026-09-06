@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Cross-builds the fused voice inference library for Android arm64-v8a with
+ * Cross-builds the fused voice inference library for Android arm64-v8a and x86_64 with
  * the NDK and stages it into the app's jniLibs. The CPU variant statically
  * links ggml/llama/mtmd; the Vulkan variant stages their shared backends and
  * requires host shader tooling supplied by the documented ELIZA_* overrides.
@@ -51,7 +51,7 @@ function parseArgs(argv) {
 // a HOST-built vulkan-shaders-gen, which needs glslc + the Vulkan/SPIRV headers
 // on the build machine. These are not vendored in the fork; discover the proven
 // locations (env overrides win) and fail loudly with what to provide.
-function resolveVulkanHostTooling(ndk) {
+function resolveVulkanHostTooling(ndk, abi) {
   const firstExisting = (cands) => cands.find((p) => p && existsSync(p));
 
   const glslc =
@@ -96,7 +96,7 @@ function resolveVulkanHostTooling(ndk) {
   const vulkanLib = firstExisting([
     path.join(
       ndk,
-      "toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/31/libvulkan.so",
+      `toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${abi === "x86_64" ? "x86_64" : "aarch64"}-linux-android/31/libvulkan.so`,
     ),
   ]);
 
@@ -105,6 +105,7 @@ function resolveVulkanHostTooling(ndk) {
 
 const ABI_TO_PLATFORM = {
   "arm64-v8a": "android-23",
+  x86_64: "android-23",
 };
 
 function resolveSdk() {
@@ -150,7 +151,7 @@ function run(cmd, args, opts = {}) {
 
 const { abi, variant } = parseArgs(process.argv.slice(2));
 const platform = ABI_TO_PLATFORM[abi];
-if (!platform) die(`unsupported abi ${abi} (Phase 3a: arm64-v8a only)`);
+if (!platform) die(`unsupported abi ${abi} (arm64-v8a | x86_64)`);
 log(`variant: ${variant}`);
 
 const sdk = resolveSdk();
@@ -213,6 +214,7 @@ const baseConfigure = [
   `-DCMAKE_TOOLCHAIN_FILE=${toolchain}`,
   `-DANDROID_ABI=${abi}`,
   `-DANDROID_PLATFORM=${platform}`,
+  "-DANDROID_STL=c++_shared",
   "-DCMAKE_BUILD_TYPE=Release",
   "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
   "-DGGML_NATIVE=OFF",
@@ -244,7 +246,7 @@ if (variant === "cpu") {
   // glue), so this variant ships the sibling .so set instead. Shaders are
   // cross-compiled to SPIR-V by a host vulkan-shaders-gen (needs glslc + the
   // Vulkan/SPIRV headers — see resolveVulkanHostTooling).
-  const vk = resolveVulkanHostTooling(ndk);
+  const vk = resolveVulkanHostTooling(ndk, abi);
   log(`vulkan glslc: ${vk.glslc}`);
   log(`vulkan SPIRV-Headers: ${vk.spirvHeadersDir}`);
   log(`vulkan headers: ${vk.vulkanIncludeDir}`);
@@ -274,7 +276,7 @@ run("cmake", [
   "--target",
   "elizainference",
   "-j",
-  String(jobs),
+  String(process.env.CMAKE_BUILD_PARALLEL_LEVEL || jobs),
 ]);
 
 const binDir = path.join(buildDir, "bin");
@@ -342,6 +344,20 @@ for (const name of toStage) {
   run(strip, ["--strip-unneeded", src, "-o", dst]);
   staged.push(dst);
 }
+
+// Every shared native component uses the same C++ runtime. Multiple static
+// libc++ copies can disagree on locale/type state during backend initialization.
+const cxxRuntime = path.join(
+  ndk,
+  "toolchains/llvm/prebuilt",
+  process.platform === "darwin" ? "darwin-x86_64" : "linux-x86_64",
+  "sysroot/usr/lib",
+  abi === "x86_64" ? "x86_64-linux-android" : "aarch64-linux-android",
+  "libc++_shared.so",
+);
+const stagedCxxRuntime = path.join(jniDir, "libc++_shared.so");
+run(strip, ["--strip-unneeded", cxxRuntime, "-o", stagedCxxRuntime]);
+staged.push(stagedCxxRuntime);
 
 // Verify the engine .so is bionic arm64, exports the FFI symbols, and has no
 // musl deps. For the Vulkan variant its backends are NEEDED siblings (resolved
