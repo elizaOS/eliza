@@ -16,6 +16,7 @@ import type {
   ModelBucket,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { isPublishedLocalModel } from "../../services/local-inference/catalog-policy";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
@@ -76,7 +77,14 @@ export function ModelHubView({
 }: ModelHubViewProps) {
   useRenderGuard("ModelHubView");
   const { t } = useTranslation();
-  const grouped = useMemo(() => groupByBucket(catalog), [catalog]);
+  const publishedCatalog = useMemo(
+    () => catalog.filter(isPublishedLocalModel),
+    [catalog],
+  );
+  const grouped = useMemo(
+    () => groupByBucket(publishedCatalog),
+    [publishedCatalog],
+  );
   const hasModels = BUCKET_ORDER.some(
     (bucket) => (grouped.get(bucket)?.length ?? 0) > 0,
   );
