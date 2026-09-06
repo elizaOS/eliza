@@ -729,7 +729,7 @@ function mapResponseFormat(responseFormat: ChatRequest["response_format"]) {
   const schema =
     responseFormat.type === "json_schema"
       ? (responseFormat.json_schema.schema ?? { type: "object" })
-      : { type: "object", additionalProperties: true };
+      : undefined;
   const name =
     responseFormat.type === "json_schema"
       ? responseFormat.json_schema.name
@@ -743,7 +743,9 @@ function mapResponseFormat(responseFormat: ChatRequest["response_format"]) {
     name: "object",
     responseFormat: Promise.resolve({
       type: "json" as const,
-      schema,
+      // An absent schema preserves JSON-object mode in the provider SDK.
+      // Supplying a permissive object schema instead requests strict structured output.
+      ...(schema ? { schema } : {}),
       ...(name ? { name } : {}),
       ...(description ? { description } : {}),
     }),
@@ -754,6 +756,7 @@ function mapResponseFormat(responseFormat: ChatRequest["response_format"]) {
       try {
         return { partial: JSON.parse(text) };
       } catch {
+        // error-policy:J3 incomplete streamed JSON has no parsed partial value.
         return undefined;
       }
     },
@@ -762,9 +765,6 @@ function mapResponseFormat(responseFormat: ChatRequest["response_format"]) {
     },
   };
 
-  if (responseFormat.type === "json_object") {
-    return output;
-  }
   return output;
 }
 
@@ -4058,6 +4058,7 @@ function toOpenAiFinishReason(
 }
 
 export const __nativeToolingTestHooks = {
+  mapResponseFormat,
   mapToolChoice,
   convertTools,
   computeEffectiveMaxTokens,
