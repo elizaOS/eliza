@@ -19,6 +19,49 @@ function deferred<T>() {
 }
 
 describe("AgentRuntime service startup", () => {
+	it("retries an unavailable sole implementation once for concurrent callers", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		const retry = deferred<RecoveringService>();
+		let attempts = 0;
+
+		class RecoveringService extends Service {
+			static override serviceType = "recovering-start-test";
+			capabilityDescription = "recovers after an initial startup failure";
+
+			static override async start(): Promise<RecoveringService> {
+				attempts += 1;
+				if (attempts === 1) throw new Error("temporarily unavailable");
+				return retry.promise;
+			}
+
+			override async stop(): Promise<void> {}
+		}
+
+		try {
+			await runtime.registerService(RecoveringService);
+			await expect(
+				runtime.getServiceLoadPromise(RecoveringService.serviceType),
+			).rejects.toMatchObject({ code: "SERVICE_START_FAILED" });
+			const first = runtime.getServiceLoadPromise(
+				RecoveringService.serviceType,
+			);
+			const second = runtime.getServiceLoadPromise(
+				RecoveringService.serviceType,
+			);
+			const recovered = new RecoveringService(runtime);
+			retry.resolve(recovered);
+			await expect(Promise.all([first, second])).resolves.toEqual([
+				recovered,
+				recovered,
+			]);
+			expect(attempts).toBe(2);
+			expect(runtime.getService(RecoveringService.serviceType)).toBe(recovered);
+		} finally {
+			await runtime.stop({ fast: true });
+		}
+	});
+
 	it("starts cross-plugin siblings once in parallel and preserves registration order", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
 		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });

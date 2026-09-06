@@ -19,23 +19,20 @@ import type {
   ScenarioContext,
   ScenarioDefinition,
 } from "@elizaos/scenario-runner/schema";
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const READINESS_TURN_NAME =
   "companion service is live and the device handshake completed";
 
-let companionScenario: ScenarioDefinition;
-
-beforeAll(async () => {
-  const specifier = new URL(
-    "../test/scenarios/deterministic-companion-device.scenario.ts",
-    import.meta.url,
-  ).href;
-  const loaded = (await import(/* @vite-ignore */ specifier)) as {
-    default: ScenarioDefinition;
-  };
-  companionScenario = loaded.default;
-});
+// Transforming the scenario's workspace graph is module loading, not a timed
+// readiness operation. Keep it outside the hooks that exercise that operation.
+const specifier = new URL(
+  "../test/scenarios/deterministic-companion-device.scenario.ts",
+  import.meta.url,
+).href;
+const { default: companionScenario } = (await import(
+  /* @vite-ignore */ specifier
+)) as { default: ScenarioDefinition };
 
 function readinessPredicate(): (
   ctx: ScenarioContext,

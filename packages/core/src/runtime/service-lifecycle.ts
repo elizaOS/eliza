@@ -140,23 +140,20 @@ export class RuntimeServiceLifecycle {
 		if (!classes || classes.length === 0) {
 			return null;
 		}
-		const startedImplementation = classes
-			.map((serviceClass) =>
-				this.host.serviceInstancesByClass().get(serviceClass),
-			)
-			.find((service): service is Service => service !== undefined);
-		const starts = classes.map((serviceClass) => {
+		// A newly registered sibling must get its first attempt without replaying
+		// an already failed implementation. Retry failed classes only when no
+		// viable sibling remains, while still joining any in-flight retry.
+		const viableClasses = classes.filter(
+			(serviceClass) =>
+				!this.host.failedServiceClasses().has(serviceClass) ||
+				this.host.startingServiceClasses().has(serviceClass),
+		);
+		const candidates = viableClasses.length > 0 ? viableClasses : classes;
+		const starts = candidates.map((serviceClass) => {
 			const started = this.host.serviceInstancesByClass().get(serviceClass);
 			if (started) return Promise.resolve(started);
 			const pending = this.host.startingServiceClasses().get(serviceClass);
 			if (pending) return pending;
-			if (
-				startedImplementation &&
-				this.host.failedServiceClasses().has(serviceClass)
-			) {
-				return Promise.resolve(startedImplementation);
-			}
-
 			const start = this._runServiceStart(key, serviceType, serviceClass).then(
 				(service) => {
 					if (!service) {
