@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       expected_deploy_sha:
-        description: Exact 40-character develop ancestor that staging must serve.
+        description: Exact 40-character staging ancestor that staging must serve.
         required: true
         type: string
       acknowledged_contract_digest:
@@ -58,8 +58,8 @@ jobs:
             echo "::error::expected_deploy_sha must be a lowercase 40-character commit."
             exit 1
           fi
-          if [[ "$GITHUB_REF" != "refs/heads/develop" ]]; then
-            echo "::error::Cloud latency certification must dispatch the trusted develop workflow definition."
+          if [[ "$GITHUB_REF" != "refs/heads/staging" ]]; then
+            echo "::error::Cloud latency certification must dispatch the trusted staging workflow definition."
             exit 1
           fi
           if [[ "$RUN_SUSPENDED" == "true" && "$RUN_AUTH" != "true" ]]; then

@@ -73,8 +73,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$MODE" = diagnose ]; then
-            [ "$TRUSTED_REF" = refs/heads/develop ] && [ "$TARGET_ENVIRONMENT" = staging ] || {
-              echo "::error::Worker diagnostics require staging from refs/heads/develop"
+            [ "$TRUSTED_REF" = refs/heads/staging ] && [ "$TARGET_ENVIRONMENT" = staging ] || {
+              echo "::error::Worker diagnostics require staging from refs/heads/staging"
               exit 1
             }
           fi
@@ -94,7 +94,7 @@ jobs:
           else
             env="staging"
           fi
-          branch=$([ "$env" = "production" ] && echo "main" || echo "develop")
+          branch=$([ "$env" = "production" ] && echo "main" || echo "staging")
           echo "environment=$env" >> "$GITHUB_OUTPUT"
           echo "branch=$branch"   >> "$GITHUB_OUTPUT"
           echo "Resolved: environment=$env branch=$branch"
@@ -133,8 +133,8 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then
             deployment_sha="$PUSH_SHA"
           elif [ -n "$REQUESTED_SHA" ]; then
-            [ "$TARGET_ENVIRONMENT" = "staging" ] || {
-              echo "::error::An exact deployment_sha is permitted only for protected staging deployments"
+            [ "$TARGET_ENVIRONMENT" = "staging" ] || [ -n "$EFFECT_DIGEST" ] || {
+              echo "::error::An exact production deployment_sha requires a reconciled effect"
               exit 1
             }
             [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
@@ -409,7 +409,7 @@ jobs:
             require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud.eliza.app"
             resolved_headscale_api_url="http://127.0.0.1:8081"
           else
-            require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "develop"
+            require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "staging"
             require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale-staging.eliza.app"
             require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud-staging.eliza.app"
             resolved_headscale_api_url="http://127.0.0.1:8080"
@@ -449,6 +449,7 @@ jobs:
         timeout-minutes: 1
         env:
           EXPECTED_DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
+          DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
         run: |
           set -euo pipefail
           actual_sha="$(git rev-parse HEAD)"
@@ -515,16 +516,17 @@ jobs:
           done
           exit 1
 
-      - name: Fence current develop SHA before database mutation
+      - name: Fence current branch SHA before database mutation
         if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
         timeout-minutes: 1
         env:
           EXPECTED_DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
+          DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
         run: |
           set -euo pipefail
-          current_sha="$(git ls-remote origin refs/heads/develop | awk 'NR == 1 { print $1 }')"
+          current_sha="$(git ls-remote origin "refs/heads/$DEPLOY_BRANCH" | awk 'NR == 1 { print $1 }')"
           [ "$current_sha" = "$EXPECTED_DEPLOY_SHA" ] || {
-            echo "::error::Develop advanced before provisioning-worker migration"
+            echo "::error::Deployment branch advanced before provisioning-worker migration"
             exit 1
           }
 
@@ -548,16 +550,17 @@ jobs:
           node packages/shared/scripts/generate-keywords.mjs
           bun run db:cloud:migrate
 
-      - name: Recheck current develop SHA before host deployment
+      - name: Recheck current branch SHA before host deployment
         if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
         timeout-minutes: 1
         env:
           EXPECTED_DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
+          DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
         run: |
           set -euo pipefail
-          current_sha="$(git ls-remote origin refs/heads/develop | awk 'NR == 1 { print $1 }')"
+          current_sha="$(git ls-remote origin "refs/heads/$DEPLOY_BRANCH" | awk 'NR == 1 { print $1 }')"
           [ "$current_sha" = "$EXPECTED_DEPLOY_SHA" ] || {
-            echo "::error::Develop advanced before provisioning-worker host deploy"
+            echo "::error::Deployment branch advanced before provisioning-worker host deploy"
             exit 1
           }
 

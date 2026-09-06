@@ -74,7 +74,7 @@ jobs:
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
             expected_ref="refs/heads/main"
           else
-            expected_ref="refs/heads/develop"
+            expected_ref="refs/heads/staging"
           fi
           if [ "$SOURCE_REF" != "$expected_ref" ]; then
             echo "::error::$TARGET_ENVIRONMENT infrastructure must run from $expected_ref"
@@ -114,8 +114,8 @@ jobs:
       TF_VAR_canonical_headscale_hostname: ${{ inputs.environment == 'production' && 'headscale.eliza.app' || 'headscale-staging.eliza.app' }}
       # Branch selection is part of the environment contract, not mutable
       # operator inventory. Derive it here so a stale or missing GitHub variable
-      # can never bootstrap production from develop (or staging from main).
-      TF_VAR_deploy_branch: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      # can never bootstrap production from staging (or staging from main).
+      TF_VAR_deploy_branch: ${{ inputs.environment == 'production' && 'main' || 'staging' }}
       TF_VAR_dns_record_import_ids: ${{ vars.DNS_RECORD_IMPORT_IDS_JSON || '{}' }}
       TF_VAR_canonical_edge_wildcard_origins: ${{ vars.CANONICAL_EDGE_WILDCARD_ORIGINS_JSON || '[]' }}
       TF_VAR_canonical_service_origins: ${{ vars.CANONICAL_SERVICE_ORIGINS_JSON || '{}' }}
@@ -148,7 +148,7 @@ jobs:
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
             expected_branch="main"
           else
-            expected_branch="develop"
+            expected_branch="staging"
           fi
           run_json=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PLAN_RUN_ID")
           RUN_JSON="$run_json" EXPECTED_BRANCH="$expected_branch" EXPECTED_RUN_ATTEMPT="$PLAN_RUN_ATTEMPT" node - <<'NODE'
@@ -242,7 +242,7 @@ jobs:
             planScope: process.env.TERRAFORM_PLAN_SCOPE,
             runId: process.env.EXPECTED_RUN_ID,
             runAttempt: process.env.EXPECTED_RUN_ATTEMPT,
-            sourceRef: `refs/heads/${process.env.EXPECTED_ENVIRONMENT === "production" ? "main" : "develop"}`,
+            sourceRef: `refs/heads/${process.env.EXPECTED_ENVIRONMENT === "production" ? "main" : "staging"}`,
             sourceSha: process.env.EXPECTED_SOURCE_SHA,
           };
           const failures = Object.entries(expected)
@@ -381,7 +381,7 @@ jobs:
             require_exact TF_VAR_cloud_api_origin "$TF_VAR_cloud_api_origin" "https://api.eliza.app"
             require_exact TF_VAR_canonical_headscale_hostname "$TF_VAR_canonical_headscale_hostname" "headscale.eliza.app"
           else
-            require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "develop"
+            require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "staging"
             require_exact TF_VAR_apps_base_domain "$TF_VAR_apps_base_domain" "apps-staging.eliza.app"
             require_exact TF_VAR_cloud_api_origin "$TF_VAR_cloud_api_origin" "https://api-staging.eliza.app"
             require_exact TF_VAR_canonical_headscale_hostname "$TF_VAR_canonical_headscale_hostname" "headscale-staging.eliza.app"

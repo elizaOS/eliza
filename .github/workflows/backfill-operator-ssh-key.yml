@@ -64,7 +64,7 @@ jobs:
           HAS_APPS_SERVER_IDS: ${{ secrets.ELIZA_OPERATOR_APPS_SERVER_IDS != '' }}
         run: |
           set -euo pipefail
-          expected_ref="refs/heads/$([ "$TARGET_ENVIRONMENT" = production ] && echo main || echo develop)"
+          expected_ref="refs/heads/$([ "$TARGET_ENVIRONMENT" = production ] && echo main || echo staging)"
           if [ "$GITHUB_REF" != "$expected_ref" ]; then
             echo "::error::$TARGET_ENVIRONMENT operator access changes must run from $expected_ref"
             exit 1

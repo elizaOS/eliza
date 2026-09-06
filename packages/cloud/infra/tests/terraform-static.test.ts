@@ -579,7 +579,7 @@ describe("Cloudflare Pages domain durability", () => {
     expect(main).toContain('domain       = "www.eliza.app"');
     expect(main).toContain('domain       = "staging.eliza.app"');
     expect(main).toContain('domain       = "cloud-staging.eliza.app"');
-    expect(main).toContain('cname_target = "develop.eliza-app.pages.dev"');
+    expect(main).toContain('cname_target = "staging.eliza-app.pages.dev"');
     expect(main).not.toContain('project_name = "eliza-cloud"');
     expect(main).toContain('resource "cloudflare_pages_domain" "public"');
     expect(main).toContain('resource "cloudflare_dns_record" "pages"');

@@ -332,7 +332,7 @@ describe("canonical cloud deployment environment contract", () => {
       "Validate canonical source ref",
     );
     expect(validate.run).toContain('expected_ref="refs/heads/main"');
-    expect(validate.run).toContain('expected_ref="refs/heads/develop"');
+    expect(validate.run).toContain('expected_ref="refs/heads/staging"');
     expect(validate.run).toContain('if [ "$SOURCE_REF" != "$expected_ref" ]');
   });
 
@@ -524,7 +524,7 @@ describe("canonical cloud deployment environment contract", () => {
   test("derives Terraform deploy branches from the selected environment", () => {
     const deployBranch = infra.jobs?.terraform?.env?.TF_VAR_deploy_branch;
     expect(deployBranch).toContain("inputs.environment == 'production'");
-    expect(deployBranch).toContain("'main' || 'develop'");
+    expect(deployBranch).toContain("'main' || 'staging'");
     expect(deployBranch).not.toContain("vars.DEPLOY_BRANCH");
 
     const preflight = step(
@@ -536,7 +536,7 @@ describe("canonical cloud deployment environment contract", () => {
       'require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "main"',
     );
     expect(preflight.run).toContain(
-      'require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "develop"',
+      'require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "staging"',
     );
     expect(preflight.run).toContain("https://api.eliza.app");
     expect(preflight.run).toContain("https://api-staging.eliza.app");

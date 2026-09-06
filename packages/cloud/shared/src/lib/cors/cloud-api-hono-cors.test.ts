@@ -78,6 +78,7 @@ describe("isFirstPartyOrigin", () => {
     expect(isFirstPartyOrigin("https://cloud-staging.eliza.app")).toBe(true);
     expect(isFirstPartyOrigin("https://app.elizacloud.ai")).toBe(true);
     expect(isFirstPartyOrigin("https://develop.eliza-app.pages.dev")).toBe(true);
+    expect(isFirstPartyOrigin("https://staging.eliza-app.pages.dev")).toBe(true);
     expect(isFirstPartyOrigin("https://random.eliza-app.pages.dev")).toBe(false);
     expect(isFirstPartyOrigin("https://staging.eliza.app")).toBe(true);
     // Never a broad suffix match: sibling lookalikes stay third-party.
