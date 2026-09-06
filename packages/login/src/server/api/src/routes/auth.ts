@@ -23,7 +23,6 @@ import {
   ACCESS_TOKEN_EXPIRY_SECONDS,
   assertPinnedDnsTransportSupported,
   assertPublicHttpsEndpoint,
-  assertTokenNotRevoked,
   buildBackend,
   buildOtpauthUri,
   buildSamlAuthorizeUrl,
@@ -118,7 +117,10 @@ import {
   type Vault,
 } from "../../../vault/src/index.ts";
 import { formatRateLimitHeaders } from "../middleware/redis-enforcement";
-import { writeAuditEvent } from "../services/audit";
+import {
+  type AuditEventInput,
+  writeAuditEvent as appendAuthAuditEvent,
+} from "../services/audit";
 import {
   publicAuthAbuseConfig,
   validateEmailAbusePolicy,
@@ -126,6 +128,7 @@ import {
   validateWalletAbusePolicy,
   verifyCaptchaToken,
 } from "../services/auth-abuse";
+import { verifySessionToken } from "../services/context";
 import { defaultAuthTenantId } from "../services/default-auth-tenant";
 import { verifyEip1271 } from "../services/eip1271";
 import {
@@ -194,6 +197,13 @@ async function withPreAuthTenant<T>(
     context,
     async (tx) =>
       withTenantTransactionDatabase(tx as never, { tenantId }, callback),
+  );
+}
+
+/** Keeps login audit writes within their tenant's transaction-local policy context. */
+async function writeAuditEvent(event: AuditEventInput): Promise<void> {
+  return withPreAuthTenant(event.tenantId, "auth-audit", () =>
+    appendAuthAuditEvent(event),
   );
 }
 
@@ -1404,78 +1414,7 @@ function buildAuthResponse(
   };
 }
 
-export async function verifySessionToken(token: string): Promise<{
-  address: string;
-  tenantId: string;
-  userId?: string;
-  email?: string;
-  jti?: string;
-  exp?: number;
-  iat?: number;
-  authMethod?: string;
-  factorEnrollmentVerifiedAt?: number;
-  mfaVerifiedAt?: number;
-  mfaMethod?: string;
-} | null> {
-  try {
-    const payload = (await verifyToken(token)) as {
-      address: string;
-      tenantId: string;
-      userId?: string;
-      email?: string;
-      typ?: string;
-      tokenType?: string;
-      jti?: string;
-      exp?: number;
-      iat?: number;
-      authMethod?: string;
-      factorEnrollmentVerifiedAt?: number;
-      mfaVerifiedAt?: number;
-      mfaMethod?: string;
-    };
-    if (payload.typ === "identity") return null;
-    // Never accept a refresh JWT as an access token (SEC-055).
-    if (payload.tokenType === "refresh") return null;
-    await assertTokenNotRevoked(payload);
-    if (payload.userId) {
-      const [user] = await getDb()
-        .select({
-          deactivatedAt: users.deactivatedAt,
-          isGuest: users.isGuest,
-          guestExpiresAt: users.guestExpiresAt,
-        })
-        .from(users)
-        .where(eq(users.id, payload.userId));
-      if (!user || user.deactivatedAt) return null;
-      // Fail-closed guest expiry: enforce the guest's hard expiry against the
-      // authoritative DB column, not just the access-token `exp`, so a refreshed
-      // or long-lived token cannot outlive the guest window. Full accounts have
-      // guestExpiresAt = null and are unaffected.
-      if (
-        user.isGuest &&
-        user.guestExpiresAt &&
-        user.guestExpiresAt.getTime() <= Date.now()
-      ) {
-        return null;
-      }
-      if (payload.tenantId) {
-        const [membership] = await getDb()
-          .select({ role: userTenants.role })
-          .from(userTenants)
-          .where(
-            and(
-              eq(userTenants.userId, payload.userId),
-              eq(userTenants.tenantId, payload.tenantId),
-            ),
-          );
-        if (!membership) return null;
-      }
-    }
-    return payload;
-  } catch {
-    return null;
-  }
-}
+export { verifySessionToken } from "../services/context";
 
 // ─── Nonce store (SIWE / SIWS) ───────────────────────────────────────────────
 //
@@ -2924,50 +2863,57 @@ async function findOrCreateWalletTenant(opts: {
   tenantId: string;
   tenantName: string;
 }): Promise<WalletTenantResult> {
-  const db = getDb();
-  const [existingTenant] = await db
-    .select()
-    .from(tenants)
-    .where(eq(tenants.ownerAddress, opts.ownerAddress));
-  if (existingTenant) {
-    return { tenant: existingTenant, isNewTenant: false };
-  }
+  // The caller has verified the signature before deriving this wallet tenant.
+  return withPreAuthTenant(opts.tenantId, "verified-wallet", async () => {
+    const db = getDb();
+    const [existingTenant] = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.ownerAddress, opts.ownerAddress));
+    if (existingTenant) {
+      return { tenant: existingTenant, isNewTenant: false };
+    }
 
-  const apiKeyPair = generateApiKey();
-  const [newTenant] = await db
-    .insert(tenants)
-    .values({
-      id: opts.tenantId,
-      name: opts.tenantName,
-      apiKeyHash: apiKeyPair.hash,
-      ownerAddress: opts.ownerAddress,
-    })
-    .onConflictDoNothing()
-    .returning();
+    const apiKeyPair = generateApiKey();
+    const [newTenant] = await db
+      .insert(tenants)
+      .values({
+        id: opts.tenantId,
+        name: opts.tenantName,
+        apiKeyHash: apiKeyPair.hash,
+        ownerAddress: opts.ownerAddress,
+      })
+      .onConflictDoNothing()
+      .returning();
 
-  if (newTenant) {
-    return { tenant: newTenant, isNewTenant: true, rawApiKey: apiKeyPair.key };
-  }
+    if (newTenant) {
+      return {
+        tenant: newTenant,
+        isNewTenant: true,
+        rawApiKey: apiKeyPair.key,
+      };
+    }
 
-  const [retryTenant] = await db
-    .select()
-    .from(tenants)
-    .where(eq(tenants.ownerAddress, opts.ownerAddress));
-  if (retryTenant) {
-    return { tenant: retryTenant, isNewTenant: false };
-  }
+    const [retryTenant] = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.ownerAddress, opts.ownerAddress));
+    if (retryTenant) {
+      return { tenant: retryTenant, isNewTenant: false };
+    }
 
-  const [conflictingTenant] = await db
-    .select()
-    .from(tenants)
-    .where(eq(tenants.id, opts.tenantId));
-  if (conflictingTenant) {
-    throw new Error(
-      "Wallet tenant id is already reserved for a different owner",
-    );
-  }
+    const [conflictingTenant] = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, opts.tenantId));
+    if (conflictingTenant) {
+      throw new Error(
+        "Wallet tenant id is already reserved for a different owner",
+      );
+    }
 
-  throw new Error("Failed to create tenant");
+    throw new Error("Failed to create tenant");
+  });
 }
 
 function ethereumWalletTenantId(address: string): string {

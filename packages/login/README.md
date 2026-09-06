@@ -53,6 +53,8 @@ The PostgreSQL integration suite creates and removes a separate database on a
 local PostgreSQL server. Run it with `LOGIN_TEST_DATABASE_URL` set to that
 server's administrative database URL. Without this setting, that test is
 explicitly skipped; the embedded tests do not substitute for PostgreSQL proof.
+The test uses a restricted runtime role and forces the installed tenant policies,
+covering sign-in, audit persistence, session restarts and revocation.
 
 The cloud proxy can route its existing public login mount to this service with
 `LOGIN_API_URL`. This binding takes precedence over the legacy upstream settings;

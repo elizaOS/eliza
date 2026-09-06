@@ -209,6 +209,9 @@ export async function verifySessionToken(token: string) {
       mfaMethod?: string;
       jti?: string;
       exp?: number;
+      iat?: number;
+      authMethod?: string;
+      factorEnrollmentVerifiedAt?: number;
     };
     if (payload.typ === "identity") return null;
     // Never accept a refresh JWT as an access token (SEC-055).
@@ -257,6 +260,7 @@ export async function verifySessionToken(token: string) {
     }
     return payload;
   } catch {
+    // error-policy:J1 reject credentials when signature or session authority validation fails.
     return null;
   }
 }

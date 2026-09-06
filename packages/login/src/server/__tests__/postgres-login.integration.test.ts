@@ -7,7 +7,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 const databaseUrl = process.env.LOGIN_TEST_DATABASE_URL;
 
 test.skipIf(!databaseUrl)(
-  "PostgreSQL login preserves sessions with a restricted runtime role and rejects schema drift",
+  "PostgreSQL login preserves sessions under enforced tenant isolation and rejects schema drift",
   async () => {
     if (!databaseUrl) throw new Error("LOGIN_TEST_DATABASE_URL is required");
     const url = new URL(databaseUrl);
@@ -62,6 +62,15 @@ test.skipIf(!databaseUrl)(
       await owner`GRANT SELECT ON ALL TABLES IN SCHEMA drizzle TO ${owner(runtimeRole)}`;
       await owner`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${owner(runtimeRole)}`;
       await owner`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA steward_bootstrap TO ${owner(runtimeRole)}`;
+      await owner`GRANT USAGE ON SCHEMA steward_rls TO ${owner(runtimeRole)}`;
+      await owner`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA steward_rls TO ${owner(runtimeRole)}`;
+      const protectedTables = await owner<{ tablename: string }[]>`
+        SELECT DISTINCT tablename FROM pg_policies WHERE schemaname = 'public'
+      `;
+      for (const { tablename } of protectedTables) {
+        await owner`ALTER TABLE public.${owner(tablename)} ENABLE ROW LEVEL SECURITY`;
+        await owner`ALTER TABLE public.${owner(tablename)} FORCE ROW LEVEL SECURITY`;
+      }
       url.username = runtimeRole;
       url.password = runtimePassword;
       process.env.DATABASE_URL = url.toString();
@@ -98,7 +107,17 @@ test.skipIf(!databaseUrl)(
         }),
       });
       expect(exchange.status).toBe(200);
-      const { token } = await exchange.json();
+      const { token, userId } = (await exchange.json()) as {
+        token: string;
+        userId: string;
+      };
+      const auditRows = await owner`
+        SELECT tenant_id AS "tenantId", actor_id AS "actorId"
+        FROM audit_events WHERE action = 'auth.login'
+      `;
+      expect(auditRows).toEqual([
+        { tenantId: `eth:${account.address.toLowerCase()}`, actorId: userId },
+      ]);
       await server.stop();
       server = undefined;
       server = await startLoginServer({ port: 0 });
