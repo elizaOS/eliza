@@ -183,7 +183,11 @@ const factOpsSchema: JSONSchema = {
 					verification_status: { type: "string" },
 					valid_at: { type: "string" },
 					factId: { type: "string" },
-					proposedText: { type: "string" },
+					proposedText: {
+						type: "string",
+						description:
+							"Required and nonblank for contradict: the complete corrected claim supported by the user's correction, preserving unchanged details. Proposes a replacement for review; never copy the old contradicted claim or invent missing details.",
+					},
 					reason: { type: "string" },
 				},
 				required: ["op"],
@@ -764,11 +768,12 @@ async function applyContradict(
 ): Promise<boolean> {
 	const fact = ctx.candidatesById.get(op.factId);
 	if (!fact || !ctx.message.entityId) return false;
+	if (op.proposedText.trim() === (fact.content.text ?? "").trim()) return false;
 	await recordFactCandidate(ctx.runtime, {
 		entityId: ctx.message.entityId,
 		kind: "contradict",
 		existingFactId: asUuidOrNull(fact.id) ?? undefined,
-		proposedText: op.proposedText ?? fact.content.text ?? "",
+		proposedText: op.proposedText,
 		reason: op.reason,
 		evidenceMessageId: asUuidOrNull(ctx.message.id) ?? undefined,
 	});
@@ -975,7 +980,7 @@ Fact stores:
 Rules:
 - No meaningful new/changed fact -> {"ops":[]}.
 - Existing meaning -> strengthen with factId.
-- Contradiction -> contradict with factId + reason.
+- Contradiction -> contradict with factId + reason + proposedText. proposedText must be a nonblank, complete corrected claim grounded in the user's correction, preserving unchanged details. Do not copy the old contradicted claim or invent a missing replacement; omit the op when a complete corrected claim is not supported. This queues a pending review proposal, not an applied fact replacement.
 - Use only fact IDs shown below for strengthen, decay, and contradict.
 - add_durable/add_current keywords: 3-8 lowercase retrieval terms from claim/category/nouns/places/dates/projects/symptoms/preferences. Omit stopwords/generic.
 - add_durable/add_current structured_fields: flat string values from the claim. Use English key names even when the message is in another language.

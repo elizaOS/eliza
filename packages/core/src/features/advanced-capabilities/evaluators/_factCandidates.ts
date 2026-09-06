@@ -1,21 +1,26 @@
 /**
- * Persists pending fact reconciliations for the Facts review UI.
- * Schema provisioning belongs to the database layer; this helper only appends contradictions.
+ * Persists pending fact-reconciliation proposals without modifying existing facts.
+ * Schema provisioning belongs to the database layer; storage failures propagate
+ * to the evaluator boundary.
  */
 import { sql } from "drizzle-orm";
+import { ElizaError } from "../../../errors.ts";
 import type { IAgentRuntime, UUID } from "../../../types/index.ts";
 
 interface RuntimeDbExecutor {
 	execute: (query: ReturnType<typeof sql.raw>) => Promise<unknown>;
 }
 
-async function getRuntimeDb(
-	runtime: IAgentRuntime,
-): Promise<RuntimeDbExecutor | null> {
+function getRuntimeDb(runtime: IAgentRuntime): RuntimeDbExecutor {
 	const adapter = (runtime as IAgentRuntime & { adapter?: { db?: unknown } })
 		.adapter;
-	const db = adapter.db as RuntimeDbExecutor | undefined;
-	if (!db || typeof db.execute !== "function") return null;
+	const db = adapter?.db as RuntimeDbExecutor | undefined;
+	if (!db || typeof db.execute !== "function") {
+		throw new ElizaError("Fact candidate storage requires a SQL executor", {
+			code: "FACT_CANDIDATE_STORAGE_UNAVAILABLE",
+			context: { agentId: runtime.agentId },
+		});
+	}
 	return db;
 }
 
@@ -40,8 +45,7 @@ export async function recordFactCandidate(
 	runtime: IAgentRuntime,
 	params: FactCandidateRecord,
 ): Promise<void> {
-	const db = await getRuntimeDb(runtime);
-	if (!db) return;
+	const db = getRuntimeDb(runtime);
 	const evidence = {
 		reason: params.reason,
 		evidenceMessageId: params.evidenceMessageId,
