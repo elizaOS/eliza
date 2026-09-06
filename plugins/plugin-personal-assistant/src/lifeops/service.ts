@@ -2820,6 +2820,10 @@ export class LifeOpsService extends LifeOpsServiceBase {
       const scoringOverride = this.runtime.getSetting(
         "LIFEOPS_INBOX_PRIORITY_SCORING",
       );
+      // `getSetting` normalizes the string "false" to boolean false (core
+      // runtime secret coercion), so both shapes must opt out — a string-only
+      // check silently leaves scoring enabled and deterministic scenario
+      // lanes fail on unexpected background TEXT_SMALL calls.
       if (
         scoringOverride === false ||
         (typeof scoringOverride === "string" &&
