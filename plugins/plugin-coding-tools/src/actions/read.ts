@@ -1,8 +1,9 @@
 /**
- * FILE `read` handler streams bounded text windows from sandboxed regular files.
+ * FILE `read` returns complete text by default and explicit ranges from sandboxed regular files.
  * Reads expose resumable line or byte coordinates and an opaque file revision.
  */
 
+import { constants as bufferConstants } from "node:buffer";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import {
@@ -18,7 +19,6 @@ import {
   capTranscriptForChat,
   failureToActionResult,
   fencePreformatted,
-  readNumberParam,
   readPositiveIntSetting,
   readStringParam,
   successActionResult,
@@ -35,7 +35,6 @@ import {
   SANDBOX_SERVICE,
 } from "../types.js";
 
-const BUFFER_BYTES = 64 * 1024;
 const LINE_BUFFER_BYTES = 256;
 type Unit = "line" | "byte";
 type Window = {
@@ -55,7 +54,23 @@ function integer(
   name: string,
   fallback: number,
 ): number | undefined {
-  const value = readNumberParam(options, name) ?? fallback;
+  if (!options || typeof options !== "object") return fallback;
+  const record = options as Record<string, unknown>;
+  const parameters = record.parameters;
+  const nested =
+    parameters && typeof parameters === "object"
+      ? (parameters as Record<string, unknown>)
+      : undefined;
+  const raw =
+    nested && Object.hasOwn(nested, name) ? nested[name] : record[name];
+  const value =
+    raw === undefined
+      ? fallback
+      : typeof raw === "number"
+        ? raw
+        : typeof raw === "string" && raw.trim() !== ""
+          ? Number(raw)
+          : Number.NaN;
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
@@ -273,12 +288,17 @@ export async function readFileHandler(
     });
   const unit: Unit = rawUnit;
   const offset = integer(options, "offset", 0);
-  const defaultLimit =
-    unit === "line"
-      ? readPositiveIntSetting(runtime, "CODING_TOOLS_MAX_READ_LINES", 2_000)
-      : BUFFER_BYTES;
-  const limit = integer(options, "limit", defaultLimit);
-  if (offset === undefined || limit === undefined || limit === 0)
+  const limit = integer(
+    options,
+    "limit",
+    Number.MAX_SAFE_INTEGER - (offset ?? 0),
+  );
+  if (
+    offset === undefined ||
+    limit === undefined ||
+    limit === 0 ||
+    offset > Number.MAX_SAFE_INTEGER - limit
+  )
     return failureToActionResult({
       reason: "invalid_param",
       message:
@@ -287,7 +307,7 @@ export async function readFileHandler(
   const maxBytes = readPositiveIntSetting(
     runtime,
     "CODING_TOOLS_MAX_FILE_SIZE_BYTES",
-    262_144,
+    bufferConstants.MAX_STRING_LENGTH,
   );
   let handle: fs.FileHandle | undefined;
   try {
@@ -299,17 +319,18 @@ export async function readFileHandler(
         message:
           "path is not a regular file. READ accepts files only; use SHELL with `ls` or `rg --files` to inspect a directory.",
       });
+    if (unit === "byte" && offset > before.size)
+      return failureToActionResult({
+        reason: "invalid_param",
+        message: "byte offset exceeds the file size",
+      });
     const currentRevision = fileRevision(before);
-    const explicitExpected = readStringParam(options, "expectedRevision");
-    const expected =
-      explicitExpected ??
-      (offset > 0
-        ? fileState.get(conversationId, checked.resolved)?.revision
-        : undefined);
+    const expected = readStringParam(options, "expectedRevision");
     if (offset > 0 && !expected)
       return failureToActionResult({
         reason: "invalid_param",
-        message: "read from offset 0 before continuing from a nonzero offset",
+        message:
+          "expectedRevision is required for a nonzero offset; use the revision returned by the preceding read",
       });
     if (expected && expected !== currentRevision)
       return failureToActionResult(
@@ -339,14 +360,14 @@ export async function readFileHandler(
         }
       }
     }
+    if (unit === "byte" && Math.min(limit, before.size - offset) > maxBytes)
+      return failureToActionResult({
+        reason: "invalid_param",
+        message: `Requested byte range exceeds the configured ${maxBytes}-byte read budget; request a smaller explicit range`,
+      });
     const window =
       unit === "byte"
-        ? await byteWindow(
-            handle,
-            before.size,
-            offset,
-            Math.min(limit, maxBytes),
-          )
+        ? await byteWindow(handle, before.size, offset, limit)
         : await lineWindow(
             handle,
             before.size,

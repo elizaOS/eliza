@@ -130,18 +130,10 @@
         "default": 15000,
         "sensitive": false
       },
-      "CODING_TOOLS_MAX_READ_LINES": {
-        "type": "number",
-        "description": "Max lines returned by FILE action=read in a single call before truncation. Mirrors Claude's MAX_LINES_TO_READ.",
-        "required": false,
-        "default": 2000,
-        "sensitive": false
-      },
       "CODING_TOOLS_MAX_FILE_SIZE_BYTES": {
         "type": "number",
-        "description": "Byte cap for selected FILE action=read content. Larger files require an explicit line limit (and optional offset) and are scanned with bounded memory.",
+        "description": "Optional selected-content byte budget for FILE reads. Requests exceeding it fail explicitly; no output is silently clipped.",
         "required": false,
-        "default": 262144,
         "sensitive": false
       },
       "CODING_TOOLS_GREP_HEAD_LIMIT": {

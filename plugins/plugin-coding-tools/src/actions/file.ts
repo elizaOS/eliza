@@ -554,7 +554,8 @@ export const fileAction: Action = {
     },
     {
       name: "limit",
-      description: "For action=read, maximum lines or UTF-8 bytes to return.",
+      description:
+        "For action=read, maximum lines or UTF-8 bytes to return; omit for the complete remainder.",
       required: false,
       schema: { type: "number" },
     },

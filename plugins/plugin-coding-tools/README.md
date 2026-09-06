@@ -54,8 +54,7 @@ All settings are optional. Configure via environment variables or agent settings
 | `ELIZA_SHELL_ECHO_TRANSCRIPT` | unset | Set to `1` or `true` to emit the sanitized foreground shell transcript callback before the planner reply. |
 | `CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS` | `64000` | Per-stream retained stdout/stderr ring size for background shell polling. |
 | `CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS` | `1500` | Grace period between SIGTERM and SIGKILL for background shell termination. |
-| `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read. |
-| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Selected-content byte cap. Larger files require an explicit line `limit` (and optional `offset`) and are scanned with bounded memory. |
+| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | Optional | Selected-content byte budget; oversized reads fail explicitly. Omitted read limits request the complete remainder. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Max output lines for GREP. Set to 0 to disable. |
 
 ### SHELL trust boundary
