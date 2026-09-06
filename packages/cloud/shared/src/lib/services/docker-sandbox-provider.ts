@@ -2915,6 +2915,7 @@ export class DockerSandboxProvider implements SandboxProvider {
             config.environmentVars.ELIZA_STATE_DIR?.trim() || CONTAINER_DURABLE_STATE_DIR,
         }),
       );
+      allEnv.ELIZA_CLOUD_RESTORE_QUARANTINE = "1";
       delete allEnv.ELIZA_VAULT_PASSPHRASE;
       for (const [key, value] of Object.entries(allEnv)) {
         validateEnvKey(key);

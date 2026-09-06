@@ -404,6 +404,7 @@ describe("DockerSandboxProvider exact restore quarantine", () => {
             ORCHESTRATOR_SESSION_ID: "forbidden-orchestrator-session",
             KV_REST_API_URL: "https://forbidden-kv.example.test",
             KV_REST_API_TOKEN: "forbidden-kv-token",
+            ELIZA_CLOUD_RESTORE_QUARANTINE: "0",
             ALLOWED_RESTORE_SETTING: "present",
           },
           onReplacementCreateAttemptStarted: async () => {
@@ -476,6 +477,25 @@ describe("DockerSandboxProvider exact restore quarantine", () => {
     const dockerCreate = stdinCommands.find(({ command }) => command.includes("docker create"));
     expect(dockerCreate).toBeDefined();
     expect(dockerCreate?.command).toContain(`--name '${CONTAINER_NAME}'`);
+    const quarantineFlag = /^ELIZA_CLOUD_RESTORE_QUARANTINE=([^\r\n]*)$/m.exec(
+      dockerCreate?.input.toString("utf8") ?? "",
+    );
+    if (!quarantineFlag) throw new Error("Created restore container lacks its boot quarantine");
+    const boot = Bun.spawnSync(
+      [
+        "/bin/sh",
+        join(import.meta.dir, "../../../../../../app-core/scripts/docker-entrypoint.sh"),
+        "/bin/sh",
+        "-c",
+        "printf unexpected-runtime-start",
+      ],
+      {
+        env: { PATH: "/usr/bin:/bin", ELIZA_CLOUD_RESTORE_QUARANTINE: quarantineFlag[1]! },
+      },
+    );
+    expect(boot.exitCode).toBe(79);
+    expect(boot.stdout.toString()).toBe("");
+    expect(boot.stderr.toString()).toContain("RESTORE_QUARANTINE");
     expect(dockerCreate?.command).toContain("--restart no");
     expect(dockerCreate?.command).toContain("--network none");
     expect(dockerCreate?.command).toContain("--no-healthcheck");

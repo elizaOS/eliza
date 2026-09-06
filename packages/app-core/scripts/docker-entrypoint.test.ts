@@ -1,6 +1,13 @@
 /** Exercises docker entrypoint behavior with deterministic app-core test fixtures. */
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -245,6 +252,40 @@ exec "$@"
 });
 
 describeIfPosix("docker entrypoint", () => {
+  test.each([
+    ["1", ""],
+    ["1", KEY_CI_TEST],
+    ["true", ""],
+    ["invalid", ""],
+  ])(
+    "rejects quarantine %s before boot (mesh key: %s)",
+    async (quarantine, authKey) => {
+      const root = await mkdtemp(path.join(tmpdir(), "docker-quarantine-"));
+      try {
+        const result = runDockerEntrypoint(
+          {
+            PATH: "/usr/bin:/bin",
+            ELIZA_CLOUD_RESTORE_QUARANTINE: quarantine,
+            ELIZA_STATE_DIR: root,
+            TS_STATE_DIR: path.join(root, "mesh"),
+            TS_AUTHKEY: authKey,
+          },
+          [
+            "/bin/sh",
+            "-c",
+            'printf runtime-started > "$ELIZA_STATE_DIR/runtime-started"',
+          ],
+        );
+        expect(result.code).toBe(79);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain("RESTORE_QUARANTINE");
+        expect(await readdir(root)).toEqual([]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   test("preserves port normalization and starts without tailscale when no auth key is configured", () => {
     const result = runDockerEntrypoint(
       {

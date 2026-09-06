@@ -1,6 +1,17 @@
 #!/usr/bin/env sh
 set -eu
 
+# A restore candidate must not enter normal boot: even compile-cache setup can
+# alter its state before runtime dispatch. The provider owns this marker; only
+# the separate, verified staging/activation path may consume candidate state.
+case "${ELIZA_CLOUD_RESTORE_QUARANTINE:-}" in
+  ""|0) ;;
+  *)
+    printf '%s\n' '[docker-entrypoint] RESTORE_QUARANTINE: normal startup is forbidden for a restore candidate' >&2
+    exit 79
+    ;;
+esac
+
 # Bootstrap Tailscale/Headscale membership when Cloud injects TS_AUTHKEY. Kept
 # behaviorally identical to deploy/cloud-agent-docker-entrypoint.sh so the
 # canonical agent image and the bespoke cloud-agent image join the mesh the same
