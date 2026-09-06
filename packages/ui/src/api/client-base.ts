@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * ElizaClient class — core infrastructure only.
  *
@@ -270,10 +271,12 @@ type StreamChatState = {
 };
 
 function normalizeBaseUrl(value: string | null | undefined): string {
-  const trimmed = value?.slice(0, 4096).trim() ?? "";
+  if (!value) return "";
+  const wellFormed = toWellFormedUnicode(value);
+  const trimmed = truncateWellFormed(wellFormed, 4096).trim();
   let end = trimmed.length;
   while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end--;
-  return trimmed.slice(0, end);
+  return truncateWellFormed(trimmed, end);
 }
 
 function isElizaCloudControlPlaneBase(
