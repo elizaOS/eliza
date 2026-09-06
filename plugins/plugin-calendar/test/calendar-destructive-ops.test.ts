@@ -372,6 +372,51 @@ describe("CALENDAR delete_event disambiguation", () => {
     );
   });
 
+  it("an update whose planner date detail repeats the destination day still finds the event on its current day", async () => {
+    // Live 2026-09-06 06:12/06:53: "move my dentist appointment to next
+    // wednesday" and "move my piano lesson to thursday at 6pm" arrived with
+    // details.date = the destination; the lookup was constrained to that day
+    // and reported the event missing.
+    const result = await runHandler({
+      service,
+      text: "move lunch with grandma to 2026-07-10 at 1pm",
+      parameters: {
+        subaction: "update_event",
+        query: "grandma",
+        details: {
+          date: "2026-07-10",
+          start: "2026-07-10T13:00:00Z",
+          timeZone: "UTC",
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.modifyApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+    );
+  });
+
+  it("an update whose planner window is the destination day still finds the event on its current day", async () => {
+    const result = await runHandler({
+      service,
+      text: "reschedule lunch with grandma to 2026-07-10 at 1pm",
+      parameters: {
+        subaction: "update_event",
+        query: "grandma",
+        details: {
+          timeMin: "2026-07-10T00:00:00Z",
+          timeMax: "2026-07-10T23:59:59Z",
+          start: "2026-07-10T13:00:00Z",
+          timeZone: "UTC",
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.modifyApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+    );
+  });
+
   it("a multi-target message with no per-target intent uses the planner's date detail, not the message's first day", async () => {
     // Live 2026-09-06 00:16: "delete the yoga class on thursday and the dentist
     // visit on friday" — the dentist call carried date=Friday but no intent, and

@@ -2331,13 +2331,34 @@ function resolveStatedCreateDate(args: {
  * is skipped.
  */
 function mutationTargetTexts(args: {
+  action?: "update" | "delete";
   details: Record<string, unknown> | undefined;
   currentMessage: string;
   intent: string;
   timeZone: string;
 }): (string | undefined)[] {
-  const explicitDate = detailString(args.details, "date");
   const message = args.currentMessage.trim();
+  // An update's planner `date` detail routinely carries the DESTINATION day
+  // ("move my piano lesson to thursday at 6pm" arrived with date=Thursday,
+  // live 2026-09-06 06:12 and 06:53): the message and intent are cut at the
+  // "to" marker below, but a bare date detail has no marker, so it would
+  // re-target the lookup to the destination and miss the event. A date detail
+  // equal to the destination stated in the user's words is dropped.
+  const destination =
+    args.action === "update"
+      ? (destinationLocalDate(message, args.timeZone) ??
+        destinationLocalDate(args.intent, args.timeZone))
+      : null;
+  const rawExplicitDate = detailString(args.details, "date");
+  const explicitDateParsed = rawExplicitDate
+    ? parseExplicitLocalDate(rawExplicitDate, args.timeZone)
+    : null;
+  const explicitDate =
+    destination &&
+    explicitDateParsed &&
+    compareLocalDates(explicitDateParsed, destination) === 0
+      ? undefined
+      : rawExplicitDate;
   const intent =
     args.intent.trim() && args.intent.trim() !== message
       ? args.intent.trim()
@@ -2347,6 +2368,33 @@ function mutationTargetTexts(args: {
   return messageNamesSeveralDays
     ? [intent, explicitDate, message]
     : [message, intent, explicitDate];
+}
+
+/**
+ * A request that relocates an existing event ("move my piano lesson to
+ * thursday at 6pm", "reschedule the dentist to next wednesday"). Its day and
+ * time describe where the event is going, so no planner or LLM window derived
+ * from them may constrain the lookup for the event as it is now (live
+ * 2026-09-06 06:12 and 06:53: both lookups were windowed to the destination
+ * day and reported the event missing).
+ */
+const RELOCATION_REQUEST_PATTERN =
+  /\b(?:move|moving|reschedule|rescheduling|shift|push|bump|postpone|bring\s+forward|change|changing)\b[\s\S]{0,80}?\bto\b/i;
+
+function isRelocationRequest(text: string): boolean {
+  return RELOCATION_REQUEST_PATTERN.test(text);
+}
+
+/** The day named after an update's first "to" marker, if any. */
+function destinationLocalDate(
+  text: string,
+  timeZone: string,
+): LocalDateOnly | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const marker = trimmed.search(CALENDAR_DESTINATION_CLAUSE_PATTERN);
+  if (marker === -1) return null;
+  return parseExplicitLocalDate(trimmed.slice(marker), timeZone);
 }
 
 const PAST_START_GRACE_MS = 5 * 60 * 1000;
@@ -4953,19 +5001,21 @@ const calendarAction: CalendarHandlerAction = {
               }),
             });
           }
-          const feedRequest = plannerWindowUsable(details, llmPlan)
-            ? resolveCalendarWindow(
-                intent,
-                details,
-                true,
-                llmPlan,
-                planningTimeZone,
-              ).request
-            : {
-                calendarId: calendarIdDetail(details),
-                timeZone: planningTimeZone,
-                ...buildWideLookupRange(planningTimeZone),
-              };
+          const feedRequest =
+            plannerWindowUsable(details, llmPlan) &&
+            !isRelocationRequest(messageText(message))
+              ? resolveCalendarWindow(
+                  intent,
+                  details,
+                  true,
+                  llmPlan,
+                  planningTimeZone,
+                ).request
+              : {
+                  calendarId: calendarIdDetail(details),
+                  timeZone: planningTimeZone,
+                  ...buildWideLookupRange(planningTimeZone),
+                };
           const feed = requireCompleteFreshCalendarFeed(
             await service.getCalendarFeed(INTERNAL_URL, {
               includeHiddenCalendars: true,
@@ -4984,6 +5034,7 @@ const calendarAction: CalendarHandlerAction = {
             // An explicit `date` detail names the target's local day ahead of
             // any date phrase in the prose.
             texts: mutationTargetTexts({
+              action: "update",
               details,
               currentMessage: messageText(message),
               intent,
@@ -5307,19 +5358,21 @@ const calendarAction: CalendarHandlerAction = {
               }),
             });
           }
-          const feedRequest = plannerWindowUsable(details, llmPlan)
-            ? resolveCalendarWindow(
-                intent,
-                details,
-                true,
-                llmPlan,
-                planningTimeZone,
-              ).request
-            : {
-                calendarId: calendarIdDetail(details),
-                timeZone: planningTimeZone,
-                ...buildWideLookupRange(planningTimeZone),
-              };
+          const feedRequest =
+            plannerWindowUsable(details, llmPlan) &&
+            !isRelocationRequest(messageText(message))
+              ? resolveCalendarWindow(
+                  intent,
+                  details,
+                  true,
+                  llmPlan,
+                  planningTimeZone,
+                ).request
+              : {
+                  calendarId: calendarIdDetail(details),
+                  timeZone: planningTimeZone,
+                  ...buildWideLookupRange(planningTimeZone),
+                };
           const feed = requireCompleteFreshCalendarFeed(
             await service.getCalendarFeed(INTERNAL_URL, {
               includeHiddenCalendars: true,
@@ -5600,11 +5653,14 @@ const calendarAction: CalendarHandlerAction = {
       // events" returns "no events today" even when the calendar has
       // dozens of upcoming items. We apply this regardless of whether the
       // chat LLM picked feed or search_events because both subactions go
+      const relocationLookup =
+        subaction === "search_events" &&
+        isRelocationRequest(messageText(message));
       const baseResolved = resolveCalendarWindow(
         intent,
-        details,
+        relocationLookup ? undefined : details,
         subaction === "search_events",
-        llmPlan,
+        relocationLookup ? undefined : llmPlan,
         planningTimeZone,
       );
       const request = baseResolved.request;
