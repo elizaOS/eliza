@@ -48,9 +48,108 @@ describe("markdownToSlackMrkdwn", () => {
     expect(markdownToSlackMrkdwn("")).toBe("");
   });
 
+  it("leaves fenced code bodies exactly as authored", () => {
+    // The link/heading/style passes are regex-based and cannot see fence
+    // state, so without protection they rewrote code: a `#` comment line
+    // became bold, `a * b` became `a _ b`, and a literal markdown link
+    // became a Slack link. Slack renders none of that inside ``` — the user
+    // just sees corrupted code and copies it out.
+    expect(
+      markdownToSlackMrkdwn("Run this:\n```bash\n# install deps\nnpm i\n```"),
+    ).toContain("# install deps");
+    expect(markdownToSlackMrkdwn("```python\narea = w * h * d\n```")).toContain(
+      "area = w * h * d",
+    );
+    expect(
+      markdownToSlackMrkdwn("```md\nsee [docs](https://ex.com)\n```"),
+    ).toContain("[docs](https://ex.com)");
+  });
+
+  it("still entity-escapes & < > inside a fenced body", () => {
+    // The body is held aside before `escapeSlackMrkdwn` runs, so it is escaped
+    // at lift-out time instead; Slack renders raw & < > inside a fence.
+    const out = markdownToSlackMrkdwn(
+      "```sh\nif [ $a -lt 5 ] && echo <hi>\n```",
+    );
+    expect(out).toContain("&amp;&amp;");
+    expect(out).toContain("&lt;hi&gt;");
+  });
+
+  it("restores multiple fences in order and still styles the prose between", () => {
+    const out = markdownToSlackMrkdwn(
+      "```\nAAA * A\n```\nmid *em*\n```\nBBB * B\n```",
+    );
+    expect(out).toContain("AAA * A");
+    expect(out).toContain("BBB * B");
+    expect(out).toContain("_em_");
+    expect(out.indexOf("AAA")).toBeLessThan(out.indexOf("BBB"));
+    expect(out).not.toContain("\u0000");
+  });
+
   it("handles a 100k unterminated code fence without backtracking", () => {
-    const adversarial = `\`\`\`json\n${"x".repeat(100_000)}`;
-    expect(markdownToSlackMrkdwn(adversarial)).toContain("x".repeat(100_000));
+    // Exact equality, not `toContain`: a substring check still passed while the
+    // body around it was being rewritten, which is how the unterminated-fence
+    // corruption below survived this test.
+    const body = "x".repeat(100_000);
+    expect(markdownToSlackMrkdwn(`\`\`\`json\n${body}`)).toBe(
+      `\`\`\`\n${body}`,
+    );
+  });
+
+  it("does not rewrite the body after an unmatched opening fence", () => {
+    // A truncated or streamed message ends mid-fence, and SlackService formats
+    // every outbound message, so this is a reachable output state -- not a
+    // parser curiosity. Before this, the tail kept every style pass: `#` went
+    // bold, `*literal*` went italic, and a markdown link became a Slack link.
+    expect(
+      markdownToSlackMrkdwn("```sh\n# keep *literal* [docs](https://ex.com)"),
+    ).toBe("```\n# keep *literal* [docs](https://ex.com)");
+    // and the closed case is unchanged
+    expect(
+      markdownToSlackMrkdwn(
+        "```\n# keep *literal* [docs](https://ex.com)\n```",
+      ),
+    ).toContain("# keep *literal* [docs](https://ex.com)");
+  });
+
+  it("does not let sentinel-looking input forge a code block into prose", () => {
+    // The restore used to split/join each sentinel across the whole document,
+    // so a NUL sentinel arriving IN THE INPUT was replaced with a real fenced
+    // body -- duplicating the block into a prose position. NUL is now stripped
+    // at entry, so neither this nor the BOLD sentinel can be forged.
+    const out = markdownToSlackMrkdwn(
+      "\u0000CODE0\u0000 then\n```\n*real*\n```",
+    );
+    expect(out).not.toContain("\u0000");
+    // the fence body appears exactly once, in its own position
+    expect(out.split("*real*").length - 1).toBe(1);
+    expect(out).toContain("CODE0 then");
+  });
+
+  it("does not splice a later fence into a body that mentions its sentinel", () => {
+    // Restoring in ascending index order re-scanned bodies it had already
+    // restored, so a body containing a LATER sentinel had that block spliced
+    // into it. The restore is now a single left-to-right pass.
+    const out = markdownToSlackMrkdwn(
+      "```\n\u0000CODE1\u0000\n```\ntext\n```\n# second\n```",
+    );
+    expect(out).not.toContain("\u0000");
+    expect(out.split("# second").length - 1).toBe(1);
+    expect(out).toContain("CODE1");
+  });
+
+  it("escapes mention tokens and a leading quote inside a fence", () => {
+    // Holding the body aside swaps escapeSlackMrkdwn (via
+    // escapeSlackMrkdwnContent, which preserves Slack angle tokens and skips a
+    // leading "> ") for escapeSlackMrkdwnSegment, which does neither. Inside a
+    // fence that is the wanted behaviour -- the text is meant to be literal --
+    // so it is pinned here rather than left to be rediscovered.
+    expect(markdownToSlackMrkdwn("```\nping <@U123> now\n```")).toContain(
+      "&lt;@U123&gt;",
+    );
+    expect(markdownToSlackMrkdwn("```\n> quoted line\n```")).toContain(
+      "&gt; quoted line",
+    );
   });
 });
 
