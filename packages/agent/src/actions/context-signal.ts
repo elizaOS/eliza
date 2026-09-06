@@ -21,6 +21,7 @@ import {
 import {
   collectKeywordTermMatches,
   collectPreparedKeywordTermMatches,
+  normalizeCharacterLanguage,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
   textIncludesKeywordTerm,
@@ -115,6 +116,17 @@ export function hasContextSignalSync(
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
 ): boolean {
+  return hasPreparedContextSignalSync(message, state, {
+    strong: prepareKeywordTerms(strongTerms),
+    weak: prepareKeywordTerms(weakTerms),
+  });
+}
+
+function hasPreparedContextSignalSync(
+  message: Memory,
+  state: State | undefined,
+  terms: PreparedContextSignalTerms,
+): boolean {
   const texts = [
     ...recentConversationTextsFromState(state),
     messageText(message).trim(),
@@ -123,15 +135,15 @@ export function hasContextSignalSync(
   if (texts.length === 0) return false;
 
   if (
-    strongTerms.length > 0 &&
-    collectKeywordTermMatches(texts, strongTerms).size > 0
+    terms.strong.length > 0 &&
+    collectPreparedKeywordTermMatches(texts, terms.strong).size > 0
   ) {
     return true;
   }
 
   if (
-    weakTerms.length > 0 &&
-    collectKeywordTermMatches(texts, weakTerms).size > 0
+    terms.weak.length > 0 &&
+    collectPreparedKeywordTermMatches(texts, terms.weak).size > 0
   ) {
     return true;
   }
@@ -150,21 +162,10 @@ export function hasContextSignalSyncForKey(
 ): boolean {
   const locale = resolveContextSignalLocale(null, state, options?.locale);
   const includeAllLocales = options?.includeAllLocales ?? true;
-  const prepared = preparedContextSignalTerms(key, locale, includeAllLocales);
-  const texts = [
-    ...recentConversationTextsFromState(state),
-    messageText(message).trim(),
-  ].filter((t) => t.length > 0);
-  if (texts.length === 0) return false;
-  if (
-    prepared.strong.length > 0 &&
-    collectPreparedKeywordTermMatches(texts, prepared.strong).size > 0
-  ) {
-    return true;
-  }
-  return (
-    prepared.weak.length > 0 &&
-    collectPreparedKeywordTermMatches(texts, prepared.weak).size > 0
+  return hasPreparedContextSignalSync(
+    message,
+    state,
+    preparedContextSignalTerms(key, locale, includeAllLocales),
   );
 }
 
@@ -174,10 +175,9 @@ type PreparedContextSignalTerms = {
 };
 
 /**
- * Lexicon vocabulary is static per (key, locale, all-locales) and holds no
- * conversation text, so its compiled matchers are kept for the process
- * lifetime. Recompiling the all-locale lists on every call cost ~0.5 s per
- * validate on the live VPS (2026-09-06).
+ * Only static vocabulary is cached, never conversation text or match results.
+ * Canonical locale keys keep this cache finite; all-locale catalogs are shared
+ * regardless of the caller's preferred language.
  */
 const preparedContextSignalTermCache = new Map<
   string,
@@ -189,10 +189,15 @@ function preparedContextSignalTerms(
   locale: string | undefined,
   includeAllLocales: boolean,
 ): PreparedContextSignalTerms {
-  const cacheKey = `${key}|${locale ?? ""}|${includeAllLocales ? 1 : 0}`;
+  const canonicalLocale = includeAllLocales
+    ? undefined
+    : normalizeCharacterLanguage(locale);
+  const cacheKey = `${key}|${canonicalLocale ?? "all"}`;
   const cached = preparedContextSignalTermCache.get(cacheKey);
   if (cached) return cached;
-  const spec = resolveContextSignalSpec(key, locale, { includeAllLocales });
+  const spec = resolveContextSignalSpec(key, canonicalLocale, {
+    includeAllLocales,
+  });
   const prepared = {
     strong: prepareKeywordTerms(spec.strongTerms),
     weak: prepareKeywordTerms(spec.weakTerms),

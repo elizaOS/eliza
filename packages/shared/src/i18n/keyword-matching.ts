@@ -110,7 +110,7 @@ function compileKeywordTerm(term: string) {
 }
 
 function textHasNonAscii(text: string): boolean {
-  return /\P{ASCII}/u.test(text);
+  return /[^\p{ASCII}]/u.test(text);
 }
 
 export function textIncludesKeywordTerm(text: string, term: string): boolean {

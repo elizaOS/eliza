@@ -520,49 +520,94 @@ describe("MEMORY mutations settle with receipts for the grounded reply gate", ()
 });
 
 describe("MEMORY op:delete by query scope", () => {
-  it("matches clock times across abbreviation dots and spacing (6am vs 6a.m. vs 6 am)", async () => {
-    // Live 2026-09-06 02:36: "forget that I usually wake up at 6am" scanned 20
-    // rows and matched nothing against "The user usually wakes up at 6a.m.".
-    const { runtime, rows } = makeRuntime();
-    seedFact(rows, {
-      text: "The user usually wakes up at 6a.m.",
-      entityId: USER_ID,
-    });
-    const result = await runAction(runtime, makeMessage(), {
-      action: "delete",
-      query: "usually wake up at 6 am",
-      confirm: true,
-    });
-    expect(result.success).toBe(true);
-    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
-  });
+  it.each(["delete", "update"] as const)(
+    "%s matches clock forms without changing a different time or owner's fact",
+    async (action) => {
+      const cases: Array<[string, string]> = [
+        ["6a.m.", "6am"],
+        ["6 am", "6a.m."],
+        ["6 a.m.", "6am"],
+        ["6am", "6 am"],
+        ["6 A.M.", "6am"],
+        ["6p.m.", "6pm"],
+        ["6:30a.m.", "6:30am"],
+      ];
+      for (const [storedTime, queryTime] of cases) {
+        const { runtime, rows } = makeRuntime();
+        const targetId = seedFact(rows, {
+          text: `The user usually wakes up at ${storedTime}`,
+          entityId: USER_ID,
+        });
+        seedFact(rows, {
+          text: "The user usually wakes up at 7am",
+          entityId: USER_ID,
+        });
+        seedFact(rows, {
+          text: `The user usually wakes up at ${storedTime}`,
+          entityId: OTHER_USER_ID,
+        });
+        const untouchedRows = structuredClone(rows.slice(1));
+        const replacement = "The user usually wakes up at 8am";
+        const result = await runAction(runtime, makeMessage(), {
+          action,
+          query: `usually wake up at ${queryTime}`,
+          text: replacement,
+          confirm: true,
+        });
+        expect(result.success).toBe(true);
+        const target = rows.find((row) => row.memory.id === targetId);
+        if (action === "delete") expect(target).toBeUndefined();
+        else expect(target?.memory.content.text).toBe(replacement);
+        expect(rows.filter((row) => row.memory.id !== targetId)).toEqual(
+          untouchedRows,
+        );
+      }
+    },
+  );
 
-  it("never lets a dot-stripped decimal, version or domain collide with a stored fact", async () => {
-    // Review 2026-09-06 (Discussion 30659): only letter abbreviations (a.m.,
-    // U.S.) lose their dots; 1.5mg, v1.2 and example.com keep their identity.
-    const cases: Array<[string, string]> = [
-      ["User takes a 1.5mg dose nightly.", "takes 15mg dose nightly"],
-      [
-        "User runs firmware v1.2 on the router.",
-        "runs firmware v12 on the router",
-      ],
-      [
-        "User's blog lives at example.com today.",
-        "blog lives at examplecom today",
-      ],
-    ];
-    for (const [stored, query] of cases) {
-      const { runtime, rows } = makeRuntime();
-      seedFact(rows, { text: stored, entityId: USER_ID });
-      const result = await runAction(runtime, makeMessage(), {
-        action: "delete",
-        query,
-        confirm: true,
-      });
-      expect(result.success).toBe(false);
-      expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(1);
-    }
-  });
+  it.each(["delete", "update"] as const)(
+    "%s preserves distinct query targets",
+    async (action) => {
+      const cases: Array<[string, string]> = [
+        ["User takes a 1.5mg dose nightly.", "takes 15mg dose nightly"],
+        [
+          "User runs firmware v1.2 on the router.",
+          "runs firmware v12 on the router",
+        ],
+        [
+          "User's blog lives at example.com today.",
+          "blog lives at examplecom today",
+        ],
+        ["The service is hosted at a.b.com", "hosted at ab.com"],
+        [
+          "The service is hosted at x.y.example.com",
+          "hosted at xy.example.com",
+        ],
+        ["The service is hosted at 6a.m.com", "hosted at 6amcom"],
+        ["The setting is config1a.m", "setting config1am"],
+        ["The user usually wakes up at 6a.m.", "usually wake up at 6pm"],
+        [
+          "The user usually wakes up at 6a.m.",
+          "does not usually wake up at 6am",
+        ],
+      ];
+      for (const [stored, query] of cases) {
+        const { runtime, rows } = makeRuntime();
+        seedFact(rows, { text: stored, entityId: USER_ID });
+        const originalRows = structuredClone(rows);
+        const result = await runAction(runtime, makeMessage(), {
+          action,
+          query,
+          text: "Replacement content for the requested target",
+          confirm: true,
+        });
+        expect(result.success).toBe(false);
+        expect(result.data).toMatchObject({ error: "MEMORY_NOT_FOUND" });
+        expect(result.effectReceipts).toBeUndefined();
+        expect(rows).toEqual(originalRows);
+      }
+    },
+  );
 
   it("keeps a UUID-shaped search query as a filter instead of adopting it as the id", async () => {
     const { runtime, rows } = makeRuntime();

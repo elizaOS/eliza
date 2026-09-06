@@ -194,27 +194,41 @@ describe("CONTACT exports and dispatch", () => {
     ).resolves.toBe(false);
   });
 
-  it("computes the contact signal once per state object and never confuses states", async () => {
+  it("rechecks changed messages and conversation data when a state object is reused", async () => {
     const { runtime } = makeRuntime();
-    const signalState = { values: {}, data: {}, text: "" } as never;
+    const signalState: State = { values: {}, data: {}, text: "" };
+    const currentMessage = message("weather");
     await expect(
-      contactAction.validate?.(
-        runtime,
-        message("find contact Alice"),
-        signalState,
-      ),
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(false);
+    currentMessage.content.text = "find contact Alice";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
     ).resolves.toBe(true);
-    // Same state object: the memoized true answer (children share it).
+    currentMessage.content.text = "weather";
     await expect(
-      contactAction.validate?.(runtime, message("weather"), signalState),
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(false);
+
+    signalState.values.recentMessages = "Please find contact Alice.";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
     ).resolves.toBe(true);
-    // A fresh state without a signal is judged on its own.
+    signalState.values.recentMessages = "The weather is pleasant.";
     await expect(
-      contactAction.validate?.(runtime, message("weather"), {
-        values: {},
-        data: {},
-        text: "",
-      } as never),
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(false);
+  });
+
+  it("rechecks a changed message when no composed state is supplied", async () => {
+    const { runtime } = makeRuntime();
+    const currentMessage = message("find contact Alice");
+    await expect(
+      contactAction.validate?.(runtime, currentMessage),
+    ).resolves.toBe(true);
+    currentMessage.content.text = "weather";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage),
     ).resolves.toBe(false);
   });
 
