@@ -1,4 +1,4 @@
-/** Exercises exact delete targets within a multi-operation owner request through canonical dispatch and real PGlite. */
+/** Exercises owner mutation targeting and ambiguity through canonical dispatch and real PGlite. */
 import {
   ChannelType,
   type JsonValue,
@@ -22,8 +22,10 @@ it.each([
   "empty-target",
   "alias",
   "protected-substring",
+  "ambiguous-update",
+  "explicit-id-update",
 ])(
-  "constrains a multi-step delete to its durable target: %s",
+  "preserves owner mutation identity and ambiguity: %s",
   async (mode) => {
     const host = await createLifeOpsTestRuntime();
     const runtime = host.runtime;
@@ -92,6 +94,39 @@ it.each([
       });
       expect(second.success).toBe(true);
       const secondId = second.effectReceipts?.[0].resource.id;
+      if (mode === "ambiguous-update" || mode === "explicit-id-update") {
+        message.content.text =
+          mode === "ambiguous-update"
+            ? "Update my Guardian chain todo description to revised."
+            : `Update todo ${id} description to revised.`;
+        const before = await service.listDefinitions();
+        const result = await dispatch({
+          action: "update",
+          target: mode === "ambiguous-update" ? "Guardian chain first" : id,
+          intent: message.content.text,
+          details: { description: "revised" },
+        });
+        const after = await service.listDefinitions();
+        if (mode === "ambiguous-update") {
+          expect(result.success).toBe(false);
+          expect(after).toEqual(before);
+          expect(
+            result.effectReceipts?.some(
+              (receipt) => receipt.outcome === "applied",
+            ) ?? false,
+          ).toBe(false);
+        } else {
+          expect(result.success).toBe(true);
+          expect(
+            after.find((row) => row.definition.id === id)?.definition
+              .description,
+          ).toBe("revised");
+          expect(after.find((row) => row.definition.id === secondId)).toEqual(
+            before.find((row) => row.definition.id === secondId),
+          );
+        }
+        return;
+      }
       let targetId = mode === "title" ? "Guardian chain first" : id;
       if (mode === "protected-substring") {
         targetId = "Guardian chain first";

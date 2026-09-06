@@ -1182,7 +1182,13 @@ async function resolveDefinitionForMutation(
           normalizeTitle(entry.definition.title) === normalizeTitle(target),
       )
     : [];
-  if (exactTitleTargets.length > 0) {
+  if (
+    exactTitleTargets.length > 0 &&
+    exactTitleTargets.every((entry) => !defs.includes(entry))
+  ) {
+    return { match: null, ambiguousCandidates: [] };
+  }
+  if (destructive && exactTitleTargets.length > 0) {
     // Retain the original exact identity even when a keep cue excludes it.
     // Otherwise a longer title could replace that protected record as an alias.
     const authorizedTargets = exactTitleTargets.filter(
