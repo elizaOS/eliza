@@ -1909,3 +1909,76 @@ describe("restore-v3 candidate file-set materializer", () => {
     });
   });
 });
+
+describe("explicit candidate database directories", () => {
+  it("accepts named empty ancestry while rejecting missing and unlisted directories", async () => {
+    const { candidateFs } = await fixture();
+    const control = operationControl();
+    await candidateFs.ensureFileTreeDirectory(
+      "components/database/empty/nested",
+      control,
+    );
+    await expect(
+      candidateFs.proveFileTree("components/database", [], undefined, control),
+    ).rejects.toThrow();
+    const proof = await candidateFs.proveFileTree(
+      "components/database",
+      [],
+      undefined,
+      control,
+      undefined,
+      ["empty/nested"],
+    );
+    expect(proof.bytes).toBe(0);
+    await expect(
+      candidateFs.proveFileTree(
+        "components/database",
+        [],
+        undefined,
+        control,
+        undefined,
+        ["empty/nested", "missing"],
+      ),
+    ).rejects.toThrow();
+    await candidateFs.ensureFileTreeDirectory(
+      "components/database/unlisted",
+      control,
+    );
+    await expect(
+      candidateFs.proveFileTree(
+        "components/database",
+        [],
+        undefined,
+        control,
+        undefined,
+        ["empty/nested"],
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("rejects accessor directory authority without executing it", async () => {
+    const { candidateFs } = await fixture();
+    const control = operationControl();
+    await candidateFs.ensureFileTreeDirectory("components/database", control);
+    let reads = 0;
+    const directories: string[] = [];
+    Object.defineProperty(directories, "0", {
+      enumerable: true,
+      get() {
+        reads++;
+        return "forged";
+      },
+    });
+    await expect(
+      candidateFs.proveFileTree(
+        "components/database",
+        [],
+        undefined,
+        control,
+        undefined,
+        directories,
+      ),
+    ).rejects.toThrow();
+    expect(reads).toBe(0);
+  });
+});

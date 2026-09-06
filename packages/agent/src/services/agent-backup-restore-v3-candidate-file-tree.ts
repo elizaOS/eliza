@@ -1640,6 +1640,7 @@ export async function proveCandidateFsFileTree(
   limitsValue: Partial<AgentBackupRestoreV3CandidateFileTreeLimits> | undefined,
   control: Readonly<AgentBackupRestoreV3OperationControl>,
   heldLock?: AgentBackupRestoreV3CandidateFsLock,
+  expectedDirectoriesValue?: readonly string[],
 ): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeProof>> {
   const exactControl = snapshotOperationControl(control);
   const limits = resolveLimits(limitsValue);
@@ -1688,6 +1689,72 @@ export async function proveCandidateFsFileTree(
   }
   let expectedBytes = 0;
   const expectedDirectories = new Set<string>();
+  // Database archives contain meaningful empty directories. Callers must name
+  // them explicitly; ordinary character/file-set proofs keep their exact set.
+  if (expectedDirectoriesValue !== undefined) {
+    if (
+      IS_PROXY(expectedDirectoriesValue) ||
+      !Array.isArray(expectedDirectoriesValue) ||
+      OBJECT_GET_PROTOTYPE_OF(expectedDirectoriesValue) !== Array.prototype
+    )
+      fileTreeError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_EXPECTATION_INVALID",
+        "Candidate directory expectations must be a plain array",
+      );
+    const length = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
+      expectedDirectoriesValue,
+      "length",
+    )?.value;
+    if (
+      !Number.isSafeInteger(length) ||
+      length < 0 ||
+      length > limits.maximumDirectories ||
+      Reflect.ownKeys(expectedDirectoriesValue).length !== length + 1
+    )
+      fileTreeError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_EXPECTATION_INVALID",
+        "Candidate directory expectations exceed their bound",
+      );
+    let previous: string | null = null;
+    for (let index = 0; index < length; index++) {
+      const descriptor = OBJECT_GET_OWN_PROPERTY_DESCRIPTOR(
+        expectedDirectoriesValue,
+        String(index),
+      );
+      if (
+        !descriptor ||
+        !("value" in descriptor) ||
+        !descriptor.enumerable ||
+        typeof descriptor.value !== "string"
+      ) {
+        fileTreeError(
+          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_EXPECTATION_INVALID",
+          "Candidate directory expectations contain an accessor or sparse slot",
+        );
+      }
+      const directory = descriptor.value as string;
+      if (
+        previous !== null &&
+        compareAgentBackupCaptureV2FilePaths(previous, directory) >= 0
+      ) {
+        fileTreeError(
+          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_EXPECTATION_INVALID",
+          "Candidate directory expectations are duplicated or unordered",
+        );
+      }
+      previous = directory;
+      const segments = requireCanonicalFilePath(directory, limits);
+      for (let depth = 1; depth <= segments.length; depth++)
+        expectedDirectories.add(segments.slice(0, depth).join("/"));
+      if (expectedDirectories.size > limits.maximumDirectories) {
+        fileTreeError(
+          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_EXPECTATION_INVALID",
+          "Candidate directory ancestry exceeds its bound",
+        );
+      }
+    }
+  }
+
   for (const [index, entry] of expected.entries()) {
     expectedBytes += entry.sizeBytes;
     const segments = entry.path.split("/");

@@ -311,6 +311,7 @@ export class AgentBackupRestoreV3CandidateFs {
       | undefined,
     control: Readonly<AgentBackupRestoreV3OperationControl>,
     heldLock?: AgentBackupRestoreV3CandidateFsLock,
+    expectedDirectories?: readonly string[],
   ): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeProof>> {
     return proveCandidateFsFileTree(
       this.#control,
@@ -319,6 +320,7 @@ export class AgentBackupRestoreV3CandidateFs {
       limitsValue,
       snapshotOperationControl(control),
       heldLock,
+      expectedDirectories,
     );
   }
 
