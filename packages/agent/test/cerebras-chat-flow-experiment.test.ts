@@ -6,11 +6,16 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { once } from "node:events";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import os from "node:os";
+import path from "node:path";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { describe, expect, it } from "vitest";
 import {
+  captureReplayAttempt,
+  type ReplayAttempt,
   replayRequest,
   validateReplayStream,
 } from "../scripts/cerebras-cache-wire-replay";
@@ -422,4 +427,93 @@ describe("real chat cache experiment", () => {
       });
     }
   });
+});
+
+it("retains every attempted replay including fetch rejection and interrupted response bytes", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "replay-transport-"));
+  const file = path.join(directory, "attempts.json");
+  const rows: ReplayAttempt[] = [];
+  const partial = Buffer.concat([
+    Buffer.from("data: prefix "),
+    Buffer.from([0xf0, 0x9f]),
+  ]);
+  const server = createServer((request, response) => {
+    if (request.url === "/reject") {
+      request.socket.destroy();
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    if (request.url === "/partial") {
+      response.write(partial);
+      setTimeout(() => response.destroy(), 40);
+    } else response.end("complete response");
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Missing loopback address");
+  const persist = async () => {
+    await writeFile(file, JSON.stringify(rows));
+  };
+  const request = {
+    messages: [{ role: "user", content: "complete request 🐈" }],
+    stream: true,
+  };
+  try {
+    for (const [index, route] of ["success", "reject", "partial"].entries()) {
+      const pending = captureReplayAttempt({
+        endpoint: `http://127.0.0.1:${address.port}/${route}`,
+        apiKey: "loopback-secret-do-not-record",
+        rows,
+        row: {
+          index,
+          order: 0,
+          mode: "automatic",
+          attempt: 1,
+          originalContext: { roomId: "room" },
+          request,
+        },
+        persist,
+      });
+      if (route === "success")
+        await expect(pending).resolves.toMatchObject({
+          status: 200,
+          rawResponse: "complete response",
+        });
+      else await expect(pending).rejects.toThrow();
+    }
+    const saved = JSON.parse(await readFile(file, "utf8")) as ReplayAttempt[];
+    expect(saved.map((row) => row.request)).toEqual([
+      request,
+      request,
+      request,
+    ]);
+    expect(saved.map((row) => row.outcome)).toEqual([
+      "response",
+      "transport-error",
+      "transport-error",
+    ]);
+    expect(saved[0]).toMatchObject({
+      responseComplete: true,
+      rawResponse: "complete response",
+    });
+    expect(saved[1]).toMatchObject({ responseComplete: false });
+    expect(saved[1].status).toBeUndefined();
+    expect(saved[1].error).toBeTruthy();
+    expect(saved[2]).toMatchObject({ status: 200, responseComplete: false });
+    expect(
+      Buffer.from(saved[2].rawResponseBytesBase64 ?? "", "base64"),
+    ).toEqual(partial);
+    expect(saved[2].error).toBeTruthy();
+    expect(await readFile(file, "utf8")).not.toContain(
+      "loopback-secret-do-not-record",
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+      server.closeAllConnections();
+    });
+    await rm(directory, { recursive: true, force: true });
+  }
 });

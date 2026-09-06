@@ -88,6 +88,88 @@ export function validateReplayStream(raw: string): {
   };
 }
 
+export interface ReplayAttempt {
+  index: number;
+  order: number;
+  mode: "automatic" | "shared-prefix" | "conversation";
+  attempt: number;
+  originalContext: Record<string, unknown>;
+  request: Record<string, unknown>;
+  outcome?: "dispatching" | "response" | "transport-error";
+  status?: number;
+  headersMs?: number;
+  totalMs?: number;
+  rawResponse?: string;
+  responseComplete?: boolean;
+  rawResponseBytesBase64?: string;
+  error?: string;
+}
+
+/** Retain the attempted request before dispatch and every received body byte on failure. */
+export async function captureReplayAttempt(options: {
+  endpoint: string;
+  apiKey: string;
+  row: ReplayAttempt;
+  rows: ReplayAttempt[];
+  persist: () => Promise<void>;
+}) {
+  const { row, rows, persist } = options;
+  row.outcome = "dispatching";
+  row.responseComplete = false;
+  row.rawResponse = "";
+  rows.push(row);
+  await persist();
+  const startedAt = performance.now();
+  const decoder = new TextDecoder();
+  const chunks: Uint8Array[] = [];
+  let response: Response;
+  try {
+    response = await fetch(options.endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${options.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(row.request),
+    });
+    row.headersMs = performance.now() - startedAt;
+    row.status = response.status;
+    if (response.body) {
+      const reader = response.body.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          row.rawResponse += decoder.decode(value, { stream: true });
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    }
+    row.rawResponse += decoder.decode();
+    row.responseComplete = true;
+    row.outcome = "response";
+    row.totalMs = performance.now() - startedAt;
+  } catch (error) {
+    // error-policy:J2 retain this failed transport attempt before the CLI preserves its terminal report.
+    row.rawResponse += decoder.decode();
+    row.rawResponseBytesBase64 = Buffer.concat(chunks).toString("base64");
+    row.outcome = "transport-error";
+    row.totalMs = performance.now() - startedAt;
+    row.error = error instanceof Error ? error.message : String(error);
+    await persist();
+    throw error;
+  }
+  await persist();
+  return {
+    ok: response.ok,
+    status: response.status,
+    retryAfter: response.headers.get("retry-after"),
+    rawResponse: row.rawResponse,
+  };
+}
+
 async function main(): Promise<void> {
   const [input, output] = process.argv.slice(2);
   if (!input || !output)
@@ -117,7 +199,7 @@ async function main(): Promise<void> {
   if (selected.length < 30)
     throw new Error("At least 30 captured sample calls are required");
   const runId = randomUUID();
-  const rows: Array<Record<string, unknown>> = [];
+  const rows: ReplayAttempt[] = [];
   const modes = ["automatic", "shared-prefix", "conversation"] as const;
   const persist = async (
     status: "running" | "failed" | "complete",
@@ -161,36 +243,22 @@ async function main(): Promise<void> {
         let attempt = 0;
         while (true) {
           attempt++;
-          const startedAt = performance.now();
-          const response = await fetch(
-            "https://api.cerebras.ai/v1/chat/completions",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(request),
+          const response = await captureReplayAttempt({
+            endpoint: "https://api.cerebras.ai/v1/chat/completions",
+            apiKey,
+            row: {
+              index,
+              order: offset,
+              mode,
+              attempt,
+              originalContext: context,
+              request,
             },
-          );
-          const headersMs = performance.now() - startedAt;
-          const rawResponse = await response.text();
-          const totalMs = performance.now() - startedAt;
-          rows.push({
-            index,
-            order: offset,
-            mode,
-            attempt,
-            originalContext: context,
-            request,
-            status: response.status,
-            headersMs,
-            totalMs,
-            rawResponse,
+            rows,
+            persist: () => persist("running"),
           });
-          await persist("running");
           if (response.status === 429 && attempt < 3) {
-            const rawRetry = response.headers.get("retry-after");
+            const rawRetry = response.retryAfter;
             const seconds = rawRetry === null ? NaN : Number(rawRetry);
             const dateMs = rawRetry === null ? NaN : Date.parse(rawRetry);
             const waitMs = Number.isFinite(seconds)
@@ -211,7 +279,7 @@ async function main(): Promise<void> {
             throw new Error(
               `Provider replay HTTP ${response.status}; complete failure body retained in report`,
             );
-          validateReplayStream(rawResponse);
+          validateReplayStream(response.rawResponse);
           await new Promise((resolve) => setTimeout(resolve, 3000));
           break;
         }
