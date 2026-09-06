@@ -1939,6 +1939,9 @@ function preferLayoutModeOverCapability({
 	options?: Record<string, unknown>;
 	views: readonly ViewSummary[];
 }): "split" | "tile" | null {
+	// The planner's declared capability is authoritative. Positional words in
+	// a read request (for example "title at the top") are not layout commands.
+	if (readStringOption(options, "capability")?.trim()) return null;
 	const trimmed = viewRequestText(text).trim();
 	if (!trimmed || hasCapabilityPayloadOptions(options)) return null;
 

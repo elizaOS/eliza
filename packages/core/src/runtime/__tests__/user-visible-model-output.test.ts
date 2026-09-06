@@ -10,6 +10,18 @@ import {
 
 describe("sanitizeUserVisibleModelOutput", () => {
 	it.each([
+		'{"plannerCompleted":true,"turnScope":"final"}',
+		'```json\n{"plannerCompleted":true,"turnScope":"final"}\n```',
+		'{"response":{"plannerCompleted":false,"turnScope":"more_work_pending"}}',
+		'{"plannerCompleted":true,"turnScope":"final",',
+	])("keeps completion-control records out of chat: %s", (candidate) => {
+		expect(sanitizeUserVisibleModelOutput(candidate)).toMatchObject({
+			kind: "control",
+			envelope: "planner",
+		});
+	});
+
+	it.each([
 		'{"action":"messageToUser","args":{"message":"Done."}}',
 		'```json\n{"action":"messageToUser","args":{"message":"Done."}}\n```',
 		'{"response":{"action":"messageToUser","args":{"message":"Done."}}}',

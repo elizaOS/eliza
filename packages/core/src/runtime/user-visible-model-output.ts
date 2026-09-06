@@ -290,6 +290,9 @@ function classifyControlRecord(
 
 	if (
 		Object.hasOwn(record, "toolCalls") ||
+		(typeof record.plannerCompleted === "boolean" &&
+			(record.turnScope === "final" ||
+				record.turnScope === "more_work_pending")) ||
 		(typeof record.completed === "boolean" &&
 			(typeof record.thought === "string" ||
 				REPLY_FIELDS.some((field) => Object.hasOwn(record, field))))
@@ -367,6 +370,11 @@ function classifyMalformedControl(
 	)?.[1];
 	if (action) return "action";
 	if (/"toolCalls"\s*:/.test(candidate)) return "planner";
+	if (
+		/"plannerCompleted"\s*:\s*(?:true|false)/.test(candidate) &&
+		/"turnScope"\s*:\s*"(?:final|more_work_pending)"/.test(candidate)
+	)
+		return "planner";
 	const evaluatorDecision =
 		/"(?:decision|route)"\s*:\s*"(?:FINISH|CONTINUE|NEXT_RECOMMENDED)"/i.test(
 			candidate,

@@ -287,6 +287,42 @@ describe("view switching — VIEWS action resolver", () => {
 		vi.clearAllMocks();
 	});
 
+	it("does not reinterpret an explicit read capability as a top placement", async () => {
+		const requests: string[] = [];
+		vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+			requests.push(String(input));
+			return new Response(
+				JSON.stringify({
+					success: true,
+					result: "General\nDisplay\nHome\nBackground",
+				}),
+				{ status: 200 },
+			);
+		});
+		const action = createViewsAction({
+			client: clientFor(REGISTRY),
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		const callback = vi.fn();
+		const result = await action.handler(
+			{ agentId: "agent-1" } as never,
+			message(
+				"Read the title displayed at the top of this settings screen.",
+			) as never,
+			undefined,
+			{ action: "interact", view: "settings", capability: "get-text" },
+			callback,
+		);
+		expect(result?.success).toBe(true);
+		expect(requests).toHaveLength(1);
+		expect(requests[0]).toContain("/api/views/settings/interact");
+		expect(result?.data).toMatchObject({
+			viewId: "settings",
+			capability: "get-text",
+		});
+		expect(callback).not.toHaveBeenCalled();
+	});
+
 	it("keeps inventory and navigation receipts internal through the public wrapper", async () => {
 		const action = createViewsAction({
 			client: clientFor(REGISTRY),
