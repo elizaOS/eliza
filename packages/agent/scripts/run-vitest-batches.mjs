@@ -1,13 +1,23 @@
 /**
  * Runs the agent Vitest suite in bounded parallel, process-isolated batches.
  * The file selection mirrors vitest.config.ts while one-file batches prevent
- * leaked module state and open handles from crossing test boundaries.
+ * leaked module state and open handles from crossing test boundaries. Requested
+ * JUnit evidence includes every batch and is reconciled before publication.
  */
 import { spawn } from "node:child_process";
-import { readdirSync, statSync } from "node:fs";
-import { availableParallelism } from "node:os";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { availableParallelism, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseJunitSummary } from "../../scripts/lib/junit-summary.mjs";
 import { runPool } from "../../scripts/lib/test-task-pool.mjs";
 
 const packageRoot = path.resolve(
@@ -117,10 +127,70 @@ export function resolveBunExecutable(
   return null;
 }
 
-export function createVitestInvocation(bunExecutable, batch) {
+export function parseAgentTestArgs(argv) {
+  let junit = false;
+  let reporterOutfile;
+  for (const arg of argv) {
+    if (arg === "--reporter=default") continue;
+    if (arg === "--reporter=junit" && !junit) junit = true;
+    else if (arg.startsWith("--outputFile.junit=") && !reporterOutfile) {
+      reporterOutfile = arg.slice("--outputFile.junit=".length);
+    } else throw new Error(`Unsupported agent test argument: ${arg}`);
+  }
+  if (argv.length > 0 && (!junit || !reporterOutfile)) {
+    throw new Error(
+      "JUnit evidence requires --reporter=junit and --outputFile.junit=<path>.",
+    );
+  }
+  return { reporterOutfile };
+}
+
+export function mergeAgentJunit(fragments, destination) {
+  if (fragments.length === 0) throw new Error("No batch evidence to merge.");
+  const totals = { tests: 0, failures: 0, errors: 0, skipped: 0 };
+  const bodies = [];
+  for (const fragment of fragments) {
+    const xml = readFileSync(fragment, "utf8");
+    const counts = parseJunitSummary(xml);
+    for (const key of Object.keys(totals)) totals[key] += counts[key];
+    // The canonical parser has validated one complete root and all counts.
+    // Retain its complete child XML, including testcase logs and failures.
+    const opening = /<testsuites\b[^>]*>/.exec(xml);
+    const closing = xml.lastIndexOf("</testsuites>");
+    if (!opening || closing < opening.index + opening[0].length) {
+      throw new Error("Batch JUnit must have a complete testsuites root.");
+    }
+    bodies.push(xml.slice(opening.index + opening[0].length, closing));
+  }
+  const attributes = Object.entries(totals)
+    .map(([key, count]) => `${key}="${count}"`)
+    .join(" ");
+  const merged = `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites ${attributes}>\n${bodies.join("\n")}\n</testsuites>\n`;
+  const summary = parseJunitSummary(merged);
+  if (summary.failures || summary.errors)
+    throw new Error("Batch evidence contains failures or errors.");
+  mkdirSync(path.dirname(destination), { recursive: true });
+  writeFileSync(destination, merged);
+}
+
+export function createVitestInvocation(bunExecutable, batch, fragmentPath) {
   return {
     command: bunExecutable,
-    args: ["x", "vitest", "run", "--config", "vitest.config.ts", ...batch],
+    args: [
+      "x",
+      "vitest",
+      "run",
+      "--config",
+      "vitest.config.ts",
+      ...(fragmentPath
+        ? [
+            "--reporter=default",
+            "--reporter=junit",
+            `--outputFile.junit=${fragmentPath}`,
+          ]
+        : []),
+      ...batch,
+    ],
   };
 }
 
@@ -138,10 +208,14 @@ function terminate(child) {
   }
 }
 
-function runBatch(batch, nodeOptions, active, bunExecutable) {
+function runBatch(batch, nodeOptions, active, bunExecutable, fragmentPath) {
   return new Promise((resolve) => {
     const startedAt = performance.now();
-    const invocation = createVitestInvocation(bunExecutable, batch);
+    const invocation = createVitestInvocation(
+      bunExecutable,
+      batch,
+      fragmentPath,
+    );
     const child = spawn(invocation.command, invocation.args, {
       cwd: packageRoot,
       detached: process.platform !== "win32",
@@ -177,6 +251,7 @@ function runBatch(batch, nodeOptions, active, bunExecutable) {
 }
 
 async function main() {
+  const { reporterOutfile } = parseAgentTestArgs(process.argv.slice(2));
   const batchSize = positiveInteger(
     process.env.AGENT_TEST_BATCH_SIZE,
     "AGENT_TEST_BATCH_SIZE",
@@ -209,6 +284,14 @@ async function main() {
     ? inheritedNodeOptions
     : `${inheritedNodeOptions} --max-old-space-size=8192`.trim();
   const batches = createBatches(files, batchSize);
+  const fragmentDirectory = reporterOutfile
+    ? mkdtempSync(path.join(tmpdir(), "eliza-agent-junit-"))
+    : undefined;
+  const fragments = batches.map((_, index) =>
+    fragmentDirectory
+      ? path.join(fragmentDirectory, `${index}.xml`)
+      : undefined,
+  );
   const active = new Set();
   const stop = () => {
     for (const child of active) terminate(child);
@@ -229,6 +312,7 @@ async function main() {
           nodeOptions,
           active,
           bunExecutable,
+          fragments[index],
         );
         completed += 1;
         if (verbose || result.status !== 0) {
@@ -261,12 +345,15 @@ async function main() {
       process.exitCode = 1;
       return;
     }
+    if (reporterOutfile) mergeAgentJunit(fragments, reporterOutfile);
     console.log(
       `[agent-test] passed ${files.length} file(s) in ${((performance.now() - startedAt) / 1000).toFixed(1)}s`,
     );
   } finally {
     process.removeListener("SIGTERM", stop);
     process.removeListener("SIGINT", stop);
+    if (fragmentDirectory)
+      rmSync(fragmentDirectory, { recursive: true, force: true });
   }
 }
 
