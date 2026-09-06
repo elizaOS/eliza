@@ -673,3 +673,24 @@ describe("parseSlackMessageLink", () => {
     ).toBeNull();
   });
 });
+
+describe("markdownToSlackMrkdwn — bold-sentinel forgery", () => {
+  const NUL = String.fromCharCode(0);
+  const forged = `${NUL}BOLD${NUL}`;
+
+  it("does not let incoming text forge bold formatting", () => {
+    const out = markdownToSlackMrkdwn(`hello ${forged}world${forged} bye`);
+    expect(out).not.toContain("*world*");
+    expect(out).not.toContain(NUL);
+  });
+
+  it("does not leave a stray asterisk from a lone forged sentinel", () => {
+    const out = markdownToSlackMrkdwn(`a ${forged} b`);
+    expect(out).not.toContain("*");
+    expect(out).not.toContain(NUL);
+  });
+
+  it("still converts real bold alongside a forged sentinel", () => {
+    expect(markdownToSlackMrkdwn(`${forged} and **real**`)).toContain("*real*");
+  });
+});
