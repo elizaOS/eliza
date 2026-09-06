@@ -690,6 +690,28 @@ async function loadOrCreateAndroidInstallationId(
   const identityPath = path.join(candidateDirectory, "identity");
   let fileStat: FileStat | undefined;
   let published = false;
+  const cleanupCandidate = async (): Promise<void> => {
+    if (!published) {
+      if (!sameIdentity(directoryStat, await fs.lstat(candidateDirectory))) {
+        throw new RuntimeInstallationIdentityRecoveryError(
+          "Android identity candidate cleanup is ambiguous.",
+          { cause: new Error("Candidate directory was replaced") },
+        );
+      }
+      if (fileStat) {
+        const current = await fs.lstat(identityPath);
+        if (!sameIdentity(fileStat, current))
+          throw new RuntimeInstallationIdentityRecoveryError(
+            "Android identity candidate cleanup is ambiguous.",
+            { cause: new Error("Candidate file was replaced") },
+          );
+        await fs.unlink(identityPath);
+      }
+      await fs.rmdir(candidateDirectory);
+      await syncStateDirectory(trusted);
+    }
+  };
+  let identity: UUID;
   try {
     const file = await fs.open(identityPath, "wx", 0o600);
     try {
@@ -731,31 +753,25 @@ async function loadOrCreateAndroidInstallationId(
       if (code !== "EEXIST" && code !== "ENOTEMPTY") throw error;
     }
     await syncStateDirectory(trusted);
-    const identity = await readPublished();
-    if (!identity)
+    const publishedIdentity = await readPublished();
+    if (!publishedIdentity)
       throw new Error("Android installation identity was not published.");
-    return identity;
-  } finally {
-    if (!published) {
-      if (!sameIdentity(directoryStat, await fs.lstat(candidateDirectory))) {
-        throw new RuntimeInstallationIdentityRecoveryError(
-          "Android identity candidate cleanup is ambiguous.",
-          { cause: new Error("Candidate directory was replaced") },
-        );
-      }
-      if (fileStat) {
-        const current = await fs.lstat(identityPath);
-        if (!sameIdentity(fileStat, current))
-          throw new RuntimeInstallationIdentityRecoveryError(
-            "Android identity candidate cleanup is ambiguous.",
-            { cause: new Error("Candidate file was replaced") },
-          );
-        await fs.unlink(identityPath);
-      }
-      await fs.rmdir(candidateDirectory);
-      await syncStateDirectory(trusted);
+    identity = publishedIdentity;
+  } catch (error) {
+    // error-policy:J2 retain publication and cleanup failures when recovery is ambiguous.
+    try {
+      await cleanupCandidate();
+    } catch (cleanupError) {
+      // error-policy:J2 neither filesystem failure may hide the other.
+      throw new RuntimeInstallationIdentityRecoveryError(
+        "Android identity publication and candidate cleanup failed.",
+        { cause: new AggregateError([error, cleanupError]) },
+      );
     }
+    throw error;
   }
+  await cleanupCandidate();
+  return identity;
 }
 
 /** Loads one durable UUID per trusted state directory without following links. */
