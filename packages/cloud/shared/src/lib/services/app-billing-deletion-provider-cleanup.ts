@@ -2,6 +2,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { closeAppBillingCustomer } from "../../db/repositories/app-billing-customer-closures";
+import { retainSharedAppBillingCustomer } from "../../db/repositories/app-billing-customer-retention";
 import type { AppBillingDeletionRecoveryAuthority } from "../../db/repositories/app-billing-deletion-authority";
 import { appBillingCustomers, appBillingScopes } from "../../db/schemas/app-billing";
 import { appBillingDeletionDispositions } from "../../db/schemas/app-billing-deletion-dispositions";
@@ -50,7 +51,33 @@ export async function reconcileClosedAppBillingProviders(
   }
   for (const customerBindingId of [...bindings].sort()) {
     try {
-      // A retained sibling rejects closure; its customer must never be implicitly deleted.
+      // This read chooses a path; its database guard revalidates all sharing decisions under locks.
+      const [retained] = await dbWrite
+        .select({ scopeId: appBillingScopes.id })
+        .from(appBillingCustomers)
+        .innerJoin(
+          appBillingScopes,
+          and(
+            eq(appBillingScopes.billing_account_id, appBillingCustomers.billing_account_id),
+            eq(appBillingScopes.merchant_id, appBillingCustomers.merchant_id),
+          ),
+        )
+        .innerJoin(
+          appBillingDeletionDispositions,
+          eq(appBillingDeletionDispositions.scope_id, appBillingScopes.id),
+        )
+        .where(
+          and(
+            eq(appBillingCustomers.id, customerBindingId),
+            eq(appBillingDeletionDispositions.request_id, authority.requestId),
+            eq(appBillingDeletionDispositions.disposition, "retain_shared"),
+          ),
+        )
+        .limit(1);
+      if (retained) {
+        await retainSharedAppBillingCustomer({ customerBindingId, authority });
+        continue;
+      }
       await closeAppBillingCustomer({ customerBindingId, authority });
       if (
         (await deleteClosedAppBillingCustomer(customerBindingId, authority, resolveProvider)) !==

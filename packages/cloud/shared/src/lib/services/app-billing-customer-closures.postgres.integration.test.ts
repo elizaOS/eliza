@@ -129,6 +129,7 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       "0442_app_billing_customer_execution_lease",
       "0443_app_billing_customer_completion_guard",
       "0444_app_billing_customer_command_guard",
+      "0448_app_billing_customer_retention",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -605,6 +606,98 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
     const after = fixture.requests.length;
     expect(await reconcileClosedAppBillingProviders(auth, resolveProvider)).toBe("complete");
     expect(fixture.requests.length).toBe(after);
+  });
+  test("mixed scope cleanup preserves the surviving family's trial and shared customer", async () => {
+    const source = await fixtureCustomer();
+    const siblingPlanId = randomUUID();
+    await db.query(
+      `INSERT INTO app_billing_plan_revisions(id,app_id,merchant_id,product_family_key,plan_key,revision,name,amount_cents,currency,interval,maximum_quantity,trial_allowance_usd,paid_allowance_usd,expired_access,entitlements,stripe_price_id,stripe_product_id,published_at)
+       SELECT $1,app_id,merchant_id,'second',plan_key,revision,name,amount_cents,currency,interval,maximum_quantity,trial_allowance_usd,paid_allowance_usd,expired_access,entitlements,stripe_price_id,stripe_product_id,published_at FROM app_billing_plan_revisions WHERE id=$2`,
+      [siblingPlanId, source.planId],
+    );
+    const checkout = await runtime.checkout(
+      { ...source.identity, productFamilyKey: "second" },
+      {
+        idempotencyKey: randomUUID(),
+        expectedSubscriptionRevision: null,
+        planRevisionId: siblingPlanId,
+        quantity: 1,
+        billingConsent: "accepted",
+      },
+    );
+    expect(checkout.status).toBe("requires_action");
+    const { appBillingCommandRuntimeRepository } = await import(
+      "../../db/repositories/app-billing-command-runtime"
+    );
+    const command = await appBillingCommandRuntimeRepository.read({
+      scopeId: source.siblingId,
+      commandId: checkout.id,
+      actorUserId: source.identity.actorUserId,
+    });
+    const result = command.command.provider_result;
+    if (result?.kind !== "checkout") throw new Error("Expected sibling checkout result");
+    const siblingProviderId = fixture.completeCheckout(result.checkoutSessionId);
+    expect(
+      (await runtime.reconcileCommand({ scopeId: source.siblingId, commandId: checkout.id }))
+        .status,
+    ).toBe("succeeded");
+    const siblingBefore = (
+      await db.query(
+        "SELECT status,stripe_customer_id FROM billing_subscriptions WHERE billing_scope_id=$1",
+        [source.siblingId],
+      )
+    ).rows[0];
+    expect(siblingBefore).toEqual({
+      status: "active",
+      stripe_customer_id: source.binding.stripe_customer_id,
+    });
+    const auth = await deletion(source.identity.actorUserId);
+    expect((await decide(source.siblingId, auth)).disposition).toBe("close");
+    const survivor = await administrator(source.identity.appId, source.identity.billingAccountId);
+    expect((await decide(source.scopeId, auth)).disposition).toBe("retain_shared");
+    const { reconcileClosedAppBillingProviders } = await import(
+      "./app-billing-deletion-provider-cleanup"
+    );
+    const before = (
+      await db.query(
+        "SELECT status,lifecycle_revision,stripe_customer_id FROM billing_subscriptions WHERE billing_scope_id=$1",
+        [source.scopeId],
+      )
+    ).rows;
+    const at = fixture.requests.length;
+    expect(await reconcileClosedAppBillingProviders(auth, resolveProvider)).toBe("pending");
+    expect(
+      (
+        await db.query("SELECT status FROM billing_subscriptions WHERE billing_scope_id=$1", [
+          source.siblingId,
+        ])
+      ).rows[0].status,
+    ).toBe("canceled");
+    expect(await reconcileClosedAppBillingProviders(auth, resolveProvider)).toBe("complete");
+    expect(
+      (
+        await db.query(
+          "SELECT status,lifecycle_revision,stripe_customer_id FROM billing_subscriptions WHERE billing_scope_id=$1",
+          [source.scopeId],
+        )
+      ).rows,
+    ).toEqual(before);
+    expect(before[0].status).toBe("trialing");
+    expect(fixture.deletedCustomers.has(source.binding.stripe_customer_id)).toBe(false);
+    expect(
+      fixture.requests
+        .slice(at)
+        .filter((request) => request.method === "DELETE")
+        .map((request) => request.path),
+    ).toEqual([`/v1/subscriptions/${siblingProviderId}`]);
+    await db.query("UPDATE users SET auth_fenced_at=now() WHERE id=$1", [survivor]);
+    expect(await reconcileClosedAppBillingProviders(auth, resolveProvider)).toBe("pending");
+    expect(
+      fixture.requests
+        .slice(at)
+        .filter((request) => request.method === "DELETE")
+        .map((request) => request.path),
+    ).toEqual([`/v1/subscriptions/${siblingProviderId}`]);
   });
   test("closure intent cannot authorize customer deletion while a trial still runs", async () => {
     const source = await fixtureCustomer();
