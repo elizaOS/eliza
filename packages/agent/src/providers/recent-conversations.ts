@@ -245,9 +245,13 @@ export const recentConversationsProvider: Provider = {
         [],
         relevanceKeywords,
       );
-      runtime.logger?.debug?.(
+      runtime.logger?.warn?.(
         {
           src: "provider:recent-conversations",
+          messageId: message.id,
+          roomId: message.roomId,
+          contentKeys: Object.keys(message.content ?? {}),
+          textHead: (message.content.text ?? "").slice(0, 320),
           eagerRelevant,
           keywordCount: relevanceKeywords.length,
           matchedKeyword: eagerRelevant
