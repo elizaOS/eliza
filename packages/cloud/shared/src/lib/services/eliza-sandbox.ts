@@ -3314,7 +3314,32 @@ export class ElizaSandboxService {
       }
 
       let deletionLocator: SandboxDeletionLocator | null = null;
-      if (rec.sandbox_id && rec.node_id && rec.container_name) {
+      if (rec.local_state_retention) {
+        const retained = rec.local_state_retention;
+        if (
+          retained.agentId !== rec.id ||
+          rec.sandbox_id !== retained.containerName ||
+          rec.container_name !== retained.containerName ||
+          rec.node_id !== retained.nodeId
+        ) {
+          throw new ElizaError("Retained deletion placement differs from its captured authority", {
+            code: "AGENT_LOCAL_RETENTION_DELETE_AUTHORITY_MISMATCH",
+            context: { agentId: rec.id },
+          });
+        }
+        await assertRetainedNodePublicationAuthorityInTransaction(tx, retained);
+        deletionLocator = {
+          sandboxId: retained.containerName,
+          containerName: retained.containerName,
+          containerId: retained.containerId,
+          agentId: retained.agentId,
+          nodeId: retained.nodeId,
+          hostname: retained.hostname,
+          sshPort: retained.sshPort,
+          sshUser: retained.sshUser,
+          hostKeyFingerprint: retained.hostKeyFingerprint,
+        };
+      } else if (rec.sandbox_id && rec.node_id && rec.container_name) {
         const nodeAuthority = await tx.execute<{
           hostname: string;
           ssh_port: number;

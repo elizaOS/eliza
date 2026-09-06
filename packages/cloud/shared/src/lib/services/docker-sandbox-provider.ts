@@ -60,6 +60,7 @@ import {
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
   captureDockerRetainedContainer,
+  deleteDockerRetainedContainer,
   checkDockerRetainedContainerHealth,
   resumeDockerRetainedContainer,
   stopDockerRetainingState,
@@ -5349,6 +5350,37 @@ export class DockerSandboxProvider implements SandboxProvider {
     sandboxId: string,
     locator?: SandboxDeletionLocator,
   ): Promise<SandboxDeletionStopOutcome> {
+    if (locator?.containerId !== undefined) {
+      const containerId = locator.containerId;
+      if (
+        locator.sandboxId !== sandboxId ||
+        !locator.hostname ||
+        !locator.sshPort ||
+        !locator.sshUser ||
+        !locator.hostKeyFingerprint
+      ) {
+        throw new ElizaError("Exact retained deletion requires captured SSH authority", {
+          code: "SANDBOX_RETAINED_DELETE_LOCATOR_INVALID",
+        });
+      }
+      await this.withRetainedContainerConnection(
+        {
+          agentId: locator.agentId,
+          hostname: locator.hostname,
+          sshPort: locator.sshPort,
+          sshUser: locator.sshUser,
+          hostKeyFingerprint: locator.hostKeyFingerprint,
+        },
+        (ssh) =>
+          deleteDockerRetainedContainer(
+            (command, timeout) => ssh.exec(command, timeout),
+            containerId,
+            locator.agentId,
+          ),
+      );
+      this.containers.delete(sandboxId);
+      return { kind: "not-running-proven" };
+    }
     // Deletion is the one teardown whose capacity is owned elsewhere: the
     // caller's deletion generation releases the slot exactly once via
     // `tryReleaseDeletionAllocation`, because this path is retryable and

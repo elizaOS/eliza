@@ -76,6 +76,8 @@ export type SandboxDeletionStopOutcome =
  * may be carried by an exact caller or hydrated from the captured node ID.
  */
 export interface SandboxDeletionLocator {
+  /** Retained-state deletion must target this immutable ID, never the name. */
+  containerId?: string;
   sandboxId: string;
   agentId: string;
   nodeId: string;
