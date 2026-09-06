@@ -1188,6 +1188,34 @@ async function doUpdate(
   };
 }
 
+/**
+ * The requester's own fact rows that carry the same messageId as `existing`
+ * — the post-turn extractor's restatements of the claim being deleted.
+ */
+async function sameMessageSiblingFacts(
+  runtime: IAgentRuntime,
+  message: Memory,
+  existing: Memory,
+): Promise<Memory[]> {
+  const messageId = (existing.metadata as { messageId?: unknown } | undefined)
+    ?.messageId;
+  if (typeof messageId !== "string" || !messageId) return [];
+  if (!message.entityId || existing.entityId !== message.entityId) return [];
+  const scan = await collectCandidates(runtime, {
+    tables: ["facts"],
+    entityId: message.entityId,
+  });
+  return scan.matches
+    .filter(
+      (c) =>
+        c.memory.id !== existing.id &&
+        c.memory.entityId === message.entityId &&
+        (c.memory.metadata as { messageId?: unknown } | undefined)
+          ?.messageId === messageId,
+    )
+    .map((c) => c.memory);
+}
+
 async function doDelete(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1216,11 +1244,22 @@ async function doDelete(
     await runtime.deleteMemory(memoryId);
     const forgottenText =
       typeof existing.content.text === "string" ? existing.content.text : "";
+    // Same claim, other shapes: the requester's own fact rows born from the
+    // same message go with it (live 2026-09-06 05:48, tj-430cbd113761c9: two
+    // deletes by id left the extractor's "has_dog Biscuit" row and the next
+    // "what is my dog's name?" answered "Biscuit").
+    const siblings = await sameMessageSiblingFacts(runtime, message, existing);
+    for (const sibling of siblings) {
+      if (sibling.id) await runtime.deleteMemory(sibling.id);
+    }
     return {
       success: true,
       transcriptVisibility: "internal",
-      text: `Forgot memory ${memoryId}: ${toWellFormedUnicode(existing.content.text ?? "")}`,
-      values: { memoryId },
+      text:
+        siblings.length === 0
+          ? `Forgot memory ${memoryId}: ${toWellFormedUnicode(existing.content.text ?? "")}`
+          : `Forgot memory ${memoryId}: ${toWellFormedUnicode(existing.content.text ?? "")} (and ${siblings.length} related record(s) from the same message: ${siblings.map((m) => `"${toWellFormedUnicode(String(m.content.text ?? ""))}"`).join("; ")})`,
+      values: { memoryId, deletedCount: 1 + siblings.length },
       effectReceipts: [
         memoryMutationReceipt({
           operation: "memory.delete",

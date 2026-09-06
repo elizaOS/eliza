@@ -526,6 +526,36 @@ describe("MEMORY mutations settle with receipts for the grounded reply gate", ()
 });
 
 describe("MEMORY op:delete by query scope", () => {
+  it("deleting by memoryId also forgets the requester's same-message sibling facts", async () => {
+    const { runtime, rows } = makeRuntime();
+    const id = seedFact(rows, {
+      text: "The user's dog is named Biscuit.",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-2" },
+    });
+    seedFact(rows, {
+      text: "User has_dog Biscuit",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-2" },
+    });
+    seedFact(rows, {
+      text: "User likes jazz.",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-jazz-2" },
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      memoryId: String(id),
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.values).toMatchObject({ deletedCount: 2 });
+    expect(result.text).toContain("related record");
+    const left = rows.filter((row) => row.tableName === "facts");
+    expect(left).toHaveLength(1);
+    expect(String(left[0]?.memory.content.text)).toContain("jazz");
+  });
+
   it("forgetting a claim also forgets the requester's same-message sibling facts written in another shape", async () => {
     // Live 2026-09-06 05:40: "forget my dog's name" removed "user's dog is
     // named Biscuit" and left the extractor's "User has_dog Biscuit" row from
