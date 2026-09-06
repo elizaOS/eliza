@@ -7,6 +7,7 @@
  */
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -120,6 +121,45 @@ describe("ContextInspectorView", () => {
     );
     expect(screen.getByText("Context inspector access denied")).toBeTruthy();
   });
+
+  it.each(["success", "failure"] as const)(
+    "ignores a late %s from the previous conversation",
+    async (outcome) => {
+      const previous = Promise.withResolvers<typeof RESPONSE>();
+      const current = Promise.withResolvers<typeof RESPONSE>();
+      mocks.getContextInspector.mockReset();
+      mocks.getContextInspector
+        .mockReturnValueOnce(previous.promise)
+        .mockReturnValueOnce(current.promise);
+      const view = render(<ContextInspectorView />);
+      await waitFor(() =>
+        expect(mocks.getContextInspector).toHaveBeenCalledTimes(1),
+      );
+      mocks.activeConversationId = "00000000-0000-4000-8000-000000000202";
+      view.rerender(<ContextInspectorView />);
+      await waitFor(() =>
+        expect(mocks.getContextInspector).toHaveBeenCalledTimes(2),
+      );
+      expect(screen.getByTestId("context-inspector-loading")).toBeTruthy();
+      const response = {
+        ...RESPONSE,
+        entries: [
+          { ...RESPONSE.entries[0], reference: "ctx_current_conversation" },
+        ],
+      };
+      await act(async () => {
+        current.resolve(response);
+      });
+      expect(await screen.findByText("ctx_current_conversation")).toBeTruthy();
+      await act(async () => {
+        if (outcome === "success") previous.resolve(RESPONSE);
+        else previous.reject(new Error("Previous conversation access denied"));
+      });
+      expect(screen.getByText("ctx_current_conversation")).toBeTruthy();
+      expect(screen.queryByText(RESPONSE.entries[0].reference)).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+    },
+  );
 
   it("refreshes through the same scoped API contract", async () => {
     render(<ContextInspectorView />);

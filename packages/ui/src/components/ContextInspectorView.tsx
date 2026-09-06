@@ -15,7 +15,7 @@ import {
   RefreshCw,
   ScanSearch,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type ContextInspectorEntry,
   type ContextInspectorResponse,
@@ -163,38 +163,66 @@ export default function ContextInspectorView() {
   });
   const offset =
     pagination.conversationId === activeConversationId ? pagination.offset : 0;
-  const [data, setData] = useState<ContextInspectorResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const requestGeneration = useRef(0);
+  const [snapshot, setSnapshot] = useState<{
+    conversationId: string | null;
+    offset: number;
+    data: ContextInspectorResponse | null;
+    error: string | null;
+    loading: boolean;
+  }>({
+    conversationId: null,
+    offset: 0,
+    data: null,
+    error: null,
+    loading: false,
+  });
+  const matchesScope =
+    snapshot.conversationId === activeConversationId &&
+    snapshot.offset === offset;
+  const data = matchesScope ? snapshot.data : null;
+  const error = matchesScope ? snapshot.error : null;
+  const loading =
+    Boolean(activeConversationId) && (!matchesScope || snapshot.loading);
 
   const load = useCallback(async () => {
-    if (!activeConversationId) {
-      setData(null);
-      setError(null);
-      return;
-    }
-    setLoading(true);
-    setError(null);
+    const generation = ++requestGeneration.current;
+    const scope = { conversationId: activeConversationId, offset };
+    setSnapshot({
+      ...scope,
+      data: null,
+      error: null,
+      loading: Boolean(activeConversationId),
+    });
+    if (!activeConversationId) return;
     try {
       const response = await client.getContextInspector(activeConversationId, {
         offset,
         limit: PAGE_SIZE,
       });
-      setData(response);
+      if (generation !== requestGeneration.current) return;
+      setSnapshot({ ...scope, data: response, error: null, loading: false });
     } catch (cause) {
-      setData(null);
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Context inspector is unavailable",
-      );
-    } finally {
-      setLoading(false);
+      // error-policy:J4 The active request alone may expose its transport failure.
+      if (generation !== requestGeneration.current) return;
+      setSnapshot({
+        ...scope,
+        data: null,
+        error:
+          cause instanceof Error
+            ? cause.message
+            : "Context inspector is unavailable",
+        loading: false,
+      });
     }
   }, [activeConversationId, offset]);
 
   useEffect(() => {
     void load();
+    return () => {
+      // A completed request cannot publish after a scope change or unmount.
+      requestGeneration.current += 1;
+    };
   }, [load]);
 
   return (
