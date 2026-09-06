@@ -5,6 +5,7 @@
  */
 import {
 	createUniqueUuid,
+	truncateWellFormed,
 	type EventPayload,
 	EventType,
 	type World,
@@ -54,7 +55,7 @@ const DISCORD_DESCRIPTION_MAX = 100;
 
 function clampDescription(description: string): string {
 	return description.length > DISCORD_DESCRIPTION_MAX
-		? `${description.slice(0, DISCORD_DESCRIPTION_MAX - 1)}…`
+		? `${truncateWellFormed(description, DISCORD_DESCRIPTION_MAX - 1)}…`
 		: description;
 }
 
