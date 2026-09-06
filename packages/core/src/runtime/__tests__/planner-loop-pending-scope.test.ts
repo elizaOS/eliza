@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createUnavailableGroundedActionReply } from "../../types/action-reply";
 import type { EffectReceipt } from "../../types/effects";
 import { ModelType } from "../../types/model";
-import { runPlannerLoop } from "../planner-loop";
+import { isUnsafeUserVisibleText, runPlannerLoop } from "../planner-loop";
 import type { PlannerRuntime, PlannerToolResult } from "../planner-types";
 
 function call(name: string, scope?: "more_work_pending" | "final") {
@@ -1010,6 +1010,80 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 			expect(result.finalMessage).toBe("Both done.");
 		},
 	);
+
+	it("a malformed call re-issued correctly does not keep failure authority: the evaluator's message ships with no synthesis pass", async () => {
+		// Live 2026-09-06 00:45: MEMORY create without `text` failed, the retry
+		// applied, the evaluator finished with "Got it", and the user received
+		// {"plannerCompleted":true,"turnScope":"final"} from a forced synthesis.
+		const h = harness({
+			userMessage: "remember that I take my tea without sugar",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-1",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "create",
+								kind: "preference",
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-2",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "create",
+								text: "User takes their tea without sugar.",
+							},
+						},
+					],
+				},
+			],
+			evaluations: [
+				continueWork("The create had no text; retry with the text."),
+				finish("Got it. No sugar in the tea."),
+			],
+			results: [
+				{
+					success: false,
+					text: "text is required.",
+					data: { error: "MEMORY_MISSING_TEXT" },
+				},
+				{
+					success: true,
+					text: "Stored memory 1.",
+					data: { actionName: "MEMORY", op: "create", memoryId: "1" },
+				},
+			],
+			intents: ["remember the tea preference"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["MEMORY", "MEMORY"]);
+		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
+		expect(result.finalMessage).toBe("Got it. No sugar in the tea.");
+	});
+
+	it("never delivers a bare JSON object or a turn-scope marker as user text", () => {
+		expect(
+			isUnsafeUserVisibleText('{"plannerCompleted":true,"turnScope":"final"}'),
+		).toBe(true);
+		expect(isUnsafeUserVisibleText('[{"a":1}]')).toBe(true);
+		expect(isUnsafeUserVisibleText('done: "eliza_turn_scope": "final"')).toBe(
+			true,
+		);
+		expect(isUnsafeUserVisibleText("Got it. No sugar in the tea.")).toBe(false);
+		expect(isUnsafeUserVisibleText("Use {braces} freely in prose}")).toBe(
+			false,
+		);
+	});
 
 	it("declines the gate and lets the full evaluator continue when the render reports partial completion (two appointments, one created)", async () => {
 		// Review 2026-09-05: one verified receipt plus one declared intent proves

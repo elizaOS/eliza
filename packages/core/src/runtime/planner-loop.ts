@@ -5117,9 +5117,81 @@ function latestUnresolvedFailedNonTerminalToolStep(
 		} else if (step.result.success === true) {
 			unresolvedByOperation.delete(operationKey);
 			resolveShellFailuresSubsumedBy(step, unresolvedByOperation);
+			resolveMalformedCallsSupersededBy(step, unresolvedByOperation);
 		}
 	}
 	return [...unresolvedByOperation.values()].at(-1);
+}
+
+const MALFORMED_CALL_FAILURE_PATTERN =
+	/\b(?:is required|required\b.*\bmissing|Unexpected argument|invalid uuid|not a valid uuid|MISSING_[A-Z_]+|INVALID_[A-Z_]+|UNEXPECTED_ARGUMENT|VALIDATION)\b/i;
+
+/**
+ * A failure that only says the call itself was malformed (a required argument
+ * missing, an unexpected or invalid argument) is not an outcome the user must
+ * hear about once the planner re-issues the same operation correctly and it
+ * succeeds. The operation key includes the arguments, so the corrected call
+ * never matches the malformed one and the stale failure kept authority over
+ * the final message (live 2026-09-06 00:45: MEMORY create without `text`,
+ * retried with text and applied, yet the turn delivered a raw planner marker
+ * instead of the evaluator's "Got it"). Same tool, same discriminator value,
+ * malformed-call failure text: superseded.
+ */
+function resolveMalformedCallsSupersededBy(
+	step: PlannerStep,
+	unresolvedByOperation: Map<string, PlannerStep>,
+): void {
+	const call = step.toolCall;
+	if (!call) return;
+	const discriminator = plannerToolDiscriminatorValue(call);
+	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
+		const failedCall = failed.toolCall;
+		if (
+			!failedCall ||
+			failedCall.name.toUpperCase() !== call.name.toUpperCase()
+		) {
+			continue;
+		}
+		if (plannerToolDiscriminatorValue(failedCall) !== discriminator) continue;
+		if (!isMalformedCallFailure(failed.result)) continue;
+		unresolvedByOperation.delete(key);
+	}
+}
+
+function plannerToolDiscriminatorValue(call: PlannerToolCall): string {
+	const params = call.params ?? {};
+	for (const key of ["action", "subaction", "op", "operation"]) {
+		const value = params[key];
+		if (typeof value === "string" && value.trim()) {
+			return value.trim().toLowerCase();
+		}
+	}
+	return "";
+}
+
+function isMalformedCallFailure(
+	result: PlannerToolResult | undefined,
+): boolean {
+	if (!result) return false;
+	const data = result.data as
+		| {
+				error?: unknown;
+				parameterErrors?: unknown;
+				invalidParameterNames?: unknown;
+		  }
+		| undefined;
+	if (Array.isArray(data?.parameterErrors) && data.parameterErrors.length > 0) {
+		return true;
+	}
+	const code = typeof data?.error === "string" ? data.error : "";
+	const text = typeof result.text === "string" ? result.text : "";
+	const message =
+		typeof result.error === "string"
+			? result.error
+			: result.error instanceof Error
+				? result.error.message
+				: "";
+	return MALFORMED_CALL_FAILURE_PATTERN.test(`${code} ${text} ${message}`);
 }
 
 /**
@@ -7796,6 +7868,20 @@ export function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		/"decision"\s*:\s*"(?:FINISH|CONTINUE|NEXT_RECOMMENDED)"/.test(text) &&
 		/"success"\s*:\s*(?:true|false)/.test(text)
 	) {
+		return true;
+	}
+	// A bare JSON object/array or a native turn-scope marker is protocol, not
+	// prose (live 2026-09-06: {"plannerCompleted":true,"turnScope":"final"} was
+	// delivered to the user as the reply).
+	if (/^[[{][\s\S]*[\]}]$/.test(text)) {
+		try {
+			JSON.parse(text);
+			return true;
+		} catch {
+			// error-policy:J3 Not valid JSON — fall through to the other checks.
+		}
+	}
+	if (/"(?:plannerCompleted|turnScope|eliza_turn_scope)"\s*:/.test(text)) {
 		return true;
 	}
 	return [
