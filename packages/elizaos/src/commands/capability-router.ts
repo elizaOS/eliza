@@ -56,9 +56,8 @@ export async function runCapabilityRouterConnect(
 ): Promise<number> {
   const apiBase = normalizeBaseUrl(
     options.apiBase ??
-      process.env.ELIZA_API_BASE_URL ??
-      process.env.ELIZA_API_BASE ??
-      `http://127.0.0.1:${process.env.ELIZA_API_PORT ?? process.env.ELIZA_PORT ?? "2138"}`,
+      envString("ELIZA_API_BASE_URL", "ELIZA_API_BASE") ??
+      `http://127.0.0.1:${envString("ELIZA_API_PORT", "ELIZA_PORT") ?? "2138"}`,
     "api base",
   );
   if (apiBase instanceof Error) {
@@ -234,6 +233,21 @@ function hasCloudProvisioningOptions(
       options.provisionTimeoutMs ||
       options.pollIntervalMs,
   );
+}
+
+/**
+ * First non-blank environment value among `names`. Blank or whitespace-only
+ * values are treated as unset so one-shot exports like `ELIZA_API_PORT= cmd`
+ * keep the documented defaults instead of silently targeting port 80.
+ */
+function envString(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 function normalizeBaseUrl(
