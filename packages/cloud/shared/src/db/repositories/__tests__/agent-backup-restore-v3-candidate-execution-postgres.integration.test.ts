@@ -14,6 +14,7 @@ import { Client } from "pg";
 import { openAgentBackupRestoreV3CandidateFs } from "../../../../../../agent/src/services/agent-backup-restore-v3-candidate-fs";
 import { createAgentBackupRestoreV3CandidateMaterializer } from "../../../../../../agent/src/services/agent-backup-restore-v3-candidate-materializer";
 import { readAgentBackupRestoreV3CandidateRecord } from "../../../../../../agent/src/services/agent-backup-restore-v3-candidate-records";
+import { createAgentBackupRestoreV3ProcessMaterializer } from "../../../../../../agent/src/services/agent-backup-restore-v3-materializer-process";
 import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
@@ -1120,7 +1121,7 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
   );
 
   realPostgresTest(
-    "seals five real Agent components under PRIMARY locks and recovers partial assembly without empty restore",
+    "seals five real Agent components across private processes under PRIMARY locks and recovers partial assembly",
     async () => {
       if (!control || !executionRepository) throw new Error("PostgreSQL harness unavailable");
       const database = control;
@@ -1174,7 +1175,10 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
           await source.close();
         }
         await fs.rm(sourcePath, { recursive: true });
-        const agent = createAgentBackupRestoreV3CandidateMaterializer(candidateFs);
+        const agent = createAgentBackupRestoreV3ProcessMaterializer({
+          candidateFs,
+          ...(process.platform === "linux" ? {} : { testOnlyAllowNonLinuxFdEmulation: true }),
+        });
         let assemblyCalls = 0;
         let fault: "mismatch" | "lost" | null = "mismatch";
         let cancelAssembly: AbortController | undefined;
