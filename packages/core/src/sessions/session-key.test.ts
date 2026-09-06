@@ -84,4 +84,13 @@ describe("normalization", () => {
 		expect(normalizeAccountId("")).toBe("default");
 		expect(normalizeAccountId("Acct1")).toBe("acct1");
 	});
+
+	it("preserves well-formed Unicode when clamping overlong agent and account IDs", () => {
+		const longWithSurrogate = "a".repeat(1023) + "🚀" + "tail";
+		const normAgent = normalizeAgentId(longWithSurrogate);
+		expect(normAgent.isWellFormed?.()).not.toBe(false);
+
+		const normAccount = normalizeAccountId(longWithSurrogate);
+		expect(normAccount.isWellFormed?.()).not.toBe(false);
+	});
 });
