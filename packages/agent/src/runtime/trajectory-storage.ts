@@ -23,7 +23,6 @@ import {
   Service,
   sanitizeTrajectoryJsonObject,
   type TrajectorySemanticStageRecord,
-  timeInferenceSpan,
 } from "@elizaos/core";
 import type {
   Trajectory,
@@ -458,21 +457,8 @@ function normalizeSettledAction(
   };
 }
 
-const pendingChildStepBatches = new WeakMap<
-  object,
-  Map<
-    string,
-    {
-      owner: object;
-      starts: Array<BridgeStepState & { stepId: string; timestamp: number }>;
-      write: Promise<void>;
-    }
-  >
->();
-
 function startChildTrajectoryStep(
   runtime: IAgentRuntime,
-  owner: object,
   trajectoryId: string,
   state: BridgeStepState = {},
   shouldWrite: () => boolean = () => true,
@@ -533,47 +519,16 @@ function startChildTrajectoryStep(
 
   const stepId = randomUUID();
   rememberTrajectoryStep(runtime, normalizedTrajectoryId, stepId);
-  const start: BridgeStepState & { stepId: string; timestamp: number } = {
-    stepId,
-    timestamp,
-    kind,
-    parentStepId: normalizedParentStepId,
-    evaluatorName: normalizedEvaluatorName,
-  };
-  let batches = pendingChildStepBatches.get(runtime);
-  if (!batches) {
-    batches = new Map();
-    pendingChildStepBatches.set(runtime, batches);
-  }
-  const pending = batches.get(normalizedTrajectoryId);
-  // A capture, settlement, different logger, or started write is an ordering
-  // barrier. Only adjacent child starts still waiting on the same owner merge.
-  if (
-    pending?.owner === owner &&
-    stepWriteQueues.get(runtime)?.get(normalizedTrajectoryId) === pending.write
-  ) {
-    pending.starts.push(start);
-    lastWritePromises.set(runtime, pending.write);
-    return stepId;
-  }
-  const starts = [start];
   const writePromise = enqueueStepWrite(
     runtime,
     normalizedTrajectoryId,
     async () => {
-      // Freeze batch membership before the first await; arrivals during I/O
-      // belong to a later queue entry rather than mutating this transaction.
-      if (batches.get(normalizedTrajectoryId)?.write === writePromise) {
-        batches.delete(normalizedTrajectoryId);
-        if (batches.size === 0) pendingChildStepBatches.delete(runtime);
-      }
       if (!shouldWrite()) return;
       const tableReady = await ensureTrajectoriesTable(runtime);
       if (!tableReady) return;
-      const trajectory = await timeInferenceSpan(
-        "trajectory:child-start-batch-load",
-        () => loadTrajectoryById(runtime, normalizedTrajectoryId),
-        { count: starts.length },
+      const trajectory = await loadTrajectoryById(
+        runtime,
+        normalizedTrajectoryId,
       );
       if (!trajectory) {
         throw new ElizaError(
@@ -584,43 +539,32 @@ function startChildTrajectoryStep(
           },
         );
       }
-      const changedStepIds = new Set<string>();
-      for (const child of starts) {
-        const step = ensureStep(trajectory, child.stepId, child.timestamp);
-        changedStepIds.add(child.stepId);
-        if (child.kind !== undefined) step.kind = child.kind;
-        if (child.evaluatorName !== undefined) {
-          step.evaluatorName = child.evaluatorName;
-        }
-        if (child.parentStepId !== undefined) {
-          step.parentStepId = child.parentStepId;
-          const parentStep = ensureStep(
-            trajectory,
-            child.parentStepId,
-            child.timestamp,
-          );
-          changedStepIds.add(child.parentStepId);
-          if (!parentStep.childSteps?.includes(child.stepId)) {
-            parentStep.childSteps = [
-              ...(parentStep.childSteps ?? []),
-              child.stepId,
-            ];
-          }
-        }
-        trajectory.startTime = Math.min(trajectory.startTime, child.timestamp);
-        trajectory.updatedAt = new Date(child.timestamp).toISOString();
+      const step = ensureStep(trajectory, stepId, timestamp);
+      if (kind !== undefined) step.kind = kind;
+      if (normalizedEvaluatorName !== undefined) {
+        step.evaluatorName = normalizedEvaluatorName;
       }
-      await timeInferenceSpan(
-        "trajectory:child-start-batch-persist",
-        () =>
-          saveTrajectory(runtime, trajectory, {
-            changedStepIds: [...changedStepIds],
-          }),
-        { count: starts.length },
-      );
+      if (normalizedParentStepId !== undefined) {
+        step.parentStepId = normalizedParentStepId;
+        const parentStep = ensureStep(
+          trajectory,
+          normalizedParentStepId,
+          timestamp,
+        );
+        if (!parentStep.childSteps?.includes(stepId)) {
+          parentStep.childSteps = [...(parentStep.childSteps ?? []), stepId];
+        }
+      }
+      trajectory.startTime = Math.min(trajectory.startTime, timestamp);
+      trajectory.updatedAt = new Date(timestamp).toISOString();
+      await saveTrajectory(runtime, trajectory, {
+        changedStepIds:
+          normalizedParentStepId !== undefined
+            ? [normalizedParentStepId, stepId]
+            : [stepId],
+      });
     },
   );
-  batches.set(normalizedTrajectoryId, { owner, starts, write: writePromise });
   lastWritePromises.set(runtime as object, writePromise);
   return stepId;
 }
@@ -2094,7 +2038,6 @@ export async function installDatabaseTrajectoryLogger(
     if (!bridgeAcceptsCapture()) return randomUUID();
     return startChildTrajectoryStep(
       runtime,
-      logger,
       trajectoryId,
       state,
       bridgeIsEnabled,
@@ -2838,7 +2781,6 @@ export class DatabaseTrajectoryLogger extends Service {
     if (!this.acceptsCapture()) return randomUUID();
     return startChildTrajectoryStep(
       this.runtime,
-      this,
       trajectoryId,
       state,
       () => this.enabled,
