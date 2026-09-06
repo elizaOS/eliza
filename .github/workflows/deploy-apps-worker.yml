@@ -29,7 +29,7 @@ on:
           - staging
           - production
       source_sha:
-        description: Exact develop SHA supplied by the effect reconciler
+        description: Exact staging SHA supplied by the effect reconciler
         required: false
         default: ""
         type: string
@@ -76,7 +76,7 @@ jobs:
           else
             env="staging"
           fi
-          branch=$([ "$env" = "production" ] && echo "main" || echo "develop")
+          branch=$([ "$env" = "production" ] && echo "main" || echo "staging")
           echo "environment=$env" >> "$GITHUB_OUTPUT"
           echo "branch=$branch"   >> "$GITHUB_OUTPUT"
           echo "Resolved: environment=$env branch=$branch"
@@ -145,15 +145,16 @@ jobs:
           fi
           echo "sha=$target_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Fence current develop SHA before host mutation
+      - name: Fence current staging SHA before host mutation
         if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
         run: |
           set -euo pipefail
-          current_sha="$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/heads/develop" --jq '.object.sha')"
-          [ "$current_sha" = "$SOURCE_SHA" ] || { echo "::error::Develop advanced before apps-worker mutation"; exit 1; }
+          current_sha="$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/heads/$DEPLOY_BRANCH" --jq '.object.sha')"
+          [ "$current_sha" = "$SOURCE_SHA" ] || { echo "::error::Deployment branch advanced before apps-worker mutation"; exit 1; }
 
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
         if: steps.deploy_config.outputs.configured == 'true'
@@ -183,15 +184,16 @@ jobs:
               ln -sf bun /home/deploy/.bun/bin/bunx
             fi
 
-      - name: Recheck current develop SHA before code deployment
+      - name: Recheck current staging SHA before code deployment
         if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
         run: |
           set -euo pipefail
-          current_sha="$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/heads/develop" --jq '.object.sha')"
-          [ "$current_sha" = "$SOURCE_SHA" ] || { echo "::error::Develop advanced before apps-worker deploy"; exit 1; }
+          current_sha="$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/heads/$DEPLOY_BRANCH" --jq '.object.sha')"
+          [ "$current_sha" = "$SOURCE_SHA" ] || { echo "::error::Deployment branch advanced before apps-worker deploy"; exit 1; }
 
       - name: Deploy and restart apps worker
         if: steps.deploy_config.outputs.configured == 'true'

@@ -196,7 +196,7 @@ test("answers crypto payment confirmation preflight before shard loading", async
       {
         method: "OPTIONS",
         headers: {
-          origin: "https://develop.eliza-app.pages.dev",
+          origin: "https://staging.eliza-app.pages.dev",
           "access-control-request-method": "POST",
           "access-control-request-headers": "content-type, x-eliza-csrf",
         },
@@ -209,7 +209,7 @@ test("answers crypto payment confirmation preflight before shard loading", async
 
   expect(response.status).toBe(204);
   expect(response.headers.get("access-control-allow-origin")).toBe(
-    "https://develop.eliza-app.pages.dev",
+    "https://staging.eliza-app.pages.dev",
   );
   expect(response.headers.get("access-control-allow-credentials")).toBe("true");
   expect(response.headers.get("access-control-allow-methods")).toContain(
@@ -1292,7 +1292,7 @@ describe("cloud-api worker entrypoint", () => {
     );
 
     expect(target?.toString()).toBe(
-      "https://develop.eliza-app.pages.dev/dashboard?tab=agents",
+      "https://staging.eliza-app.pages.dev/dashboard?tab=agents",
     );
   });
 
@@ -1312,7 +1312,7 @@ describe("cloud-api worker entrypoint", () => {
     );
 
     expect(target?.toString()).toBe(
-      "https://develop.eliza-app.pages.dev/?runtime=first-run",
+      "https://staging.eliza-app.pages.dev/?runtime=first-run",
     );
   });
 

@@ -88,10 +88,10 @@ jobs:
         run: |
           bun -e '
             const expected = process.env.EXPECTED_COMMIT ?? "";
-            if (process.env.REF_NAME !== "refs/heads/develop") process.exit(1);
+            if (process.env.REF_NAME !== "refs/heads/staging") process.exit(1);
             if (!/^[0-9a-f]{40}$/.test(expected)) process.exit(1);
             if (!["preview", "execute"].includes(process.env.MODE ?? "")) process.exit(1);
-            // Read-only preview diagnoses the served commit after develop advances.
+            // Read-only preview diagnoses the served commit after staging advances.
             // The operator still verifies its exact API and database identities.
             if (process.env.MODE === "execute") {
               if (expected !== process.env.CHECKED_OUT_COMMIT) process.exit(1);

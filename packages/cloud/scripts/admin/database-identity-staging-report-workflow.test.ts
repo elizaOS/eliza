@@ -75,7 +75,7 @@ const EXPECTED_WORKFLOW: Workflow = {
     workflow_dispatch: {
       inputs: {
         expected_cloud_commit: {
-          description: "Exact 40-character develop commit to inspect",
+          description: "Exact 40-character staging commit to inspect",
           required: true,
           type: "string",
         },
@@ -98,8 +98,8 @@ const EXPECTED_WORKFLOW: Workflow = {
           shell: "bash",
           run: [
             "set -euo pipefail",
-            'if [[ "$SOURCE_REF" != "refs/heads/develop" ]]; then',
-            '  echo "::error::database identity report requires the trusted develop source"',
+            'if [[ "$SOURCE_REF" != "refs/heads/staging" ]]; then',
+            '  echo "::error::database identity report requires the trusted staging source"',
             "  exit 1",
             "fi",
             'if [[ ! "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]] || [[ "$EXPECTED_COMMIT" != "$CHECKED_OUT_COMMIT" ]]; then',
@@ -113,7 +113,7 @@ const EXPECTED_WORKFLOW: Workflow = {
     },
     report: {
       needs: "admission",
-      if: "needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'",
+      if: "needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging'",
       "runs-on": "ubuntu-24.04",
       "timeout-minutes": 10,
       environment: "staging",
@@ -365,7 +365,7 @@ function admissionStep(name: string): Step {
 describe("database identity staging report workflow", () => {
   test("does not overstate source review or Environment approval", () => {
     for (const source of [workflowSource, railwayGuide]) {
-      expect(source).not.toContain("exact reviewed develop SHA");
+      expect(source).not.toContain("exact reviewed staging SHA");
       expect(source).not.toContain("staging Environment approval");
     }
     expect(workflowSource).toContain("it does not prove reviewer approval");
@@ -515,7 +515,7 @@ describe("database identity staging report workflow", () => {
     }
   });
 
-  test("admits only manual develop runs before attaching staging", () => {
+  test("admits only manual staging runs before attaching staging", () => {
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
     expect(workflow.permissions).toEqual({ contents: "read" });
     expect(Object.keys(workflow.jobs).sort()).toEqual(["admission", "report"]);
@@ -527,7 +527,7 @@ describe("database identity staging report workflow", () => {
     expect(job.needs).toBe("admission");
     expect(job["continue-on-error"]).toBeUndefined();
     expect(job.if).toBe(
-      "needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'",
+      "needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging'",
     );
     expect(job.environment).toBe("staging");
     expect(job["runs-on"]).toBe("ubuntu-24.04");
@@ -822,7 +822,7 @@ describe("database identity staging report workflow", () => {
     );
     expect(guard.env?.CHECKED_OUT_COMMIT).toBe(expression("github.sha"));
     expect(guard.env?.SOURCE_REF).toBe(expression("github.ref"));
-    expect(guard.run).toContain('"refs/heads/develop"');
+    expect(guard.run).toContain('"refs/heads/staging"');
     expect(guard.run).toContain('"$EXPECTED_COMMIT" != "$CHECKED_OUT_COMMIT"');
     expect(guard.run).toContain("^[0-9a-f]{40}$");
     expect(guard.run).not.toContain("secrets.");
@@ -830,11 +830,11 @@ describe("database identity staging report workflow", () => {
     const trustedCommit = "a".repeat(40);
     const cases = [
       {
-        name: "trusted exact develop commit",
+        name: "trusted exact staging commit",
         expectedExit: 0,
         expectedCommit: trustedCommit,
         checkedOutCommit: trustedCommit,
-        sourceRef: "refs/heads/develop",
+        sourceRef: "refs/heads/staging",
       },
       {
         name: "wrong source ref",
@@ -848,14 +848,14 @@ describe("database identity staging report workflow", () => {
         expectedExit: 1,
         expectedCommit: "deadbeef",
         checkedOutCommit: trustedCommit,
-        sourceRef: "refs/heads/develop",
+        sourceRef: "refs/heads/staging",
       },
       {
         name: "mismatched checked-out commit",
         expectedExit: 1,
         expectedCommit: trustedCommit,
         checkedOutCommit: "b".repeat(40),
-        sourceRef: "refs/heads/develop",
+        sourceRef: "refs/heads/staging",
       },
     ] as const;
 

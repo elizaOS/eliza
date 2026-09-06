@@ -1,33 +1,6 @@
-# Staging staleness guard.
-#
-# WHY THIS EXISTS
-# ---------------
-# staging.eliza.app auto-deploys from every `develop` push via
-# `cloud-cf-deploy.yml` (the `push: branches: [develop]` trigger). That path is
-# correct, but it is FRAGILE under two real conditions we hit on 2026-08-13:
-#
-#   1. Latest-wins admission (release-admission.mjs) intentionally deploys ONLY
-#      the newest develop-push run and skips every superseded one. When develop
-#      pushes faster than a staging run can grab a hosted runner, the "latest
-#      eligible" run can itself sit queued behind an org-wide Actions backlog,
-#      so staging silently stops advancing.
-#   2. There is no alarm when that happens. Staging drifted ~99 commits / >6h
-#      behind develop with zero signal; it was only caught during manual QA.
-#
-# This workflow is the missing SIGNAL, not a new deploy path. It compares the
-# SHA that staging.eliza.app is actually serving (its /api/health `commit`
-# field) against the current `develop` head and FAILS LOUD when drift exceeds a
-# threshold, opening / updating a tracking issue so drift is visible instead of
-# silent. It does NOT deploy, approve, or mutate anything — read-only probe.
-#
-# It also re-dispatches a staging deploy at develop head as a best-effort
-# self-heal (workflow_dispatch is non-supersedable, so it survives a fast
-# develop stream). The dispatch still passes through the normal
-# `staging-approval` environment gate and freshness guard — this cannot skip
-# review or clobber a newer build.
-#
-# Prod is never touched: the probe only ever reads staging and only ever
-# dispatches `environment=staging`.
+# Compares the served staging commit with the staging branch and reports drift.
+# Recovery dispatches the full validation workflow for the exact branch head;
+# its normal reconciliation path owns deployment admission and promotion.
 
 name: Staging Staleness Guard
 
@@ -35,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       self_heal:
-        description: "Re-dispatch a staging deploy at develop head when drift is over threshold"
+        description: "Re-dispatch a staging deploy at staging head when drift is over threshold"
         required: false
         default: true
         type: boolean
@@ -50,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Fail (and alarm) once staging is more than this many commits behind develop.
+  # Fail (and alarm) once staging is more than this many commits behind staging.
   MAX_BEHIND_COMMITS: "10"
   # Or more than this many hours behind, whichever trips first.
   MAX_BEHIND_HOURS: "6"
@@ -59,7 +32,7 @@ env:
 
 jobs:
   probe:
-    name: Probe staging vs develop
+    name: Probe staging vs staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -81,24 +54,24 @@ jobs:
           echo "served_sha=$served_sha" >> "$GITHUB_OUTPUT"
           echo "Staging is serving $served_sha (env=$served_env)"
 
-      - name: Compare against develop head
+      - name: Compare against staging head
         id: compare
         env:
           GH_TOKEN: ${{ github.token }}
           SERVED_SHA: ${{ steps.staging.outputs.served_sha }}
         run: |
           set -euo pipefail
-          develop_head="$(gh api repos/${GITHUB_REPOSITORY}/git/ref/heads/develop --jq '.object.sha')"
-          echo "develop_head=$develop_head" >> "$GITHUB_OUTPUT"
+          branch_head="$(gh api repos/${GITHUB_REPOSITORY}/git/ref/heads/staging --jq '.object.sha')"
+          echo "branch_head=$branch_head" >> "$GITHUB_OUTPUT"
 
-          # compare: BASE...HEAD => ahead_by = commits develop has that staging lacks.
-          cmp="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${SERVED_SHA}...${develop_head}")"
+          # compare: BASE...HEAD => ahead_by = commits staging has that staging lacks.
+          cmp="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${SERVED_SHA}...${branch_head}")"
           behind_commits="$(printf '%s' "$cmp" | jq -r '.ahead_by')"
           status="$(printf '%s' "$cmp" | jq -r '.status')"
           echo "behind_commits=$behind_commits" >> "$GITHUB_OUTPUT"
 
-          # Age: commit time of develop head vs staging served commit.
-          head_ts="$(gh api repos/${GITHUB_REPOSITORY}/commits/${develop_head} --jq '.commit.committer.date')"
+          # Age: commit time of staging head vs staging served commit.
+          head_ts="$(gh api repos/${GITHUB_REPOSITORY}/commits/${branch_head} --jq '.commit.committer.date')"
           served_ts="$(gh api repos/${GITHUB_REPOSITORY}/commits/${SERVED_SHA} --jq '.commit.committer.date' 2>/dev/null || echo "")"
           behind_hours="0"
           if [ -n "$served_ts" ]; then
@@ -113,7 +86,7 @@ jobs:
             echo "### Staging staleness probe"
             echo ""
             echo "- staging serves: \`${SERVED_SHA}\`"
-            echo "- develop head:   \`${develop_head}\`"
+            echo "- staging head:   \`${branch_head}\`"
             echo "- behind by:      **${behind_commits} commits**, ~**${behind_hours}h**"
             echo "- thresholds:     ${MAX_BEHIND_COMMITS} commits / ${MAX_BEHIND_HOURS}h"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -131,7 +104,7 @@ jobs:
           fi
           echo "stale=$stale" >> "$GITHUB_OUTPUT"
 
-      - name: Self-heal — dispatch staging deploy at develop head
+      - name: Self-heal — validate staging head before reconciliation
         if: >-
           steps.drift.outputs.stale == 'true' &&
           (github.event_name == 'schedule' || inputs.self_heal == true)
@@ -141,12 +114,20 @@ jobs:
           set -euo pipefail
           # Non-supersedable staging dispatch. Still passes the staging-approval
           # gate + freshness guard downstream; cannot skip review or roll back.
-          echo "Drift over threshold — dispatching a staging deploy at develop head."
-          gh workflow run cloud-cf-deploy.yml \
+          echo "Drift over threshold — dispatching full validation at staging head."
+          source_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/staging" --jq '.object.sha')"
+          active="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/develop-full.yml/runs?branch=staging&head_sha=$source_sha&per_page=100" --jq '[.workflow_runs[] | select(.status != "completed")] | length')"
+          if [ "$active" -gt 0 ]; then
+            echo "Current staging validation is already running."
+            exit 0
+          fi
+          effect_digest="$(printf 'staging-recovery-v1:%s' "$source_sha" | sha256sum | cut -d ' ' -f 1)"
+          gh workflow run develop-full.yml \
             --repo "${GITHUB_REPOSITORY}" \
-            --ref develop \
-            -f environment=staging \
-            -f force=false || echo "::warning::self-heal dispatch failed; alarm below still fires"
+            --ref staging \
+            -f "source_sha=$source_sha" \
+            -f "effect_digest=$effect_digest"
+
 
       - name: Open or update tracking issue on drift
         if: steps.drift.outputs.stale == 'true'
@@ -155,17 +136,17 @@ jobs:
           BEHIND_COMMITS: ${{ steps.compare.outputs.behind_commits }}
           BEHIND_HOURS: ${{ steps.compare.outputs.behind_hours }}
           SERVED_SHA: ${{ steps.staging.outputs.served_sha }}
-          DEVELOP_HEAD: ${{ steps.compare.outputs.develop_head }}
+          BRANCH_HEAD: ${{ steps.compare.outputs.branch_head }}
         run: |
           set -euo pipefail
-          title="staging.eliza.app is stale (behind develop)"
+          title="staging.eliza.app is stale (behind staging)"
           {
             printf 'Automated staleness guard detected staging drift.\n\n'
             printf -- '- staging serves: `%s`\n' "$SERVED_SHA"
-            printf -- '- develop head:   `%s`\n' "$DEVELOP_HEAD"
+            printf -- '- staging head:   `%s`\n' "$BRANCH_HEAD"
             printf -- '- behind by: **%s commits**, ~**%sh** (thresholds %s commits / %sh)\n\n' "$BEHIND_COMMITS" "$BEHIND_HOURS" "$MAX_BEHIND_COMMITS" "$MAX_BEHIND_HOURS"
-            printf 'A self-heal staging deploy dispatch was attempted at develop head. If staging '
-            printf 'does not reconverge shortly, check `cloud-cf-deploy.yml` runs on `develop` '
+            printf 'A self-heal staging deploy dispatch was attempted at staging head. If staging '
+            printf 'does not reconverge shortly, check `cloud-cf-deploy.yml` runs on `staging` '
             printf 'push: they may be queued behind an Actions runner backlog, or the newest '
             printf 'staging run may be waiting on the `staging-approval` environment gate.\n\n'
             printf '_This issue auto-updates on each probe and should be closed manually once staging reconverges._\n'
@@ -176,7 +157,7 @@ jobs:
             gh issue comment "$existing" --repo "${GITHUB_REPOSITORY}" --body "$body"
             echo "Updated tracking issue #$existing"
           else
-            gh label create "${TRACKING_ISSUE_LABEL}" --repo "${GITHUB_REPOSITORY}" --color "b60205" --description "staging.eliza.app fell behind develop" 2>/dev/null || true
+            gh label create "${TRACKING_ISSUE_LABEL}" --repo "${GITHUB_REPOSITORY}" --color "b60205" --description "staging.eliza.app fell behind staging" 2>/dev/null || true
             gh issue create --repo "${GITHUB_REPOSITORY}" --title "$title" --label "${TRACKING_ISSUE_LABEL}" --body "$body"
             echo "Opened tracking issue"
           fi
@@ -184,7 +165,7 @@ jobs:
       - name: Fail loud if stale
         if: steps.drift.outputs.stale == 'true'
         run: |
-          echo "::error::staging.eliza.app is ${{ steps.compare.outputs.behind_commits }} commits / ~${{ steps.compare.outputs.behind_hours }}h behind develop (threshold ${MAX_BEHIND_COMMITS} commits / ${MAX_BEHIND_HOURS}h)."
+          echo "::error::staging.eliza.app is ${{ steps.compare.outputs.behind_commits }} commits / ~${{ steps.compare.outputs.behind_hours }}h behind staging (threshold ${MAX_BEHIND_COMMITS} commits / ${MAX_BEHIND_HOURS}h)."
           exit 1
 
       - name: OK
