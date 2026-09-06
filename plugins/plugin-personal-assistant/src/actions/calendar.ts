@@ -1741,11 +1741,13 @@ export const calendarAction: Action & {
     {
       name: "title",
       description:
-        "Event title for create_event; for update_event/delete_event the exact title of the target event when no eventId is known. TOP-LEVEL flat. " +
+        "Event title for create_event, or the NEW name when update_event renames an event. It never selects the target: " +
+        "for update_event/delete_event name the existing event with `query` (its own words, e.g. 'piano lesson') or with `details.eventId` from a search_events/feed result. TOP-LEVEL flat. " +
         "NEVER inside `details`. " +
-        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`.",
+        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`. " +
+        "Move example: `{ subaction: 'update_event', query: 'piano lesson', details: { start: '...', end: '...' } }`.",
       descriptionCompressed:
-        "title TOP-LEVEL; NOT details. create_event needs title + details.start/end; delete/update: target title",
+        "title TOP-LEVEL; NOT details. create_event: the title; update_event: NEW name only. Target = query or details.eventId",
       required: false,
       // Live 2026-09-05 23:32: the promoted CALENDAR_DELETE_EVENT child rejected
       // a top-level title ("Unexpected argument 'title'") that the parent
@@ -1756,7 +1758,8 @@ export const calendarAction: Action & {
     {
       name: "query",
       description:
-        "Search phrase for search_events/travel_itinerary: flight, dentist, Denver.",
+        "Search phrase for search_events/travel_itinerary: flight, dentist, Denver. " +
+        "update_event/delete_event: the TARGET event in its own words (e.g. 'piano lesson') whenever details.eventId is not known; without query or eventId the update cannot identify a target.",
       required: false,
       subactions: [
         "feed",
@@ -1781,6 +1784,7 @@ export const calendarAction: Action & {
       description:
         "Structured fields for create_event/update_event/delete_event. " +
         "`start`/`end` ISO-8601; aliases `startAt`/`endAt` accepted. " +
+        "For a move or reschedule the time the user names ('to 6pm') is the new `start`; keep the event's previous duration for `end` unless the user gives a new end. " +
         "create_event: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
         "update_event: `{ subaction: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
         "check_availability/propose_times time-window fields TOP LEVEL, not `details`.",
