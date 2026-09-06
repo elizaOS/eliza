@@ -106,7 +106,10 @@ describe("GET requests", () => {
   it("sends correct method and path", async () => {
     setResponse(200, { success: true, data: [1, 2, 3] });
     const client = new CloudApiClient(baseUrl);
-    const result = await client.get<{ success: boolean; data: number[] }>("/items");
+    const result = await client.requestData<{
+      success: boolean;
+      data: number[];
+    }>("GET", "/items");
     expect(lastRequest.method).toBe("GET");
     expect(lastRequest.url).toBe("/items");
     expect(result.data).toEqual([1, 2, 3]);
@@ -115,7 +118,7 @@ describe("GET requests", () => {
   it("includes Authorization header when API key is set", async () => {
     setResponse(200, { success: true });
     const client = new CloudApiClient(baseUrl, "eliza_mykey");
-    await client.get("/auth-check");
+    await client.requestData("GET", "/auth-check");
     expect(lastRequest.headers.authorization).toBe("Bearer eliza_mykey");
   });
 

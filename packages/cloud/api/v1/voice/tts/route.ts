@@ -668,6 +668,7 @@ async function __hono_POST(c: AppContext) {
         admissionSnapshot,
         credential: credentialGuard.credentialForAdmission(),
         idempotencyKey: ttsIdempotencyKey ?? undefined,
+        atomicProviderBoundary: true,
       });
       reservation = admission.reservation;
       settleUnknown = admission.settleUnknown;

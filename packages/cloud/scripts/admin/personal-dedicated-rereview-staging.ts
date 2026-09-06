@@ -30,6 +30,25 @@ const BOOTSTRAP_REVIEWED_REASON =
 type Mode = "preview" | "execute";
 type JsonRecord = Record<string, unknown>;
 
+/** Correlates the account-scoped preview with worker records without publishing an agent ID. */
+export async function canonicalContainerNameSha256(
+  agentId: string,
+): Promise<string> {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      agentId,
+    )
+  ) {
+    throw new PersonalDedicatedRereviewOperatorError(
+      "container_correlation_identity_invalid",
+    );
+  }
+  const { getContainerName } = await import(
+    "@elizaos/cloud-shared/lib/services/docker-sandbox-utils"
+  );
+  return createHash("sha256").update(getContainerName(agentId)).digest("hex");
+}
+
 export class PersonalDedicatedRereviewOperatorError extends Error {
   constructor(readonly code: string) {
     super(code);
@@ -61,15 +80,21 @@ interface RereviewTargetDiagnostic {
   provisionFailure: ManagedDedicatedProvisionFailureCode;
   hasContainer: boolean;
   hasBridge: boolean;
+  sandboxHealthCheckTimedOut: boolean;
+  imageFamily: "canonical" | "demo" | "custom" | "unconfigured";
+  publicImageReferenceDigest: string | null;
+  publicRecordedImageDigest: string | null;
 }
 
-/** Emits only lifecycle vocabulary and presence flags from the retained row. */
+/** Emits lifecycle vocabulary and public image digests, never private image references. */
 export function diagnoseRereviewTarget(target: {
   status: string;
   database_status: string;
   error_message: string | null;
   sandbox_id: string | null;
   bridge_url: string | null;
+  docker_image: string | null;
+  image_digest: string | null;
 }): RereviewTargetDiagnostic {
   if (
     ![
@@ -89,15 +114,44 @@ export function diagnoseRereviewTarget(target: {
       "selected_target_status_invalid",
     );
   }
+  // Only official public repositories may reveal digests. Private repositories,
+  // tags, malformed references and arbitrary database text never cross this boundary.
+  const publicImage = target.docker_image?.match(
+    /^ghcr\.io\/elizaos\/(eliza|eliza-demo)(?::[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}|@(sha256:[0-9a-f]{64}))?$/,
+  );
+  const imageFamily = publicImage
+    ? publicImage[1] === "eliza"
+      ? "canonical"
+      : "demo"
+    : target.docker_image === null
+      ? "unconfigured"
+      : "custom";
   return {
     status: target.status,
     databaseStatus: target.database_status,
+    imageFamily,
+    publicImageReferenceDigest: publicImage?.[2] ?? null,
+    publicRecordedImageDigest:
+      publicImage &&
+      target.image_digest !== null &&
+      /^sha256:[0-9a-f]{64}$/.test(target.image_digest)
+        ? target.image_digest
+        : null,
     provisionFailure: classifyManagedDedicatedProvisionFailure(
       target.error_message,
       "selected target error",
     ),
     hasContainer: Boolean(target.sandbox_id),
     hasBridge: Boolean(target.bridge_url),
+    sandboxHealthCheckTimedOut:
+      target.error_message !== null &&
+      target.error_message
+        .split(/\r?\n/)
+        .some(
+          (line, index) =>
+            (index === 0 || line.startsWith("caused by:")) &&
+            line.includes("Sandbox health check timed out"),
+        ),
   };
 }
 
@@ -771,48 +825,53 @@ async function defaultReportAccountLifecycle(apiKey: string): Promise<void> {
   const evidence = {
     schemaVersion: 1,
     kind: "account-lifecycle",
-    agents: agentRows.map((agent) => ({
-      ...diagnoseRereviewTarget(agent),
-      updatedAt: agent.updated_at,
-      selected: selectionRows.some(
-        (row) => row.dedicated_agent_id === agent.id,
-      ),
-      activationBound: authorityRows.some(
-        (row) => row.dedicated_agent_id === agent.id,
-      ),
-      cutoverActivated: authorityRows.some(
-        (row) =>
-          row.dedicated_agent_id === agent.id &&
-          row.cutover_activated_at !== null,
-      ),
-      jobs: jobRows
-        .filter((row) => row.agent_id === agent.id)
-        .map((job) => {
-          if (
-            ![
-              "pending",
-              "in_progress",
-              "completed",
-              "failed",
-              "cancelled",
-            ].includes(job.status)
-          ) {
-            throw new PersonalDedicatedRereviewOperatorError(
-              "diagnostic_job_status_invalid",
-            );
-          }
-          return {
-            status: job.status,
-            failure: classifyManagedDedicatedProvisionFailure(
-              job.error,
-              "lifecycle job error",
-            ),
-            attempts: job.attempts,
-            retryableRequeues: job.retryable_requeues,
-            updatedAt: job.updated_at,
-          };
-        }),
-    })),
+    agents: await Promise.all(
+      agentRows.map(async (agent) => ({
+        ...diagnoseRereviewTarget(agent),
+        canonicalContainerNameSha256: await canonicalContainerNameSha256(
+          agent.id,
+        ),
+        updatedAt: agent.updated_at,
+        selected: selectionRows.some(
+          (row) => row.dedicated_agent_id === agent.id,
+        ),
+        activationBound: authorityRows.some(
+          (row) => row.dedicated_agent_id === agent.id,
+        ),
+        cutoverActivated: authorityRows.some(
+          (row) =>
+            row.dedicated_agent_id === agent.id &&
+            row.cutover_activated_at !== null,
+        ),
+        jobs: jobRows
+          .filter((row) => row.agent_id === agent.id)
+          .map((job) => {
+            if (
+              ![
+                "pending",
+                "in_progress",
+                "completed",
+                "failed",
+                "cancelled",
+              ].includes(job.status)
+            ) {
+              throw new PersonalDedicatedRereviewOperatorError(
+                "diagnostic_job_status_invalid",
+              );
+            }
+            return {
+              status: job.status,
+              failure: classifyManagedDedicatedProvisionFailure(
+                job.error,
+                "lifecycle job error",
+              ),
+              attempts: job.attempts,
+              retryableRequeues: job.retryable_requeues,
+              updatedAt: job.updated_at,
+            };
+          }),
+      })),
+    ),
   };
   process.stdout.write(`${JSON.stringify(evidence)}\n`);
 }

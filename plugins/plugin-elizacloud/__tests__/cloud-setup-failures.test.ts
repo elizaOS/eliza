@@ -890,12 +890,17 @@ describe("C7 — saved-key validation against /models", () => {
     const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
 
     // The validation client is constructed via `new CloudApiClient(...)` inside
-    // `probeApiKey`. Monkey-patch the prototype `get` so any new instance fails
-    // with a genuine revoked-key response (401 → CloudApiError).
+    // `probeApiKey`. Monkey-patch `requestData` so any new instance fails with a
+    // genuine revoked-key response (401 → CloudApiError).
     const { CloudApiClient } = await import("../src/utils/cloud-api.js");
-    const getSpy = vi.spyOn(CloudApiClient.prototype, "get").mockImplementation(async () => {
-      throw new CloudApiError(401, { success: false, error: "api key revoked" });
-    });
+    const requestDataSpy = vi
+      .spyOn(CloudApiClient.prototype, "requestData")
+      .mockImplementation(async () => {
+        throw new CloudApiError(401, {
+          success: false,
+          error: "api key revoked",
+        });
+      });
 
     const service = new (
       CloudAuthService as unknown as {
@@ -937,13 +942,16 @@ describe("C7 — saved-key validation against /models", () => {
       // and no loud error is logged.
       expect(service.isApiKeyInvalid()).toBe(false);
       expect(errorSpy).not.toHaveBeenCalled();
+      expect(requestDataSpy).toHaveBeenCalledWith("GET", "/models", {
+        timeoutMs: 2_500,
+      });
 
       // The cached key survives — model calls would continue using it.
       expect(service.getApiKey()).toBe("eliza_saved_key_c7");
     } finally {
       await service.stop();
       errorSpy.mockRestore();
-      getSpy.mockRestore();
+      requestDataSpy.mockRestore();
     }
   });
 });

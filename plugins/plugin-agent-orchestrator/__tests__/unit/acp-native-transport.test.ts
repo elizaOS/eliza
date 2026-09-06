@@ -221,7 +221,7 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     const events: unknown[] = [];
     const p = queueProc();
     const client = new NativeAcpClient({
-      command: "npx -y @agentclientprotocol/codex-acp@1.1.2",
+      command: "npx -y @agentclientprotocol/codex-acp@1.10.0",
       cwd: "/tmp/native-acp",
       approvalPreset: "autonomous",
       terminal: false,
@@ -232,14 +232,23 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     await waitForWrites(p, 1);
     expect(spawnMock).toHaveBeenCalledWith(
       "npx",
-      ["-y", "@agentclientprotocol/codex-acp@1.1.2"],
+      ["-y", "@agentclientprotocol/codex-acp@1.10.0"],
       expect.objectContaining({ cwd: "/tmp/native-acp" }),
     );
     expect(writeAt(p, 0)).toMatchObject({
       jsonrpc: "2.0",
       id: 1,
       method: "initialize",
-      params: { clientCapabilities: { terminal: false } },
+      params: {
+        clientCapabilities: {
+          terminal: false,
+          _meta: {
+            jetbrains: {
+              air: { version: 1, capabilities: ["sessionFailure"] },
+            },
+          },
+        },
+      },
     });
     emitJson(p, { jsonrpc: "2.0", id: 1, result: {} });
     await started;

@@ -14,7 +14,6 @@ import {
 } from "../first-run/mobile-runtime-mode";
 import {
   createNativeStreamingResponse,
-  type NativeStreamingAgentPlugin,
   supportsNativeStreaming,
 } from "./native-agent-stream";
 import {
@@ -86,6 +85,7 @@ type FetchWithOptionalPreconnect = typeof fetch & {
 
 function toNativeAgentPlugin(
   plugin: NativeAgentPlugin | null | undefined,
+  nativeMethods?: readonly { name: string }[],
 ): NativeAgentPlugin | null {
   if (!plugin) return null;
   const start = plugin.start?.bind(plugin);
@@ -93,7 +93,12 @@ function toNativeAgentPlugin(
   const getStatus = plugin.getStatus?.bind(plugin);
   const getLocalAgentBootState = plugin.getLocalAgentBootState?.bind(plugin);
   const request = plugin.request?.bind(plugin);
-  const requestStream = plugin.requestStream?.bind(plugin);
+  // Capacitor proxies manufacture functions even for absent native methods.
+  // The native header is authoritative when this resolver has one.
+  const requestStream =
+    nativeMethods && !nativeMethods.some(({ name }) => name === "requestStream")
+      ? undefined
+      : plugin.requestStream?.bind(plugin);
   const addListener = plugin.addListener?.bind(plugin);
   if (!start && !stop && !getStatus && !request && !getLocalAgentBootState) {
     return null;
@@ -186,11 +191,18 @@ async function resolveNativeAgentPlugin(): Promise<NativeAgentPlugin | null> {
   try {
     const capacitorWithPlugins = Capacitor as typeof Capacitor & {
       Plugins?: Record<string, NativeAgentPlugin | undefined>;
+      PluginHeaders?: readonly {
+        name: string;
+        methods: readonly { name: string }[];
+      }[];
     };
     const registeredAgent =
       capacitorWithPlugins.Plugins?.[agentPluginName] ??
       Capacitor.registerPlugin<NativeAgentPlugin>(agentPluginName);
-    const agent = toNativeAgentPlugin(registeredAgent);
+    const nativeMethods = capacitorWithPlugins.PluginHeaders?.find(
+      ({ name }) => name === agentPluginName,
+    )?.methods;
+    const agent = toNativeAgentPlugin(registeredAgent, nativeMethods);
     if (agent) return agent;
   } catch {
     // error-policy:J4 capability probe — a failed plugin registration means
@@ -321,28 +333,19 @@ export function createAndroidNativeAgentTransport(
         );
       }
 
-      // SSE requests (the chat reply token stream) go through the streaming
-      // bridge so tokens reach the WebView incrementally instead of buffering
-      // the whole body. Falls through to the buffered `request` below if the
-      // native plugin has no streaming bridge or the stream fails to start.
+      // Select buffered compatibility only before native dispatch. A missing
+      // stream head cannot prove that the agent has not accepted this request.
       if (
         isStreamingRequest(url, init.headers) &&
         supportsNativeStreaming(agent)
       ) {
-        try {
-          return await createNativeStreamingResponse(
-            agent as NativeStreamingAgentPlugin,
-            {
-              method,
-              path: localAgentRequestPath(url),
-              headers: headersToRecord(init.headers),
-              body: methodAllowsBody(method) ? (body ?? null) : null,
-              timeoutMs: context?.timeoutMs,
-            },
-          );
-        } catch {
-          // Stream couldn't start — fall back to the buffered request path.
-        }
+        return createNativeStreamingResponse(agent, {
+          method,
+          path: localAgentRequestPath(url),
+          headers: headersToRecord(init.headers),
+          body: methodAllowsBody(method) ? (body ?? null) : null,
+          timeoutMs: context?.timeoutMs,
+        });
       }
 
       const result = await request({

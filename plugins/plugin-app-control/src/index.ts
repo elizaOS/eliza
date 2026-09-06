@@ -26,7 +26,7 @@ import {
 import { createViewsClient } from "./actions/views-client.js";
 import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
 import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
-import { viewContextEvaluator } from "./evaluators/view-context.js";
+import { viewContextPlanningEvaluator } from "./evaluators/view-context-planning.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
 import {
@@ -116,6 +116,10 @@ export {
 	CONTEXT_VIEWS,
 	viewContextEvaluator,
 } from "./evaluators/view-context.js";
+export {
+	type ContextualNavigationIntent,
+	viewContextPlanningEvaluator,
+} from "./evaluators/view-context-planning.js";
 export { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
 export { currentViewProvider } from "./providers/current-view.js";
 export {
@@ -168,23 +172,11 @@ export const appControlPlugin: Plugin = {
 		runtimeManagementAction,
 		settingsAction,
 	],
-	// View-switch cascade:
-	//  1. ROUTE  — exact standalone multilingual commands take the deterministic
-	//     VIEWS fast path; contextual and compound requests stay with the planner.
-	//  2. ACTION — viewsAction resolves the selected target and navigates.
-	//  3. POST   — viewContextEvaluator (small model) catches contextual intent
-	//     the user never spelled out ("fix the login bug" -> task-coordinator).
-	//     Its gate defers whenever resolveIntentView already matches a direct
-	//     surface (the rigid matchViewCommand matcher, or the legacy intent
-	//     rules it falls back to), so it never contends with the action.
-	evaluators: [viewContextEvaluator],
-	// Persisted choice widgets are an explicit continuation protocol. Exact,
-	// standalone view commands use the rigid zero-model evaluator so shell
-	// navigation cannot fail merely because the general planner is unavailable
-	// or over its provider context limit. Contextual and compound language still
-	// stays with Stage 1 and the planner.
+	// Both exact and contextual navigation execute through the action queue.
+	evaluators: [],
 	responseHandlerEvaluators: [
 		viewCommandShortcutEvaluator,
+		viewContextPlanningEvaluator,
 		createChoiceShortcutEvaluator,
 	],
 	providers: [availableAppsProvider, currentViewProvider],

@@ -37,8 +37,12 @@ mock.module("../../db/repositories/subscription-entitlements", () => ({
   subscriptionEntitlementsRepository: { find: findSubscriptionEntitlement },
 }));
 
-const recalculateOrgTier = mock(async () => snapshot.rateLimits);
+const readOrgTierFromSources = mock(async () => snapshot.rateLimits);
+const recalculateOrgTier = mock(async () => {
+  throw new Error("inference projection must not hydrate the separate tier cache");
+});
 mock.module("./org-rate-limits", () => ({
+  readOrgTierFromSources,
   recalculateOrgTier,
 }));
 mock.module("../utils/logger", () => ({
@@ -57,6 +61,7 @@ beforeEach(() => {
   cacheSet.mockClear();
   getOrganizationBalanceSnapshot.mockClear();
   findSubscriptionEntitlement.mockClear();
+  readOrgTierFromSources.mockClear();
   recalculateOrgTier.mockClear();
   resetInferenceAdmissionMemoryCacheForTests();
 });
@@ -74,6 +79,7 @@ test("one remote read serves the projection and later isolate hits are local", a
 
   expect(cacheGet).toHaveBeenCalledTimes(1);
   expect(getOrganizationBalanceSnapshot).not.toHaveBeenCalled();
+  expect(readOrgTierFromSources).not.toHaveBeenCalled();
   expect(recalculateOrgTier).not.toHaveBeenCalled();
   expect(findSubscriptionEntitlement).not.toHaveBeenCalled();
 });
@@ -91,7 +97,8 @@ test("a miss registers authoritative hydration and fails closed", async () => {
   expect(background).toHaveLength(1);
   await background[0];
   expect(getOrganizationBalanceSnapshot).toHaveBeenCalledTimes(1);
-  expect(recalculateOrgTier).toHaveBeenCalledTimes(1);
+  expect(readOrgTierFromSources).toHaveBeenCalledTimes(1);
+  expect(recalculateOrgTier).not.toHaveBeenCalled();
   expect(findSubscriptionEntitlement).toHaveBeenCalledTimes(1);
   expect(cacheSet).toHaveBeenCalledTimes(1);
 });

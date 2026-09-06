@@ -136,7 +136,7 @@ export function ElizaAgentPricingBanner({
                   })
                 : sharedCount > 0
                   ? t("cloud.containers.pricingBanner.sharedFree", {
-                      defaultValue: "Shared Agent is free",
+                      defaultValue: "Shared message ingress is free",
                     })
                   : t("cloud.containers.pricingBanner.noAgents", {
                       defaultValue: "No agents",

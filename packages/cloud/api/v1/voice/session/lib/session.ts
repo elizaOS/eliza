@@ -195,6 +195,8 @@ export interface VoiceSessionConfig {
    * is half duplex: assistant playback never reaches Ink as caller speech.
    */
   acousticBargeInEnabled?: boolean;
+  /** Server-owned rollout gate for verified browser AEC overlap/handoff. */
+  allowContinuousHandoff?: boolean;
   /** Deterministic test override for the post-playback microphone settle. */
   halfDuplexPlaybackSettleMs?: number;
   /** Bounded payload-free timing receipt for observability and regression tests. */
@@ -320,6 +322,30 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private turnTtsChars = 0;
   private firstLlmTextEmitted = false;
   private callerResponseTurnCount = 0;
+  private continuousHandoffEnabled = false;
+  private assistantReferenceText = "";
+  private sttTurnEchoOnly = false;
+  private sttTurnDoubleTalkReported = false;
+  private pendingOverlapTurn: {
+    readonly traceId: string;
+    readonly transcript: string;
+    readonly abort: AbortController;
+    replyText: string | null;
+    handoffRequested: boolean;
+    viewHandoff?: {
+      viewId: string;
+      viewPath?: string;
+      subview?: string;
+    };
+  } | null = null;
+  private readonly overlapRequests = new Set<AbortController>();
+  /**
+   * Resolves once the active canonical response stream has finished reading
+   * and persisting its model turn. An overlap request may prepare while the
+   * old audio is still playing, but it must not race another canonical write
+   * against the same conversation.
+   */
+  private activeResponseModelSettled: Promise<void> = Promise.resolve();
 
   // Metering accrual (server-derived): count uplink bytes, convert to seconds.
   private unmeteredUplinkBytes = 0;
@@ -509,6 +535,28 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     } else if (this.config.openingGreeting?.trim()) {
       this.speakOpeningGreeting(this.config.openingGreeting.trim());
     }
+  }
+
+  setAudioCapabilities(capabilities: {
+    mode: "continuous_handoff";
+    echoCancellation: boolean;
+    noiseSuppression: boolean;
+    autoGainControl: boolean;
+    referenceAwarePlayback: boolean;
+  }): void {
+    this.continuousHandoffEnabled =
+      this.config.allowContinuousHandoff === true &&
+      capabilities.mode === "continuous_handoff" &&
+      capabilities.echoCancellation &&
+      capabilities.referenceAwarePlayback;
+    logger.info("[voice-session] continuous handoff capability", {
+      sessionId: this.sessionId,
+      enabled: this.continuousHandoffEnabled,
+      echoCancellation: capabilities.echoCancellation,
+      noiseSuppression: capabilities.noiseSuppression,
+      autoGainControl: capabilities.autoGainControl,
+      referenceAwarePlayback: capabilities.referenceAwarePlayback,
+    });
   }
 
   /**
@@ -816,7 +864,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   private isAssistantPlaybackSuppressed(): boolean {
-    if (this.config.acousticBargeInEnabled === true) return false;
+    if (
+      this.config.acousticBargeInEnabled === true ||
+      this.continuousHandoffEnabled
+    )
+      return false;
     return (
       this.assistantPlaybackActive ||
       this.now() < this.assistantPlaybackSuppressedUntilMs
@@ -824,6 +876,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   private armAssistantPlaybackSuppression(): void {
+    if (this.continuousHandoffEnabled) {
+      // Continuous handoff keeps the uplink open, but still needs a truthful
+      // first-audio marker so a thinking-time utterance cannot be reported as
+      // human double-talk.
+      this.assistantPlaybackActive = true;
+      this.assistantPlaybackStartedAtMs = this.now();
+      this.assistantPlaybackAudioBytes = 0;
+      return;
+    }
     if (this.config.acousticBargeInEnabled === true) return;
     if (this.turnMetrics) this.turnMetrics.halfDuplexArmedCount += 1;
     this.assistantPlaybackActive = true;
@@ -845,6 +906,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   private settleAssistantPlaybackSuppression(): void {
     if (!this.assistantPlaybackActive) return;
+    if (this.continuousHandoffEnabled) {
+      this.assistantPlaybackActive = false;
+      this.assistantPlaybackStartedAtMs = null;
+      this.assistantPlaybackAudioBytes = 0;
+      return;
+    }
     if (this.turnMetrics) this.turnMetrics.halfDuplexSettlingCount += 1;
     const now = this.now();
     const playbackStartedAt = this.assistantPlaybackStartedAtMs ?? now;
@@ -974,6 +1041,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.sttFirstTranscriptAtMs = null;
         this.sttLastTranscriptAtMs = null;
         this.sttEagerEndAtMs = null;
+        this.sttTurnEchoOnly = false;
+        this.sttTurnDoubleTalkReported = false;
         this.state = "transcribing";
         break;
       }
@@ -982,8 +1051,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           const transcriptAt = this.now();
           this.sttFirstTranscriptAtMs ??= transcriptAt;
           this.sttLastTranscriptAtMs = transcriptAt;
-          this.interruptForConfirmedSpeech(event.transcript);
-          this.queueSttPartial(event.transcript);
+          if (this.interruptForConfirmedSpeech(event.transcript)) {
+            this.queueSttPartial(event.transcript);
+          }
         }
         break;
       }
@@ -994,6 +1064,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           this.sttLastTranscriptAtMs = this.sttEagerEndAtMs;
         }
         this.interruptForConfirmedSpeech(event.transcript);
+        if (this.sttTurnEchoOnly) break;
         this.flushSttPartial();
         this.send({
           t: "stt_eager_eot",
@@ -1037,6 +1108,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
               : finalizedAt - this.sttEagerEndAtMs,
         });
         this.interruptForConfirmedSpeech(event.transcript);
+        if (this.sttTurnEchoOnly) {
+          this.activeSttTurn = false;
+          this.resetSttPartialDelivery();
+          break;
+        }
         this.activeSttTurn = false;
         this.resetSttPartialDelivery();
         // A missing transcript commits as "" on purpose: commitTurn's empty-
@@ -1169,11 +1245,37 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   /** Cancel an active response only after Ink has produced caller words. */
-  private interruptForConfirmedSpeech(transcript: string): void {
-    if (!SPOKEN_TRANSCRIPT_RE.test(transcript)) return;
+  private interruptForConfirmedSpeech(transcript: string): boolean {
+    if (!SPOKEN_TRANSCRIPT_RE.test(transcript)) return false;
+    if (this.continuousHandoffEnabled && this.currentVoiceTurnId) {
+      if (
+        this.assistantPlaybackActive &&
+        isLikelyAssistantEcho(transcript, this.assistantReferenceText)
+      ) {
+        if (!this.sttTurnEchoOnly) {
+          this.sttTurnEchoOnly = true;
+          this.send({
+            t: "echo_rejected",
+            traceId: this.currentVoiceTurnId,
+          });
+        }
+        return false;
+      }
+      this.sttTurnEchoOnly = false;
+      if (this.assistantPlaybackActive && !this.sttTurnDoubleTalkReported) {
+        this.sttTurnDoubleTalkReported = true;
+        this.send({
+          t: "human_double_talk",
+          traceId: this.currentVoiceTurnId,
+        });
+      }
+      this.state = "transcribing";
+      return true;
+    }
     if (this.currentVoiceTurnId) this.interrupt("acoustic");
     else this.config.downlink.clearAudio?.();
     this.state = "transcribing";
+    return true;
   }
 
   /**
@@ -1234,6 +1336,14 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /** Authoritative user turn: mint the turn trace, run the LLM+TTS legs. */
   private commitTurn(transcript: string): void {
+    if (
+      this.continuousHandoffEnabled &&
+      (this.currentVoiceTurnId || this.pendingOverlapTurn) &&
+      transcript.trim() !== ""
+    ) {
+      this.startOverlapTurn(transcript.trim());
+      return;
+    }
     const traceId = this.mintTraceId("turn");
     this.currentTraceId = traceId;
     this.currentVoiceTurnId = traceId;
@@ -1256,9 +1366,233 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     this.state = "thinking";
     this.callerResponseTurnCount += 1;
-    void this.runResponseTurn(transcript, traceId, {
-      callerResponseTurnIndex: this.callerResponseTurnCount,
+    this.activeResponseModelSettled = this.runResponseTurn(
+      transcript,
+      traceId,
+      {
+        callerResponseTurnIndex: this.callerResponseTurnCount,
+      },
+    ).then(
+      () => undefined,
+      // error-policy:J5 runResponseTurn reports failures through voice error
+      // frames; the sequencing barrier must still release the next request.
+      () => undefined,
+    );
+  }
+
+  private startOverlapTurn(transcript: string): void {
+    const traceId = this.mintTraceId("turn");
+    const abort = new AbortController();
+    const pending = {
+      traceId,
+      transcript,
+      abort,
+      replyText: null,
+      handoffRequested: false,
+    };
+    this.overlapRequests.add(abort);
+    this.pendingOverlapTurn = pending;
+    this.send({ t: "stt_final", text: transcript, traceId });
+    this.send({ t: "user_eos", traceId });
+    const previousResponse = this.activeResponseModelSettled;
+    this.activeResponseModelSettled = this.prepareOverlapReply(
+      pending,
+      previousResponse,
+    );
+  }
+
+  private async prepareOverlapReply(
+    pending: NonNullable<VoiceSession["pendingOverlapTurn"]>,
+    previousResponse: Promise<void>,
+  ): Promise<void> {
+    let replyText = "";
+    let firstText = false;
+    try {
+      // The existing response may still be streaming model output even though
+      // its first TTS audio is already audible. Serializing this boundary keeps
+      // canonical conversation writes ordered while still allowing the next
+      // model request to overlap the remainder of old audio playback. Every
+      // finalized utterance reaches canonical history, even when a newer
+      // utterance has taken ownership of the next audible reply.
+      await previousResponse;
+      if (pending.abort.signal.aborted || this.closed) {
+        return;
+      }
+      const result = await streamElizaConversation(
+        {
+          endpoint: this.config.elizaEndpoint,
+          authorization: this.config.elizaAuthorization,
+          model: this.config.elizaModel,
+          transcript: pending.transcript,
+          agentId: this.config.agentId,
+          conversationId: this.config.conversationId,
+          organizationId: this.config.organizationId,
+          userId: this.config.userId,
+          traceId: pending.traceId,
+          signal: pending.abort.signal,
+          fetchImpl: this.config.fetchImpl,
+        },
+        (delta) => {
+          if (
+            pending.abort.signal.aborted ||
+            this.pendingOverlapTurn !== pending
+          )
+            return;
+          replyText += delta;
+          if (!firstText && SPOKEN_TRANSCRIPT_RE.test(delta)) {
+            firstText = true;
+            this.send({ t: "llm_first_text", traceId: pending.traceId });
+          }
+        },
+      );
+      if (
+        result.aborted ||
+        pending.abort.signal.aborted ||
+        this.pendingOverlapTurn !== pending
+      )
+        return;
+      const speakable = replyText.trim();
+      if (!SPOKEN_TRANSCRIPT_RE.test(speakable)) {
+        this.send({
+          t: "error",
+          code: "unspeakable_llm_reply",
+          retryable: true,
+        });
+        this.pendingOverlapTurn = null;
+        return;
+      }
+      pending.replyText = speakable;
+      pending.viewHandoff = result.viewHandoff;
+      this.send({ t: "next_reply_ready", traceId: pending.traceId });
+      if (!this.currentVoiceTurnId) this.beginPreparedOverlapHandoff();
+    } catch (error) {
+      // error-policy:J1 Report a failed overlap at the voice transport boundary.
+      if (pending.abort.signal.aborted || this.closed) return;
+      logger.warn("[voice-session] overlapping response preparation failed", {
+        traceId: pending.traceId,
+        errorClass: error instanceof Error ? error.name : typeof error,
+      });
+      if (this.pendingOverlapTurn === pending) this.pendingOverlapTurn = null;
+      this.send({ t: "error", code: "llm_error", retryable: true });
+    } finally {
+      this.overlapRequests.delete(pending.abort);
+    }
+  }
+
+  private beginPreparedOverlapHandoff(): void {
+    const pending = this.pendingOverlapTurn;
+    if (!pending?.replyText || pending.handoffRequested || this.closed) return;
+    pending.handoffRequested = true;
+    const fromTraceId = this.currentVoiceTurnId;
+    if (fromTraceId) {
+      this.send({
+        t: "handoff_requested",
+        fromTraceId,
+        toTraceId: pending.traceId,
+        crossfadeMs: 80,
+        traceId: pending.traceId,
+      });
+      this.finishCurrentTurnForHandoff(fromTraceId);
+    }
+    this.pendingOverlapTurn = null;
+    this.speakPreparedOverlapReply(pending, fromTraceId);
+  }
+
+  private finishCurrentTurnForHandoff(traceId: string): void {
+    if (this.currentVoiceTurnId !== traceId) return;
+    this.clearAssistantPlaybackSuppression();
+    this.emitTurnMetrics(traceId, "interrupted");
+    this.send({
+      t: "usage",
+      sttMs: this.turnSttMs,
+      ttsChars: this.turnTtsChars,
+      traceId,
     });
+    this.currentVoiceTurnId = null;
+    this.llmAbort?.abort();
+    this.llmAbort = null;
+    this.phrase = null;
+    this.ttsStream?.cancel("phrase_handoff");
+    this.ttsStream = null;
+    this.turnSttMs = 0;
+    this.turnTtsChars = 0;
+  }
+
+  private speakPreparedOverlapReply(
+    pending: NonNullable<VoiceSession["pendingOverlapTurn"]>,
+    fromTraceId: string | null,
+  ): void {
+    const text = pending.replyText;
+    if (!text || this.closed) return;
+    const traceId = pending.traceId;
+    this.currentTraceId = traceId;
+    this.currentVoiceTurnId = traceId;
+    this.turnTtsChars = text.length;
+    this.assistantReferenceText = text;
+    if (pending.viewHandoff) {
+      this.send({
+        t: "navigate_view",
+        ...pending.viewHandoff,
+        traceId,
+      });
+    }
+    const stream = this.createTtsStream(traceId, {
+      onFirstAudio: () => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        this.armAssistantPlaybackSuppression();
+        this.state = "speaking";
+        this.send({ t: "speaking_start", traceId });
+        this.send({ t: "assistant_playing", active: true, traceId });
+        if (fromTraceId) {
+          this.send({
+            t: "handoff_completed",
+            fromTraceId,
+            toTraceId: traceId,
+            traceId,
+          });
+        }
+      },
+      onAudioFrame: (frame) => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        this.noteAssistantPlaybackAudio(frame.bytes.byteLength);
+        this.config.downlink.sendAudio(frame.bytes);
+      },
+      onComplete: () => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        this.send({ t: "assistant_playing", active: false, traceId });
+        this.send({ t: "speaking_end", traceId });
+        this.finishTurn(traceId);
+      },
+      onFlushComplete: () => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        this.beginPreparedOverlapHandoff();
+      },
+      onProviderError: (error) => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        this.send({
+          t: "error",
+          code: error.code ?? "tts_error",
+          retryable: true,
+        });
+        this.finishTurn(traceId, "error");
+      },
+    });
+    this.ttsStream = stream;
+    const aggregator = new PhraseAggregator({
+      minEmitChars: 1,
+      preferWordBoundaryAtMax: true,
+    });
+    const phrases = aggregator.push(text);
+    const tail = aggregator.flush();
+    if (tail !== null) phrases.push(tail);
+    for (const [index, phrase] of phrases.entries()) {
+      const continues = index < phrases.length - 1;
+      stream.sendPhrase({
+        text: phrase,
+        continueContext: continues,
+        ...(continues ? { flush: true } : {}),
+      });
+    }
   }
 
   /** Speak a fixed live opener while the first agent context is warming. */
@@ -1269,6 +1603,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.currentVoiceTurnId = traceId;
     this.turnTtsChars = text.length;
     this.firstLlmTextEmitted = false;
+    this.assistantReferenceText = text;
     const greetingStartedAt = this.now();
     let ttsOpenedAt: number | null = null;
 
@@ -1289,6 +1624,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         });
         this.state = "speaking";
         this.send({ t: "speaking_start", traceId });
+        this.send({ t: "assistant_playing", active: true, traceId });
       },
       onAudioFrame: (frame) => {
         if (this.currentVoiceTurnId !== traceId) return;
@@ -1297,6 +1633,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       },
       onComplete: () => {
         if (this.currentVoiceTurnId !== traceId) return;
+        this.send({ t: "assistant_playing", active: false, traceId });
         this.send({ t: "speaking_end", traceId });
         this.finishTurn(traceId);
       },
@@ -1406,6 +1743,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     } = {},
   ): Promise<void> {
     const responseStartedAt = this.now();
+    this.assistantReferenceText = "";
     this.beginTurnMetrics(traceId, responseStartedAt);
     let firstModelTextAt: number | null = null;
     const upstreamAttempts: Array<{
@@ -1476,6 +1814,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           });
           this.state = "speaking";
           this.send({ t: "speaking_start", traceId });
+          this.send({ t: "assistant_playing", active: true, traceId });
         },
         onAudioFrame: (frame) => {
           // Guard: no post-cancel / stale-turn frames ever reach the client.
@@ -1486,8 +1825,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         },
         onComplete: () => {
           if (this.currentVoiceTurnId !== traceId) return;
+          this.send({ t: "assistant_playing", active: false, traceId });
           this.send({ t: "speaking_end", traceId });
           this.finishTurn(traceId);
+        },
+        onFlushComplete: () => {
+          if (this.currentVoiceTurnId !== traceId) return;
+          this.beginPreparedOverlapHandoff();
         },
         onProviderError: (err) => {
           if (this.currentVoiceTurnId !== traceId) return;
@@ -1526,6 +1870,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           sendTtsPhrase(stream, {
             text: pendingPhrase,
             continueContext: true,
+            flush: true,
           });
         }
         const split = splitTerminalSuffix(p);
@@ -1533,6 +1878,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           sendTtsPhrase(stream, {
             text: split.prefix,
             continueContext: true,
+            flush: true,
           });
           pendingPhrase = split.suffix;
         } else {
@@ -1627,6 +1973,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         if (this.currentVoiceTurnId !== traceId) return;
         this.noteLlmDelta(traceId);
         modelOutputChars += delta.length;
+        this.assistantReferenceText += delta;
         if (SPOKEN_TRANSCRIPT_RE.test(delta)) {
           modelSpeakableContentSeen = true;
         }
@@ -1844,6 +2191,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.turnSttMs = 0;
     this.turnTtsChars = 0;
     this.state = "listening";
+    this.beginPreparedOverlapHandoff();
   }
 
   /**
@@ -1853,6 +2201,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
    */
   private interrupt(reason: "acoustic" | "explicit"): void {
     this.clearAssistantPlaybackSuppression();
+    for (const abort of this.overlapRequests) abort.abort();
+    this.overlapRequests.clear();
+    this.pendingOverlapTurn = null;
     const traceId = this.currentVoiceTurnId;
     if (!traceId) return; // nothing speaking/thinking to interrupt.
     this.emitTurnMetrics(traceId, "interrupted");
@@ -1953,6 +2304,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     if (this.closed) return;
     this.clearAssistantPlaybackSuppression();
     this.closed = true;
+    for (const abort of this.overlapRequests) abort.abort();
+    this.overlapRequests.clear();
+    this.pendingOverlapTurn = null;
     this.state = "closed";
     logger.info("[voice-session] session closed", {
       sessionId: this.sessionId,
@@ -2069,11 +2423,38 @@ interface RealtimeTtsPhraseInput {
   readonly maxBufferDelayMs?: number;
 }
 
+function normalizeVoiceWords(value: string): string[] {
+  return value
+    .toLocaleLowerCase("en-US")
+    .replace(/[^a-z0-9' ]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/** Conservative residual-echo filter: never reject one- or two-word speech. */
+function isLikelyAssistantEcho(
+  transcript: string,
+  assistantReference: string,
+): boolean {
+  const heard = normalizeVoiceWords(transcript);
+  const reference = normalizeVoiceWords(assistantReference);
+  if (heard.length < 3 || reference.length < heard.length) return false;
+  for (let start = 0; start <= reference.length - heard.length; start += 1) {
+    let matches = 0;
+    for (let index = 0; index < heard.length; index += 1) {
+      if (heard[index] === reference[start + index]) matches += 1;
+    }
+    if (matches / heard.length >= 0.85) return true;
+  }
+  return false;
+}
+
 interface RealtimeTtsStreamCallbacks {
   readonly onFirstAudio?: (event: { readonly elapsedMs: number }) => void;
   readonly onAudioFrame?: (event: { readonly bytes: Uint8Array }) => void;
   readonly onComplete?: (event: { readonly frameCount: number }) => void;
   readonly onProviderError?: (event: { readonly code?: string }) => void;
+  readonly onFlushComplete?: (event: { readonly flushId?: number }) => void;
 }
 
 interface RealtimeTtsStream {

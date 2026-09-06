@@ -8,6 +8,7 @@
  * resolves one-off due dates against the owner timezone. Multi-turn create
  * flows preview a draft and save on a follow-up confirmation turn.
  */
+
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
@@ -30,6 +31,7 @@ import {
   normalizeEffectReceipt,
   resolveActionArgs,
   type SubactionsMap,
+  validateUuid,
 } from "@elizaos/core";
 import type {
   CreateLifeOpsDefinitionRequest,
@@ -64,6 +66,10 @@ import {
   resolveDefaultTimeZone,
   resolveDefaultWindowPolicy,
 } from "../lifeops/defaults.js";
+import {
+  DEFINITION_CREATION_OPERATION,
+  definitionCreationIdentity,
+} from "../lifeops/definition-creation-identity.js";
 import {
   dayRange,
   detailArray,
@@ -161,6 +167,7 @@ type ResolvedLifeOperationPlan = {
 };
 
 type LifeParams = {
+  idempotencyKey?: string;
   action?: string;
   subaction?: LifeOperation;
   kind?: LifeKind;
@@ -210,6 +217,13 @@ const SUBACTIONS = {
       "mark occurrence done; count quota details.quantity defaults 1",
     required: ["target"],
     optional: ["details"],
+  },
+  reopen: {
+    description:
+      "Reopen a completed undated owner todo by its definition ID or unambiguous title.",
+    descriptionCompressed:
+      "reopen completed undated owner todo by definition ID/title",
+    required: ["target"],
   },
   skip: {
     description: "Skip an occurrence.",
@@ -262,6 +276,7 @@ type InternalLifeOp =
   | "delete_definition"
   | "delete_goal"
   | "complete_occurrence"
+  | "reopen_definition"
   | "skip_occurrence"
   | "snooze_occurrence"
   | "review_goal"
@@ -282,6 +297,8 @@ function toInternalLifeOp(
       return kind === "goal" ? "delete_goal" : "delete_definition";
     case "complete":
       return "complete_occurrence";
+    case "reopen":
+      return "reopen_definition";
     case "skip":
       return "skip_occurrence";
     case "snooze":
@@ -1126,21 +1143,77 @@ async function resolveDefinitionForMutation(
   domain?: LifeOpsDomain,
   destructive = false,
 ): Promise<DefinitionResult> {
-  const defs = await listCallerDefinitions(service, domain);
+  const allDefinitions = await listCallerDefinitions(service, domain);
   const normalizedOwnerText = normalizeTitle(ownerText);
+  // Exclusions apply to every matching path, including exact IDs and fuzzy
+  // fallbacks. A later heuristic must not reintroduce a protected item.
+  const defs = allDefinitions.filter((entry) => {
+    const title = normalizeTitle(entry.definition.title);
+    if (!title) return true;
+    let index = normalizedOwnerText.indexOf(title);
+    while (index >= 0) {
+      if (
+        ENUMERATED_DELETE_KEEP_CUE_RE.test(normalizedOwnerText.slice(0, index))
+      )
+        return false;
+      index = normalizedOwnerText.indexOf(title, index + title.length);
+    }
+    return true;
+  });
   const explicitlyNamed = defs.filter((entry) => {
     const title = normalizeTitle(entry.definition.title);
-    if (title.length === 0) return false;
-    const index = normalizedOwnerText.indexOf(title);
-    if (index < 0) return false;
-    // A title named inside a keep-style clause ("keep buy sandpaper",
-    // "don't delete X") is an exclusion, not a target — without this, the
-    // keep clause itself made the kept item an "explicitly named" candidate
-    // and forced a bogus disambiguation ask (or worse, on non-destructive
-    // ops, a wrong-target resolution).
-    const prefix = normalizedOwnerText.slice(Math.max(0, index - 32), index);
-    return !ENUMERATED_DELETE_KEEP_CUE_RE.test(prefix);
+    return title.length > 0 && normalizedOwnerText.includes(title);
   });
+  // An explicit durable ID is an identity constraint, never a hint that can
+  // fall back to another owner's or another explicitly named item's title.
+  if (validateUuid(target)) {
+    const exactTarget = defs.find((entry) => entry.definition.id === target);
+    if (
+      !exactTarget ||
+      (explicitlyNamed.length > 0 && !explicitlyNamed.includes(exactTarget))
+    ) {
+      return { match: null, ambiguousCandidates: [] };
+    }
+    return { match: exactTarget, ambiguousCandidates: [] };
+  }
+  const exactTitleTargets = target
+    ? allDefinitions.filter(
+        (entry) =>
+          normalizeTitle(entry.definition.title) === normalizeTitle(target),
+      )
+    : [];
+  if (
+    exactTitleTargets.length > 0 &&
+    exactTitleTargets.every((entry) => !defs.includes(entry))
+  ) {
+    return { match: null, ambiguousCandidates: [] };
+  }
+  if (destructive && exactTitleTargets.length > 0) {
+    // Retain the original exact identity even when a keep cue excludes it.
+    // Otherwise a longer title could replace that protected record as an alias.
+    const authorizedTargets = exactTitleTargets.filter(
+      (entry) =>
+        defs.includes(entry) &&
+        (explicitlyNamed.length === 0 || explicitlyNamed.includes(entry)),
+    );
+    const match =
+      authorizedTargets.length === 1
+        ? authorizedTargets[0]
+        : resolveDuplicateByTimeHint(authorizedTargets, ownerText);
+    return match
+      ? { match, ambiguousCandidates: [] }
+      : {
+          match: null,
+          ambiguousCandidates: authorizedTargets.map(
+            definitionDisambiguationLabel,
+          ),
+        };
+  }
+  // A destructive target that failed exact matching must not be replaced by
+  // a different title elsewhere in the request. Retain the existing narrow
+  // target alias/substring contract, including its refusal to guess by tokens.
+  if (destructive && target?.trim())
+    return resolveDefinitionInRecords(defs, target, true);
   if (explicitlyNamed.length === 1) {
     return {
       match: explicitlyNamed.at(0) ?? null,
@@ -1191,7 +1264,9 @@ async function resolveDefinitionForMutation(
       ambiguousCandidates: bestMatches.map(definitionDisambiguationLabel),
     };
   }
-  return resolveDefinition(service, target, domain, destructive);
+  return target
+    ? resolveDefinitionInRecords(defs, target, destructive)
+    : { match: null, ambiguousCandidates: [] };
 }
 
 function tokenizeTitle(value: string): string[] {
@@ -1452,7 +1527,11 @@ async function resolveOccurrenceWithIntentFallback(args: {
     args.target,
     args.domain,
   );
-  if (direct.match || direct.ambiguousCandidates.length > 0) {
+  if (
+    direct.match ||
+    direct.ambiguousCandidates.length > 0 ||
+    validateUuid(args.target)
+  ) {
     return direct;
   }
 
@@ -3569,8 +3648,12 @@ function lifeEffectString(value: unknown, field: string): string | null {
     : null;
 }
 
-function lifeEffectPreview(message: Memory, operation: string): EffectReceipt {
-  const id = lifeEffectRequestId(message);
+function lifeEffectPreview(
+  message: Memory,
+  operation: string,
+  key: string | null = null,
+): EffectReceipt {
+  const id = key ?? lifeEffectRequestId(message);
   return normalizeEffectReceipt({
     receiptId: lifeEffectReceiptId(message, operation, id),
     operation,
@@ -3579,7 +3662,7 @@ function lifeEffectPreview(message: Memory, operation: string): EffectReceipt {
       id,
     },
     artifacts: [],
-    idempotency: { key: null, replayed: false },
+    idempotency: { key, replayed: false },
     observedAt: lifeEffectObservedAt(message),
     outcome: "preview",
   });
@@ -3599,15 +3682,26 @@ async function latestLifeAudit(args: {
   ownerType: "definition" | "goal" | "occurrence";
   ownerId: string;
   eventTypes: readonly string[];
+  auditId?: string;
 }) {
   const service = new LifeOpsService(args.runtime);
-  const audits = await service.repository.listAuditEvents(
-    args.runtime.agentId,
-    args.ownerType,
-    args.ownerId,
-  );
-  const audit = audits.find((candidate) =>
-    args.eventTypes.includes(candidate.eventType),
+  const audits = args.auditId
+    ? [
+        await service.repository.getAuditEvent(
+          args.runtime.agentId,
+          args.ownerType,
+          args.ownerId,
+          args.auditId,
+        ),
+      ]
+    : await service.repository.listAuditEvents(
+        args.runtime.agentId,
+        args.ownerType,
+        args.ownerId,
+      );
+  const audit = audits.find(
+    (candidate) =>
+      candidate !== null && args.eventTypes.includes(candidate.eventType),
   );
   if (!audit) {
     throw new ElizaError(
@@ -3653,6 +3747,34 @@ async function lifeEffectReceiptForResult(args: {
     data?.saved === false ||
     data?.requiresConfirmation === true
   ) {
+    const draft = lifeEffectRecord(data.lifeDraft);
+    const draftRequest = lifeEffectRecord(draft?.request);
+    if (
+      draft?.operation === "create_definition" &&
+      typeof draftRequest?.idempotencyKey === "string"
+    ) {
+      const service = new LifeOpsService(args.runtime, {
+        ownerEntityId: args.message.entityId,
+      });
+      const parameters = lifeEffectRecord(args.options?.parameters);
+      const details = lifeEffectRecord(parameters?.details);
+      const ownership = service.normalizeOwnership(
+        requestedOwnership(
+          details?.domain === "agent_ops" ? "agent_ops" : undefined,
+        ),
+      );
+      const key = definitionCreationIdentity({
+        agentId: args.runtime.agentId,
+        actorId: service.ownerEntityId(),
+        ownership,
+        key: draftRequest.idempotencyKey,
+      });
+      return lifeEffectPreview(
+        args.message,
+        DEFINITION_CREATION_OPERATION,
+        key,
+      );
+    }
     return lifeEffectPreview(args.message, `${operation}.preview`);
   }
 
@@ -3750,19 +3872,89 @@ async function lifeEffectReceiptForResult(args: {
     lifeEffectRecord(lifeEffectRecord(data?.updated)?.definition);
   const definitionId = lifeEffectString(definition, "id");
   const definitionUpdatedAt = lifeEffectString(definition, "updatedAt");
-  if (definitionId && data?.deduplicated === true) {
+  const todoTransition = lifeEffectString(data, "todoTransition");
+  if (
+    definitionId &&
+    definitionUpdatedAt &&
+    (todoTransition === "complete" || todoTransition === "reopen")
+  ) {
+    const base = {
+      receiptId: lifeEffectReceiptId(
+        args.message,
+        operation,
+        `${definitionId}:${definitionUpdatedAt}`,
+      ),
+      operation: `lifeops.definition.${todoTransition}`,
+      resource: {
+        kind: "lifeops.definition",
+        id: definitionId,
+        version: definitionUpdatedAt,
+      },
+      artifacts: [],
+      idempotency: {
+        key: `${definitionId}:${definitionUpdatedAt}:${todoTransition}`,
+        replayed: data?.replayed === true,
+      },
+      observedAt: definitionUpdatedAt,
+    };
+    if (data?.replayed === true)
+      return lifeOpsNoopEffect({
+        ...base,
+        reason: "The todo already has the requested completion state.",
+      });
+    const transitionAuditId = lifeEffectString(data, "auditId");
+    if (!transitionAuditId)
+      throw new ElizaError(
+        "The todo transition omitted its committed audit identity.",
+        { code: "LIFEOPS_TODO_RECEIPT_MISMATCH", context: { definitionId } },
+      );
+    const audit = await latestLifeAudit({
+      runtime: args.runtime,
+      ownerType: "definition",
+      ownerId: definitionId,
+      auditId: transitionAuditId,
+      eventTypes: [
+        todoTransition === "complete"
+          ? "definition_completed"
+          : "definition_reopened",
+      ],
+    });
+    if (
+      audit.id !== lifeEffectString(data, "auditId") ||
+      audit.createdAt !== definitionUpdatedAt
+    )
+      throw new ElizaError(
+        "The todo transition receipt could not be matched to its committed audit.",
+        { code: "LIFEOPS_TODO_RECEIPT_MISMATCH", context: { definitionId } },
+      );
+    return lifeOpsAppliedEffect({
+      ...base,
+      commit: { kind: "durable", id: audit.id, committedAt: audit.createdAt },
+    });
+  }
+  const definitionIdempotency = lifeEffectRecord(data?.idempotency);
+  const definitionOperationKey = lifeEffectString(definitionIdempotency, "key");
+  if (
+    definitionId &&
+    (data?.deduplicated === true || definitionIdempotency?.replayed === true)
+  ) {
     return lifeOpsNoopEffect({
       receiptId: lifeEffectReceiptId(args.message, operation, definitionId),
-      operation: "lifeops.definition.create",
+      operation: DEFINITION_CREATION_OPERATION,
       resource: {
         kind: "lifeops.definition",
         id: definitionId,
         ...(definitionUpdatedAt ? { version: definitionUpdatedAt } : {}),
       },
       artifacts: [],
-      idempotency: { key: definitionId, replayed: true },
+      idempotency: {
+        key: definitionOperationKey ?? definitionId,
+        replayed: true,
+      },
       observedAt: new Date().toISOString(),
-      reason: "An equivalent active definition already exists.",
+      reason: definitionOperationKey
+        ? "This creation operation already completed."
+        : "An equivalent active definition already exists.",
     });
   }
   if (definitionId && definitionUpdatedAt) {
@@ -3776,7 +3968,7 @@ async function lifeEffectReceiptForResult(args: {
       receiptId: lifeEffectReceiptId(args.message, operation, definitionId),
       operation:
         audit.eventType === "definition_created"
-          ? "lifeops.definition.create"
+          ? DEFINITION_CREATION_OPERATION
           : "lifeops.definition.update",
       resource: {
         kind: "lifeops.definition",
@@ -3786,7 +3978,7 @@ async function lifeEffectReceiptForResult(args: {
       artifacts: [],
       idempotency:
         audit.eventType === "definition_created"
-          ? { key: definitionId, replayed: false }
+          ? { key: definitionOperationKey ?? definitionId, replayed: false }
           : { key: null, replayed: false },
       observedAt: audit.createdAt,
       commit: {
@@ -4418,11 +4610,14 @@ async function runLifeOperationHandlerInner(
   // Params extracted by the routing pass (resolveActionArgs) fill gaps the
   // planner left open — snooze minutes/preset and the target especially.
   const routedParams = operationPlan.params;
-  const targetName =
-    params.target ??
-    params.title ??
-    routedParams?.target ??
-    routedParams?.title;
+  const targetName = [
+    params.target,
+    params.title,
+    routedParams?.target,
+    routedParams?.title,
+  ].find(
+    (candidate) => typeof candidate === "string" && candidate.trim().length > 0,
+  );
   // Consent must come from the owner's current text. A pending draft proves
   // only that a preview exists; neither a planner `confirmed:true` field nor a
   // Stage-1 applied-effect claim can authorize the consequential write.
@@ -4769,6 +4964,10 @@ async function runLifeOperationHandlerInner(
                 sourceMessageId:
                   typeof message.id === "string" ? message.id : undefined,
                 request: {
+                  idempotencyKey:
+                    params.idempotencyKey !== undefined
+                      ? params.idempotencyKey
+                      : deferredDefinitionDraft?.request.idempotencyKey,
                   kind: "task",
                   metadata: definitionMetadata,
                   title,
@@ -4881,6 +5080,10 @@ async function runLifeOperationHandlerInner(
           deferredDefinitionDraft?.sourceMessageId ??
           (currentMessageId !== "" ? currentMessageId : undefined),
         request: {
+          idempotencyKey:
+            params.idempotencyKey !== undefined
+              ? params.idempotencyKey
+              : deferredDefinitionDraft?.request.idempotencyKey,
           cadence: leadShaped.cadence,
           description:
             explicitDescription ??
@@ -5011,23 +5214,24 @@ async function runLifeOperationHandlerInner(
         ? await resolveGoal(service, definitionDraft.request.goalRef, domain)
         : null;
 
-      // Content-level duplicate guard, mirroring the scheduled-task one: a
-      // confirm turn that re-describes an already-saved item mints a fresh
-      // create (observed live, #16941: "yes lock it in! and can it bug me
-      // before friday too" after the plan had saved stacked a second
-      // identical "Book report…" definition). An ACTIVE definition with the
-      // same normalized title and structurally identical cadence IS the same
-      // item — report it as already saved instead of stacking a twin.
-      const duplicateOf = (await listCallerDefinitions(service)).find(
-        (record) =>
-          record.definition.status === "active" &&
-          normalizeLifeInputText(record.definition.title).toLowerCase() ===
-            normalizeLifeInputText(
-              definitionDraft.request.title,
-            ).toLowerCase() &&
-          stableCadenceKey(record.definition.cadence) ===
-            stableCadenceKey(definitionDraft.request.cadence),
-      );
+      // Preserve legacy content-based confirmation replay when the caller has no
+      // operation identity. Explicit keys distinguish intentional copies from
+      // retries; the repository elects their single creator durably.
+      const duplicateOf =
+        definitionDraft.request.idempotencyKey === undefined
+          ? (await listCallerDefinitions(service)).find(
+              (record) =>
+                record.definition.status === "active" &&
+                normalizeLifeInputText(
+                  record.definition.title,
+                ).toLowerCase() ===
+                  normalizeLifeInputText(
+                    definitionDraft.request.title,
+                  ).toLowerCase() &&
+                stableCadenceKey(record.definition.cadence) ===
+                  stableCadenceKey(definitionDraft.request.cadence),
+            )
+          : undefined;
       if (duplicateOf) {
         await clearDeferredLifeDraftCache(runtime, message);
         const alreadyText = `"${duplicateOf.definition.title}" is already saved as ${summarizeCadence(duplicateOf.definition.cadence)} — nothing new was created.`;
@@ -5044,27 +5248,50 @@ async function runLifeOperationHandlerInner(
         };
       }
 
-      const created = await service.createDefinition({
-        ownership,
-        kind: definitionDraft.request.kind,
-        title: definitionDraft.request.title,
-        description: definitionDraft.request.description,
-        originalIntent: definitionDraft.intent || definitionDraft.request.title,
-        cadence: leadShaped.cadence,
-        timezone:
-          normalizeLifeTimeZoneToken(definitionDraft.request.timezone) ??
-          definitionDraft.request.timezone,
-        priority: definitionDraft.request.priority,
-        windowPolicy: definitionDraft.request.windowPolicy,
-        progressionRule: definitionDraft.request.progressionRule,
-        checkInPolicy: definitionDraft.request.checkInPolicy,
-        reminderPlan: definitionDraft.request.reminderPlan,
-        metadata: definitionDraft.request.metadata,
-        websiteAccess: definitionDraft.request.websiteAccess,
-        goalId: resolvedGoal?.goal.id ?? null,
-        source: "chat",
-      });
+      const created = await service.createDefinition(
+        {
+          idempotencyKey: definitionDraft.request.idempotencyKey,
+          ownership,
+          kind: definitionDraft.request.kind,
+          title: definitionDraft.request.title,
+          description: definitionDraft.request.description,
+          originalIntent:
+            definitionDraft.intent || definitionDraft.request.title,
+          cadence: leadShaped.cadence,
+          timezone:
+            normalizeLifeTimeZoneToken(definitionDraft.request.timezone) ??
+            definitionDraft.request.timezone,
+          priority: definitionDraft.request.priority,
+          windowPolicy: definitionDraft.request.windowPolicy,
+          progressionRule: definitionDraft.request.progressionRule,
+          checkInPolicy: definitionDraft.request.checkInPolicy,
+          reminderPlan: definitionDraft.request.reminderPlan,
+          metadata: definitionDraft.request.metadata,
+          websiteAccess: definitionDraft.request.websiteAccess,
+          goalId: resolvedGoal?.goal.id ?? null,
+          source: "chat",
+        },
+        {
+          originalIntentSource:
+            typeof params.intent === "string" && params.intent.trim().length > 0
+              ? "argument"
+              : "message",
+        },
+      );
       await clearDeferredLifeDraftCache(runtime, message);
+      if (
+        definitionDraft.request.idempotencyKey !== undefined &&
+        created.idempotency.replayed
+      ) {
+        const alreadyText = `"${created.definition.title}" was already saved by this operation; nothing new was created.`;
+        return {
+          success: true as const,
+          text: alreadyText,
+          userFacingText: alreadyText,
+          verifiedUserFacing: true,
+          data: toActionData(created),
+        };
+      }
       // The un-previewed fast path leaves no draft to cancel, so park an undo
       // handle: a next-turn retraction deletes this row deterministically.
       await writeRecentLifeSaveCache(runtime, message, {
@@ -5791,11 +6018,16 @@ async function runLifeOperationHandlerInner(
       // Enumerated multi-target delete first: several DISTINCT verbatim-named
       // items in one ask delete together (guards documented on the resolver;
       // anything ambiguous falls through to the single-target path below).
-      const enumeratedTargets = await resolveEnumeratedDeleteTargets(
-        service,
-        messageText(message) || intent,
-        domain,
-      );
+      // A supplied target constrains this operation even when the complete
+      // request names other records for different steps. Resolve that single
+      // identity (or reject it) rather than widening it through bulk matching.
+      const enumeratedTargets = targetName?.trim()
+        ? []
+        : await resolveEnumeratedDeleteTargets(
+            service,
+            messageText(message) || intent,
+            domain,
+          );
       if (enumeratedTargets.length > 1) {
         for (const entry of enumeratedTargets) {
           await service.deleteDefinition(entry.definition.id);
@@ -5942,6 +6174,53 @@ async function runLifeOperationHandlerInner(
           },
         },
       };
+    }
+
+    if (
+      internalOp === "reopen_definition" ||
+      (internalOp === "complete_occurrence" &&
+        ownerSurfaceActionName === "OWNER_TODOS" &&
+        !detailString(details, "occurrenceId"))
+    ) {
+      if (ownerSurfaceActionName !== "OWNER_TODOS")
+        return {
+          success: false,
+          text: "Only undated owner todos support reopening.",
+        };
+      const { match: target, ambiguousCandidates } =
+        await resolveDefinitionForMutation(
+          service,
+          targetName,
+          messageText(message) || intent,
+          domain,
+        );
+      if (ambiguousCandidates.length > 0)
+        return {
+          success: false,
+          text: `Multiple items match — which one?\n${ambiguousCandidates.join("\n")}`,
+        };
+      if (target?.definition.cadence.kind === "unscheduled") {
+        const transition =
+          internalOp === "reopen_definition"
+            ? await service.reopenTodo(target.definition.id)
+            : await service.completeTodo(target.definition.id);
+        const completed = transition.definition.status === "completed";
+        return {
+          success: true,
+          text: transition.replayed
+            ? `"${transition.definition.title}" was already ${completed ? "done" : "open"} — nothing changed.`
+            : `${completed ? "Marked" : "Reopened"} "${transition.definition.title}"${completed ? " done" : ""}.`,
+          data: toActionData({
+            ...transition,
+            todoTransition: completed ? "complete" : "reopen",
+          }),
+        };
+      }
+      if (internalOp === "reopen_definition")
+        return {
+          success: false,
+          text: "I could not find that completed undated todo to reopen.",
+        };
     }
 
     if (internalOp === "complete_occurrence") {
@@ -6428,14 +6707,24 @@ export async function runLifeOperationHandler(
     state,
     options,
   );
+  const receipt = await lifeEffectReceiptForResult({
+    runtime,
+    message,
+    options,
+    result,
+  });
+  // A rejected lookup leaves no write to reconcile. Preserve its failure and
+  // diagnostics while allowing the planner's existing observation recovery.
+  const observationFailure =
+    result.success === false &&
+    lifeRequestedOperation(options) === "review" &&
+    receipt.outcome === "failed" &&
+    receipt.failure.acceptance === "rejected";
   return completeLifeOpsEffect(
     callback,
-    result,
-    await lifeEffectReceiptForResult({
-      runtime,
-      message,
-      options,
-      result,
-    }),
+    observationFailure
+      ? { ...result, data: { ...result.data, readOnlyOperation: true } }
+      : result,
+    receipt,
   );
 }

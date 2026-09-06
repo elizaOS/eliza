@@ -40,3 +40,31 @@ bun run --cwd packages/app-core lint         # Biome
 ```
 
 This package is consumed by `@elizaos/agent`, `@elizaos/ui`, `@elizaos/shared`, the `packages/app` shell, and most `plugins/*` app plugins. It targets Node `>=24`, with `react`/`react-dom`/`three` as peer dependencies and the `@elizaos/capacitor-*` mobile bridges as optional dependencies.
+
+## Native inference setup
+
+A normal root `bun install` initializes the pinned fused inference submodule,
+ensures the host library and its companion libraries are current, and provisions
+the hash-verified default embedding model. Setup then loads the native library
+and computes a local embedding before reporting readiness. The runtime discovers these artifacts
+under the same state directory without additional environment configuration.
+Relative `ELIZA_STATE_DIR` paths resolve from the current working directory;
+`~` expands to the user's home directory.
+
+Reuse checks cover every staged native library, host architecture, and native
+source changes. Missing or altered companions trigger a rebuild on install;
+setup failures fail the install instead of reporting inference as ready.
+`ELIZA_SKIP_FUSED_INFERENCE_SETUP=1` is an explicit escape hatch and does not
+establish runtime readiness. Android and iOS packaging use their platform build
+lanes to produce the corresponding NDK or Apple artifacts.
+
+
+Android Bun runtime inputs for x64 and arm64 are pinned in
+[`scripts/lib/android-bun-artifacts.lock.json`](scripts/lib/android-bun-artifacts.lock.json).
+Both stable and canary channels resolve fixed GitHub release-asset IDs, archive
+checksums, executable checksums, and source revisions. Staging verifies the
+archive before extraction and the executable on every cache use; a mismatch
+fails the build. Update the lock deliberately when changing runtime versions.
+`ELIZA_BUN_X64_FILE` and `ELIZA_BUN_AARCH64_FILE` can supply downloaded ZIPs for
+local or offline builds, and must match those same pins. RISC-V retains its
+separate OS cross-build artifact and checksum contract.

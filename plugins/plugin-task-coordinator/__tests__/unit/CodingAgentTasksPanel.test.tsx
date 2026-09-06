@@ -1,17 +1,5 @@
+/** Exercises task listing, detail controls, and polling recovery with mocked client boundaries. */
 // @vitest-environment jsdom
-//
-// Behavioral + data-display tests for CodingAgentTasksPanel (the task-coordinator
-// gui/xr view, src/CodingAgentTasksPanel.tsx). Renders it with realistic
-// CodingAgentTaskThread / CodingAgentTaskThreadDetail fixtures and
-// assert: (a) the populated list shows specific titles/subtitles + total/active/
-// done count chips + session/decision chips; (b) typing in search re-fetches
-// with that search; (c) the show-archived toggle re-fetches with includeArchived
-// and flips aria-pressed; (d) an empty result renders TaskEmptyState; (e)
-// clicking a card opens ThreadDetailPane with the fixture's acceptance/session/
-// artifact/decision/transcript values + the counts row; (f) Delete archives the
-// thread and Reopen reopens an archived one; (g) the back chip returns to the
-// list. We mock @elizaos/ui's client + useApp + Button and @elizaos/ui/agent-
-// surface's useAgentElement so the component's own behavior is under test.
 import {
   cleanup,
   fireEvent,
@@ -423,6 +411,27 @@ function panel(): HTMLElement {
 }
 
 describe("CodingAgentTasksPanel — list", () => {
+  it("retains tasks while a background refresh fails and clears the error after recovery", async () => {
+    listCodingAgentTaskThreads.mockResolvedValue([ACTIVE_THREAD]);
+    render(<CodingAgentTasksPanel />);
+    await screen.findByText("Fix the broken CI build");
+    listCodingAgentTaskThreads.mockRejectedValueOnce(
+      new Error("Task backend unavailable"),
+    );
+    expect(
+      await screen.findByText(
+        /Task backend unavailable/,
+        {},
+        { timeout: 7000 },
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Fix the broken CI build")).toBeTruthy();
+    await waitFor(
+      () => expect(screen.queryByText(/Task backend unavailable/)).toBeNull(),
+      { timeout: 7000 },
+    );
+  }, 15000);
+
   it("renders each thread's title + subtitle and the total/active/done count chips", async () => {
     listCodingAgentTaskThreads.mockResolvedValue([
       ACTIVE_THREAD,

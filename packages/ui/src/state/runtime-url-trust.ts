@@ -131,12 +131,20 @@ export function isTrustedBuildConfiguredRemoteApiBaseUrl(
   }
 }
 
-function isLoopbackHostname(hostname: string): boolean {
-  const h = hostname.toLowerCase();
+/** Classify URL hostnames without treating bind defaults as loopback. */
+export function isLoopbackHostname(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+  const h =
+    lower.startsWith("[") && lower.endsWith("]") ? lower.slice(1, -1) : lower;
   // RFC 1122 reserves the entire 127.0.0.0/8 block for IPv4 loopback, not
   // only 127.0.0.1. Packaged external-runtime tests bind an alternate address
   // in that block so they exercise the HTTP path without exposing a fixture.
-  return /^127(?:\.\d{1,3}){3}$/.test(h) || h === "localhost" || h === "::1";
+  return (
+    h === "localhost" ||
+    h === "::1" ||
+    (/^127(?:\.\d{1,3}){3}$/.test(h) &&
+      h.split(".").every((octet) => Number(octet) <= 255))
+  );
 }
 
 export function isTrustedRestoreApiBaseUrl(

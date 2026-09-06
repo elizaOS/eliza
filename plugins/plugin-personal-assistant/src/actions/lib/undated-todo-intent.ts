@@ -48,6 +48,7 @@ const POLICY_BY_LANGUAGE: Record<UiLanguage, LocalePolicy> = {
       { value: "no due date", wordBounded: true },
       { value: "no deadline", wordBounded: true },
       { value: "without a deadline", wordBounded: true },
+      { value: "without any deadline", wordBounded: true },
       { value: "no date", wordBounded: true },
       { value: "without a due date", wordBounded: true },
       { value: "without due date", wordBounded: true },

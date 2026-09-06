@@ -64,9 +64,10 @@ export class CloudBackupService extends Service {
     metadata?: Record<string, unknown>
   ): Promise<AgentSnapshot> {
     const client = this.authService.getClient();
-    const response = await client.post<CreateSnapshotResponse>(
+    const response = await client.requestData<CreateSnapshotResponse>(
+      "POST",
       `/agent-state/${containerId}/snapshot`,
-      { snapshotType, metadata }
+      { json: { snapshotType, metadata } }
     );
 
     logger.info(
@@ -84,8 +85,9 @@ export class CloudBackupService extends Service {
 
   async listSnapshots(containerId: string): Promise<AgentSnapshot[]> {
     const client = this.authService.getClient();
-    const response = await client.get<SnapshotListResponse>(
-      `/agent-state/${containerId}/snapshots`
+    const response = await client.requestData<SnapshotListResponse>(
+      "GET",
+      `/agent-state/${containerId}/snapshots`,
     );
     return response.data;
   }

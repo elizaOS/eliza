@@ -60,6 +60,8 @@ const notesView = (): ViewSummary =>
 	({
 		id: "notes",
 		label: "Notes",
+		available: true,
+		pluginName: "test",
 		viewType: "gui",
 		path: "/notes",
 		description:
@@ -88,6 +90,8 @@ const calendarView = (): ViewSummary =>
 	({
 		id: "calendar",
 		label: "Calendar",
+		available: true,
+		pluginName: "test",
 		viewType: "gui",
 		path: "/calendar",
 		description:
@@ -100,6 +104,8 @@ const chatView = (): ViewSummary =>
 	({
 		id: "chat",
 		label: "Chat",
+		available: true,
+		pluginName: "test",
 		viewType: "gui",
 		path: "/",
 		// Deliberately no "home" token anywhere: in the live repro the registry
@@ -315,7 +321,7 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 		expect(result.success).toBe(false);
 		expect(JSON.parse(result.text ?? "{}")).toMatchObject({
 			effect: "view_navigation",
-			status: "unconfirmed",
+			status: "http-error",
 			viewId: "chat",
 			label: "Home",
 		});

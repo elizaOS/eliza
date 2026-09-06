@@ -252,6 +252,15 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
 
   const onAction = useCallback(
     (action: string) => {
+      if (action.startsWith("filter-set:")) {
+        const raw = action.slice("filter-set:".length);
+        setActiveStatuses(
+          raw === "all" || !KNOWN_STATUSES.has(raw)
+            ? new Set<GoalStatus>()
+            : new Set<GoalStatus>([raw as GoalStatus]),
+        );
+        return;
+      }
       if (action.startsWith("filter:")) {
         const raw = action.slice("filter:".length);
         if (KNOWN_STATUSES.has(raw)) toggleStatus(raw as GoalStatus);

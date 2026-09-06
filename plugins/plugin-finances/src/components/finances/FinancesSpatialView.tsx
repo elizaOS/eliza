@@ -15,7 +15,16 @@
  * or runs financial math. It displays the snapshot and dispatches actions.
  */
 
-import { Button, Card, HStack, List, Text, VStack } from "@elizaos/ui/spatial";
+import {
+  Button,
+  Card,
+  Divider,
+  Field,
+  HStack,
+  List,
+  Text,
+  VStack,
+} from "@elizaos/ui/spatial";
 
 /**
  * Which render state the dashboard is in. `reauth` is distinct from `empty`:
@@ -155,7 +164,7 @@ export function FinancesSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1} shrink={0}>
+    <Card gap={1} padding={1} grow={1} shrink={0}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
           Loading
@@ -201,14 +210,19 @@ function FinancesEmptyBody({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <>
-      <Text bold>None</Text>
+    <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+      <Text bold align="center">
+        No accounts connected
+      </Text>
+      <Text tone="muted" style="caption" align="center">
+        Connect a payment source to see balances and activity here.
+      </Text>
       <HStack gap={1}>
         <Button agent="connect" onPress={dispatch("connect")}>
-          Connect
+          Connect account
         </Button>
       </HStack>
-    </>
+    </VStack>
   );
 }
 
@@ -297,9 +311,7 @@ function SourcesSection({
   if (sources.length === 0) return null;
   return (
     <>
-      <Text style="caption" tone="muted">
-        Sources ({sources.length})
-      </Text>
+      <Divider label={`Accounts (${sources.length})`} />
       <List gap={0}>
         {sources.map((source) => (
           <HStack key={source.id} gap={1} align="center" width="100%">
@@ -341,20 +353,57 @@ function FiltersSection({
   dispatch: (action: string) => () => void;
 }) {
   if (filters.length === 0) return null;
+  const windowFilters = filters.filter(
+    (filter) =>
+      filter.action === "filter-clear" ||
+      filter.action.startsWith("filter-window-"),
+  );
+  const categoryFilters = filters.filter((filter) =>
+    filter.action.startsWith("filter-category-"),
+  );
+  const activeWindow =
+    windowFilters.find((filter) => filter.active)?.label ?? "All activity";
+  const activeCategory =
+    categoryFilters.find((filter) => filter.active)?.label ?? "All categories";
   return (
-    <HStack gap={1} width="100%">
-      {filters.map((chip) => (
-        <Button
-          key={chip.action}
-          agent={chip.action}
-          tone={chip.active ? "primary" : "muted"}
-          variant={chip.active ? "solid" : "ghost"}
-          pressed={chip.active}
-          onPress={dispatch(chip.action)}
-        >
-          {chip.label}
-        </Button>
-      ))}
+    <HStack gap={1} width="100%" wrap align="end">
+      <Field
+        kind="select"
+        label="Period"
+        value={activeWindow}
+        options={windowFilters.map((filter) => filter.label)}
+        agent="finance-period-filter"
+        onChange={(label) => {
+          const selected = windowFilters.find(
+            (filter) => filter.label === label,
+          );
+          if (selected) dispatch(selected.action)();
+        }}
+        grow={1}
+      />
+      {categoryFilters.length > 0 ? (
+        <Field
+          kind="select"
+          label="Category"
+          value={activeCategory}
+          options={[
+            "All categories",
+            ...categoryFilters.map((filter) => filter.label),
+          ]}
+          agent="finance-category-filter"
+          onChange={(label) => {
+            if (label === "All categories") {
+              dispatch("filter-category-all")();
+              return;
+            }
+            const selected = categoryFilters.find(
+              (filter) => filter.label === label,
+            );
+            if (selected) dispatch(selected.action)();
+          }}
+          grow={1}
+        />
+      ) : null}
     </HStack>
   );
 }
@@ -362,9 +411,7 @@ function FiltersSection({
 function BalanceSection({ balance }: { balance: FinanceBalanceCard }) {
   return (
     <>
-      <Text style="caption" tone="muted">
-        Balance
-      </Text>
+      <Divider label="Balance" />
       <Text bold tone={balance.negative ? "danger" : "primary"} wrap={false}>
         {balance.net}
       </Text>
@@ -395,15 +442,12 @@ function TransactionsSection({
   dispatch: (action: string) => () => void;
 }) {
   const filteredOut = transactionsTotal > transactions.length;
+  const countLabel = filteredOut
+    ? `${transactions.length} of ${transactionsTotal}`
+    : String(transactions.length);
   return (
     <>
-      <Text style="caption" tone="muted">
-        Transactions (
-        {filteredOut
-          ? `${transactions.length} of ${transactionsTotal}`
-          : transactions.length}
-        )
-      </Text>
+      <Divider label={`Transactions (${countLabel})`} />
       {transactions.length === 0 ? (
         <Text tone="muted" style="caption">
           {filteredOut ? "No transactions match the filter" : "None"}
@@ -453,9 +497,7 @@ function RecurringSection({
 }) {
   return (
     <>
-      <Text style="caption" tone="muted">
-        Recurring ({recurring.length})
-      </Text>
+      <Divider label={`Recurring (${recurring.length})`} />
       {recurring.length === 0 ? (
         <Text tone="muted" style="caption">
           None

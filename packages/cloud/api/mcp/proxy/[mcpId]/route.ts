@@ -580,6 +580,7 @@ app.post("/", async (c) => {
           apiKeyId: caller.apiKeyId,
           admissionSnapshot: caller.admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: true,
           cost: {
             baseTotalCost: chargeReceipt.baseAmountUsd,
             platformMarkup:
@@ -649,10 +650,49 @@ app.post("/", async (c) => {
         if (hopAborted(error)) {
           return await refundDeadline();
         }
+        if (error instanceof InsufficientCreditsError) {
+          logger.error("[MCP Proxy] Provider dispatch admission denied", {
+            mcpId,
+            organizationId: user.organization_id,
+            requestId,
+            phase: "provider_dispatch",
+            error: error.message,
+            errorName: error.name,
+          });
+          await settleFailure("provider_dispatch_admission_failed");
+          return c.json(
+            {
+              error: "Insufficient credits",
+              creditUnit: ORGANIZATION_CREDIT_UNIT,
+              requiredUsd: chargeReceipt.totalAmountUsd,
+              /** @deprecated Legacy MCP pricing points (100 points = $1). */
+              required: totalCreditsRequired,
+              balance: error.available,
+            },
+            402,
+          );
+        }
+        const admissionError = asGenerativeCacheApiError(error);
+        if (admissionError) {
+          logger.error("[MCP Proxy] Provider dispatch admission failed", {
+            mcpId,
+            organizationId: user.organization_id,
+            requestId,
+            phase: "provider_dispatch",
+            error: error instanceof Error ? error.message : String(error),
+            errorName: error instanceof Error ? error.name : "unknown",
+          });
+          await settleFailure("provider_dispatch_admission_failed");
+          return failureResponse(c, admissionError);
+        }
         logger.error("[MCP Proxy] Failed to reach MCP endpoint", {
           mcpId,
           targetUrl,
+          organizationId: user.organization_id,
+          requestId,
+          phase: "provider_request",
           error: error instanceof Error ? error.message : String(error),
+          errorName: error instanceof Error ? error.name : "unknown",
         });
         await settleFailure("upstream_unreachable");
         return c.json({ error: "Failed to reach MCP endpoint" }, 502);

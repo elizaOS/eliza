@@ -143,12 +143,58 @@ function normalizeEol(text: string): string {
   return text.replace(/\r\n?/g, "\n");
 }
 
-function readIfPresent(p: string): string | undefined {
-  try {
-    return normalizeEol(fs.readFileSync(p, "utf8"));
-  } catch {
-    return undefined;
+/** A source exists but cannot be inspected or read for a complete migration. */
+export class MigrationSourceReadError extends Error {
+  override readonly name = "MigrationSourceReadError";
+  readonly code = "MIGRATION_SOURCE_READ_FAILED";
+  constructor(
+    readonly context: { path: string; operation: string },
+    cause: unknown,
+  ) {
+    super(
+      `Cannot ${context.operation} migration source ${context.path}. Check its type and read permissions before retrying.`,
+      { cause },
+    );
   }
+}
+
+function readOptional<T>(
+  p: string,
+  operation: string,
+  read: () => T,
+): T | undefined {
+  try {
+    return read();
+  } catch (error) {
+    // error-policy:J2 Only absent optional paths are tolerated; other source failures retain their cause.
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return undefined;
+    throw new MigrationSourceReadError({ path: p, operation }, error);
+  }
+}
+
+function readIfPresent(p: string): string | undefined {
+  const stat = statIfPresent(p);
+  if (stat === undefined) return undefined;
+  if (!stat.isFile()) {
+    throw new MigrationSourceReadError(
+      { path: p, operation: "read" },
+      new Error(
+        "Expected a regular file; refusing to read a special filesystem entry.",
+      ),
+    );
+  }
+  return readOptional(p, "read", () =>
+    normalizeEol(fs.readFileSync(p, "utf8")),
+  );
+}
+
+function statIfPresent(p: string): fs.Stats | undefined {
+  return readOptional(p, "inspect", () => fs.statSync(p));
+}
+
+function entriesIfPresent(p: string): string[] {
+  return readOptional(p, "list", () => fs.readdirSync(p)) ?? [];
 }
 
 /**
@@ -167,19 +213,12 @@ function resolveAgentRoot(home: string): string {
   ];
   for (const sub of HOME_SUBROOTS) {
     const root = sub ? path.join(home, sub) : home;
-    const hasPersona = PERSONA_FILES.some((f) => {
-      try {
-        return fs.statSync(path.join(root, f)).isFile();
-      } catch {
-        return false;
-      }
-    });
-    let hasMemoryDir = false;
-    try {
-      hasMemoryDir = fs.statSync(path.join(root, "memory")).isDirectory();
-    } catch {
-      hasMemoryDir = false;
-    }
+    const hasPersona = PERSONA_FILES.some((f) =>
+      statIfPresent(path.join(root, f))?.isFile(),
+    );
+    const hasMemoryDir = statIfPresent(
+      path.join(root, "memory"),
+    )?.isDirectory();
     if (hasPersona || hasMemoryDir) return root;
   }
   return home;
@@ -199,13 +238,7 @@ function resolveAgentRoot(home: string): string {
  * possible on a case-sensitive FS); otherwise the single match is used.
  */
 function readCuratedMemory(root: string): { text?: string; file?: string } {
-  let entries: string[];
-  try {
-    entries = fs.readdirSync(root);
-  } catch {
-    // Missing home is tolerated per the module's reader contract: empty, no throw.
-    return {};
-  }
+  const entries = entriesIfPresent(root);
   const matches = entries.filter((entry) =>
     ROOT_MEMORY_CANDIDATES.some(
       (candidate) => candidate.toLowerCase() === entry.toLowerCase(),
@@ -224,39 +257,21 @@ function findAwareness(memoryDir: string, agentId: string): string | undefined {
   const preferred = path.join(memoryDir, `${agentId}-awareness.md`);
   const direct = readIfPresent(preferred);
   if (direct !== undefined) return direct;
-  let entries: string[] = [];
-  try {
-    entries = fs.readdirSync(memoryDir);
-  } catch {
-    return undefined;
-  }
+  const entries = entriesIfPresent(memoryDir);
   const match = entries.find((f) => f.endsWith("-awareness.md"));
   return match ? readIfPresent(path.join(memoryDir, match)) : undefined;
 }
 
 /** Detect *.sqlite memory stores in a memory dir (newer/builder layout). */
 function detectSqliteStores(memoryDir: string): OcSqliteStore[] {
-  let entries: string[] = [];
-  try {
-    entries = fs.readdirSync(memoryDir);
-  } catch {
-    return [];
-  }
+  const entries = entriesIfPresent(memoryDir);
   const out: OcSqliteStore[] = [];
   for (const f of entries) {
     if (!f.endsWith(".sqlite")) continue;
     const full = path.join(memoryDir, f);
-    try {
-      const st = fs.statSync(full);
-      if (!st.isFile()) continue;
-      out.push({
-        file: full,
-        name: f.replace(/\.sqlite$/, ""),
-        bytes: st.size,
-      });
-    } catch {
-      // skip unreadable
-    }
+    const st = statIfPresent(full);
+    if (!st?.isFile()) continue;
+    out.push({ file: full, name: f.replace(/\.sqlite$/, ""), bytes: st.size });
   }
   out.sort((a, b) => a.name.localeCompare(b.name));
   return out;
@@ -377,23 +392,14 @@ export function readOcAgentHome(home: string, agentId: string): OcAgentSource {
   const namedMemory: OcNamedMemory[] = [];
   const warnings: string[] = [];
 
-  let memoryEntries: string[] = [];
-  try {
-    memoryEntries = fs.readdirSync(memoryDir);
-  } catch {
-    memoryEntries = [];
-  }
+  const memoryEntries = entriesIfPresent(memoryDir);
 
   for (const filename of memoryEntries) {
     if (!filename.endsWith(".md")) continue;
     const full = path.join(memoryDir, filename);
-    let text: string;
-    try {
-      if (!fs.statSync(full).isFile()) continue;
-      text = normalizeEol(fs.readFileSync(full, "utf8"));
-    } catch {
-      continue;
-    }
+    if (!statIfPresent(full)?.isFile()) continue;
+    const text = readIfPresent(full);
+    if (text === undefined) continue;
     const m = DAILY_RE.exec(filename);
     if (m) {
       const [, y, mo, d] = m;
@@ -475,14 +481,8 @@ export function readOcAgentHome(home: string, agentId: string): OcAgentSource {
   dailyLogs.sort((a, b) => b.epochMs - a.epochMs);
   namedMemory.sort((a, b) => a.key.localeCompare(b.key));
 
-  let hasSecretsDir = false;
-  try {
-    hasSecretsDir = fs
-      .statSync(path.join(resolvedHome, "secrets"))
-      .isDirectory();
-  } catch {
-    hasSecretsDir = false;
-  }
+  const hasSecretsDir =
+    statIfPresent(path.join(resolvedHome, "secrets"))?.isDirectory() ?? false;
 
   const curated = readCuratedMemory(resolvedHome);
 

@@ -19,7 +19,11 @@ import { decideInterruptionWithModel } from "./interruption-decider.js";
 import { sessionBoundRoomIds } from "./session-room-binding.js";
 import type { SubAgentInbox } from "./sub-agent-inbox.js";
 import { requireTaskAgentAccess } from "./task-policy.js";
-import { type SessionInfo, TERMINAL_SESSION_STATUSES } from "./types.js";
+import {
+  isSessionPromptInFlight,
+  type SessionInfo,
+  TERMINAL_SESSION_STATUSES,
+} from "./types.js";
 
 // Skip forwarding our own posts back into `acp.sendPrompt` — would echo-loop.
 // `entityId === runtime.agentId` is not enough: the router uses a synthetic
@@ -39,7 +43,7 @@ export const INTERNAL_FORWARD_SKIP_SOURCES = new Set([
  * to `ready`. Only `ready` is promptable.
  */
 export function isSessionBusy(status: string): boolean {
-  return status !== "ready" && !TERMINAL_SESSION_STATUSES.has(status);
+  return isSessionPromptInFlight(status);
 }
 
 const SRC = "@elizaos/plugin-agent-orchestrator";

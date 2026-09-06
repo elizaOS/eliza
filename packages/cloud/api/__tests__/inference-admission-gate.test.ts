@@ -248,6 +248,8 @@ function post(
     | "/hydrate"
     | "/lease"
     | "/lease-authorized"
+    | "/lease-dispatched"
+    | "/lease-dispatched-authorized"
     | "/dispatch"
     | "/release"
     | "/settle"
@@ -264,7 +266,10 @@ function post(
   body: Record<string, unknown>,
 ): Promise<Response> {
   const payload =
-    (path === "/lease" || path === "/lease-authorized") &&
+    (path === "/lease" ||
+      path === "/lease-authorized" ||
+      path === "/lease-dispatched" ||
+      path === "/lease-dispatched-authorized") &&
     body.recovery === undefined
       ? {
           ...body,
@@ -282,7 +287,10 @@ function post(
             accounting: { kind: "direct_debit" },
           },
         }
-      : path === "/lease" || path === "/lease-authorized"
+      : path === "/lease" ||
+          path === "/lease-authorized" ||
+          path === "/lease-dispatched" ||
+          path === "/lease-dispatched-authorized"
         ? { ...body, organizationId: body.organizationId ?? "org-a" }
         : body;
   return gate.fetch(
@@ -1194,6 +1202,151 @@ describe("InferenceAdmissionGate", () => {
     expect(statuses.sort()).toEqual([200, 402]);
   });
 
+  test("combined lease and dispatch is idempotent, conflict-safe, and balance-serialized", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 2);
+    const body = {
+      requestId: "combined-a",
+      balanceUsd: 2,
+      balanceRevision: "1",
+      estimatedCostUsd: 1,
+      preProviderCancellationToken: "cancel-combined-a",
+    };
+
+    const first = await post(gate, "/lease-dispatched", body);
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({
+      admitted: true,
+      dispatched: true,
+    });
+    expect(
+      storage.read<{ phase: string; preProviderCancellationToken?: string }>(
+        storedLeaseKey("combined-a"),
+      ),
+    ).toMatchObject({
+      phase: "dispatched",
+      preProviderCancellationToken: "cancel-combined-a",
+    });
+
+    const replay = await post(gate, "/lease-dispatched", body);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({ duplicate: true });
+    expect(
+      (
+        await post(gate, "/lease-dispatched", {
+          ...body,
+          preProviderCancellationToken: "different-capability",
+        })
+      ).status,
+    ).toBe(409);
+
+    const concurrent = await Promise.all(
+      ["combined-b", "combined-c"].map((requestId) =>
+        post(gate, "/lease-dispatched", {
+          requestId,
+          balanceUsd: 2,
+          balanceRevision: "1",
+          estimatedCostUsd: 1,
+          preProviderCancellationToken: `cancel-${requestId}`,
+        }),
+      ),
+    );
+    expect(concurrent.map((response) => response.status).sort()).toEqual([
+      200, 402,
+    ]);
+  });
+
+  test("combined authorized dispatch applies revocation before creating a lease", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 2);
+    expect(
+      (
+        await post(gate, "/credential/revoke", {
+          organizationId: "org-a",
+          kind: "api_key",
+          credentialId: "key-a",
+        })
+      ).status,
+    ).toBe(200);
+
+    const denied = await post(gate, "/lease-dispatched-authorized", {
+      requestId: "combined-revoked",
+      balanceUsd: 2,
+      balanceRevision: "1",
+      estimatedCostUsd: 1,
+      preProviderCancellationToken: "cancel-combined-revoked",
+      credential: {
+        organizationId: "org-a",
+        kind: "api_key",
+        credentialId: "key-a",
+        userId: "user-a",
+      },
+    });
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ reason: "credential_revoked" });
+    expect(storage.read(storedLeaseKey("combined-revoked"))).toBeUndefined();
+    expect(storage.read<{ activeLeaseCount: number }>("ledger")).toMatchObject({
+      activeLeaseCount: 0,
+    });
+  });
+
+  test("combined dispatch upgrades an identical rolling-deploy legacy lease", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 2);
+    const legacyBody = {
+      requestId: "rolling-legacy",
+      balanceUsd: 2,
+      balanceRevision: "1",
+      estimatedCostUsd: 1,
+    };
+    expect((await post(gate, "/lease", legacyBody)).status).toBe(200);
+    expect(
+      (
+        await post(gate, "/lease-dispatched", {
+          ...legacyBody,
+          preProviderCancellationToken: "cancel-rolling-legacy",
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      storage.read<{ phase: string }>(storedLeaseKey("rolling-legacy")),
+    ).toMatchObject({ phase: "dispatched" });
+  });
+
+  test("combined dispatch publishes neither lease nor alarm on transaction failure", async () => {
+    for (const fault of ["setAlarm", "commit"] as const) {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 2);
+      if (fault === "setAlarm") storage.failNextSetAlarm = true;
+      else storage.failNextTransactionCommit = true;
+
+      await expect(
+        post(gate, "/lease-dispatched", {
+          requestId: `combined-${fault}`,
+          balanceUsd: 2,
+          balanceRevision: "1",
+          estimatedCostUsd: 1,
+          preProviderCancellationToken: `cancel-combined-${fault}`,
+        }),
+      ).rejects.toThrow(
+        fault === "setAlarm"
+          ? "injected setAlarm failure"
+          : "injected transaction commit failure",
+      );
+      expect(storage.read(storedLeaseKey(`combined-${fault}`))).toBeUndefined();
+      expect(
+        storage.read<{ activeLeaseCount: number }>("ledger"),
+      ).toMatchObject({
+        activeLeaseCount: 0,
+      });
+      expect(storage.alarm).toBeUndefined();
+    }
+  });
+
   test("authorized lease persistence failures publish neither admission nor balance hold", async () => {
     const storage = new TestStorage();
     const gate = createGate(storage);
@@ -1859,6 +2012,308 @@ describe("InferenceAdmissionGate", () => {
     expect(recoverExpiredLease).not.toHaveBeenCalled();
   });
 
+  test.each(["/lease-dispatched", "/lease-dispatched-authorized"])(
+    "%s refuses a missing cancellation capability without reserving money",
+    async (path) => {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10);
+      const response = await post(gate, path, {
+        organizationId: "org-a",
+        requestId: "missing-combined-capability",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 4,
+        recovery: organizationRecovery("missing-combined-capability"),
+        credential: {
+          kind: "api_key",
+          credentialId: "key-a",
+          userId: "user-a",
+        },
+      });
+      expect(response.status).toBe(400);
+      expect(
+        storage.read(storedLeaseKey("missing-combined-capability")),
+      ).toBeUndefined();
+      expect(storage.read("ledger")).toMatchObject({
+        availableUsd: 10,
+        activeLeaseCount: 0,
+      });
+    },
+  );
+
+  test("prepared admission performs exactly one combined gate call before provider invocation", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10);
+    const paths: string[] = [];
+    let providerInvocations = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            paths.push(new URL(incoming.url).pathname);
+            return await gate.fetch(incoming);
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "prepared-one-call",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 1,
+        recovery: organizationRecovery("prepared-one-call"),
+        deferCommitUntilDispatch: true,
+      });
+      expect(paths).toEqual([]);
+      expect(storage.read(storedLeaseKey("prepared-one-call"))).toBeUndefined();
+
+      await markInferenceAdmissionLeaseDispatched(lease);
+      providerInvocations++;
+      expect(paths).toEqual(["/lease-dispatched"]);
+      expect(providerInvocations).toBe(1);
+      expect(
+        storage.read<{ phase: string }>(storedLeaseKey("prepared-one-call")),
+      ).toMatchObject({ phase: "dispatched" });
+    });
+  });
+
+  test("prepared combined denials are typed and never invoke the provider", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 0);
+    await runWithCloudBindingsAsync(gateBindings(gate), async () => {
+      const insufficient = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "prepared-insufficient",
+        balanceUsd: 0,
+        balanceRevision: "1",
+        estimatedCostUsd: 1,
+        recovery: organizationRecovery("prepared-insufficient"),
+        deferCommitUntilDispatch: true,
+      });
+      await expect(
+        markInferenceAdmissionLeaseDispatched(insufficient),
+      ).rejects.toBeInstanceOf(InferenceAdmissionLeaseRejectedError);
+      await settleInferenceAdmissionLease(insufficient, 0, 0);
+
+      expect(
+        (
+          await post(gate, "/credential/revoke", {
+            organizationId: "org-a",
+            kind: "api_key",
+            credentialId: "key-a",
+          })
+        ).status,
+      ).toBe(200);
+      const revoked = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "prepared-revoked",
+        balanceUsd: 0,
+        balanceRevision: "1",
+        estimatedCostUsd: 1,
+        recovery: organizationRecovery("prepared-revoked"),
+        credential: {
+          kind: "api_key",
+          credentialId: "key-a",
+          userId: "user-a",
+        },
+        deferCommitUntilDispatch: true,
+      });
+      await expect(
+        markInferenceAdmissionLeaseDispatched(revoked),
+      ).rejects.toBeInstanceOf(InferenceCredentialRevokedError);
+      await settleInferenceAdmissionLease(revoked, 0, 0);
+    });
+
+    expect(
+      storage.read(storedLeaseKey("prepared-insufficient")),
+    ).toBeUndefined();
+    expect(storage.read(storedLeaseKey("prepared-revoked"))).toBeUndefined();
+  });
+
+  test.each(["transport", "malformed", "unavailable"] as const)(
+    "revocation after a %s combined acknowledgement still cancels the committed lease",
+    async (fault) => {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10);
+      let combinedCalls = 0;
+      const bindings = {
+        INFERENCE_ADMISSION_GATES: {
+          getByName: (_name: string) => ({
+            fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+              const incoming = new Request(request, init);
+              const path = new URL(incoming.url).pathname;
+              const response = await gate.fetch(incoming);
+              if (
+                path === "/lease-dispatched-authorized" &&
+                ++combinedCalls === 1
+              ) {
+                expect(response.status).toBe(200);
+                await post(gate, "/credential/revoke", {
+                  organizationId: "org-a",
+                  kind: "api_key",
+                  credentialId: "key-a",
+                });
+                if (fault === "malformed")
+                  return new Response("unreadable acknowledgement", {
+                    status: 200,
+                  });
+                if (fault === "unavailable")
+                  return new Response("unavailable acknowledgement", {
+                    status: 503,
+                  });
+                throw new Error(
+                  "injected lost acknowledgement before credential revocation",
+                );
+              }
+              return response;
+            },
+          }),
+        },
+      };
+      await runWithCloudBindingsAsync(bindings, async () => {
+        const lease = await acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "prepared-revoked-after-commit",
+          balanceUsd: 10,
+          balanceRevision: "1",
+          estimatedCostUsd: 4,
+          recovery: organizationRecovery("prepared-revoked-after-commit"),
+          credential: {
+            kind: "api_key",
+            credentialId: "key-a",
+            userId: "user-a",
+          },
+          deferCommitUntilDispatch: true,
+        });
+        await expect(
+          markInferenceAdmissionLeaseDispatched(lease),
+        ).rejects.toBeInstanceOf(InferenceCredentialRevokedError);
+        await settleInferenceAdmissionLease(lease, 0, 0);
+      });
+      expect(combinedCalls).toBe(2);
+      expect(
+        storage.read(storedLeaseKey("prepared-revoked-after-commit")),
+      ).toBeUndefined();
+      expect(storage.read("ledger")).toMatchObject({
+        availableUsd: 10,
+        activeLeaseCount: 0,
+      });
+      expect(storage.alarm).toBeUndefined();
+    },
+  );
+
+  test("lost combined acknowledgements release a committed lease before provider work", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10);
+    const combinedBodies: string[] = [];
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            const path = new URL(incoming.url).pathname;
+            const combinedBody =
+              path === "/lease-dispatched"
+                ? await incoming.clone().text()
+                : undefined;
+            const response = await gate.fetch(incoming);
+            if (combinedBody !== undefined) {
+              combinedBodies.push(combinedBody);
+              throw new Error("injected lost combined response");
+            }
+            return response;
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "prepared-lost-ack",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 4,
+        recovery: organizationRecovery("prepared-lost-ack"),
+        deferCommitUntilDispatch: true,
+      });
+      await expect(
+        markInferenceAdmissionLeaseDispatched(lease),
+      ).rejects.toBeInstanceOf(InferenceAdmissionGateUnavailableError);
+      await settleInferenceAdmissionLease(lease, 0, 0);
+    });
+
+    expect(combinedBodies).toHaveLength(3);
+    expect(new Set(combinedBodies).size).toBe(1);
+    expect(storage.read(storedLeaseKey("prepared-lost-ack"))).toBeUndefined();
+    expect(storage.read<{ activeLeaseCount: number }>("ledger")).toMatchObject({
+      activeLeaseCount: 0,
+    });
+    expect(storage.alarm).toBeUndefined();
+  });
+
+  test("combined requests that never reach the gate settle zero provider work idempotently", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10);
+    const paths: string[] = [];
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            const path = new URL(incoming.url).pathname;
+            paths.push(path);
+            if (path === "/lease-dispatched") {
+              throw new Error("injected request never reached gate");
+            }
+            return await gate.fetch(incoming);
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "prepared-never-landed",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 4,
+        recovery: organizationRecovery("prepared-never-landed"),
+        deferCommitUntilDispatch: true,
+      });
+      await expect(
+        markInferenceAdmissionLeaseDispatched(lease),
+      ).rejects.toBeInstanceOf(InferenceAdmissionGateUnavailableError);
+      await expect(
+        settleInferenceAdmissionLease(lease, 0, 0),
+      ).resolves.toBeUndefined();
+    });
+
+    expect(paths).toEqual([
+      "/lease-dispatched",
+      "/lease-dispatched",
+      "/lease-dispatched",
+      "/release",
+    ]);
+    expect(
+      storage.read(storedLeaseKey("prepared-never-landed")),
+    ).toBeUndefined();
+    expect(storage.read<{ activeLeaseCount: number }>("ledger")).toMatchObject({
+      activeLeaseCount: 0,
+    });
+  });
+
   test("a dispatched lease cannot use the pre-provider release path without its capability", async () => {
     const gate = createGate();
     await hydrateGate(gate, 5);
@@ -2086,18 +2541,12 @@ describe("InferenceAdmissionGate", () => {
       await hydrateGate(gate, 10, "1");
       expect(
         (
-          await post(gate, "/lease", {
+          await post(gate, "/lease-dispatched", {
             requestId: "request-a",
             balanceUsd: 10,
             balanceRevision: "1",
             estimatedCostUsd: 8,
-          })
-        ).status,
-      ).toBe(200);
-      expect(
-        (
-          await post(gate, "/dispatch", {
-            requestId: "request-a",
+            preProviderCancellationToken: "cancel-request-a",
           })
         ).status,
       ).toBe(200);

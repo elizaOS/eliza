@@ -163,6 +163,7 @@ const acquireInferenceAdmissionLease = mock(
   },
 );
 const settleInferenceAdmissionLease = mock(async () => undefined);
+const markInferenceAdmissionLeaseDispatched = mock(async () => undefined);
 
 class TestInferenceBalanceCacheWarmingError extends Error {}
 class TestInferenceAdmissionGateUnavailableError extends Error {}
@@ -224,7 +225,7 @@ mock.module("./inference-admission-gate", () => ({
     readonly requiredUsd = 1;
     readonly availableUsd = 0;
   },
-  markInferenceAdmissionLeaseDispatched: async () => undefined,
+  markInferenceAdmissionLeaseDispatched,
   settleInferenceAdmissionLease,
 }));
 mock.module("./inference-billing-ledger", () => ({
@@ -251,7 +252,7 @@ function nextModel(): string {
 function admissionParams(
   model: string,
   background: Promise<unknown>[],
-  overrides: { affiliateCode?: string } = {},
+  overrides: { affiliateCode?: string; atomicProviderBoundary?: boolean } = {},
 ) {
   return {
     context: {
@@ -305,6 +306,7 @@ beforeEach(() => {
   optimisticSettle.mockClear();
   acquireInferenceAdmissionLease.mockClear();
   settleInferenceAdmissionLease.mockClear();
+  markInferenceAdmissionLeaseDispatched.mockClear();
   isOptimisticEligible.mockClear();
   listActiveEntriesForProviderModelPairs.mockClear();
   listActiveEntries.mockClear();
@@ -488,6 +490,21 @@ test("strong proof on and off each acquire exactly one Durable Object lease", as
     expect(acquireInferenceAdmissionLease.mock.calls[0]?.[0].credential).toEqual(strongProof);
   }
   expect(reserveCredits).not.toHaveBeenCalled();
+});
+
+test("audited provider boundaries defer the lease commit until the required marker", async () => {
+  const model = nextModel();
+  await hydratePricing(model);
+  const admission = await admitOrganizationInference(
+    admissionParams(model, [], { atomicProviderBoundary: true }),
+  );
+
+  expect(acquireInferenceAdmissionLease.mock.calls[0]?.[0]).toMatchObject({
+    deferCommitUntilDispatch: true,
+  });
+  expect(markInferenceAdmissionLeaseDispatched).not.toHaveBeenCalled();
+  await admission.markProviderDispatched?.();
+  expect(markInferenceAdmissionLeaseDispatched).toHaveBeenCalledTimes(1);
 });
 
 test("flat Worker admission leases the fixed catalog cost without token pricing reads", async () => {

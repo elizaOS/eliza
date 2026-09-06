@@ -126,6 +126,8 @@ function paymentIntentDelivery(params?: {
     customer_account: null,
     description: null,
     excluded_payment_method_types: null,
+    // Acacia explicitly distinguishes a one-time payment from missing linkage.
+    invoice: null,
     last_payment_error: null,
     latest_charge: null,
     livemode: true,
@@ -158,7 +160,7 @@ function paymentIntentDelivery(params?: {
     statement_descriptor_suffix: null,
     status: "succeeded",
     transfer_group: null,
-  } satisfies Stripe.PaymentIntent;
+  } satisfies Stripe.PaymentIntent & { invoice: null };
   const event = {
     id: `evt_${id}`,
     object: "event",

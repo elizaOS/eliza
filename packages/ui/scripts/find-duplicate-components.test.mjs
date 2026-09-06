@@ -4,12 +4,15 @@
  */
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   ATOMS,
   buildInventory,
   isMaintainedSource,
+  listMaintainedSourceFiles,
   renderMarkdown,
 } from "./find-duplicate-components.mjs";
 
@@ -49,6 +52,17 @@ test("Vite dependency cache is excluded from the maintained source boundary", ()
 });
 
 test("generated mobile platform bundles and staging roots are outside maintained source", () => {
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL(
+          "../../app-core/platforms/android/app/src/main/assets/agent/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
   assert.equal(
     isMaintainedSource(
       fileURLToPath(
@@ -101,6 +115,29 @@ test("generated mobile platform bundles and staging roots are outside maintained
     ),
     true,
   );
+});
+
+test("Android build output does not duplicate maintained React source", () => {
+  const source = fileURLToPath(
+    new URL("../src/components/ui/button.tsx", import.meta.url),
+  );
+  const outputRoot = fileURLToPath(
+    new URL("../../agent/dist-mobile/", import.meta.url),
+  );
+  fs.mkdirSync(outputRoot, { recursive: true });
+  const output = fs.mkdtempSync(path.join(outputRoot, "inventory-probe-"));
+  try {
+    const bundledSource = path.join(output, "button.tsx");
+    fs.copyFileSync(source, bundledSource);
+    const files = listMaintainedSourceFiles();
+    assert.ok(
+      files.includes(source),
+      "the maintained source must remain visible",
+    );
+    assert.equal(files.includes(bundledSource), false);
+  } finally {
+    fs.rmSync(output, { recursive: true, force: true });
+  }
 });
 
 test("the atomic inventory is deterministic and repository-wide", () => {

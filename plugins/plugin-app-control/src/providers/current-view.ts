@@ -12,8 +12,7 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { createViewsClient } from "../actions/views-client.js";
-import { resolveIntentView } from "../actions/views-show.js";
-import { userRequestMessageText } from "../params.js";
+import { resolveViewCommandShortcut } from "../evaluators/view-command-routing.js";
 
 const EMPTY: ProviderResult = { text: "", values: {}, data: {} };
 
@@ -40,11 +39,13 @@ export const currentViewProvider: Provider = {
 	): Promise<ProviderResult> => {
 		try {
 			// Security-unwrapped user words — never raw (possibly enveloped) text.
-			const text = userRequestMessageText(message);
 			// An explicit target is authoritative before the planner applies it. Do
 			// not wait on the renderer here: its current value cannot change that
 			// decision and may sit behind a native bridge or remote shell boundary.
-			const intentTargetId = resolveIntentView(text);
+			const intentTargetId = resolveViewCommandShortcut({
+				runtime: { actions: [{ name: "VIEWS" }] },
+				message,
+			});
 			if (intentTargetId) {
 				const label = humanizeViewId(intentTargetId);
 				return {

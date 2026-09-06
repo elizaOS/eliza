@@ -70,6 +70,7 @@ function OverlayAssistantTurnBody({
     <MessageAttachments attachments={message.attachments} />
   ) : null;
   const pending =
+    !message.interrupted &&
     !message.text.trim() &&
     !message.attachments?.length &&
     !message.secretRequest &&

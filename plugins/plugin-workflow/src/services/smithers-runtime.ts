@@ -406,9 +406,18 @@ function statusFromSmithers(status: string): WorkflowExecutionStatus {
 }
 
 function errorPayload(error: unknown): { message: string; stack?: string } {
-  return error instanceof Error
-    ? { message: error.message, ...(error.stack ? { stack: error.stack } : {}) }
-    : { message: String(error) };
+  if (
+    error !== null &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof error.message === 'string'
+  ) {
+    return {
+      message: error.message,
+      ...('stack' in error && typeof error.stack === 'string' ? { stack: error.stack } : {}),
+    };
+  }
+  return { message: typeof error === 'object' ? JSON.stringify(error) : String(error) };
 }
 
 export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<SmithersRunResult> {
@@ -460,8 +469,15 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   let stdoutBuffer = '';
   let stdoutNoise = '';
   let stdinError: Error | undefined;
-  let lineProcessing = Promise.resolve();
+  const observeLineProcessing = (processing: Promise<void>): Promise<void> => {
+    // error-policy:J5 the same rejection is re-observed and propagated after
+    // child-process settlement through observedLineProcessing below.
+    void processing.catch(() => undefined);
+    return processing;
+  };
+  let lineProcessing = observeLineProcessing(Promise.resolve());
   const protocolController = new AbortController();
+  const deliveryController = new AbortController();
 
   const protocolAbortOutcome = new Promise<{ kind: 'aborted' }>((resolve) => {
     if (protocolController.signal.aborted) {
@@ -469,6 +485,15 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       return;
     }
     protocolController.signal.addEventListener('abort', () => resolve({ kind: 'aborted' }), {
+      once: true,
+    });
+  });
+  const deliveryAbortOutcome = new Promise<{ kind: 'aborted' }>((resolve) => {
+    if (deliveryController.signal.aborted) {
+      resolve({ kind: 'aborted' });
+      return;
+    }
+    deliveryController.signal.addEventListener('abort', () => resolve({ kind: 'aborted' }), {
       once: true,
     });
   });
@@ -547,7 +572,18 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
         payload: raw,
       };
       events.push(event);
-      await request.onEvent?.(event);
+      const deliveryOutcome = Promise.resolve(request.onEvent?.(event)).then(
+        () => ({ kind: 'delivered' as const }),
+        (error) => ({ kind: 'error' as const, error })
+      );
+      const delivery = await Promise.race([deliveryOutcome, deliveryAbortOutcome]);
+      if (delivery.kind === 'error') throw delivery.error;
+      if (delivery.kind === 'aborted' && !terminationCause) {
+        const reason = deliveryController.signal.reason;
+        if (reason === 'abort' || reason === 'timeout' || reason === 'overflow') {
+          terminationCause = reason;
+        }
+      }
     }
   };
 
@@ -560,13 +596,15 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     }
     stdoutBuffer = appended.buffer;
     worker.stdout?.pause();
-    lineProcessing = lineProcessing
-      .then(async () => {
-        for (const line of appended.lines) await consumeLine(line);
-      })
-      .finally(() => {
-        if (!terminationCause && !processExited) worker.stdout?.resume();
-      });
+    lineProcessing = observeLineProcessing(
+      lineProcessing
+        .then(async () => {
+          for (const line of appended.lines) await consumeLine(line);
+        })
+        .finally(() => {
+          if (!terminationCause && !processExited) worker.stdout?.resume();
+        })
+    );
   });
   worker.stderr?.setEncoding('utf8');
   worker.stderr?.on('data', (chunk: string) => {
@@ -580,14 +618,21 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     if (terminationCause || processExited) return;
     terminationCause = cause;
     protocolController.abort(cause);
+    deliveryController.abort(cause);
     worker.kill('SIGTERM');
     forceKillTimer = setTimeout(() => worker.kill('SIGKILL'), WORKER_TERMINATION_GRACE_MS);
     forceKillTimer.unref();
   };
-  const abort = (): void => terminate('abort');
+  const abort = (): void => {
+    if (processExited) deliveryController.abort('abort');
+    else terminate('abort');
+  };
   if (request.signal?.aborted) abort();
   else request.signal?.addEventListener('abort', abort, { once: true });
-  const timeoutTimer = setTimeout(() => terminate('timeout'), timeoutMs);
+  const timeoutTimer = setTimeout(() => {
+    if (processExited) deliveryController.abort('timeout');
+    else terminate('timeout');
+  }, timeoutMs);
 
   const outcome = await new Promise<{
     exitCode: number | null;
@@ -627,9 +672,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       settle(code);
     });
   }).finally(async () => {
-    clearTimeout(timeoutTimer);
     if (forceKillTimer) clearTimeout(forceKillTimer);
-    request.signal?.removeEventListener('abort', abort);
     await unlink(payloadPath).catch((error: NodeJS.ErrnoException) => {
       // error-policy:J6 run state is already persisted; teardown reports only
       // unexpected payload cleanup failures through the worker diagnostic path.
@@ -645,7 +688,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     }
   }
   if (stdoutBuffer && terminationCause !== 'overflow') {
-    lineProcessing = lineProcessing.then(() => consumeLine(stdoutBuffer));
+    lineProcessing = observeLineProcessing(lineProcessing.then(() => consumeLine(stdoutBuffer)));
   }
   let lineProcessingFailed = false;
   let lineProcessingError: unknown;
@@ -655,15 +698,13 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     lineProcessingFailed = true;
     lineProcessingError = error;
   });
-  let lineProcessingTimer: NodeJS.Timeout | undefined;
-  let releaseLineProcessingTimer: (() => void) | undefined;
-  const lineProcessingDeadline = new Promise<void>((resolve) => {
-    releaseLineProcessingTimer = resolve;
-    lineProcessingTimer = setTimeout(resolve, WORKER_STDIO_DRAIN_GRACE_MS);
-  });
-  await Promise.race([observedLineProcessing, lineProcessingDeadline]);
-  if (lineProcessingTimer) clearTimeout(lineProcessingTimer);
-  releaseLineProcessingTimer?.();
+  // Protocol-owned generation is aborted as soon as the worker exits, so the
+  // remaining work here is ordered event delivery. It is part of the run
+  // contract: do not let the pipe-drain fallback skip a terminal result queued
+  // behind a slow persistence or runtime event callback.
+  await observedLineProcessing;
+  clearTimeout(timeoutTimer);
+  request.signal?.removeEventListener('abort', abort);
   if (lineProcessingFailed) throw lineProcessingError;
 
   if (outcome.processError) {

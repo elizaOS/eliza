@@ -16,9 +16,9 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveSetupStateDir } from "./lib/setup-state-dir.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = path.resolve(scriptDir, "..", "..", "..");
@@ -61,23 +61,6 @@ function runChecked(command, args, options = {}) {
   }
 }
 
-function resolveStateDir(env) {
-  const explicit = env.ELIZA_STATE_DIR?.trim();
-  if (explicit) {
-    return path.isAbsolute(explicit)
-      ? explicit
-      : path.join(os.homedir(), explicit);
-  }
-  const namespace = env.ELIZA_NAMESPACE?.trim() || "eliza";
-  const xdg = env.XDG_STATE_HOME?.trim();
-  if (xdg) {
-    return path.isAbsolute(xdg)
-      ? path.join(xdg, namespace)
-      : path.join(os.homedir(), xdg, namespace);
-  }
-  return path.join(os.homedir(), ".local", "state", namespace);
-}
-
 export function resolveEmbeddingArtifactPath({
   env = process.env,
   repoRoot = defaultRepoRoot,
@@ -85,7 +68,7 @@ export function resolveEmbeddingArtifactPath({
   const configured = env.MODELS_DIR?.trim();
   const modelsDir = configured
     ? path.resolve(repoRoot, configured)
-    : path.join(resolveStateDir(env), "models");
+    : path.join(resolveSetupStateDir(env), "models");
   return path.join(modelsDir, FUSED_EMBEDDING_ARTIFACT.filename);
 }
 
@@ -267,6 +250,18 @@ export async function ensureFusedInferenceInstall({
   );
   run(bunExecutable, [stageScript, "--ensure"], { cwd: repoRoot, env });
   const embedding = await ensureEmbedding({ env, repoRoot, fetchImpl });
+  run(
+    bunExecutable,
+    [
+      "--conditions=eliza-source",
+      path.join(
+        repoRoot,
+        "packages/app-core/scripts/verify-fused-embedding.mjs",
+      ),
+      embedding.path,
+    ],
+    { cwd: repoRoot, env },
+  );
   log("fused desktop inference and embedding model are installed and current");
   return { status: "ready", embedding };
 }

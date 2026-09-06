@@ -3,7 +3,11 @@
 // The exported PublicRoute* names are retained for backward compatibility.
 // Do not edit by hand.
 
-import type { CloudRequestOptions, HttpMethod } from "./types.js";
+import type {
+  CloudRequestOptions,
+  CloudResponse,
+  HttpMethod,
+} from "./types.js";
 
 export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "DELETE /api/elevenlabs/voices/{id}": {
@@ -100,7 +104,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     method: "DELETE",
     path: "/api/v1/apis/storage/objects/_",
     methodName: "deleteApiV1ApisStorageObjects",
-    responseMode: "json",
+    responseMode: "json-or-empty",
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
@@ -605,7 +609,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     method: "GET",
     path: "/api/v1/advertising/conversions/track",
     methodName: "getApiV1AdvertisingConversionsTrack",
-    responseMode: "json",
+    responseMode: "json-or-empty",
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/advertising/conversions/track/route.ts",
@@ -839,7 +843,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     method: "GET",
     path: "/api/v1/apps-ingress/ask",
     methodName: "getApiV1AppsIngressAsk",
-    responseMode: "json",
+    responseMode: "text",
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apps-ingress/ask/route.ts",
@@ -1001,7 +1005,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     method: "GET",
     path: "/api/v1/apps/{id}/frontend/preview/{[...path]}",
     methodName: "getApiV1AppsByIdFrontendPreviewByPath",
-    responseMode: "json",
+    responseMode: "binary",
     pathParams: ["id", "[...path]"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apps/[id]/frontend/preview/[[...path]]/route.ts",
@@ -1768,7 +1772,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     method: "GET",
     path: "/api/v1/hosted-frontend/serve/{[...path]}",
     methodName: "getApiV1HostedFrontendServeByPath",
-    responseMode: "json",
+    responseMode: "binary",
     pathParams: ["[...path]"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/hosted-frontend/serve/[[...path]]/route.ts",
@@ -1921,7 +1925,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     method: "GET",
     path: "/api/v1/marketing/inventory/serve",
     methodName: "getApiV1MarketingInventoryServe",
-    responseMode: "json",
+    responseMode: "json-or-empty",
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/marketing/inventory/serve/route.ts",
@@ -2133,6 +2137,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/oauth/token/[platform]/route.ts",
   },
+  "GET /api/v1/outreachr": {
+    method: "GET",
+    path: "/api/v1/outreachr",
+    methodName: "getApiV1Outreachr",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/outreachr/route.ts",
+  },
   "GET /api/v1/payment-requests": {
     method: "GET",
     path: "/api/v1/payment-requests",
@@ -2263,7 +2276,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     method: "GET",
     path: "/api/v1/remote/sessions/{id}/commands",
     methodName: "getApiV1RemoteSessionsByIdCommands",
-    responseMode: "json",
+    responseMode: "json-or-empty",
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/remote/sessions/[id]/commands/route.ts",
@@ -4424,6 +4437,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/oauth/initiate/route.ts",
   },
+  "POST /api/v1/outreachr": {
+    method: "POST",
+    path: "/api/v1/outreachr",
+    methodName: "postApiV1Outreachr",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/outreachr/route.ts",
+  },
   "POST /api/v1/payment-requests": {
     method: "POST",
     path: "/api/v1/payment-requests",
@@ -4806,7 +4828,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     method: "POST",
     path: "/api/v1/twilio/voice/status",
     methodName: "postApiV1TwilioVoiceStatus",
-    responseMode: "json",
+    responseMode: "json-or-empty",
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/twilio/voice/status/route.ts",
@@ -5556,6 +5578,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/oauth/status": Record<never, never>;
   "GET /api/v1/oauth/success-proof/verify": Record<never, never>;
   "GET /api/v1/oauth/token/{platform}": { platform: string | number };
+  "GET /api/v1/outreachr": Record<never, never>;
   "GET /api/v1/payment-requests": Record<never, never>;
   "GET /api/v1/payment-requests/{id}": { id: string | number };
   "GET /api/v1/pii-scrub/jobs/{id}": { id: string | number };
@@ -5904,6 +5927,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/oauth/callback/{provider}": { provider: string | number };
   "POST /api/v1/oauth/connect": Record<never, never>;
   "POST /api/v1/oauth/initiate": Record<never, never>;
+  "POST /api/v1/outreachr": Record<never, never>;
   "POST /api/v1/payment-requests": Record<never, never>;
   "POST /api/v1/payment-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/payment-requests/{id}/expire": { id: string | number };
@@ -6261,6 +6285,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/oauth/status": never;
   "GET /api/v1/oauth/success-proof/verify": never;
   "GET /api/v1/oauth/token/{platform}": never;
+  "GET /api/v1/outreachr": never;
   "GET /api/v1/payment-requests": never;
   "GET /api/v1/payment-requests/{id}": never;
   "GET /api/v1/pii-scrub/jobs/{id}": never;
@@ -6523,6 +6548,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/oauth/callback/{provider}": never;
   "POST /api/v1/oauth/connect": never;
   "POST /api/v1/oauth/initiate": never;
+  "POST /api/v1/outreachr": never;
   "POST /api/v1/payment-requests": never;
   "POST /api/v1/payment-requests/{id}/cancel": never;
   "POST /api/v1/payment-requests/{id}/expire": never;
@@ -6634,6 +6660,11 @@ interface ElizaCloudPublicRouteTransport {
     method: HttpMethod,
     path: string,
     options?: CloudRequestOptions,
+  ): Promise<CloudResponse<TResponse>>;
+  requestData?<TResponse>(
+    method: HttpMethod,
+    path: string,
+    options?: CloudRequestOptions,
   ): Promise<TResponse>;
   requestRaw(
     method: HttpMethod,
@@ -6726,6 +6757,27 @@ export class ElizaCloudPublicRoutesClient {
     key: TKey,
     options?: PublicRouteCallOptions<TKey>,
   ): Promise<TResponse> {
+    const endpoint = ELIZA_CLOUD_PUBLIC_ENDPOINTS[key];
+    const method = endpoint.method as HttpMethod;
+    const path = buildPublicRoutePath(key, options);
+    const requestOptions = toRequestOptions(options);
+    if (this.client.requestData) {
+      return this.client.requestData<TResponse>(method, path, requestOptions);
+    }
+    return this.client
+      .request<TResponse>(method, path, requestOptions)
+      .then((response) => {
+        if (response === undefined) {
+          throw new Error(`Expected a data response for ${key}`);
+        }
+        return response;
+      });
+  }
+
+  private callBodyless<TKey extends PublicRouteKey, TResponse = unknown>(
+    key: TKey,
+    options?: PublicRouteCallOptions<TKey>,
+  ): Promise<CloudResponse<TResponse>> {
     const endpoint = ELIZA_CLOUD_PUBLIC_ENDPOINTS[key];
     return this.client.request<TResponse>(
       endpoint.method as HttpMethod,
@@ -6849,11 +6901,11 @@ export class ElizaCloudPublicRoutesClient {
 
   deleteApiV1ApisStorageObjects<TResponse = unknown>(
     options: PublicRouteCallOptions<"DELETE /api/v1/apis/storage/objects/_">,
-  ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/apis/storage/objects/_", TResponse>(
+  ): Promise<CloudResponse<TResponse>> {
+    return this.callBodyless<
       "DELETE /api/v1/apis/storage/objects/_",
-      options,
-    );
+      TResponse
+    >("DELETE /api/v1/apis/storage/objects/_", options);
   }
 
   deleteApiV1AppAuthMobileCredentialsById<TResponse = unknown>(
@@ -7358,11 +7410,11 @@ export class ElizaCloudPublicRoutesClient {
 
   getApiV1AdvertisingConversionsTrack<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/advertising/conversions/track"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/advertising/conversions/track", TResponse>(
+  ): Promise<CloudResponse<TResponse>> {
+    return this.callBodyless<
       "GET /api/v1/advertising/conversions/track",
-      options,
-    );
+      TResponse
+    >("GET /api/v1/advertising/conversions/track", options);
   }
 
   getApiV1AdvertisingCreativesById<TResponse = unknown>(
@@ -7590,13 +7642,10 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  getApiV1AppsIngressAsk<TResponse = unknown>(
+  getApiV1AppsIngressAsk(
     options: PublicRouteCallOptions<"GET /api/v1/apps-ingress/ask"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/apps-ingress/ask", TResponse>(
-      "GET /api/v1/apps-ingress/ask",
-      options,
-    );
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/apps-ingress/ask", options);
   }
 
   getApiV1AppsById<TResponse = unknown>(
@@ -7752,13 +7801,13 @@ export class ElizaCloudPublicRoutesClient {
     >("GET /api/v1/apps/{id}/frontend/{deploymentId}", options);
   }
 
-  getApiV1AppsByIdFrontendPreviewByPath<TResponse = unknown>(
+  getApiV1AppsByIdFrontendPreviewByPath(
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/frontend/preview/{[...path]}">,
-  ): Promise<TResponse> {
-    return this.call<
+  ): Promise<Response> {
+    return this.callRaw(
       "GET /api/v1/apps/{id}/frontend/preview/{[...path]}",
-      TResponse
-    >("GET /api/v1/apps/{id}/frontend/preview/{[...path]}", options);
+      options,
+    );
   }
 
   getApiV1AppsByIdMonetization<TResponse = unknown>(
@@ -8525,13 +8574,13 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  getApiV1HostedFrontendServeByPath<TResponse = unknown>(
+  getApiV1HostedFrontendServeByPath(
     options: PublicRouteCallOptions<"GET /api/v1/hosted-frontend/serve/{[...path]}">,
-  ): Promise<TResponse> {
-    return this.call<
+  ): Promise<Response> {
+    return this.callRaw(
       "GET /api/v1/hosted-frontend/serve/{[...path]}",
-      TResponse
-    >("GET /api/v1/hosted-frontend/serve/{[...path]}", options);
+      options,
+    );
   }
 
   getApiV1JobsByJobId<TResponse = unknown>(
@@ -8680,11 +8729,11 @@ export class ElizaCloudPublicRoutesClient {
 
   getApiV1MarketingInventoryServe<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/marketing/inventory/serve"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/marketing/inventory/serve", TResponse>(
+  ): Promise<CloudResponse<TResponse>> {
+    return this.callBodyless<
       "GET /api/v1/marketing/inventory/serve",
-      options,
-    );
+      TResponse
+    >("GET /api/v1/marketing/inventory/serve", options);
   }
 
   getApiV1MarketingPr<TResponse = unknown>(
@@ -8894,6 +8943,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1Outreachr<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/outreachr"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/outreachr", TResponse>(
+      "GET /api/v1/outreachr",
+      options,
+    );
+  }
+
   getApiV1PaymentRequests<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/payment-requests"> = {},
   ): Promise<TResponse> {
@@ -9022,11 +9080,11 @@ export class ElizaCloudPublicRoutesClient {
 
   getApiV1RemoteSessionsByIdCommands<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/remote/sessions/{id}/commands">,
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/remote/sessions/{id}/commands", TResponse>(
+  ): Promise<CloudResponse<TResponse>> {
+    return this.callBodyless<
       "GET /api/v1/remote/sessions/{id}/commands",
-      options,
-    );
+      TResponse
+    >("GET /api/v1/remote/sessions/{id}/commands", options);
   }
 
   getApiV1RemoteSessionsByIdCommandsByCommandId<TResponse = unknown>(
@@ -11210,6 +11268,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1Outreachr<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/outreachr"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/outreachr", TResponse>(
+      "POST /api/v1/outreachr",
+      options,
+    );
+  }
+
   postApiV1PaymentRequests<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/payment-requests"> = {},
   ): Promise<TResponse> {
@@ -11593,8 +11660,8 @@ export class ElizaCloudPublicRoutesClient {
 
   postApiV1TwilioVoiceStatus<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/twilio/voice/status"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/twilio/voice/status", TResponse>(
+  ): Promise<CloudResponse<TResponse>> {
+    return this.callBodyless<"POST /api/v1/twilio/voice/status", TResponse>(
       "POST /api/v1/twilio/voice/status",
       options,
     );
@@ -13523,6 +13590,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/oauth/token/{platform}", options);
   }
 
+  getApiV1OutreachrRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/outreachr"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/outreachr", options);
+  }
+
   getApiV1PaymentRequestsRaw(
     options: PublicRouteCallOptions<"GET /api/v1/payment-requests"> = {},
   ): Promise<Response> {
@@ -15204,6 +15277,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/oauth/initiate"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/oauth/initiate", options);
+  }
+
+  postApiV1OutreachrRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/outreachr"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/outreachr", options);
   }
 
   postApiV1PaymentRequestsRaw(

@@ -31,15 +31,9 @@ export interface KokoroRuntimeChunk {
  * bytes off `layout.voicesDir/<file>`.
  */
 export interface KokoroRuntimeInputs {
-	/**
-	 * Raw (pre-phonemization) phrase text. On an espeak-LINKED fused build the
-	 * in-process engine phonemizes this itself, so it MUST receive the raw text
-	 * — feeding it the JS-side IPA there double-phonemizes into lexically wrong
-	 * audio (#10726/#11238). On an espeak-LESS build (Android/iOS/host without
-	 * libespeak-ng) the engine's raw-text path is the lossy ASCII grapheme map
-	 * (unintelligible), so `KokoroFfiRuntime` instead feeds `phonemes.phonemes`
-	 * (espeak-ng IPA) through `synthesize_ipa` (#11776). The runtime picks per
-	 * loaded lib via `kokoroG2pKind()`.
+	/** Complete synthesis text retained alongside its preflighted phonemes.
+	 * Fused ABI v14+ uses the IPA entry on every platform, avoiding a second
+	 * G2P pass that could diverge from the checked model input.
 	 */
 	text: string;
 	/** espeak-ng IPA + tokenized ids for `text`, produced by the TS phonemizer

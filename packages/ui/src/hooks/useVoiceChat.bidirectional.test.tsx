@@ -166,10 +166,12 @@ describe("useVoiceChat bidirectional browser voice", () => {
     await waitFor(() => {
       expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(1);
     });
-    expect(speechSynthesisMock.spoken[0]?.text).toBe(thinkingPhrase);
+    expect(speechSynthesisMock.spoken[0]?.text).toBe(
+      "hmm, okay, that's a good idea, let me think for a",
+    );
     expect(onPlaybackStart).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: thinkingPhrase,
+        text: "hmm, okay, that's a good idea, let me think for a",
         provider: "browser",
         segment: "full",
       }),
@@ -190,9 +192,9 @@ describe("useVoiceChat bidirectional browser voice", () => {
     await waitFor(() => {
       expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(2);
     });
-    expect(speechSynthesisMock.spoken[1]?.text).toContain(
-      "I will wait for the next signal.",
-    );
+    expect(
+      speechSynthesisMock.spoken.map((utterance) => utterance.text).join(" "),
+    ).toBe(`${thinkingPhrase}. I will wait for the next signal.`);
   });
 
   it("does not repeat a partial when its temporary id is promoted (#16094)", async () => {
@@ -430,7 +432,9 @@ describe("useVoiceChat bidirectional browser voice", () => {
     await waitFor(() => {
       expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(1);
     });
-    expect(speechSynthesisMock.spoken[0]?.text).toBe(thinkingPhrase);
+    expect(speechSynthesisMock.spoken[0]?.text).toBe(
+      "hmm, okay, that's a good idea, let me think for a",
+    );
     expect(result.current.isListening).toBe(true);
     expect(result.current.captureMode).toBe("hands-free");
 

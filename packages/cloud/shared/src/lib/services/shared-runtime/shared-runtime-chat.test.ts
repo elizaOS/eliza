@@ -164,6 +164,7 @@ const admitOrganizationInference = mock(
     context?: { metadata?: Record<string, unknown> };
     estimatedInputTokens?: number;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+    atomicProviderBoundary?: boolean;
   }) => {
     if (admissionError) throw admissionError;
     params.executionCtx?.waitUntil(Promise.resolve());
@@ -402,6 +403,7 @@ mock.module("../../cache/client", () => ({
 
 const { InsufficientCreditsError } = await import("../ai-billing");
 const { InferenceAdmissionDispatchMarkError } = await import("../inference-admission-gate");
+const { InferenceAdmissionUnavailableError } = await import("../organization-inference-admission");
 const { personalSharedAgentId } = await import("./personal-shared-agent");
 const { SharedRuntimeChatService, sharedRuntimeChannelId } = await import("./shared-runtime-chat");
 
@@ -626,6 +628,7 @@ describe("SharedRuntimeChatService", () => {
       config: { windowMs: 60_000, maxRequests: 120 },
     });
     const admissionContext = admitOrganizationInference.mock.calls[0]?.[0].context;
+    expect(admitOrganizationInference.mock.calls[0]?.[0].atomicProviderBoundary).toBe(true);
     expect(admissionContext?.metadata).toMatchObject({
       agentId: agent.id,
       channelId: expect.any(String),
@@ -1233,6 +1236,25 @@ describe("SharedRuntimeChatService", () => {
       cause: new InferenceAdmissionDispatchMarkError("dispatch acknowledgement remained ambiguous"),
     });
     await expect(service.bridge(agent, rpc, harness())).rejects.toThrow("shared turn failed");
+    expect(settleCalls).toEqual([0]);
+    expect(settleUnknownCalls).toBe(0);
+
+    settleCalls.length = 0;
+    turnError = new Error("late balance denial", {
+      cause: new InsufficientCreditsError(0.25, 0),
+    });
+    const denied = await service.bridge(agent, rpc, harness());
+    expect(denied.error?.code).toBe(-32002);
+    expect(settleCalls).toEqual([0]);
+    expect(settleUnknownCalls).toBe(0);
+
+    settleCalls.length = 0;
+    turnError = new Error("late admission outage", {
+      cause: new InferenceAdmissionUnavailableError(),
+    });
+    await expect(service.bridge(agent, rpc, harness())).rejects.toMatchObject({
+      name: "SharedRuntimeCacheWarmingError",
+    });
     expect(settleCalls).toEqual([0]);
     expect(settleUnknownCalls).toBe(0);
 

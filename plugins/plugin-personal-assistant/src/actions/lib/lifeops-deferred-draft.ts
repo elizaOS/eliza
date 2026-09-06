@@ -96,6 +96,7 @@ export type DeferredLifeDefinitionDraft = {
    */
   sourceMessageId?: string;
   request: {
+    idempotencyKey?: string;
     cadence?: LifeOpsCadence;
     description?: string;
     goalRef?: string;
@@ -267,6 +268,10 @@ export function coerceDeferredLifeDraft(
   }
 
   if (operation === "create_definition") {
+    const idempotencyKey = request.idempotencyKey;
+    if (idempotencyKey !== undefined && typeof idempotencyKey !== "string") {
+      return null;
+    }
     const kind =
       typeof request.kind === "string"
         ? (request.kind as CreateLifeOpsDefinitionRequest["kind"])
@@ -286,6 +291,7 @@ export function coerceDeferredLifeDraft(
       operation,
       sourceMessageId,
       request: {
+        idempotencyKey,
         cadence,
         description:
           typeof request.description === "string"

@@ -125,8 +125,8 @@ export interface GateBalanceReadOptions {
 }
 
 export class InferenceBalanceCacheWarmingError extends Error {
-  constructor() {
-    super("Inference billing cache is warming; retry the request");
+  constructor(cause?: unknown) {
+    super("Inference billing cache is warming; retry the request", { cause });
     this.name = "InferenceBalanceCacheWarmingError";
   }
 }

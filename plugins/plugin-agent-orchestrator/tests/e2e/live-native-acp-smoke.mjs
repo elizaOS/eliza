@@ -25,7 +25,7 @@ const DEFAULT_CODEX_MODEL =
   process.env.LIVE_NATIVE_ACP_CODEX_MODEL ?? "gpt-5.5";
 const DEFAULT_CODEX_REASONING_EFFORT =
   process.env.LIVE_NATIVE_ACP_CODEX_REASONING_EFFORT ?? "low";
-const DEFAULT_CODEX_COMMAND = "npx -y @agentclientprotocol/codex-acp@1.1.2";
+const DEFAULT_CODEX_COMMAND = "npx -y @agentclientprotocol/codex-acp@1.10.0";
 const GIT_IDENTITY_EVIDENCE =
   process.env.LIVE_NATIVE_ACP_GIT_IDENTITY_EVIDENCE === "1";
 const GIT_IDENTITY_PROMPT =

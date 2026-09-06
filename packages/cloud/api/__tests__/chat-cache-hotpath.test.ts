@@ -146,6 +146,9 @@ mock.module("@/lib/services/inference-auth-context", () => ({
 
 const settle = mock(async () => null);
 const settleUnknown = mock(async () => null);
+const markProviderDispatched = mock(async () => {
+  callOrder.push("mark");
+});
 const admitOrganizationInference = mock(
   async (_params: Record<string, unknown>) => {
     callOrder.push("admission");
@@ -153,6 +156,7 @@ const admitOrganizationInference = mock(
       mode: "deferred_reservation",
       settle,
       settleUnknown,
+      markProviderDispatched,
       reservation: RESERVATION,
     };
   },
@@ -235,6 +239,7 @@ beforeEach(() => {
   billUsage.mockClear();
   settle.mockClear();
   settleUnknown.mockClear();
+  markProviderDispatched.mockClear();
   admitOrganizationInference.mockClear();
   getCurrentUser.mockClear();
   getAnonymousUser.mockClear();
@@ -415,7 +420,7 @@ describe("/v1/chat Worker cache hot path", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(callOrder).toEqual(["rate-limit", "admission", "provider"]);
+    expect(callOrder).toEqual(["rate-limit", "admission", "mark", "provider"]);
     expect(getCurrentUser).not.toHaveBeenCalled();
     expect(getAnonymousUser).not.toHaveBeenCalled();
     expect(reserveAnonymousMessageSlot).not.toHaveBeenCalled();
@@ -433,6 +438,7 @@ describe("/v1/chat Worker cache hot path", () => {
         affiliateCode: "affiliate-a",
         executionCtx,
         estimatedOutputTokens: 500,
+        atomicProviderBoundary: true,
       }),
     );
 

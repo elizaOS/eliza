@@ -335,6 +335,8 @@ export async function admitFlatGenerativeOperation(params: {
   idempotencyKey?: string;
   admissionSnapshot?: InferenceAdmissionSnapshot;
   credential?: InferenceCredentialCheck;
+  /** Use only when the caller must invoke the returned dispatch marker. */
+  atomicProviderBoundary?: boolean;
 }): Promise<OrganizationInferenceAdmission> {
   const executionCtx = getGenerativeExecutionContext(params.c);
   const { provider, billingSource, requestId } = params.context;
@@ -388,6 +390,7 @@ export async function admitFlatGenerativeOperation(params: {
       flatCost: params.cost,
       admissionSnapshot: params.admissionSnapshot,
       ...(params.credential ? { credential: params.credential } : {}),
+      atomicProviderBoundary: params.atomicProviderBoundary === true,
     });
   } catch (error) {
     if (

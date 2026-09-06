@@ -60,6 +60,8 @@ import {
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import { waitForRendererCloudApiOrigin } from "../cloud-live-renderer-api-readiness";
 import {
+  CLOUD_LIVE_CONTINUITY_IDENTITY_TIMEOUT_MS,
+  CLOUD_LIVE_FIRST_IDENTITY_TIMEOUT_MS,
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
   type CloudLivePreIdentityDiagnostic,
   type CloudLiveTrajectoryPhase,
@@ -89,11 +91,6 @@ const DEPLOYED_RENDERER_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
 const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v3";
 const REQUIRE_NAMED_WARMING =
   process.env.ELIZA_UI_SMOKE_REQUIRE_NAMED_WARMING === "1";
-
-const PERSONAL_DEDICATED_ACTIVATION_TIMEOUT_MS = 6 * 60_000;
-const PERSONAL_IDENTITY_COMMIT_MARGIN_MS = 30_000;
-const PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS =
-  PERSONAL_DEDICATED_ACTIVATION_TIMEOUT_MS + PERSONAL_IDENTITY_COMMIT_MARGIN_MS;
 
 // This lane deliberately places a real Cloud bearer in browser storage.
 // Playwright traces record init-script arguments and request headers, while
@@ -582,6 +579,7 @@ async function resolvePersonalIdentity(
   page: Page,
   dedicatedConsentGate: CloudLiveDedicatedConsentGate,
   dedicatedNetworkAudit: CloudLiveNetworkAudit,
+  identityTimeoutMs: number,
   chooseRuntime = true,
   onRecovery?: (recovery: CloudLivePersonalIdentityRecovery) => Promise<void>,
   existingDedicatedAdoptionProof?: DedicatedAdoptionConsentProof,
@@ -651,7 +649,7 @@ async function resolvePersonalIdentity(
           return "activation";
         },
       },
-      timeoutMs: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS,
+      timeoutMs: identityTimeoutMs,
       runtimeCloudGraceMs: 15_000,
       onRecovery,
     });
@@ -668,12 +666,11 @@ async function resolvePersonalIdentity(
 }
 
 test.describe("real cloud login + personal identity + chat", () => {
-  // This single contract contains two independently bounded Personal identity
-  // resolutions (2 x 390s), two 240s history proofs, protected renderer
-  // boot twice, and one 180s live-chat proof. A 15-minute aggregate timeout can
-  // therefore close a healthy browser before the later phase-specific bounds
-  // adjudicate. Keep the test below its 45-minute workflow job while allowing
-  // every fail-closed phase to report its own result.
+  // The first identity join can own a real 15-minute Dedicated cold provision
+  // plus commit margin. The fresh-context continuity join cannot provision
+  // again, so it keeps a tighter bound. Together they consume at most half of
+  // this 35-minute test and preserve the other half for boot, chat, and history
+  // while the workflow retains its 10-minute setup reserve.
   test.setTimeout(CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS);
   test.skip(
     !CLOUD_LIVE_ENABLED && !REQUIRE_NAMED_WARMING,
@@ -987,6 +984,7 @@ test.describe("real cloud login + personal identity + chat", () => {
           page,
           dedicatedConsentGate,
           primaryAudit,
+          CLOUD_LIVE_FIRST_IDENTITY_TIMEOUT_MS,
           false,
           async (recovery) => {
             if (recovery === "runtime-cloud") {
@@ -1357,6 +1355,7 @@ test.describe("real cloud login + personal identity + chat", () => {
           freshPage,
           dedicatedConsentGate,
           freshAudit,
+          CLOUD_LIVE_CONTINUITY_IDENTITY_TIMEOUT_MS,
         ).catch((cause: unknown) =>
           rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
             await enterTrajectoryPhase(

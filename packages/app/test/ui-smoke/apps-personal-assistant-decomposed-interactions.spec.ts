@@ -171,11 +171,11 @@ test("finances decomposed view: renders the financial summary", async ({
 
 test("focus decomposed view: renders the focus scaffold", async ({ page }) => {
   // The website-blocker mock reports enabled:false, so FocusView resolves to
-  // its idle branch (not loading, not error, not "Focus unavailable").
+  // its inactive branch (not loading, not error, not "Focus unavailable").
   await openAppPath(page, "/focus");
-  await expect(page.getByText("Idle", { exact: true }).first()).toBeVisible({
-    timeout: 60_000,
-  });
+  await expect(
+    page.getByText("No focus session active", { exact: true }).first(),
+  ).toBeVisible({ timeout: 60_000 });
 });
 
 test("goals decomposed view: renders the goals scaffold", async ({ page }) => {

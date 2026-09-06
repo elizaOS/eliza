@@ -112,16 +112,30 @@ const ATOM_BY_NAME = new Map(
 const relative = (file) =>
   path.relative(repoRoot, file).replaceAll(path.sep, "/");
 
+/** Recognizes generated caches and the inventory harness's temporary workspaces. */
+export function isHiddenSourceArtifactDirectory(name) {
+  return (
+    [".vite", ".vite-temp", ".eliza", ".next", ".turbo", ".cache"].includes(
+      name,
+    ) ||
+    name.startsWith(".molecule-binding-") ||
+    name.startsWith(".playwright-artifacts-")
+  );
+}
+
 export function isMaintainedSource(file) {
   const rel = relative(file);
   const maintained =
     /^(packages|plugins)\//.test(rel) &&
     /\.[jt]sx?$/.test(rel) &&
-    !/(^|\/)\.eliza(\/|$)/.test(rel) &&
-    !/(^|\/)(node_modules|dist|build|coverage|generated|\.vite|dist-mobile-[^/]+)(\/|$)/.test(
+    !path.posix.dirname(rel).split("/").some(isHiddenSourceArtifactDirectory) &&
+    !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
       rel,
     ) &&
     !/(^|\/)packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) &&
+    !/^packages\/app-core\/platforms\/android\/app\/src\/main\/assets(\/|$)/.test(
+      rel,
+    ) &&
     !/\.(stories|test|spec)\.[jt]sx?$/.test(rel) &&
     !/(^|\/)(test|__tests__|__e2e__|__fixtures__|fixtures|stubs|templates)(\/|$)/.test(
       rel,
@@ -143,12 +157,14 @@ function* walk(directory) {
   if (!fs.existsSync(directory)) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     if (
+      (entry.isDirectory() && isHiddenSourceArtifactDirectory(entry.name)) ||
       [
         "node_modules",
         "dist",
         "build",
         "coverage",
         "generated",
+        "dist-mobile",
         ".git",
         ".vite",
       ].includes(entry.name) ||
@@ -160,6 +176,11 @@ function* walk(directory) {
     if (entry.isDirectory()) {
       const rel = relative(full);
       if (/^packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel)) {
+        continue;
+      }
+      // Mobile builds stage compiled JavaScript here; it is not maintained
+      // React source and is absent from clean CI checkouts.
+      if (rel === "packages/app-core/platforms/android/app/src/main/assets") {
         continue;
       }
       yield* walk(full);

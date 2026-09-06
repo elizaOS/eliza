@@ -17,6 +17,13 @@ class TestInsufficientCreditsError extends Error {
   }
 }
 
+class TestInferenceAdmissionLeaseRejectedError extends Error {
+  readonly requiredUsd = 1;
+  readonly availableUsd = 0;
+}
+
+class TestInferenceAdmissionGateUnavailableError extends Error {}
+
 let cachedBalanceUsd = 100;
 let gateError: Error | null = null;
 let gateReads = 0;
@@ -47,6 +54,7 @@ const acquireInferenceAdmissionLease = mock(
   }),
 );
 const settleInferenceAdmissionLease = mock(async () => undefined);
+const markInferenceAdmissionLeaseDispatched = mock(async () => undefined);
 
 mock.module("./app-credits", () => ({
   appCreditsService: {
@@ -109,12 +117,9 @@ mock.module("./inference-admission-gate", () => ({
     balanceBackedUsd: actualCostUsd,
     gateConsumedUsd: actualCostUsd,
   }),
-  InferenceAdmissionGateUnavailableError: class InferenceAdmissionGateUnavailableError extends Error {},
-  InferenceAdmissionLeaseRejectedError: class InferenceAdmissionLeaseRejectedError extends Error {
-    readonly requiredUsd = 1;
-    readonly availableUsd = 0;
-  },
-  markInferenceAdmissionLeaseDispatched: async () => undefined,
+  InferenceAdmissionGateUnavailableError: TestInferenceAdmissionGateUnavailableError,
+  InferenceAdmissionLeaseRejectedError: TestInferenceAdmissionLeaseRejectedError,
+  markInferenceAdmissionLeaseDispatched,
   settleInferenceAdmissionLease,
 }));
 
@@ -186,6 +191,7 @@ beforeEach(() => {
   usageProjections = [];
   acquireInferenceAdmissionLease.mockClear();
   settleInferenceAdmissionLease.mockClear();
+  markInferenceAdmissionLeaseDispatched.mockClear();
   authoritativeBalanceUsd = 80;
   reserveImpl = async () => ({
     reservedAmount: 1.2,
@@ -195,6 +201,45 @@ beforeEach(() => {
 });
 
 describe("admitAppInferenceCacheOnly", () => {
+  test("opts into the atomic provider-boundary lease only when requested", async () => {
+    const admission = await admitAppInferenceCacheOnly({
+      ...params({ waitUntil: () => undefined }),
+      atomicProviderBoundary: true,
+    });
+    expect(acquireInferenceAdmissionLease.mock.calls[0]?.[0]).toMatchObject({
+      deferCommitUntilDispatch: true,
+    });
+    expect(markInferenceAdmissionLeaseDispatched).not.toHaveBeenCalled();
+
+    await admission.markProviderDispatched();
+    expect(markInferenceAdmissionLeaseDispatched).toHaveBeenCalledTimes(1);
+  });
+
+  test("a late atomic balance denial releases locally without authoritative accounting", async () => {
+    markInferenceAdmissionLeaseDispatched.mockRejectedValueOnce(
+      new TestInferenceAdmissionLeaseRejectedError(),
+    );
+    const admission = await admitAppInferenceCacheOnly({
+      ...params({ waitUntil: () => undefined }),
+      atomicProviderBoundary: true,
+    });
+
+    await expect(admission.markProviderDispatched()).rejects.toMatchObject({
+      name: "InsufficientCreditsError",
+      required: 1,
+      available: 0,
+      reason: "cached_balance_gate",
+    });
+    await expect(admission.settle(0)).resolves.toBeNull();
+
+    expect(reserveCalls).toBe(0);
+    expect(settleInferenceAdmissionLease).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: "request-1" }),
+      0,
+      0,
+    );
+  });
+
   test("uses the Durable Object lease as the sole pre-dispatch WAL", async () => {
     const credential = {
       kind: "api_key" as const,
@@ -250,6 +295,7 @@ describe("admitAppInferenceCacheOnly", () => {
     expect(reserveCalls).toBe(0);
 
     const settlement = admission.settle(0.4);
+    await Promise.resolve();
     await Promise.resolve();
     expect(reserveCalls).toBe(1);
     expect(

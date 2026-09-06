@@ -1,4 +1,4 @@
-// Exercises logger behavior with deterministic cloud-shared lib fixtures.
+/** Exercises the real cloud logging sink and redaction, including quiet-mode audit delivery. */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { logger } from "./logger";
 
@@ -51,5 +51,24 @@ describe("cloud logger sink redaction (#12229 M6)", () => {
     });
     expect(ctx.password).toBe("[REDACTED]");
     expect(ctx.count).toBe(3);
+  });
+
+  test("audit evidence survives quiet production logging without exposing secrets", () => {
+    const moduleUrl = new URL("./logger.ts", import.meta.url).href;
+    const script = `const { logger } = await import(${JSON.stringify(moduleUrl)});
+      logger.info("verbose-only-sentinel", { value: 1 });
+      logger.audit("[InferenceAuth] trace", { result: "authorized_cache", apiKey: "private-audit-secret" });`;
+    const child = Bun.spawnSync([process.execPath, "--eval", script], {
+      env: { ...process.env, NODE_ENV: "production", VERBOSE_LOGGING: "false" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(child.exitCode).toBe(0);
+    const output = child.stdout.toString();
+    expect(output).toContain("[InferenceAuth] trace");
+    expect(output).toContain("authorized_cache");
+    expect(output).toContain("[REDACTED]");
+    expect(output).not.toContain("private-audit-secret");
+    expect(output).not.toContain("verbose-only-sentinel");
   });
 });

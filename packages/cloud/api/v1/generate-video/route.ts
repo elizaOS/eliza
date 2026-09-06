@@ -301,6 +301,7 @@ app.post("/", async (c) => {
           idempotencyKey: candidate.billingContext.requestId ?? undefined,
           admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: true,
         });
       } catch (error) {
         // error-policy:J1 the HTTP boundary translates insufficient-credit

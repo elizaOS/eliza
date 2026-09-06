@@ -1,15 +1,12 @@
+/**
+ * Connects the Capacitor app to an Eliza Gateway through Bonjour discovery
+ * and authenticated WebSocket RPC. Same-file extensions share private session
+ * state while separating discovery, public calls, and transport lifecycle.
+ */
 import Foundation
 import Capacitor
 import Network
 
-/**
- * Gateway Plugin for Capacitor
- *
- * Provides WebSocket connectivity to an Eliza Gateway server.
- * This implementation handles authentication, reconnection, and RPC-style
- * request/response as well as event streaming. Also supports gateway
- * discovery via Bonjour/mDNS.
- */
 @objc(GatewayPlugin)
 public class GatewayPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "GatewayPlugin"
@@ -46,7 +43,9 @@ public class GatewayPlugin: CAPPlugin, CAPBridgedPlugin {
     private var backoffMs: TimeInterval = 0.8
     private var reconnectTimer: Timer?
     private var connectContinuation: CheckedContinuation<JSObject, Error>?
+}
 
+extension GatewayPlugin {
     // MARK: - Discovery Methods
 
     @objc func startDiscovery(_ call: CAPPluginCall) {
@@ -211,6 +210,9 @@ public class GatewayPlugin: CAPPlugin, CAPBridgedPlugin {
         ]
     }
 
+}
+
+extension GatewayPlugin {
     // MARK: - Connection Methods
 
     @objc func connect(_ call: CAPPluginCall) {
@@ -310,6 +312,9 @@ public class GatewayPlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
 
+}
+
+extension GatewayPlugin {
     // MARK: - Private Methods
 
     private func establishConnection(url: URL, options: JSObject) async throws -> JSObject {

@@ -131,6 +131,38 @@ const HOME_SCREEN_CSS = `
   pointer-events: none;
   visibility: hidden;
 }
+/* Short windows scroll the complete dashboard above the composer. Keeping
+   separate fixed header and card regions here can leave less than one row. */
+@media (max-height: 520px) {
+  [data-home-scroll-frame] {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  [data-testid="home-content-column"] {
+    height: auto;
+    min-height: 100%;
+  }
+  [data-home-notification-region] {
+    flex-shrink: 0;
+  }
+  [data-testid="home-content-column"]:not([data-home-has-notifications])
+    [data-home-notification-region]:has(
+      [data-testid="home-notification-list"][data-shade-mode="rested"]:not([data-shade-preview]):not([data-shade-occupies-home])
+    ) {
+    max-height: 0;
+    margin-block: 0;
+    overflow: hidden;
+  }
+  [data-home-widget-region] {
+    padding-top: .5rem;
+  }
+  [data-home-below-notifications] {
+    flex: none;
+  }
+  [data-home-below-notifications-inner] {
+    overflow-y: visible;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .home-enter { animation: none; }
   [data-home-notification-region],
@@ -355,9 +387,8 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
       ref={homeScreenRef}
       data-testid="home-screen"
       className={cn(
-        // The launcher grid below is the only vertical scroll owner. Keeping
-        // the shell itself clipped avoids nested wheel/touch arbitration with
-        // notification pull gestures.
+        // Keep the composer clearance outside the scrolling content. Short
+        // windows scroll the whole dashboard; taller ones scroll its lower region.
         "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-hidden",
         // The shell root already reserves the status-bar safe area (its
         // paddingTop: var(--safe-area-top)); adding it again here double-padded
@@ -370,12 +401,12 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
         // Clear the floating chat composer at the bottom. Short landscape
         // screens use compact app icons and a smaller breathing gutter so the
         // first row keeps both icon and label in view without touching chat;
-        // overflow still belongs to the launcher region below.
+        // the dashboard scroll frame retains that clearance.
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1.5rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+0.5rem)]",
       )}
     >
       <style>{HOME_SCREEN_CSS}</style>
-      <div className="flex h-full min-h-0 w-full">
+      <div data-home-scroll-frame="" className="flex h-full min-h-0 w-full">
         {/* A definite-height flex column makes the notification shade and app
             scroller share exactly the space above the floating chat. */}
         <div
@@ -438,6 +469,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
             >
               {apps}
               <div
+                data-home-widget-region=""
                 className={cn(enterClass, "flex min-h-32 flex-col py-6")}
                 style={{ animationDelay: "110ms" }}
               >

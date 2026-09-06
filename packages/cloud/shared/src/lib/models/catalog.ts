@@ -1,4 +1,4 @@
-// Defines cloud shared catalog behavior for backend service consumers.
+/** Defines model identities and capability metadata consumed by cloud routing and selectors. */
 import { normalizeProviderKey } from "../providers/model-id-translation";
 
 export interface CatalogModel {
@@ -50,6 +50,7 @@ export const CEREBRAS_DEFAULT_TEXT_SMALL_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
 export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
 export const CEREBRAS_NATIVE_TEXT_MODELS = [
   CEREBRAS_DEFAULT_TEXT_MODEL,
+  "qwen-3.8-27b",
   "gpt-oss-120b",
   "zai-glm-4.7",
 ] as const;
@@ -72,6 +73,19 @@ const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([CEREBRAS_DEFAULT_TEXT_M
 // - Groq docs: https://console.groq.com/docs/models
 // - Cerebras: https://api.cerebras.ai/public/v1/models?format=openrouter
 const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
+  {
+    id: "qwen-3.8-27b",
+    object: "model",
+    created: 0,
+    owned_by: "cerebras",
+    name: "Qwen3.8 27B",
+    description: "Cerebras language model for reasoning and tool use",
+    type: "language",
+    // Public Cerebras catalog capability; account-specific billing is resolved separately.
+    context_window: 65536,
+    max_tokens: 32768,
+    tags: ["reasoning", "tool-use", "cerebras"],
+  },
   {
     id: CEREBRAS_DEFAULT_TEXT_MODEL,
     object: "model",

@@ -87,6 +87,7 @@ import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
   type VoiceContinuousStatus,
+  type VoiceTtsError,
 } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import type { ServerControlFrame } from "../../voice/voice-session-protocol";
@@ -215,6 +216,8 @@ export interface ShellController {
   toggleAgentVoiceMute: () => void;
   /** True when autoplay policy blocked playback and a tap is needed to hear it. */
   needsAudioUnlock: boolean;
+  /** The real controller always supplies this; optional for external legacy shell adapters. */
+  ttsError?: VoiceTtsError | null;
   /** Resume audio output in response to a user gesture (enable sound). */
   unlockAudio: () => void;
   /** True while the hands-free voice conversation loop is active — the mic
@@ -414,6 +417,7 @@ function describeRealtimeVoiceFailure(
   }
   if (surfacedError) return surfacedError;
   if (outcome.kind === "fallback-to-batch") {
+    if (outcome.message) return outcome.message;
     if (outcome.reason === "consent") {
       return "Cartesia voice could not confirm microphone consent. Tap Talk to retry.";
     }
@@ -2860,6 +2864,7 @@ export function useShellController(): ShellController {
             : ""
         : transcript,
     speaking: voiceOutput.speaking || realtimeVoice.agentSpeaking,
+    ttsError: voiceOutput.ttsError,
     speak: voiceOutput.speak,
     stopSpeaking: voiceOutput.stopSpeaking,
     agentVoiceMuted: voiceOutput.agentVoiceMuted,

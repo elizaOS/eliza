@@ -52,12 +52,20 @@ describe("subscription entitlement derivation", () => {
       state: "grace",
       entitlement_effective: true,
       effective_from: revision.current_period_start,
-      effective_until: revision.current_period_end,
+      effective_until: revision.grace_expires_at,
       catalog_version: "v1",
       source_digest: revision.provider_object_digest,
       source_subscription_id: revision.subscription_id,
       source_subscription_revision: 7,
     });
+  });
+
+  test("rejects missing, invalid, and reversed grace deadlines before publication", () => {
+    for (const grace_expires_at of [null, new Date(Number.NaN), revision.current_period_start]) {
+      expect(() => deriveSubscriptionEntitlementValues({ ...revision, grace_expires_at })).toThrow(
+        "requires a valid lifecycle deadline",
+      );
+    }
   });
 
   test("projects terminal lifecycle revisions back to Free", () => {
@@ -70,8 +78,8 @@ describe("subscription entitlement derivation", () => {
       entitlement_effective: true,
       effective_from: endedAt,
       effective_until: null,
-      source_subscription_id: null,
-      source_subscription_revision: null,
+      source_subscription_id: revision.subscription_id,
+      source_subscription_revision: 7,
     });
     expect(
       deriveSubscriptionEntitlementValues({ ...revision, status: "incomplete_expired" }),

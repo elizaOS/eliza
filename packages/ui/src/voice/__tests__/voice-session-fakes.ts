@@ -160,6 +160,10 @@ export class FakeVoiceAudioWorkletNode
     FakeVoiceAudioWorkletNode.instances.push(this);
   }
 
+  emitMessage(data: unknown): void {
+    this.port.onmessage?.({ data });
+  }
+
   static reset(): void {
     FakeVoiceAudioWorkletNode.instances.length = 0;
   }

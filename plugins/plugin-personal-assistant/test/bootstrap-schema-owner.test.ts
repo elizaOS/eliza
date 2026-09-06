@@ -16,6 +16,7 @@ const ENSURE_METHODS = [
   "ensureGmailSyncColumns",
   "ensureInboxCacheIndexes",
   "ensureWorkflowRunIdempotencyKey",
+  "ensureDefinitionCreationIdentity",
 ] as const;
 
 afterEach(() => {

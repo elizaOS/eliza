@@ -36,6 +36,24 @@ import { useMediaQuery } from "@elizaos/ui/hooks";
 import "@elizaos/ui/styles"; // default stylesheets (renderer only)
 ```
 
+Login components, wallet providers and authentication hooks are exported from
+the root `@elizaos/ui` barrel. The authentication client and service are owned
+by `@elizaos/login`. The imported login source retains its original MIT notice
+in [`src/login/LICENSE`](src/login/LICENSE), included in the published UI artifact.
+
+```tsx
+import { LoginProvider, LoginForm, useAuth, useLogin } from "@elizaos/ui";
+import type { LoginFormProps } from "@elizaos/ui";
+```
+
+Wallet providers load their adapters on demand and show a loading state while
+initializing. `createDefaultWagmiConfig` is asynchronous at the root export;
+await it before passing its result to `EVMWalletProvider`. Supply your own
+WalletConnect project ID or a prebuilt configuration. The bundled login form
+also accepts `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`; no external project's ID
+is supplied by default.
+
+
 Cloud-frontend components live under a dedicated subpath:
 
 ```tsx

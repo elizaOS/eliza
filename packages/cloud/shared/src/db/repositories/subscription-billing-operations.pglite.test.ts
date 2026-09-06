@@ -124,6 +124,7 @@ beforeAll(async () => {
     );
   `);
   await applyMigration("0373_subscription_authority.sql");
+  await applyMigration("0379_subscription_account_authority.sql");
 });
 
 beforeEach(async () => {
@@ -154,6 +155,8 @@ beforeEach(async () => {
     ) VALUES ('${ORG_A}', '${SUB_A}', 1, 'webhook', 'test', 'cus_repoa', 'sub_repoa', 'si_repoa',
       'plus_monthly', 'v1', 'active', '2026-08-01T00:00:00Z',
       '2026-09-01T00:00:00Z', false, '${DIGEST_A}');
+    UPDATE organization_subscription_authorities SET subscription_id = '${SUB_A}', state = 'current' WHERE organization_id = '${ORG_A}';
+    UPDATE organization_subscription_authorities SET subscription_id = '${SUB_B}', state = 'current' WHERE organization_id = '${ORG_B}';
   `);
 });
 
@@ -507,8 +510,8 @@ describe("SubscriptionBillingOperationsRepository", () => {
       state: "free",
       entitlement_effective: true,
       projection_revision: 2,
-      source_subscription_id: null,
-      source_subscription_revision: null,
+      source_subscription_id: SUB_A,
+      source_subscription_revision: 2,
     });
   });
 

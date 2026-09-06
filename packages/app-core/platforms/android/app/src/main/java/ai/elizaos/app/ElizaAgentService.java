@@ -1061,6 +1061,13 @@ public class ElizaAgentService extends Service {
      */
     private void extractAssetsIfNeeded(String abi) throws IOException {
         File filesDir = getFilesDir();
+        // Android creates files/ with mode 0771. Runtime identity requires every
+        // app-owned ancestor to exclude replacement by another Unix user.
+        try {
+            android.system.Os.chmod(filesDir.getAbsolutePath(), 0700);
+        } catch (android.system.ErrnoException error) {
+            throw new IOException("Could not secure runtime files directory", error);
+        }
         File root = agentRoot();
         File stateDir = agentStateDir();
         File staging = new File(filesDir, AGENT_STAGING_DIR_NAME);
@@ -1493,12 +1500,17 @@ public class ElizaAgentService extends Service {
         // (raw tar → `Z_DATA_ERROR: incorrect header check` → PGlite crashloop).
         File vector = new File(filesDir, "vector.tar.gz");
         File fuzzy = new File(filesDir, "fuzzystrmatch.tar.gz");
+        File trigram = new File(filesDir, "pg_trgm.tar.gz");
         if (forceRefreshTarballs) {
             if (vector.exists() && !vector.delete()) Log.w(TAG, "Could not delete stale vector.tar.gz");
             if (fuzzy.exists() && !fuzzy.delete()) Log.w(TAG, "Could not delete stale fuzzystrmatch.tar.gz");
         }
         copyAssetIfPresentAsGzipped(assets, "agent/vector.tar", vector);
         copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar", fuzzy);
+        if (forceRefreshTarballs && trigram.exists() && !trigram.delete()) {
+            throw new IOException("Could not refresh pg_trgm.tar.gz");
+        }
+        copyAssetIfPresentAsGzipped(assets, "agent/pg_trgm.tar", trigram);
 
         // Bundled default models (chat + embedding GGUF, staged by
         // scripts/elizaos/stage-default-models.mjs at AOSP build time). Land
@@ -1573,6 +1585,14 @@ public class ElizaAgentService extends Service {
 
     private File nativeLibraryDir() {
         return new File(getApplicationInfo().nativeLibraryDir);
+    }
+
+    private boolean hasPackagedNativeLibrary(String name) {
+        // Preinstalled AOSP apps load uncompressed JNI entries directly from
+        // their read-only APK; nativeLibraryDir need not contain loose files.
+        ClassLoader loader = getClassLoader();
+        return loader instanceof dalvik.system.BaseDexClassLoader
+            && ((dalvik.system.BaseDexClassLoader) loader).findLibrary(name) != null;
     }
 
     private String packagedMuslLoaderName(String abi) {
@@ -1750,7 +1770,7 @@ public class ElizaAgentService extends Service {
             return;
         }
         File fusedLib = new File(nativeLibraryDir(), "libelizainference.so");
-        if (!fusedLib.isFile()) {
+        if (!fusedLib.isFile() && !hasPackagedNativeLibrary("elizainference")) {
             return;
         }
         File kokoroVoice = new File(getFilesDir(), "eliza-1/bundle/tts/kokoro");
@@ -1916,8 +1936,12 @@ public class ElizaAgentService extends Service {
             }
 
             String abi = resolveRuntimeAbi();
+            final String canonicalStateDir;
+            final String canonicalAppDataDir;
             try {
                 extractAssetsIfNeeded(abi);
+                canonicalStateDir = agentStateDir().getCanonicalPath();
+                canonicalAppDataDir = getDataDir().getCanonicalPath();
             } catch (IOException error) {
                 Log.e(TAG, "Failed to extract agent assets for abi=" + abi, error);
                 currentStatus = "extract-failed";
@@ -2078,8 +2102,20 @@ public class ElizaAgentService extends Service {
             // service dials (see LOCAL_AGENT_SOCKET_NAME). Both sides read the
             // same env var so the name stays in sync.
             agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET", LOCAL_AGENT_SOCKET_NAME);
-            agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
+            // Context can expose files/ via /data/data while getDataDir() uses
+            // /data/user/0. Export both identity paths in the same namespace.
+            agentEnv.put("ELIZA_STATE_DIR", canonicalStateDir);
             agentEnv.put("ELIZA_PLATFORM", "android");
+            // Android SELinux permits the app to stat platform-owned ancestors
+            // such as / and /data, but deliberately denies opening directory
+            // descriptors for them. Bind the agent's identity validator to the
+            // exact app-owned data boundary so it can retain descriptor-backed
+            // validation from this directory downward without attempting the
+            // forbidden platform ancestor opens.
+            agentEnv.put(
+                "ELIZA_ANDROID_APP_DATA_DIR",
+                canonicalAppDataDir
+            );
             agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
             agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
@@ -2104,13 +2140,10 @@ public class ElizaAgentService extends Service {
                 Log.i(TAG, "Hybrid cloud inference enabled: ELIZAOS_CLOUD_API_KEY"
                     + " injected from prefs (len=" + cloudInferenceKey.length() + ")");
             }
-            // Abstract UDS requests stay process-confined and passwordless so
-            // the WebView cannot dead-end at cold start waiting for its bearer.
-            // The debug/e2e TCP opt-in shares Android's loopback namespace with
-            // other apps, so it must retain bearer auth even though it never
-            // binds off-device. The Agent plugin exposes the per-boot token to
-            // the harness without weakening the normal port-free path.
-            agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", exposeAgentApiPort ? "1" : "0");
+            // The native request proxy injects the per-boot bearer before
+            // forwarding. Enforce it for socket IPC as well as debug TCP:
+            // an abstract socket name is not an authentication boundary.
+            agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", "1");
             agentEnv.put("ELIZA_API_TOKEN", token);
             agentEnv.put("ELIZA_TERMINAL_RUN_TOKEN", terminalToken);
             // The Capacitor APK always hosts @elizaos/capacitor-llama in the
@@ -2213,7 +2246,8 @@ public class ElizaAgentService extends Service {
                 resolveBundledNativeLib(abiDir, "libeliza-llama-shim.so");
             File abiGgmlVulkan =
                 resolveBundledNativeLib(abiDir, "libggml-vulkan.so");
-            boolean fusedInferenceBundled = abiFusedInference.isFile();
+            boolean fusedInferenceBundled = abiFusedInference.isFile()
+                || hasPackagedNativeLibrary("elizainference");
             boolean legacyLibllamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
             boolean nativeLlamaBundled = fusedInferenceBundled || legacyLibllamaBundled;
             boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
@@ -2236,7 +2270,8 @@ public class ElizaAgentService extends Service {
             // bionic-host)" against a socket that never binds, and every turn
             // would fail with a cryptic "bionic socket error: connect ENOENT".
             boolean bionicJniBridgeBundled =
-                resolveBundledNativeLib(abiDir, "libelizavoicejni.so").isFile();
+                resolveBundledNativeLib(abiDir, "libelizavoicejni.so").isFile()
+                || hasPackagedNativeLibrary("elizavoicejni");
             boolean delegateToBionicHost = shouldDelegateToBionicHost(
                 fusedInferenceBundled,
                 bionicJniBridgeBundled);
@@ -2397,9 +2432,12 @@ public class ElizaAgentService extends Service {
             }
             if (BuildConfig.AOSP_BUILD && isBrandedDevice()) {
                 agentEnv.put("ELIZA_AOSP_BUILD", "1");
-                agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
-                // Branded AOSP unconditionally opts the bun agent into native
-                // inference. If neither the fused libelizainference.so nor the
+                // Preserve JNI delegation selected above. ELIZA_LOCAL_LLAMA
+                // disables the mobile bridge and selects the musl FFI loader.
+                if (!delegateToBionicHost) {
+                    agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
+                }
+                // Branded AOSP requires a bundled native inference engine. If neither the fused libelizainference.so nor the
                 // legacy libllama.so + shim shipped in this APK, that opt-in
                 // cannot be honored — the bun agent's fused loader will fail at
                 // its first TEXT_* call. Surface the broken pipeline LOUDLY here

@@ -76,7 +76,7 @@ jobs:
           install-native-deps: "false"
           run-postinstall: "false"
 
-      - name: Require exact develop deployment authority
+      - name: Require protected staging diagnostic authority
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_cloud_commit }}
           CHECKED_OUT_COMMIT: ${{ github.sha }}
@@ -89,8 +89,12 @@ jobs:
           bun -e '
             const expected = process.env.EXPECTED_COMMIT ?? "";
             if (process.env.REF_NAME !== "refs/heads/develop") process.exit(1);
-            if (!/^[0-9a-f]{40}$/.test(expected) || expected !== process.env.CHECKED_OUT_COMMIT) process.exit(1);
+            if (!/^[0-9a-f]{40}$/.test(expected)) process.exit(1);
+            if (!["preview", "execute"].includes(process.env.MODE ?? "")) process.exit(1);
+            // Read-only preview diagnoses the served commit after develop advances.
+            // The operator still verifies its exact API and database identities.
             if (process.env.MODE === "execute") {
+              if (expected !== process.env.CHECKED_OUT_COMMIT) process.exit(1);
               if (!/^[0-9a-f]{64}$/.test(process.env.APPROVAL_DIGEST ?? "")) process.exit(1);
               const rereview = process.env.REVIEWED_REASON === "retain_current_receipt_target_after_duplicate_inventory_review" && process.env.CONFIRMATION === "REREVIEW_STALE_SELECTION_WITHOUT_COMPUTE_MUTATION";
               const bootstrap = process.env.REVIEWED_REASON === "select_unique_verified_backup_after_duplicate_inventory_review" && process.env.CONFIRMATION === "SELECT_UNIQUE_VERIFIED_BACKUP_WITHOUT_COMPUTE_MUTATION";
