@@ -528,6 +528,28 @@ describe("OrchestratorTaskService — lifecycle", () => {
     expect(reopened.archivedAt).toBeNull();
   });
 
+  it("stops a retained live ACP session on cleanup without erasing completion evidence", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    const live = (await acp.getSession(sessionId)) as SessionInfo;
+    acp.emit(
+      sessionId,
+      "task_complete",
+      { response: "verified result" },
+      live,
+      "completed-turn",
+    );
+    await settleStatus(service, taskId, "done");
+    expect((await service.getTask(taskId))?.sessions[0]?.status).toBe(
+      "completed",
+    );
+
+    const archived = must(await service.archiveTask(taskId), "archived");
+
+    expect(acp.stopped).toContain(sessionId);
+    expect(archived.status).toBe("archived");
+    expect(archived.sessions[0]?.status).toBe("completed");
+  });
+
   it("reopens a session-less task to open", async () => {
     const service = makeService();
     const { id } = await service.createTask(createInput());
@@ -1103,6 +1125,33 @@ describe("OrchestratorTaskService — lifecycle", () => {
     expect(relayed.sessionId).toBe(sessionId);
     expect(relayed.message).toContain("tweak the header");
     expect(await service.postUserMessage("missing", "x")).toBeNull();
+  });
+
+  it("forwards to retained live ACP state without rewriting durable completion", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    const live = (await acp.getSession(sessionId)) as SessionInfo;
+    acp.emit(
+      sessionId,
+      "task_complete",
+      { response: "verified result" },
+      live,
+      "completed-turn",
+    );
+    await settleStatus(service, taskId, "done");
+    expect((await service.getTask(taskId))?.sessions[0]?.status).toBe(
+      "completed",
+    );
+
+    const result = must(
+      await service.postUserMessage(taskId, "one more adjustment"),
+      "post",
+    );
+
+    expect(result.forwardedTo).toEqual([sessionId]);
+    expect(acp.sent.at(-1)?.message).toContain("one more adjustment");
+    expect((await service.getTask(taskId))?.sessions[0]?.status).toBe(
+      "completed",
+    );
   });
 
   it("auto-spawns a coding agent when a message is posted with no session live", async () => {

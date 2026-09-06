@@ -976,6 +976,7 @@ export class AcpService extends Service {
       resolveCancellationRequested: () => void;
     }
   >();
+  private readonly reclaimingSessionIds = new Set<string>();
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
   private readonly nativeClients = new Map<string, NativeAcpClient>();
@@ -2412,8 +2413,14 @@ export class AcpService extends Service {
   ): Promise<PromptResult> {
     this.ensureStarted();
     const session = await this.requireSession(sessionId);
-    if (this.promptTurns.has(sessionId)) {
-      throw new Error(`ACP session is already busy: ${sessionId}`);
+    if (
+      this.promptTurns.has(sessionId) ||
+      this.reclaimingSessionIds.has(sessionId)
+    ) {
+      throw new ElizaError(`ACP session is already busy: ${sessionId}`, {
+        code: "ACP_SESSION_BUSY",
+        context: { sessionId },
+      });
     }
     let resolveSettled: () => void = () => undefined;
     const settled = new Promise<void>((resolve) => {
@@ -3140,6 +3147,35 @@ export class AcpService extends Service {
 
   async stopSession(sessionId: string): Promise<void> {
     await this.closeSession(sessionId);
+  }
+
+  /** Stop a promptable session without racing a follow-up prompt. */
+  async stopPromptableSession(
+    sessionId: string,
+    beforeStop?: () => Promise<void>,
+  ): Promise<boolean> {
+    const selected = await this.requireSession(sessionId);
+    if (
+      selected.status !== "ready" ||
+      this.promptTurns.has(sessionId) ||
+      this.reclaimingSessionIds.has(sessionId)
+    ) {
+      return false;
+    }
+    // No await between eligibility and claim: sendPrompt checks the same set
+    // before installing its turn, so exactly one side wins the session.
+    this.reclaimingSessionIds.add(sessionId);
+    try {
+      const fresh = await this.requireSession(sessionId);
+      if (fresh.status !== "ready" || this.promptTurns.has(sessionId)) {
+        return false;
+      }
+      await beforeStop?.();
+      await this.closeSession(sessionId);
+      return true;
+    } finally {
+      this.reclaimingSessionIds.delete(sessionId);
+    }
   }
 
   private async closeInitialTaskSession(sessionId: string): Promise<void> {
