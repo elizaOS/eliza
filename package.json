@@ -249,8 +249,7 @@
     "plugins/*",
     "packages/native/*",
     "packages/cloud/test-mocks",
-    "packages/cloud/e2e",
-    "packages/examples/*"
+    "packages/cloud/e2e"
   ],
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
