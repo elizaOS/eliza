@@ -33,13 +33,21 @@ function proposal(id: string, action: string, key?: string) {
 	return {
 		id,
 		name: "OWNER_TODOS",
-		arguments: { action, ...(key ? { key } : {}) },
+		arguments: {
+			action,
+			...(key ? { key } : {}),
+			eliza_turn_scope: "more_work_pending",
+		},
 	};
 }
 
 async function runStorePlan(
 	batches: ReturnType<typeof proposal>[][],
-	options: { failFirst?: boolean; externalChange?: boolean } = {},
+	options: {
+		failFirst?: boolean;
+		externalChange?: boolean;
+		protocolFailureAfterWrite?: boolean;
+	} = {},
 ) {
 	const items: string[] = [];
 	const reads: string[][] = [];
@@ -85,11 +93,24 @@ async function runStorePlan(
 			return {
 				success: true,
 				text: id,
+				...(options.protocolFailureAfterWrite
+					? {
+							userFacingText: `Saved ${id}`,
+							verifiedUserFacing: true,
+							userFacingEffectReceiptIds: [receipt("applied", id).receiptId],
+						}
+					: {}),
 				effectReceipts: [receipt("applied", id)],
 				turnComplete: false,
 			};
 		},
 		evaluate: async ({ trajectory }) => ({
+			...(options.protocolFailureAfterWrite && reads.length === 0
+				? {
+						protocolFailure: true,
+						parseError: "response is not a single JSON object",
+					}
+				: {}),
 			success: true,
 			decision:
 				trajectory.plannedQueue.length > 0
@@ -146,6 +167,16 @@ describe("planner effect freshness and queued duplicate dispatch", () => {
 		expect(run.writes).toBe(1);
 		expect(run.result.finalMessage).toContain("item-1");
 		expect(run.messages[2]).toContain("item-1");
+	});
+
+	it("continues explicitly pending verification after a malformed evaluator reply", async () => {
+		const run = await runStorePlan(
+			[[proposal("write", "create")], [proposal("verify", "review")]],
+			{ protocolFailureAfterWrite: true },
+		);
+		expect(run.items).toEqual(["item-1"]);
+		expect(run.reads).toEqual([["item-1"]]);
+		expect(run.result.finalMessage).toContain("item-1");
 	});
 
 	it("re-observes external state without requiring a local write", async () => {

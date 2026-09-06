@@ -1924,10 +1924,15 @@ async function runPlannerLoopIterations(
 			iteration,
 			redactDiagnosticText,
 		);
-		const protocolFailureRelay = deterministicEvaluatorProtocolFailureRelay(
-			evaluator,
-			trajectory,
-		);
+		// A malformed evaluator reply cannot complete work the planner explicitly
+		// left pending. Retain its CONTINUE decision so the next model call sees
+		// the committed receipt and resumes the remaining authorized clauses.
+		const protocolFailureRelay =
+			(lastPlannerExplicitCompleted === false ||
+				trajectory.plannedQueue.length > 0) &&
+			!latestUnresolvedFailedNonTerminalToolStep(trajectory)
+				? undefined
+				: deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
 		if (protocolFailureRelay) {
 			params.runtime.logger?.warn?.(
 				{ iteration, protocolFailure: true },
