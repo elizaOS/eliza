@@ -1623,6 +1623,8 @@ async function handleFollowup(
 // Action
 // ---------------------------------------------------------------------------
 
+const contactSignalMemo = new WeakMap<object, boolean>();
+
 export const contactAction: Action = {
   name: CONTACT_ACTION,
   contexts: ["contacts", "messaging", "documents", "memory", "documents"],
@@ -1885,7 +1887,15 @@ export const contactAction: Action = {
         return true;
       }
     }
-    return hasContextSignalSyncForKey(message, state, "search_entity");
+    // Seven promoted CONTACT_* children share one parent validate per planner
+    // turn; the signal scan reads the same state for each, so compute it once
+    // per state object (live 2026-09-06: 7 x 345-721 ms on every memory turn).
+    const memoKey: object = state ?? message;
+    const cached = contactSignalMemo.get(memoKey);
+    if (cached !== undefined) return cached;
+    const result = hasContextSignalSyncForKey(message, state, "search_entity");
+    contactSignalMemo.set(memoKey, result);
+    return result;
   },
   handler: async (
     runtime: IAgentRuntime,

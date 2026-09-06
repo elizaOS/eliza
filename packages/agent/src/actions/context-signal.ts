@@ -20,6 +20,9 @@ import {
 } from "@elizaos/core";
 import {
   collectKeywordTermMatches,
+  collectPreparedKeywordTermMatches,
+  type PreparedKeywordTerm,
+  prepareKeywordTerms,
   textIncludesKeywordTerm,
 } from "@elizaos/shared";
 import {
@@ -146,10 +149,56 @@ export function hasContextSignalSyncForKey(
   },
 ): boolean {
   const locale = resolveContextSignalLocale(null, state, options?.locale);
-  const spec = resolveContextSignalSpec(key, locale, {
-    includeAllLocales: options?.includeAllLocales ?? true,
-  });
-  return hasContextSignalSync(message, state, spec.strongTerms, spec.weakTerms);
+  const includeAllLocales = options?.includeAllLocales ?? true;
+  const prepared = preparedContextSignalTerms(key, locale, includeAllLocales);
+  const texts = [
+    ...recentConversationTextsFromState(state),
+    messageText(message).trim(),
+  ].filter((t) => t.length > 0);
+  if (texts.length === 0) return false;
+  if (
+    prepared.strong.length > 0 &&
+    collectPreparedKeywordTermMatches(texts, prepared.strong).size > 0
+  ) {
+    return true;
+  }
+  return (
+    prepared.weak.length > 0 &&
+    collectPreparedKeywordTermMatches(texts, prepared.weak).size > 0
+  );
+}
+
+type PreparedContextSignalTerms = {
+  strong: PreparedKeywordTerm[];
+  weak: PreparedKeywordTerm[];
+};
+
+/**
+ * Lexicon vocabulary is static per (key, locale, all-locales) and holds no
+ * conversation text, so its compiled matchers are kept for the process
+ * lifetime. Recompiling the all-locale lists on every call cost ~0.5 s per
+ * validate on the live VPS (2026-09-06).
+ */
+const preparedContextSignalTermCache = new Map<
+  string,
+  PreparedContextSignalTerms
+>();
+
+function preparedContextSignalTerms(
+  key: ContextSignalKey,
+  locale: string | undefined,
+  includeAllLocales: boolean,
+): PreparedContextSignalTerms {
+  const cacheKey = `${key}|${locale ?? ""}|${includeAllLocales ? 1 : 0}`;
+  const cached = preparedContextSignalTermCache.get(cacheKey);
+  if (cached) return cached;
+  const spec = resolveContextSignalSpec(key, locale, { includeAllLocales });
+  const prepared = {
+    strong: prepareKeywordTerms(spec.strongTerms),
+    weak: prepareKeywordTerms(spec.weakTerms),
+  };
+  preparedContextSignalTermCache.set(cacheKey, prepared);
+  return prepared;
 }
 
 export function hasSelectedActionContext(

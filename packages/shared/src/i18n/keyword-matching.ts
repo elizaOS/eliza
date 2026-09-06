@@ -83,45 +83,112 @@ export function splitKeywordDoc(value: string | undefined): string[] {
   return terms;
 }
 
-export function textIncludesKeywordTerm(text: string, term: string): boolean {
-  const normalizedText = normalizeKeywordMatchText(text);
+function compileKeywordTerm(term: string) {
   const normalizedTerm = normalizeKeywordMatchText(term);
-  if (!normalizedText || !normalizedTerm) {
-    return false;
-  }
-
-  if (usesAsciiWordBoundaries(normalizedTerm)) {
-    const pattern = new RegExp(
-      `\\b${escapePattern(normalizedTerm).replace(/\\ /g, "\\s+")}\\b`,
-      "i",
-    );
-    if (pattern.test(text)) {
-      return true;
+  const pattern = usesAsciiWordBoundaries(normalizedTerm)
+    ? new RegExp(
+        `\\b${escapePattern(normalizedTerm).replace(/\\ /g, "\\s+")}\\b`,
+        "i",
+      )
+    : null;
+  return (
+    text: string,
+    normalizedText: string,
+    hasNonAsciiText: boolean,
+  ): boolean => {
+    if (!normalizedText || !normalizedTerm) {
+      return false;
     }
-
-    const hasNonAsciiText = [...text].some((char) => char.charCodeAt(0) > 0x7f);
-    if (hasNonAsciiText) {
-      return normalizedText.includes(normalizedTerm);
+    if (pattern) {
+      return (
+        pattern.test(text) ||
+        (hasNonAsciiText && normalizedText.includes(normalizedTerm))
+      );
     }
-    return false;
-  }
+    return normalizedText.includes(normalizedTerm);
+  };
+}
 
-  return normalizedText.includes(normalizedTerm);
+function textHasNonAscii(text: string): boolean {
+  return /[^\x00-\x7f]/.test(text);
+}
+
+export function textIncludesKeywordTerm(text: string, term: string): boolean {
+  return compileKeywordTerm(term)(
+    text,
+    normalizeKeywordMatchText(text),
+    textHasNonAscii(text),
+  );
+}
+
+/**
+ * A keyword term with its per-term work (normalization, word-boundary
+ * pattern) done once. `term` is the raw string exactly as supplied because
+ * match sets are keyed by the raw term. Prepared terms hold catalog
+ * vocabulary only, never conversation text, so callers may retain them
+ * across turns (live 2026-09-06: CONTACT's validate recompiled every
+ * all-locale term on each of seven promoted children, ~3.5 s per memory
+ * turn).
+ */
+export interface PreparedKeywordTerm {
+  term: string;
+  matches: (
+    text: string,
+    normalizedText: string,
+    hasNonAsciiText: boolean,
+  ) => boolean;
+}
+
+export function prepareKeywordTerms(
+  terms: readonly string[],
+): PreparedKeywordTerm[] {
+  const seen = new Set<string>();
+  const prepared: PreparedKeywordTerm[] = [];
+  for (const term of terms) {
+    if (seen.has(term)) continue;
+    seen.add(term);
+    prepared.push({ term, matches: compileKeywordTerm(term) });
+  }
+  return prepared;
+}
+
+/**
+ * {@link collectKeywordTermMatches} over already-prepared terms: each text is
+ * normalized once, each term's pattern was compiled once, and a term already
+ * matched by an earlier text is not re-tested against later texts. Returns
+ * the same set, in the same text-first insertion order, as the unprepared
+ * form.
+ */
+export function collectPreparedKeywordTermMatches(
+  texts: readonly string[],
+  prepared: readonly PreparedKeywordTerm[],
+): Set<string> {
+  const matches = new Set<string>();
+  if (texts.length === 0 || prepared.length === 0) return matches;
+  let remaining = prepared;
+  for (const text of texts) {
+    if (remaining.length === 0) break;
+    const normalizedText = normalizeKeywordMatchText(text);
+    if (!normalizedText) continue;
+    const hasNonAsciiText = textHasNonAscii(text);
+    const unmatched: PreparedKeywordTerm[] = [];
+    for (const entry of remaining) {
+      if (entry.matches(text, normalizedText, hasNonAsciiText)) {
+        matches.add(entry.term);
+      } else {
+        unmatched.push(entry);
+      }
+    }
+    remaining = unmatched;
+  }
+  return matches;
 }
 
 export function collectKeywordTermMatches(
   texts: readonly string[],
   terms: readonly string[],
 ): Set<string> {
-  const matches = new Set<string>();
-  for (const text of texts) {
-    for (const term of terms) {
-      if (textIncludesKeywordTerm(text, term)) {
-        matches.add(term);
-      }
-    }
-  }
-  return matches;
+  return collectPreparedKeywordTermMatches(texts, prepareKeywordTerms(terms));
 }
 
 export function findKeywordTermMatch(

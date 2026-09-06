@@ -194,6 +194,30 @@ describe("CONTACT exports and dispatch", () => {
     ).resolves.toBe(false);
   });
 
+  it("computes the contact signal once per state object and never confuses states", async () => {
+    const { runtime } = makeRuntime();
+    const signalState = { values: {}, data: {}, text: "" } as never;
+    await expect(
+      contactAction.validate?.(
+        runtime,
+        message("find contact Alice"),
+        signalState,
+      ),
+    ).resolves.toBe(true);
+    // Same state object: the memoized true answer (children share it).
+    await expect(
+      contactAction.validate?.(runtime, message("weather"), signalState),
+    ).resolves.toBe(true);
+    // A fresh state without a signal is judged on its own.
+    await expect(
+      contactAction.validate?.(runtime, message("weather"), {
+        values: {},
+        data: {},
+        text: "",
+      } as never),
+    ).resolves.toBe(false);
+  });
+
   it("prefers action over subaction and op, while rejecting unknown operations", async () => {
     const { runtime, createEntity } = makeRuntime();
     const created = await invoke(runtime, {
