@@ -89,6 +89,36 @@ export async function getServiceMethodCost(serviceId: string, method: string): P
   return cost;
 }
 
+/**
+ * Fail-closed pricing lookup for services whose catalogue rows carry mixed
+ * units — storage is the canonical case: a flat per-request `put` leg plus a
+ * per-byte `put_per_byte` leg multiplied by content length, and a seeded-free
+ * `delete` row (#22956).
+ *
+ * The FALLBACK_COST contract above is unit-safe ONLY for single-unit per-call
+ * proxies. Reused on a mixed-unit service it bills wrong units: a per-request
+ * fallback multiplied by byte counts overcharges by orders of magnitude
+ * ($0.001 + $0.001 × bytes for an empty-catalogue PUT), and an absent zero
+ * row silently turns the free DELETE into a $0.001 charge. A missing or
+ * partial catalogue is a configuration fault for such services, so it must
+ * surface as PricingNotFoundError for the route boundary to refuse the
+ * operation before any debit or provider effect — never an unratified price.
+ */
+export async function requireServiceMethodCost(serviceId: string, method: string): Promise<number> {
+  const pricingMap = await loadPricingMap(serviceId);
+  const costStr = pricingMap[method];
+
+  if (!costStr) {
+    throw new PricingNotFoundError(serviceId, method);
+  }
+
+  const cost = Number.parseFloat(costStr);
+  if (!Number.isFinite(cost)) {
+    throw new Error(`Invalid pricing for ${serviceId}.${method}: ${costStr}`);
+  }
+  return cost;
+}
+
 /** EVM JSON-RPC batch: sum per-method costs from the pricing table. */
 export async function calculateBatchCost(
   serviceId: string,
