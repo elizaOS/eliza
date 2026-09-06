@@ -3687,7 +3687,7 @@ function appendSilentFailedFinishRecoveryEvent(args: {
 	evaluator: EvaluatorOutput;
 }): void {
 	const createdAt = Date.now();
-	const failedStep = latestFailedToolStep(args.trajectory);
+	const failedStep = latestUnresolvedFailedNonTerminalToolStep(args.trajectory);
 	const failedToolName = failedStep?.toolCall?.name;
 	// Naming the cause (not just the tool) lets the replan pick a genuinely
 	// different approach — and lets a blocker reply state WHY the step failed
@@ -6074,9 +6074,9 @@ async function ensureFailedTurnFinalMessage(
 	// step would be pure overhead there.
 	if (params.codingMode === true) return result;
 	if (result.finalMessage !== FAILED_TOOL_FALLBACK_MESSAGE) return result;
-	const failedStep =
-		latestUnresolvedFailedNonTerminalToolStep(result.trajectory) ??
-		latestFailedToolStep(result.trajectory);
+	const failedStep = latestUnresolvedFailedNonTerminalToolStep(
+		result.trajectory,
+	);
 	if (!failedStep?.toolCall) return result;
 	const cause = failedStepCauseForPrompt(failedStep);
 	const iteration = result.trajectory.steps.length + 1;
@@ -6191,9 +6191,7 @@ async function rescueReplyFromSuccessfulResults(
 	}
 	if (successfulExcerpts.length === 0) return undefined;
 	const excerpts = successfulExcerpts;
-	const failedStep =
-		latestUnresolvedFailedNonTerminalToolStep(trajectory) ??
-		latestFailedToolStep(trajectory);
+	const failedStep = latestUnresolvedFailedNonTerminalToolStep(trajectory);
 	const failedCause = failedStep
 		? redactDiagnosticText(failedStepCauseForPrompt(failedStep) ?? "") ||
 			undefined
@@ -6787,14 +6785,6 @@ function isToolMetaNarration(text: string): boolean {
 	);
 }
 
-function latestFailedToolStep(
-	trajectory: PlannerTrajectory,
-): PlannerStep | undefined {
-	return [...trajectory.steps]
-		.reverse()
-		.find((step) => step.result && step.result.success === false);
-}
-
 function shouldRecoverSilentFailedFinish(args: {
 	evaluator: EvaluatorOutput;
 	trajectory: PlannerTrajectory;
@@ -6803,7 +6793,9 @@ function shouldRecoverSilentFailedFinish(args: {
 	if (args.recoveryCount >= 1) return false;
 	if (args.evaluator.success !== false) return false;
 	if (getNonEmptyString(args.evaluator.messageToUser)) return false;
-	return latestFailedToolStep(args.trajectory) !== undefined;
+	return (
+		latestUnresolvedFailedNonTerminalToolStep(args.trajectory) !== undefined
+	);
 }
 
 /**
@@ -6821,7 +6813,7 @@ export const FAILED_TOOL_FALLBACK_MESSAGE =
 function failedToolFallbackMessage(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	if (!latestFailedToolStep(trajectory)) return undefined;
+	if (!latestUnresolvedFailedNonTerminalToolStep(trajectory)) return undefined;
 	return FAILED_TOOL_FALLBACK_MESSAGE;
 }
 
