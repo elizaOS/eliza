@@ -963,31 +963,62 @@ export class AccountDeletionRequestsRepository {
     providerReceiptDigest: string;
     now: Date;
   }): Promise<boolean> {
-    const [completed] = await dbWrite
-      .update(accountDeletionPhaseReceipts)
-      .set({
-        status: "completed",
-        provider_receipt_digest: input.providerReceiptDigest,
-        provider_acknowledged_at: input.now,
-        reconciled_at: input.now,
-        completed_at: input.now,
-        retry_class: null,
-        next_attempt_at: null,
-        lease_owner_digest: null,
-        lease_expires_at: null,
-        last_error_code: null,
-        updated_at: input.now,
-      })
-      .where(
-        and(
-          eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
-          eq(accountDeletionPhaseReceipts.request_id, input.requestId),
-          inArray(accountDeletionPhaseReceipts.status, ["leased", "calling", "reconciling"]),
-          eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
-        ),
+    return await dbWrite.transaction(async (tx) => {
+      const request = await lockAccountDeletionRequest(tx, input.requestId);
+      if (!request || request.status !== "processing") return false;
+      const [phase] = await tx
+        .select({
+          status: accountDeletionPhaseReceipts.status,
+          generation: accountDeletionPhaseReceipts.lease_generation,
+          expiresAt: accountDeletionPhaseReceipts.lease_expires_at,
+        })
+        .from(accountDeletionPhaseReceipts)
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
+            eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+          ),
+        )
+        .for("update");
+      const databaseNow = await readPostLockDatabaseNow(tx);
+      if (
+        !phase ||
+        phase.generation !== input.generation ||
+        !["leased", "calling", "reconciling"].includes(phase.status) ||
+        phase.expiresAt === null ||
+        !Number.isFinite(phase.expiresAt.getTime()) ||
+        phase.expiresAt <= databaseNow
       )
-      .returning({ id: accountDeletionPhaseReceipts.id });
-    return completed !== undefined;
+        return false;
+      // Recheck the clock at the write boundary after holding the request and phase locks.
+      // Billing-specific completion evidence remains independently enforced by its database guard.
+      const [completed] = await tx
+        .update(accountDeletionPhaseReceipts)
+        .set({
+          status: "completed",
+          provider_receipt_digest: input.providerReceiptDigest,
+          provider_acknowledged_at: databaseNow,
+          reconciled_at: databaseNow,
+          completed_at: databaseNow,
+          retry_class: null,
+          next_attempt_at: null,
+          lease_owner_digest: null,
+          lease_expires_at: null,
+          last_error_code: null,
+          updated_at: databaseNow,
+        })
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
+            eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+            inArray(accountDeletionPhaseReceipts.status, ["leased", "calling", "reconciling"]),
+            eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
+            sql`isfinite(${accountDeletionPhaseReceipts.lease_expires_at}) AND (${accountDeletionPhaseReceipts.lease_expires_at} AT TIME ZONE 'UTC') > clock_timestamp()`,
+          ),
+        )
+        .returning({ id: accountDeletionPhaseReceipts.id });
+      return completed !== undefined;
+    });
   }
 
   async markPhaseActionRequired(input: {
