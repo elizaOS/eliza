@@ -1398,7 +1398,7 @@ export const memoryAction: Action = {
     "MODIFY_MEMORY",
   ],
   description:
-    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits by memoryId or a unique requester-scoped query match (requires confirm:true); op:delete removes by memoryId or requester-scoped query match (requires confirm:true).",
+    "Manage agent memory records. op:create stores a new memory (text is required); op:search filters by type/entityId/roomId/query; op:update edits by memoryId or a unique requester-scoped query match (requires confirm:true); op:delete removes by memoryId or requester-scoped query match (requires confirm:true). To forget something the user states, call delete with query and confirm:true directly — a prior search is unnecessary.",
   descriptionCompressed:
     "manage agent memory create search update delete; update/delete by memoryId or query; update/delete require confirm:true",
   routingHint:
@@ -1458,6 +1458,7 @@ export const memoryAction: Action = {
       description:
         "create: REQUIRED — the content to remember, as a complete sentence (never leave it empty and never put it in query). update: replacement text body for the memory.",
       required: false,
+      requiredForSubactions: ["create", "update"],
       schema: { type: "string" as const },
     },
     {
@@ -1543,6 +1544,7 @@ export const memoryAction: Action = {
       description:
         "update/delete: must be true to proceed with the destructive operation.",
       required: false,
+      requiredForSubactions: ["update", "delete"],
       schema: { type: "boolean" as const },
     },
   ],

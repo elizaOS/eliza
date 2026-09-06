@@ -5124,7 +5124,7 @@ function latestUnresolvedFailedNonTerminalToolStep(
 }
 
 const MALFORMED_CALL_FAILURE_PATTERN =
-	/\b(?:is required|required\b.*\bmissing|Unexpected argument|invalid uuid|not a valid uuid|MISSING_[A-Z_]+|INVALID_[A-Z_]+|UNEXPECTED_ARGUMENT|VALIDATION)\b/i;
+	/\b(?:is required|required\b.*\bmissing|Unexpected argument|invalid uuid|not a valid uuid|MISSING_[A-Z_]+|INVALID_[A-Z_]+|UNEXPECTED_ARGUMENT|VALIDATION|CONFIRMATION_REQUIRED|pass confirm)\b/i;
 
 /**
  * A failure that only says the call itself was malformed (a required argument

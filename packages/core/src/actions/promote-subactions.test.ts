@@ -116,6 +116,40 @@ describe("promoteSubactionsToActions parameter slicing", () => {
 		},
 	);
 
+	it("marks a parameter required only on the virtuals that list it", () => {
+		const parent = makeUmbrella({
+			parameters: [
+				{
+					name: "action",
+					description: "Widget operation.",
+					required: false,
+					schema: { type: "string", enum: ["create", "read", "delete"] },
+				},
+				{
+					name: "title",
+					description: "Content; required when creating.",
+					required: false,
+					requiredForSubactions: ["create"],
+					schema: { type: "string" },
+				},
+			],
+		});
+		const promoted = promoteSubactionsToActions(parent);
+		const create = promoted.find((a) => a.name === "WIDGET_CREATE");
+		const read = promoted.find((a) => a.name === "WIDGET_READ");
+		const createTitle = create?.parameters?.find((p) => p.name === "title");
+		const readTitle = read?.parameters?.find((p) => p.name === "title");
+		expect(createTitle?.required).toBe(true);
+		expect(readTitle?.required).toBe(false);
+		expect("requiredForSubactions" in (createTitle ?? {})).toBe(false);
+		// The parent umbrella keeps the field optional.
+		expect(parent.parameters?.find((p) => p.name === "title")?.required).toBe(
+			false,
+		);
+		expect(validateToolArgs(create as Action, {}).valid).toBe(false);
+		expect(validateToolArgs(create as Action, { title: "x" }).valid).toBe(true);
+	});
+
 	it("keeps parameters without a subactions list on every virtual", () => {
 		const [, ...virtuals] = promoteSubactionsToActions(makeUmbrella());
 		for (const virtual of virtuals) {
