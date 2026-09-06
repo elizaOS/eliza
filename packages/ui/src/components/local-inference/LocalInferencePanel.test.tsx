@@ -340,6 +340,130 @@ describe("download snapshots without a usable stream", () => {
     },
   );
 
+  it.each(["resolve", "reject"])(
+    "ignores a pre-cancellation poll that later %ss after cancellation refresh",
+    async (settlement) => {
+      vi.useFakeTimers();
+      eventSourceMock.available = false;
+      clientMock.getLocalInferenceHub.mockResolvedValue({
+        ...initialHub,
+        downloads: [job],
+      });
+      render(<LocalInferencePanel />);
+      await act(async () => {});
+      fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
+
+      const stale = Promise.withResolvers<ModelHubSnapshot>();
+      clientMock.getLocalInferenceHub
+        .mockReturnValueOnce(stale.promise)
+        .mockResolvedValue(initialHub);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      });
+      expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
+      await act(async () => {
+        if (settlement === "resolve") {
+          stale.resolve({ ...initialHub, downloads: [job] });
+        } else {
+          stale.reject(new Error("Obsolete snapshot failed"));
+        }
+      });
+      expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
+      expect(screen.queryByRole("progressbar")).toBeNull();
+      expect(screen.queryByText("Obsolete snapshot failed")).toBeNull();
+    },
+  );
+
+  it("retains downloads and exposes a retry when a fallback snapshot fails", async () => {
+    vi.useFakeTimers();
+    eventSourceMock.available = false;
+    clientMock.getLocalInferenceHub.mockResolvedValue({
+      ...initialHub,
+      downloads: [job],
+    });
+    render(<LocalInferencePanel />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
+    clientMock.getLocalInferenceHub.mockRejectedValueOnce(
+      new Error("Snapshot unavailable"),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(
+      screen.getByText("Snapshot unavailable").closest('[role="alert"]'),
+    ).not.toBeNull();
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "20",
+    );
+    clientMock.getLocalInferenceHub.mockResolvedValue(initialHub);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    });
+    expect(screen.queryByText("Snapshot unavailable")).toBeNull();
+    expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
+  });
+
+  it("reconciles completion received before the first hub snapshot", async () => {
+    const initial = Promise.withResolvers<ModelHubSnapshot>();
+    const opened = Promise.withResolvers<ModelHubSnapshot>();
+    clientMock.getLocalInferenceHub
+      .mockReturnValueOnce(initial.promise)
+      .mockReturnValueOnce(opened.promise)
+      .mockResolvedValue(initialHub);
+    render(<LocalInferencePanel />);
+    act(() => eventSourceMock.source.onopen?.());
+    act(() => {
+      eventSourceMock.source.onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({ type: "completed", job }),
+        }),
+      );
+    });
+    await act(async () => {
+      opened.resolve({ ...initialHub, downloads: [job] });
+      initial.resolve({ ...initialHub, downloads: [job] });
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
+    expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("does not roll stream progress back when an earlier refresh resolves", async () => {
+    clientMock.getLocalInferenceHub.mockResolvedValue({
+      ...initialHub,
+      downloads: [job],
+    });
+    render(<LocalInferencePanel />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
+    const stale = Promise.withResolvers<ModelHubSnapshot>();
+    clientMock.getLocalInferenceHub.mockReturnValueOnce(stale.promise);
+    act(() => eventSourceMock.source.onopen?.());
+    act(() => {
+      eventSourceMock.source.onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({
+            type: "progress",
+            job: { ...job, received: 70 },
+          }),
+        }),
+      );
+    });
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "70",
+    );
+    await act(async () => {
+      stale.resolve({ ...initialHub, downloads: [job] });
+    });
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "70",
+    );
+  });
+
   it("refreshes immediately after download and cancellation without waiting for streaming", async () => {
     eventSourceMock.available = false;
     const hub = {

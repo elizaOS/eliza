@@ -28,6 +28,7 @@ import { getElizaApiToken } from "../../utils/eliza-globals";
 import { openEventSource } from "../../utils/event-source";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";
+import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { ActiveModelBar } from "./ActiveModelBar";
 import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
@@ -58,13 +59,15 @@ export function LocalInferencePanel() {
   const [tab, setTab] = useState<HubTab>("curated");
   const [pollSnapshots, setPollSnapshots] = useState(true);
   const refreshGeneration = useRef(0);
+  const hasHubSnapshot = useRef(false);
   const deviceBridgeStatus = useDeviceBridgeStatus();
 
   const refresh = useCallback(async () => {
-    const generation = refreshGeneration.current;
+    const generation = ++refreshGeneration.current;
     try {
       const snapshot = await client.getLocalInferenceHub();
       if (generation !== refreshGeneration.current) return;
+      hasHubSnapshot.current = true;
       setHub(snapshot);
       setError(null);
     } catch (err) {
@@ -132,6 +135,10 @@ export function LocalInferencePanel() {
               job: DownloadJob;
             }
           | { type: "active"; active: ActiveModelState };
+
+        // Stream deltas supersede pending snapshots once the hub is initialized.
+        // Before that first snapshot, a delta cannot populate the full hub.
+        if (hasHubSnapshot.current) refreshGeneration.current += 1;
 
         if (payload.type === "snapshot") {
           setHub((prev) =>
@@ -338,16 +345,20 @@ export function LocalInferencePanel() {
     [refresh, setActionNotice, withBusy, t],
   );
 
-  if (error && !hub) {
-    return (
-      <div className="flex items-center justify-between gap-3 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-        <span>{error}</span>
-        <Button size="dense" variant="dangerOutline" onClick={refresh}>
-          {t("localinference.retry", { defaultValue: "Retry" })}
-        </Button>
-      </div>
-    );
-  }
+  const refreshError = error ? (
+    <Alert
+      role="alert"
+      variant="destructive"
+      className="flex items-center justify-between gap-3"
+    >
+      <AlertDescription>{error}</AlertDescription>
+      <Button size="dense" variant="dangerOutline" onClick={refresh}>
+        {t("localinference.retry", { defaultValue: "Retry" })}
+      </Button>
+    </Alert>
+  ) : null;
+
+  if (error && !hub) return refreshError;
 
   if (!hub) {
     return (
@@ -368,6 +379,7 @@ export function LocalInferencePanel() {
 
   return (
     <div className="flex flex-col gap-3">
+      {refreshError}
       <HardwareBadge hardware={hub.hardware} />
       <DeviceBridgeStatusBar status={deviceBridgeStatus} />
       <FirstRunOffer
