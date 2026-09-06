@@ -62,14 +62,31 @@ describe("ensureConnection world upsert under a stale revision", () => {
 
 		await connect(adapter);
 
-		expect(upsertWorlds).toHaveBeenCalledTimes(2);
+		// The conflicting writer already landed this connection's merge (plus its
+		// own field), so the re-read finds nothing left to write: one upsert
+		// attempt, a second read, no redundant rewrite.
+		expect(upsertWorlds).toHaveBeenCalledTimes(1);
 		expect(getWorldsByIds.mock.calls.length).toBeGreaterThanOrEqual(2);
 		const [world] = await adapter.getWorldsByIds([worldId]);
-		// The re-merge kept the concurrent writer's field and applied ownership.
 		expect(world?.metadata).toMatchObject({
 			concurrent: true,
 			ownership: { ownerId: entityId },
 		});
+	});
+
+	it("does not rewrite the world when a repeated connection changes nothing", async () => {
+		// Live 2026-09-06: every owner turn bumped the web-chat world's revision
+		// (+1 per message on a 1.5 MB metadata blob) although ownership, name and
+		// server were already identical.
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.init();
+		await connect(adapter);
+		const [before] = await adapter.getWorldsByIds([worldId]);
+		const upsertWorlds = vi.spyOn(adapter, "upsertWorlds");
+		await connect(adapter);
+		const [after] = await adapter.getWorldsByIds([worldId]);
+		expect(upsertWorlds).not.toHaveBeenCalled();
+		expect(after?.metadata).toEqual(before?.metadata);
 	});
 
 	it("propagates the conflict after the bounded attempts", async () => {

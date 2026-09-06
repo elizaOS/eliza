@@ -8,6 +8,7 @@
  * the runtime; batch APIs reduce DB round-trips. Safe to use from both Node and edge entry points.
  */
 
+import { worldMetadataValueEquals } from "./database/world-metadata-cas";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
 import type { Entity, JsonValue, Metadata, Room, UUID, World } from "./types";
@@ -17,6 +18,18 @@ import { stringToUuid } from "./utils";
 
 /** Re-read + re-merge attempts for a world upsert that hits a stale revision. */
 const WORLD_UPSERT_STALE_ATTEMPTS = 3;
+
+function worldUnchangedByMerge(
+	existing: World,
+	merged: { name?: string; messageServerId?: UUID; metadata?: unknown },
+): boolean {
+	return (
+		(merged.name ?? existing.name) === existing.name &&
+		(merged.messageServerId ?? existing.messageServerId) ===
+			existing.messageServerId &&
+		worldMetadataValueEquals(existing.metadata ?? {}, merged.metadata ?? {})
+	);
+}
 
 export interface EnsureConnectionParams {
 	agentId: UUID;
@@ -356,18 +369,31 @@ export async function ensureConnections(
 				const existingWorldsById = new Map(
 					existingWorlds.map((world) => [world.id, world]),
 				);
-				const worlds = [...worldMap.values()].map((world) => {
-					const existing = existingWorldsById.get(world.id);
-					return {
-						...existing,
-						...world,
-						agentId,
-						metadata: {
-							...(existing?.metadata ?? {}),
-							...(world.metadata ?? {}),
-						},
-					};
-				});
+				const worlds = [...worldMap.values()]
+					.map((world) => {
+						const existing = existingWorldsById.get(world.id);
+						return {
+							existing,
+							merged: {
+								...existing,
+								...world,
+								agentId,
+								metadata: {
+									...(existing?.metadata ?? {}),
+									...(world.metadata ?? {}),
+								},
+							},
+						};
+					})
+					// A connection that changes nothing must not rewrite the world:
+					// every upsert bumps the metadata revision and rewrites the whole
+					// blob (live 2026-09-06: +1 revision per owner turn on a 1.5 MB
+					// world), which is what concurrent writers then collide with.
+					.filter(
+						({ existing, merged }) =>
+							!existing || !worldUnchangedByMerge(existing, merged),
+					)
+					.map(({ merged }) => merged);
 				if (worlds.length === 0) break;
 				try {
 					await adapter.upsertWorlds(worlds);
