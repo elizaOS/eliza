@@ -194,8 +194,12 @@ latency are explicitly unavailable. Inspect artifacts before publishing.
 This text-runtime command does not certify app rendering, audio playback,
 real connector delivery or a separate deployed gateway's identity. The strict
 proof checks abort on a failed sample, so a successful report's error rate is
-zero; retain the failed command/log separately rather than dropping it from a
-comparison. #17072 still requires current live production evidence, concurrent
+zero. Both terminal success and failure reports retain every started turn in
+`turnObservations`, including its phase, last validation stage, partial streaming
+and timing observations, and completed persistence receipt when available.
+Unreached measurements remain null. Concurrent checks settle every started room
+before failure evidence is written. Retain failed runs rather than dropping them
+from a comparison. #17072 still requires current live production evidence, concurrent
 and resumed-session correctness, and any reproduced bottleneck's matched
 before/after result. Preparing this command alone does not complete the issue.
 
