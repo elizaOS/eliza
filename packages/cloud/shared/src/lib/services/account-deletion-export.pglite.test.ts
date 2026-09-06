@@ -32,7 +32,9 @@ mock.module("../../db/account-deletion-foreign-key-policy", () => ({
   ],
 }));
 
-const { closeDatabaseConnectionsForTests } = await import("../../db/client");
+const { closeDatabaseConnectionsForTests, getPgliteClientForTests } = await import(
+  "../../db/client"
+);
 const { dbWrite } = await import("../../db/helpers");
 const { collectPortableAccountDeletionExport } = await import("./account-deletion-export");
 
@@ -59,8 +61,10 @@ beforeAll(async () => {
     `CREATE TABLE apps (
       id uuid PRIMARY KEY,
       organization_id uuid NOT NULL,
-      name text NOT NULL
+      name text NOT NULL,
+      created_by_user_id uuid NOT NULL
     )`,
+    `CREATE TABLE app_users (app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE, user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE, UNIQUE(app_id,user_id))`,
     `CREATE TABLE app_analytics (
       id uuid PRIMARY KEY,
       app_id uuid NOT NULL,
@@ -89,8 +93,8 @@ beforeAll(async () => {
       ('44444444-4444-4444-8444-444444444441', '33333333-3333-4333-8333-333333333331', 'owned portable message'),
       ('44444444-4444-4444-8444-444444444442', '33333333-3333-4333-8333-333333333332', 'foreign message')`,
     `INSERT INTO apps VALUES
-      ('55555555-5555-4555-8555-555555555551', '${ORGANIZATION_ID}', 'Owned app'),
-      ('55555555-5555-4555-8555-555555555552', '${FOREIGN_ORGANIZATION_ID}', 'Foreign app')`,
+      ('55555555-5555-4555-8555-555555555551', '${ORGANIZATION_ID}', 'Owned app', '${USER_ID}'),
+      ('55555555-5555-4555-8555-555555555552', '${FOREIGN_ORGANIZATION_ID}', 'Foreign app', '${FOREIGN_USER_ID}')`,
     `INSERT INTO app_analytics VALUES
       ('66666666-6666-4666-8666-666666666661', '55555555-5555-4555-8555-555555555551', 7),
       ('66666666-6666-4666-8666-666666666662', '55555555-5555-4555-8555-555555555552', 99)`,
@@ -100,6 +104,19 @@ beforeAll(async () => {
   ]) {
     await dbWrite.execute(statement);
   }
+  const migration = await Bun.file(
+    new URL("../../db/migrations/0381_app_billing_registration.sql", import.meta.url),
+  ).text();
+  for (const statement of migration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await getPgliteClientForTests().exec(statement);
+  }
+  await dbWrite.execute(`INSERT INTO app_users SELECT a.id,u.id FROM apps a CROSS JOIN users u`);
+  await dbWrite.execute(
+    `INSERT INTO app_billing_registrations(app_id,owner_organization_id,infrastructure_payer_organization_id,registered_by_user_id,provider_environment) SELECT id,organization_id,organization_id,created_by_user_id,'test' FROM apps`,
+  );
+  await dbWrite.execute(
+    `INSERT INTO app_subscriber_accounts(registration_id,app_id,subscriber_user_id) SELECT r.id,r.app_id,c.user_id FROM app_billing_registrations r JOIN app_users c ON c.app_id=r.app_id`,
+  );
 });
 
 afterAll(async () => {
@@ -138,6 +155,18 @@ test("exports transitive owned rows and excludes cross-tenant rows through real 
       }),
     ],
   });
+  expect(table("app_billing_registrations")?.rows).toEqual([
+    expect.objectContaining({
+      owner_organization_id: ORGANIZATION_ID,
+      registered_by_user_id: USER_ID,
+    }),
+  ]);
+  const accounts = table("app_subscriber_accounts")?.rows;
+  expect(accounts).toHaveLength(2);
+  expect(accounts?.every((row) => row.subscriber_user_id === USER_ID)).toBe(true);
+  expect(new Set(accounts?.map((row) => row.app_id))).toEqual(
+    new Set(["55555555-5555-4555-8555-555555555551", "55555555-5555-4555-8555-555555555552"]),
+  );
   expect(JSON.stringify(artifact)).not.toContain("foreign");
   expect(JSON.stringify(artifact)).not.toContain("owned-secret");
 });

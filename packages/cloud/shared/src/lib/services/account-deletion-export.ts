@@ -93,6 +93,16 @@ type ExplicitExportPath = Readonly<{
  */
 const EXPLICIT_EXPORT_PATHS: readonly ExplicitExportPath[] = Object.freeze([
   {
+    table: "app_billing_registrations",
+    policy: "portable_subject_data",
+    where: ({ organizationId }) => sql`subject.owner_organization_id = ${organizationId}`,
+  },
+  {
+    table: "app_subscriber_accounts",
+    policy: "portable_subject_data",
+    where: ({ userId }) => sql`subject.subscriber_user_id = ${userId}`,
+  },
+  {
     table: "conversation_messages",
     policy: "portable_subject_data",
     where: ({ userId, organizationId }) => sql`EXISTS (

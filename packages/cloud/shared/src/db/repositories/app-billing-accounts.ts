@@ -39,7 +39,7 @@ export async function materializeAppBillingAccounts(
 ): Promise<void> {
   await tx.execute(sql`INSERT INTO app_subscriber_accounts(registration_id, app_id, subscriber_user_id)
     SELECT r.id, r.app_id, c.user_id FROM app_billing_registrations r
-    JOIN app_users c ON c.app_id = r.app_id WHERE r.app_id = ${appId}::uuid
+    JOIN app_users c ON c.app_id = r.app_id WHERE r.app_id = ${appId}::uuid AND c.signup_source = 'oauth'
     ON CONFLICT (registration_id, subscriber_user_id) DO NOTHING`);
 }
 
@@ -152,7 +152,7 @@ export class AppBillingAccountsRepository {
       sql`
       SELECT r.id AS registration_id, b.id AS account_id
       FROM apps a JOIN organizations owner_org ON owner_org.id = a.organization_id
-      JOIN app_users consent ON consent.app_id = a.id AND consent.user_id = ${principal.userId}::uuid
+      JOIN app_users consent ON consent.app_id = a.id AND consent.user_id = ${principal.userId}::uuid AND consent.signup_source = 'oauth'
       JOIN users u ON u.id = consent.user_id JOIN organizations user_org ON user_org.id = u.organization_id
       LEFT JOIN app_billing_registrations r ON r.app_id = a.id AND r.provider_environment = ${environment}
       LEFT JOIN app_subscriber_accounts b ON b.registration_id = r.id AND b.app_id = a.id AND b.subscriber_user_id = u.id

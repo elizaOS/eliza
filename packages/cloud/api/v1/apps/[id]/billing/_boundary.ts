@@ -2,7 +2,7 @@
 import { z } from "zod";
 import type { AppBillingPrincipal } from "@/db/repositories/app-billing-accounts";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import { isMobileApiKeySecret } from "@/lib/auth/mobile-api-key";
+import { getPresentedMobileApiKeySecret } from "@/lib/auth/mobile-api-key";
 import {
   requireApiKeyCredential,
   requireSessionUserWithOrg,
@@ -15,16 +15,8 @@ export async function appBillingPrincipal(
   appId: string,
   owner: boolean,
 ): Promise<AppBillingPrincipal> {
-  const key =
-    c.req.header("X-API-Key") ??
-    c.req.header("Authorization")?.replace(/^Bearer /, "");
-  if (!owner && key?.startsWith("eliza_")) {
-    if (!isMobileApiKeySecret(key))
-      throw new ApiError(
-        403,
-        "access_denied",
-        "A source-app buyer credential is required",
-      );
+  const key = getPresentedMobileApiKeySecret(c.req.raw);
+  if (!owner && key !== null) {
     const credential = await requireApiKeyCredential(c);
     if (credential.source_app_id !== appId)
       throw new ApiError(

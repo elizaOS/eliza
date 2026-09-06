@@ -56,7 +56,7 @@ beforeAll(async () => {
   await pg().exec(`
     CREATE TABLE organizations(id uuid PRIMARY KEY, is_active boolean NOT NULL DEFAULT true, account_lifecycle_state text NOT NULL DEFAULT 'active', account_lifecycle_revision bigint DEFAULT 1, account_deletion_request_id uuid, paid_work_fenced_at timestamptz, credit_balance numeric NOT NULL DEFAULT 0);
     CREATE TABLE users(id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), is_active boolean NOT NULL DEFAULT true);
-    CREATE TABLE apps(id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, created_by_user_id uuid NOT NULL REFERENCES users(id), is_active boolean NOT NULL DEFAULT true, is_approved boolean NOT NULL DEFAULT true, total_users integer NOT NULL DEFAULT 0);
+    CREATE TABLE apps(id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, created_by_user_id uuid NOT NULL REFERENCES users(id), is_active boolean NOT NULL DEFAULT true, is_approved boolean NOT NULL DEFAULT true, total_users integer NOT NULL DEFAULT 0, updated_at timestamp DEFAULT now());
     CREATE TABLE app_users(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE, user_id uuid NOT NULL REFERENCES users(id), signup_source text, referral_code_used text, total_requests integer DEFAULT 0, total_credits_used numeric DEFAULT 0, metadata jsonb DEFAULT '{}', ip_address text, user_agent text, first_seen_at timestamp DEFAULT now(), last_seen_at timestamp DEFAULT now(), UNIQUE(app_id,user_id));
     CREATE TABLE api_keys(id uuid PRIMARY KEY, name text NOT NULL DEFAULT 'test', description text, key_hash text NOT NULL UNIQUE, key_prefix text NOT NULL DEFAULT 'eliza_mobile_', key_ciphertext text, key_nonce text, key_auth_tag text, key_kms_key_id text, key_kms_key_version integer, organization_id uuid NOT NULL, user_id uuid NOT NULL, source_app_id uuid, rate_limit integer DEFAULT 1000, is_active boolean NOT NULL DEFAULT true, usage_count integer DEFAULT 0, expires_at timestamp, last_used_at timestamp, created_at timestamp DEFAULT now(), updated_at timestamp DEFAULT now(), deleted_at timestamp);
     CREATE TABLE credit_transactions(id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), amount numeric, CONSTRAINT credit_transactions_id_org_idx UNIQUE(id,organization_id));
@@ -207,6 +207,29 @@ describe("unconfigured app billing authority", () => {
     ).toEqual([{ credit_balance: "0" }]);
     expect(await historicalRows()).toEqual(oldRows);
   });
+  test("analytics membership is denied until explicit connect upgrades consent", async () => {
+    for (const registrationFirst of [true, false]) {
+      const f = await fixture();
+      if (registrationFirst) await accounts.register(f.appId, "test", principal(f.owner));
+      await appsRepo.createAppUser({ app_id: f.appId, user_id: f.buyer });
+      if (!registrationFirst) await accounts.register(f.appId, "test", principal(f.owner));
+      const path = `https://test.invalid/api/v1/apps/${f.appId}/billing/account?environment=test`;
+      expect((await http(f, f.buyer).request(path)).status).toBe(403);
+      expect(
+        (await pg().query("SELECT id FROM app_subscriber_accounts WHERE app_id=$1", [f.appId]))
+          .rows,
+      ).toHaveLength(0);
+      await consent(f);
+      expect((await http(f, f.buyer).request(path)).status).toBe(200);
+      expect(
+        (await pg().query("SELECT id FROM app_subscriber_accounts WHERE app_id=$1", [f.appId]))
+          .rows,
+      ).toHaveLength(1);
+      expect(
+        (await pg().query("SELECT total_users FROM apps WHERE id=$1", [f.appId])).rows,
+      ).toEqual([{ total_users: 1 }]);
+    }
+  });
   test("either registration/consent order and concurrent duplicate approvals converge on one account and counter", async () => {
     for (const order of ["consent-first", "registration-first"]) {
       const f = await fixture();
@@ -329,6 +352,14 @@ describe("unconfigured app billing authority", () => {
       { NODE_ENV: "test" },
     );
     expect(response.status).toBe(200);
+    for (const scheme of ["bearer", "bEaReR\t", "Bearer  "]) {
+      const normalized = await http(f, f.buyer).request(
+        path,
+        { headers: { Authorization: `${scheme} ${secret}` } },
+        { NODE_ENV: "test" },
+      );
+      expect(normalized.status).toBe(200);
+    }
     await pg().query("UPDATE api_keys SET is_active=false,deleted_at=now() WHERE id=$1", [keyId]);
     const denied = await http(f, f.buyer).request(
       path,

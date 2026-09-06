@@ -251,9 +251,11 @@ describe("account deletion export", () => {
         [2, { id: ORGANIZATION_ID, name: "Fixture organization" }],
         [4, { id: "profile-1", user_id: USER_ID }],
         [6, { id: USER_ID, email: "fixture@example.test" }],
-        [8, { id: "message-1", conversation_id: "conversation-1", content: "portable message" }],
-        [10, { id: "analytics-1", app_id: "app-1", total_requests: 7 }],
-        [12, { id: "audit-1", organization_id: ORGANIZATION_ID, action: "read" }],
+        [8, { id: "registration-1", owner_organization_id: ORGANIZATION_ID }],
+        [10, { id: "buyer-account-1", subscriber_user_id: USER_ID }],
+        [12, { id: "message-1", conversation_id: "conversation-1", content: "portable message" }],
+        [14, { id: "analytics-1", app_id: "app-1", total_requests: 7 }],
+        [16, { id: "audit-1", organization_id: ORGANIZATION_ID, action: "read" }],
       ]);
       return { rows: [rowsByCall.get(call)] };
     });
@@ -266,9 +268,11 @@ describe("account deletion export", () => {
     });
 
     const artifact = JSON.parse(new TextDecoder().decode(bytes));
-    expect(artifact.tables).toHaveLength(6);
+    expect(artifact.tables).toHaveLength(8);
     expect(artifact.tables.map((table: { table: string }) => table.table)).toEqual([
       "app_analytics",
+      "app_billing_registrations",
+      "app_subscriber_accounts",
       "conversation_messages",
       "organizations",
       "profiles",
@@ -291,7 +295,7 @@ describe("account deletion export", () => {
       isolationLevel: "repeatable read",
       accessMode: "read only",
     });
-    expect(execute).toHaveBeenCalledTimes(12);
+    expect(execute).toHaveBeenCalledTimes(16);
 
     execute.mockReset();
     execute.mockResolvedValueOnce({

@@ -48,7 +48,8 @@ An interactive app creator registers an environment through
 `POST /api/v1/apps/:id/billing/registration`; the immutable infrastructure payer
 is the app's owning organization. Existing `appsRepository.connectUser` consent
 and registration share the app row lock and materialize one account per
-registration and user. Reads require current consent, active account/app state,
+registration and user. Only the explicit OAuth approval marker is consent; analytics-only
+app membership never creates or authorizes a billing account. Reads require current consent, active account/app state,
 and either a user session or a currently valid source-app mobile credential.
 General infrastructure API keys cannot authorize a buyer read.
 

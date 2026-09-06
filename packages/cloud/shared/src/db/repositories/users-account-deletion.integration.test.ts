@@ -8,7 +8,15 @@ process.env.NODE_ENV ||= "test";
 import { pushSchema } from "drizzle-kit/api";
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { resolveAccountDeletionTestDatabase } from "../account-deletion-test-database";
-import { closeDatabaseConnectionsForTests, dbWrite } from "../client";
+import { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } from "../client";
+import { appBillingRegistrations, appSubscriberAccounts } from "../schemas/app-billing-accounts";
+import {
+  appDeploymentStatusEnum,
+  appReviewStatusEnum,
+  apps,
+  appUsers,
+  userDatabaseStatusEnum,
+} from "../schemas/apps";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
 import {
   personalSharedGroupBindings,
@@ -160,6 +168,11 @@ beforeAll(async () => {
     if (TEST_DATABASE === "pglite") {
       const { apply } = await pushSchema(
         {
+          apps,
+          appUsers,
+          appDeploymentStatusEnum,
+          appReviewStatusEnum,
+          userDatabaseStatusEnum,
           organizationBalanceRevisionSequence,
           organizations,
           users,
@@ -171,6 +184,12 @@ beforeAll(async () => {
         dbWrite as never,
       );
       await apply();
+      const migration = await Bun.file(
+        new URL("../migrations/0381_app_billing_registration.sql", import.meta.url),
+      ).text();
+      for (const statement of migration.split("--> statement-breakpoint")) {
+        if (statement.trim()) await getPgliteClientForTests().exec(statement);
+      }
     } else {
       await dbWrite.execute(sql`
         UPDATE auto_top_up_control
@@ -230,6 +249,75 @@ afterAll(async () => {
 });
 
 describe("UsersRepository.deletePersonalOrganizationAtomically", () => {
+  test("erases owned registrations and buyer accounts atomically without deleting another app's registration", async () => {
+    const ownApp = "55555555-5555-4555-8555-555555555501";
+    const otherApp = "55555555-5555-4555-8555-555555555502";
+    await dbWrite.insert(apps).values([
+      {
+        id: ownApp,
+        name: "owned",
+        slug: ownApp,
+        app_url: "https://owned.invalid",
+        organization_id: ORGANIZATION_ID,
+        created_by_user_id: USER_ID,
+      },
+      {
+        id: otherApp,
+        name: "other",
+        slug: otherApp,
+        app_url: "https://other.invalid",
+        organization_id: GROUP_OWNER_ORGANIZATION_ID,
+        created_by_user_id: GROUP_OWNER_USER_ID,
+      },
+    ]);
+    await dbWrite.insert(appUsers).values([
+      { app_id: ownApp, user_id: USER_ID, signup_source: "oauth" },
+      { app_id: otherApp, user_id: USER_ID, signup_source: "oauth" },
+      { app_id: otherApp, user_id: GROUP_OWNER_USER_ID, signup_source: "oauth" },
+    ]);
+    await dbWrite.execute(
+      sql`INSERT INTO app_billing_registrations(app_id,owner_organization_id,infrastructure_payer_organization_id,registered_by_user_id,provider_environment) SELECT id,organization_id,organization_id,created_by_user_id,'test' FROM apps WHERE id IN (${ownApp},${otherApp})`,
+    );
+    await dbWrite.execute(
+      sql`INSERT INTO app_subscriber_accounts(registration_id,app_id,subscriber_user_id) SELECT r.id,r.app_id,c.user_id FROM app_billing_registrations r JOIN app_users c ON c.app_id=r.app_id WHERE r.app_id IN (${ownApp},${otherApp})`,
+    );
+    await dbWrite.execute(
+      sql`INSERT INTO account_deletion_restrict_probe VALUES ('99999999-9999-4999-8999-999999999999',${ORGANIZATION_ID})`,
+    );
+    await expect(
+      usersRepository.deletePersonalOrganizationAtomically(USER_ID, ORGANIZATION_ID),
+    ).rejects.toThrow();
+    expect(
+      await dbWrite
+        .select()
+        .from(appBillingRegistrations)
+        .where(inArray(appBillingRegistrations.app_id, [ownApp, otherApp])),
+    ).toHaveLength(2);
+    expect(
+      await dbWrite
+        .select()
+        .from(appSubscriberAccounts)
+        .where(inArray(appSubscriberAccounts.app_id, [ownApp, otherApp])),
+    ).toHaveLength(3);
+    await dbWrite.execute(
+      sql`DELETE FROM account_deletion_restrict_probe WHERE organization_id=${ORGANIZATION_ID}`,
+    );
+    await usersRepository.deletePersonalOrganizationAtomically(USER_ID, ORGANIZATION_ID);
+    expect(
+      await dbWrite
+        .select()
+        .from(appBillingRegistrations)
+        .where(inArray(appBillingRegistrations.app_id, [ownApp, otherApp])),
+    ).toEqual([expect.objectContaining({ app_id: otherApp })]);
+    expect(
+      await dbWrite
+        .select()
+        .from(appSubscriberAccounts)
+        .where(inArray(appSubscriberAccounts.app_id, [ownApp, otherApp])),
+    ).toEqual([
+      expect.objectContaining({ subscriber_user_id: GROUP_OWNER_USER_ID, app_id: otherApp }),
+    ]);
+  });
   test("unlinks Personal Shared consent before deleting the personal organization", async () => {
     await usersRepository.deletePersonalOrganizationAtomically(USER_ID, ORGANIZATION_ID);
 
