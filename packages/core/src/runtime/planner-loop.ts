@@ -5057,9 +5057,86 @@ function latestUnresolvedFailedNonTerminalToolStep(
 			unresolvedByOperation.delete(operationKey);
 			resolveShellFailuresSubsumedBy(step, unresolvedByOperation);
 			resolveMalformedCallsSupersededBy(step, unresolvedByOperation);
+			resolveTargetMissesSupersededBy(step, unresolvedByOperation);
 		}
 	}
 	return [...unresolvedByOperation.values()].at(-1);
+}
+
+const TARGET_MISS_FAILURE_PATTERN =
+	/\b(?:NOT_FOUND|NO_MATCH|no stored memory matches|was not found|not found|no .{0,40}\bmatch(?:es)?\b)/i;
+
+const TARGET_ADDRESSING_KEYS = [
+	"query",
+	"title",
+	"name",
+	"search",
+	"q",
+] as const;
+
+/**
+ * A mutation that missed its target by description ("delete the memory about
+ * oat milk" → no match) and was then completed by id after a search is one
+ * operation that took two attempts, not a failed operation plus an unrelated
+ * success. Live 2026-09-06 (tj-bc44686b79099c): MEMORY_DELETE by query
+ * missed, MEMORY search found the row, MEMORY_DELETE by memoryId succeeded,
+ * the evaluator finished honestly — and the stale miss still held authority,
+ * forcing a 2 s synthesis that replaced the evaluator's sentence.
+ *
+ * The proof of "same target" is the successful step's own result: it must
+ * name a record whose text covers every content term of the missed query
+ * (inflection-insensitive), or repeat that query verbatim. Same tool, same
+ * discriminator only; a miss is never resolved by a success that describes a
+ * different record.
+ */
+function resolveTargetMissesSupersededBy(
+	step: PlannerStep,
+	unresolvedByOperation: Map<string, PlannerStep>,
+): void {
+	const call = step.toolCall;
+	if (!call || !step.result) return;
+	const discriminator = plannerToolDiscriminatorValue(call);
+	// Only mutations retry by re-addressing; reads have no target to settle.
+	if (!/^(?:update|delete|remove|forget|edit)/i.test(discriminator)) return;
+	const successLeaves = [
+		...correlationLeafStrings(call.params ?? {}),
+		...(typeof step.result.text === "string" ? [step.result.text] : []),
+		...correlationLeafStrings(step.result.data ?? {}),
+	];
+	const haystack = {
+		text: normalizeCorrelationText(successLeaves.join(" ")),
+		terms: new Set(
+			correlationContentTerms(successLeaves.join(" ")).flatMap(
+				inflectionTermKeys,
+			),
+		),
+	};
+	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
+		const failedCall = failed.toolCall;
+		if (
+			!failedCall ||
+			failedCall.name.toUpperCase() !== call.name.toUpperCase() ||
+			plannerToolDiscriminatorValue(failedCall) !== discriminator
+		) {
+			continue;
+		}
+		if (!isTargetMissFailure(failed.result)) continue;
+		const target = TARGET_ADDRESSING_KEYS.map(
+			(name) => failedCall.params?.[name],
+		).find((value) => typeof value === "string" && value.trim().length > 0);
+		if (typeof target !== "string") continue;
+		if (correlationContentTerms(target).length === 0) continue;
+		if (!parameterValueCoveredBy(target, haystack)) continue;
+		unresolvedByOperation.delete(key);
+	}
+}
+
+function isTargetMissFailure(result: PlannerToolResult | undefined): boolean {
+	if (result?.success !== false) return false;
+	const data = result.data as { error?: unknown } | undefined;
+	const code = typeof data?.error === "string" ? data.error : "";
+	const text = typeof result.text === "string" ? result.text : "";
+	return TARGET_MISS_FAILURE_PATTERN.test(`${code} ${text}`);
 }
 
 const MALFORMED_CALL_FAILURE_PATTERN =

@@ -4764,6 +4764,34 @@ export async function handleChatRoutes(
         messagePrincipal,
       );
 
+      // Answer the HTTP caller the moment the reply is settled. The room's
+      // post-delivery tasks (facts extraction, topic stamping, ~3 s) still
+      // drain inside generateChatResponse before the next same-room turn, but
+      // they are side effects and must not hold the response (live
+      // 2026-09-06: API callers waited 9.6-13.9 s for replies that were ready
+      // at 4.8-8.6 s; Discord users got the same replies at the callback).
+      let responded = false;
+      const respond = (result: ChatGenerationResult): void => {
+        if (responded || res.headersSent) return;
+        responded = true;
+        syncRuntimeCharacterToChatStateConfig(state);
+        const resolvedText =
+          result.transcriptVisibility === "internal"
+            ? ""
+            : normalizeChatResponseText(
+                result.text,
+                state.logBuffer,
+                state.runtime,
+              );
+        json(res, {
+          response: renderChatSurfaceText(resolvedText),
+          agentName: result.agentName,
+          ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+          ...(result.localInference
+            ? { localInference: result.localInference }
+            : {}),
+        });
+      };
       const result = await generateChatResponse(
         runtime,
         message,
@@ -4771,28 +4799,26 @@ export async function handleChatRoutes(
         {
           resolveNoResponseText: () =>
             resolveNoResponseFallback(state.logBuffer, runtime),
+          onReplyReady: async (ready) => {
+            respond(ready);
+          },
         },
       );
-      syncRuntimeCharacterToChatStateConfig(state);
-
-      const resolvedText =
-        result.transcriptVisibility === "internal"
-          ? ""
-          : normalizeChatResponseText(
-              result.text,
-              state.logBuffer,
-              state.runtime,
-            );
-
-      json(res, {
-        response: renderChatSurfaceText(resolvedText),
-        agentName: result.agentName,
-        ...(result.failureKind ? { failureKind: result.failureKind } : {}),
-        ...(result.localInference
-          ? { localInference: result.localInference }
-          : {}),
-      });
+      respond(result);
     } catch (err) {
+      if (res.headersSent) {
+        // error-policy:J7 The reply already reached the caller; a failure in
+        // the room's post-delivery drain is diagnostics for the log.
+        state.runtime?.logger.warn(
+          {
+            src: "eliza-api",
+            route: "POST /api/agents/:id/message",
+            err: getErrorMessage(err),
+          },
+          "[eliza-api] post-delivery drain failed after the reply was sent",
+        );
+        return true;
+      }
       if (isLocalInferenceError(err)) {
         const { getLocalInferenceChatStatus } =
           await getLocalInferenceChatApi();
