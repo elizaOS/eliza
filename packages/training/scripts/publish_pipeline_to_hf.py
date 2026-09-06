@@ -258,19 +258,16 @@ def publish(files: list[PipelineFile], repo_id: str, public: bool) -> int:
 
     # Build remote sha index in one shot so we can skip unchanged LFS blobs.
     remote_shas: dict[str, str] = {}
-    try:
-        info = api.repo_info(repo_id, repo_type="dataset", files_metadata=True)
-        for sib in getattr(info, "siblings", []) or []:
-            lfs = getattr(sib, "lfs", None)
-            if not lfs:
-                continue
-            sha = getattr(lfs, "sha256", None) or (
-                lfs.get("sha256") if isinstance(lfs, dict) else None
-            )
-            if sha:
-                remote_shas[sib.rfilename] = sha
-    except Exception:
-        pass
+    info = api.repo_info(repo_id, repo_type="dataset", files_metadata=True)
+    for sib in getattr(info, "siblings", []) or []:
+        lfs = getattr(sib, "lfs", None)
+        if not lfs:
+            continue
+        sha = getattr(lfs, "sha256", None) or (
+            lfs.get("sha256") if isinstance(lfs, dict) else None
+        )
+        if sha:
+            remote_shas[sib.rfilename] = sha
 
     operations: list[CommitOperationAdd] = [
         CommitOperationAdd(

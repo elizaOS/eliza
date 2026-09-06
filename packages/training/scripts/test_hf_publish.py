@@ -1,13 +1,8 @@
-"""Pytest suite for the HF publishing scripts.
+"""Exercise publisher upload planning and release guards.
 
-Mocks `huggingface_hub.HfApi` and asserts the publishers compute the right
-file lists and call `upload_file` with the right args. Also verifies the
-`--dry-run` paths print the expected files + total bytes without touching
-the network.
-
-Run::
-
-    cd training && pytest -xvs scripts/test_hf_publish.py
+Hub-client doubles cover operation selection; loopback HTTP tests exercise real
+metadata failures before remote writes. Dry runs require no credentials.
+Run from the training directory with ``pytest scripts/test_hf_publish.py``.
 """
 
 from __future__ import annotations
@@ -248,14 +243,15 @@ def test_abliteration_spec_is_pointer_only(publish_dataset):
 # ---------------------------------------------------------------------------
 
 
-def test_dataset_dry_run_lists_files_and_bytes(publish_dataset, caplog, monkeypatch):
+def test_dataset_dry_run_lists_files_and_bytes(publish_dataset, caplog, monkeypatch, tmp_path):
     # No HF_TOKEN — dry-run must still succeed.
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
 
-    spec = publish_dataset._spec_training()
-    if not all(f.exists() for f in spec.files):
-        pytest.skip("training data files not present in this checkout")
+    for name in ("train.jsonl", "val.jsonl", "test.jsonl"):
+        (tmp_path / name).write_text('{"messages":[{"role":"user","content":"hi"}]}\n')
+    (tmp_path / "manifest.json").write_text("{}")
+    spec = publish_dataset._spec_training_from_dir(tmp_path)
 
     with caplog.at_level(logging.INFO, logger="publish_dataset"):
         rc = publish_dataset._print_dry_run(spec, "elizaos/eliza-1-training")
@@ -307,11 +303,7 @@ def _fake_repo_info_factory(siblings=None):
 def test_dataset_publish_uploads_files_with_commit_messages(
     publish_dataset, monkeypatch, tmp_path
 ):
-    """Verify the publish path issues a single create_commit() with all files
-    plus README in one CommitOperationAdd batch, carrying a commit_message
-    and repo_type='dataset'. The module switched from per-file upload_file
-    calls to atomic create_commit so partial uploads can't ship broken
-    bundles — see scripts/publish_dataset_to_hf.py:publish."""
+    """The card and data share a single commit so consumers cannot see a partial bundle."""
     monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
 
     f1 = tmp_path / "train.jsonl"
@@ -417,7 +409,7 @@ def test_dataset_publish_skips_files_with_matching_sha(
     expected_sha = publish_dataset._sha256_file(f1)
 
     # Mock repo_info: first call (existence check) succeeds; subsequent call
-    # (from _remote_sha256) returns siblings with the matching SHA.
+    # (bulk metadata) returns siblings with the matching SHA.
     fake_api = MagicMock()
     sibling = SimpleNamespace(
         rfilename="train.jsonl",
@@ -425,7 +417,7 @@ def test_dataset_publish_skips_files_with_matching_sha(
     )
     fake_api.repo_info.side_effect = [
         SimpleNamespace(siblings=[sibling]),  # exists
-        SimpleNamespace(siblings=[sibling]),  # _remote_sha256 query
+        SimpleNamespace(siblings=[sibling]),  # bulk metadata query
     ]
 
     with patch("huggingface_hub.HfApi", return_value=fake_api):
@@ -464,7 +456,6 @@ def test_pipeline_publish_token_required(publish_pipeline, monkeypatch):
 
 def test_pipeline_card_mentions_companion_repos(publish_pipeline):
     card = publish_pipeline.build_pipeline_card("elizaos/eliza-1-training")
-    assert "elizaos/eliza-1-training" in card
     assert "elizaos/eliza-1-training" in card
     assert "uv sync --extra train" in card
     # Vast bootstrap instructions present
@@ -676,3 +667,71 @@ def test_sync_catalog_selects_single_repo_bundle_paths(sync_catalog):
 
     assert selected == ("text/eliza-1-9b-64k.gguf", "d" * 64, 900)
     assert bundle_size == 990
+
+
+@pytest.mark.parametrize("publisher", ["dataset", "pipeline"])
+def test_metadata_transport_failure_cannot_start_uploads(
+    publisher, publish_dataset, publish_pipeline, monkeypatch, tmp_path
+):
+    """Drive the real Hub client against loopback; failed inventory is not empty inventory."""
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import parse_qs, urlsplit
+
+    import huggingface_hub
+    from huggingface_hub.errors import HfHubHTTPError
+
+    requests = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def respond(self, status, body):
+            payload = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_GET(self):
+            requests.append(("GET", self.path))
+            if "blobs" in parse_qs(urlsplit(self.path).query):
+                self.respond(401, {"error": "metadata credentials expired"})
+            else:
+                self.respond(200, {"id": "fixture/training", "sha": "a" * 40, "siblings": []})
+
+        def do_POST(self):
+            requests.append(("POST", self.path))
+            self.respond(400, {"error": "upload must not follow failed inventory"})
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client_type = huggingface_hub.HfApi
+    monkeypatch.setattr(huggingface_hub, "HfApi", lambda **kwargs: client_type(
+        endpoint=f"http://127.0.0.1:{server.server_port}", **kwargs
+    ))
+    monkeypatch.setenv("HF_TOKEN", "hf_local_fixture")
+    source = tmp_path / "train.jsonl"
+    source.write_text('{"messages": [{"role": "user", "content": "hello"}]}\n')
+    try:
+        with pytest.raises(HfHubHTTPError) as failure:
+            if publisher == "dataset":
+                spec = publish_dataset.DatasetSpec(
+                    name="training", files=(source,),
+                    path_in_repo={source: "train.jsonl"}, card="# Fixture\n",
+                )
+                publish_dataset.publish(spec, "fixture/training", public=False)
+            else:
+                publish_pipeline.publish([
+                    publish_pipeline.PipelineFile(src=source, path_in_repo="train.jsonl")
+                ], "fixture/training", public=False)
+        assert failure.value.response.status_code == 401
+        assert not [request for request in requests if request[0] == "POST"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
