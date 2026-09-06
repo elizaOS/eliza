@@ -256,6 +256,33 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
     });
   });
 
+  it("stores a fresh durable row when the adapter rejects the in-place upgrade", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    const stageId = seedStageFact(rows, {
+      text: "prefers oat milk in coffee",
+      messageId: message.id as UUID,
+      keywords: ["prefers", "oat", "milk", "coffee"],
+    });
+    runtime.updateMemory = (async () => false) as IAgentRuntime["updateMemory"];
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.values).not.toMatchObject({ upgradedStageFact: true });
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.id).toBe(stageId);
+    expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
+    expect(rows[1].memory.metadata).toMatchObject({
+      kind: "durable",
+      source: "MEMORY",
+    });
+    expect(result.values).toMatchObject({ memoryId: rows[1].memory.id });
+  });
+
   it("never merges a same-message Stage-1 fact with the opposite polarity", async () => {
     const { runtime, rows } = makeRuntime();
     const message = makeMessage();
@@ -391,6 +418,76 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
       source: "MEMORY",
       messageId: message.id,
     });
+  });
+});
+
+describe("MEMORY mutations settle with receipts for the grounded reply gate", () => {
+  it("create returns an internal result with an applied receipt and reply facts", async () => {
+    const { runtime, rows } = makeRuntime();
+    const result = await runCreate(runtime, makeMessage(), {
+      text: "User likes their coffee black.",
+      kind: "preference",
+    });
+    expect(result.success).toBe(true);
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.turnComplete).toBeUndefined();
+    expect(result.effectReceipts).toHaveLength(1);
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      operation: "memory.create",
+      outcome: "applied",
+      resource: { kind: "memory.fact", id: rows[0].memory.id },
+      commit: { kind: "durable", id: rows[0].memory.id },
+    });
+    expect(result.data).toMatchObject({
+      replyContext: {
+        domain: "memory",
+        scenario: "memory_stored",
+        facts: expect.stringContaining('"User likes their coffee black."'),
+      },
+    });
+  });
+
+  it("delete by id returns an internal result with an applied receipt naming what was forgotten", async () => {
+    const { runtime, rows } = makeRuntime();
+    const memoryId = seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      memoryId,
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      operation: "memory.delete",
+      outcome: "applied",
+      resource: { id: memoryId },
+    });
+    expect(result.data).toMatchObject({
+      replyContext: {
+        scenario: "memory_forgotten",
+        facts: expect.stringContaining("Kingfisher"),
+      },
+    });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("a refused delete (no confirm) stays a plain failure without receipts", async () => {
+    const { runtime, rows } = makeRuntime();
+    const memoryId = seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      memoryId,
+    });
+    expect(result.success).toBe(false);
+    expect(result.transcriptVisibility).toBeUndefined();
+    expect(result.effectReceipts).toBeUndefined();
+    expect(rows).toHaveLength(1);
   });
 });
 

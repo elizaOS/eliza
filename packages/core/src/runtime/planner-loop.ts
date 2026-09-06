@@ -2098,15 +2098,14 @@ async function runPlannerLoopIterations(
 		// turns, pending scope, failures, confirmation/input pauses, and any
 		// unverified result keep the full evaluator. A failed or unsafe render
 		// also falls through to it.
-		const groundedReceipt =
-			requiresIntentEvaluation && declaredIntentCount === 1
-				? selectGroundedReceiptReply({
-						trajectory,
-						failures,
-						lastPlannerExplicitCompleted,
-						declaredIntent: declaredIntentsFromContext(plannerContext)[0],
-					})
-				: null;
+		const groundedReceipt = requiresIntentEvaluation
+			? selectGroundedReceiptReply({
+					trajectory,
+					failures,
+					lastPlannerExplicitCompleted,
+					declaredIntents: declaredIntentsFromContext(plannerContext),
+				})
+			: null;
 		if (groundedReceipt) {
 			const renderStartedAt = Date.now();
 			const rendered = await renderGroundedReceiptReply(
@@ -7224,21 +7223,21 @@ function trySubPlannerVerdictGate(args: {
 export const GROUNDED_RECEIPT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: single declared intent settled by one verified internal action; reply rendered from its receipt facts; evaluator LLM call skipped.";
 
-interface GroundedReceiptReply {
+interface GroundedReceiptOperation {
 	domain: string;
-	/** The tool's own (possibly narrowed) intent argument. */
 	toolIntent: string;
-	/** Stage-1's declared intent, derived from the user's message. */
-	declaredIntent: string;
-	/** The user's message as sent this turn, from the planner context. */
-	userRequest: string;
 	scenario: string;
 	facts: string;
-	/** Receipts that prove a committed side effect (applied, or replayed noop). */
-	committedReceiptIds: readonly string[];
 }
 
-/** Receipts whose operation is a read: a non-replayed noop is a valid outcome, not missing proof. */
+interface GroundedReceiptReply {
+	domain: string;
+	declaredIntents: string[];
+	userRequest: string;
+	operations: GroundedReceiptOperation[];
+	committedReceiptIds: string[];
+}
+
 const READ_EFFECT_OPERATION_PATTERN =
 	/(^|\.)(read|search|list|feed|show|get|lookup|find)(\.|$)/i;
 
@@ -7333,37 +7332,58 @@ function selectGroundedReceiptReply(args: {
 	trajectory: PlannerTrajectory;
 	failures: readonly FailureLike[];
 	lastPlannerExplicitCompleted: boolean | undefined;
-	declaredIntent: string | undefined;
+	declaredIntents: readonly string[];
 }): GroundedReceiptReply | null {
 	const { trajectory, failures } = args;
 	if (args.lastPlannerExplicitCompleted === false) return null;
 	if (trajectory.plannedQueue.length > 0 || failures.length > 0) return null;
-	if (completedToolStepCount(trajectory) !== 1) return null;
 	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
-	const latestStep = trajectory.steps[trajectory.steps.length - 1];
-	const result = latestStep?.result;
-	if (!latestStep?.toolCall || !isSettledInternalSuccess(result)) return null;
-	const committedReceiptIds = committedReceiptIdsForGate(result);
-	if (!committedReceiptIds) return null;
-	const data = result.data;
-	const context =
-		data && typeof data === "object"
-			? (data as Record<string, unknown>).replyContext
-			: undefined;
-	if (!context || typeof context !== "object" || Array.isArray(context)) {
-		return null;
+	const completedSteps = [
+		...trajectory.archivedSteps,
+		...trajectory.steps,
+	].filter((step) => step.toolCall && step.result);
+	if (completedSteps.length === 0) return null;
+	// More declared intents than executed actions almost always means part of
+	// the request is still undone; that verdict belongs to the full evaluator
+	// (which can continue the work), not to a render that would only say so.
+	if (args.declaredIntents.length > completedSteps.length) return null;
+	const operations: GroundedReceiptOperation[] = [];
+	const committedReceiptIds: string[] = [];
+	for (const step of completedSteps) {
+		const result = step.result;
+		if (!isSettledInternalSuccess(result)) return null;
+		const committed = committedReceiptIdsForGate(result);
+		if (!committed) return null;
+		committedReceiptIds.push(...committed);
+		const data = result.data;
+		const context =
+			data && typeof data === "object"
+				? (data as Record<string, unknown>).replyContext
+				: undefined;
+		if (!context || typeof context !== "object" || Array.isArray(context)) {
+			return null;
+		}
+		const record = context as Record<string, unknown>;
+		const facts = typeof record.facts === "string" ? record.facts.trim() : "";
+		const domain =
+			typeof record.domain === "string" ? record.domain.trim() : "";
+		if (!facts || !domain) return null;
+		operations.push({
+			domain,
+			toolIntent: typeof record.intent === "string" ? record.intent.trim() : "",
+			scenario:
+				typeof record.scenario === "string" ? record.scenario.trim() : "",
+			facts,
+		});
 	}
-	const record = context as Record<string, unknown>;
-	const facts = typeof record.facts === "string" ? record.facts.trim() : "";
-	const domain = typeof record.domain === "string" ? record.domain.trim() : "";
-	if (!facts || !domain) return null;
+	const domains = [...new Set(operations.map((operation) => operation.domain))];
 	return {
-		domain,
-		toolIntent: typeof record.intent === "string" ? record.intent.trim() : "",
-		declaredIntent: args.declaredIntent?.trim() ?? "",
+		domain: domains.length === 1 ? domains[0] : domains.join(" and "),
+		declaredIntents: args.declaredIntents
+			.map((intent) => intent.trim())
+			.filter((intent) => intent.length > 0),
 		userRequest: latestUserRequestText(trajectory.context),
-		scenario: typeof record.scenario === "string" ? record.scenario.trim() : "",
-		facts,
+		operations,
 		committedReceiptIds,
 	};
 }
@@ -7443,19 +7463,30 @@ async function renderGroundedReceiptReply(
 			params.runtime as { character?: { name?: string } }
 		).character?.name?.trim() || "the assistant";
 	const system = [
-		`You are ${agentName}. A ${reply.domain} operation the user asked for has just completed. Write the reply the user will read and judge whether the request is fully done.`,
+		`You are ${agentName}. ${reply.operations.length === 1 ? `A ${reply.domain} operation` : `${reply.operations.length} ${reply.domain} operations`} the user asked for ${reply.operations.length === 1 ? "has" : "have"} just completed. Write the reply the user will read and judge whether the request is fully done.`,
 		"Rules for the reply: plain everyday words in one or two short sentences; keep every date, time, name and number exactly as given; if the facts say something was not found, not changed, or needs the user's input, say that plainly instead of claiming it was done; if the facts cover only part of what the user asked, say what was done and name what was not; never expose ids, field names, JSON, tool names, or receipt metadata; add no offers or follow-up questions the facts do not ask for.",
 		'Output exactly one JSON object and nothing else: {"complete": true or false, "message": "<the reply>"}. Set "complete" to true only when the facts show that everything the user\'s message asked for has been done. If any requested item, change, or detail is missing, not found, or still pending, set it to false.',
 	].join("\n");
+	const operationBlocks = reply.operations.map((operation, index) => {
+		const label =
+			reply.operations.length === 1 ? "Operation" : `Operation ${index + 1}`;
+		return [
+			operation.toolIntent && operation.toolIntent !== reply.userRequest
+				? `${label} performed for: ${operation.toolIntent}`
+				: `${label}:`,
+			operation.scenario ? `Outcome type: ${operation.scenario}` : "",
+			`Authoritative facts (use only these; do not add, infer, or soften anything):`,
+			operation.facts,
+		]
+			.filter((line) => line !== "")
+			.join("\n");
+	});
 	const user = [
 		reply.userRequest ? `User's message: ${reply.userRequest}` : "",
-		reply.declaredIntent ? `Understood intent: ${reply.declaredIntent}` : "",
-		reply.toolIntent && reply.toolIntent !== reply.userRequest
-			? `Operation performed for: ${reply.toolIntent}`
+		reply.declaredIntents.length > 0
+			? `Understood intent${reply.declaredIntents.length > 1 ? "s" : ""}: ${reply.declaredIntents.join("; ")}`
 			: "",
-		reply.scenario ? `Outcome type: ${reply.scenario}` : "",
-		"Authoritative facts (use only these; do not add, infer, or soften anything):",
-		reply.facts,
+		...operationBlocks,
 	]
 		.filter((line) => line !== "")
 		.join("\n");

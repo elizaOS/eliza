@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import type {
   Action,
   ActionResult,
+  EffectReceipt,
   HandlerOptions,
   IAgentRuntime,
   Memory,
@@ -207,6 +208,56 @@ function toListItem(memory: Memory, type: MemoryType): MemoryListItem {
  */
 const EXPLICIT_MEMORY_CONFIDENCE = 0.95;
 
+type MemoryMutationOperation =
+  | "memory.create"
+  | "memory.update"
+  | "memory.delete";
+
+/**
+ * Applied receipt for a durable memory mutation. With `transcriptVisibility:
+ * "internal"` and `data.replyContext`, the planner loop's grounded receipt
+ * gate can phrase the outcome from these facts (a ~350 ms render) instead of
+ * spending a full evaluator call (live 2026-09-05 23:52: 912 ms) to say
+ * "Got it". Failures and confirmation refusals stay plain results.
+ */
+function memoryMutationReceipt(args: {
+  operation: MemoryMutationOperation;
+  memoryId: string;
+  observedAt: string;
+}): EffectReceipt {
+  const digest = createHash("sha256")
+    .update([args.operation, args.memoryId, args.observedAt].join("|"))
+    .digest("hex");
+  return {
+    receiptId: `memory-mutation-receipt-v1:${digest}`,
+    operation: args.operation,
+    resource: { kind: "memory.fact", id: args.memoryId },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: args.observedAt,
+    outcome: "applied",
+    commit: {
+      kind: "durable",
+      id: args.memoryId,
+      committedAt: args.observedAt,
+    },
+  };
+}
+
+function memoryReplyContext(args: {
+  scenario: string;
+  facts: string;
+  context?: Record<string, unknown>;
+}): Record<string, unknown> {
+  return {
+    domain: "memory",
+    intent: "",
+    scenario: args.scenario,
+    facts: args.facts,
+    context: args.context ?? {},
+  };
+}
+
 /**
  * Stage-1 persists `extract.facts` as lapsing `current/uncategorized` rows in
  * parallel with the planner. When the same user message also routes to an
@@ -275,7 +326,7 @@ async function upgradeStageFact(
     keywords: string[];
     createdAt: number;
   },
-): Promise<ActionResult> {
+): Promise<ActionResult | null> {
   const previousMeta = metadataRecord(stageFact);
   const previousText =
     typeof stageFact.content.text === "string" ? stageFact.content.text : "";
@@ -301,7 +352,7 @@ async function upgradeStageFact(
     }
     embedding = regenerated;
   }
-  await runtime.updateMemory({
+  const updated = await runtime.updateMemory({
     id: stageFact.id,
     content: { ...stageFact.content, text: next.text, source: "MEMORY" },
     metadata: {
@@ -321,8 +372,19 @@ async function upgradeStageFact(
     } as Memory["metadata"],
     ...(embedding ? { embedding } : {}),
   });
+  if (updated === false) {
+    // The adapter declined the in-place upgrade; the explicit request still
+    // has to land, so the caller stores a fresh durable row instead.
+    logger.warn(
+      { memoryId: stageFact.id },
+      "[MEMORY] in-place upgrade of the Stage-1 fact was rejected; storing a new durable row",
+    );
+    return null;
+  }
+  const observedAt = new Date(next.createdAt).toISOString();
   return {
     success: true,
+    transcriptVisibility: "internal",
     text: `Stored memory ${stageFact.id}.`,
     values: {
       memoryId: stageFact.id,
@@ -330,6 +392,13 @@ async function upgradeStageFact(
       tagCount: next.tags.length,
       upgradedStageFact: true,
     },
+    effectReceipts: [
+      memoryMutationReceipt({
+        operation: "memory.create",
+        memoryId: stageFact.id,
+        observedAt,
+      }),
+    ],
     data: {
       actionName: "MEMORY",
       op: "create" as const,
@@ -339,6 +408,11 @@ async function upgradeStageFact(
       tags: next.tags,
       createdAt: next.createdAt,
       upgradedFrom: STAGE_FACT_SOURCE,
+      replyContext: memoryReplyContext({
+        scenario: "memory_stored",
+        facts: `Saved to durable memory: "${next.text}".${next.kind ? ` Category: ${next.kind}.` : ""}`,
+        context: { memoryId: stageFact.id, kind: next.kind ?? null },
+      }),
     },
   };
 }
@@ -366,13 +440,14 @@ async function doCreate(
   const keywords = buildFactKeywordsForStorage(tags, text, kind ?? "");
   const stageFact = await findSameMessageStageFact(runtime, message, text);
   if (stageFact) {
-    return upgradeStageFact(runtime, stageFact, {
+    const upgraded = await upgradeStageFact(runtime, stageFact, {
       text,
       kind,
       tags,
       keywords,
       createdAt,
     });
+    if (upgraded) return upgraded;
   }
   const memoryId = crypto.randomUUID() as UUID;
 
@@ -408,8 +483,16 @@ async function doCreate(
 
   return {
     success: true,
+    transcriptVisibility: "internal",
     text: `Stored memory ${memoryId}.`,
     values: { memoryId, kind: kind ?? null, tagCount: tags.length },
+    effectReceipts: [
+      memoryMutationReceipt({
+        operation: "memory.create",
+        memoryId,
+        observedAt: new Date(createdAt).toISOString(),
+      }),
+    ],
     data: {
       actionName: "MEMORY",
       op: "create" as const,
@@ -418,6 +501,11 @@ async function doCreate(
       kind: kind ?? null,
       tags,
       createdAt,
+      replyContext: memoryReplyContext({
+        scenario: "memory_stored",
+        facts: `Saved to durable memory: "${text}".${kind ? ` Category: ${kind}.` : ""}`,
+        context: { memoryId, kind: kind ?? null },
+      }),
     },
   };
 }
@@ -1017,16 +1105,35 @@ async function doUpdate(
   const updated = primaryMemoryId
     ? await runtime.getMemoryById(primaryMemoryId)
     : null;
+  const updatedAt = new Date().toISOString();
+  const updatedText =
+    typeof updated?.content.text === "string" ? updated.content.text : text;
   return {
     success: true,
+    transcriptVisibility: "internal",
     text: `Updated ${updatedIds.length} memory record(s).`,
     values: { memoryId: primaryMemoryId, updatedCount: updatedIds.length },
+    effectReceipts: updatedIds.map((id) =>
+      memoryMutationReceipt({
+        operation: "memory.update",
+        memoryId: id,
+        observedAt: updatedAt,
+      }),
+    ),
     data: {
       actionName: "MEMORY",
       op: "update" as const,
       memoryId: primaryMemoryId,
       memoryIds: updatedIds,
       memory: updated ?? null,
+      replyContext: memoryReplyContext({
+        scenario: "memory_updated",
+        facts:
+          updatedIds.length === 1
+            ? `Updated the memory; it now says: "${updatedText}".`
+            : `Updated ${updatedIds.length} memories; they now say: "${updatedText}".`,
+        context: { memoryIds: updatedIds },
+      }),
     },
   };
 }
@@ -1057,11 +1164,32 @@ async function doDelete(
     }
 
     await runtime.deleteMemory(memoryId);
+    const forgottenText =
+      typeof existing.content.text === "string" ? existing.content.text : "";
     return {
       success: true,
+      transcriptVisibility: "internal",
       text: `Forgot memory ${memoryId}.`,
       values: { memoryId },
-      data: { actionName: "MEMORY", op: "delete" as const, memoryId },
+      effectReceipts: [
+        memoryMutationReceipt({
+          operation: "memory.delete",
+          memoryId,
+          observedAt: new Date().toISOString(),
+        }),
+      ],
+      data: {
+        actionName: "MEMORY",
+        op: "delete" as const,
+        memoryId,
+        replyContext: memoryReplyContext({
+          scenario: "memory_forgotten",
+          facts: forgottenText
+            ? `Forgot the memory: "${forgottenText}".`
+            : "Forgot the requested memory.",
+          context: { memoryId },
+        }),
+      },
     };
   }
 
@@ -1152,15 +1280,35 @@ async function doDeleteByQuery(
     deleted.push(toListItem(c.memory, c.type));
   }
 
+  const forgottenAt = new Date().toISOString();
+  const forgottenTexts = deleted
+    .map((item) => toWellFormedUnicode(item.text))
+    .filter((value) => value.trim().length > 0);
   return {
     success: true,
+    transcriptVisibility: "internal",
     text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}`,
     values: { deletedCount: deleted.length },
+    effectReceipts: deleted.map((item) =>
+      memoryMutationReceipt({
+        operation: "memory.delete",
+        memoryId: item.id,
+        observedAt: forgottenAt,
+      }),
+    ),
     data: {
       actionName: "MEMORY",
       op: "delete" as const,
       query,
       deleted,
+      replyContext: memoryReplyContext({
+        scenario: "memory_forgotten",
+        facts:
+          deleted.length === 1
+            ? `Forgot the memory: "${forgottenTexts[0] ?? query}".`
+            : `Forgot ${deleted.length} memories matching "${query}": ${forgottenTexts.map((value) => `"${value}"`).join("; ")}.`,
+        context: { query, deletedCount: deleted.length },
+      }),
     },
   };
 }

@@ -24,11 +24,16 @@ describe("factClaimsEquivalent", () => {
 			"prefers  sparkling water over still water",
 		],
 		["doesn’t like oat milk", "doesn't like oat milk"],
+		["likes 茶", "User likes 茶."],
+		["knows C++", "The user knows C++"],
 	])("accepts %j and %j as the identical claim", (left, right) => {
 		expect(factClaimsEquivalent(left, right)).toBe(true);
 	});
 
 	it.each([
+		["likes 茶", "likes 咖啡"],
+		["knows C++", "knows C"],
+		["rates A > B", "rates A < B"],
 		["prefers oat milk in coffee", "User prefers oat milk in their coffee."],
 		["prefers tea over coffee", "prefers coffee over tea"],
 		["reports to Alice, manages Bob", "reports to Bob, manages Alice"],

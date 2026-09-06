@@ -895,7 +895,8 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 					],
 				},
 			],
-			evaluations: [finish("Added the gym session and the dentist visit.")],
+			evaluations: [],
+			renders: [render("Added the gym session and the dentist visit.")],
 			results: [
 				internalCalendarResult(),
 				internalCalendarResult([dentistReceipt], {
@@ -909,18 +910,31 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 					},
 				}),
 			],
-			intents: ["add the requested calendar events"],
+			intents: ["add the gym session", "add the dentist visit"],
 		});
 		const result = await h.run();
 		expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
-		// One terminal evaluation for the whole batch; no render (two steps).
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		// No intermediate evaluator; the fully settled batch ends in one render.
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
 		expect(result.trajectory.evaluatorOutputs[0]).toMatchObject({
 			decision: "NEXT_RECOMMENDED",
 			recommendedToolCallId: "calendar-dentist",
 			thought: expect.stringContaining("without an intermediate evaluation"),
 		});
+		expect(result.evaluator).toMatchObject({
+			decision: "FINISH",
+			effectReceiptIds: ["calendar-receipt-1", "calendar-receipt-2"],
+			raw: { source: "grounded_receipt_render" },
+		});
+		const prompt = renderPromptOf(h);
+		expect(prompt).toContain("Operation 1");
+		expect(prompt).toContain("Operation 2");
+		expect(prompt).toContain("Created “Gym session” for Sep 8, 7:00 AM PDT.");
+		expect(prompt).toContain("Created “Dentist visit” for Sep 9, 3:00 PM PDT.");
+		expect(prompt).toContain(
+			"Understood intents: add the gym session; add the dentist visit",
+		);
 		expect(result.finalMessage).toBe(
 			"Added the gym session and the dentist visit.",
 		);
@@ -939,18 +953,25 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 					},
 				},
 			}),
+			// The read + the applied create still settle the batch for one render.
+			1,
+			1,
 		],
 		[
 			"the step asked for evaluation",
 			internalCalendarResult([appliedReceipt], { turnComplete: false }),
+			2,
+			0,
 		],
 		[
 			"the step's receipt was a mutation no-op",
 			internalCalendarResult([mutationNoopReceipt]),
+			2,
+			0,
 		],
 	])(
 		"keeps the per-step evaluator inside a batch when %s",
-		async (_label, firstResult) => {
+		async (_label, firstResult, evaluatorCalls, renderCalls) => {
 			const h = harness({
 				plans: [
 					{
@@ -978,12 +999,14 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 					}),
 					finish("Both done."),
 				],
+				renders: [render("Both done.")],
 				results: [firstResult, internalCalendarResult()],
 				intents: ["add the requested calendar events"],
 			});
 			const result = await h.run();
 			expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
-			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(evaluatorCalls);
+			expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(renderCalls);
 			expect(result.finalMessage).toBe("Both done.");
 		},
 	);
@@ -1028,14 +1051,14 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 				continueWork(
 					"Only the gym session exists; the dentist visit is still missing.",
 				),
-				finish(
-					"Added the gym session for Tuesday at 7am and the dentist visit for Wednesday at 3pm.",
-				),
 			],
 			renders: [
 				render(
 					"Added your gym session for Tuesday at 7:00 AM. The dentist visit was not added.",
 					false,
+				),
+				render(
+					"Added the gym session for Tuesday at 7am and the dentist visit for Wednesday at 3pm.",
 				),
 			],
 			results: [
@@ -1055,13 +1078,15 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		});
 		const result = await h.run();
 		expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+		// Partial render → evaluator CONTINUE → second create → the settled batch
+		// is rendered once more, this time judged complete.
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(2);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
 		expect(result.evaluator).toMatchObject({
 			decision: "FINISH",
 			success: true,
+			effectReceiptIds: ["calendar-receipt-1", "calendar-receipt-2"],
 		});
-		expect(result.evaluator?.raw?.source).toBeUndefined();
 		expect(result.finalMessage).toBe(
 			"Added the gym session for Tuesday at 7am and the dentist visit for Wednesday at 3pm.",
 		);

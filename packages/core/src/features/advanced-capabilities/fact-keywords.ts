@@ -219,17 +219,22 @@ export function factPolarityDiffers(left: string, right: string): boolean {
 const LEADING_SUBJECT_PATTERN = /^(?:the )?user\s+/;
 
 /**
- * Cosmetic normalization only: case, punctuation, whitespace, curly quotes,
- * and a leading "user"/"the user" subject reference (the subject is fixed by
- * the row's entity binding, not by this word). Every other word, including
- * stopwords and prepositions, is kept in order.
+ * Cosmetic normalization only: case (Unicode-aware), curly quotes, whitespace,
+ * one trailing sentence terminator, and a leading "user"/"the user" subject
+ * reference (the subject is fixed by the row's entity binding, not by this
+ * word). Every other character is kept in order — letters in any script,
+ * digits, and punctuation that can carry meaning ("C++" vs "C", "A > B" vs
+ * "A < B", "likes 茶" vs "likes 咖啡" all stay distinct).
  */
 function normalizeClaimText(text: string): string {
 	return text
+		.normalize("NFC")
 		.toLowerCase()
 		.replace(/[\u2018\u2019]/g, "'")
-		.replace(/[^a-z0-9'\s-]/g, " ")
+		.replace(/[\u201c\u201d]/g, '"')
 		.replace(/\s+/g, " ")
+		.trim()
+		.replace(/[.!?。]+$/u, "")
 		.trim()
 		.replace(LEADING_SUBJECT_PATTERN, "");
 }
