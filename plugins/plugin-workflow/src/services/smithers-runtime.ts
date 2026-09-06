@@ -595,14 +595,14 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       return;
     }
     stdoutBuffer = appended.buffer;
-    worker.stdout?.pause();
+    if (!processExited) worker.stdout?.pause();
     lineProcessing = observeLineProcessing(
       lineProcessing
         .then(async () => {
           for (const line of appended.lines) await consumeLine(line);
         })
         .finally(() => {
-          if (!terminationCause && !processExited) worker.stdout?.resume();
+          if (!terminationCause) worker.stdout?.resume();
         })
     );
   });
@@ -615,10 +615,11 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   let processExited = false;
   let forceKillTimer: NodeJS.Timeout | undefined;
   const terminate = (cause: WorkerTerminationCause): void => {
-    if (terminationCause || processExited) return;
+    if (terminationCause) return;
     terminationCause = cause;
     protocolController.abort(cause);
     deliveryController.abort(cause);
+    if (processExited) return;
     worker.kill('SIGTERM');
     forceKillTimer = setTimeout(() => worker.kill('SIGKILL'), WORKER_TERMINATION_GRACE_MS);
     forceKillTimer.unref();
@@ -664,6 +665,9 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     });
     worker.once('exit', (code) => {
       processExited = true;
+      // Exit can precede pipe EOF. Drain the remaining bytes even while an
+      // earlier event awaits delivery; its queued protocol work stays ordered.
+      worker.stdout?.resume();
       protocolController.abort('exit');
       armDrainFallback(code);
     });
