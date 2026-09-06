@@ -118,7 +118,6 @@ describe("runCapabilityRouterConnect", () => {
         body: JSON.stringify({
           unloadMissing: false,
           persist: true,
-          allowedModuleIds: ["cloud-plugin"],
           cloud: {
             cloudApiBase: "https://cloud.example.test",
             authToken: "cloud-auth",
