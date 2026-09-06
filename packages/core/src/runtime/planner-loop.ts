@@ -1904,15 +1904,28 @@ async function runPlannerLoopIterations(
 			iteration,
 			redactDiagnosticText,
 		);
-		// A malformed evaluator reply cannot complete work the planner explicitly
-		// left pending. Retain its CONTINUE decision so the next model call sees
-		// the committed receipt and resumes the remaining authorized clauses.
-		const protocolFailureRelay =
+		// A malformed evaluator reply cannot complete explicitly pending work.
+		// A retryable boundary failure also permits replanning from the complete
+		// outcome; the model must choose safe recovery rather than having the loop
+		// replay a mutation. Existing failure and execution limits still apply.
+		const unresolvedFailure =
+			latestUnresolvedFailedNonTerminalToolStep(trajectory);
+		const retryableFailure =
+			unresolvedFailure?.result?.failureProvenance?.retryable === true;
+		const pendingInteraction =
+			retryableFailure && unresolvedFailure
+				? latestActionablePendingInteractionAfter(trajectory, unresolvedFailure)
+				: undefined;
+		const shouldReplanPendingWork =
 			(lastPlannerExplicitCompleted === false ||
 				trajectory.plannedQueue.length > 0) &&
-			!latestUnresolvedFailedNonTerminalToolStep(trajectory)
-				? undefined
-				: deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
+			(!unresolvedFailure || retryableFailure);
+		const protocolFailureRelay =
+			evaluator.protocolFailure === true && pendingInteraction !== undefined
+				? pendingInteraction
+				: shouldReplanPendingWork
+					? undefined
+					: deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
 		if (protocolFailureRelay) {
 			params.runtime.logger?.warn?.(
 				{ iteration, protocolFailure: true },
