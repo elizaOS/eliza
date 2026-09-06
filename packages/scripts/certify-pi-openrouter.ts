@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const repository = process.env.GITHUB_WORKSPACE;
 const adapter = process.env.PI_CERT_ADAPTER;
@@ -174,18 +175,27 @@ try {
         pid = Number((await readFile(pidFile, "utf8")).trim());
       if (piPid === undefined)
         piPid = Number((await readFile(piPidFile, "utf8")).trim());
-      cleanupPassed = [pid, piPid].every((ownedPid) => {
-        if (!Number.isSafeInteger(ownedPid) || ownedPid < 1) return false;
-        try {
-          process.kill(ownedPid, 0);
-          return false;
-        } catch (error) {
-          // error-policy:J3 Only ESRCH proves the owned process exited; other observations fail closed.
-          return (
-            error instanceof Error && "code" in error && error.code === "ESRCH"
-          );
-        }
-      });
+      // Adapter EOF and descendant exit can be observed on different turns.
+      // Require both exact identities to disappear within a bounded grace period.
+      const cleanupDeadline = performance.now() + 5_000;
+      do {
+        cleanupPassed = [pid, piPid].every((ownedPid) => {
+          if (!Number.isSafeInteger(ownedPid) || ownedPid < 1) return false;
+          try {
+            process.kill(ownedPid, 0);
+            return false;
+          } catch (error) {
+            // error-policy:J3 Only ESRCH proves the owned process exited; other observations fail closed.
+            return (
+              error instanceof Error &&
+              "code" in error &&
+              error.code === "ESRCH"
+            );
+          }
+        });
+        if (cleanupPassed || performance.now() >= cleanupDeadline) break;
+        await delay(50);
+      } while (true);
     } catch {
       // error-policy:J1 Missing process identity leaves cleanup unverified.
       cleanupPassed = false;
