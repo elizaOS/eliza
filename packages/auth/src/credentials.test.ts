@@ -1,3 +1,4 @@
+/** Exercises credential storage and subscription application against isolated temporary profiles. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -97,6 +98,10 @@ type OmitLast<T extends readonly unknown[]> = T extends readonly [
   : never;
 
 describe("applySubscriptionCredentials", () => {
+  beforeEach(() => {
+    useTempElizaHome();
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
