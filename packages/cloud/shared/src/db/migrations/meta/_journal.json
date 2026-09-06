@@ -3039,6 +3039,20 @@
       "when": 1796083200077,
       "tag": "0461_app_billing_cancellation_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 434,
+      "version": "7",
+      "when": 1796083200078,
+      "tag": "0462_app_billing_checkout_cleanup_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 435,
+      "version": "7",
+      "when": 1796083200079,
+      "tag": "0463_app_billing_checkout_cleanup_evidence",
+      "breakpoints": true
     }
   ]
 }

@@ -147,6 +147,8 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       "0459_app_billing_completion_mutation_fence",
       "0460_app_billing_customer_receipt_digests",
       "0461_app_billing_cancellation_evidence",
+      "0462_app_billing_checkout_cleanup_receipts",
+      "0463_app_billing_checkout_cleanup_evidence",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
