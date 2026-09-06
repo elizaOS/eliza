@@ -106,6 +106,35 @@ test("unmatched targets, incomplete frames and unexpected interleaving never cer
   assert.equal(interleaved.all.malformedFrames, 1);
 });
 
+test("embedded timeout messages cannot attribute another container's diagnostics to a target", () => {
+  const digest = createHash("sha256").update("agent-two").digest("hex");
+  const timeouts = [
+    "[docker-sandbox] Docker health check timed out after 60s for agent-two on private-host",
+    "[docker-sandbox] Tailnet health check timed out after 60s for agent-two (http://private-host/health)",
+  ];
+  const frame = consoleFrame(
+    "agent-one",
+    `--- inspect ---\nstate=exited health=unhealthy exit=1 error=\n--- logs ---\n${timeouts.join("\n")}\n`,
+  );
+  for (const messages of [
+    [frame],
+    frame.split("\n"),
+    timeouts.map((value) => `untrusted: ${value}`),
+  ]) {
+    const journal = messages
+      .map((MESSAGE) => JSON.stringify({ MESSAGE }))
+      .join("\n");
+    const result = summarizeJournal(journal, digest);
+    assert.deepEqual(result.targetHealthTimeouts, { docker: 0, tailnet: 0 });
+    assert.equal(result.healthTimeouts.target.frames, 0);
+  }
+  const genuine = summarizeJournal(
+    timeouts.map((MESSAGE) => JSON.stringify({ MESSAGE })).join("\n"),
+    digest,
+  );
+  assert.deepEqual(genuine.targetHealthTimeouts, { docker: 1, tailnet: 1 });
+});
+
 test("invalid target correlation digest rejects before privileged reads", () => {
   let called = false;
   assert.throws(

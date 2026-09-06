@@ -23,6 +23,14 @@ const CATEGORIES = {
     /Failed to collect health timeout diagnostics/,
 };
 
+// These are complete worker messages, never substrings of container diagnostics.
+const TARGET_HEALTH_TIMEOUTS = {
+  docker:
+    /^\[docker-sandbox\] Docker health check timed out after [0-9]+(?:\.[0-9]+)?s for (agent-[A-Za-z0-9_.-]+) on [^\r\n]+$/,
+  tailnet:
+    /^\[docker-sandbox\] Tailnet health check timed out after [0-9]+(?:\.[0-9]+)?s for (agent-[A-Za-z0-9_.-]+) \([^\r\n]+\)$/,
+};
+
 const BOOT_SIGNALS = {
   module_resolution: /Cannot find (?:module|package)|ERR_MODULE_NOT_FOUND/,
   address_in_use: /EADDRINUSE/,
@@ -146,19 +154,15 @@ export function summarizeJournal(text, targetDigest) {
     }
     records += 1;
     messages.push(entry.MESSAGE);
-    const namedContainer = /\bfor (agent-[A-Za-z0-9_.-]+)(?=\s|$)/.exec(
-      entry.MESSAGE,
-    );
-    if (
-      targetHealthTimeouts &&
-      namedContainer &&
-      createHash("sha256").update(namedContainer[1]).digest("hex") ===
-        targetDigest
-    ) {
-      if (CATEGORIES.docker_health_timeout.test(entry.MESSAGE))
-        targetHealthTimeouts.docker += 1;
-      if (CATEGORIES.tailnet_health_timeout.test(entry.MESSAGE))
-        targetHealthTimeouts.tailnet += 1;
+    if (targetHealthTimeouts) {
+      for (const [kind, pattern] of Object.entries(TARGET_HEALTH_TIMEOUTS)) {
+        const timeout = pattern.exec(entry.MESSAGE);
+        if (
+          timeout &&
+          createHash("sha256").update(timeout[1]).digest("hex") === targetDigest
+        )
+          targetHealthTimeouts[kind] += 1;
+      }
     }
     for (const [category, pattern] of Object.entries(CATEGORIES)) {
       if (pattern.test(entry.MESSAGE)) counts[category] += 1;
