@@ -421,6 +421,34 @@ describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
   });
 });
 
+describe("MEMORY op:create argument shape", () => {
+  it("stores content the planner misfiled in `query` instead of failing the turn", async () => {
+    // Live 2026-09-06 01:09: three identical create calls with the content in
+    // `query` and no `text` errored the whole remember turn.
+    const { runtime, rows } = makeRuntime();
+    const result = await runCreate(runtime, makeMessage(), {
+      query: "I like my coffee with oat milk",
+      kind: "preference",
+    });
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].memory.content.text).toBe("I like my coffee with oat milk");
+    expect(result.data).toMatchObject({
+      text: "I like my coffee with oat milk",
+    });
+  });
+
+  it("names the field to use when neither text nor query carries content", async () => {
+    const { runtime, rows } = makeRuntime();
+    const result = await runCreate(runtime, makeMessage(), {
+      kind: "preference",
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain('"text" argument');
+    expect(rows).toHaveLength(0);
+  });
+});
+
 describe("MEMORY mutations settle with receipts for the grounded reply gate", () => {
   it("create returns an internal result with an applied receipt and reply facts", async () => {
     const { runtime, rows } = makeRuntime();

@@ -431,8 +431,29 @@ async function doCreate(
   message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
-  const text = typeof params.text === "string" ? params.text.trim() : "";
-  if (!text) return fail("text is required.", "MEMORY_MISSING_TEXT");
+  // Live 2026-09-06: the planner repeatedly put the content to remember in
+  // `query` (a search/delete field that means nothing on create) and left `text`
+  // empty, three identical calls in a row until the turn errored. The field
+  // name is a structural slip, not a different request: use it, say so.
+  const explicitText =
+    typeof params.text === "string" ? params.text.trim() : "";
+  const queryAsText =
+    !explicitText && typeof params.query === "string"
+      ? params.query.trim()
+      : "";
+  if (queryAsText) {
+    logger.warn(
+      { queryLength: queryAsText.length },
+      "[MEMORY] create arrived with the content in `query`; storing it as text",
+    );
+  }
+  const text = explicitText || queryAsText;
+  if (!text) {
+    return fail(
+      'text is required for create: put the content to remember in the "text" argument (query is only for search, update and delete lookups).',
+      "MEMORY_MISSING_TEXT",
+    );
+  }
 
   const kind =
     typeof params.kind === "string" && params.kind.trim()
@@ -1435,7 +1456,7 @@ export const memoryAction: Action = {
     {
       name: "text",
       description:
-        "create: content to store. update: replacement text body for the memory.",
+        "create: REQUIRED — the content to remember, as a complete sentence (never leave it empty and never put it in query). update: replacement text body for the memory.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -1481,7 +1502,7 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        "search/update/delete: case-insensitive text match against memory content. update/delete: resolves the memory to mutate when memoryId is unknown; scoped to the requesting user's own memories.",
+        "search/update/delete ONLY: case-insensitive text match against memory content. update/delete: resolves the memory to mutate when memoryId is unknown; scoped to the requesting user's own memories. Not used by create — the content to remember goes in text.",
       required: false,
       schema: { type: "string" as const },
     },
