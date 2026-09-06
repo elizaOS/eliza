@@ -9,7 +9,8 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { readFile } from "node:fs/promises";
+import { eq, sql } from "drizzle-orm";
 
 // This proof owns its DB: force an isolated in-memory PGlite regardless of the
 // ambient DATABASE_URL / TEST_DATABASE_URL the CI lane exports. resolveDatabaseUrl
@@ -273,5 +274,36 @@ describe("App config backup/restore", () => {
     await expect(
       appBackupService.restoreApp(orgId, userId, { version: 999 } as never),
     ).rejects.toThrow(/version/i);
+  });
+  test("restore with absent Telegram configuration works after upgrading the historical constraint", async () => {
+    const { orgId, userId } = await seed();
+    const { app: source } = await appsService.create({
+      name: "Telegram-free backup",
+      organization_id: orgId,
+      created_by_user_id: userId,
+      app_url: "https://example.invalid",
+    });
+    const backup = await appBackupService.exportApp(source);
+    backup.automation.telegram = null;
+    await dbWrite.execute(sql`ALTER TABLE apps ALTER COLUMN telegram_automation SET NOT NULL`);
+    try {
+      await expect(
+        appBackupService.restoreApp(orgId, userId, backup, "Before migration"),
+      ).rejects.toMatchObject({ cause: { code: "23502" } });
+    } finally {
+      const migration = await readFile(
+        new URL(
+          "../../../db/migrations/0365_apps_telegram_automation_nullable.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      );
+      await dbWrite.execute(sql.raw(migration));
+    }
+    const restored = await appBackupService.restoreApp(orgId, userId, backup, "After migration");
+    const persisted = await appsService.getById(restored.app.id);
+    expect(persisted?.telegram_automation).toBeNull();
+    expect(persisted?.organization_id).toBe(orgId);
+    expect(persisted?.app_url).toBe(source.app_url);
   });
 });
