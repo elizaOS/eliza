@@ -81,12 +81,13 @@
     },
     "form:button+input": {
       "disposition": "distinct-domain-compositions",
-      "rationale": "Trigger configuration and tag editing do not share a domain contract or meaningful layout beyond generic form controls.",
+      "rationale": "Trigger configuration, tag editing and login share generic controls but not a domain lifecycle. Login performs provider discovery, credential challenges and session handoff; trigger configuration edits scheduling state; tag editing emits a list of strings. Each composes the canonical Button and Input primitives.",
       "memberComponentIds": [
         "packages/ui/src/components/pages/TriggerForm.tsx:TriggerForm",
-        "packages/ui/src/components/ui/tag-editor.tsx:TagEditor"
+        "packages/ui/src/components/ui/tag-editor.tsx:TagEditor",
+        "packages/ui/src/login/components/LoginForm.tsx:LoginForm"
       ],
-      "semanticFingerprint": "sha256:ecc864434687a7ce763252d359cad9bdb85db187f1defa060a767d5e5df45290"
+      "semanticFingerprint": "sha256:e65ec528e05f235ca953f8e85cca1b6cb760f2a58abc7fde60da628957bac1f8"
     },
     "panel:button+input": {
       "disposition": "distinct-domain-compositions",

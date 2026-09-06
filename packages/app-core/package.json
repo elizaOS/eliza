@@ -309,7 +309,8 @@
     "saxes": "^6.0.0",
     "ws": "^8.21.3",
     "zod": "^4.4.3",
-    "@elizaos/auth": "workspace:*"
+    "@elizaos/auth": "workspace:*",
+    "@elizaos/login": "workspace:*"
   },
   "publishConfig": {
     "access": "public",

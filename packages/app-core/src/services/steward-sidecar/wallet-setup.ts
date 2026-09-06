@@ -50,6 +50,7 @@ export async function ensureWalletSetup(
   masterPassword: string | undefined,
   dataDir: string,
   updateStatus: (partial: Partial<StewardSidecarStatus>) => void,
+  platformKey?: string,
 ): Promise<StewardCredentials> {
   if (credentials?.walletAddress) {
     if (!hasAgentToken(credentials)) {
@@ -69,6 +70,7 @@ export async function ensureWalletSetup(
     masterPassword,
     dataDir,
     updateStatus,
+    platformKey,
   );
 }
 
@@ -239,6 +241,7 @@ async function performFirstLaunchSetup(
   _masterPassword: string | undefined,
   dataDir: string,
   updateStatus: (partial: Partial<StewardSidecarStatus>) => void,
+  platformKey?: string,
 ): Promise<StewardCredentials> {
   logger.info("[StewardSidecar] First launch - creating tenant and wallet");
 
@@ -246,7 +249,10 @@ async function performFirstLaunchSetup(
   const tenantApiKey = generateApiKey();
   const tenantResponse = await stewardFetch(`${apiBase}/tenants`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(platformKey ? { "X-Steward-Platform-Key": platformKey } : {}),
+    },
     body: JSON.stringify({
       id: DEFAULT_TENANT_ID,
       name: DEFAULT_TENANT_NAME,
@@ -295,7 +301,7 @@ async function performFirstLaunchSetup(
   const credentials: StewardCredentialCheckpoint = {
     tenantId: DEFAULT_TENANT_ID,
     tenantApiKey,
-    agentId: DEFAULT_AGENT_ID,
+    agentId: agentResult.data.id,
     walletAddress: agentResult.data.walletAddress,
   };
   persistCredentials(credentials, dataDir);

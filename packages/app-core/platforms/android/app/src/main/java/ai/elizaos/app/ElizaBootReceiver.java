@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Process;
+import android.os.Build;
+import android.os.UserManager;
 import android.util.Log;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -19,6 +21,15 @@ public class ElizaBootReceiver extends BroadcastReceiver {
         String action = intent != null ? intent.getAction() : null;
         if (!shouldHandleAction(action)) {
             return;
+        }
+        // Credential-encrypted agent state and WorkManager are unavailable
+        // during Direct Boot. BOOT_COMPLETED is delivered after user unlock.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            UserManager users = context.getSystemService(UserManager.class);
+            if (users == null || !users.isUserUnlocked()) {
+                Log.i(TAG, "Deferring agent startup until user unlock.");
+                return;
+            }
         }
         // PACKAGE_USAGE_STATS has both a manifest permission (granted via
         // privapp-permissions whitelist) and an appop. Only the privileged

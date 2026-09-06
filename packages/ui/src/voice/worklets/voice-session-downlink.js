@@ -1,5 +1,6 @@
 // biome-ignore-all lint/correctness/noUndeclaredVariables: AudioWorklet globals are supplied by the worklet scope.
 
+/** Plays downlink PCM and crossfades queued replies in the browser audio thread. */
 class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -40,6 +41,9 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
         });
       } else if (data.type === "handoff") {
         this.lastSequence = Number(data.sequence) || this.lastSequence;
+        this.queuedSamples -=
+          this.handoffQueue.reduce((sum, pcm) => sum + pcm.length, 0) -
+          this.handoffReadOffset;
         this.handoffQueue = this.queue;
         this.handoffReadOffset = this.readOffset;
         this.queue = [];
@@ -81,8 +85,11 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
         this.readOffset += 1;
         this.handoffReadOffset += 1;
         this.crossfadePosition += 1;
-        this.queuedSamples = Math.max(0, this.queuedSamples - 1);
+        this.queuedSamples = Math.max(0, this.queuedSamples - 2);
         if (this.crossfadePosition >= this.crossfadeSamples) {
+          this.queuedSamples -=
+            this.handoffQueue.reduce((sum, pcm) => sum + pcm.length, 0) -
+            this.handoffReadOffset;
           this.handoffQueue = [];
           this.handoffReadOffset = 0;
           this.port.postMessage({
@@ -97,6 +104,7 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
       } else if (oldSample !== null) {
         firstChannel[i] = oldSample;
         this.handoffReadOffset += 1;
+        this.queuedSamples = Math.max(0, this.queuedSamples - 1);
       } else {
         firstChannel[i] = 0;
         if (this.handoffQueue.length === 0 && this.hadAudio) {

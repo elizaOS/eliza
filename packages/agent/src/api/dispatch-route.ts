@@ -16,11 +16,13 @@
  */
 
 import { Buffer } from "node:buffer";
+import { EventEmitter } from "node:events";
 import type {
   IncomingHttpHeaders,
   IncomingMessage,
   ServerResponse,
 } from "node:http";
+import { Socket } from "node:net";
 import { Readable } from "node:stream";
 
 import {
@@ -181,6 +183,7 @@ export interface DispatchRouteArgs {
    * the sink. Unset over HTTP, where the socket already flushes incrementally.
    */
   onChunk?: (chunk: Buffer) => void;
+  onHeaders?: (status: number, headers: Record<string, string>) => void;
 }
 
 /** Lowercase normalize a header map. */
@@ -254,7 +257,7 @@ function asCapturedServerResponse(res: unknown): ServerResponse {
  * Express-shaped route handlers can write to. The captured response is
  * returned as a {@link RouteHandlerResult}.
  */
-function buildLegacyShim(args: {
+export function buildLegacyShim(args: {
   method: string;
   path: string;
   headers: Record<string, string>;
@@ -263,6 +266,7 @@ function buildLegacyShim(args: {
   body: unknown;
   rawBody?: string;
   onChunk?: (chunk: Buffer) => void;
+  onHeaders?: (status: number, headers: Record<string, string>) => void;
 }): { req: IncomingMessage; res: ServerResponse; captured: CapturedResponse } {
   const incomingHeaders = toIncomingHttpHeaders(args.headers);
   // Provide a readable stream body so handlers that call req.on('data') still work.
@@ -278,6 +282,8 @@ function buildLegacyShim(args: {
   })();
   const readable = Readable.from(
     bodyText ? [Buffer.from(bodyText, "utf8")] : [],
+    // Reading the request body does not disconnect the IPC response stream.
+    { autoDestroy: false },
   );
   const req = readable as IncomingMessage & {
     query: Record<string, string | string[]>;
@@ -291,6 +297,8 @@ function buildLegacyShim(args: {
     rawBody?: string;
     get: (name: string) => string | undefined;
   };
+  req.socket = new Socket();
+  Object.defineProperty(req.socket, "remoteAddress", { value: "127.0.0.1" });
   req.headers = incomingHeaders;
   req.method = args.method;
   req.url = args.path;
@@ -326,6 +334,12 @@ function buildLegacyShim(args: {
     captured.headers[name.toLowerCase()] = text;
   };
 
+  let headersFlushed = false;
+  const flushHeaders = () => {
+    if (headersFlushed) return;
+    headersFlushed = true;
+    args.onHeaders?.(captured.statusCode, { ...captured.headers });
+  };
   const writeChunk = (chunk: unknown): void => {
     if (chunk == null) return;
     let buf: Buffer;
@@ -338,6 +352,7 @@ function buildLegacyShim(args: {
     } else {
       buf = Buffer.from(String(chunk), "utf8");
     }
+    flushHeaders();
     captured.chunks.push(buf);
     // Forward to the incremental sink the instant the handler flushes, so an
     // in-process streaming transport can emit token frames as they arrive.
@@ -347,10 +362,27 @@ function buildLegacyShim(args: {
   // Build a minimal ServerResponse-ish object. Plugin handlers only reach for
   // this subset (status/json/send/setHeader/end/write/headersSent), so the
   // structural boundary is isolated in asCapturedServerResponse().
-  const res = {
+  const res = Object.assign(new EventEmitter(), {
     statusCode: 200,
-    get headersSent() {
+    get writableEnded() {
       return captured.ended;
+    },
+    get destroyed() {
+      return false;
+    },
+    flushHeaders,
+    writeHead(
+      code: number,
+      headers?: Record<string, string | number | string[]>,
+    ) {
+      captured.statusCode = code;
+      for (const [name, value] of Object.entries(headers ?? {}))
+        setHeader(name, value);
+      flushHeaders();
+      return asCapturedServerResponse(res);
+    },
+    get headersSent() {
+      return headersFlushed || captured.ended;
     },
     setHeader,
     getHeader: (name: string) => captured.headers[name.toLowerCase()],
@@ -358,12 +390,15 @@ function buildLegacyShim(args: {
       delete captured.headers[name.toLowerCase()];
     },
     write: (chunk: unknown) => {
+      flushHeaders();
       writeChunk(chunk);
       return true;
     },
     end: (chunk?: unknown) => {
       if (chunk != null) writeChunk(chunk);
+      flushHeaders();
       captured.ended = true;
+      res.emit("finish");
       return asCapturedServerResponse(res);
     },
     status(code: number) {
@@ -412,7 +447,11 @@ function buildLegacyShim(args: {
       captured.ended = true;
       return res;
     },
-  };
+  });
+  Object.defineProperties(res, {
+    headersSent: { get: () => headersFlushed || captured.ended },
+    writableEnded: { get: () => captured.ended },
+  });
   // Mirror statusCode writes from the handler onto the captured value.
   Object.defineProperty(res, "statusCode", {
     get() {
@@ -448,7 +487,9 @@ function mediaTypeEssence(contentType: string): string {
     .toLowerCase();
 }
 
-function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
+export function capturedToResult(
+  captured: CapturedResponse,
+): RouteHandlerResult {
   const buffer = Buffer.concat(captured.chunks);
   // Missing headers are meaningful here because undeclared bodies retain the
   // bridge's historical UTF-8 behavior.
@@ -605,6 +646,7 @@ export async function dispatchRoute(
         body: args.body,
         rawBody: args.rawBody,
         onChunk: args.onChunk,
+        onHeaders: args.onHeaders,
       });
 
       try {
