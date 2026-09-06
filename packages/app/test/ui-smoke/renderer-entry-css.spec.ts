@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
-import { build } from "vite";
+import { build, normalizePath } from "vite";
 
 const appRoot = fileURLToPath(new URL("../..", import.meta.url));
 const entryPath = path.join(appRoot, "src/entry.ts");
@@ -47,7 +47,8 @@ test.beforeAll(async () => {
         resolveId(source, importer) {
           if (source === "/entry.ts") return entryPath;
           if (
-            importer === entryPath &&
+            importer !== undefined &&
+            normalizePath(importer) === normalizePath(entryPath) &&
             renderers.some((name) => source === `./${name}`)
           )
             return path.join(fixtureRoot, `${source.slice(2)}.ts`);
