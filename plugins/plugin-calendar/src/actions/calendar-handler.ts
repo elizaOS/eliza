@@ -2317,14 +2317,18 @@ function resolveStatedCreateDate(args: {
 }
 
 /**
- * Texts consulted, in order, for the stated day of an update/delete target:
- * the user's message when it names a single day; when it names several (one
- * message, several targets — live 2026-09-05 22:44 "the yoga class on
- * thursday, the pottery class on saturday and the haircut on sunday"
- * constrained every target to Thursday), the planner's per-target intent
- * ahead of the message; the planner's explicit `date` detail only as the
- * fallback when the prose names no day — planner weekday arithmetic is not
- * trusted over the user's words (live 23:33: "sunday" was sent as the 7th).
+ * Texts consulted, in order, for the stated day of an update/delete target.
+ * Single-day message: the user's words first, then the planner's per-target
+ * intent, then the planner's `date` detail — planner weekday arithmetic is not
+ * trusted over the user's words (live 23:33: "sunday" arrived as the 7th).
+ * Message naming several days (one message, several targets — live 22:44
+ * "the yoga class on thursday, the pottery class on saturday and the haircut
+ * on sunday" constrained every target to Thursday): the per-target intent
+ * first, then the planner's `date` detail (its only per-target narrowing when
+ * it sent no intent — live 00:16 the dentist on Friday was missed because the
+ * message's first day, Thursday, was applied), then the message. An intent
+ * that merely echoes the whole message carries no per-target information and
+ * is skipped.
  */
 function mutationTargetTexts(args: {
   details: Record<string, unknown> | undefined;
@@ -2333,11 +2337,16 @@ function mutationTargetTexts(args: {
   timeZone: string;
 }): (string | undefined)[] {
   const explicitDate = detailString(args.details, "date");
+  const message = args.currentMessage.trim();
+  const intent =
+    args.intent.trim() && args.intent.trim() !== message
+      ? args.intent.trim()
+      : undefined;
   const messageNamesSeveralDays =
-    distinctStatedLocalDates(args.currentMessage, args.timeZone).length >= 2;
+    distinctStatedLocalDates(message, args.timeZone).length >= 2;
   return messageNamesSeveralDays
-    ? [args.intent, args.currentMessage, explicitDate]
-    : [args.currentMessage, args.intent, explicitDate];
+    ? [intent, explicitDate, message]
+    : [message, intent, explicitDate];
 }
 
 const PAST_START_GRACE_MS = 5 * 60 * 1000;

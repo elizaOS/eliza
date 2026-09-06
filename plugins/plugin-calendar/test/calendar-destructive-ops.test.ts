@@ -302,6 +302,27 @@ describe("CALENDAR delete_event disambiguation", () => {
     );
   });
 
+  it("a multi-target message with no per-target intent uses the planner's date detail, not the message's first day", async () => {
+    // Live 2026-09-06 00:16: "delete the yoga class on thursday and the dentist
+    // visit on friday" — the dentist call carried date=Friday but no intent, and
+    // the lookup was constrained to Thursday, so the Friday event was missed.
+    const multi = stubService([LUNCH_MAYA, LUNCH_GRANDMA, STANDUP_FRIDAY]);
+    const result = await runHandler({
+      service: multi,
+      text: "delete lunch with maya on 2026-07-08 and the standup on 2026-07-10 from my calendar",
+      parameters: {
+        subaction: "delete_event",
+        title: "Standup",
+        query: "standup friday",
+        details: { date: "2026-07-10", timeZone: "UTC" },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(multi.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: STANDUP_FRIDAY }),
+    );
+  });
+
   it("typed delete_event + title (no query) → reads the feed and targets that event", async () => {
     // ROOT trace step-1788648925553-vzj6rq (2026-09-05): the planner sent
     // subaction=delete_event with the exact title and a date; the handler

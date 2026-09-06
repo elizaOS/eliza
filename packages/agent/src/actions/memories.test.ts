@@ -491,6 +491,61 @@ describe("MEMORY mutations settle with receipts for the grounded reply gate", ()
   });
 });
 
+describe("MEMORY op:delete by query scope", () => {
+  it("forgets stored facts but never the chat transcript when no type is given", async () => {
+    const { runtime, rows } = makeRuntime();
+    const factId = seedFact(rows, {
+      text: "drinks tea without sugar",
+      entityId: USER_ID,
+    });
+    rows.push({
+      memory: {
+        id: crypto.randomUUID() as UUID,
+        entityId: USER_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: "forget that I drink my tea without sugar" },
+        createdAt: Date.now(),
+      } as Memory,
+      tableName: "messages",
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "tea without sugar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.values).toMatchObject({ deletedCount: 1 });
+    expect(rows.find((row) => row.memory.id === factId)).toBeUndefined();
+    expect(rows.filter((row) => row.tableName === "messages")).toHaveLength(1);
+  });
+
+  it("still deletes from an explicitly named table", async () => {
+    const { runtime, rows } = makeRuntime();
+    rows.push({
+      memory: {
+        id: crypto.randomUUID() as UUID,
+        entityId: USER_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: "scratch note about tea" },
+        createdAt: Date.now(),
+      } as Memory,
+      tableName: "messages",
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "scratch note about tea",
+      type: "messages",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows.filter((row) => row.tableName === "messages")).toHaveLength(0);
+  });
+});
+
 describe("MEMORY op:update", () => {
   it("updates a text-only memory without requiring an embedding provider", async () => {
     const { runtime, rows } = makeRuntime();

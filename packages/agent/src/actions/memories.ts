@@ -34,6 +34,7 @@ type MemoryOp = (typeof MEMORY_OPS)[number];
 
 const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
+const FORGET_BY_QUERY_TABLES: readonly MemoryType[] = ["facts", "memories"];
 
 const UUID_SCHEMA_PATTERN =
   "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
@@ -713,14 +714,15 @@ async function collectCandidates(
   runtime: IAgentRuntime,
   scope: {
     type?: MemoryType;
+    /** Explicit table set; wins over `type` and the full default. */
+    tables?: readonly MemoryType[];
     entityId?: UUID;
     roomId?: UUID;
     query?: string;
   },
 ): Promise<CandidateScan> {
-  const tables: readonly MemoryType[] = scope.type
-    ? [scope.type]
-    : MEMORY_TYPES;
+  const tables: readonly MemoryType[] =
+    scope.tables ?? (scope.type ? [scope.type] : MEMORY_TYPES);
   const collected: MemoryCandidate[] = [];
 
   for (const tableName of tables) {
@@ -1231,8 +1233,13 @@ async function doDeleteByQuery(
   // that carry no entity (internal maintenance invocations).
   const scopeEntityId = message.entityId ?? entityParam.id;
 
+  // "Forget X" targets stored knowledge. Without an explicit type the scan
+  // covers facts and agent memories only — never the chat transcript or
+  // documents (live 2026-09-06 00:16: a forget-by-query matched the user's own
+  // "forget that I…" message and reported it as a deletable memory).
   const scan = await collectCandidates(runtime, {
     type,
+    tables: type ? [type] : FORGET_BY_QUERY_TABLES,
     entityId: scopeEntityId,
     roomId: roomParam.id,
     query,
