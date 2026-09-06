@@ -8,7 +8,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../../src/services/acp-service.js";
-import { createActiveSessionForwardHandler } from "../../src/services/active-session-forward.js";
+import {
+  createActiveSessionForwardHandler,
+  isSessionBusy,
+} from "../../src/services/active-session-forward.js";
 import { SubAgentInbox } from "../../src/services/sub-agent-inbox.js";
 
 // Room ids are UUID-validated by the binding helper, so fixtures use real
@@ -26,6 +29,16 @@ type Session = {
   status: string;
   metadata: Record<string, unknown>;
 };
+
+describe("active-session busy lifecycle", () => {
+  it("queues blocked, authenticating, and unknown nonterminal states", () => {
+    expect(isSessionBusy("blocked")).toBe(true);
+    expect(isSessionBusy("authenticating")).toBe(true);
+    expect(isSessionBusy("future_status")).toBe(true);
+    expect(isSessionBusy("ready")).toBe(false);
+    expect(isSessionBusy("completed")).toBe(false);
+  });
+});
 
 function makeAcp(sessions: Session[]) {
   return {

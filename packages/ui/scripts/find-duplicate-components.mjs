@@ -112,12 +112,23 @@ const ATOM_BY_NAME = new Map(
 const relative = (file) =>
   path.relative(repoRoot, file).replaceAll(path.sep, "/");
 
+/** Recognizes generated caches and the inventory harness's temporary workspaces. */
+export function isHiddenSourceArtifactDirectory(name) {
+  return (
+    [".vite", ".vite-temp", ".eliza", ".next", ".turbo", ".cache"].includes(
+      name,
+    ) ||
+    name.startsWith(".molecule-binding-") ||
+    name.startsWith(".playwright-artifacts-")
+  );
+}
+
 export function isMaintainedSource(file) {
   const rel = relative(file);
   const maintained =
     /^(packages|plugins)\//.test(rel) &&
     /\.[jt]sx?$/.test(rel) &&
-    !/(^|\/)\.eliza(\/|$)/.test(rel) &&
+    !path.posix.dirname(rel).split("/").some(isHiddenSourceArtifactDirectory) &&
     !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
       rel,
     ) &&
@@ -146,6 +157,7 @@ function* walk(directory) {
   if (!fs.existsSync(directory)) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     if (
+      (entry.isDirectory() && isHiddenSourceArtifactDirectory(entry.name)) ||
       [
         "node_modules",
         "dist",

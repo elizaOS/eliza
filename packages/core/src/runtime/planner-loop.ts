@@ -1519,7 +1519,7 @@ async function runPlannerLoopIterations(
 				}
 			}
 			// Loop-breaker: a non-terminal call that exactly repeats one already
-			// SUCCEEDED this turn (same name + args) cannot return new data, and one
+			// settled this turn (same name + args) must not repeat a mutation, and one
 			// that already FAILED with the structural non-retryable marker cannot
 			// start succeeding mid-turn. Execute only genuinely-fresh calls; when
 			// every call this iteration is such a repeat, count a dead round and —
@@ -1540,7 +1540,7 @@ async function runPlannerLoopIterations(
 					instructionParts.push(
 						"You already have a successful result this turn for " +
 							`${redundantCalls.map((call) => call.name).join(", ")} with these ` +
-							"exact arguments. Re-running it cannot return new information.",
+							"exact arguments. Do not repeat the settled operation; use its receipt.",
 					);
 				}
 				if (nonRetryableCalls.length > 0) {
@@ -1900,10 +1900,15 @@ async function runPlannerLoopIterations(
 			iteration,
 			redactDiagnosticText,
 		);
-		const protocolFailureRelay = deterministicEvaluatorProtocolFailureRelay(
-			evaluator,
-			trajectory,
-		);
+		// A malformed evaluator reply cannot complete work the planner explicitly
+		// left pending. Retain its CONTINUE decision so the next model call sees
+		// the committed receipt and resumes the remaining authorized clauses.
+		const protocolFailureRelay =
+			(lastPlannerExplicitCompleted === false ||
+				trajectory.plannedQueue.length > 0) &&
+			!latestUnresolvedFailedNonTerminalToolStep(trajectory)
+				? undefined
+				: deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
 		if (protocolFailureRelay) {
 			params.runtime.logger?.warn?.(
 				{ iteration, protocolFailure: true },
@@ -4940,16 +4945,12 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
 }
 
 /**
- * Split a set of planned non-terminal calls into those that are genuinely new
- * this turn and those that exactly repeat a call (same tool name + arguments)
- * which either already SUCCEEDED — a repeat cannot return new information — or
- * already FAILED with the structural `data.retryable === false` marker — a
- * deterministic unavailability (e.g. PAGE_DELEGATE's PAGE_CHILD_UNAVAILABLE)
- * that cannot change within the turn. Neither kind is re-executed. Legacy
- * archived steps still count, so a settled call stays settled after loading
- * an older persisted trajectory. In coding mode, a successful WRITE/EDIT
- * invalidates earlier successes because an identical inspection can now
- * return changed source.
+ * Separate settled operations from executable calls across the complete turn.
+ * Successful mutations and legacy unclassified results remain deduplicated.
+ * Canonical non-replayed no-op/preview receipts and explicit read-only results
+ * are observations, not immutable effects: repeat them to re-observe local or
+ * external state. Replayed no-ops retain their committed operation identity.
+ * Coding mutations retain the existing inspection invalidation behavior.
  */
 export function partitionRedundantSucceededCalls(
 	calls: PlannerToolCall[],
@@ -4965,6 +4966,16 @@ export function partitionRedundantSucceededCalls(
 		if (!step.toolCall || !step.result) continue;
 		const identity = toolCallIdentity(step.toolCall);
 		if (step.result.success === true) {
+			const receipts = step.result.effectReceipts;
+			const observation =
+				receipts !== undefined && receipts.length > 0
+					? receipts.every(
+							(receipt) =>
+								(receipt.outcome === "noop" && !receipt.idempotency.replayed) ||
+								receipt.outcome === "preview",
+						)
+					: step.result.data?.readOnlyOperation === true;
+			if (observation) continue;
 			// A successful coding mutation can change the answer to any earlier
 			// inspection. Clear those settled identities before recording the
 			// mutation itself so READ-after-EDIT remains executable while an exact

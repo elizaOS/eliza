@@ -856,7 +856,7 @@ describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
     expect(await readJson(res)).toEqual({ error: "Unauthorized" });
   });
 
-  test("malformed multipart remains a parse failure after auth when it is under the cap", async () => {
+  test("malformed multipart is rejected as client input after auth", async () => {
     const res = await app.request(
       new Request("http://localhost/api/v1/voice/stt", {
         method: "POST",
@@ -869,9 +869,9 @@ describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
       whisperEnv,
     );
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
     expect(await readJson(res)).toEqual({
-      error: "Failed to transcribe audio. Please try again.",
+      error: "Invalid multipart form data",
     });
     expect(requireAuthOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
     expect(reserve).not.toHaveBeenCalled();

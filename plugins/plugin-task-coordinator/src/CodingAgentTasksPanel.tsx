@@ -1,3 +1,7 @@
+/**
+ * Displays project-scoped coding tasks and their live session details. Polling
+ * retains the last received list and exposes failures until the backend recovers.
+ */
 import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ApiError, client } from "@elizaos/ui/api";
@@ -661,7 +665,10 @@ export function CodingAgentTasksPanel({
     if (activeProjectId === undefined) return;
     let cancelled = false;
 
+    let refreshing = false;
     const refreshThreads = async (silent = false) => {
+      if (refreshing) return;
+      refreshing = true;
       if (!silent) {
         setLoading(true);
       }
@@ -674,7 +681,6 @@ export function CodingAgentTasksPanel({
         });
         if (cancelled) return;
         setLoadError(null);
-        setMutationError(null);
         setBackendAbsent(false);
         setThreads(nextThreads);
         setSelectedThreadId((current) => {
@@ -685,6 +691,7 @@ export function CodingAgentTasksPanel({
           return null;
         });
       } catch (error) {
+        // error-policy:J4 keep the last task list while visibly reporting refresh failures.
         if (cancelled) return;
         // The task-thread endpoint is owned by the Node-only
         // @elizaos/plugin-agent-orchestrator and is absent on mobile/web
@@ -698,22 +705,21 @@ export function CodingAgentTasksPanel({
           setSelectedThread(null);
           return;
         }
-        if (!silent) {
-          setLoadError(
-            getClientErrorMessage(
-              error,
-              t("codingagenttaskspanel.unknown", {
-                defaultValue: "Unknown",
-              }),
-            ),
-          );
-        }
+        setLoadError(
+          getClientErrorMessage(
+            error,
+            t("codingagenttaskspanel.unknown", {
+              defaultValue: "Unknown",
+            }),
+          ),
+        );
         if (!silent) {
           setThreads([]);
           setSelectedThreadId(null);
           setSelectedThread(null);
         }
       } finally {
+        refreshing = false;
         if (!cancelled && !silent) {
           setLoading(false);
         }
