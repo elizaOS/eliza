@@ -4,7 +4,7 @@
  * components/ui — other components (alert-dialog, banner, …) reuse
  * `buttonVariants` rather than restyling their own buttons. `asChild` renders
  * the styling onto a Radix Slot child so links can adopt button appearance.
- * Accent-orange resting → darker-orange hover per the brand hover system.
+ * The accentDarkHover variant pairs darker-orange hover with a readable label.
  *
  * On coarse-pointer (touch) surfaces the compact sizes compose a 44px hit floor
  * (`pointer-coarse:min-h/min-w-touch` = `--min-touch-target`) so the rendered
@@ -31,6 +31,8 @@ const buttonVariants = cva(
         // orange fill so far that its dark label loses contrast (45% failed).
         default:
           "bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-accent/80 disabled:text-accent-fg",
+        accentDarkHover:
+          "bg-accent text-accent-fg hover:bg-accent-muted hover:text-inverse disabled:bg-accent/80 disabled:text-accent-fg",
         surface:
           "bg-card text-txt-strong hover:bg-surface disabled:text-muted-strong",
         surfaceAccent:

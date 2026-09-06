@@ -11,6 +11,7 @@ const meta = {
       control: "select",
       options: [
         "default",
+        "accentDarkHover",
         "surface",
         "surfaceAccent",
         "surfaceDestructive",
@@ -48,6 +49,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
+export const AccentDarkHover: Story = { args: { variant: "accentDarkHover" } };
 export const Secondary: Story = { args: { variant: "secondary" } };
 export const Outline: Story = { args: { variant: "outline" } };
 export const Ghost: Story = { args: { variant: "ghost" } };
@@ -65,6 +67,9 @@ export const AllVariants: Story = {
     <div className="flex flex-wrap items-center gap-3">
       <Button {...args} variant="default">
         Default
+      </Button>
+      <Button {...args} variant="accentDarkHover">
+        Darker accent hover
       </Button>
       <Button {...args} variant="secondary">
         Secondary
