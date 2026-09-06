@@ -12,6 +12,59 @@ import type {
 
 type Execute = (command: string, timeoutMs: number) => Promise<string>;
 
+/** Removes only the captured container after caller-owned deletion admission. */
+export async function deleteDockerRetainedContainer(
+  execute: Execute,
+  containerId: string,
+  agentId: string,
+): Promise<void> {
+  if (
+    !/^[a-f0-9]{64}$/.test(containerId) ||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(agentId)
+  ) {
+    throw new ElizaError("Retained deletion requires immutable container and agent identities", {
+      code: "SANDBOX_RETAINED_DELETE_IDENTITY_INVALID",
+    });
+  }
+  const target = shellQuote(containerId);
+  const absenceMessages = [
+    `Error: No such container: ${containerId}`,
+    `Error: No such object: ${containerId}`,
+    `Error response from daemon: No such container: ${containerId}`,
+  ];
+  const probe = [
+    `output=$(LC_ALL=C timeout -k 2s 8s docker container inspect --format '{{.Id}}|{{index .Config.Labels "ai.elizaos.agent-id"}}' ${target} 2>&1)`,
+    "rc=$?",
+    "output=$(printf '%s' \"$output\" | sed '/^$/d')",
+    `if [ "$rc" -eq 0 ]; then printf 'present|%s\\n' "$output"; elif [ "$rc" -eq 1 ] && { ${absenceMessages.map((message) => `[ "$output" = ${shellQuote(message)} ]`).join(" || ")}; }; then printf 'absent\\n'; else printf 'unknown\\n'; fi`,
+  ].join("; ");
+  const read = async () => {
+    const observed = (await execute(`sh -lc ${shellQuote(probe)}`, 15_000)).trim();
+    if (observed === "absent") return "absent";
+    if (observed === `present|${containerId}|${agentId}`) return "present";
+    throw new ElizaError("Retained deletion cannot prove exact ownership or absence", {
+      code: "SANDBOX_RETAINED_DELETE_AUTHORITY_UNRESOLVED",
+      context: { containerId, agentId },
+    });
+  };
+  if ((await read()) === "absent") return;
+  await stopDockerRetainingState(execute, containerId, agentId);
+  let removalError: unknown;
+  try {
+    await execute(`docker rm -f ${target}`, 30_000);
+  } catch (error) {
+    // error-policy:J1 exact readback resolves an uncertain remote removal.
+    removalError = error;
+  }
+  if ((await read()) !== "absent") {
+    throw new ElizaError("Retained deletion did not prove exact container absence", {
+      code: "SANDBOX_RETAINED_DELETE_ABSENCE_UNPROVEN",
+      cause: removalError,
+      context: { containerId, agentId },
+    });
+  }
+}
+
 /** Executes only against an immutable ID; name reuse cannot redirect a stop. */
 export async function stopDockerRetainingState(
   execute: Execute,

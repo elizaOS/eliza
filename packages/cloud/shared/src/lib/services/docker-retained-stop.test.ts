@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   captureDockerRetainedContainer,
+  deleteDockerRetainedContainer,
   checkDockerRetainedContainerHealth,
   resumeDockerRetainedContainer,
   stopDockerRetainingState,
@@ -21,6 +22,9 @@ function dockerFixture(
     wrongOwner?: boolean;
     updateFailed?: boolean;
     disappear?: boolean;
+    lostRemoveResponse?: boolean;
+    removeFailed?: boolean;
+    absenceUnknown?: boolean;
   } = {},
 ) {
   let running = true;
@@ -35,6 +39,11 @@ function dockerFixture(
     state,
     read: () => ({ running, restart, removed, mutations }),
     execute: async (command: string) => {
+      if (command.startsWith("sh -lc ")) {
+        if (options.absenceUnknown) return "unknown";
+        if (removed) return "absent";
+        return `present|${ID}|${options.wrongOwner ? "22222222-2222-4222-8222-222222222222" : AGENT}`;
+      }
       if (command.startsWith("docker container inspect")) {
         const owner = options.wrongOwner ? "22222222-2222-4222-8222-222222222222" : AGENT;
         if (command.includes(".State.Status")) {
@@ -61,8 +70,11 @@ function dockerFixture(
         return ID;
       }
       if (command.includes("rm")) {
+        if (options.removeFailed) throw new Error("remove rejected");
         removed = true;
         state.contents = "";
+        if (options.lostRemoveResponse) throw new Error("remove response lost");
+        return ID;
       }
       throw new Error(`Unexpected provider mutation: ${command}`);
     },
@@ -70,6 +82,35 @@ function dockerFixture(
 }
 
 describe("retained Docker stop", () => {
+  test("deletion resolves lost removal acknowledgement and replays without another mutation", async () => {
+    const docker = dockerFixture({ lostRemoveResponse: true });
+    await deleteDockerRetainedContainer(docker.execute, ID, AGENT);
+    expect(docker.read().removed).toBe(true);
+    const mutations = docker.read().mutations;
+    await deleteDockerRetainedContainer(docker.execute, ID, AGENT);
+    expect(docker.read().mutations).toBe(mutations);
+  });
+
+  test("deletion refuses unknown absence or a different owner before mutating", async () => {
+    for (const options of [{ absenceUnknown: true }, { wrongOwner: true }]) {
+      const docker = dockerFixture(options);
+      await expect(deleteDockerRetainedContainer(docker.execute, ID, AGENT)).rejects.toThrow(
+        "cannot prove exact ownership or absence",
+      );
+      expect(docker.read().mutations).toBe(0);
+    }
+  });
+
+  test("deletion failure keeps the stopped container and refuses a success receipt", async () => {
+    const docker = dockerFixture({ removeFailed: true });
+    await expect(deleteDockerRetainedContainer(docker.execute, ID, AGENT)).rejects.toThrow(
+      "did not prove exact container absence",
+    );
+    expect(docker.read().removed).toBe(false);
+    expect(docker.read().running).toBe(false);
+    expect(docker.state.contents).toContain("retained conversation");
+  });
+
   test("stops compute and restart while retaining state and container", async () => {
     const docker = dockerFixture();
     const receipt = await stopDockerRetainingState(docker.execute, ID, AGENT);
