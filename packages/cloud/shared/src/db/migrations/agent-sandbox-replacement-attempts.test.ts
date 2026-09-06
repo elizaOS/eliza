@@ -21,6 +21,10 @@ const migrationUrls = [
   "0370_agent_sandbox_replacement_restore_locator.sql",
   "0371_agent_vault_key_seed_receipts_per_replacement.sql",
 ].map((migration) => new URL(`./${migration}`, import.meta.url));
+const vpnMigrationUrl = new URL(
+  "./0381_agent_replacement_attempt_vpn_authority.sql",
+  import.meta.url,
+);
 const journalUrl = new URL("./meta/_journal.json", import.meta.url);
 const databases: PGlite[] = [];
 
@@ -61,6 +65,12 @@ function normalizeDefinition(definition: string): string {
 // whitespace is normalized, so changing an operator, column, action, state,
 // predicate, or fence scope cannot pass under the same expected definition.
 const EXPECTED_CONSTRAINT_DEFINITIONS = {
+  agent_replacement_attempt_vpn_authority_owner_check: normalizeDefinition(`
+    CHECK ((locator_vpn_authority IS NULL OR locator_recorded_at IS NOT NULL AND locator_vpn_node_name IS NOT NULL
+      AND jsonb_typeof(locator_vpn_authority -> 'server'::text) = 'object'::text
+      AND ((locator_vpn_authority -> 'node'::text) = 'null'::jsonb OR jsonb_typeof(locator_vpn_authority -> 'node'::text) = 'object'::text
+        AND locator_vpn_node_id IS NOT NULL AND ((locator_vpn_authority -> 'node'::text) ->> 'id'::text) = locator_vpn_node_id)) IS TRUE)
+  `),
   agent_sandbox_replacement_attempts_lifecycle_check: normalizeDefinition(`
     CHECK ((lifecycle_revision >= 0::numeric
       AND lifecycle_revision <= '18446744073709551615'::numeric
@@ -392,6 +402,8 @@ async function database(migrationCount: number = migrationUrls.length): Promise<
   for (const migrationUrl of migrationUrls.slice(0, migrationCount)) {
     await apply(await Bun.file(migrationUrl).text(), db);
   }
+  if (migrationCount === migrationUrls.length)
+    await apply(await Bun.file(vpnMigrationUrl).text(), db);
   return db;
 }
 
@@ -517,7 +529,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0321-0328 and 0370-0371 agent sandbox replacement attempts", () => {
+describe("agent sandbox replacement attempt migrations", () => {
   test("occupies one ordered journal range and matches the merged schema surface", async () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
@@ -530,7 +542,7 @@ describe("0321-0328 and 0370-0371 agent sandbox replacement attempts", () => {
       idx: 354,
       tag: "0371_agent_vault_key_seed_receipts_per_replacement",
     });
-    const expectedTags = migrationUrls.map(migrationTag);
+    const expectedTags = [...migrationUrls, vpnMigrationUrl].map(migrationTag);
     const initialRangeTags = expectedTags.slice(0, 8);
     const rangeStart = journal.entries.findIndex(({ tag }) => tag === initialRangeTags[0]);
     expect(rangeStart).toBeGreaterThanOrEqual(0);
@@ -641,6 +653,7 @@ describe("0321-0328 and 0370-0371 agent sandbox replacement attempts", () => {
       ORDER BY tgname
     `);
     expect(triggers.rows.map(({ tgname }) => tgname)).toEqual([
+      "agent_replacement_vpn_authority_guard",
       "agent_sandbox_replacement_attempts_guard_delete",
       "agent_sandbox_replacement_attempts_guard_identity",
       "agent_sandbox_replacement_attempts_guard_insert",

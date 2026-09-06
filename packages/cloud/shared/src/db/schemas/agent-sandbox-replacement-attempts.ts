@@ -15,6 +15,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -23,6 +24,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { HeadscaleEnrollmentAuthority } from "../../lib/services/headscale-client";
 import { type AgentBackupCopyRole, agentBackupRestoreLeases } from "./agent-backup-catalog";
 import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
 import { organizations } from "./organizations";
@@ -140,8 +142,23 @@ export const agentSandboxReplacementAttempts = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     /** Immutable one-shot boundary proving an exact-restore provider call may have begun. */
     provider_started_at: timestamp("provider_started_at", { withTimezone: true }),
+    /** Captured enrollment server and write-once registration identity. */
+    locator_vpn_authority: jsonb("locator_vpn_authority").$type<HeadscaleEnrollmentAuthority>(),
   },
   (table) => ({
+    vpn_authority_owner_check: check(
+      "agent_replacement_attempt_vpn_authority_owner_check",
+      sql`(${table.locator_vpn_authority} IS NULL OR (
+        ${table.locator_recorded_at} IS NOT NULL
+        AND ${table.locator_vpn_node_name} IS NOT NULL
+        AND jsonb_typeof(${table.locator_vpn_authority}->'server') = 'object'
+        AND (${table.locator_vpn_authority}->'node' = 'null'::jsonb OR (
+          jsonb_typeof(${table.locator_vpn_authority}->'node') = 'object'
+          AND ${table.locator_vpn_node_id} IS NOT NULL
+          AND ${table.locator_vpn_authority}->'node'->>'id' = ${table.locator_vpn_node_id}
+        ))
+      )) IS TRUE`,
+    ),
     restore_lease_authority_fk: foreignKey({
       name: "agent_sandbox_replacement_attempts_restore_lease_fkey",
       columns: [

@@ -2598,6 +2598,13 @@
       "when": 1796083200014,
       "tag": "0380_agent_retiring_serving_placement",
       "breakpoints": true
+    },
+    {
+      "idx": 371,
+      "version": "7",
+      "when": 1796083200015,
+      "tag": "0381_agent_replacement_attempt_vpn_authority",
+      "breakpoints": true
     }
   ]
 }

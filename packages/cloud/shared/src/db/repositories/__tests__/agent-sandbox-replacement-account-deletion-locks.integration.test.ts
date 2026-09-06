@@ -201,6 +201,7 @@ beforeAll(async () => {
         locator_container_id text,
         locator_container_recorded_at timestamptz,
         locator_vpn_node_id text,
+        locator_vpn_authority jsonb,
         locator_vpn_recorded_at timestamptz,
         provider_started_at timestamptz,
         provider_succeeded_at timestamptz,

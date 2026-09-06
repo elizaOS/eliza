@@ -6,6 +6,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
+import { readFileSync } from "node:fs";
 import { ElizaError } from "@elizaos/core";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
@@ -914,6 +915,13 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    for (const statement of readFileSync(
+      new URL("../../migrations/0381_agent_replacement_attempt_vpn_authority.sql", import.meta.url),
+      "utf8",
+    ).split("--> statement-breakpoint")) {
+      if (statement.trim()) await dbWrite.execute(sql.raw(statement));
+    }
+
     await installReplacementAttemptGuards();
     await dbWrite.execute(
       sql.raw(`
@@ -1054,6 +1062,91 @@ afterAll(async () => {
 });
 
 describe("agent sandbox replacement attempts", () => {
+  test("retains scoped VPN identity across enrichment, replay and raw-write drift", async () => {
+    const server = {
+      apiUrl: "https://vpn.fixture.invalid",
+      enrollmentUser: "staging",
+      publicKey: "mkey:" + "1".repeat(64),
+    };
+    const node = {
+      id: "42",
+      machineKey: "mkey:" + "2".repeat(64),
+      createdAt: "2026-08-23T12:00:01.000Z",
+    };
+    await startAgentSandboxReplacementAttempt(startInput());
+    await recordAgentSandboxReplacementIntent(
+      reference(),
+      locator("intent", { vpnAuthority: { server, node: null } }),
+    );
+    await recordAgentSandboxReplacementCreated(
+      reference(),
+      locator("created", { vpnAuthority: { server, node: null } }),
+    );
+    await expect(
+      recordAgentSandboxReplacementVpnRegistered(
+        reference(),
+        locator("vpn", {
+          vpnAuthority: { server: { ...server, enrollmentUser: "production" }, node },
+        }),
+      ),
+    ).rejects.toThrow();
+    const before = await getAgentSandboxReplacementAttempt(reference());
+    expect(before?.locator_vpn_authority).toEqual({ server, node: null });
+    await recordAgentSandboxReplacementVpnRegistered(
+      reference(),
+      locator("vpn", { vpnAuthority: { server, node } }),
+    );
+    const enriched = await getAgentSandboxReplacementAttempt(reference());
+    expect(enriched?.locator_vpn_authority).toEqual({ server, node });
+    expect(
+      (
+        await recordAgentSandboxReplacementIntent(
+          reference(),
+          locator("intent", { vpnAuthority: { server, node: null } }),
+        )
+      ).replayed,
+    ).toBe(true);
+    expect(
+      (
+        await recordAgentSandboxReplacementCreated(
+          reference(),
+          locator("created", { vpnAuthority: { server, node: null } }),
+        )
+      ).replayed,
+    ).toBe(true);
+    expect(await getAgentSandboxReplacementAttempt(reference())).toEqual(enriched);
+    for (const changed of [
+      null,
+      { server: { ...server, publicKey: "mkey:" + "3".repeat(64) }, node },
+      { server, node: { ...node, machineKey: "mkey:" + "4".repeat(64) } },
+    ]) {
+      await expect(
+        dbWrite
+          .update(agentSandboxReplacementAttempts)
+          .set({ locator_vpn_authority: changed })
+          .where(eq(agentSandboxReplacementAttempts.id, ATTEMPT_ID))
+          .execute(),
+      ).rejects.toThrow();
+      expect(await getAgentSandboxReplacementAttempt(reference())).toEqual(enriched);
+    }
+    await expect(
+      recordAgentSandboxReplacementProviderSucceeded(
+        reference(),
+        locator("final", { vpnAuthority: { server, node: null } }),
+        PROVIDER_DIGEST,
+      ),
+    ).rejects.toThrow();
+    await recordAgentSandboxReplacementProviderSucceeded(
+      reference(),
+      locator("final", { vpnAuthority: { server, node } }),
+      PROVIDER_DIGEST,
+    );
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.locator_vpn_authority).toEqual({
+      server,
+      node,
+    });
+  });
+
   test("rejects malformed or partial authority and never reuses a caller attempt ID", async () => {
     await expect(
       startAgentSandboxReplacementAttempt(startInput({ operationKind: "replace" as "upgrade" })),

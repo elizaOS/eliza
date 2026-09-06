@@ -8,6 +8,11 @@
 import { Buffer } from "node:buffer";
 import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
+import {
+  type HeadscaleEnrollmentAuthority,
+  mergeHeadscaleEnrollmentAuthority,
+  parseHeadscaleEnrollmentAuthority,
+} from "../../lib/services/headscale-client";
 import { isUniqueConstraintError } from "../../lib/utils/db-errors";
 import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
@@ -82,6 +87,7 @@ export interface AgentSandboxReplacementLocatorInput {
   readonly previousVpnNodeId: string | null;
   readonly containerId: string | null;
   readonly vpnNodeId: string | null;
+  readonly vpnAuthority?: HeadscaleEnrollmentAuthority | null;
 }
 
 /** Exact authority S2 must re-present when atomically adopting provider success. */
@@ -178,6 +184,7 @@ interface ValidatedLocator {
   previousVpnNodeId: string | null;
   containerId: string | null;
   vpnNodeId: string | null;
+  vpnAuthority: HeadscaleEnrollmentAuthority | null;
 }
 
 type LocatorStage = "intent" | "created" | "vpn" | "final" | "cleanup";
@@ -501,6 +508,17 @@ function validateLocator(
             );
           })();
   const vpnNodeId = requireNullableHeadscaleNodeId(locator.vpnNodeId, "locator.vpnNodeId");
+  const vpnAuthority =
+    locator.vpnAuthority == null
+      ? null
+      : parseHeadscaleEnrollmentAuthority(locator.vpnAuthority, vpnNodeId);
+  if (vpnAuthority && (vpnNodeName === null || (stage === "final" && !vpnAuthority.node))) {
+    throw invalidInput(
+      "Scoped VPN authority is incomplete for this callback stage",
+      "locator.vpnAuthority",
+    );
+  }
+
   if (
     vpnNodeId !== null &&
     (containerId === null || vpnNodeName === null || vpnNodeId === previousVpnNodeId)
@@ -547,6 +565,7 @@ function validateLocator(
     previousVpnNodeId,
     containerId,
     vpnNodeId,
+    vpnAuthority,
   };
 }
 
@@ -615,7 +634,19 @@ function assertLocatorCoreMatches(
   attempt: AgentSandboxReplacementAttempt,
   locator: ValidatedLocator,
   reference: ValidatedReference,
+  allowVpnEnrichment = false,
 ): void {
+  const existingAuthority =
+    attempt.locator_vpn_authority == null
+      ? null
+      : parseHeadscaleEnrollmentAuthority(
+          attempt.locator_vpn_authority,
+          attempt.locator_vpn_node_id,
+        );
+  mergeHeadscaleEnrollmentAuthority(existingAuthority, locator.vpnAuthority);
+  if (locator.vpnAuthority?.node && !existingAuthority?.node && !allowVpnEnrichment) {
+    throw conflict("Scoped VPN identity was not durably registered", reference, attempt.state);
+  }
   if (
     !hasLocator(attempt) ||
     attempt.locator_sandbox_id !== locator.sandboxId ||
@@ -1139,6 +1170,7 @@ async function recordLocatorStageInTransaction(
         locator_node_host_key_fingerprint: locator.nodeHostKeyFingerprint,
         locator_secret_cleanup_version: locator.replacementSecretCleanupVersion,
         locator_allocation_counted: locator.allocationCounted,
+        locator_vpn_authority: locator.vpnAuthority,
         locator_vpn_node_name: locator.vpnNodeName,
         locator_vpn_registration_started_at: locator.vpnRegistrationStartedAt,
         locator_previous_vpn_node_id: locator.previousVpnNodeId,
@@ -1167,7 +1199,7 @@ async function recordLocatorStageInTransaction(
       current.state,
     );
   }
-  assertLocatorCoreMatches(current, locator, reference);
+  assertLocatorCoreMatches(current, locator, reference, stage === "vpn");
   if (!locator.containerId) {
     throw invalidInput("Created replacement locator is missing containerId", "locator.containerId");
   }
@@ -1218,6 +1250,7 @@ async function recordLocatorStageInTransaction(
     .update(agentSandboxReplacementAttempts)
     .set({
       locator_vpn_node_id: locator.vpnNodeId,
+      locator_vpn_authority: locator.vpnAuthority,
       locator_vpn_recorded_at: databaseNow,
       updated_at: databaseNow,
     })
