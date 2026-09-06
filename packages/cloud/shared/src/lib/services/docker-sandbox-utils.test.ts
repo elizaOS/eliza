@@ -427,7 +427,14 @@ describe("secret container environment transport (#22060)", () => {
     ).toThrow("differs from its container identity");
   });
 
-  test("refuses descendant Docker binds and nested host mounts before staging deletion", async () => {
+  test.each([
+    "descendant-bind",
+    "ancestor-bind",
+    "nested-host-mount",
+    "host-mount-source",
+    "mount-inventory-failure",
+    "unmounted",
+  ] as const)("staging directory cleanup respects mounted ownership (%s)", async (scenario) => {
     const { spawn } = await import("node:child_process");
     const fs = await import("node:fs");
     const os = await import("node:os");
@@ -495,34 +502,26 @@ describe("secret container environment transport (#22060)", () => {
       });
 
     try {
-      expect(await run({ ELIZA_TEST_DOCKER_MOUNT_SOURCE: `${volume}/eliza` })).toBe(76);
-      expect(fs.existsSync(rmMarker)).toBe(false);
-      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
-
-      expect(await run({ ELIZA_TEST_DOCKER_MOUNT_SOURCE: path.dirname(volume) })).toBe(76);
-      expect(fs.existsSync(rmMarker)).toBe(false);
-      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
-
-      expect(await run({ ELIZA_TEST_HOST_MOUNT_TARGET: `${volume}/nested-bind` })).toBe(76);
-      expect(fs.existsSync(rmMarker)).toBe(false);
-      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
-
-      expect(await run({ ELIZA_TEST_HOST_MOUNT_SOURCE: `${volume}/eliza` })).toBe(76);
-      expect(fs.existsSync(rmMarker)).toBe(false);
-      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
-
-      expect(await run({ ELIZA_TEST_FINDMNT_FAILURE: "1" })).toBe(76);
-      expect(fs.existsSync(rmMarker)).toBe(false);
-      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
-
-      expect(
-        await run({
-          ELIZA_TEST_DOCKER_CONTAINER_PRESENT: "1",
-          ELIZA_TEST_RM_DELETE_VOLUME: volume,
-        }),
-      ).toBe(0);
-      expect(fs.existsSync(rmMarker)).toBe(true);
-      expect(fs.existsSync(volume)).toBe(false);
+      const environment: NodeJS.ProcessEnv =
+        scenario === "descendant-bind"
+          ? { ELIZA_TEST_DOCKER_MOUNT_SOURCE: `${volume}/eliza` }
+          : scenario === "ancestor-bind"
+            ? { ELIZA_TEST_DOCKER_MOUNT_SOURCE: path.dirname(volume) }
+            : scenario === "nested-host-mount"
+              ? { ELIZA_TEST_HOST_MOUNT_TARGET: `${volume}/nested-bind` }
+              : scenario === "host-mount-source"
+                ? { ELIZA_TEST_HOST_MOUNT_SOURCE: `${volume}/eliza` }
+                : scenario === "mount-inventory-failure"
+                  ? { ELIZA_TEST_FINDMNT_FAILURE: "1" }
+                  : {
+                      ELIZA_TEST_DOCKER_CONTAINER_PRESENT: "1",
+                      ELIZA_TEST_RM_DELETE_VOLUME: volume,
+                    };
+      const removable = scenario === "unmounted";
+      expect(await run(environment)).toBe(removable ? 0 : 76);
+      expect(fs.existsSync(rmMarker)).toBe(removable);
+      if (removable) expect(fs.existsSync(volume)).toBe(false);
+      else expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
