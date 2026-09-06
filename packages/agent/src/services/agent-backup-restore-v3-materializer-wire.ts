@@ -11,52 +11,22 @@ import { createHash } from "node:crypto";
 import type { Readable } from "node:stream";
 import { ElizaError } from "@elizaos/core";
 import {
-  AGENT_BACKUP_CAPTURE_V2_LIMITS,
-  AgentBackupRestoreV3CandidateReceiptSchema,
-  AgentBackupRestoreV3ComponentReceiptSchema,
-  AgentBackupRestoreV3StageRecordReceiptSchema,
-  AgentBackupRestoreV3StagingSessionSchema,
+  AGENT_BACKUP_RESTORE_V3_MATERIALIZER_LIMITS,
+  type AgentBackupRestoreV3MaterializerRequest,
+  AgentBackupRestoreV3MaterializerRequestSchema,
 } from "@elizaos/shared";
-import { z } from "zod";
 import { candidateFsCanonicalJson } from "./agent-backup-restore-v3-candidate-fs-json";
 
 // Covers the canonical receipt's 8192 bounded source-object descriptors, not
 // arbitrary model context. Oversize input is rejected, never truncated.
-export const MATERIALIZER_METADATA_MAX_BYTES = 8 * 1024 * 1024;
+export const MATERIALIZER_METADATA_MAX_BYTES =
+  AGENT_BACKUP_RESTORE_V3_MATERIALIZER_LIMITS.metadataBytes;
 export const MATERIALIZER_PAYLOAD_MAX_BYTES =
-  AGENT_BACKUP_CAPTURE_V2_LIMITS.maxFramePayloadBytes;
+  AGENT_BACKUP_RESTORE_V3_MATERIALIZER_LIMITS.payloadBytes;
 
-const IdentitySchema = z.strictObject({
-  device: z.string().regex(/^(0|[1-9][0-9]*)$/),
-  inode: z.string().regex(/^[1-9][0-9]*$/),
-});
-const authority = {
-  version: z.literal(2),
-  trustedRoot: z.string().min(1).max(4096),
-  attemptRoot: z.string().min(1).max(4096),
-  trustedRootIdentity: IdentitySchema,
-  attemptRootIdentity: IdentitySchema,
-  session: AgentBackupRestoreV3StagingSessionSchema,
-  deadlineEpochMs: z.number().int().safe().positive(),
-};
-export const MaterializerRequestSchema = z.discriminatedUnion("method", [
-  z.strictObject({
-    ...authority,
-    method: z.literal("stageRecord"),
-    receipt: AgentBackupRestoreV3StageRecordReceiptSchema,
-  }),
-  z.strictObject({
-    ...authority,
-    method: z.literal("finishComponent"),
-    receipt: AgentBackupRestoreV3ComponentReceiptSchema,
-  }),
-  z.strictObject({
-    ...authority,
-    method: z.literal("assembleCandidate"),
-    receipt: AgentBackupRestoreV3CandidateReceiptSchema,
-  }),
-]);
-export type MaterializerRequest = z.infer<typeof MaterializerRequestSchema>;
+export const MaterializerRequestSchema =
+  AgentBackupRestoreV3MaterializerRequestSchema;
+export type MaterializerRequest = AgentBackupRestoreV3MaterializerRequest;
 
 export function materializerWireError(code: string): ElizaError {
   return new ElizaError("Quarantined Agent materialization did not complete", {

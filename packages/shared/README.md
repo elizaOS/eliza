@@ -60,6 +60,11 @@ Synthetic environment leases and subprocess control envelopes share the exact
 namespace checked by `isSyntheticEnvironmentNamespace`: 1-512 non-control
 characters with no leading/trailing whitespace normalization.
 
+The private restore-v3 materializer metadata schema and frame limits are shared
+by Cloud and Agent. They describe one version-2 stdin operation and its canonical
+receipt, not public authentication or a boot grant. Filesystem identities and
+session capabilities still require a trusted, exclusively owned transport.
+
 ## Building
 
 ```bash

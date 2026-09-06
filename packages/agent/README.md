@@ -33,6 +33,13 @@ frame: EOF or additional bytes cancel the operation. No inherited fd 3 is needed
 Only the digest of the completed canonical receipt is returned. Cancellation
 closes stdin and waits for worker settlement, including nested database
 validation, before the adapter returns.
+Cloud and Agent consume the same runtime-neutral materializer metadata schema
+and byte limits from `@elizaos/shared`; the Agent-local schema export remains a
+compatibility alias. Cloud's exact quarantine materializer service validates
+the session against PRIMARY, sends this frame through the dedicated SSH stdin
+path, and invokes only the fixed compiled worker in an already-running exact
+quarantine. The durable candidate ledger still needs to share that authority
+transaction; this transport receipt alone does not commit or activate anything.
 Credentials and process preload options are not inherited. This is a trusted
 local-process transport, not an authenticated remote Docker endpoint; its
 caller must exclusively own both the transport and the quarantined roots.

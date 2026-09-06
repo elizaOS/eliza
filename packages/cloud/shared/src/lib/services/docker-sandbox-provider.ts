@@ -332,12 +332,26 @@ const EXACT_RESTORE_QUARANTINE_COMMAND = [
 
 /** Inspect and start only the retained quarantine host; never create or boot a workload. */
 export function buildExactRestoreQuarantineStartCommand(
+  input: Parameters<typeof buildExactRestoreQuarantineCommand>[0],
+): Readonly<{ command: string; receiptDigest: string }> {
+  return buildExactRestoreQuarantineCommand(input, "start");
+}
+
+/** Execute only the private worker in an already-running exact quarantine; never start it. */
+export function buildExactRestoreQuarantineMaterializerCommand(
+  input: Parameters<typeof buildExactRestoreQuarantineCommand>[0],
+): string {
+  return buildExactRestoreQuarantineCommand(input, "materialize").command;
+}
+
+function buildExactRestoreQuarantineCommand(
   input: Readonly<{
     agentId: string;
     replacementAttemptId: string;
     containerId: string;
     exactRestore: SandboxExactRestoreCreateConfig;
   }>,
+  effect: "start" | "materialize",
 ): Readonly<{ command: string; receiptDigest: string }> {
   validateAgentId(input.agentId);
   assertSandboxReplacementAttemptId(input.replacementAttemptId);
@@ -399,12 +413,18 @@ try {
     exact.target.nodeIncarnation,
     [
       `test "$(${inspect})" = ${shellQuote(expected)}`,
-      `quarantine_state=$(docker inspect --format '{{.State.Status}}' ${shellQuote(containerId)})`,
-      `case "$quarantine_state" in created|exited) docker start ${shellQuote(containerId)} >/dev/null ;; running) : ;; *) exit 78 ;; esac`,
+      ...(effect === "start"
+        ? [
+            `quarantine_state=$(docker inspect --format '{{.State.Status}}' ${shellQuote(containerId)})`,
+            `case "$quarantine_state" in created|exited) docker start ${shellQuote(containerId)} >/dev/null ;; running) : ;; *) exit 78 ;; esac`,
+          ]
+        : []),
       `test "$(${inspect})" = ${shellQuote(expected)}`,
       `test "$(docker inspect --format '{{.State.Running}}' ${shellQuote(containerId)})" = true`,
       `docker exec ${shellQuote(containerId)} /usr/bin/env -i /usr/local/bin/node --input-type=module -e ${shellQuote(probe)}`,
-      `printf '%s' ${shellQuote(receiptDigest)}`,
+      effect === "start"
+        ? `printf '%s' ${shellQuote(receiptDigest)}`
+        : `docker exec -i ${shellQuote(containerId)} /usr/bin/env -i /usr/local/bin/node /app/packages/agent/dist/services/agent-backup-restore-v3-materializer-worker.js`,
     ].join("; "),
   );
   return Object.freeze({ command, receiptDigest });

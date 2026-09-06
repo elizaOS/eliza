@@ -651,6 +651,22 @@ function canonicalJson(value: unknown): string {
     .join(",")}}`;
 }
 
+export function canonicalizeAgentBackupRestoreV3StageRecordReceipt(
+  receipt: unknown,
+): string {
+  return canonicalJson(
+    AgentBackupRestoreV3StageRecordReceiptSchema.parse(receipt),
+  );
+}
+
+export function canonicalizeAgentBackupRestoreV3ComponentReceipt(
+  receipt: unknown,
+): string {
+  return canonicalJson(
+    AgentBackupRestoreV3ComponentReceiptSchema.parse(receipt),
+  );
+}
+
 function freezeDeep<T>(value: T): AgentBackupRestoreV3DeepReadonly<T> {
   if (value && typeof value === "object") {
     for (const child of Object.values(value)) freezeDeep(child);

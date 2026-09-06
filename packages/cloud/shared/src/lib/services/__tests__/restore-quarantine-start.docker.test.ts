@@ -1,19 +1,27 @@
 /**
- * Opt-in real Docker proof of the generated exact-quarantine start command.
+ * Opt-in real Docker proof of exact-quarantine start and materializer commands.
  * The Node image and compiled Agent host must already exist locally. Only the
  * Linux boot-id path and daemon socket are translated for the local host;
- * Docker inspection, start, live PID 1 probe and receipt execution are real.
+ * Docker inspection, start, PID 1 probe, record materialization and replay are real.
  * This is not SSH, a production image, PRIMARY concurrency or a runtime boot.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { execFileSync, spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import { accessSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildExactRestoreQuarantineStartCommand } from "../docker-sandbox-provider";
+import {
+  AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
+  type AgentBackupRestoreV3MaterializerRequest,
+  canonicalizeAgentBackupRestoreV3MaterializerReceipt,
+} from "@elizaos/shared";
+import {
+  buildExactRestoreQuarantineMaterializerCommand,
+  buildExactRestoreQuarantineStartCommand,
+} from "../docker-sandbox-provider";
 
 const enabled = process.env.AGENT_RESTORE_V3_DOCKER_TESTS === "1";
 const repo = fileURLToPath(new URL("../../../../../../..", import.meta.url));
@@ -73,6 +81,8 @@ function fixture(altered = false) {
     "no",
     "--no-healthcheck",
     "--read-only",
+    "--tmpfs",
+    "/restore:rw,nosuid,nodev,mode=0700,size=64m",
     "--mount",
     `type=bind,source=${repo},target=/app,readonly`,
     ...Object.entries(labels).flatMap(([key, value]) => ["--label", `${key}=${value}`]),
@@ -84,7 +94,7 @@ function fixture(altered = false) {
     host,
     ...(altered ? ["start"] : []),
   ]);
-  const generated = buildExactRestoreQuarantineStartCommand({
+  const parameters = {
     agentId,
     replacementAttemptId,
     containerId: id,
@@ -93,10 +103,11 @@ function fixture(altered = false) {
       imageDigest,
       imageReference,
       imagePlatformDigest: child,
-      quarantine: true,
+      quarantine: true as const,
       target: { nodeId: "local-test", nodeRecordId, nodeIncarnation, nodeHistoryId, platform },
     },
-  });
+  };
+  const generated = buildExactRestoreQuarantineStartCommand(parameters);
   const root = mkdtempSync(path.join(os.tmpdir(), "restore-quarantine-command-"));
   roots.add(root);
   const boot = path.join(root, "boot-id");
@@ -104,13 +115,59 @@ function fixture(altered = false) {
   const endpoint = docker("context", "inspect", "--format", "{{.Endpoints.docker.Host}}");
   if (!/^unix:\/\/[A-Za-z0-9/_.-]+$/.test(endpoint))
     throw new Error("Native proof requires a local Unix Docker socket");
-  const command = generated.command
-    .replace("/proc/sys/kernel/random/boot_id", boot)
-    .replaceAll("unix:///var/run/docker.sock", endpoint)
-    .replaceAll("chmod 700 --", "chmod 700")
-    .replaceAll("chmod 600 --", "chmod 600");
-  const run = () => spawnSync("/bin/sh", ["-c", command], { encoding: "utf8", timeout: 20_000 });
-  return { id, run, receiptDigest: generated.receiptDigest };
+  const translate = (command: string) =>
+    command
+      .replace("/proc/sys/kernel/random/boot_id", boot)
+      .replaceAll("unix:///var/run/docker.sock", endpoint)
+      .replaceAll("chmod 700 --", "chmod 700")
+      .replaceAll("chmod 600 --", "chmod 600");
+  const run = () =>
+    spawnSync("/bin/sh", ["-c", translate(generated.command)], {
+      encoding: "utf8",
+      timeout: 20_000,
+    });
+  const materializerCommand = translate(buildExactRestoreQuarantineMaterializerCommand(parameters));
+  return { id, run, receiptDigest: generated.receiptDigest, restoreAttemptId, materializerCommand };
+}
+
+async function exchange(
+  command: string,
+  request: AgentBackupRestoreV3MaterializerRequest,
+  payload = Buffer.alloc(0),
+) {
+  const metadata = Buffer.from(JSON.stringify(request));
+  const prefix = Buffer.alloc(4);
+  prefix.writeUInt32BE(metadata.length);
+  const child = spawn("/bin/sh", ["-c", command], { stdio: ["pipe", "pipe", "pipe"] });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (bytes: Buffer) => {
+    stdout += bytes.toString();
+    bytes.fill(0);
+  });
+  child.stderr.on("data", (bytes: Buffer) => {
+    stderr += bytes.toString();
+    bytes.fill(0);
+  });
+  const result = new Promise<{ status: number | null; stdout: string; stderr: string }>(
+    (resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (status) => resolve({ status, stdout, stderr }));
+    },
+  );
+  const timeout = setTimeout(() => child.stdin.destroy(), 20_000);
+  child.stdin.on("error", () => child.stdin.destroy());
+  try {
+    child.stdin.write(prefix);
+    child.stdin.write(metadata);
+    child.stdin.write(payload);
+    return await result;
+  } finally {
+    clearTimeout(timeout);
+    child.stdin.destroy();
+    prefix.fill(0);
+    metadata.fill(0);
+  }
 }
 afterEach(() => {
   for (const id of containers) docker("rm", "--force", id);
@@ -121,6 +178,102 @@ afterEach(() => {
 
 // Dedicated local-Docker lane; ordinary unit runs must not create resources.
 describe.skipIf(!enabled)("exact quarantine start command over real Docker", () => {
+  test("materializes and replays a real record only in the retained running quarantine", async () => {
+    const f = fixture();
+    const stopped = spawnSync("/bin/sh", ["-c", f.materializerCommand], {
+      encoding: "utf8",
+      timeout: 20_000,
+    });
+    expect(stopped.status).not.toBe(0);
+    expect(stopped.stdout).toBe("");
+    expect(docker("inspect", "--format", "{{.State.Status}}", f.id)).toBe("created");
+    expect(f.run().status).toBe(0);
+    const remote = (source: string) =>
+      docker(
+        "exec",
+        f.id,
+        "/usr/bin/env",
+        "-i",
+        "/usr/local/bin/node",
+        "--input-type=module",
+        "-e",
+        source,
+      );
+    const identities = JSON.parse(
+      remote(`import fs from "node:fs/promises";
+      await fs.mkdir("/restore/attempt", {mode:0o700});
+      const id=async p=>{const s=await fs.stat(p,{bigint:true});return {device:String(s.dev),inode:String(s.ino)}};
+      process.stdout.write(JSON.stringify({trustedRootIdentity:await id("/restore"),attemptRootIdentity:await id("/restore/attempt")}));`),
+    );
+    const payload = Buffer.from('{"name":"Exact quarantine QA","bio":["amber"],"plugins":[]}');
+    const hash = createHash("sha256").update(payload).digest("hex");
+    const request: AgentBackupRestoreV3MaterializerRequest = {
+      version: 2,
+      trustedRoot: "/restore",
+      attemptRoot: "/restore/attempt",
+      ...identities,
+      session: {
+        restoreAttemptId: f.restoreAttemptId,
+        operationId: randomUUID(),
+        expectedManifestSha256: "a".repeat(64),
+        stagingHandle: randomUUID(),
+        cleanupHandle: randomUUID(),
+        executionToken: randomUUID(),
+        cleanupRegistered: true,
+        isolatedCandidate: true,
+      },
+      deadlineEpochMs: Date.now() + 60_000,
+      method: "stageRecord",
+      receipt: {
+        componentIndex: 0,
+        componentName: "character",
+        dataIndex: 0,
+        offsetBytes: 0,
+        entry: null,
+        payloadBytes: payload.length,
+        payloadSha256: hash,
+      },
+    };
+    const expected = (value: AgentBackupRestoreV3MaterializerRequest) => ({
+      status: 0,
+      stdout: createHash("sha256")
+        .update(canonicalizeAgentBackupRestoreV3MaterializerReceipt(value))
+        .digest("hex"),
+      stderr: "",
+    });
+    expect(await exchange(f.materializerCommand, request, payload)).toEqual(expected(request));
+    expect(await exchange(f.materializerCommand, request, payload)).toEqual(expected(request));
+    const finish: AgentBackupRestoreV3MaterializerRequest = {
+      ...request,
+      method: "finishComponent",
+      receipt: {
+        componentIndex: 0,
+        componentName: "character",
+        descriptor: AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS[0],
+        dataFrameCount: 1,
+        payloadBytes: payload.length,
+        payloadSha256: hash,
+        recordStreamContentHmacSha256: "b".repeat(64),
+      },
+    };
+    expect(await exchange(f.materializerCommand, finish)).toEqual(expected(finish));
+    const substitutedRoot = await exchange(f.materializerCommand, {
+      ...finish,
+      attemptRootIdentity: {
+        ...finish.attemptRootIdentity,
+        inode: String(BigInt(finish.attemptRootIdentity.inode) + 1n),
+      },
+    });
+    expect(substitutedRoot.status).not.toBe(0);
+    expect(substitutedRoot.stdout).toBe("");
+    expect(substitutedRoot.stderr).toBe("");
+    expect(
+      remote(
+        'import fs from "node:fs/promises";process.stdout.write(await fs.readFile("/restore/attempt/components/character/character.json","utf8"));',
+      ),
+    ).toBe(payload.toString());
+    expect(docker("logs", f.id)).toBe("");
+  }, 90_000);
   test("starts, probes and replays the same running host without replacing its process", () => {
     const f = fixture();
     const first = f.run();

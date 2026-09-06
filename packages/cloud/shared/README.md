@@ -97,6 +97,24 @@ temporary files are removed after each test; no image is pulled implicitly.
 
 ## Catalogue-backed restore streaming
 
+`executeAgentBackupRestoreQuarantineMaterializer` executes one private framed
+Agent request under the same PRIMARY quarantine guard as start. It verifies the
+request's restore attempt, source operation, manifest and raw payload, retains
+the shorter request/caller deadline, and sends owned, zeroized frame bytes through
+a dedicated SSH session. The generated command requires the exact quarantine to
+be running; it never starts a stopped container. Only the worker's exact canonical
+receipt digest counts as success. Root device/inode authorities are supplied by
+the trusted coordinator and checked by the Agent, not discovered or provisioned
+by this service.
+
+This receipt is not a candidate-ledger commit. The service owns a PRIMARY
+transaction and must not be called from a candidate-materialization callback
+already holding those locks. The durable stream/ledger integration still needs
+one shared transaction boundary and crash-recoverable session/root authority.
+PGlite covers the real service with SSH stubbed; the native Docker command test
+materializes/replays a real character and rejects a substituted root inode. It
+does not establish remote SSH or a booted restored Agent.
+
 `streamAgentBackupRestoreV3FromCatalogue` loads the selected manifest-v3 copy
 and its private object locators from PRIMARY, then invokes the existing exact
 GET and authenticated five-component stream. It requires explicit enablement,

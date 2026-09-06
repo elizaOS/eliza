@@ -16,6 +16,7 @@ import {
   test,
 } from "bun:test";
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   AGENT_BACKUP_MANIFEST_FORMAT,
@@ -25,7 +26,10 @@ import {
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1,
   type AgentBackupManifestV3Draft,
+  type AgentBackupRestoreV3MaterializerRequest,
+  AgentBackupRestoreV3MaterializerRequestSchema,
   canonicalizeAgentBackupManifestV3,
+  canonicalizeAgentBackupRestoreV3MaterializerReceipt,
   createAgentBackupManifestV3,
 } from "@elizaos/shared";
 
@@ -36,6 +40,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
+import { executeAgentBackupRestoreQuarantineMaterializer } from "../../../lib/services/agent-backup-restore-quarantine-materializer";
 import { prepareAgentBackupRestoreQuarantine } from "../../../lib/services/agent-backup-restore-quarantine-preparation";
 import { startAgentBackupRestoreQuarantine } from "../../../lib/services/agent-backup-restore-quarantine-start";
 import { buildAgentBackupRestoreExactProviderReceiptDigestV1 } from "../../../lib/services/agent-backup-restore-quarantined-create-runtime";
@@ -669,6 +674,40 @@ async function preparationFixture() {
   };
 }
 
+async function materializerFrameFixture() {
+  const { operation } = await readRows();
+  const payload = Buffer.from("private restored record");
+  const request: AgentBackupRestoreV3MaterializerRequest = {
+    version: 2,
+    trustedRoot: "/restore",
+    attemptRoot: "/restore/attempt",
+    trustedRootIdentity: { device: "1", inode: "2" },
+    attemptRootIdentity: { device: "1", inode: "3" },
+    session: {
+      restoreAttemptId: operation.restore_attempt_id,
+      operationId: operation.expected_operation_id,
+      expectedManifestSha256: operation.expected_manifest_sha256,
+      stagingHandle: crypto.randomUUID(),
+      cleanupHandle: crypto.randomUUID(),
+      executionToken: crypto.randomUUID(),
+      cleanupRegistered: true,
+      isolatedCandidate: true,
+    },
+    deadlineEpochMs: Date.now() + 30_000,
+    method: "stageRecord",
+    receipt: {
+      componentIndex: 0,
+      componentName: "character",
+      dataIndex: 0,
+      offsetBytes: 0,
+      entry: null,
+      payloadBytes: payload.length,
+      payloadSha256: createHash("sha256").update(payload).digest("hex"),
+    },
+  };
+  return { request, payload };
+}
+
 beforeAll(async () => {
   try {
     manifestFixture = await buildManifestFixture();
@@ -952,6 +991,114 @@ describe("restore activation quarantine", () => {
       }
       await expect(
         startAgentBackupRestoreQuarantine({ ...input, enabled: true }),
+      ).rejects.toThrow();
+      await expect(
+        executeAgentBackupRestoreQuarantineMaterializer({
+          ...input,
+          enabled: true,
+          ...(await materializerFrameFixture()),
+        }),
+      ).rejects.toThrow();
+      expect(create).not.toHaveBeenCalled();
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "frames one exact materializer request under PRIMARY and zeroes owned transport copies after lost replies and replay",
+    async () => {
+      const input = {
+        ...(await settledQuarantineStartFixture()),
+        ...(await materializerFrameFixture()),
+        enabled: true,
+      };
+      const copies: Buffer[] = [];
+      const commands: string[] = [];
+      let lose = true;
+      const disconnect = mock(async () => {});
+      spyOn(DockerSSHClient, "createDedicated").mockImplementation(
+        () =>
+          ({
+            execStdinAbortable: async (
+              command: string,
+              frame: Buffer,
+              signal: AbortSignal,
+              _timeout: number,
+              digest: string,
+            ) => {
+              commands.push(command);
+              copies.push(frame);
+              const length = frame.readUInt32BE();
+              const decoded = AgentBackupRestoreV3MaterializerRequestSchema.parse(
+                JSON.parse(frame.subarray(4, 4 + length).toString()),
+              );
+              expect(decoded.session).toEqual(input.request.session);
+              expect(decoded.deadlineEpochMs).toBeLessThanOrEqual(input.control.deadlineEpochMs);
+              expect(frame.subarray(4 + length)).toEqual(input.payload);
+              expect(digest).toBe(
+                createHash("sha256")
+                  .update(canonicalizeAgentBackupRestoreV3MaterializerReceipt(decoded))
+                  .digest("hex"),
+              );
+              expect(signal.aborted).toBe(false);
+              expect(command).not.toContain(input.request.session.executionToken);
+              expect(command).not.toContain(input.payload.toString());
+              if (lose) {
+                lose = false;
+                throw new Error("lost materializer receipt");
+              }
+            },
+            disconnect,
+          }) as unknown as DockerSSHClient,
+      );
+      await expect(
+        executeAgentBackupRestoreQuarantineMaterializer({ ...input, enabled: false }),
+      ).resolves.toEqual({ status: "disabled" });
+      expect(commands).toHaveLength(0);
+      await expect(executeAgentBackupRestoreQuarantineMaterializer(input)).rejects.toThrow(
+        "lost materializer receipt",
+      );
+      expect(copies[0].every((byte) => byte === 0)).toBe(true);
+      await expect(executeAgentBackupRestoreQuarantineMaterializer(input)).resolves.toMatchObject({
+        status: "materialized",
+      });
+      expect(commands[0]).toBe(commands[1]);
+      expect(copies[1].every((byte) => byte === 0)).toBe(true);
+      expect(input.payload.toString()).toBe("private restored record");
+      expect(disconnect).toHaveBeenCalledTimes(2);
+      const rows = await readRows();
+      expect(rows.operation.phase).toBe("container_created");
+      expect(rows.node.allocated_count).toBe(1);
+      expect(rows.sandbox.activation_phase).toBe("restore_pending");
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "rejects a different materializer session or altered payload before SSH",
+    async () => {
+      const input = {
+        ...(await settledQuarantineStartFixture()),
+        ...(await materializerFrameFixture()),
+        enabled: true,
+      };
+      const create = spyOn(DockerSSHClient, "createDedicated").mockImplementation(() => {
+        throw new Error("unexpected SSH");
+      });
+      await expect(
+        executeAgentBackupRestoreQuarantineMaterializer({
+          ...input,
+          request: {
+            ...input.request,
+            session: { ...input.request.session, restoreAttemptId: crypto.randomUUID() },
+          },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        executeAgentBackupRestoreQuarantineMaterializer({
+          ...input,
+          payload: Buffer.alloc(input.payload.length),
+        }),
       ).rejects.toThrow();
       expect(create).not.toHaveBeenCalled();
     },
