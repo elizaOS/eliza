@@ -1242,7 +1242,7 @@ export function CalendarSection({
             <Button
               ref={newEvent.ref}
               size="dense"
-              className="shrink-0"
+              className="shrink-0 hover:bg-accent-muted"
               onClick={() => {
                 setCreateDefaultDate(new Date(calendar.windowStart));
                 setCreateOpen(true);

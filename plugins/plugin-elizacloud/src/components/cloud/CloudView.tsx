@@ -434,7 +434,11 @@ export function CloudView(props: CloudViewProps = {}): ReactNode {
             {navigationError}
           </p>
         ) : null}
-        <Button type="button" onClick={() => navigateInternal("/settings")}>
+        <Button
+          type="button"
+          className="hover:bg-accent-muted"
+          onClick={() => navigateInternal("/settings")}
+        >
           Connect in Settings
         </Button>
       </div>
