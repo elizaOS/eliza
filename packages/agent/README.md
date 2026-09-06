@@ -146,12 +146,17 @@ Select the experiment explicitly:
 - `ELIZA_CEREBRAS_CACHE_MODE=existing` retains the production prefix strategy.
 - `ELIZA_CEREBRAS_CACHE_MODE=conversation` applies an opaque key scoped to the
   agent, room, model, stage and stable prefix after core cache-plan assembly.
+  It fails explicitly when any text-model call lacks that prefix; current
+  post-delivery `TEXT_SMALL` calls can make this mode unsupported for a full run.
 
 The two keyed modes require
 `ELIZA_CEREBRAS_CACHE_KEY_CAPABILITY_CONFIRMED=true` **after independently
 confirming account support**. This flag records the operator's attestation; it
 is not an account-capability probe. These overrides belong only to the
 benchmark and do not change production defaults or another provider's policy.
+Successful runs verify the effective SDK wire: automatic mode must contain no
+optional cache key, and conversation mode must retain the experiment key format.
+This check detects overwritten or omitted hints, not upstream cache residency.
 
 Set `ELIZA_CEREBRAS_CHAT_PATH=direct` or `gateway`. For gateway runs, configure
 `CEREBRAS_BASE_URL` to the authorized compatible endpoint and set
@@ -226,4 +231,8 @@ drain. Use `firstVisibleTextMs` and the runtime's response-finalization spans
 for delivery timing. `backgroundQuiescenceMs` measures only an additional
 residual drain after command return. Report HTTP 429 and transport-attempt
 counts separately from completed-turn success; successful runs do not erase
-failed preflights or recovered retries.
+failed preflights or recovered retries. Failed-run reports retain attempted model
+inputs (including rejected experiment preflights), model outcomes, returned chat
+responses and wire attempts. A delivered reply cannot make a run successful if
+its post-delivery model work failed. Provider account tier and invoice cost are
+not measured by this command; comparisons must disclose those limits.

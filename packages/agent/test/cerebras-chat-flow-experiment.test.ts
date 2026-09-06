@@ -19,6 +19,7 @@ import {
   type ProviderWireEvidence,
   requireRealEmbeddingConfig,
   runChatCondition,
+  verifyCacheExperimentWire,
 } from "../scripts/cerebras-chat-flow-experiment";
 
 const experiment = {
@@ -254,6 +255,20 @@ describe("real chat cache experiment", () => {
       await generateText({ model: client.chat("test-model"), ...automatic });
       expect(requests[1]).not.toHaveProperty("prompt_cache_key");
       expect(evidence.map((item) => item.request)).toEqual(requests);
+      const conversationWire = evidence[0];
+      const automaticWire = evidence[1];
+      if (!conversationWire || !automaticWire)
+        throw new Error("Missing actual SDK wire observations");
+      expect(
+        verifyCacheExperimentWire([conversationWire], "conversation"),
+      ).toBe(1);
+      expect(verifyCacheExperimentWire([automaticWire], "automatic")).toBe(1);
+      expect(() =>
+        verifyCacheExperimentWire([conversationWire], "automatic"),
+      ).toThrow("overwritten");
+      expect(() =>
+        verifyCacheExperimentWire([automaticWire], "conversation"),
+      ).toThrow("omitted");
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
