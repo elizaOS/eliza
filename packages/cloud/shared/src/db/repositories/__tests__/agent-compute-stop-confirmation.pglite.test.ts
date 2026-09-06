@@ -80,6 +80,11 @@ beforeAll(async () => {
     .from(agentComputeStopIntents)
     .where(eq(agentComputeStopIntents.id, intentId));
   expect(legacy?.revision).toBeNull();
+  const retentionMigration = await readFile(
+    new URL("../../migrations/0363_agent_local_state_retention.sql", import.meta.url),
+    "utf8",
+  );
+  await dbWrite.execute(sql.raw(retentionMigration));
   const lifecycleMigration = await readFile(
     new URL("../../migrations/0189_agent_sandbox_lifecycle_revision_scope.sql", import.meta.url),
     "utf8",

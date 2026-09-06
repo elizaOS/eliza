@@ -274,6 +274,7 @@ export async function loadSandboxStatusesByIdsWithDatabase(
       containerName: agentSandboxes.container_name,
       status: agentSandboxes.status,
       nodeId: agentSandboxes.node_id,
+      localRetention: agentSandboxes.local_state_retention,
       replacementNodeId: agentSandboxes.replacement_cleanup_node_id,
       replacementContainerName: agentSandboxes.replacement_cleanup_container_name,
     })
@@ -283,6 +284,10 @@ export async function loadSandboxStatusesByIdsWithDatabase(
         queriedSandboxIds.length > 0 ? inArray(agentSandboxes.id, queriedSandboxIds) : sql`false`,
         inArray(agentSandboxes.container_name, queriedContainerNames),
         inArray(agentSandboxes.replacement_cleanup_container_name, queriedContainerNames),
+        inArray(
+          sql<string>`${agentSandboxes.local_state_retention}->>'containerName'`,
+          queriedContainerNames,
+        ),
       ),
     );
   const sandboxAliases = rows.flatMap((row) => {
@@ -308,6 +313,12 @@ export async function loadSandboxStatusesByIdsWithDatabase(
       },
       row.containerName,
     );
+    if (row.localRetention) {
+      appendPlacement(
+        { key: row.key, status: "local_state_retained", nodeId: row.localRetention.nodeId },
+        row.localRetention.containerName,
+      );
+    }
     if (row.replacementNodeId) {
       appendPlacement(
         {
@@ -412,8 +423,14 @@ export async function countRetainedWorkloadsOnNodeWithDatabase(
         FROM ${agentSandboxes}
         WHERE ${agentSandboxes.node_id} = ${nodeId}
           AND ${agentSandboxes.status} not in ('stopped','error')
+          AND (${agentSandboxes.local_state_retention}->>'nodeId') IS DISTINCT FROM ${agentSandboxes.node_id}
           AND (${agentSandboxes.pool_status} is null
             OR ${agentSandboxes.pool_status} <> 'unclaimed')
+      )`,
+    localRetentionCount: sql<number>`(
+        SELECT count(*)::int
+        FROM ${agentSandboxes}
+        WHERE ${agentSandboxes.local_state_retention}->>'nodeId' = ${nodeId}
       )`,
     replacementCount: sql<number>`(
         SELECT count(*)::int
@@ -429,7 +446,7 @@ export async function countRetainedWorkloadsOnNodeWithDatabase(
         code: "DOCKER_NODE_WORKLOAD_COUNT_MISSING",
       });
     }
-    return row.containerCount + row.agentCount + row.replacementCount;
+    return row.containerCount + row.agentCount + row.replacementCount + row.localRetentionCount;
   }
 
   const [row] = await database
@@ -454,5 +471,11 @@ export async function countRetainedWorkloadsOnNodeWithDatabase(
       code: "DOCKER_NODE_WORKLOAD_COUNT_MISSING",
     });
   }
-  return row.containerCount + row.agentCount + row.replacementCount + row.exactRestoreCount;
+  return (
+    row.containerCount +
+    row.agentCount +
+    row.replacementCount +
+    row.exactRestoreCount +
+    row.localRetentionCount
+  );
 }

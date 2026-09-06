@@ -1481,6 +1481,7 @@ export class AgentSandboxesRepository {
       .where(
         and(
           eq(agentSandboxes.id, id),
+          isNull(agentSandboxes.local_state_retention),
           inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
           sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
           sql`(
@@ -1509,6 +1510,10 @@ export class AgentSandboxesRepository {
         authority,
         "provider",
       );
+      if (current.local_state_retention)
+        throw new ElizaError("Retained local state requires same-container recovery", {
+          code: "AGENT_LOCAL_RETENTION_RECOVERY_REQUIRED",
+        });
       if (
         current.replacement_cleanup_sandbox_id ||
         current.replacement_cleanup_attempt_id ||
@@ -1598,6 +1603,7 @@ export class AgentSandboxesRepository {
         .where(
           and(
             eq(agentSandboxes.id, capture.id),
+            isNull(agentSandboxes.local_state_retention),
             eq(agentSandboxes.organization_id, capture.organization_id),
             eq(agentSandboxes.status, capture.status),
             inArray(agentSandboxes.status, [...RESTORE_PROVISIONING_ADMISSIBLE_STATUSES]),

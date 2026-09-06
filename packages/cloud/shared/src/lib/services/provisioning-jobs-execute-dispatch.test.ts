@@ -1553,7 +1553,12 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     try {
       const res = await run(JOB_TYPES.AGENT_SUSPEND);
       expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
-      expect(suspendSpy).toHaveBeenCalledWith(AGENT, ORG, job.id, "user_request", 7);
+      const leaseOwner = ctx.leaseSpy.mock.calls.at(-1)?.[1];
+      expect(leaseOwner).toEqual(expect.any(String));
+      expect(suspendSpy).toHaveBeenCalledWith(AGENT, ORG, job.id, "user_request", 7, {
+        executionGeneration: job.execution_generation,
+        executionOwnerId: leaseOwner,
+      });
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();
@@ -1628,7 +1633,12 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     try {
       const res = await run(JOB_TYPES.AGENT_SUSPEND);
       expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
-      expect(suspendSpy).toHaveBeenCalledWith(AGENT, ORG, job.id, "user_request", 9);
+      const leaseOwner = ctx.leaseSpy.mock.calls.at(-1)?.[1];
+      expect(leaseOwner).toEqual(expect.any(String));
+      expect(suspendSpy).toHaveBeenCalledWith(AGENT, ORG, job.id, "user_request", 9, {
+        executionGeneration: job.execution_generation,
+        executionOwnerId: leaseOwner,
+      });
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();
