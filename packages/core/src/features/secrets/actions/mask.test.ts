@@ -37,4 +37,15 @@ describe("maskSecretValue", () => {
 		expect(masked.startsWith("xxxx")).toBe(true);
 		expect(masked.endsWith("xxxx")).toBe(true);
 	});
+
+	it("preserves surrogate pair integrity when emojis sit at 4-character boundaries", () => {
+		const secretWithEmojiStart = "abc🚀secret_tail_1234";
+		const maskedStart = maskSecretValue(secretWithEmojiStart);
+		expect(maskedStart.isWellFormed()).toBe(true);
+		expect(maskedStart.startsWith("abc")).toBe(true);
+
+		const secretWithEmojiEnd = "prefix_secret_123🚀";
+		const maskedEnd = maskSecretValue(secretWithEmojiEnd);
+		expect(maskedEnd.isWellFormed()).toBe(true);
+	});
 });
