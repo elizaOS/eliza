@@ -757,7 +757,7 @@ async function main(): Promise<void> {
       turnRoomId: string = roomId,
     ) => {
       const proof = `SPEED-${warmup ? "W" : "S"}-${index}`;
-      const prompt = `Reply with exactly ${proof} and no other text.`;
+      const prompt = `I am labelling a parcel. Its reference is ${proof}. What exact reference should I write on the label?`;
       const message = createMessageMemory({
         id: randomUUID() as UUID,
         entityId,
@@ -1199,6 +1199,31 @@ async function main(): Promise<void> {
     if (reportPath)
       await writeFile(reportPath, json, { encoding: "utf8", mode: 0o600 });
     process.stdout.write(json);
+  } catch (error) {
+    // error-policy:J1 Preserve the failed run as evidence before CLI failure translation.
+    const reportPath = process.env.ELIZA_CEREBRAS_CHAT_REPORT?.trim();
+    if (reportPath) {
+      await writeFile(
+        reportPath,
+        `${JSON.stringify(
+          jsonEvidence({
+            status: "failed",
+            sourceRevision,
+            model,
+            pathKind,
+            condition,
+            cacheMode,
+            embedding: { ...embedding, nativeProvenance },
+            wireEvidence,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+          null,
+          2,
+        )}\n`,
+        { encoding: "utf8", mode: 0o600 },
+      );
+    }
+    throw error;
   } finally {
     globalThis.fetch = originalFetch;
     await cleanup();
