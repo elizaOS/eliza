@@ -1,0 +1,66 @@
+name: Pi OpenRouter Certification
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact reviewed certification commit
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: pi-openrouter-certification-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  certify-openrouter:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Bind certification to the reviewed commit
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/codex/review-pi-openrouter-certification-20260905
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_SHA" = "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+      - uses: ./.github/actions/setup-bun-workspace
+      - name: Install pinned real Pi adapter in an isolated directory
+        run: |
+          set -euo pipefail
+          toolchain="$RUNNER_TEMP/pi-cert-toolchain"
+          mkdir -p "$toolchain"
+          printf '%s\n' '{"private":true,"type":"module","dependencies":{"@earendil-works/pi-coding-agent":"0.85.1","pi-acp":"0.0.33"}}' > "$toolchain/package.json"
+          bun install --cwd "$toolchain"
+          "$toolchain/node_modules/.bin/pi" --version
+      - name: Certify one live OpenRouter prompt through native ACP
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          PI_CERT_ADAPTER: ${{ runner.temp }}/pi-cert-toolchain/node_modules/.bin/pi-acp
+          PI_CERT_ARTIFACT_ROOT: ${{ runner.temp }}/pi-cert-artifacts
+          TMPDIR: ${{ runner.temp }}/pi-cert-state
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR"
+          bun packages/scripts/certify-pi-openrouter.ts
+      - name: Remove isolated credential state
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/pi-cert-state"
+      - name: Retain model result and pinned dependency inventory
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pi-openrouter-certification-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/pi-cert-artifacts
+            ${{ runner.temp }}/pi-cert-toolchain/package.json
+            ${{ runner.temp }}/pi-cert-toolchain/bun.lock
+          if-no-files-found: error
+          retention-days: 14
