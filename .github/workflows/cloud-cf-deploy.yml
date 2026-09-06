@@ -182,10 +182,12 @@ jobs:
           [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || \
             fail "Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs"
 
-          case "$TARGET_ENVIRONMENT" in
-            staging|production) ;;
-            *) fail "target_environment must be exactly staging or production" ;;
-          esac
+          # This job resolves the staging authority only: it is gated on
+          # `inputs.environment == 'staging'` and holds the protected `staging`
+          # Environment. Fail closed rather than trusting that wiring, so no
+          # later edit can reach an identity path that skips the receipt.
+          [ "$TARGET_ENVIRONMENT" = "staging" ] || \
+            fail "This job resolves the protected staging Telegram authority only"
 
           canonical_source="packages/homepage/src/lib/contact.ts"
           canonical_bot_id="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_ID = "([^"]+)";$/\1/p' "$canonical_source")"
@@ -198,37 +200,32 @@ jobs:
           [[ "$canonical_bot_username_key" == *bot ]] || \
             fail "The homepage canonical Telegram username must use the managed bot suffix"
 
-          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
-            resolved_bot_id="$canonical_bot_id"
-            resolved_bot_username="$canonical_bot_username"
-          else
-            if [ -z "$ENVIRONMENT_TELEGRAM_BOT_ID" ] || \
-              [ -z "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" ]; then
-              fail "The protected staging Telegram identity must configure the complete VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME pair"
-            fi
-            valid_bot_id "$ENVIRONMENT_TELEGRAM_BOT_ID" || \
-              fail "The protected staging VITE_TELEGRAM_BOT_ID must match the Telegram bot ID contract"
-            [[ "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
-              fail "The protected staging VITE_TELEGRAM_BOT_USERNAME must match the Telegram username contract"
-            staging_bot_username_key="$(printf '%s' "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]')"
-            [[ "$staging_bot_username_key" == *bot ]] || \
-              fail "The protected staging VITE_TELEGRAM_BOT_USERNAME must use the managed bot suffix"
-            if [ "$ENVIRONMENT_TELEGRAM_BOT_ID" = "$canonical_bot_id" ] || \
-              [ "$staging_bot_username_key" = "$canonical_bot_username_key" ]; then
-              fail "Staging Telegram configuration must use an identity fully distinct from production"
-            fi
-            [[ "$TELEGRAM_IDENTITY_AUTHORITY_SHA256" =~ ^[0-9a-f]{64}$ ]] || \
-              fail "The staging GitHub Environment must provide a valid TELEGRAM_IDENTITY_AUTHORITY_SHA256 receipt"
-            computed_identity_sha256="$(
-              printf 'elizaOS/eliza\0staging\0telegram-public-identity\0v1\0%s\0%s\n' \
-                "$ENVIRONMENT_TELEGRAM_BOT_ID" "$staging_bot_username_key" \
-                | sha256sum | cut -d ' ' -f 1
-            )"
-            [ "$computed_identity_sha256" = "$TELEGRAM_IDENTITY_AUTHORITY_SHA256" ] || \
-              fail "The staging Telegram identity does not match its protected Environment authority receipt"
-            resolved_bot_id="$ENVIRONMENT_TELEGRAM_BOT_ID"
-            resolved_bot_username="$ENVIRONMENT_TELEGRAM_BOT_USERNAME"
+          if [ -z "$ENVIRONMENT_TELEGRAM_BOT_ID" ] || \
+            [ -z "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" ]; then
+            fail "The protected staging Telegram identity must configure the complete VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME pair"
           fi
+          valid_bot_id "$ENVIRONMENT_TELEGRAM_BOT_ID" || \
+            fail "The protected staging VITE_TELEGRAM_BOT_ID must match the Telegram bot ID contract"
+          [[ "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
+            fail "The protected staging VITE_TELEGRAM_BOT_USERNAME must match the Telegram username contract"
+          staging_bot_username_key="$(printf '%s' "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]')"
+          [[ "$staging_bot_username_key" == *bot ]] || \
+            fail "The protected staging VITE_TELEGRAM_BOT_USERNAME must use the managed bot suffix"
+          if [ "$ENVIRONMENT_TELEGRAM_BOT_ID" = "$canonical_bot_id" ] || \
+            [ "$staging_bot_username_key" = "$canonical_bot_username_key" ]; then
+            fail "Staging Telegram configuration must use an identity fully distinct from production"
+          fi
+          [[ "$TELEGRAM_IDENTITY_AUTHORITY_SHA256" =~ ^[0-9a-f]{64}$ ]] || \
+            fail "The staging GitHub Environment must provide a valid TELEGRAM_IDENTITY_AUTHORITY_SHA256 receipt"
+          computed_identity_sha256="$(
+            printf 'elizaOS/eliza\0staging\0telegram-public-identity\0v1\0%s\0%s\n' \
+              "$ENVIRONMENT_TELEGRAM_BOT_ID" "$staging_bot_username_key" \
+              | sha256sum | cut -d ' ' -f 1
+          )"
+          [ "$computed_identity_sha256" = "$TELEGRAM_IDENTITY_AUTHORITY_SHA256" ] || \
+            fail "The staging Telegram identity does not match its protected Environment authority receipt"
+          resolved_bot_id="$ENVIRONMENT_TELEGRAM_BOT_ID"
+          resolved_bot_username="$ENVIRONMENT_TELEGRAM_BOT_USERNAME"
 
           printf 'bot_id=%s\n' "$resolved_bot_id" >> "$GITHUB_OUTPUT"
           printf 'bot_username=%s\n' "$resolved_bot_username" >> "$GITHUB_OUTPUT"

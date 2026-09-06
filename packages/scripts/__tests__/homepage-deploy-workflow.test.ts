@@ -1034,6 +1034,22 @@ describe("homepage deployment workflow", () => {
     }
   });
 
+  it("fails closed when the protected authority job is pointed at anything but staging", () => {
+    // This job holds the `staging` Environment and is gated on
+    // `inputs.environment == 'staging'`, so only staging can reach it today.
+    // The check exists so a later edit that parameterises TARGET_ENVIRONMENT
+    // cannot reach an identity path that skips the receipt entirely.
+    for (const target of ["production", "", "Staging", "staging "]) {
+      const execution = runTelegramPreflight({ targetEnvironment: target });
+      expect(execution.exitCode, target).toBe(1);
+      expect(execution.githubOutput, target).toBe("");
+      expect(execution.summary, target).toBe("");
+      expect(execution.stderr, target).toContain(
+        "This job resolves the protected staging Telegram authority only",
+      );
+    }
+  });
+
   it("derives production Telegram identity in the reusable release and ignores caller inputs", () => {
     for (const configuredStagingPair of [
       { botId: "", botUsername: "" },
