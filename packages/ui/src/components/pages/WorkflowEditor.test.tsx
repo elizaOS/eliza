@@ -151,6 +151,8 @@ describe("WorkflowEditor", () => {
         {
           id: "old-run",
           workflowId: "workflow-1",
+          workflowVersionId: "v1",
+          workflowName: "Digest",
           mode: "manual",
           status: "finished",
           finished: true,
@@ -197,6 +199,8 @@ describe("WorkflowEditor", () => {
     const running: WorkflowExecution = {
       id: "live-poll",
       workflowId: "workflow-1",
+      workflowVersionId: "v1",
+      workflowName: "Digest",
       mode: "manual",
       status: "running",
       finished: false,
