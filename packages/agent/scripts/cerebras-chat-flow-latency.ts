@@ -1168,6 +1168,16 @@ async function main(): Promise<void> {
       samples: sampleCount,
       registeredProviders: registeredProviderNames,
       wallMs: distribution(turns.map((turn) => turn.wallMs)),
+      wallMsBoundary:
+        "generateChatResponse command return including its room post-delivery drain",
+      backgroundQuiescenceBoundary:
+        "additional residual drain after generateChatResponse already drained room tasks",
+      wireAttemptStats: {
+        total: wireEvidence.length,
+        http429: wireEvidence.filter((wire) => wire.status === 429).length,
+        transportErrors: wireEvidence.filter((wire) => wire.outcome === "error")
+          .length,
+      },
       backgroundQuiescenceMs: distribution(
         turns.map((turn) => turn.backgroundQuiescenceMs),
       ),

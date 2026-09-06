@@ -203,3 +203,27 @@ back to the OpenAI-compatible synthetic embedding path. The report records
 model and fused-library paths and SHA-256 hashes separately from HTTP wire
 evidence. Every returned vector must have the configured dimension and finite,
 nonzero values. Native readiness does not prove remote gateway readiness.
+
+For a controlled provider-only comparison after collecting a successful keyed
+runtime report with at least 30 sample requests, run:
+
+```bash
+ELIZA_CEREBRAS_CACHE_KEY_CAPABILITY_CONFIRMED=true bun --conditions=eliza-source packages/agent/scripts/cerebras-cache-wire-replay.ts /path/to/runtime-report.json /path/to/replay-report.json
+```
+
+The replay preserves every original message, tool, schema and model setting;
+only the optional cache hint changes. Shared-prefix and conversation hints
+use a fresh run scope. Mode order rotates for each matched request. It records
+complete SSE responses and every HTTP attempt, paces calls three seconds apart,
+and permits at most three attempts per request. A longer-than-60-second
+`Retry-After` stops the run instead of starting an unbounded retry loop.
+Automatic prefix caches may already be warm, and routing hints cannot guarantee
+independent cache residency. Replay results therefore describe a provider
+experiment, never app/runtime/gateway acceptance.
+
+The chat command's `wallMs` includes `generateChatResponse`'s room background
+drain. Use `firstVisibleTextMs` and the runtime's response-finalization spans
+for delivery timing. `backgroundQuiescenceMs` measures only an additional
+residual drain after command return. Report HTTP 429 and transport-attempt
+counts separately from completed-turn success; successful runs do not erase
+failed preflights or recovered retries.
