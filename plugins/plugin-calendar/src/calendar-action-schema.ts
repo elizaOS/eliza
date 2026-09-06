@@ -34,12 +34,14 @@ const CALENDAR_DETAIL_STRING_KEYS = [
   "start_at",
   "start",
   "start_time",
+  "startTime",
   "starttime",
   "endAt",
   "endat",
   "end_at",
   "end",
   "end_time",
+  "endTime",
   "endtime",
   "newTitle",
   "newtitle",
@@ -130,7 +132,7 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   timeMax: "Window end (exclusive) in the same format as timeMin.",
   timeZone:
     "IANA timezone only when the user names one (e.g. America/New_York); otherwise omit it so the user's configured timezone applies.",
-  date: "Local calendar date YYYY-MM-DD of the target event for update_event/delete_event lookups when the user named a day; use start/startAt for create_event.",
+  date: "Local calendar date YYYY-MM-DD that the TARGET event is on NOW, for update_event/delete_event lookups when the user named that current day. Never the destination day of a move or reschedule: the new time belongs in start/startAt (and end/endAt). Use start/startAt, not date, for create_event.",
 };
 const CALENDAR_DETAIL_BOOLEAN_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_BOOLEAN_KEYS)[number], string>
