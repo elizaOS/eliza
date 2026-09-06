@@ -814,6 +814,12 @@ function isSingleVitestWrapperCommand(command) {
   );
 }
 
+function isSingleVitestBatchWrapperCommand(command) {
+  return /^node\s+scripts\/run-vitest-batches\.mjs$/.test(
+    stripLeadingEnvAssignments(command),
+  );
+}
+
 function stripLeadingEnvAssignments(command) {
   return command.replace(
     /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)*/,
@@ -876,7 +882,8 @@ function structuredEvidenceKind(scriptName, scripts) {
   }
   if (
     isSingleVitestRunCommand(command) ||
-    isSingleVitestWrapperCommand(command)
+    isSingleVitestWrapperCommand(command) ||
+    isSingleVitestBatchWrapperCommand(command)
   ) {
     return "vitest";
   }
