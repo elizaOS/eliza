@@ -120,9 +120,34 @@ const stringSchema: ActionParameterSchema = { type: "string" };
 // Pacific owner; the runtime applies the owner's zone to offset-less values.
 const LOCAL_WALL_TIME_FORMAT =
   "local wall-clock time formatted YYYY-MM-DDTHH:mm:ss with NO trailing Z and NO UTC offset, paired with the intended IANA timeZone (normally the user's configured timezone); never fabricate a UTC instant";
+const CALENDAR_ID_DESCRIPTION =
+  "Optional; omit unless selecting an exact calendarId from a Calendar result. New events use the built-in calendar by default. Never invent a calendar ID or derive one from an event title.";
+const EVENT_ID_DESCRIPTION =
+  "For update_event/delete_event only: the exact externalId from a Calendar result. Omit for create_event. Never invent an event ID or derive it from a title; use query and date to find an existing event when its ID is unknown.";
 const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_STRING_KEYS)[number], string>
 > = {
+  ...Object.fromEntries(
+    ["calendarId", "calendarid", "calendar_id"].map((key) => [
+      key,
+      CALENDAR_ID_DESCRIPTION,
+    ]),
+  ),
+  ...Object.fromEntries(
+    [
+      "eventId",
+      "eventid",
+      "event_id",
+      "externaleventid",
+      "external_event_id",
+      "googleeventid",
+      "google_event_id",
+    ].map((key) => [key, EVENT_ID_DESCRIPTION]),
+  ),
+  description:
+    "New description only when the user changes it. For updates, omit unchanged fields; to remove the description explicitly, use clearFields instead of an empty string.",
+  location:
+    "New location only when the user changes it. For updates, omit unchanged fields; to remove the location explicitly, use clearFields instead of an empty string.",
   startAt: `Event start as ${LOCAL_WALL_TIME_FORMAT}.`,
   start: `Event start as ${LOCAL_WALL_TIME_FORMAT}.`,
   endAt:
@@ -159,6 +184,12 @@ const recurrenceSchema: ActionParameterSchema = {
 export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
   type: "object",
   properties: {
+    clearFields: {
+      type: "array",
+      items: { type: "string", enum: ["description", "location"] },
+      description:
+        "For update_event only: fields the user explicitly requests to remove. Omit for unchanged or unknown fields. Do not include a field that also has a replacement value. Title, timing and recurrence cannot be cleared this way.",
+    },
     ...Object.fromEntries(
       CALENDAR_DETAIL_STRING_KEYS.map((key) => {
         const description = CALENDAR_DETAIL_STRING_DESCRIPTIONS[key];

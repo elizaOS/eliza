@@ -1313,30 +1313,11 @@ const POSS_TAIL_WORDS = [
   "pakiusap",
 ] as const;
 const POSS_TAIL_ALT = alt(POSS_TAIL_WORDS);
-// "check my messages" / "revisa mi correo" are whole-message navigation
-// commands, but "check" is deliberately NOT a NAV_VERB (an unanchored
-// "check … <noun>" would re-hijack "can you check my notes for the recipe").
-// Allow it only as an anchored prefix of the whole-message possessive form.
-const POSS_CHECK_VERBS = [
-  "check",
-  "revisa",
-  "revisar",
-  "checa",
-  "verifica",
-  "confira",
-  "vérifie",
-  "verifie",
-  "prüfe",
-  "pruefe",
-] as const;
-const POSS_CHECK_ALT = alt(POSS_CHECK_VERBS);
-const POSS_EDGE = `[\\s\\p{P}]*`;
 // After the noun, also admit symbols (\p{S}: emoji like 🙏, ✨), combining
 // marks and format chars (\p{M}/\p{Cf}: emoji variation selector U+FE0F, ZWJ)
 // so "my calendar 🙏" still reads as a whole-message navigation command.
 const POSS_TRAIL = `[\\s\\p{P}\\p{S}\\p{M}\\p{Cf}]`;
 const POSS_OPTIONAL_COURTESY = `(?:(?:${CLOUD_APPS_COURTESY_ALT})[\\s\\p{P}]+)?`;
-const POSS_OPTIONAL_CHECK = `(?:(?:${POSS_CHECK_ALT})[\\s\\p{P}]+)?`;
 // Leading discourse filler / vocative that voice transcription often prepends
 // ("uh my calendar", "ok so my calendar"). Anchored prefix only — a filler
 // never licenses a question form ("uh whats on my calendar" still reaches the
@@ -1406,10 +1387,10 @@ const COMPILED: CompiledView[] = VIEW_PRIORITY.filter(
   const N = nounAlt(VIEW_NOUNS[viewId]);
   const noun = `${COMMAND_DETERMINER}(?:${N})(?:\\s*(?:${VW_ALT}))?`;
   const patterns = [
-    `${POSS_EDGE}${POSS_OPTIONAL_FILLERS}${POSS_OPTIONAL_COURTESY}${POSS_OPTIONAL_CHECK}(?:${POSS_ALT})[\\s\\S]{0,4}?(?:${N})(?:${POSS_TRAIL}*(?:${POSS_TAIL_ALT}))*${POSS_TRAIL}*`,
     `(?:${COMMAND_VERB})\\s*${noun}`,
     `${noun}${COMMAND_PARTICLE}\\s*(?:${COMMAND_VERB})`,
     `(?:${POSS_ALT})\\s*(?:${N})`,
+    `${POSS_OPTIONAL_FILLERS}${POSS_OPTIONAL_COURTESY}(?:${POSS_ALT})\\s*(?:${N})(?:${POSS_TRAIL}*(?:${POSS_TAIL_ALT}))*${POSS_TRAIL}*`,
     `(?:${N})\\s*(?:${VW_ALT})`,
     `(?:${N})`,
   ].join("|");

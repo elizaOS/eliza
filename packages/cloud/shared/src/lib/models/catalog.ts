@@ -1,4 +1,4 @@
-/** Defines model identities and capability metadata consumed by cloud routing and selectors. */
+// Defines cloud shared catalog behavior for backend service consumers.
 import { normalizeProviderKey } from "../providers/model-id-translation";
 
 export interface CatalogModel {
@@ -73,6 +73,7 @@ const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([CEREBRAS_DEFAULT_TEXT_M
 // - Groq docs: https://console.groq.com/docs/models
 // - Cerebras: https://api.cerebras.ai/public/v1/models?format=openrouter
 const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
+  // Paid-tier limits verified against the Cerebras Qwen model docs on 2026-09-04.
   {
     id: CEREBRAS_DEFAULT_TEXT_MODEL,
     object: "model",

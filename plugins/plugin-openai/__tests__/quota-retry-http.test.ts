@@ -329,7 +329,7 @@ describe("provider quota retry HTTP boundary", () => {
       await expect(
         handleTextSmall(test.runtime, {
           prompt: "Reply briefly.",
-          signal: AbortSignal.timeout(1000),
+          signal: AbortSignal.timeout(200),
           stream: structured,
           streamStructured: structured,
         })

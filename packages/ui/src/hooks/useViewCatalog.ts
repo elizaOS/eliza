@@ -25,6 +25,7 @@ import { type AppLaunchResult, client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { loadAppsCatalog } from "../components/apps/load-apps-catalog";
 import { getActiveViewModality } from "../platform/platform-guards";
+import { useAppSelector } from "../state/app-store";
 import { useEnabledViewKinds } from "../state/useViewKinds";
 import { invalidate } from "./resource-cache";
 import {
@@ -86,6 +87,8 @@ interface SharedSourceFetchRecord {
   refetchers: Set<() => Promise<void>>;
   retryAttempts: number;
   retryTimer: number | null;
+  readyGeneration: string | null;
+  recoveryAfterRequestId: number | null;
 }
 
 const sourceFetchRecords = new Map<string, SharedSourceFetchRecord>();
@@ -106,6 +109,8 @@ function sourceFetchRecord(key: string): SharedSourceFetchRecord {
     refetchers: new Set(),
     retryAttempts: 0,
     retryTimer: null,
+    readyGeneration: null,
+    recoveryAfterRequestId: null,
   };
   sourceFetchRecords.set(key, created);
   return created;
@@ -203,6 +208,11 @@ function useAuthorityScopedFetcher<T>(
 
 export function useViewCatalog(): UseViewCatalogResult {
   const authority = useActiveAgentAuthority();
+  const readyGeneration = useAppSelector((state) =>
+    state.agentStatus?.state === "running"
+      ? String(state.agentStatus.startedAt ?? "running")
+      : null,
+  );
   const {
     views,
     loading: viewsLoading,
@@ -311,6 +321,76 @@ export function useViewCatalog(): UseViewCatalogResult {
   ]);
 
   useEffect(() => {
+    if (!appShellRoutesSupported || getActiveAgentAuthority() !== authority)
+      return;
+    for (const observed of [catalogFetch.state, installedFetch.state]) {
+      // Subscribe to settlement, but use the current shared snapshot so a
+      // second consumer cannot repeat the first consumer's recovery request.
+      const record = sourceFetchRecord(observed.key);
+      if (readyGeneration === null) {
+        record.readyGeneration = null;
+        record.recoveryAfterRequestId = null;
+        continue;
+      }
+      // The socket can open before the runtime is ready, and an in-process
+      // runtime replacement does not reconnect it. Observe durable runtime
+      // status and share one recovery opportunity per ready generation.
+      if (record.readyGeneration !== readyGeneration) {
+        record.readyGeneration = readyGeneration;
+        record.recoveryAfterRequestId =
+          record.snapshot.status === "loading" ||
+          record.snapshot.status === "error"
+            ? record.snapshot.requestId
+            : null;
+      }
+      if (record.recoveryAfterRequestId === null) continue;
+      if (
+        record.snapshot.requestId !== record.recoveryAfterRequestId ||
+        record.snapshot.status === "success"
+      ) {
+        record.recoveryAfterRequestId = null;
+        continue;
+      }
+      // Do not lose readiness while an older request is settling. A successful
+      // response needs no retry; a failed one gets one request after readiness.
+      if (record.snapshot.status !== "error") continue;
+      const refetch = record.refetchers.values().next().value;
+      if (!refetch) continue;
+      record.recoveryAfterRequestId = null;
+      cancelSourceRetry(record);
+      // A ready runtime gets the same bounded transient-failure retry budget
+      // as startup; a timeout of this recovery request must not strand it.
+      record.retryAttempts = 0;
+      void refetch();
+    }
+  }, [
+    appShellRoutesSupported,
+    authority,
+    readyGeneration,
+    catalogFetch.state,
+    installedFetch.state,
+  ]);
+
+  useEffect(() => {
+    if (!appShellRoutesSupported) return;
+    return client.onReconnect(() => {
+      if (getActiveAgentAuthority() !== authority) return;
+      // Startup retries may expire while the API is restarting. Its restored
+      // connection is a new opportunity to recover, not evidence of success.
+      // Read shared state here so concurrent Launchers do not each force a
+      // request, and leave healthy or already-loading sources alone.
+      for (const key of [catalogCacheKey, installedCacheKey]) {
+        const record = sourceFetchRecord(key);
+        if (record.snapshot.status !== "error") continue;
+        const refetch = record.refetchers.values().next().value;
+        if (!refetch) continue;
+        cancelSourceRetry(record);
+        void refetch();
+      }
+    });
+  }, [appShellRoutesSupported, authority, catalogCacheKey, installedCacheKey]);
+
+  useEffect(() => {
     if (!appShellRoutesSupported) return;
     const scheduleRetry = (
       key: string,
@@ -325,6 +405,7 @@ export function useViewCatalog(): UseViewCatalogResult {
       }
       if (
         !failed ||
+        record.snapshot.status !== "error" ||
         record.retryTimer !== null ||
         record.retryAttempts >= OPTIONAL_SOURCE_RETRY_LIMIT
       )

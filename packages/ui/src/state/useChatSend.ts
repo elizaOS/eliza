@@ -833,6 +833,42 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
       }
 
+      // A done frame confirms a durable receipt, not successful generation.
+      // Preserve interruption, including zero-token receipts, before any
+      // history refresh so neither the renderer nor voice sees a normal reply.
+      if (data.interrupted === true || !data.completed) {
+        const interruptedText =
+          data.interrupted === true
+            ? data.text
+            : data.text || streamedAssistantText;
+        if (data.interrupted !== true && !interruptedText.trim()) {
+          // A dropped transport with no text has not supplied an assistant
+          // receipt. Let history recovery adopt one instead of retaining an
+          // invented empty terminal row beside the recovered user message.
+          applyStreamingModificationForConversation(conversationId, {
+            messageId: assistantMessageId,
+            mode: "drop",
+          });
+          return null;
+        }
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "complete",
+          fullText: interruptedText,
+          interrupted: true,
+          ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+          ...(data.terminalFailure
+            ? { terminalFailure: data.terminalFailure }
+            : {}),
+          ...(options.includeReasoning && data.reasoning
+            ? { reasoning: data.reasoning }
+            : {}),
+          ...(data.assistantEphemeral ? { assistantEphemeral: true } : {}),
+          ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
+        });
+        return interruptedText.trim() ? interruptedText : null;
+      }
+
       if (!data.text.trim() && !capabilityHandoff) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
@@ -896,17 +932,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
       }
 
-      const interruptedPartial =
-        !data.completed && streamedAssistantText.trim()
-          ? data.text.trim() || streamedAssistantText
-          : null;
-      if (interruptedPartial) {
-        applyStreamingModificationForConversation(conversationId, {
-          messageId: assistantMessageId,
-          mode: "interrupt",
-        });
-      }
-      return interruptedPartial;
+      return null;
     },
     [
       applyStreamingModificationForConversation,
@@ -2189,6 +2215,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         if (
           userMessageCount === 1 &&
           data.completed !== false &&
+          data.interrupted !== true &&
           data.text.trim() &&
           !data.failureKind &&
           !isCloudAgentBase(client.getBaseUrl())

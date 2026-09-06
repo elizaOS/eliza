@@ -22,6 +22,7 @@ import {
 
 type ErrorWithStatus = {
 	code?: unknown;
+	reason?: unknown;
 	status?: unknown;
 	statusCode?: unknown;
 	lastError?: unknown;
@@ -295,9 +296,15 @@ export function isModelProviderFallbackError(
 	}
 	// Local inference can disappear after registration (model unload, device
 	// disconnect, or an unavailable native binding). Its typed capability error
-	// means another text provider may safely answer the same request.
-	if (asErrorObject(unwrapped)?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
-		return true;
+	// means another text provider may safely answer the same request. The same
+	// envelope also carries input/output validation failures, which must remain
+	// terminal even when another provider could return a plausible response.
+	const localFailure = asErrorObject(unwrapped);
+	if (localFailure?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
+		return (
+			localFailure.reason === "backend_unavailable" ||
+			localFailure.reason === "capability_unavailable"
+		);
 	}
 	if (isRateLimitError(error)) {
 		return true;

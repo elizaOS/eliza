@@ -3208,6 +3208,8 @@ export async function handleConversationRoutes(
             (m.content as { text?: string })?.text ?? "",
             actionCallbackHistory,
           );
+          // An interrupted receipt may intentionally have no model text. Keep
+          // its exact partial reply; the interruption metadata owns its status.
           const text =
             transcriptVisibility === "internal"
               ? ""

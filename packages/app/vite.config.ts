@@ -50,6 +50,7 @@ import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.m
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
+import { configureDevApiProxy } from "./vite/dev-http-proxy.ts";
 import {
   generateNodeBuiltinStub,
   nativeModuleStubPlugin,
@@ -3725,14 +3726,7 @@ export const INVALID_TRACER_PROVIDER = {};
         // as an authority mismatch, stranding a local browser on Pairing/Login.
         changeOrigin: false,
         xfwd: true,
-        configure: (proxy) => {
-          proxy.on("error", (_err, _req, res) => {
-            if (!res.headersSent) {
-              res.writeHead(502, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ error: "API server unavailable" }));
-            }
-          });
-        },
+        configure: configureDevApiProxy,
       },
       "/ws": {
         target: `ws://127.0.0.1:${apiPort}`,

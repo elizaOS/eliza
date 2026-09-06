@@ -29,6 +29,10 @@ import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
 import {
+  probeApiHealth,
+  probeApiHealthWithConfirmation,
+} from "./lib/dev-api-health.mjs";
+import {
   applyDevCloudTarget,
   configureDevCloudEnvironment,
 } from "./lib/dev-cloud-target.mjs";
@@ -37,6 +41,7 @@ import {
   createApiHealthWatchdog,
   createParentExitGuard,
 } from "./lib/dev-process-lifecycle.mjs";
+import { createDevTrajectoryRecoveryCoordinator } from "./lib/dev-trajectory-recovery.mjs";
 import { isRedundantApiListenLine } from "./lib/dev-ui-log-filter.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
 import { resolveSupervisedViteCommand } from "./lib/dev-ui-vite.mjs";
@@ -655,16 +660,7 @@ async function waitForAgentReady(
 // never one that is still booting (a booting agent already picks up the latest
 // source, and killing it mid-boot would loop).
 async function isAgentReadyNow(port) {
-  try {
-    const resp = await fetch(`http://127.0.0.1:${port}/api/health`, {
-      signal: AbortSignal.timeout(1500),
-    });
-    if (!resp.ok) return false;
-    const body = await resp.json().catch(() => null);
-    return body?.ready === true;
-  } catch {
-    return false;
-  }
+  return (await probeApiHealth(port)).healthy;
 }
 
 const ACP_MIDFLIGHT_SESSION_STATUSES = new Set([
@@ -1188,6 +1184,9 @@ if (uiOnly) {
   // re-fires a cloud TTS call and fully reloads the native whisper model on
   // every edit, flooding the dev log.
   let apiLaunchCount = 0;
+  const trajectoryRecovery = createDevTrajectoryRecoveryCoordinator({
+    warn: (message) => console.error(`  ${green(logPrefix)} ${message}`),
+  });
   const apiSupervisor = createApiSupervisor({
     spawnChild: () => {
       const apiProcessSpawnedAtMs = String(Date.now());
@@ -1198,12 +1197,15 @@ if (uiOnly) {
           ...apiSpawnEnv,
           [API_PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
           [PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
+          ELIZA_DEV_TRAJECTORY_RECOVERY: "1",
           ...(isHotReload ? { ELIZA_DEV_IS_HOT_RELOAD: "1" } : {}),
         },
-        stdio: ["inherit", "pipe", "pipe"],
+        stdio: ["inherit", "pipe", "pipe", "ipc"],
+        serialization: "json",
       });
     },
     onSpawn: (child) => {
+      trajectoryRecovery.attach(child);
       apiProcess = child;
       // The watchdog outlives API children. Every replacement generation is
       // legitimately unhealthy while booting, whether it came from a source
@@ -1240,10 +1242,22 @@ if (uiOnly) {
 
   apiSupervisor.start();
   apiHealthWatchdog = createApiHealthWatchdog({
-    check: () => isAgentReadyNow(API_PORT),
+    check: async () => {
+      const childPid = apiProcess?.pid ?? null;
+      return { ...(await probeApiHealthWithConfirmation(API_PORT)), childPid };
+    },
+    onProbe: (probe) => {
+      if (probe.healthy && !probe.recovered && !probe.recheckedAfterTimeout)
+        return;
+      // Closed diagnostic fields only: never log response bodies or transport
+      // error text, which can include credentials or private runtime context.
+      console.error(
+        `  ${green(logPrefix)} API health probe ${JSON.stringify(probe)}`,
+      );
+    },
     restart: () => {
       console.error(
-        `\n  ${green(logPrefix)} API health failed 3 consecutive probes — restarting wedged child…`,
+        `\n  ${green(logPrefix)} API health failed 3 consecutive probes — restarting API child…`,
       );
       apiSupervisor.restart();
     },

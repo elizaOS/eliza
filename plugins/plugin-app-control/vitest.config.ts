@@ -178,7 +178,7 @@ export default defineConfig({
 				replacement: path.join(coreSrc, "client-public.ts"),
 			},
 			{
-				find: "@elizaos/core/errors",
+				find: /^@elizaos\/core\/errors$/,
 				replacement: path.join(coreSrc, "errors.ts"),
 			},
 			{

@@ -35,6 +35,7 @@ import type {
   TrajectoryStatus,
   TrajectoryStepKind,
 } from "../types/trajectory.ts";
+import { getDevTrajectoryExecutionOwnerId } from "./dev-trajectory-recovery.ts";
 import {
   exportPersistedTrajectories,
   persistedTrajectoryToDetailRecord,
@@ -135,7 +136,185 @@ const closedTrajectoryStepIds = new WeakMap<
   Map<string, ClosedTrajectoryStep>
 >();
 const stoppingTrajectoryBridges = new WeakSet<object>();
+// runtimeInstanceId can be a stable installation identity. Only this private
+// registry plus a fresh, insert-only row token establishes shutdown ownership.
+const ownedTrajectoryStarts = new WeakMap<object, Map<string, string>>();
+const trajectoryBridgeStopPromises = new WeakMap<object, Promise<void>>();
 const MAX_CLOSED_TRAJECTORY_STEP_IDS = 10_000;
+
+function releaseOwnedTrajectoryStart(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  token: unknown,
+): void {
+  const owned = ownedTrajectoryStarts.get(runtime as object);
+  if (typeof token === "string" && owned?.get(trajectoryId) === token) {
+    owned.delete(trajectoryId);
+  }
+}
+
+async function saveNewOwnedTrajectory(
+  runtime: IAgentRuntime,
+  trajectory: PersistedTrajectory,
+  options: { changedStepIds: string[]; updateLegacySnapshot?: boolean },
+): Promise<void> {
+  const executionOwnerId = await getDevTrajectoryExecutionOwnerId(runtime);
+  const token = randomUUID();
+  delete trajectory.metadata.runtimeExecutionOwnerId;
+  trajectory.metadata = {
+    ...trajectory.metadata,
+    runtimeInstanceId: runtime.runtimeInstanceId,
+    runtimeTrajectoryOwnerId: token,
+    ...(executionOwnerId ? { runtimeExecutionOwnerId: executionOwnerId } : {}),
+  };
+  let owned = ownedTrajectoryStarts.get(runtime as object);
+  if (!owned) {
+    owned = new Map();
+    ownedTrajectoryStarts.set(runtime as object, owned);
+  }
+  // Register before the accepted insert: deletion may commit before its promise
+  // resumes. A failed older insert must not release a newer same-ID creator.
+  owned.set(trajectory.id, token);
+  try {
+    await saveTrajectory(runtime, trajectory, { ...options, createOnly: true });
+    if (trajectory.status !== "active") {
+      releaseOwnedTrajectoryStart(runtime, trajectory.id, token);
+    }
+  } catch (error) {
+    releaseOwnedTrajectoryStart(runtime, trajectory.id, token);
+    throw error;
+  }
+}
+
+async function settleOwnedTrajectoryStart(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  token: string,
+): Promise<void> {
+  await settleTrajectoryStart(runtime, trajectoryId, token);
+  // A rolled-back transaction retains its token for an explicit stop retry.
+  releaseOwnedTrajectoryStart(runtime, trajectoryId, token);
+}
+
+/** @internal Only the dev recovery coordinator supplies confirmed-exit owners. */
+export async function settleExitedTrajectoryForDevRecovery(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  token: string,
+  executionOwnerId: string,
+): Promise<void> {
+  await settleTrajectoryStart(runtime, trajectoryId, token, executionOwnerId);
+}
+
+async function settleTrajectoryStart(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  token: string,
+  executionOwnerId?: string,
+): Promise<void> {
+  await executeRawSqlTransaction(runtime, async (execute) => {
+    const result = await execute(
+      `SELECT * FROM trajectories WHERE id = ${sqlQuote(trajectoryId)}
+       AND agent_id = ${sqlQuote(runtime.agentId)} FOR UPDATE`,
+    );
+    const row = asRecord(
+      extractRequiredRows(result, {
+        operation: "settle owned trajectory",
+        trajectoryId,
+      })[0],
+    );
+    if (!row) return;
+    const trajectory = parsePersistedTrajectoryRow(row, trajectoryId);
+    if (
+      trajectory.status !== "active" ||
+      trajectory.metadata.runtimeInstanceId !== runtime.runtimeInstanceId ||
+      (executionOwnerId !== undefined &&
+        trajectory.metadata.runtimeExecutionOwnerId !== executionOwnerId)
+    )
+      return;
+
+    if (trajectory.metadata.runtimeTrajectoryOwnerId !== token) {
+      if (executionOwnerId !== undefined) {
+        throw new ElizaError(
+          "Exited execution trajectory changed its row ownership token",
+          {
+            code: "DEV_TRAJECTORY_RECOVERY_REJECTED",
+            context: { trajectoryId },
+          },
+        );
+      }
+      return;
+    }
+
+    const now = Date.now();
+    const endTime = Math.max(now, trajectory.startTime);
+    // Dedicated step rows are recorded payloads, not live ownership indexes.
+    // Keep every payload and counter intact; only settle parent lifecycle fields.
+    await execute(
+      `UPDATE trajectories SET status = 'terminated', end_time = ${endTime},
+       duration_ms = ${endTime - trajectory.startTime},
+       metrics_json = ${sqlQuote(JSON.stringify({ ...trajectory.metrics, finalStatus: "terminated" }))},
+       updated_at = ${sqlQuote(nextTrajectoryUpdatedAt(trajectory.updatedAt, now))}
+       WHERE id = ${sqlQuote(trajectoryId)} AND agent_id = ${sqlQuote(runtime.agentId)}
+       AND status = 'active'`,
+    );
+  });
+}
+
+function stopTrajectoryBridge(runtime: IAgentRuntime): Promise<void> {
+  const key = runtime as object;
+  stoppingTrajectoryBridges.add(key);
+  const existing = trajectoryBridgeStopPromises.get(key);
+  if (existing) return existing;
+  const stopping = (async () => {
+    const failures: unknown[] = [];
+    const observed = new Set<Promise<void>>();
+    // Drain every accepted queue even when one write fails. Cache removal is
+    // identity-checked so an already reported rejection cannot poison retries.
+    while (true) {
+      const last = lastWritePromises.get(key);
+      const pending = [
+        ...(stepWriteQueues.get(key)?.values() ?? []),
+        ...(last ? [last] : []),
+      ];
+      const snapshot = [...new Set(pending)].filter(
+        (promise) => !observed.has(promise),
+      );
+      if (snapshot.length === 0) break;
+      for (const promise of snapshot) observed.add(promise);
+      const results = await Promise.allSettled(snapshot);
+      for (const result of results) {
+        if (result.status === "rejected") failures.push(result.reason);
+      }
+      if (last && lastWritePromises.get(key) === last)
+        lastWritePromises.delete(key);
+    }
+    for (const [trajectoryId, token] of ownedTrajectoryStarts.get(key) ?? []) {
+      try {
+        await settleOwnedTrajectoryStart(runtime, trajectoryId, token);
+      } catch (error) {
+        // error-policy:J2 Cleanup must retain failed ownership and report every
+        // failure after draining and settling the other independently owned runs.
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0)
+      throw new AggregateError(
+        failures,
+        "Trajectory shutdown persistence failed",
+      );
+  })();
+  trajectoryBridgeStopPromises.set(key, stopping);
+  void stopping
+    .finally(() => {
+      if (trajectoryBridgeStopPromises.get(key) === stopping)
+        trajectoryBridgeStopPromises.delete(key);
+    })
+    .catch(() => {
+      /* The caller receives the original shutdown rejection. */
+    });
+  return stopping;
+}
 
 function rememberClosedTrajectoryStep(
   runtime: IAgentRuntime,
@@ -805,11 +984,15 @@ async function terminalizeBridgeTrajectory(
   finalMetrics?: Record<string, unknown>,
   shouldWrite: () => boolean = () => true,
 ): Promise<void> {
+  let ownedToken: string | undefined;
   const writePromise = enqueueStepWrite(runtime, trajectoryId, async () => {
     if (!shouldWrite()) return;
     const tableReady = await ensureTrajectoriesTable(runtime);
     if (!tableReady) return;
 
+    ownedToken = ownedTrajectoryStarts
+      .get(runtime as object)
+      ?.get(trajectoryId);
     await writeCompletedTrajectoryStep({
       runtime,
       stepId: trajectoryId,
@@ -826,6 +1009,7 @@ async function terminalizeBridgeTrajectory(
   // durability retains ownership so an explicit retry can address the same
   // parent rather than fabricating a new route.
   await flushTrajectoryWrites(runtime, trajectoryId);
+  releaseOwnedTrajectoryStart(runtime, trajectoryId, ownedToken);
   releaseTrajectoryBridgeState(runtime, trajectoryId);
 }
 
@@ -1516,9 +1700,12 @@ async function writeStartedTrajectoryStep({
 }): Promise<void> {
   const now = Date.now();
   const existing = await loadTrajectoryById(runtime, stepId);
+  const expectedUpdatedAt = existing?.updatedAt;
   const trajectory =
     existing ??
     createBaseTrajectory(stepId, now, runtime.agentId, source, metadata);
+  // Reusing a caller-selected ID cannot reopen an already terminal run.
+  if (existing && existing.status !== "active") return;
   if (!existing && !createInitialStep) trajectory.steps = [];
 
   trajectory.source = source?.trim() || trajectory.source || "runtime";
@@ -1532,9 +1719,16 @@ async function writeStartedTrajectoryStep({
   if (createInitialStep) ensureStep(trajectory, stepId, now);
   trajectory.updatedAt = new Date(now).toISOString();
 
-  await saveTrajectory(runtime, trajectory, {
-    changedStepIds: createInitialStep ? [stepId] : [],
-  });
+  const changedStepIds = createInitialStep ? [stepId] : [];
+  if (existing) {
+    await saveTrajectory(runtime, trajectory, {
+      changedStepIds,
+      requireActiveExisting: true,
+      expectedUpdatedAt,
+    });
+  } else {
+    await saveNewOwnedTrajectory(runtime, trajectory, { changedStepIds });
+  }
 }
 
 async function writeCompletedTrajectoryStep({
@@ -1598,12 +1792,19 @@ async function writeCompletedTrajectoryStep({
       : new Date(now).toISOString();
 
     try {
-      await saveTrajectory(runtime, trajectory, {
+      const options = {
         changedStepIds:
           createStepIfMissing && trajectory.steps.length === 1 ? [stepId] : [],
-        requireActiveExisting: persisted !== null,
-        ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
-      });
+      };
+      if (persisted) {
+        await saveTrajectory(runtime, trajectory, {
+          ...options,
+          requireActiveExisting: true,
+          expectedUpdatedAt,
+        });
+      } else {
+        await saveNewOwnedTrajectory(runtime, trajectory, options);
+      }
       return;
     } catch (error) {
       // error-policy:J7 Terminal telemetry retries an active version conflict;
@@ -2007,9 +2208,8 @@ export async function installDatabaseTrajectoryLogger(
       ? loggerAny.stop.bind(loggerAny)
       : undefined;
   loggerAny.stop = async (): Promise<void> => {
-    stoppingTrajectoryBridges.add(runtime as object);
     try {
-      await flushTrajectoryWrites(runtime);
+      await stopTrajectoryBridge(runtime);
       await originalStop?.();
     } finally {
       releaseAllTrajectoryBridgeState(runtime);
@@ -2414,14 +2614,20 @@ export async function startTrajectoryStepInDatabase({
   source,
   metadata,
 }: StartStepOptions): Promise<boolean> {
-  if (!hasRuntimeDb(runtime)) return false;
+  if (
+    !hasRuntimeDb(runtime) ||
+    stoppingTrajectoryBridges.has(runtime as object)
+  )
+    return false;
   const normalizedStepId = normalizeStepId(stepId);
   if (!normalizedStepId) return false;
 
-  const tableReady = await ensureTrajectoriesTable(runtime);
-  if (!tableReady) return false;
-
   await enqueueStepWrite(runtime, normalizedStepId, async () => {
+    const tableReady = await ensureTrajectoriesTable(runtime);
+    if (!tableReady)
+      throw new ElizaError("Trajectory schema is unavailable", {
+        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+      });
     await writeStartedTrajectoryStep({
       runtime,
       stepId: normalizedStepId,
@@ -2471,15 +2677,21 @@ export async function annotateTrajectoryStep({
    */
   evaluatorName?: string;
 }): Promise<boolean> {
-  if (!hasRuntimeDb(runtime)) return false;
+  if (
+    !hasRuntimeDb(runtime) ||
+    stoppingTrajectoryBridges.has(runtime as object)
+  )
+    return false;
   const normalizedStepId = normalizeStepId(stepId);
   if (!normalizedStepId) return false;
   const trajectoryId = resolveBridgeTrajectoryId(runtime, normalizedStepId);
 
-  const tableReady = await ensureTrajectoriesTable(runtime);
-  if (!tableReady) return false;
-
   await enqueueStepWrite(runtime, trajectoryId, async () => {
+    const tableReady = await ensureTrajectoriesTable(runtime);
+    if (!tableReady)
+      throw new ElizaError("Trajectory schema is unavailable", {
+        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+      });
     const now = Date.now();
     const persisted = await loadTrajectoryById(runtime, trajectoryId);
     if (!persisted && trajectoryId !== normalizedStepId) {
@@ -2537,10 +2749,12 @@ export async function annotateTrajectoryStep({
 
     trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
     trajectory.updatedAt = new Date(now).toISOString();
-    await saveTrajectory(runtime, trajectory, {
+    const options = {
       changedStepIds: [normalizedStepId],
       updateLegacySnapshot: script !== undefined,
-    });
+    };
+    if (persisted) await saveTrajectory(runtime, trajectory, options);
+    else await saveNewOwnedTrajectory(runtime, trajectory, options);
   });
 
   return true;
@@ -2553,15 +2767,24 @@ export async function completeTrajectoryStepInDatabase({
   source,
   metadata,
 }: CompleteStepOptions): Promise<boolean> {
-  if (!hasRuntimeDb(runtime)) return false;
+  if (
+    !hasRuntimeDb(runtime) ||
+    stoppingTrajectoryBridges.has(runtime as object)
+  )
+    return false;
   const normalizedStepId = normalizeStepId(stepId);
   if (!normalizedStepId) return false;
   const trajectoryId = resolveBridgeTrajectoryId(runtime, normalizedStepId);
 
-  const tableReady = await ensureTrajectoriesTable(runtime);
-  if (!tableReady) return false;
-
   await enqueueStepWrite(runtime, trajectoryId, async () => {
+    const tableReady = await ensureTrajectoriesTable(runtime);
+    if (!tableReady)
+      throw new ElizaError("Trajectory schema is unavailable", {
+        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+      });
+    const token = ownedTrajectoryStarts
+      .get(runtime as object)
+      ?.get(trajectoryId);
     await writeCompletedTrajectoryStep({
       runtime,
       stepId: trajectoryId,
@@ -2570,6 +2793,7 @@ export async function completeTrajectoryStepInDatabase({
       metadata,
       createStepIfMissing: trajectoryId === normalizedStepId,
     });
+    releaseOwnedTrajectoryStart(runtime, trajectoryId, token);
   });
 
   return true;
@@ -2595,25 +2819,27 @@ export async function deletePersistedTrajectoryRows(
   const values = normalized.map((id) => sqlQuote(id)).join(", ");
 
   try {
-    return await executeRawSqlTransaction(runtime, async (execute) => {
+    const removed = await executeRawSqlTransaction(runtime, async (execute) => {
       const owner = sqlQuote(runtime.agentId);
-      const countResult = await execute(
-        `SELECT count(*) AS total FROM trajectories
-         WHERE agent_id = ${owner} AND id IN (${values})`,
+      readRequiredCount(
+        await execute(
+          `SELECT count(*) AS total FROM trajectories WHERE agent_id = ${owner} AND id IN (${values})`,
+        ),
+        "total",
+        { operation: "delete" },
       );
-      const total = readRequiredCount(countResult, "total", {
-        operation: "delete",
-      });
       await execute(
         `DELETE FROM trajectory_steps WHERE trajectory_id IN (
            SELECT id FROM trajectories WHERE agent_id = ${owner} AND id IN (${values})
          )`,
       );
-      await execute(
-        `DELETE FROM trajectories WHERE agent_id = ${owner} AND id IN (${values})`,
+      const result = await execute(
+        `DELETE FROM trajectories WHERE agent_id = ${owner} AND id IN (${values}) RETURNING id, metadata_json`,
       );
-      return total;
+      return readDeletedTrajectoryRows(result);
     });
+    releaseDeletedTrajectoryStarts(runtime, removed);
+    return removed.length;
   } catch (error) {
     // error-policy:J2 both parent and step deletion are one required operation.
     throw trajectoryOperationError("delete persisted rows", error);
@@ -2632,25 +2858,76 @@ export async function clearPersistedTrajectoryRows(
   }
 
   try {
-    return await executeRawSqlTransaction(runtime, async (execute) => {
+    const removed = await executeRawSqlTransaction(runtime, async (execute) => {
       const owner = sqlQuote(runtime.agentId);
-      const countResult = await execute(
-        `SELECT count(*) AS total FROM trajectories WHERE agent_id = ${owner}`,
+      readRequiredCount(
+        await execute(
+          `SELECT count(*) AS total FROM trajectories WHERE agent_id = ${owner}`,
+        ),
+        "total",
+        { operation: "clear" },
       );
-      const total = readRequiredCount(countResult, "total", {
-        operation: "clear",
-      });
       await execute(
         `DELETE FROM trajectory_steps WHERE trajectory_id IN (
            SELECT id FROM trajectories WHERE agent_id = ${owner}
          )`,
       );
-      await execute(`DELETE FROM trajectories WHERE agent_id = ${owner}`);
-      return total;
+      const result = await execute(
+        `DELETE FROM trajectories WHERE agent_id = ${owner} RETURNING id, metadata_json`,
+      );
+      return readDeletedTrajectoryRows(result);
     });
+    releaseDeletedTrajectoryStarts(runtime, removed);
+    return removed.length;
   } catch (error) {
     // error-policy:J2 clear failures cannot be represented as an absent result.
     throw trajectoryOperationError("clear persisted rows", error);
+  }
+}
+
+function readDeletedTrajectoryRows(result: unknown): Record<string, unknown>[] {
+  return extractRequiredRows(result, {
+    operation: "delete trajectory ownership",
+  }).map((value) => {
+    const row = asRecord(value);
+    if (typeof row?.id !== "string" || row.id.trim().length === 0) {
+      throw new ElizaError("Deleted trajectory identity is invalid", {
+        code: "TRAJECTORY_ROW_INVALID",
+      });
+    }
+    return row;
+  });
+}
+
+function releaseDeletedTrajectoryStarts(
+  runtime: IAgentRuntime,
+  removed: unknown[],
+): void {
+  for (const value of removed) {
+    const row = asRecord(value);
+    if (typeof row?.id !== "string") continue;
+    if (!ownedTrajectoryStarts.get(runtime as object)?.has(row.id)) continue;
+    let metadata: Record<string, unknown> | null;
+    try {
+      metadata =
+        typeof row.metadata_json === "string"
+          ? asRecord(JSON.parse(row.metadata_json))
+          : asRecord(row.metadata_json);
+    } catch (error) {
+      // error-policy:J7 Deletion already committed. Corrupt metadata cannot
+      // authorize ownership release; stop will observe the missing row instead.
+      warnRuntime(
+        runtime,
+        "Deleted trajectory has invalid ownership metadata",
+        error,
+      );
+      continue;
+    }
+    releaseOwnedTrajectoryStart(
+      runtime,
+      row.id,
+      metadata?.runtimeTrajectoryOwnerId,
+    );
   }
 }
 
@@ -2744,9 +3021,8 @@ export class DatabaseTrajectoryLogger extends Service {
   }
 
   async stop(): Promise<void> {
-    stoppingTrajectoryBridges.add(this.runtime as object);
     try {
-      await flushTrajectoryWrites(this.runtime);
+      await stopTrajectoryBridge(this.runtime);
     } finally {
       this.enabled = false;
       releaseAllTrajectoryBridgeState(this.runtime);

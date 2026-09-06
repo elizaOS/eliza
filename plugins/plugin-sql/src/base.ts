@@ -102,7 +102,7 @@ import {
   type WorldMetadataMutationResult,
   worldMetadataValueEquals,
 } from "@elizaos/core";
-import { sanitizeJsonObject } from "./sanitize-json";
+import { sanitizeJsonObject, serializeJsonb } from "./sanitize-json";
 import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {
   readTaskDueAt,
@@ -4107,11 +4107,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<void> {
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
-    const contentToInsert =
-      typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+    const contentToInsert = serializeJsonb(memory.content);
 
-    const metadataToInsert =
-      typeof memory.metadata === "string" ? memory.metadata : JSON.stringify(memory.metadata ?? {});
+    const metadataToInsert = serializeJsonb(memory.metadata ?? {});
 
     const inserted = await tx
       .insert(memoryTable)
@@ -4192,13 +4190,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await this.db.transaction(async (tx) => {
           // Update memory content if provided
           if (memory.content) {
-            const contentToUpdate =
-              typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+            const contentToUpdate = serializeJsonb(memory.content);
 
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata ?? {});
+            const metadataToUpdate = serializeJsonb(memory.metadata ?? {});
 
             await tx
               .update(memoryTable)
@@ -4211,10 +4205,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               .where(eq(memoryTable.id, memory.id));
           } else if (memory.metadata) {
             // Update only metadata if content is not provided
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata);
+            const metadataToUpdate = serializeJsonb(memory.metadata);
 
             await tx
               .update(memoryTable)

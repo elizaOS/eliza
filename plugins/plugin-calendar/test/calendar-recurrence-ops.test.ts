@@ -253,6 +253,50 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     service = stubService([STANDUP_OCCURRENCE, LUNCH]);
   });
 
+  it("keeps title, notes, location and recurrence out of a time-only provider patch", async () => {
+    const original = {
+      ...STANDUP_OCCURRENCE,
+      description: "Bring the agenda.",
+      location: "Meeting room 3",
+    };
+    service = stubService([original]);
+    await runHandler({
+      service,
+      text: "Move just this standup to 6 PM and keep everything else.",
+      parameters: {
+        subaction: "update_event",
+        query: "standup",
+        details: {
+          startAt: "2026-07-08T18:00:00.000Z",
+          endAt: "2026-07-08T19:00:00.000Z",
+          recurrenceScope: "instance",
+        },
+      },
+      extractedUpdate: {
+        title: "",
+        description: "",
+        location: "",
+        recurrence: "",
+        timeZone: "",
+      },
+    });
+    const request = service.modifyApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
+    expect(request).toMatchObject({
+      eventId: original.externalId,
+      startAt: "2026-07-08T18:00:00.000Z",
+      endAt: "2026-07-08T19:00:00.000Z",
+      recurrenceScope: "instance",
+      timeZone: "UTC",
+    });
+    for (const field of ["title", "description", "location", "recurrence"]) {
+      expect(request[field]).toBeUndefined();
+    }
+    expect(service.modifyApproval.mock.calls[0]?.[0]?.targetEvent).toEqual(
+      original,
+    );
+  });
+
   it("ambiguous intent → clarification, and nothing is updated", async () => {
     const result = await runHandler({
       service,

@@ -279,18 +279,32 @@ describe("fallback-reply", () => {
 	});
 
 	describe("model-provider fallback edge inputs", () => {
-		it("fails over on the typed local-inference capability error", () => {
-			expect(
-				isModelProviderFallbackError({ code: "LOCAL_INFERENCE_UNAVAILABLE" }),
-			).toBe(true);
-			// The TTS gate runs before any classifier, so TTS never rotates.
-			expect(
-				isModelProviderFallbackError(
-					{ code: "LOCAL_INFERENCE_UNAVAILABLE" },
-					ModelType.TEXT_TO_SPEECH,
-				),
-			).toBe(false);
-		});
+		it.each(["backend_unavailable", "capability_unavailable"])(
+			"fails over on typed local-inference absence: %s",
+			(reason) => {
+				const error = { code: "LOCAL_INFERENCE_UNAVAILABLE", reason };
+				expect(isModelProviderFallbackError(error)).toBe(true);
+				// The TTS gate runs before any classifier, so TTS never rotates.
+				expect(
+					isModelProviderFallbackError(error, ModelType.TEXT_TO_SPEECH),
+				).toBe(false);
+			},
+		);
+
+		it.each(["invalid_input", "invalid_output", "unknown", undefined])(
+			"does not fail over on local validation or unrecognized reasons: %s",
+			(reason) => {
+				// Transient-looking messages/status must not override the typed failure.
+				const error = Object.assign(new Error("temporarily unavailable"), {
+					code: "LOCAL_INFERENCE_UNAVAILABLE",
+					reason,
+					status: 503,
+				});
+				expect(isModelProviderFallbackError(error, ModelType.TEXT_LARGE)).toBe(
+					false,
+				);
+			},
+		);
 
 		it("fails over on structural 529 and inherited rate limits", () => {
 			expect(isModelProviderFallbackError({ statusCode: 529 })).toBe(true);

@@ -110,6 +110,8 @@ rules:
 - drop candidates that are speculative, agent-generated, or not stated by the user
 - drop credentials, API keys, passwords, raw tokens, and other secrets; never persist their values
 - drop synthetic summaries, compaction artifacts, generic chat filler, and one-off task requests
+- drop facts and relationships that the current message explicitly asks to remember, save, update, or forget: the planner's MEMORY action owns those mutations, so this parallel extractor must not duplicate or undo them. Independently stated new facts outside that operation can still be kept.
+- recent_conversation is attribution and deduplication context, not a source of new facts; do not re-extract old facts merely because the current message asks to recall them
 - each kept fact is an object { subject, fact }: subject names WHO the fact is about
 - current_message_author and agent_identity are trusted role bindings, independent of display names and aliases in room_entities; an entity with an alias "User" is not necessarily the current author
 - subject must be the speaker who stated the fact about themselves — use their name exactly as shown in recent_conversation or room_entities, preferring the UUID when room_entities shows one; use "user" ONLY when the fact is about the author of current_message

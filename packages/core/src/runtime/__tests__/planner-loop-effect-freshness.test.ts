@@ -68,6 +68,8 @@ async function runStorePlan(
 						...call,
 						arguments: {
 							...call.arguments,
+							// The final planned read settles the declared remaining work.
+							// Earlier batches must continue even if the evaluator says FINISH.
 							eliza_turn_scope:
 								modelCalls === batches.length ? "final" : "more_work_pending",
 						},
