@@ -54,6 +54,15 @@ mock.module("./api-keys", () => ({
 }));
 
 mock.module("./inference-credential-revocation", () => ({
+  // `mock.module` is process-global: a partial mock of this module also
+  // replaces it for every other file in the same Bun process, so an export
+  // omitted here becomes a SyntaxError in whichever co-batched suite needs it.
+  // `inference-auth-context.ts` and `proxy/engine.ts` both import this one.
+  inferenceCredentialRevocationReason: (reason: string) => {
+    if (reason === "credential_revoked") return "credential_inactive";
+    if (reason === "organization_disabled") return "organization_inactive";
+    return "credential_invalid";
+  },
   setInferenceSessionBindingActive: async (
     orgId: string,
     userId: string,
