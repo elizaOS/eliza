@@ -23,6 +23,7 @@ let db: Client;
 let close: typeof import("../../db/client").closeDatabaseConnectionsForTests;
 let authority: typeof import("../../db/repositories/app-subscription-authority").appSubscriptionAuthorityRepository;
 let runtime: GenericBillingRuntime;
+let resolveProvider: typeof import("./generic-billing-provider-runtime").getAppBillingProvider;
 const fixture = createRuntimeStripeFixture();
 const org = randomUUID();
 const merchant = randomUUID();
@@ -153,14 +154,15 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
     );
     const { createGenericBillingProvider } = await import("./generic-billing-provider");
     const { GenericBillingRuntime } = await import("./generic-billing-runtime");
-    runtime = new GenericBillingRuntime(async (merchantId, livemode) => {
+    resolveProvider = async (merchantId, livemode) => {
       if (merchantId !== merchant || livemode) throw new Error("Unexpected runtime merchant");
       return createGenericBillingProvider(
         fixture.stripe,
         { merchantId, kind: "connected", stripeAccountId: "acct_runtime", livemode },
         appBillingProviderBindings,
       );
-    });
+    };
+    runtime = new GenericBillingRuntime(resolveProvider);
   });
   afterAll(async () => {
     if (close) await close();
@@ -460,6 +462,110 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
         ])
       ).rows[0].request_payload,
     ).toEqual(payload);
+  });
+  async function deleteCustomer(
+    state: Awaited<ReturnType<typeof settledCustomer>>,
+    phaseGeneration = state.auth.phaseGeneration,
+  ) {
+    return (await import("./app-billing-deletion-customer")).deleteClosedAppBillingCustomer(
+      state.binding.id,
+      { ...state.auth, phaseGeneration },
+      resolveProvider,
+    );
+  }
+  test("customer deletion retains the real provider tombstone and replays without provider requests", async () => {
+    const state = await settledCustomer();
+    const at = fixture.requests.length;
+    expect(await deleteCustomer(state)).toBe("complete");
+    const rows = (
+      await db.query(
+        "SELECT status,provider_result,result_subscription_id FROM billing_subscription_commands WHERE request_payload->>'customerBindingId'=$1",
+        [state.binding.id],
+      )
+    ).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("SUCCEEDED");
+    expect(rows[0].provider_result.observation.value.status).toBe("deleted");
+    expect(rows[0].result_subscription_id).toBeNull();
+    expect(
+      fixture.requests.slice(at).filter((request) => request.method === "DELETE"),
+    ).toHaveLength(1);
+    const after = fixture.requests.length;
+    expect(await deleteCustomer(state)).toBe("complete");
+    expect(fixture.requests.length).toBe(after);
+  });
+  test("lost customer DELETE response recovers by reading the tombstone without a second DELETE", async () => {
+    const state = await settledCustomer();
+    const at = fixture.requests.length;
+    fixture.loseCustomerDeleteResponse();
+    expect(await deleteCustomer(state)).toBe("pending");
+    expect(await deleteCustomer(state)).toBe("complete");
+    expect(
+      fixture.requests.slice(at).filter((request) => request.method === "DELETE"),
+    ).toHaveLength(1);
+  });
+  test("phase takeover during customer read prevents DELETE until fresh canonical authority", async () => {
+    const state = await settledCustomer();
+    const at = fixture.requests.length;
+    fixture.beforeCustomerRead(async () => {
+      await db.query("UPDATE account_deletion_phase_receipts SET lease_generation=2 WHERE id=$1", [
+        state.auth.phaseReceiptId,
+      ]);
+    });
+    try {
+      expect(await deleteCustomer(state)).toBe("pending");
+    } finally {
+      fixture.beforeCustomerRead(null);
+    }
+    expect(
+      fixture.requests.slice(at).filter((request) => request.method === "DELETE"),
+    ).toHaveLength(0);
+    expect(await deleteCustomer(state, 2)).toBe("complete");
+  });
+  test("phase takeover after customer deletion rejects the stale receipt and permits read-only recovery", async () => {
+    const state = await settledCustomer();
+    const at = fixture.requests.length;
+    fixture.beforeCustomerDelete(async () => {
+      await db.query("UPDATE account_deletion_phase_receipts SET lease_generation=2 WHERE id=$1", [
+        state.auth.phaseReceiptId,
+      ]);
+    });
+    try {
+      expect(await deleteCustomer(state)).toBe("pending");
+    } finally {
+      fixture.beforeCustomerDelete(null);
+    }
+    expect(await deleteCustomer(state, 2)).toBe("complete");
+    expect(
+      fixture.requests.slice(at).filter((request) => request.method === "DELETE"),
+    ).toHaveLength(1);
+  });
+  test("concurrent customer claims preserve one journal command and reject a stale execution token", async () => {
+    const state = await settledCustomer();
+    const repo = (await import("../../db/repositories/app-billing-deletion-customer"))
+      .appBillingDeletionCustomerRepository;
+    const claims = await Promise.all([
+      repo.claim(state.binding.id, state.auth),
+      repo.claim(state.binding.id, state.auth),
+    ]);
+    const owned = claims.find((claim) => claim.kind === "claimed");
+    if (!owned || owned.kind !== "claimed")
+      throw new Error("Expected one current customer deletion lease");
+    expect(claims.filter((claim) => claim.kind === "pending")).toHaveLength(1);
+    await repo.release(owned.claim);
+    const next = await repo.claim(state.binding.id, state.auth);
+    if (next.kind !== "claimed") throw new Error("Expected a replacement execution lease");
+    await expect(repo.validateDispatch(owned.claim)).rejects.toThrow();
+    await repo.release(next.claim);
+    expect(await deleteCustomer(state)).toBe("complete");
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int AS count FROM billing_subscription_commands WHERE request_payload->>'customerBindingId'=$1",
+          [state.binding.id],
+        )
+      ).rows[0].count,
+    ).toBe(1);
   });
   test("closure intent cannot authorize customer deletion while a trial still runs", async () => {
     const source = await fixtureCustomer();

@@ -13,6 +13,10 @@ export function createRuntimeStripeFixture() {
     string,
     { id: string; object: "customer"; livemode: boolean; metadata: Record<string, string> }
   >();
+  const deletedCustomers = new Set<string>();
+  let loseNextCustomerDeleteResponse = false;
+  let beforeCustomerRead: (() => Promise<void>) | null = null;
+  let beforeCustomerDelete: (() => Promise<void>) | null = null;
   const subscriptions = new Map<
     string,
     {
@@ -377,8 +381,24 @@ export function createRuntimeStripeFixture() {
             return Response.json(setupIntents.get(url.pathname.split("/")[3]!) ?? null);
           if (url.pathname.startsWith("/v1/payment_methods/"))
             return Response.json(paymentMethods.get(url.pathname.split("/")[3]!) ?? null);
-          if (url.pathname.startsWith("/v1/customers/"))
-            return Response.json(customers.get(url.pathname.split("/")[3]!) ?? null);
+          if (url.pathname.startsWith("/v1/customers/")) {
+            const id = url.pathname.split("/")[3]!;
+            if (method === "GET" && beforeCustomerRead) await beforeCustomerRead();
+            if (method === "DELETE") {
+              if (beforeCustomerDelete) await beforeCustomerDelete();
+              if (!customers.has(id)) throw new Error("Cannot delete unknown fixture customer");
+              deletedCustomers.add(id);
+              if (loseNextCustomerDeleteResponse) {
+                loseNextCustomerDeleteResponse = false;
+                throw new Error("Connection lost after provider customer deletion");
+              }
+            }
+            return Response.json(
+              deletedCustomers.has(id)
+                ? { id, object: "customer", deleted: true }
+                : (customers.get(id) ?? null),
+            );
+          }
           if (url.pathname === "/v1/subscriptions" && method === "POST") {
             const endsAt = Number(body.get("trial_end"));
             const row = {
@@ -730,6 +750,16 @@ export function createRuntimeStripeFixture() {
     ),
   });
   return {
+    deletedCustomers,
+    loseCustomerDeleteResponse() {
+      loseNextCustomerDeleteResponse = true;
+    },
+    beforeCustomerRead(callback: (() => Promise<void>) | null) {
+      beforeCustomerRead = callback;
+    },
+    beforeCustomerDelete(callback: (() => Promise<void>) | null) {
+      beforeCustomerDelete = callback;
+    },
     loseExpiryResponse() {
       loseNextExpiryResponse = true;
     },
