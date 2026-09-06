@@ -52,6 +52,11 @@ const IMAGE_REFERENCE = `ghcr.io/elizaos/eliza@${IMAGE_DIGEST}`;
 const IMAGE_PLATFORM_REFERENCE = `ghcr.io/elizaos/eliza@${IMAGE_PLATFORM_DIGEST}`;
 const CONTAINER_NAME = `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`;
 const VOLUME_PATH = `/data/agents/.restore/${AGENT_ID}/${RESTORE_ATTEMPT_ID}`;
+const QUARANTINE_COMMAND = [
+  "-i",
+  "/usr/local/bin/node",
+  "/app/packages/agent/dist/services/agent-backup-restore-v3-quarantine-host.js",
+];
 
 const NODE: DockerNode = {
   id: NODE_RECORD_ID,
@@ -110,6 +115,8 @@ function exactRestoreConfig(overrides: Partial<SandboxCreateConfig> = {}): Sandb
 function installExactRestoreSsh(
   options: {
     containerRunning?: boolean;
+    entrypoint?: string[];
+    command?: string[];
     createFailure?: Error;
     dockerClientApiVersion?: string;
     dockerDriverStatus?: unknown;
@@ -142,7 +149,7 @@ function installExactRestoreSsh(
         return `${IMAGE_CONFIG_DIGEST}|${imagePlatform}|${JSON.stringify(repoDigests)}\n`;
       }
       if (command.includes("docker inspect --format")) {
-        return `${CONTAINER_ID}|/${CONTAINER_NAME}|${options.containerRunning ?? false}|created|none|no|{}|${IMAGE_PLATFORM_REFERENCE}|${IMAGE_CONFIG_DIGEST}|linux|${manifestDigest}|${manifestPlatform}\n`;
+        return `${CONTAINER_ID}|/${CONTAINER_NAME}|${options.containerRunning ?? false}|created|none|no|{}|${IMAGE_PLATFORM_REFERENCE}|${IMAGE_CONFIG_DIGEST}|linux|${manifestDigest}|${manifestPlatform}|${JSON.stringify(options.entrypoint ?? ["/usr/bin/env"])}|${JSON.stringify(options.command ?? QUARANTINE_COMMAND)}\n`;
       }
       if (command.includes('candidate_id=$(cat -- "$attempt_candidate_id")')) {
         return `${CONTAINER_ID}\n`;
@@ -356,7 +363,7 @@ describe("DockerSandboxProvider exact restore quarantine", () => {
         }
         if (command.includes("docker inspect --format")) {
           events.push("proof");
-          return `${CONTAINER_ID}|/${CONTAINER_NAME}|false|created|none|no|{}|${IMAGE_PLATFORM_REFERENCE}|${IMAGE_CONFIG_DIGEST}|linux|${IMAGE_PLATFORM_DIGEST}|linux/amd64\n`;
+          return `${CONTAINER_ID}|/${CONTAINER_NAME}|false|created|none|no|{}|${IMAGE_PLATFORM_REFERENCE}|${IMAGE_CONFIG_DIGEST}|linux|${IMAGE_PLATFORM_DIGEST}|linux/amd64|["/usr/bin/env"]|${JSON.stringify(QUARANTINE_COMMAND)}\n`;
         }
         if (command.includes("docker image inspect --format")) {
           events.push("image-proof");
@@ -479,6 +486,10 @@ describe("DockerSandboxProvider exact restore quarantine", () => {
     expect(dockerCreate?.command).toContain("--restart no");
     expect(dockerCreate?.command).toContain("--network none");
     expect(dockerCreate?.command).toContain("--no-healthcheck");
+    expect(dockerCreate?.command).toContain("--entrypoint '/usr/bin/env'");
+    expect(dockerCreate?.command).toContain(
+      `'${IMAGE_PLATFORM_REFERENCE}' '-i' '/usr/local/bin/node' '/app/packages/agent/dist/services/agent-backup-restore-v3-quarantine-host.js'`,
+    );
     const dockerCreateInvocation = /docker create[^;]+/.exec(dockerCreate?.command ?? "")?.[0];
     expect(dockerCreateInvocation).toBeDefined();
     expect(dockerCreateInvocation).not.toContain(" -p ");
@@ -833,6 +844,28 @@ describe("DockerSandboxProvider exact restore quarantine", () => {
     });
     expect(settled).not.toHaveBeenCalled();
   });
+
+  test.each([
+    { entrypoint: ["sh", "-lc", "ordinary-start"] },
+    { command: ["/usr/local/bin/node", "ordinary-agent.js"] },
+    { command: [...QUARANTINE_COMMAND, "start"] },
+  ])(
+    "rejects a created container with an ordinary or altered startup contract: %j",
+    async (startup) => {
+      spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(NODE);
+      const settled = mock(async () => {});
+      installExactRestoreSsh(startup);
+      const error = await new DockerSandboxProvider()
+        .create(exactRestoreConfig({ onReplacementCreateSettled: settled }))
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+      expect(error).toMatchObject({ containerId: CONTAINER_ID });
+      expect((error as Error).cause).toMatchObject({
+        code: "SANDBOX_EXACT_RESTORE_QUARANTINE_PROOF_MISMATCH",
+      });
+      expect(settled).not.toHaveBeenCalled();
+    },
+  );
 
   test("fails closed when Docker proves the index digest instead of the selected child digest", async () => {
     spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(NODE);

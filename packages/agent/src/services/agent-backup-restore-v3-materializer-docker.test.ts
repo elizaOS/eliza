@@ -1,7 +1,7 @@
 /**
  * Opt-in native Linux proof for the actual Docker exec stdin boundary.
  * Uses the built Agent worker in an exact-ID, networkless throwaway container;
- * only test-owned tmpfs state is writable. Requires a completed package build
+ * only test-owned tmpfs/volume state is writable. Requires a completed package build
  * and AGENT_RESTORE_V3_DOCKER_TESTS=1; never substitutes pathname emulation.
  */
 
@@ -28,7 +28,10 @@ const worker =
   "/repo/packages/agent/dist/services/agent-backup-restore-v3-materializer-worker.js";
 const validator =
   "/repo/packages/agent/dist/services/agent-backup-restore-v3-pglite-validation-worker.js";
+const quarantineHost =
+  "/repo/packages/agent/dist/services/agent-backup-restore-v3-quarantine-host.js";
 const containers = new Set<string>();
+const volumes = new Set<string>();
 const roots = new Set<string>();
 const exchanges = new Set<{
   disconnect: () => void;
@@ -57,7 +60,7 @@ function remote(id: string, source: string): string {
   );
 }
 
-async function fixture() {
+async function fixture(persistent = false) {
   await fs.access(
     path.join(
       repo,
@@ -73,6 +76,21 @@ async function fixture() {
   ).trim();
   if (!/^sha256:[0-9a-f]{64}$/.test(image))
     throw new Error("Expected one local image ID");
+  const storageArgs = [
+    "--tmpfs",
+    "/restore:rw,nosuid,nodev,mode=0700,size=256m",
+  ];
+  if (persistent) {
+    const volume = `restore-host-${randomUUID()}`;
+    docker("volume", "create", "--label", "eliza.restore-test=true", volume);
+    volumes.add(volume);
+    storageArgs.splice(
+      0,
+      storageArgs.length,
+      "--mount",
+      `type=volume,source=${volume},target=/restore,volume-nocopy`,
+    );
+  }
   const id = docker(
     "create",
     "--name",
@@ -82,14 +100,19 @@ async function fixture() {
     "--restart",
     "no",
     "--read-only",
-    "--tmpfs",
-    "/restore:rw,nosuid,nodev,mode=0700,size=256m",
+    ...storageArgs,
     "--mount",
     `type=bind,source=${repo},target=/repo,readonly`,
+    "--env",
+    "NODE_OPTIONS=--import=data:text/javascript,throw%20new%20Error('ordinary-preload-must-not-run')",
+    "--env",
+    "APP_CMD_START=ordinary-boot-must-not-run",
     "--entrypoint",
-    "/bin/sleep",
+    "/usr/bin/env",
     image,
-    "infinity",
+    "-i",
+    "/usr/local/bin/node",
+    quarantineHost,
   ).trim();
   if (!/^[0-9a-f]{64}$/.test(id))
     throw new Error("Expected one full Docker container ID");
@@ -99,6 +122,7 @@ async function fixture() {
     remote(
       id,
       `import fs from "node:fs/promises";
+    await fs.chmod("/restore", 0o700);
     await fs.mkdir("/restore/attempt", {mode:0o700});
     const identity = async p => {const s=await fs.stat(p,{bigint:true});return {device:String(s.dev),inode:String(s.ino)}};
     process.stdout.write(JSON.stringify({trustedRootIdentity:await identity("/restore"),attemptRootIdentity:await identity("/restore/attempt")}));`,
@@ -211,12 +235,65 @@ afterEach(async () => {
   exchanges.clear();
   for (const id of containers) docker("rm", "--force", id);
   containers.clear();
+  for (const volume of volumes) docker("volume", "rm", volume);
+  volumes.clear();
   for (const root of roots) await fs.rm(root, { recursive: true, force: true });
   roots.clear();
 });
 
 // Explicit Docker lane: ordinary unit runs must not create containers or pull images.
 describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
+  it("starts and restarts only the quarantine host, preserving private materializer access without ordinary boot", async () => {
+    const f = await fixture(true);
+    const inspectHost = () =>
+      JSON.parse(
+        remote(
+          f.id,
+          `
+      import fs from "node:fs/promises";
+      const entries = await fs.readdir("/restore/attempt");
+      const environment = await fs.readFile("/proc/1/environ", "utf8");
+      const command = (await fs.readFile("/proc/1/cmdline", "utf8")).split("\\0").filter(Boolean);
+      const tcp = await fs.readFile("/proc/1/net/tcp", "utf8");
+      const tcp6 = await fs.readFile("/proc/1/net/tcp6", "utf8");
+      process.stdout.write(JSON.stringify({entries, environment, command,
+        listeners: [...tcp.split("\\n"), ...tcp6.split("\\n")].filter(line => /\\s0A\\s/.test(line))}));
+    `,
+        ),
+      );
+    expect(inspectHost()).toEqual({
+      entries: [],
+      environment: "",
+      command: ["/usr/local/bin/node", quarantineHost],
+      listeners: [],
+    });
+    const retained = "retained candidate is not an empty agent";
+    remote(
+      f.id,
+      `import fs from "node:fs/promises"; await fs.writeFile("/restore/attempt/retained", ${JSON.stringify(retained)});`,
+    );
+    // A Docker restart must return to quarantine, never reinterpret retained
+    // candidate files or APP_CMD_START as authorization for an ordinary boot.
+    docker("restart", "--time", "5", f.id);
+    expect(inspectHost()).toEqual({
+      entries: ["retained"],
+      environment: "",
+      command: ["/usr/local/bin/node", quarantineHost],
+      listeners: [],
+    });
+    expect(
+      remote(
+        f.id,
+        `import fs from "node:fs/promises"; process.stdout.write(await fs.readFile("/restore/attempt/retained", "utf8"));`,
+      ),
+    ).toBe(retained);
+    expect(docker("logs", f.id)).toBe("");
+    docker("stop", "--time", "5", f.id);
+    expect(
+      docker("inspect", "--format", "{{.State.ExitCode}}", f.id).trim(),
+    ).toBe("0");
+  });
+
   it("reconciles an actual Linux process death after generation rename without replacing later live writes", async () => {
     const f = await fixture();
     // Synthetic preparation authority isolates the real rename/lock crash
@@ -373,7 +450,7 @@ describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
         "--format",
         "{{.HostConfig.NetworkMode}}|{{json .HostConfig.PortBindings}}|{{.Path}}|{{.State.Running}}",
       ).trim(),
-    ).toMatch(/^none\|(?:null|\{\})\|\/bin\/sleep\|true$/);
+    ).toMatch(/^none\|(?:null|\{\})\|\/usr\/bin\/env\|true$/);
     expect(await f.stage(record)).toEqual(staged);
   }, 90_000);
 
