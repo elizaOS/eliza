@@ -22,6 +22,7 @@ import type { AutonomousConfigLike } from "../types/config-like.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import { clearPersistedFirstRunConfig } from "./provider-switch-config.ts";
 import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
+import type { RuntimeRestartOptions } from "./server.ts";
 
 type AgentStateStatus =
   | "not_started"
@@ -69,7 +70,10 @@ export interface AgentAdminRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "error"> {
   state: AgentAdminRouteState;
-  onRestart?: (() => Promise<AgentRuntime | null>) | undefined;
+  onRestart?:
+    | ((options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>)
+    | undefined;
+  restartRequiresRuntimeDisposal?: boolean;
   onRuntimeSwapped?: () => void;
   onRuntimeActivated?: (
     previousRuntime: AgentRuntime | null,
@@ -138,7 +142,9 @@ export async function handleAgentAdminRoutes(
     state.agentState = "restarting";
     try {
       const previousRuntime = state.runtime;
-      const newRuntime = await onRestart();
+      const newRuntime = ctx.restartRequiresRuntimeDisposal
+        ? await onRestart({ disposeCurrentBeforeBuild: true })
+        : await onRestart();
       if (newRuntime) {
         await quiesceRuntimeBeforeReplacement(previousRuntime, newRuntime);
         state.runtime = newRuntime;
@@ -163,7 +169,10 @@ export async function handleAgentAdminRoutes(
           },
         });
       } else {
-        state.agentState = previousState;
+        if (ctx.restartRequiresRuntimeDisposal) state.runtime = null;
+        state.agentState = ctx.restartRequiresRuntimeDisposal
+          ? "error"
+          : previousState;
         error(
           res,
           "Restart handler returned null — runtime failed to re-initialize",
@@ -171,8 +180,12 @@ export async function handleAgentAdminRoutes(
         );
       }
     } catch (err) {
+      // error-policy:J1 expose restart failure without reviving a disposed runtime.
       const message = err instanceof Error ? err.message : String(err);
-      state.agentState = previousState;
+      if (ctx.restartRequiresRuntimeDisposal) state.runtime = null;
+      state.agentState = ctx.restartRequiresRuntimeDisposal
+        ? "error"
+        : previousState;
       error(res, `Restart failed: ${message}`, 500);
     }
     return true;

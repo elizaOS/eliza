@@ -1,6 +1,8 @@
 /**
  * Proves the POST /api/restore HTTP boundary rebuilds the live runtime after
  * replacing PGlite files, using a real snapshot, TCP API host, and PGlite dump.
+ * Mandatory-disposal failure cases use a real TCP host and an in-memory runtime
+ * to prove a rejected restart cannot advertise or resurrect the disposed object.
  */
 
 import {
@@ -90,6 +92,76 @@ afterEach(() => {
 });
 
 describe("POST /api/restore runtime lifecycle", () => {
+  it.each(["null", "throw"] as const)(
+    "reports a disposed restore runtime unavailable after a %s restart failure",
+    async (failure) => {
+      snapshotEnvironment();
+      process.env.ELIZA_API_BIND_HOST = "127.0.0.1";
+      process.env.ELIZA_API_TOKEN = API_TOKEN;
+      delete process.env.ELIZA_API_AUTH_TOKEN;
+      const runtime = new AgentRuntime({ logLevel: "fatal", plugins: [] });
+      runtime.registerDatabaseAdapter(new InMemoryDatabaseAdapter());
+      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      let api: Awaited<ReturnType<typeof startApiServer>> | undefined;
+      let calls = 0;
+      try {
+        api = await startApiServer({
+          port: 0,
+          runtime,
+          skipDeferredStartupWork: true,
+          restartRequiresRuntimeDisposal: true,
+          onRestart: async (options) => {
+            calls += 1;
+            if (calls === 1) {
+              expect(options?.disposeCurrentBeforeBuild).toBe(true);
+              await runtime.stop({ fast: true });
+              await runtime.close();
+            }
+            if (failure === "throw")
+              throw new Error("Exact restore boot rejected");
+            return null;
+          },
+        });
+        const headers = { Authorization: `Bearer ${API_TOKEN}` };
+        const response = await fetch(
+          `http://127.0.0.1:${api.port}/api/agent/restart`,
+          {
+            method: "POST",
+            headers,
+          },
+        );
+        expect(response.status).toBe(500);
+        const agents = await fetch(`http://127.0.0.1:${api.port}/api/agents`, {
+          headers,
+        });
+        await expect(agents.json()).resolves.toMatchObject({
+          agents: [{ status: "error" }],
+        });
+        const health = await fetch(`http://127.0.0.1:${api.port}/api/health`, {
+          headers,
+        });
+        await expect(health.json()).resolves.toMatchObject({
+          canRespond: false,
+        });
+        // A start cannot resurrect the disposed object by merely flipping its state.
+        const start = await fetch(
+          `http://127.0.0.1:${api.port}/api/agent/start`,
+          {
+            method: "POST",
+            headers,
+          },
+        );
+        expect(start.status).toBe(500);
+        expect(calls).toBe(2);
+      } finally {
+        await api?.close();
+        await runtime.stop({ fast: true });
+        await runtime.close();
+      }
+    },
+    60_000,
+  );
+
   it("returns success only after a replacement runtime is active", async () => {
     snapshotEnvironment();
     const root = await mkdtemp(path.join(tmpdir(), "eliza-restore-route-"));

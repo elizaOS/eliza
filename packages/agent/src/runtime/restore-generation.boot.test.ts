@@ -1,8 +1,9 @@
 /**
  * Exercises committed-generation selection through the actual runtime entry.
  * A real PGlite store and synthetic preparation authority isolate boot selection;
- * startup stops after service initialization, before host attachment. This is
- * not readiness or live-model evidence. Materialization has its own integration.
+ * Two boots exercise the real runtime and SQL adapter. The server wiring case
+ * substitutes only the HTTP host boundary; it proves no registry publication and
+ * no ordinary-boot fallback on restart, not HTTP readiness or live-model output.
  */
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -10,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import type { AgentRuntime } from "@elizaos/core";
+import * as sandboxRegistry from "@elizaos/shared/sandbox-registry";
 import { type SQL, sql } from "drizzle-orm";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -20,12 +22,20 @@ import { candidateFsCanonicalJson } from "../services/agent-backup-restore-v3-ca
 import type { AgentBackupRestoreV3PreparedGenerationReceipt } from "../services/agent-backup-restore-v3-generation";
 import { commitAgentBackupRestoreV3Generation } from "../services/agent-backup-restore-v3-generation-commit";
 import { AgentBackupRestoreV3RuntimeGeneration } from "../services/agent-backup-restore-v3-runtime-generation";
-import { shutdownRuntime, startEliza } from "./eliza";
+import { buildInitializedRuntime, shutdownRuntime, startEliza } from "./eliza";
 import {
   _resetAgentHostBridge,
   defaultAgentHostBridge,
   setAgentHostBridge,
 } from "./host-bridge";
+
+type ServerOptions = NonNullable<
+  Parameters<typeof import("../api/server").startApiServer>[0]
+>;
+const apiBoundary = vi.hoisted(() => ({
+  start: vi.fn<(options?: ServerOptions) => Promise<{ port: number }>>(),
+}));
+vi.mock("../api/server.ts", () => ({ startApiServer: apiBoundary.start }));
 
 const roots = new Set<string>();
 const candidates = new Set<AgentBackupRestoreV3CandidateFs>();
@@ -144,6 +154,8 @@ async function fixture() {
 }
 afterEach(async () => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+  apiBoundary.start.mockReset();
   _resetAgentHostBridge();
   for (const authority of authorities) await authority.close();
   authorities.clear();
@@ -172,6 +184,84 @@ it("does not boot or promote an unfinished generation and rejects a missing phys
   await expect(
     fs.access(path.join(committed.paths.database, "PG_VERSION")),
   ).rejects.toMatchObject({ code: "ENOENT" });
+}, 60_000);
+
+it("retains restore authority across server restarts without self-registering routes", async () => {
+  const { input, agentId } = await fixture();
+  const committed = await commitAgentBackupRestoreV3Generation(input);
+  const authority = await AgentBackupRestoreV3RuntimeGeneration.open(
+    { ...input, control: control() },
+    agentId,
+  );
+  authorities.add(authority);
+  vi.stubEnv("ELIZA_STATE_DIR", committed.paths.state);
+  vi.stubEnv("PGLITE_DATA_DIR", committed.paths.database);
+  for (const key of ["POSTGRES_URL", "DATABASE_URL", "SANDBOX_ROUTE_AGENT_ID"])
+    vi.stubEnv(key, undefined);
+  vi.stubEnv("ELIZA_DISABLE_VAULT_PROFILE_RESOLVER", "1");
+  vi.stubEnv(
+    "ELIZA_OPTIMIZED_PROMPT_HMAC_KEY",
+    Buffer.alloc(32, 1).toString("base64"),
+  );
+  setAgentHostBridge({
+    ...defaultAgentHostBridge,
+    sharedVault: () => ({
+      ...defaultAgentHostBridge.sharedVault(),
+      has: async () => false,
+    }),
+  });
+  const registry = vi.spyOn(sandboxRegistry, "buildSandboxRegistryFromEnv");
+  const abort = new AbortController();
+  let serverOptions: ServerOptions | undefined;
+  let runtime: AgentRuntime | undefined;
+  apiBoundary.start.mockImplementation(async (options) => {
+    serverOptions = options;
+    // Stop optional background work; server wiring itself continues to return.
+    abort.abort();
+    return { port: 0 };
+  });
+  try {
+    const started = await startEliza({
+      serverOnly: true,
+      restoredGeneration: authority,
+      configOverride: {
+        agents: {
+          defaults: {
+            workspace: path.join(committed.paths.state, "workspace"),
+          },
+        },
+      },
+      abortSignal: abort.signal,
+      onRuntimeCreated: (created) => {
+        runtime = created;
+      },
+    });
+    expect(started).toBe(runtime);
+    expect(started?.agentId).toBe(agentId);
+    expect(apiBoundary.start).toHaveBeenCalledOnce();
+    expect(registry).not.toHaveBeenCalled();
+    if (!serverOptions?.onRestart)
+      throw new Error("Server restart was not wired");
+    expect(serverOptions.restartRequiresRuntimeDisposal).toBe(true);
+    await authority.close();
+    // The real replacement entry rejects the closed authority before construction.
+    // Dropping that authority would instead try an ordinary boot of the same store.
+    await expect(serverOptions.onRestart()).resolves.toBeNull();
+    expect(registry).not.toHaveBeenCalled();
+    const db = new PGlite(committed.paths.database);
+    try {
+      expect((await db.query("SELECT fact FROM boot_fact")).rows).toEqual([
+        { fact: "amber lighthouse" },
+      ]);
+    } finally {
+      await db.close();
+    }
+  } finally {
+    abort.abort();
+    await shutdownRuntime(runtime, "restore server fixture cleanup", {
+      fast: true,
+    });
+  }
 }, 60_000);
 
 it("initializes and restarts the real runtime on the committed database without losing later writes", async () => {
@@ -221,25 +311,31 @@ it("initializes and restarts the real runtime on the committed database without 
       expect(process.env.PGLITE_DATA_DIR).toBe(committed.paths.database);
     });
     try {
+      const bootOptions = {
+        restoredGeneration: authority,
+        abortSignal: abort.signal,
+        onRuntimeCreated: created,
+        onBootPhase: (phase: string) => {
+          if (phase === "attach-host")
+            throw new Error("stop after runtime initialization");
+        },
+      };
+      const config = {
+        agents: {
+          defaults: {
+            workspace: path.join(committed.paths.state, "workspace"),
+          },
+        },
+        ui: { assistant: { name: "Wrong config persona" } },
+      };
       await expect(
-        startEliza({
-          headless: true,
-          restoredGeneration: authority,
-          abortSignal: abort.signal,
-          onRuntimeCreated: created,
-          onBootPhase: (phase) => {
-            if (phase === "attach-host")
-              throw new Error("stop after runtime initialization");
-          },
-          configOverride: {
-            agents: {
-              defaults: {
-                workspace: path.join(committed.paths.state, "workspace"),
-              },
-            },
-            ui: { assistant: { name: "Wrong config persona" } },
-          },
-        }),
+        boot === 0
+          ? startEliza({
+              ...bootOptions,
+              headless: true,
+              configOverride: config,
+            })
+          : buildInitializedRuntime({ ...bootOptions, config }),
       ).rejects.toThrow("stop after runtime initialization");
       expect(created).toHaveBeenCalledOnce();
       if (!constructed) throw new Error("Runtime was not constructed");
@@ -336,5 +432,14 @@ it("rejects conflicting identity, config and replaced directories before runtime
     code: "AGENT_BACKUP_RESTORE_V3_BOOT_DIRECTORY_CHANGED",
   });
   expect(await fs.readdir(committed.paths.database)).toEqual([]);
+  expect(created).not.toHaveBeenCalled();
+  await authority.close();
+  await expect(
+    buildInitializedRuntime({
+      config: {},
+      restoredGeneration: authority,
+      onRuntimeCreated: created,
+    }),
+  ).rejects.toMatchObject({ code: "AGENT_BACKUP_RESTORE_V3_BOOT_CLOSED" });
   expect(created).not.toHaveBeenCalled();
 }, 60_000);
