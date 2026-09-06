@@ -463,6 +463,9 @@ export async function debitInferenceCost(
       });
     }
     try {
+      if (options.preserveBalanceHintDuringFencedHandoff) {
+        await lowerOrgBalanceHint(ctx.organizationId, result.newBalance, Date.now());
+      }
       await republishOrgBalanceHintAfterDebit(
         ctx.organizationId,
         result.newBalance,

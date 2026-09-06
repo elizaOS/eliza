@@ -30,7 +30,6 @@ import type { PricingBillingSource } from "./ai-pricing-definitions";
 import { assertCreditRefundReservationPresent } from "./credit-reconciliation-invariants";
 import { resolveCostBuffer } from "./credits-config";
 import { emailService } from "./email";
-import { clearOrgAdmissionRefused, markOrgAdmissionRefused } from "./inference-admission-refusal";
 import {
   invalidateOrgBalanceHint,
   lowerOrgBalanceHint,
@@ -2188,9 +2187,7 @@ export class CreditsService {
           balanceAt,
           snapshot.revision,
         );
-        clearOrgAdmissionRefused(params.organizationId);
       } catch (cause) {
-        markOrgAdmissionRefused(params.organizationId);
         try {
           await invalidateOrgBalanceHint(params.organizationId);
         } catch (invalidationError) {
