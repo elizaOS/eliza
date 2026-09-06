@@ -1191,6 +1191,23 @@ async function doUpdate(
   };
 }
 
+const FORGET_PHRASE_PATTERN =
+  /^\s*(?:<@!?\d+>\s*|@\S+\s+|\S+\s+\(@\d+\)\s+)?(?:eliza[,:]?\s+)?(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:forget|delete|remove|erase)\s+(?:that\s+|about\s+|the\s+(?:memory|fact|note)\s+(?:that|about|of)\s+)?(.+?)[\s.!?]*$/iu;
+
+/**
+ * The literal target of an explicit "forget …" message, or undefined when the
+ * message is not one. Used only when the planner supplied neither memoryId
+ * nor query; the wording is the user's own, taken verbatim after the verb.
+ */
+function forgetTargetFromMessage(message: Memory): string | undefined {
+  const text =
+    typeof message.content?.text === "string" ? message.content.text : "";
+  const match = FORGET_PHRASE_PATTERN.exec(text);
+  const target = match?.[1]?.trim();
+  if (!target || scoreQueryTerms(target).length < 2) return undefined;
+  return target;
+}
+
 async function doDelete(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1199,9 +1216,17 @@ async function doDelete(
   const memoryParam = parseUuidParam(params.memoryId, "memoryId");
   if (!memoryParam.ok) return memoryParam.result;
   const memoryId = memoryParam.id;
-  const query = params.query?.trim();
+  let query = params.query?.trim();
   if (!memoryId && !query) {
-    return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
+    // The planner keeps sending delete with only confirm:true (live 2026-09-06
+    // 02:36, 05:48, 07:04 — the third time the turn hit the repeated-failure
+    // limit and errored). When the user's own message is an explicit forget,
+    // its literal wording after the verb is the target the planner should have
+    // quoted; nothing is paraphrased or inferred beyond that.
+    query = forgetTargetFromMessage(message);
+    if (!query) {
+      return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
+    }
   }
   if (params.confirm !== true) {
     return fail(

@@ -678,6 +678,34 @@ describe("MEMORY op:delete by query scope", () => {
     expect(String(left[0]?.memory.content.text)).toContain("jazz");
   });
 
+  it("a delete with neither memoryId nor query falls back to the user's own forget wording", async () => {
+    // Live 2026-09-06 07:04 (tj-88507a7c92b928): MEMORY_DELETE {confirm:true}
+    // twice, repeated-failure limit, turn errored.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "User takes their tea with honey.",
+      entityId: USER_ID,
+    });
+    const message = {
+      ...makeMessage(),
+      content: {
+        text: "Eliza (@1490833425802854491) forget that I take my tea with honey",
+      },
+    } as Memory;
+    const result = await runAction(runtime, message, {
+      action: "delete",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
+    const unrelated = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      confirm: true,
+    });
+    expect(unrelated.success).toBe(false);
+    expect(unrelated.data).toMatchObject({ error: "MEMORY_MISSING_ID" });
+  });
+
   it("matches clock times across abbreviation dots and spacing (6am vs 6a.m. vs 6 am)", async () => {
     // Live 2026-09-06 02:36: "forget that I usually wake up at 6am" scanned 20
     // rows and matched nothing against "The user usually wakes up at 6a.m.".
