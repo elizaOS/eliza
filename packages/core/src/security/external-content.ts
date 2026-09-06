@@ -392,6 +392,30 @@ export function containsExternalEnvelopeMaterial(text: string): boolean {
 }
 
 /**
+ * Compact prompt rendering of a stored message whose text is a verbatim
+ * envelope from {@link wrapExternalContent}: the payload prefixed with a
+ * one-token provenance marker (`[external:Webhook] …`) instead of the
+ * eight-line warning block. Transcript renderers that replay history must use
+ * this — the warning is for the turn being acted on, and replaying it per
+ * stored row multiplied a Discord room's history 5.3× (live 2026-09-06: 238
+ * rows, 211K chars wrapped vs 40K payload, rendered three times into one
+ * 137K-token post-turn evaluator prompt that the provider rejected). Text
+ * without the exact markers is returned unchanged.
+ */
+export function compactExternalEnvelopeForPrompt(text: string): string {
+	const payload = extractWrappedExternalContent(text);
+	if (payload === null) return text;
+	const start = text.indexOf(EXTERNAL_CONTENT_START);
+	const metadataEnd = text.indexOf("\n---\n", start);
+	const metadata =
+		start >= 0 && metadataEnd > start
+			? text.slice(start + EXTERNAL_CONTENT_START.length, metadataEnd)
+			: "";
+	const source = /^Source:\s*(.+)$/m.exec(metadata)?.[1]?.trim() || "External";
+	return `[external:${source}] ${payload.trim()}`;
+}
+
+/**
  * Returns the original payload from a string produced by
  * {@link wrapExternalContent}, or null when the text is not wrapped.
  */

@@ -27,6 +27,7 @@ export {
 } from "./entity-recognizer.js";
 export {
 	buildSafeExternalPrompt,
+	compactExternalEnvelopeForPrompt,
 	containsExternalEnvelopeMarkers,
 	containsExternalEnvelopeMaterial,
 	detectSuspiciousPatterns,

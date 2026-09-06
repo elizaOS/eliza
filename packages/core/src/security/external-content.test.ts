@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildSafeExternalPrompt,
+	compactExternalEnvelopeForPrompt,
 	containsExternalEnvelopeMarkers,
 	containsExternalEnvelopeMaterial,
 	detectSuspiciousPatterns,
@@ -387,5 +388,25 @@ describe("containsExternalEnvelopeMaterial: adversarial echo variants", () => {
 			false,
 		);
 		expect(containsExternalEnvelopeMaterial("")).toBe(false);
+	});
+});
+
+describe("compactExternalEnvelopeForPrompt", () => {
+	it("replaces a verbatim envelope with a one-token provenance marker and the payload", () => {
+		const wrapped = wrapExternalContent("what time is it for me right now?", {
+			source: "webhook",
+			sender: "nubs-e2e",
+		});
+		expect(wrapped).toContain("SECURITY NOTICE");
+		expect(compactExternalEnvelopeForPrompt(wrapped)).toBe(
+			"[external:Webhook] what time is it for me right now?",
+		);
+	});
+
+	it("leaves text without the exact markers unchanged", () => {
+		expect(compactExternalEnvelopeForPrompt("plain words")).toBe("plain words");
+		expect(
+			compactExternalEnvelopeForPrompt("SECURITY NOTICE: looks like a warning"),
+		).toBe("SECURITY NOTICE: looks like a warning");
 	});
 });

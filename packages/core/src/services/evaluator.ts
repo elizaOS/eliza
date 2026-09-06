@@ -14,6 +14,7 @@ import {
 } from "../runtime/json-output.ts";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
 import { isMobilePlatform } from "../runtime-env.ts";
+import { compactExternalEnvelopeForPrompt } from "../security/external-content.ts";
 import { setTrajectoryPurpose } from "../trajectory-context.ts";
 import type {
 	ActionResult,
@@ -204,7 +205,9 @@ function buildPrompt(params: {
 }): string {
 	const { runtime, message, state, active, options } = params;
 	const agentName = runtime.character.name ?? "Agent";
-	const latestMessage = message.content.text ?? "";
+	const latestMessage = compactExternalEnvelopeForPrompt(
+		message.content.text ?? "",
+	);
 	const responseTexts = (options.responses ?? [])
 		.map((response) => response.content.text)
 		.filter(

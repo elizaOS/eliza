@@ -5,6 +5,7 @@
  * read is memoized per message. Runtime doubles; no database or model.
  */
 import { describe, expect, it, vi } from "vitest";
+import { wrapExternalContent } from "../security/external-content.ts";
 import type { IAgentRuntime, Memory, UUID } from "../types";
 import {
 	formatRecentMessages,
@@ -96,5 +97,28 @@ describe("getRoomTranscript", () => {
 		expect(a).toBe(b);
 		expect(getMemories).toHaveBeenCalledTimes(1);
 		expect(a.map((memory) => memory.content.text)).toEqual(["first", "second"]);
+	});
+});
+
+describe("formatRecentMessages with stored external envelopes", () => {
+	it("renders the payload with a compact provenance marker instead of the warning block", () => {
+		const wrapped = wrapExternalContent(
+			"remember that my favorite tea is jasmine",
+			{
+				source: "webhook",
+			},
+		);
+		const line = formatRecentMessages([
+			{
+				id: "00000000-0000-0000-0000-0000000000a1",
+				entityId: "00000000-0000-0000-0000-0000000000e0",
+				roomId: "00000000-0000-0000-0000-0000000000c0",
+				content: { text: wrapped, senderName: "nubs" },
+			} as never,
+		]);
+		expect(line).toBe(
+			"- nubs: [external:Webhook] remember that my favorite tea is jasmine",
+		);
+		expect(line).not.toContain("SECURITY NOTICE");
 	});
 });
