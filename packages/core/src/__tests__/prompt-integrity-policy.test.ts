@@ -630,6 +630,14 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/PLANNER_MAX_OWN_REPLY_TURNS/,
 		/maxOwnReplies/,
 	],
+	"packages/core/src/services/message/dialogue-context.ts": [
+		/PLANNER_MAX_OWN_REPLY_TURNS/,
+		/maxOwnReplies/,
+	],
+	"packages/core/src/services/message/context-assembly.ts": [
+		/PLANNER_MAX_OWN_REPLY_TURNS/,
+		/maxOwnReplies/,
+	],
 	"packages/core/src/services/evaluator.ts": [
 		/ELIZA_DISABLE_ACTION_RESULT_PROJECTION/,
 	],
