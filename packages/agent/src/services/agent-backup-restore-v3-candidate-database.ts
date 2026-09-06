@@ -144,8 +144,9 @@ export interface AgentBackupRestoreV3CandidateDatabaseInput {
 
 export function extractAgentBackupRestoreV3CandidateDatabase(
   input: Readonly<AgentBackupRestoreV3CandidateDatabaseInput>,
+  heldLock?: AgentBackupRestoreV3CandidateFsLock,
 ): Promise<Readonly<AgentBackupRestoreV3CandidateDatabaseExtractionReceipt>> {
-  return extractDatabaseAt(input, OUTPUT_DIRECTORY, FINISH_MARKER);
+  return extractDatabaseAt(input, OUTPUT_DIRECTORY, FINISH_MARKER, heldLock);
 }
 
 /** Only the validator consumes this disposable copy, while holding the root lock. */
