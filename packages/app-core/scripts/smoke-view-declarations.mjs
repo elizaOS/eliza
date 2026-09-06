@@ -39,14 +39,22 @@ export const smokeViewDeclarations = [
     "/cloud",
     "CloudView",
     "gui",
-    { capabilities: ["agent-surface"] },
+    { header: "fullscreen", capabilities: ["agent-surface"] },
   ],
   ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsView"],
   // The decomposed personal-assistant domain views are the real surfaces (the
   // old monolithic `lifeops` overview view was removed). `documents` is
   // intentionally absent — its `/documents` path collides with the built-in
   // Knowledge tab (`App.tsx` findView matches `/${tab}`).
-  ["calendar", "Calendar", "plugin-calendar", "/calendar", "CalendarView"],
+  [
+    "calendar",
+    "Calendar",
+    "plugin-calendar",
+    "/calendar",
+    "CalendarView",
+    "gui",
+    { header: "fullscreen", capabilities: ["agent-surface"] },
+  ],
   [
     "computer-use-sessions",
     "Computer Sessions",
