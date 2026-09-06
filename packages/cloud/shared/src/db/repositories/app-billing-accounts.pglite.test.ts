@@ -81,22 +81,13 @@ beforeAll(async () => {
     SELECT organization_id,id,1,'webhook',provider_environment,stripe_customer_id,stripe_subscription_id,stripe_subscription_item_id,plan_key,catalog_version,status,current_period_start,current_period_end,false,provider_object_digest FROM billing_subscriptions WHERE id=$1`,
     [historicalSub],
   );
-  const { subscriptionBillingOperationsRepository: operations } = await import(
-    "./subscription-billing-operations"
+  // Seed the historical command shape directly: this migration-preservation test
+  // intentionally precedes later command-result columns and current writers.
+  await pg().query(
+    `INSERT INTO billing_subscription_commands(organization_id,subscription_id,requested_by_user_id,kind,expected_subscription_revision,idempotency_key,provider_idempotency_key,request_digest)
+    VALUES($1,$2,$3,'cancel',1,'old.command.cancel','old.provider.cancel',$4)`,
+    [historicalOrg, historicalSub, historicalUser, "b".repeat(64)],
   );
-  await operations.enqueueCommand({
-    id: randomUUID(),
-    organizationId: historicalOrg,
-    subscriptionId: historicalSub,
-    requestedByUserId: historicalUser,
-    kind: "cancel",
-    targetPlanKey: null,
-    expectedSubscriptionRevision: 1,
-    idempotencyKey: "old.command.cancel",
-    providerIdempotencyKey: "old.provider.cancel",
-    requestDigest: "b".repeat(64),
-    now: new Date(),
-  });
   await pg().query(
     `INSERT INTO subscription_allowance_periods(organization_id,subscription_id,subscription_revision,provider_environment,stripe_invoice_id,plan_key,catalog_version,period_start,period_end,expires_at,granted_amount,available_amount)
     VALUES ($1,$2,1,'test','in_old','plus_monthly','v1','2026-08-01Z','2026-09-01Z','2026-09-01Z',10,10)`,

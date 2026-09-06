@@ -30,6 +30,10 @@ import {
 } from "../schemas/subscription-billing-operations";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
+import {
+  type FinalizeCancellationEventInput,
+  finalizeCancellationEvent,
+} from "./subscription-cancellation-event-finalization";
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
 import {
   lifecycleFailure,
@@ -256,7 +260,7 @@ export class SubscriptionBillingOperationsRepository {
         .from(organizationSubscriptionAuthorities)
         .where(eq(organizationSubscriptionAuthorities.organization_id, input.organizationId))
         .for("update");
-      if (input.kind === "checkout") {
+      {
         const [replay] = await tx
           .select()
           .from(billingSubscriptionCommands)
@@ -276,6 +280,27 @@ export class SubscriptionBillingOperationsRepository {
           }
           return { value: replay, replayed: true };
         }
+      }
+      const [pendingCancellationConflict] = await tx
+        .select({ id: billingSubscriptionCommands.id })
+        .from(billingSubscriptionCommands)
+        .where(
+          and(
+            eq(billingSubscriptionCommands.organization_id, input.organizationId),
+            inArray(billingSubscriptionCommands.status, [
+              "PREPARED",
+              "OUTCOME_UNKNOWN",
+              "SUCCEEDED",
+            ]),
+            input.kind === "cancel" ? sql`true` : eq(billingSubscriptionCommands.kind, "cancel"),
+          ),
+        )
+        .limit(1);
+      if (pendingCancellationConflict)
+        conflict("Organization has a contradictory subscription command pending", {
+          organizationId: input.organizationId,
+        });
+      if (input.kind === "checkout") {
         const [liveSubscription] = await tx
           .select({ id: billingSubscriptions.id })
           .from(billingSubscriptions)
@@ -708,6 +733,11 @@ export class SubscriptionBillingOperationsRepository {
       )
       .limit(1);
     return replayed ?? null;
+  }
+
+  /** Publishes a known applied cancellation observation through the existing receipt owner. */
+  async finalizeCancellationEvent(input: FinalizeCancellationEventInput) {
+    return finalizeCancellationEvent(this, input);
   }
 
   /**

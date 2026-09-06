@@ -22,6 +22,15 @@ if (!queueMockGlobal.__cloudApiRedisQueueMock) {
 const redisQueueMock = queueMockGlobal.__cloudApiRedisQueueMock;
 const { drain, queueLength } = redisQueueMock;
 const processStripeEvent = mock(async () => undefined);
+const recoverOrganizationSubscriptionCancellations = mock(async () => ({
+  inspected: 1,
+  applied: 0,
+  pending: 1,
+  unavailable: 0,
+}));
+mock.module("@/lib/services/subscription-cancellation", () => ({
+  recoverOrganizationSubscriptionCancellations,
+}));
 const sweepSubscriptionNotices = mock(async () => ({
   inspected: 1,
   policyUnavailable: 1,
@@ -74,6 +83,7 @@ describe("Stripe queue cron route", () => {
     queueLength.mockReset();
     processStripeEvent.mockClear();
     sweepSubscriptionNotices.mockClear();
+    recoverOrganizationSubscriptionCancellations.mockClear();
     queueLength.mockResolvedValueOnce(3).mockResolvedValueOnce(1);
     drain.mockImplementation(async (_key, handler) => {
       await handler({
@@ -97,6 +107,7 @@ describe("Stripe queue cron route", () => {
     expect(drain).not.toHaveBeenCalled();
     expect(processStripeEvent).not.toHaveBeenCalled();
     expect(sweepSubscriptionNotices).not.toHaveBeenCalled();
+    expect(recoverOrganizationSubscriptionCancellations).not.toHaveBeenCalled();
   });
 
   test("drains the stripe-events queue with the bounded retry contract", async () => {
@@ -110,12 +121,16 @@ describe("Stripe queue cron route", () => {
       success: true,
       queue: "stripe-events",
       notices: { inspected: 1, policyUnavailable: 1 },
+      cancellations: { inspected: 1, applied: 0, pending: 1, unavailable: 0 },
       before: 3,
       after: 1,
       processed: 1,
       failed: 0,
       retried: 0,
     });
+    expect(recoverOrganizationSubscriptionCancellations).toHaveBeenCalledWith(
+      5,
+    );
     expect(queueLength).toHaveBeenCalledTimes(2);
     expect(queueLength).toHaveBeenNthCalledWith(1, "stripe-events");
     expect(queueLength).toHaveBeenNthCalledWith(2, "stripe-events");

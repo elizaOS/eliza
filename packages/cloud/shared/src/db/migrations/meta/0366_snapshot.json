@@ -21340,6 +21340,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "cancellation_dispatch_state": {
+          "name": "cancellation_dispatch_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "provider_started_at": {
           "name": "provider_started_at",
           "type": "timestamp with time zone",
@@ -21593,6 +21599,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "billing_subscription_commands_cancellation_dispatch_check": {
+          "name": "billing_subscription_commands_cancellation_dispatch_check",
+          "value": "\"billing_subscription_commands\".\"cancellation_dispatch_state\" IS NULL OR (\"billing_subscription_commands\".\"kind\" = 'cancel' AND \"billing_subscription_commands\".\"cancellation_dispatch_state\" IN ('ready','started'))"
+        },
         "billing_subscription_commands_cancellation_result_check": {
           "name": "billing_subscription_commands_cancellation_result_check",
           "value": "(\"billing_subscription_commands\".\"kind\" = 'cancel' AND \"billing_subscription_commands\".\"status\" = 'APPLIED' AND \"billing_subscription_commands\".\"result_subscription_id\" IS NOT NULL AND \"billing_subscription_commands\".\"subscription_id\" IS NOT NULL AND \"billing_subscription_commands\".\"result_subscription_id\" = \"billing_subscription_commands\".\"subscription_id\" AND \"billing_subscription_commands\".\"result_subscription_revision\" IS NOT NULL AND \"billing_subscription_commands\".\"result_subscription_revision\" > 0) OR ((\"billing_subscription_commands\".\"kind\" <> 'cancel' OR \"billing_subscription_commands\".\"status\" <> 'APPLIED') AND \"billing_subscription_commands\".\"result_subscription_revision\" IS NULL)"
@@ -56744,6 +56754,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "764bbcfe-ebb6-49d3-85d8-a992c359f888",
+  "id": "ad3302a0-c98f-4098-9fd8-43cfc682c0d7",
   "prevId": "79fc0688-30f6-48b8-a180-fb64efd01578"
 }

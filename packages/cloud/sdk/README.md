@@ -169,3 +169,19 @@ Build and publish:
 bun run build
 npm publish --access public
 ```
+
+## Organization subscription cancellation
+
+With a current owner/admin session, `submitOrganizationSubscriptionCancellation`
+accepts the expected local subscription UUID, its expected revision, and a stable
+`idempotencyKey`. It requests cancellation at the current period end. Retain the
+same key when checking an uncertain request; contradictory pending commands are
+rejected. The UUID and revision are preconditions on the organization’s canonical
+subscription, not provider identifiers. Stripe identity comes only from server
+authority.
+`readOrganizationSubscriptionCancellation(commandId)` polls the durable outcome
+without repeating a provider mutation. `OUTCOME_UNKNOWN` is unresolved;
+`APPLIED` supplies an immutable result revision. Recovery retrieves an uncertain
+provider outcome without sending an unattended mutation. Current billing state remains
+available from the existing billing snapshot. Developer API keys cannot authorize
+these methods, and no provider identifiers or credentials are returned.

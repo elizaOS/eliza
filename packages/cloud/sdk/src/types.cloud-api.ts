@@ -13,6 +13,24 @@ export interface ApiSuccessEnvelope<TData> {
   data: TData;
 }
 
+/** Safe command state for period-end cancellation of the current organization subscription. */
+export interface OrganizationSubscriptionCancellationDto {
+  commandId: string;
+  subscriptionId: string;
+  status: "PREPARED" | "OUTCOME_UNKNOWN" | "APPLIED" | "FAILED" | "SUPERSEDED";
+  expectedSubscriptionRevision: string;
+  resultSubscriptionRevision: string | null;
+}
+
+export interface OrganizationSubscriptionCancellationRequest {
+  subscriptionId: string;
+  expectedSubscriptionRevision: number;
+  idempotencyKey: string;
+}
+
+export type OrganizationSubscriptionCancellationResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionCancellationDto>;
+
 export interface CurrentUserOrganizationDto {
   id: string;
   name: string;

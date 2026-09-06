@@ -131,6 +131,8 @@ import {
   type ListX402PaymentRequestsResponse,
   type ModelListResponse,
   type OpenApiSpec,
+  type OrganizationSubscriptionCancellationRequest,
+  type OrganizationSubscriptionCancellationResponse,
   type PairingTokenResponse,
   type PollGatewayRelayResponse,
   type RedemptionBalanceResponse,
@@ -525,6 +527,25 @@ export class ElizaCloudClient {
     return this.v1.requestData(
       "GET",
       `/apps/${encodeURIComponent(appId)}/billing/account?environment=${encodeURIComponent(environment)}`,
+    );
+  }
+
+  /** Requires a current organization owner/admin session; schedules cancellation at period end. */
+  submitOrganizationSubscriptionCancellation(
+    input: OrganizationSubscriptionCancellationRequest,
+  ): Promise<OrganizationSubscriptionCancellationResponse> {
+    return this.v1.requestData("POST", "/subscriptions/cancel", {
+      json: input,
+    });
+  }
+
+  /** Reads the durable command outcome without repeating a provider mutation. */
+  readOrganizationSubscriptionCancellation(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionCancellationResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/cancel/${encodeURIComponent(commandId)}`,
     );
   }
 

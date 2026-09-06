@@ -63,6 +63,7 @@ export const billingSubscriptionCommands = pgTable(
     attempt_count: integer("attempt_count").notNull().default(0),
     lease_token: uuid("lease_token"),
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
+    cancellation_dispatch_state: text("cancellation_dispatch_state").$type<"ready" | "started">(),
     provider_started_at: timestamp("provider_started_at", { withTimezone: true }),
     provider_response_digest: text("provider_response_digest"),
     error_code: text("error_code"),
@@ -97,6 +98,10 @@ export const billingSubscriptionCommands = pgTable(
       ],
       name: "billing_subscription_commands_result_revision_tenant_fk",
     }).onDelete("restrict"),
+    cancellation_dispatch_check: check(
+      "billing_subscription_commands_cancellation_dispatch_check",
+      sql`${table.cancellation_dispatch_state} IS NULL OR (${table.kind} = 'cancel' AND ${table.cancellation_dispatch_state} IN ('ready','started'))`,
+    ),
     cancellation_result_check: check(
       "billing_subscription_commands_cancellation_result_check",
       sql`(${table.kind} = 'cancel' AND ${table.status} = 'APPLIED' AND ${table.result_subscription_id} IS NOT NULL AND ${table.subscription_id} IS NOT NULL AND ${table.result_subscription_id} = ${table.subscription_id} AND ${table.result_subscription_revision} IS NOT NULL AND ${table.result_subscription_revision} > 0) OR ((${table.kind} <> 'cancel' OR ${table.status} <> 'APPLIED') AND ${table.result_subscription_revision} IS NULL)`,

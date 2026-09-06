@@ -15,7 +15,7 @@ const replacement = randomUUID();
 const foreignSource = randomUUID();
 const historicalCheckout = randomUUID();
 const digest = "a".repeat(64);
-let historicalRows: object[];
+let historicalRows: Record<string, unknown>[];
 
 beforeAll(async () => {
   await db.exec(
@@ -56,7 +56,10 @@ beforeAll(async () => {
     [historicalCheckout, org, actor, digest, source],
   );
   historicalRows = (
-    await db.query("SELECT * FROM billing_subscription_commands WHERE id=$1", [historicalCheckout])
+    await db.query<Record<string, unknown>>(
+      "SELECT * FROM billing_subscription_commands WHERE id=$1",
+      [historicalCheckout],
+    )
   ).rows;
   const migration = await readFile(
     new URL("../migrations/0383_subscription_cancellation_result.sql", import.meta.url),
@@ -92,7 +95,13 @@ test("migration retains historical applied checkout without fabricating a result
         historicalCheckout,
       ])
     ).rows,
-  ).toEqual(historicalRows.map((row) => ({ ...row, result_subscription_revision: null })));
+  ).toEqual(
+    historicalRows.map((row) => ({
+      ...row,
+      result_subscription_revision: null,
+      cancellation_dispatch_state: null,
+    })),
+  );
 });
 test("cancel result identifies its immutable source revision and prevents its removal", async () => {
   const id = await command();
@@ -179,4 +188,22 @@ test("late workers cannot rewrite applied cancellation result or response proven
   expect(
     (await db.query("SELECT * FROM billing_subscription_commands WHERE id=$1", [id])).rows,
   ).toEqual(before);
+});
+
+test("historical unknown dispatch provenance cannot be upgraded into ready authority", async () => {
+  const id = await command();
+  await expect(
+    db.query(
+      "UPDATE billing_subscription_commands SET cancellation_dispatch_state='ready' WHERE id=$1",
+      [id],
+    ),
+  ).rejects.toThrow();
+  expect(
+    (
+      await db.query(
+        "SELECT cancellation_dispatch_state FROM billing_subscription_commands WHERE id=$1",
+        [id],
+      )
+    ).rows,
+  ).toEqual([{ cancellation_dispatch_state: null }]);
 });

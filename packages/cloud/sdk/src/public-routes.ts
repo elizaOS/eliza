@@ -2362,6 +2362,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/steward/tenants/credentials/route.ts",
   },
+  "GET /api/v1/subscriptions/cancel/{commandId}": {
+    method: "GET",
+    path: "/api/v1/subscriptions/cancel/{commandId}",
+    methodName: "getApiV1SubscriptionsCancelByCommandId",
+    responseMode: "json",
+    pathParams: ["commandId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/subscriptions/cancel/[commandId]/route.ts",
+  },
   "GET /api/v1/subscriptions/plans": {
     method: "GET",
     path: "/api/v1/subscriptions/plans",
@@ -4752,6 +4761,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/stripe/checkout/route.ts",
   },
+  "POST /api/v1/subscriptions/cancel": {
+    method: "POST",
+    path: "/api/v1/subscriptions/cancel",
+    methodName: "postApiV1SubscriptionsCancel",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/subscriptions/cancel/route.ts",
+  },
   "POST /api/v1/telegram/connect": {
     method: "POST",
     path: "/api/v1/telegram/connect",
@@ -5626,6 +5644,9 @@ export interface PublicRoutePathParams {
   "GET /api/v1/solana/token-accounts/{address}": { address: string | number };
   "GET /api/v1/solana/transactions/{address}": { address: string | number };
   "GET /api/v1/steward/tenants/credentials": Record<never, never>;
+  "GET /api/v1/subscriptions/cancel/{commandId}": {
+    commandId: string | number;
+  };
   "GET /api/v1/subscriptions/plans": Record<never, never>;
   "GET /api/v1/telegram/chats": Record<never, never>;
   "GET /api/v1/telegram/scan-chats": Record<never, never>;
@@ -5990,6 +6011,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/solana/rpc": Record<never, never>;
   "POST /api/v1/steward/tenants": Record<never, never>;
   "POST /api/v1/stripe/checkout": Record<never, never>;
+  "POST /api/v1/subscriptions/cancel": Record<never, never>;
   "POST /api/v1/telegram/connect": Record<never, never>;
   "POST /api/v1/telegram/scan-chats": Record<never, never>;
   "POST /api/v1/topup/10": Record<never, never>;
@@ -6330,6 +6352,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/solana/token-accounts/{address}": never;
   "GET /api/v1/solana/transactions/{address}": never;
   "GET /api/v1/steward/tenants/credentials": never;
+  "GET /api/v1/subscriptions/cancel/{commandId}": never;
   "GET /api/v1/subscriptions/plans": never;
   "GET /api/v1/telegram/chats": never;
   "GET /api/v1/telegram/scan-chats": never;
@@ -6603,6 +6626,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/solana/rpc": never;
   "POST /api/v1/steward/tenants": never;
   "POST /api/v1/stripe/checkout": never;
+  "POST /api/v1/subscriptions/cancel": never;
   "POST /api/v1/telegram/connect": never;
   "POST /api/v1/telegram/scan-chats": never;
   "POST /api/v1/topup/10": never;
@@ -9190,6 +9214,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1SubscriptionsCancelByCommandId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/cancel/{commandId}">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/subscriptions/cancel/{commandId}", TResponse>(
+      "GET /api/v1/subscriptions/cancel/{commandId}",
+      options,
+    );
+  }
+
   getApiV1SubscriptionsPlans<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plans"> = {},
   ): Promise<TResponse> {
@@ -11608,6 +11641,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1SubscriptionsCancel<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/cancel", TResponse>(
+      "POST /api/v1/subscriptions/cancel",
+      options,
+    );
+  }
+
   postApiV1TelegramConnect<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/telegram/connect"> = {},
   ): Promise<TResponse> {
@@ -13783,6 +13825,15 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/steward/tenants/credentials", options);
   }
 
+  getApiV1SubscriptionsCancelByCommandIdRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/cancel/{commandId}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/subscriptions/cancel/{commandId}",
+      options,
+    );
+  }
+
   getApiV1SubscriptionsPlansRaw(
     options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plans"> = {},
   ): Promise<Response> {
@@ -15536,6 +15587,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/stripe/checkout"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/stripe/checkout", options);
+  }
+
+  postApiV1SubscriptionsCancelRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/cancel", options);
   }
 
   postApiV1TelegramConnectRaw(

@@ -55,6 +55,7 @@ import {
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { referralsService } from "@/lib/services/referrals";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
+import { reconcileStripeScheduledCancellationLifecycle } from "@/lib/services/stripe-scheduled-cancellation-lifecycle";
 import { reconcileStripeTerminalLifecycle } from "@/lib/services/stripe-terminal-lifecycle";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
@@ -205,14 +206,22 @@ export async function processStripeEvent(
     `[Stripe Queue] Processing ${event.type} (${event.id}) attempt=${delivery.attempts}`,
   );
 
-  // Only known terminal organization lifecycle is implemented. Other recurring
-  // deliveries remain intact in retry/DLQ until their policy can be reconciled.
+  // Terminal lifecycle and known applied cancellation scheduling have dedicated owners.
+  // Other recurring deliveries remain intact until their policy can be reconciled.
   try {
     if (
       event.type === "customer.subscription.updated" ||
       event.type === "customer.subscription.deleted"
     ) {
-      await reconcileStripeTerminalLifecycle(delivery.body);
+      if (
+        event.type === "customer.subscription.updated" &&
+        event.data.object.status === "active" &&
+        event.data.object.cancel_at_period_end === true
+      ) {
+        await reconcileStripeScheduledCancellationLifecycle(delivery.body);
+      } else {
+        await reconcileStripeTerminalLifecycle(delivery.body);
+      }
       return "ack";
     }
     if (await requiresSubscriptionReconciliation(event)) {
