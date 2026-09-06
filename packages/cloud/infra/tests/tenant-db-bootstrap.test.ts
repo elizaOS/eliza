@@ -272,3 +272,47 @@ test("rejects redirected data directories and mounts beneath the volume", () => 
   expect(runCluster(other).status).not.toBe(0);
   expect(effects(other.effects)).toBe("");
 });
+
+const startAdmission = section(
+  "      # Every cluster start verifies",
+  "  - path: /etc/systemd/system/postgresql@16-main.service.d/tenant-volume.conf",
+).replace("${tenant_db_volume_device}", volume);
+
+test("cluster start admission rejects wrong mounts and effective data directories before PostgreSQL starts", () => {
+  const cases: Array<[Record<string, string>, boolean]> = [
+    [{}, true],
+    [{ BLOCK_PRESENT: "0" }, false],
+    [{ EXPECTED_DEVICE: "8:16\n8:17" }, false],
+    [{ ALREADY_MOUNTED: "0" }, false],
+    [{ OBSERVED_DEVICE: "8:17" }, false],
+    [{ DATA_DEVICE: "8:17" }, false],
+    [{ CONFIGURED_DATA: "/var/lib/postgresql/16/main" }, false],
+  ];
+  for (const [overrides, allowed] of cases) {
+    const f = fixture();
+    const clusterPath = join(f.data, "16/main");
+    mkdirSync(clusterPath, { recursive: true });
+    writeFileSync(join(clusterPath, "PG_VERSION"), "16\n");
+    const source = startAdmission.replaceAll("/mnt/tenant-pgdata", f.data);
+    const result = spawnSync("bash", ["-c", `${volumePrelude}
+findmnt() { if [ "$5" = '--target' ]; then echo "$DATA_DEVICE"; else echo "$OBSERVED_DEVICE"; fi; }
+runuser() { echo "$CONFIGURED_DATA"; }
+${source}
+echo POSTGRES_START_ALLOWED
+`], {
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH,
+        BLOCK_PRESENT: "1",
+        EXPECTED_DEVICE: "8:16",
+        ALREADY_MOUNTED: "1",
+        OBSERVED_DEVICE: "8:16",
+        DATA_DEVICE: "8:16",
+        CONFIGURED_DATA: clusterPath,
+        ...overrides,
+      },
+    });
+    expect(result.status === 0).toBe(allowed);
+    expect(result.stdout.includes("POSTGRES_START_ALLOWED")).toBe(allowed);
+  }
+});

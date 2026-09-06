@@ -63,6 +63,40 @@ write_files:
       $nrconf{restart} = 'a';
       $nrconf{kernelhints} = 0;
 
+  - path: /usr/local/bin/tenant-db-admit-start.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      # Every cluster start verifies the assigned volume, including starts
+      # requested by package hooks or recovery before bootstrap has completed.
+      set -euo pipefail
+      reject() { echo "[tenant-db-admit-start] $*" >&2; exit 1; }
+      VOL="${tenant_db_volume_device}"
+      PGDATA=/mnt/tenant-pgdata/16/main
+      test -b "$VOL" || reject "assigned volume is unavailable"
+      expected_device="$(lsblk --raw --nodeps --noheadings --output MAJ:MIN "$VOL")"
+      [[ "$expected_device" =~ ^[0-9]+:[0-9]+$ ]] || reject "assigned device identity is ambiguous"
+      mountpoint -q /mnt/tenant-pgdata || reject "assigned volume is not mounted"
+      mounted_device="$(findmnt --raw --noheadings --output MAJ:MIN --mountpoint /mnt/tenant-pgdata)"
+      [ "$mounted_device" = "$expected_device" ] || reject "mount belongs to a different device"
+      if test -L /mnt/tenant-pgdata/16 || test -L "$PGDATA"; then
+        reject "cluster directory redirects outside the assigned volume"
+      fi
+      test -f "$PGDATA/PG_VERSION" || reject "initialized cluster is unavailable"
+      [ "$(cat "$PGDATA/PG_VERSION")" = 16 ] || reject "cluster major is unsupported"
+      data_device="$(findmnt --raw --noheadings --output MAJ:MIN --target "$PGDATA")"
+      [ "$data_device" = "$expected_device" ] || reject "cluster belongs to a different device"
+      configured_data="$(runuser -u postgres -- /usr/lib/postgresql/16/bin/postgres -D "$PGDATA" -C data_directory -c config_file=/etc/postgresql/16/main/postgresql.conf)"
+      [ "$configured_data" = "$PGDATA" ] || reject "effective configuration selects a different cluster"
+
+  - path: /etc/systemd/system/postgresql@16-main.service.d/tenant-volume.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Service]
+      ExecStartPre=/usr/local/bin/tenant-db-admit-start.sh
+
   - path: /usr/local/bin/tenant-db-init.sh
     owner: root:root
     permissions: '0755'
