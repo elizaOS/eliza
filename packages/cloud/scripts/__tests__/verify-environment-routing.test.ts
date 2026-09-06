@@ -344,3 +344,80 @@ describe("ENVIRONMENT_ROUTING matrix integrity", () => {
     );
   });
 });
+
+describe("development routing over a real HTTP health response", () => {
+  it("admits its own tier and rejects both staging and production even in permissive rollout mode", async () => {
+    let servedEnvironment = "development";
+    const requests: string[] = [];
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        requests.push(new URL(request.url).pathname);
+        return Response.json({ status: "ok", environment: servedEnvironment });
+      },
+    });
+    // Only DNS/TLS destination selection is substituted. Fetch, HTTP, body
+    // parsing, environment classification and aggregate decisions are real.
+    const localFetch = Object.assign(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const original = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        return fetch(new URL(original.pathname, server.url), init);
+      },
+      { preconnect: fetch.preconnect },
+    );
+    try {
+      const matrix = selectMatrix("development");
+      expect(matrix.length).toBeGreaterThan(0);
+      for (servedEnvironment of ["development", "staging", "production"]) {
+        const probes = await Promise.all(
+          matrix.map(async ({ domain, environment }) => {
+            const response = await fetchServedEnvironment(domain, {
+              fetchImpl: localFetch,
+              attempts: 1,
+            });
+            return classifyProbe({
+              domain,
+              expected: environment,
+              ...response,
+            });
+          }),
+        );
+        const verdict = decideRoutingVerdict({
+          probes,
+          requireBeacon: false,
+          requireReachable: false,
+        });
+        expect(verdict.ok).toBe(servedEnvironment === "development");
+        if (servedEnvironment !== "development")
+          expect(probes.every((probe) => probe.status === "misrouted")).toBe(
+            true,
+          );
+      }
+      expect(requests.every((path) => path === "/api/health")).toBe(true);
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  it("treats development responding on another tier as a hard failure", () => {
+    for (const expected of ["staging", "production"] as const) {
+      const probe = classifyProbe({
+        domain: `api-${expected}.eliza.app`,
+        expected,
+        observed: "development",
+        reachable: true,
+      });
+      expect(
+        decideRoutingVerdict({
+          probes: [probe],
+          requireBeacon: false,
+          requireReachable: false,
+        }).ok,
+      ).toBe(false);
+      expect(probe.status).toBe("misrouted");
+    }
+  });
+});
