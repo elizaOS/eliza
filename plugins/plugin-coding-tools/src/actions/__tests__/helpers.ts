@@ -8,14 +8,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime, Memory, Service } from "@elizaos/core";
 
-import { FileStateService } from "../services/file-state-service.js";
-import { SandboxService } from "../services/sandbox-service.js";
-import { SessionCwdService } from "../services/session-cwd-service.js";
+import { FileStateService } from "../../services/file-state-service.js";
+import { SandboxService } from "../../services/sandbox-service.js";
+import { SessionCwdService } from "../../services/session-cwd-service.js";
 import {
   FILE_STATE_SERVICE,
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
-} from "../types.js";
+} from "../../types.js";
 
 export interface TestEnv {
   runtime: IAgentRuntime;

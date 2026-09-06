@@ -1,5 +1,5 @@
 /** Exercises a persisted FILE continuation in a fresh process using real sandbox and file services. */
-import { setupEnv } from "../src/actions/_test-helpers.js";
+import { setupEnv } from "../src/actions/__tests__/helpers.js";
 import { readFileHandler } from "../src/actions/read.js";
 
 const input = JSON.parse(process.argv[2]) as {

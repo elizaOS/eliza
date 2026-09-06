@@ -7,7 +7,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
-import { setupEnv } from "../src/actions/_test-helpers.js";
+import { setupEnv } from "../src/actions/__tests__/helpers.js";
 import { readFileHandler } from "../src/actions/read.js";
 
 type Args = {
