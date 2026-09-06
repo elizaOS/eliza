@@ -104,12 +104,16 @@ const RUNTIME_CHOICE_MESSAGE = [
 ].join("\n");
 
 /** Seed the app-store with a spied `sendActionMessage` (all else inert). */
-function seedAppStoreWithActionSpy(loginUrl = ""): ReturnType<typeof vi.fn> {
+function seedAppStoreWithActionSpy(
+  loginUrl = "",
+  loginError: string | null = null,
+): ReturnType<typeof vi.fn> {
   const sendActionMessage = vi.fn().mockResolvedValue(undefined);
   const noop = () => {};
   const value = new Proxy({} as AppContextValue, {
     get(_target, prop) {
       if (prop === "elizaCloudLoginFallbackUrl") return loginUrl;
+      if (prop === "elizaCloudLoginError") return loginError;
       if (prop === "sendActionMessage") return sendActionMessage;
       if (prop === "t") return (k: string) => k;
       if (prop === "uiLanguage") return "en";
@@ -719,6 +723,35 @@ describe("ChatOverlay first-run gating", () => {
       ],
     } as unknown as Partial<ShellController>);
     render(<ChatOverlay controller={controller} firstRunOpen />);
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "half",
+    );
+    expect(
+      screen.getByTestId("choice-__first_run__:cloud-login:retry"),
+    ).toBeTruthy();
+  });
+
+  it("reopens recovery when native browser launch fails after publishing the login URL", () => {
+    const loginUrl = "https://eliza.app/auth/cli-login";
+    seedAppStoreWithActionSpy(loginUrl);
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          createdAt: 2,
+          content:
+            "Preparing Cloud sign-in…\n[CHOICE:first-run id=cloud-login-retry-1]\n__first_run__:cloud-login:retry=Open sign-in again\n[/CHOICE]",
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "collapsed",
+    );
+    act(() => {
+      seedAppStoreWithActionSpy(loginUrl, "Could not open the sign-in browser");
+    });
     expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
       "half",
     );
