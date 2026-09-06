@@ -16,6 +16,7 @@ import {
 	type UUID,
 	type World,
 } from "../../types";
+import { documentAction } from "./actions";
 import { DocumentService } from "./service";
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000a9e7" as UUID;
@@ -104,7 +105,7 @@ function userMessage(): Memory {
 
 describe("DocumentService complete source reads", () => {
 	it("returns the complete Unicode source across native pages and honors explicit ranges", async () => {
-		const { adapter, service } = await makeHarness();
+		const { adapter, runtime, service } = await makeHarness();
 		await adapter.createWorlds([
 			{
 				id: WORLD_ID,
@@ -137,6 +138,25 @@ describe("DocumentService complete source reads", () => {
 			content,
 			scope: "global",
 		});
+		await runtime.enableDocuments();
+		runtime.services.set(DocumentService.serviceType, [service]);
+		const actionResult = await documentAction.handler(
+			runtime,
+			userMessage(),
+			undefined,
+			{
+				parameters: {
+					action: "read",
+					documentId: added.storedDocumentMemoryId,
+				},
+			},
+		);
+		if (!actionResult) throw new Error("Document action returned no result");
+		expect(actionResult.success, actionResult.text).toBe(true);
+		expect(actionResult.text).toBe(content);
+		expect(JSON.stringify(actionResult.promptData)).not.toContain(
+			"Final marker",
+		);
 		for (const unit of ["line", "fragment", "byte"] as const) {
 			const result = await service.readDocumentRange(
 				added.storedDocumentMemoryId,
