@@ -21,7 +21,7 @@ try {
   const entry = new Entry(service, account);
   phase = "read";
   let encoded = entry.getPassword();
-  if (encoded === null || encoded === "") {
+  if (encoded === null) {
     encoded = randomBytes(32).toString("base64");
     phase = "write";
     entry.setPassword(encoded);
