@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Types, constants, and config interfaces for the voice chat system.
  */
@@ -473,7 +474,7 @@ export function describeTtsFetchTargetForDebug(target: string): string {
       return `${new URL(target).origin} (absolute)`;
     } catch {
       // error-policy:J3 unparseable target — show the raw string (debug-only)
-      return target.slice(0, 120);
+      return truncateWellFormed(toWellFormedUnicode(target), 120);
     }
   }
   const origin =
