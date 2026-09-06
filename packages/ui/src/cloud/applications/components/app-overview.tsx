@@ -29,7 +29,7 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import { DashboardStatCard } from "../../../cloud-ui/components/brand";
 import {
   AlertDialog,

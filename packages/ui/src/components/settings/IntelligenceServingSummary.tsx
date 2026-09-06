@@ -74,8 +74,8 @@ function inferenceValue(axes: ServingAxes, t: Translate): string {
         })
       );
     case "unknown":
-      return t("providerswitcher.servingInferenceUnknown", {
-        defaultValue: "Checking…",
+      return t("providerswitcher.servingInferenceUnconfirmed", {
+        defaultValue: "Unconfirmed",
       });
     case "local":
       return t("providerswitcher.servingInferenceLocal", {
@@ -86,9 +86,9 @@ function inferenceValue(axes: ServingAxes, t: Translate): string {
 
 function inferenceDescription(axes: ServingAxes, t: Translate): string {
   if (axes.inferenceFallback) {
-    return t("providerswitcher.servingInferenceFallbackDescription", {
+    return t("providerswitcher.servingInferenceSignInRequired", {
       defaultValue:
-        "Eliza Cloud is selected but not signed in, so chat replies are computed locally until you sign in.",
+        "Sign in to Eliza Cloud to use the selected chat provider. A local fallback has not been confirmed.",
     });
   }
   switch (axes.inference) {
@@ -108,9 +108,8 @@ function inferenceDescription(axes: ServingAxes, t: Translate): string {
               "Chat replies are computed by an external provider, not on this device.",
           });
     case "unknown":
-      return t("providerswitcher.servingInferenceUnknownDescription", {
-        defaultValue:
-          "Waiting for the agent to report which provider is answering chat.",
+      return t("providerswitcher.servingInferenceUnconfirmedDescription", {
+        defaultValue: "The agent has not confirmed a serving chat provider.",
       });
     case "local":
       return t("providerswitcher.servingInferenceLocalDescription", {

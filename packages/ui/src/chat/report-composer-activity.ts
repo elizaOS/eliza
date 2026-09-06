@@ -5,6 +5,7 @@
  */
 import { logger } from "@elizaos/core";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { fetchWithCsrf } from "../api/csrf-client";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 
 export type ComposerActivityKind =
@@ -31,7 +32,7 @@ async function postComposerActivity(args: {
   report: ComposerActivityReport;
 }): Promise<void> {
   const report = args.report;
-  const res = await fetch(`${args.base}/api/interactions/composer`, {
+  const res = await fetchWithCsrf(`${args.base}/api/interactions/composer`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

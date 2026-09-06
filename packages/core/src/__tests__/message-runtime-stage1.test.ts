@@ -3983,26 +3983,57 @@ describe("runV5MessageRuntimeStage1", () => {
 		// queries, bounded to what is literally visible in the rendered
 		// prior_message blocks (so the model cannot fabricate a search
 		// across messages it can't see).
-		const sourceText = await readFile(
-			join(import.meta.dirname, "..", "services", "message.ts"),
-			"utf-8",
-		);
-		expect(sourceText).toContain(
+		const prompts: string[] = [];
+		for (const includeMemory of [false, true]) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: "Visible recall." }),
+			]);
+			runtime.contexts = new ContextRegistry([
+				{ id: "simple", label: "Simple", description: "Direct replies." },
+				...(includeMemory
+					? [
+							{
+								id: "memory",
+								label: "Memory",
+								description: "Stored conversation recall.",
+							},
+						]
+					: []),
+			]);
+			if (includeMemory) runtime.actions = [makeMemorySearchAction()];
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "Who mentioned the build?" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+				stage1DecisionOnly: true,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages?: Array<{ content?: string | null }>;
+			};
+			prompts.push(
+				(params.messages ?? [])
+					.map((message) => message.content ?? "")
+					.join("\n"),
+			);
+		}
+		const renderedPrompt = prompts.join("\n");
+		expect(renderedPrompt).toContain(
 			"Exception for visible-context recall: when the final message asks a recall question",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"you may scan the prior_message blocks above and answer from what is literally visible there",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"there is no separate chat-history search tool",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"never present visible matches as the full-history answer",
 		);
 		// Live regression (2026-06-30, ruby-trivia build): when asked "what
@@ -4010,10 +4041,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		// "no chat-history search tool" disclaimer and claimed it could not verify
 		// a run it COULD look up via the task tools. The carve-out distinguishes
 		// chat-recall (unavailable) from task/build/deploy run status (checkable).
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			'This "no chat-history search" limit is about CHAT recall ONLY',
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"that run status IS verifiable with the task/sub-agent tools",
 		);
 		// Live regression (2026-08-01, tj-69d82bb89ebb69): the "no separate
@@ -4028,14 +4059,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		// branch keeps the honest denial (the 2026-05-25 fabricated-search
 		// guard), the memory branch declares the window bounded and routes
 		// beyond-window recall/count to the memory context.
-		expect(sourceText).toContain("hasMemoryRecallSurface");
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"only the most recent window of a longer stored conversation",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"route it to the memory context (set requiresTool)",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"Never answer a beyond-window recall or count question from the visible window alone",
 		);
 	});
@@ -4891,17 +4921,34 @@ describe("runV5MessageRuntimeStage1", () => {
 		// X" honesty escape and ignored the inline answer. The fix tells the
 		// model to read the final message:user itself before declaring it
 		// cannot find something.
-		const sourceText = await readFile(
-			join(import.meta.dirname, "..", "services", "message.ts"),
-			"utf-8",
-		);
-		expect(sourceText).toContain(
+		const messageText =
+			"I told you my favorite color is teal, what is my favorite color?";
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "Teal." }),
+		]);
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: messageText }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+			stage1DecisionOnly: true,
+		});
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const renderedPrompt = (params.messages ?? [])
+			.map((message) => message.content ?? "")
+			.join("\n");
+		expect(renderedPrompt).toContain(messageText);
+		expect(renderedPrompt).toContain(
 			"Before saying you cannot find something, read the final message:user itself",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"if the asker states a fact and asks about it in the same message",
 		);
-		expect(sourceText).toContain("answer from the current message directly");
+		expect(renderedPrompt).toContain(
+			"answer from the current message directly",
+		);
 	});
 
 	it("renders platform reply references as current-turn context", async () => {

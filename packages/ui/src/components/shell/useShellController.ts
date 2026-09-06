@@ -24,6 +24,7 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
@@ -61,6 +62,7 @@ import {
 } from "../../state/persistence";
 import { goHome } from "../../state/shell-surface-store";
 import { deriveAgentReady } from "../../state/types";
+import { openDesktopSettingsWindow } from "../../utils/desktop-workspace";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { TurnAggregator } from "../../voice/end-of-turn";
 import {
@@ -346,6 +348,7 @@ function isMicPermissionDenialError(err: unknown): boolean {
       ? (err as { name: string }).name
       : "";
   const message = err instanceof Error ? err.message : String(err ?? "");
+  if (name === "SpeechRecognitionError") return false;
   const haystack = `${name} ${message}`.toLowerCase();
   return (
     haystack.includes("notallowed") ||
@@ -364,6 +367,9 @@ export function describeCaptureFailure(err: unknown): string {
       ? (err as { name: string }).name
       : "";
   const message = err instanceof Error ? err.message : String(err ?? "");
+  if (name === "SpeechRecognitionError") {
+    return "Speech recognition failed. Check your transcription provider in Settings → Models & Providers.";
+  }
   const haystack = `${name} ${message}`.toLowerCase();
   if (isMicPermissionDenialError(err)) {
     return "Microphone access was denied. Enable microphone permission in your browser or system settings to use voice.";
@@ -733,7 +739,20 @@ export function useShellController(): ShellController {
   );
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
-  const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
+  const openSettings = React.useCallback(() => {
+    if (isElectrobunRuntime()) {
+      void openDesktopSettingsWindow().catch((error: unknown) => {
+        // error-policy:J4 surface native window failures so Settings can be retried
+        setActionNotice(
+          `Settings could not open. ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+          6000,
+        );
+      });
+      return;
+    }
+    setTab("settings");
+  }, [setTab, setActionNotice]);
   // Commit the home half of the shared rail before the route changes so the
   // destination cannot paint one frame of the launcher with the wrong surface.
   const navigateHome = React.useCallback(() => {
@@ -1364,6 +1383,10 @@ export function useShellController(): ShellController {
       // configured sensitivity. Only consumed by the local-inference backend.
       const handle = createVoiceCapture({
         localAsrAutoStop: loadVadAutoStop(),
+        cloudConnected: isCloudVoiceRunnable({
+          connected: elizaCloudConnected,
+          proxyAvailable: elizaCloudVoiceProxyAvailable,
+        }),
         // Route to the configured STT backend. Without this the factory only
         // ever saw `undefined` and could never select the `eliza-cloud` /
         // `openai` cloud STT path — on a cloud box with no local ASR assets it
@@ -1519,8 +1542,21 @@ export function useShellController(): ShellController {
           // spoken turn never silently vanishes (#20483). Cloud STT throwing
           // at stop() lands here as the error state; surface one actionable
           // notice instead of letting the words evaporate.
-          if (state === "error" && error) {
-            setActionNotice(describeCaptureFailure(error), "error", 6000);
+          if (state === "error") {
+            if (captureRef.current !== handle) return;
+            if (handsFreeRef.current) {
+              saveContinuousChatMode(priorContinuousModeRef.current);
+              setHandsFree(false);
+              handsFreeRef.current = false;
+            }
+            if (error && isMicPermissionDenialError(error)) {
+              setMicPermission("denied");
+              micPermissionRef.current = "denied";
+            }
+            if (error && !captureFailureNoticedRef.current) {
+              captureFailureNoticedRef.current = true;
+              setActionNotice(describeCaptureFailure(error), "error", 6000);
+            }
           }
           if (state === "error" || state === "stopped" || state === "idle") {
             // Capture ended (clean stop, dispose, or error). Drop the handle and
@@ -1599,6 +1635,8 @@ export function useShellController(): ShellController {
     [
       realtimeVoiceSelected,
       realtimeVoiceOwnsMedia,
+      elizaCloudConnected,
+      elizaCloudVoiceProxyAvailable,
       send,
       stopCapture,
       finalizeTranscriptSession,

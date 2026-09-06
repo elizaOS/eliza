@@ -162,15 +162,14 @@ describe("ElizaSandboxService linear bridge boundary parsing", () => {
   });
 
   test("normalizes 100k canonical bridge URL slashes before exact comparison", async () => {
-    const host = new ElizaSandboxService() as unknown as HostParserInternals &
-      Record<string, unknown>;
-    const fetchAgentTarget = async (_rec: AgentSandbox, target: { url: string }) =>
-      Response.json({ url: target.url });
-    Object.assign(host, { fetchAgentTarget });
+    const host = new ElizaSandboxService() as unknown as HostParserInternals;
+    globalThis.fetch = (async (input: RequestInfo | URL) =>
+      Response.json({ url: String(input) })) as typeof fetch;
     const slashes = "/".repeat(100_000);
     const localRecord = {
       ...rec,
       bridge_url: `http://127.0.0.1:31337${slashes}`,
+      environment_vars: { ELIZA_API_TOKEN: "test-canonical-route-token" },
     };
 
     const response = await host.fetchCanonicalConversationApi(
