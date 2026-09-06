@@ -15730,9 +15730,10 @@ export class DefaultMessageService implements IMessageService {
 				runtime.reportError("MessageService.v5Runtime", error, {
 					entityId: message.entityId,
 					roomId: message.roomId,
-					// The message boundary already delivers the rate-limit outcome.
-					// Keep diagnostics, without a second raw-error escalation in chat.
-					...(isRateLimitError(error) ? { diagnosticOnly: true } : {}),
+					// This boundary owns user-facing failure delivery, including when
+					// a fallback masks the original provider error. Retain diagnostics
+					// without escalating a second, raw technical message into chat.
+					diagnosticOnly: true,
 					...(providerErrorDetail
 						? { providerError: providerErrorDetail as JsonValue }
 						: {}),

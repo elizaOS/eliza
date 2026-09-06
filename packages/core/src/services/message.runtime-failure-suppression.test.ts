@@ -196,20 +196,37 @@ describe("v5 runtime failure before a respond decision", () => {
 		expect(visibleTexts[0].toLowerCase()).toContain("rate-limit");
 	});
 
-	it("still surfaces the failure reply on private DM channels", async () => {
-		const { runtime, result, visibleTexts } = await runTurn(
-			makeMessage({ channelType: ChannelType.DM }),
-			makeRoom(ChannelType.DM),
-		);
-		expect(runtime.reportError).toHaveBeenCalledWith(
-			"MessageService.v5Runtime",
-			RATE_LIMIT_ERROR,
-			expect.objectContaining({ diagnosticOnly: true }),
-		);
+	it.each([
+		RATE_LIMIT_ERROR,
+		Object.assign(new Error("Local text model is not installed"), {
+			name: "VoiceLifecycleError",
+			code: "arm-failed",
+		}),
+		new Error("Unexpected provider failure"),
+	])(
+		"keeps %s diagnostic-only while delivering one DM failure",
+		async (error) => {
+			const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+			vi.mocked(runtime.useModel).mockRejectedValue(error);
+			const visibleTexts: string[] = [];
+			const result = await new DefaultMessageService().handleMessage(
+				runtime,
+				makeMessage({ channelType: ChannelType.DM }),
+				async (content) => {
+					if (content.text) visibleTexts.push(content.text);
+					return [];
+				},
+			);
+			expect(runtime.reportError).toHaveBeenCalledWith(
+				"MessageService.v5Runtime",
+				error,
+				expect.objectContaining({ diagnosticOnly: true }),
+			);
 
-		expect(result.didRespond).toBe(true);
-		expect(visibleTexts).toHaveLength(1);
-	});
+			expect(result.didRespond).toBe(true);
+			expect(visibleTexts).toHaveLength(1);
+		},
+	);
 
 	it("propagates exhausted reply grounding without a second apology model pass", async () => {
 		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
