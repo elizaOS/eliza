@@ -33,6 +33,10 @@ const buttonVariants = cva(
           "bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-accent/80 disabled:text-accent-fg",
         surface:
           "bg-card text-txt-strong hover:bg-surface disabled:text-muted-strong",
+        messageSearch:
+          "rounded-[1rem] bg-card text-txt-strong hover:bg-[color-mix(in_srgb,var(--card)_92%,var(--text-strong))] disabled:text-muted-strong",
+        messageSearchPlain:
+          "rounded-[1rem] bg-transparent text-muted hover:bg-[color-mix(in_srgb,var(--card)_92%,var(--text-strong))] hover:text-txt",
         surfaceAccent:
           "bg-accent-subtle text-txt-strong hover:bg-accent-subtle/70 disabled:text-muted-strong",
         surfaceDestructive:
