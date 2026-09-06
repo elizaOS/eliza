@@ -7036,6 +7036,9 @@ export class ProvisioningJobService {
         organizationId: agentSandboxes.organization_id,
         userId: agentSandboxes.user_id,
         errorCount: agentSandboxes.error_count,
+        lifecycleRevision: agentSandboxes.lifecycle_revision,
+        deletionAttemptId: agentSandboxes.deletion_attempt_id,
+        updatedAt: agentSandboxes.updated_at,
       })
       .from(agentSandboxes)
       .where(
@@ -7092,6 +7095,22 @@ export class ProvisioningJobService {
       } catch (error) {
         // error-policy:J1 The sweep reports failed admissions in its result.
         failed += 1;
+        // A failed admission must not monopolize the oldest batch indefinitely.
+        // Touch only the observed generation; a concurrent cancellation, job
+        // admission or replacement owns its newer timestamp and lifecycle.
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ updated_at: new Date() })
+          .where(
+            and(
+              eq(agentSandboxes.id, agent.id),
+              eq(agentSandboxes.organization_id, agent.organizationId),
+              eq(agentSandboxes.lifecycle_revision, agent.lifecycleRevision),
+              eq(agentSandboxes.updated_at, agent.updatedAt),
+              sql`${agentSandboxes.deletion_attempt_id} IS NOT DISTINCT FROM ${agent.deletionAttemptId}`,
+              inArray(agentSandboxes.status, ["deletion_failed", "deletion_pending"]),
+            ),
+          );
         logger.warn("[provisioning-jobs] re-enqueue of failed deletion failed", {
           agentId: agent.id,
           error: jobErrorText(error),

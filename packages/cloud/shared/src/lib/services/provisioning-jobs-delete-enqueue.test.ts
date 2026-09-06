@@ -129,7 +129,17 @@ const transaction = mock(async (fn: (t: typeof tx) => Promise<unknown>) => {
   return fn(tx);
 });
 
-const dbWriteMock = { select, transaction };
+let admissionUpdateExecutor: (statement: SQL) => Promise<void> = async () => {};
+const admissionUpdate = mock(() => ({
+  set: (values: { updated_at: Date }) => ({
+    where: (predicate: SQL) =>
+      admissionUpdateExecutor(sql`
+      UPDATE agent_sandboxes SET updated_at = ${values.updated_at.toISOString()}
+      WHERE ${predicate}
+    `),
+  }),
+}));
+const dbWriteMock = { select, transaction, update: admissionUpdate };
 
 // Provide the FULL helpers surface so transitive importers (repositories) keep
 // working; only dbWrite is swapped for our capturing mock.
@@ -168,6 +178,7 @@ mock.module("../../db/repositories/jobs", () => ({
 }));
 
 afterEach(() => {
+  admissionUpdateExecutor = async () => {};
   capturedSelectWhere = undefined;
   capturedOrderBy = [];
   capturedLimit = 0;
@@ -368,6 +379,72 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
       `);
       expect((await database.query(query.sql, query.params)).rows).toEqual([]);
     } finally {
+      await database.close();
+    }
+  });
+
+  test("failed admission cools its row without touching a cancelled or replaced generation", async () => {
+    const database = new PGlite();
+    const originalTime = new Date("2020-01-01T00:00:00Z");
+    const { provisioningJobService } = await import("./provisioning-jobs");
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockImplementation(
+      async ({ agentId }) => {
+        if (agentId === "cancelled") {
+          await database.exec(
+            "UPDATE agent_sandboxes SET status = 'running', lifecycle_revision = 8 WHERE id = 'cancelled'",
+          );
+        }
+        if (agentId === "replaced") {
+          await database.exec(
+            "UPDATE agent_sandboxes SET deletion_attempt_id = 'new-attempt' WHERE id = 'replaced'",
+          );
+        }
+        throw new Error("Delete admission failed");
+      },
+    );
+    try {
+      await database.exec(`
+        CREATE TABLE agent_sandboxes (
+          id text PRIMARY KEY, organization_id text, status text,
+          updated_at timestamptz, lifecycle_revision integer,
+          deletion_attempt_id text
+        );
+      `);
+      selectRows = ["stable", "cancelled", "replaced"].map((id) => ({
+        id,
+        organizationId: "org",
+        userId: "owner",
+        errorCount: 1,
+        lifecycleRevision: 7,
+        deletionAttemptId: "old-attempt",
+        updatedAt: originalTime,
+      }));
+      for (const id of ["stable", "cancelled", "replaced"]) {
+        await database.query(
+          "INSERT INTO agent_sandboxes VALUES ($1, 'org', 'deletion_failed', $2, 7, 'old-attempt')",
+          [id, originalTime.toISOString()],
+        );
+      }
+      admissionUpdateExecutor = async (statement) => {
+        const query = new PgDialect().sqlToQuery(statement);
+        await database.query(query.sql, query.params);
+      };
+      expect(await provisioningJobService.reEnqueueFailedDeletions()).toEqual({
+        scanned: 3,
+        reEnqueued: 0,
+        failed: 3,
+        abandoned: 0,
+      });
+      const { rows } = await database.query<{ id: string; updated_at: Date }>(
+        "SELECT id, updated_at FROM agent_sandboxes ORDER BY id",
+      );
+      expect(rows.find((row) => row.id === "stable")!.updated_at.getTime()).toBeGreaterThan(
+        originalTime.getTime(),
+      );
+      expect(rows.find((row) => row.id === "cancelled")!.updated_at).toEqual(originalTime);
+      expect(rows.find((row) => row.id === "replaced")!.updated_at).toEqual(originalTime);
+    } finally {
+      enqueueSpy.mockRestore();
       await database.close();
     }
   });
