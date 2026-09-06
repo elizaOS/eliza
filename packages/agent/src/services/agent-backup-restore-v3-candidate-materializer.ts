@@ -6,9 +6,14 @@
 
 import { ElizaError } from "@elizaos/core";
 import {
+  type AgentBackupRestoreV3CandidateReceipt,
   AgentBackupRestoreV3ComponentReceiptSchema,
   type AgentBackupRestoreV3IsolatedCandidateStaging,
+  type AgentBackupRestoreV3OperationControl,
+  type AgentBackupRestoreV3StagingSession,
+  parseAgentBackupRestoreV3CandidateReceipt,
 } from "@elizaos/shared";
+import { assembleAgentBackupRestoreV3Candidate } from "./agent-backup-restore-v3-candidate-assembly";
 import { materializeAgentBackupRestoreV3CandidateCharacter } from "./agent-backup-restore-v3-candidate-character";
 import { validateAgentBackupRestoreV3CandidateDatabase } from "./agent-backup-restore-v3-candidate-database-validation";
 import { materializeAgentBackupRestoreV3CandidateFileSet } from "./agent-backup-restore-v3-candidate-file-set";
@@ -23,12 +28,21 @@ import {
   stageAgentBackupRestoreV3CandidateRecord,
 } from "./agent-backup-restore-v3-candidate-records";
 
+export interface AgentBackupRestoreV3CandidateMaterializer
+  extends Pick<
+    AgentBackupRestoreV3IsolatedCandidateStaging,
+    "stageRecord" | "finishComponent"
+  > {
+  assembleCandidate(
+    session: Readonly<AgentBackupRestoreV3StagingSession>,
+    receipt: Readonly<AgentBackupRestoreV3CandidateReceipt>,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+  ): Promise<AgentBackupRestoreV3CandidateReceipt>;
+}
+
 export function createAgentBackupRestoreV3CandidateMaterializer(
   candidateFs: AgentBackupRestoreV3CandidateFs,
-): Pick<
-  AgentBackupRestoreV3IsolatedCandidateStaging,
-  "stageRecord" | "finishComponent"
-> {
+): AgentBackupRestoreV3CandidateMaterializer {
   if (!isAgentBackupRestoreV3CandidateFs(candidateFs))
     throw new ElizaError(
       "Agent materialization requires real quarantine filesystem authority",
@@ -37,7 +51,19 @@ export function createAgentBackupRestoreV3CandidateMaterializer(
         severity: "fatal",
       },
     );
-  return Object.freeze({
+  const materializer: AgentBackupRestoreV3CandidateMaterializer = {
+    async assembleCandidate(session, receipt, control) {
+      const candidate = parseAgentBackupRestoreV3CandidateReceipt(
+        JSON.parse(candidateFsCanonicalJson(receipt)),
+      );
+      await assembleAgentBackupRestoreV3Candidate({
+        candidateFs,
+        session,
+        receipt: candidate,
+        control,
+      });
+      return candidate;
+    },
     async stageRecord(session, record, control) {
       const result = await stageAgentBackupRestoreV3CandidateRecord({
         candidateFs,
@@ -69,5 +95,6 @@ export function createAgentBackupRestoreV3CandidateMaterializer(
       return (await materializeAgentBackupRestoreV3CandidateFileSet(input))
         .component;
     },
-  });
+  };
+  return Object.freeze(materializer);
 }

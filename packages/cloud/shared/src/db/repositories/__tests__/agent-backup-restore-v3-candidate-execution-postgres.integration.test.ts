@@ -5,7 +5,11 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS } from "@elizaos/shared";
+import { PGlite } from "@electric-sql/pglite";
+import {
+  AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
+  type AgentBackupRestoreV3ComponentReceipt,
+} from "@elizaos/shared";
 import { Client } from "pg";
 import { openAgentBackupRestoreV3CandidateFs } from "../../../../../../agent/src/services/agent-backup-restore-v3-candidate-fs";
 import { createAgentBackupRestoreV3CandidateMaterializer } from "../../../../../../agent/src/services/agent-backup-restore-v3-candidate-materializer";
@@ -18,6 +22,8 @@ import { computeAgentBackupRestoreV3CleanupSettlementEvidenceSha256 } from "../a
 import {
   applyCandidateMigrations,
   buildCandidateFixture,
+  buildCandidateSealAuthorizationRequest,
+  buildCandidateSealReceipt,
   type CandidateFixture,
   createCandidatePrerequisiteSchema,
   fixtureSha256,
@@ -927,6 +933,7 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
         executionRepository.createAgentBackupRestoreV3MaterializingCandidateExecution(
           attempt.sourceAuthority,
           {
+            assembleCandidate: agent.assembleCandidate,
             async stageRecord(session, record, effectControl) {
               recordCalls++;
               expect(effectControl.deadlineEpochMs).toBeLessThanOrEqual(
@@ -1105,6 +1112,287 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
         expect(await execution.abort(session, "staging-failed", operationControl)).toBe(true);
       } finally {
         release.resolve();
+        await candidateFs.close();
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  realPostgresTest(
+    "seals five real Agent components under PRIMARY locks and recovers partial assembly without empty restore",
+    async () => {
+      if (!control || !executionRepository) throw new Error("PostgreSQL harness unavailable");
+      const database = control;
+      const { createAgentBackupRestoreV3CandidateSealAuthority } = await import(
+        "../agent-backup-restore-v3-candidate-seal-authority"
+      );
+      const ids = {
+        restoreAttemptId: randomUUID(),
+        restoreOperationId: randomUUID(),
+        leaseId: randomUUID(),
+        leaseGeneration: randomUUID(),
+      };
+      await seedAdditionalCandidateAttempt(
+        { query: (text, values) => database.query(text, values ? [...values] : undefined) },
+        fixture,
+        ids,
+      );
+      const attempt = withAdditionalAttempt(fixture, ids);
+      const operationControl = {
+        signal: new AbortController().signal,
+        deadlineEpochMs: Date.now() + 110_000,
+      };
+      const root = await fs.mkdtemp(
+        path.join(await fs.realpath(os.tmpdir()), "restore-v3-pg-seal-"),
+      );
+      await fs.chmod(root, 0o700);
+      const attemptRoot = path.join(root, "attempt");
+      await fs.mkdir(attemptRoot, { mode: 0o700 });
+      const candidateFs = await openAgentBackupRestoreV3CandidateFs({
+        trustedRoot: root,
+        attemptRoot,
+        control: operationControl,
+        ...(process.platform === "linux" ? {} : { testOnlyAllowNonLinuxFdEmulation: true }),
+      });
+      const release = Promise.withResolvers<void>();
+      const assembled = Promise.withResolvers<void>();
+      let databaseBytes: Uint8Array | undefined;
+      try {
+        const sourcePath = path.join(root, "source-database");
+        const source = new PGlite(sourcePath);
+        try {
+          await source.exec(
+            "CREATE TABLE restored_fact (id integer PRIMARY KEY, fact text NOT NULL)",
+          );
+          await source.query("INSERT INTO restored_fact VALUES ($1, $2)", [
+            1,
+            "amber lighthouse 20732",
+          ]);
+          databaseBytes = new Uint8Array(await (await source.dumpDataDir("gzip")).arrayBuffer());
+        } finally {
+          await source.close();
+        }
+        await fs.rm(sourcePath, { recursive: true });
+        const agent = createAgentBackupRestoreV3CandidateMaterializer(candidateFs);
+        let assemblyCalls = 0;
+        let fault: "mismatch" | "lost" | null = "mismatch";
+        let cancelAssembly: AbortController | undefined;
+        const execution =
+          executionRepository.createAgentBackupRestoreV3MaterializingCandidateExecution(
+            attempt.sourceAuthority,
+            {
+              ...agent,
+              async assembleCandidate(session, receipt, effectControl) {
+                assemblyCalls++;
+                const result = await agent.assembleCandidate(session, receipt, effectControl);
+                cancelAssembly?.abort();
+                cancelAssembly = undefined;
+                assembled.resolve();
+                await release.promise;
+                if (fault === "lost")
+                  throw new Error("injected lost Agent assembly acknowledgement");
+                return fault === "mismatch"
+                  ? { ...result, sourceAuthoritySha256: "f".repeat(64) }
+                  : result;
+              },
+            },
+          );
+        const session = await execution.begin(
+          { authority: attempt.authority, manifest: attempt.manifest },
+          operationControl,
+        );
+        const encode = (text: string) => new TextEncoder().encode(text);
+        const contents = [
+          encode('{"name":"Sealed QA","bio":["remembers a lighthouse"],"plugins":[]}'),
+          databaseBytes,
+          encode("private media"),
+          encode('{"state":"tide"}'),
+          encode("opaque vault ciphertext"),
+        ];
+        const paths = [null, null, "photo.bin", "plugin/state.json", "vault.json"];
+        const components: AgentBackupRestoreV3ComponentReceipt[] = [];
+        for (const [
+          componentIndex,
+          descriptor,
+        ] of AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS.entries()) {
+          const bytes = contents[componentIndex];
+          if (!bytes) throw new Error("Missing component bytes");
+          const filePath = paths[componentIndex];
+          let dataFrameCount = 0;
+          for (let offsetBytes = 0; offsetBytes < bytes.length; offsetBytes += 256 * 1024) {
+            const payload = Uint8Array.from(bytes.subarray(offsetBytes, offsetBytes + 256 * 1024));
+            try {
+              await execution.stageRecord(
+                session,
+                {
+                  componentIndex,
+                  componentName: descriptor.name,
+                  dataIndex: dataFrameCount++,
+                  offsetBytes,
+                  payload,
+                  entry: filePath
+                    ? {
+                        path: filePath,
+                        fileOffsetBytes: offsetBytes,
+                        fileSizeBytes: bytes.length,
+                        mode: componentIndex === 4 ? 0o400 : 0o600,
+                        mtimeMs: 0,
+                      }
+                    : null,
+                },
+                operationControl,
+              );
+            } finally {
+              payload.fill(0);
+            }
+          }
+          components.push(
+            await execution.finishComponent(
+              session,
+              {
+                componentIndex,
+                componentName: descriptor.name,
+                descriptor,
+                dataFrameCount,
+                payloadBytes: bytes.length,
+                payloadSha256: fixtureSha256(bytes),
+                recordStreamContentHmacSha256: "b".repeat(64),
+              },
+              operationControl,
+            ),
+          );
+        }
+        databaseBytes.fill(0);
+        const receipt = buildCandidateSealReceipt(attempt, components);
+        const authorization = await createAgentBackupRestoreV3CandidateSealAuthority().authorize(
+          buildCandidateSealAuthorizationRequest(attempt, session, receipt),
+          operationControl,
+        );
+        const first = Promise.resolve(
+          execution.seal(session, receipt, authorization, operationControl),
+        );
+        const failure = first.then(
+          () => null,
+          (cause: unknown) => cause,
+        );
+        try {
+          await Promise.race([assembled.promise, first]);
+          const active = await database.query<{ state: string }>(
+            "SELECT state FROM agent_backup_restore_v3_candidates WHERE id = $1",
+            [session.stagingHandle],
+          );
+          expect(active.rows).toEqual([{ state: "active" }]);
+          for (const [query, id] of [
+            [
+              "SELECT id FROM agent_backup_restore_v3_candidates WHERE id = $1 FOR UPDATE NOWAIT",
+              session.stagingHandle,
+            ],
+            [
+              "SELECT id FROM agent_backup_restore_v3_candidate_seal_authorizations WHERE id = $1 FOR UPDATE NOWAIT",
+              authorization.authorizationId,
+            ],
+            [
+              "SELECT id FROM agent_backup_restore_leases WHERE id = $1 FOR UPDATE NOWAIT",
+              ids.leaseId,
+            ],
+          ] as const) {
+            await database.query("BEGIN");
+            try {
+              await expect(database.query(query, [id])).rejects.toMatchObject({ code: "55P03" });
+            } finally {
+              await database.query("ROLLBACK");
+            }
+          }
+        } finally {
+          release.resolve();
+        }
+        expect(await failure).toMatchObject({
+          code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_SEAL_CONFLICT",
+        });
+        const marker = path.join(attemptRoot, ".restore-v3-candidate-assembled.json");
+        const markerBytes = await fs.readFile(marker, "utf8");
+        const markerInode = (await fs.stat(marker, { bigint: true })).ino;
+        const rollback = await database.query<{
+          state: string;
+          proof_state: string;
+          terminal_count: number;
+        }>(
+          "SELECT c.state, a.state AS proof_state, (SELECT count(*)::integer FROM agent_backup_restore_v3_candidate_terminal_commands t WHERE t.candidate_id = c.id) AS terminal_count FROM agent_backup_restore_v3_candidates c JOIN agent_backup_restore_v3_candidate_seal_authorizations a ON a.candidate_id = c.id WHERE c.id = $1",
+          [session.stagingHandle],
+        );
+        expect(rollback.rows).toEqual([
+          { state: "active", proof_state: "active", terminal_count: 0 },
+        ]);
+        fault = "lost";
+        await expect(
+          execution.seal(session, receipt, authorization, operationControl),
+        ).rejects.toThrow("injected lost Agent assembly");
+        fault = null;
+        const cancelled = new AbortController();
+        cancelAssembly = cancelled;
+        await expect(
+          execution.seal(session, receipt, authorization, {
+            ...operationControl,
+            signal: cancelled.signal,
+          }),
+        ).rejects.toMatchObject({ name: "AbortError" });
+        expect(
+          (
+            await database.query<{ state: string }>(
+              "SELECT state FROM agent_backup_restore_v3_candidates WHERE id = $1",
+              [session.stagingHandle],
+            )
+          ).rows,
+        ).toEqual([{ state: "active" }]);
+        expect(
+          await withLostNextCommitAcknowledgment({
+            sqlState: "08006",
+            run: async () => execution.seal(session, receipt, authorization, operationControl),
+          }),
+        ).toEqual(receipt);
+        expect(assemblyCalls).toBe(4);
+        const sealed = await database.query<{ state: string; proof_state: string }>(
+          "SELECT c.state, a.state AS proof_state FROM agent_backup_restore_v3_candidates c JOIN agent_backup_restore_v3_candidate_seal_authorizations a ON a.candidate_id = c.id WHERE c.id = $1",
+          [session.stagingHandle],
+        );
+        expect(sealed.rows).toEqual([{ state: "sealed", proof_state: "consumed" }]);
+        await database.query(
+          "UPDATE agent_backup_restore_leases SET expires_at = clock_timestamp() - interval '1 second' WHERE id = $1",
+          [ids.leaseId],
+        );
+        expect(
+          await execution.seal(session, receipt, authorization, {
+            ...operationControl,
+            deadlineEpochMs: Date.now() - 1,
+          }),
+        ).toEqual(receipt);
+        expect(assemblyCalls).toBe(4);
+        expect(await fs.readFile(marker, "utf8")).toBe(markerBytes);
+        expect((await fs.stat(marker, { bigint: true })).ino).toBe(markerInode);
+        for (const [componentIndex, filePath] of paths.entries()) {
+          if (!filePath) continue;
+          const component = components[componentIndex];
+          if (!component) throw new Error("Missing component receipt");
+          expect(
+            await fs.readFile(
+              path.join(attemptRoot, "components", component.componentName, filePath),
+            ),
+          ).toEqual(Buffer.from(contents[componentIndex]!));
+        }
+        const probePath = path.join(root, "database-probe");
+        await fs.cp(path.join(attemptRoot, "components/database"), probePath, { recursive: true });
+        const restored = new PGlite(probePath);
+        try {
+          expect(
+            (await restored.query("SELECT id, fact FROM restored_fact ORDER BY id")).rows,
+          ).toEqual([{ id: 1, fact: "amber lighthouse 20732" }]);
+        } finally {
+          await restored.close();
+        }
+      } finally {
+        release.resolve();
+        databaseBytes?.fill(0);
         await candidateFs.close();
         await fs.rm(root, { recursive: true, force: true });
       }

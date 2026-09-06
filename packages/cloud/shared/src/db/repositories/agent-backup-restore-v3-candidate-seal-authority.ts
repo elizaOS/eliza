@@ -45,6 +45,17 @@ const AMBIGUOUS_COMMIT_RECOVERY_POLL_MS = 25;
 const ADDITIONAL_AMBIGUOUS_COMMIT_SQL_STATES = new Set(["40003", "57P02"]);
 const SEAL_COMMAND_CONTEXT = "elizaos.agent-backup.restore-v3-candidate-seal-command.v1";
 
+/**
+ * Trusted Agent effect invoked under PRIMARY authority locks. It must honor
+ * control, reap all writes before settling, and avoid separate coordinator DB
+ * transactions. The acknowledgement attests assembly, not generation activation.
+ */
+export type AgentBackupRestoreV3CandidateAssembler = (
+  session: Readonly<AgentBackupRestoreV3StagingSession>,
+  receipt: Readonly<AgentBackupRestoreV3CandidateReceipt>,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+) => AgentBackupRestoreV3CandidateReceipt | Promise<AgentBackupRestoreV3CandidateReceipt>;
+
 export class AgentBackupRestoreV3CandidateSealConflictError extends Error {
   readonly code = "AGENT_BACKUP_RESTORE_V3_CANDIDATE_SEAL_CONFLICT";
 
@@ -877,22 +888,54 @@ export function sealAgentBackupRestoreV3Candidate(
   authorizationInput: Readonly<AgentBackupRestoreV3CandidateSealAuthorization>,
   control: Readonly<AgentBackupRestoreV3OperationControl>,
 ): Promise<AgentBackupRestoreV3CandidateReceipt> {
+  return sealCandidate(sessionInput, receiptInput, authorizationInput, control);
+}
+
+/** Assemble the exact private files while the terminal command retains its locks. */
+export function assembleAndSealAgentBackupRestoreV3Candidate(
+  sessionInput: Readonly<AgentBackupRestoreV3StagingSession>,
+  receiptInput: Readonly<AgentBackupRestoreV3CandidateReceipt>,
+  authorizationInput: Readonly<AgentBackupRestoreV3CandidateSealAuthorization>,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+  assembler: AgentBackupRestoreV3CandidateAssembler,
+): Promise<AgentBackupRestoreV3CandidateReceipt> {
+  if (typeof assembler !== "function")
+    throw conflict("Candidate seal requires an explicit Agent assembler");
+  return sealCandidate(sessionInput, receiptInput, authorizationInput, control, assembler);
+}
+
+function sealCandidate(
+  sessionInput: Readonly<AgentBackupRestoreV3StagingSession>,
+  receiptInput: Readonly<AgentBackupRestoreV3CandidateReceipt>,
+  authorizationInput: Readonly<AgentBackupRestoreV3CandidateSealAuthorization>,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+  assembler?: AgentBackupRestoreV3CandidateAssembler,
+): Promise<AgentBackupRestoreV3CandidateReceipt> {
   const operationControl = snapshotAgentBackupRestoreV3OperationControl(control);
-  const prepared = prepareSeal(sessionInput, receiptInput, authorizationInput);
+  const session = parseAgentBackupRestoreV3StagingSession(sessionInput);
+  const prepared = prepareSeal(session, receiptInput, authorizationInput);
   try {
     assertAgentBackupRestoreV3OperationControl(operationControl, "Restore-v3 candidate seal");
   } catch (cause) {
-    // An inactive but otherwise valid control may only reconcile an already-
-    // committed exact seal. It never enters the mutating transaction below.
+    // error-policy:J1 Inactive callers only reconcile an already-committed seal;
+    // they never enter the mutating transaction below.
     if (!isValidInactiveControl(operationControl)) throw cause;
     return replayExactSealedReceiptOrThrow(prepared, operationControl, cause);
   }
-  return sealPreparedCandidate(prepared, operationControl);
+  return sealPreparedCandidate(
+    prepared,
+    operationControl,
+    assembler ? (receipt, effectControl) => assembler(session, receipt, effectControl) : undefined,
+  );
 }
 
 async function sealPreparedCandidate(
   prepared: PreparedSeal,
   control: Readonly<AgentBackupRestoreV3OperationControl>,
+  assemble?: (
+    receipt: AgentBackupRestoreV3CandidateReceipt,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+  ) => AgentBackupRestoreV3CandidateReceipt | Promise<AgentBackupRestoreV3CandidateReceipt>,
 ): Promise<AgentBackupRestoreV3CandidateReceipt> {
   try {
     await dbWrite.transaction(async (tx) => {
@@ -957,10 +1000,47 @@ async function sealPreparedCandidate(
         sealed_receipt_sha256: prepared.receiptSha256,
         command_sha256: prepared.terminalCommandSha256,
       });
+      if (assemble) {
+        // The trigger has validated/locked all external authorities and consumed
+        // the one-shot proof inside this still-uncommitted transaction. Failure
+        // below rolls it back; a partial private assembly remains retryable.
+        const effectControl = Object.freeze({
+          signal: control.signal,
+          deadlineEpochMs: Math.min(
+            control.deadlineEpochMs,
+            prepared.authorization.expiresAtEpochMs,
+          ),
+        });
+        await applyAgentBackupRestoreV3TransactionDeadline(
+          tx,
+          effectControl,
+          "Restore-v3 Agent assembly",
+        );
+        const acknowledgement = await assemble(prepared.receipt, effectControl);
+        if (
+          canonicalizeAgentBackupRestoreV3CandidateReceipt(acknowledgement) !==
+          prepared.receiptCanonical
+        )
+          throw conflict("Agent assembly acknowledgement differs from the exact candidate");
+        await applyAgentBackupRestoreV3TransactionDeadline(
+          tx,
+          effectControl,
+          "Restore-v3 Agent assembly acknowledgement",
+        );
+        if (
+          (await readPostLockDatabaseNow(tx)).getTime() >= prepared.authorization.expiresAtEpochMs
+        )
+          throw conflict("Restore-v3 assembly outlived its seal authorization");
+        assertAgentBackupRestoreV3OperationControl(
+          effectControl,
+          "Restore-v3 Agent assembly acknowledgement",
+        );
+      }
       await applyAgentBackupRestoreV3TransactionDeadline(tx, control, "Restore-v3 candidate seal");
     });
     return prepared.receipt;
   } catch (cause) {
+    // error-policy:J1 Reconcile only an exact committed seal; otherwise preserve failure.
     // A timeout/cancellation can race the COMMIT acknowledgement. Reconcile
     // once from PRIMARY under a fresh read-only budget before classifying the
     // original failure; absence still preserves the original fail-closed error.
