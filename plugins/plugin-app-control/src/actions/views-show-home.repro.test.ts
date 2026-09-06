@@ -131,7 +131,7 @@ describe("VIEWS scoped-action namespace preflight", () => {
 		expect(result).toMatchObject({
 			success: false,
 			transcriptVisibility: "internal",
-			modelReplyRequired: true,
+			turnComplete: false,
 			data: {
 				coachingFailure: true,
 				viewId: "calendar",
@@ -560,8 +560,13 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 		});
 		expect(result).toMatchObject({
 			success: false,
-			modelReplyRequired: true,
-			data: { navigationAttempted: false },
+			data: {
+				navigation: {
+					effect: "view_navigation",
+					viewId: "notes",
+					status: "unavailable",
+				},
+			},
 		});
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(callback).not.toHaveBeenCalled();

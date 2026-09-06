@@ -569,7 +569,6 @@ describe("authenticated view loopback requests", () => {
 			text: "interaction complete",
 			transcriptVisibility: "internal",
 			modelReplyRequired: true,
-			modelReplyFallback: "interaction complete",
 			turnComplete: false,
 			effectReceipts: [LOOPBACK_EFFECT_RECEIPT],
 			userFacingEffectReceiptIds: [LOOPBACK_EFFECT_RECEIPT.receiptId],
@@ -630,7 +629,7 @@ describe("authenticated view loopback requests", () => {
 				capability: "get-agent-state",
 			},
 		});
-		expect(result.modelReplyFallback).toBe(result.text);
+		expect(result).not.toHaveProperty("modelReplyFallback");
 		expect(result).not.toHaveProperty("userFacingText");
 		expect(result).not.toHaveProperty("verifiedUserFacing");
 		const plannerState = JSON.stringify(result.data);
@@ -679,7 +678,7 @@ describe("authenticated view loopback requests", () => {
 			// an evaluator echo of the diagnostic.
 			transcriptVisibility: "internal",
 		});
-		expect(result).not.toHaveProperty("turnComplete");
+		expect(result.turnComplete).toBe(false);
 		expect(result).not.toHaveProperty("userFacingText");
 		expect(
 			(result as { verifiedUserFacing?: boolean }).verifiedUserFacing,

@@ -184,7 +184,7 @@ describe("VIEWS action ownership after planner selection", () => {
 			vi.fn(async (input, init) => {
 				const url = String(input);
 				if (url.includes("/navigate")) {
-					return new Response(null, { status: 200 });
+					return Response.json({ ok: true });
 				}
 				const body = JSON.parse(String(init?.body)) as {
 					capability: string;
@@ -356,8 +356,9 @@ describe("VIEWS action ownership after planner selection", () => {
 		expect(listViews).not.toHaveBeenCalled();
 	});
 
-	it("keeps non-owner read navigation available", async () => {
+	it("keeps non-owner navigation to public views available", async () => {
 		const { action, listViews } = makeAction(false);
+		listViews.mockResolvedValue([{ ...NOTES_VIEW, roleGate: undefined }]);
 		const runtime = makeRuntime(action);
 		const inbound = message("open the notes view");
 		expect(

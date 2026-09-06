@@ -2426,7 +2426,11 @@ function withViewsInteractivePayload(result: ActionResult): ActionResult {
 			verifiedUserFacing: _verifiedUserFacing,
 			...evidence
 		} = result;
-		return { ...evidence, turnComplete: false, modelReplyRequired: true };
+		return {
+			...evidence,
+			turnComplete: false,
+			...(result.success ? { modelReplyRequired: true } : {}),
+		};
 	}
 	return {
 		...result,

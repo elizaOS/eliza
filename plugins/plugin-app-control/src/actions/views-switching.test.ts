@@ -737,7 +737,7 @@ describe("view switching — VIEWS action resolver", () => {
 					transcriptVisibility: "internal",
 					turnComplete: false,
 				});
-				expect(result?.modelReplyRequired).toBe(true);
+				expect(result?.modelReplyRequired).toBeUndefined();
 				expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
 					effect: "view_navigation",
 					status: "unsupported-route",
