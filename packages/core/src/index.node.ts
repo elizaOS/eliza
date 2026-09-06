@@ -507,6 +507,7 @@ export { formatError } from "./utils/format-error";
 export * from "./utils/html-raw-text";
 /** Single-lane local inference scheduling: interactive-over-background gate + device-class background budgets (#11914). */
 export * from "./utils/inference-priority-gate";
+export * from "./utils/inflection-term-keys";
 export {
 	assertModelOutputComplete,
 	isModelOutputLimitFinishReason,

@@ -22,6 +22,7 @@ import {
   ElizaError,
   factClaimsEquivalent,
   getRelatedEntityIds,
+  inflectionTermKeys,
   logger,
   ModelType,
   readStoredFactKeywords,
@@ -177,37 +178,6 @@ function scoreQueryTerms(query: string): string[] {
   ];
 }
 
-/**
- * Inflection-insensitive term keys for matching a user's phrasing against a
- * stored sentence: "like"/"likes", "prefer"/"prefers", "wake"/"wakes"/"waking"
- * compare equal (live 2026-09-06: "forget that I like my coffee with oat milk"
- * missed the stored "User likes their coffee with oat milk."). Every candidate
- * form is returned so callers can index all of them; short terms are left
- * alone so "bus"/"bu" style collisions cannot happen.
- */
-function termKeys(term: string): string[] {
-  const keys = new Set<string>([term]);
-  let base = term;
-  if (base.length >= 5 && base.endsWith("ies")) {
-    base = `${base.slice(0, -3)}y`;
-  } else if (base.length >= 5 && base.endsWith("sses")) {
-    base = base.slice(0, -2);
-  } else if (base.length >= 4 && base.endsWith("s") && !base.endsWith("ss")) {
-    base = base.slice(0, -1);
-  }
-  keys.add(base);
-  for (const suffix of ["ing", "ed"]) {
-    if (base.length < suffix.length + 2 || !base.endsWith(suffix)) continue;
-    const stem = base.slice(0, -suffix.length);
-    keys.add(stem);
-    keys.add(`${stem}e`);
-    if (stem.length >= 3 && stem[stem.length - 1] === stem[stem.length - 2]) {
-      keys.add(stem.slice(0, -1));
-    }
-  }
-  return [...keys];
-}
-
 function scoreText(text: string, query: string): number {
   const t = text.toLowerCase();
   const q = query.toLowerCase();
@@ -219,11 +189,12 @@ function scoreText(text: string, query: string): number {
     t
       .split(/[^\p{L}\p{N}]+/u)
       .filter(Boolean)
-      .flatMap(termKeys),
+      .flatMap(inflectionTermKeys),
   );
   let matches = 0;
   for (const term of terms) {
-    if (termKeys(term).some((key) => textTerms.has(key))) matches += 1;
+    if (inflectionTermKeys(term).some((key) => textTerms.has(key)))
+      matches += 1;
   }
   const requiredMatches = terms.length >= 3 ? 2 : 1;
   if (whole === 0 && matches < requiredMatches) return 0;
