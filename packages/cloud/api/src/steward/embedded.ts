@@ -1,4 +1,4 @@
-/** Proxies the embedded Steward API with signed mutations and bounded public discovery. */
+/** Proxies the first-party login service with signed mutations and bounded public discovery. */
 import type { MiddlewareHandler } from "hono";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -137,7 +137,12 @@ function resolveStewardUpstream(
   env: AppEnv["Bindings"],
   requestUrl: URL,
 ): string | null {
-  const candidates = [env.STEWARD_API_URL, env.NEXT_PUBLIC_STEWARD_API_URL];
+  // A configured first-party binding is authoritative, including when invalid.
+  // Falling back would send credentials to a different service during cutover.
+  const candidates =
+    env.LOGIN_API_URL !== undefined
+      ? [env.LOGIN_API_URL]
+      : [env.STEWARD_API_URL, env.NEXT_PUBLIC_STEWARD_API_URL];
   for (const candidate of candidates) {
     if (typeof candidate !== "string" || candidate.trim().length === 0)
       continue;
@@ -740,8 +745,7 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
       {
         success: false,
         error: "steward_upstream_not_configured",
-        message:
-          "Set STEWARD_API_URL or NEXT_PUBLIC_STEWARD_API_URL to an external Steward API.",
+        message: "Set LOGIN_API_URL to the owned @elizaos/login service.",
       },
       503,
     );

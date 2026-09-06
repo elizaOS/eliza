@@ -1945,7 +1945,7 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
 // Copy contrib extension tarballs. They live one dir above the bundle on
 // device (Phase A handles placement); we surface them in dist-mobile/ so the
 // asset pipeline can pick them up.
-for (const asset of ["vector.tar.gz", "fuzzystrmatch.tar.gz"]) {
+for (const asset of ["vector.tar.gz", "fuzzystrmatch.tar.gz", "pg_trgm.tar.gz"]) {
   const src = path.join(pgliteDist, asset);
   if (!existsSync(src)) {
     console.error(`[build-mobile] FATAL: missing ${asset} in ${pgliteDist}`);

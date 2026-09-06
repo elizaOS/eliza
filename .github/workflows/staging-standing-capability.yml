@@ -1,0 +1,63 @@
+name: Staging standing capability
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_deploy_sha:
+        description: Exact 40-character commit currently served by staging.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-standing-capability
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: staging
+    env:
+      EXPECTED_DEPLOY_SHA: ${{ inputs.expected_deploy_sha }}
+    steps:
+      - name: Require trusted develop source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/develop
+          [[ "$EXPECTED_DEPLOY_SHA" =~ ^[a-f0-9]{40}$ ]]
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Verify preflight boundaries
+        run: node --test packages/cloud/scripts/staging-standing-capability.test.mjs
+
+      - name: Inspect bounded staging capability
+        shell: bash
+        env:
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/staging-standing-capability.mjs \
+            --expected-deploy-sha "$EXPECTED_DEPLOY_SHA" \
+            --source-sha "$GITHUB_SHA" \
+            --source-ref "$GITHUB_REF" \
+            --output reports/staging-standing-capability.json
+
+      - name: Upload bounded capability evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: staging-standing-capability-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/staging-standing-capability.json
+          if-no-files-found: error
+          retention-days: 7
