@@ -320,7 +320,7 @@ const syscallPython = [
 const syscallProbe = spawnSync("python3", ["-c", syscallPython], { encoding: "utf8" });
 const syscallResult = syscallProbe.status === 0
   ? JSON.parse(syscallProbe.stdout)
-  : { probeError: syscallProbe.stderr };
+  : { probeError: { status: syscallProbe.status, signal: syscallProbe.signal, stderr: syscallProbe.stderr, error: syscallProbe.error?.message, code: syscallProbe.error?.code } };
 let procReadable = false;
 try { readFileSync("/proc/" + process.env.PROBE_PARENT_PID + "/environ"); procReadable = true; } catch {}
 let fdSecretReadable = false;
