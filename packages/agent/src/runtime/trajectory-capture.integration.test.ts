@@ -97,7 +97,7 @@ interface TrajLogger {
       metadata?: Record<string, unknown>;
     },
   ) => Promise<string>;
-  startStep: (trajectoryId: string) => string;
+  startStep: DatabaseTrajectoryLogger["startStep"];
   getCurrentStepId?: (trajectoryId: string) => string | null;
   logLlmCall: (params: Record<string, unknown>) => void;
   logProviderAccess: (params: Record<string, unknown>) => void;
@@ -272,6 +272,7 @@ type TestRuntimeDb = TestSqlExecutor & {
 
 function transactionGatedRuntime(agentId: string): {
   runtime: AgentRuntime;
+  transactions: { count: number };
   gate: {
     arm: () => void;
     entered: Promise<void>;
@@ -291,11 +292,13 @@ function transactionGatedRuntime(agentId: string): {
   const released = new Promise<void>((resolve) => {
     releaseTransaction = resolve;
   });
+  const transactions = { count: 0 };
   const gatedDb: TestRuntimeDb = {
     execute: baseDb.execute.bind(baseDb),
     transaction: async <T>(
       callback: (tx: TestSqlExecutor) => Promise<T>,
     ): Promise<T> => {
+      transactions.count += 1;
       if (armed && !used) {
         used = true;
         markEntered();
@@ -309,6 +312,7 @@ function transactionGatedRuntime(agentId: string): {
   };
   return {
     runtime: gatedRuntime,
+    transactions,
     gate: {
       arm: () => {
         armed = true;
@@ -466,6 +470,302 @@ afterAll(async () => {
 });
 
 describe("trajectory capture -> DB -> viewer", () => {
+  it.each(["public", "installed"] as const)(
+    "%s logger batches adjacent child starts with exact serial persistence equivalence",
+    async (mode) => {
+      const counted = transactionGatedRuntime(crypto.randomUUID());
+      const { logger } = await databaseLogger(
+        mode,
+        counted.runtime.agentId,
+        counted.runtime,
+      );
+      const snapshots = [];
+      try {
+        for (const serial of [true, false]) {
+          const trajectoryId = await logger.startTrajectory(
+            counted.runtime.agentId,
+            { source: "child-start-batch-equivalence" },
+          );
+          const timestamp = 1_788_650_000_000;
+          const rootId = logger.startStep(trajectoryId, { timestamp });
+          await flushTrajectoryWrites(counted.runtime, trajectoryId);
+          counted.transactions.count = 0;
+          const childIds: string[] = [];
+          for (let index = 0; index < 28; index += 1) {
+            childIds.push(
+              logger.startStep(trajectoryId, {
+                // Repeated and non-monotonic event times remain caller-owned.
+                timestamp: timestamp + (index % 7),
+                parentStepId: index < 14 ? rootId : childIds[0],
+                kind: index % 2 === 0 ? "llm" : "evaluator",
+                ...(index % 2 === 1
+                  ? { evaluatorName: `evaluator-${index}` }
+                  : {}),
+              }),
+            );
+            if (serial) {
+              await flushTrajectoryWrites(counted.runtime, trajectoryId);
+            }
+          }
+          await flushTrajectoryWrites(counted.runtime, trajectoryId);
+          expect(counted.transactions.count).toBe(serial ? 28 : 1);
+          const stored = await loadTrajectoryById(
+            counted.runtime,
+            trajectoryId,
+          );
+          expect(stored?.steps.map((step) => step.stepId)).toEqual([
+            rootId,
+            ...childIds,
+          ]);
+          const ids = new Map(
+            [rootId, ...childIds].map((id, index) => [id, `step-${index}`]),
+          );
+          snapshots.push(
+            stored?.steps.map((step) => ({
+              ...step,
+              stepId: ids.get(step.stepId),
+              ...(step.parentStepId
+                ? { parentStepId: ids.get(step.parentStepId) }
+                : {}),
+              ...(step.childSteps
+                ? { childSteps: step.childSteps.map((id) => ids.get(id)) }
+                : {}),
+            })),
+          );
+          await logger.endTrajectory(trajectoryId, "completed");
+        }
+        expect(snapshots[1]).toEqual(snapshots[0]);
+      } finally {
+        await logger.stop();
+      }
+    },
+  );
+
+  it.each(["public", "installed"] as const)(
+    "%s logger preserves capture barriers between child-start batches",
+    async (mode) => {
+      const counted = transactionGatedRuntime(crypto.randomUUID());
+      const { logger } = await databaseLogger(
+        mode,
+        counted.runtime.agentId,
+        counted.runtime,
+      );
+      try {
+        const trajectoryId = await logger.startTrajectory(
+          counted.runtime.agentId,
+        );
+        const rootId = logger.startStep(trajectoryId);
+        await flushTrajectoryWrites(counted.runtime, trajectoryId);
+        counted.transactions.count = 0;
+        const first = logger.startStep(trajectoryId, { parentStepId: rootId });
+        const second = logger.startStep(trajectoryId, { parentStepId: rootId });
+        const reply = "  Keep the full result, including whitespace.\n".repeat(
+          200,
+        );
+        logger.logLlmCall(llmCall(first, "test", "child-start-barrier", reply));
+        const third = logger.startStep(trajectoryId, { parentStepId: second });
+        const fourth = logger.startStep(trajectoryId, { parentStepId: third });
+        logger.logProviderAccess({
+          stepId: fourth,
+          providerName: "after-child-batch",
+          purpose: "context",
+          data: { text: reply },
+        });
+        await flushTrajectoryWrites(counted.runtime, trajectoryId);
+        expect(counted.transactions.count).toBe(4);
+        const stored = await loadTrajectoryById(counted.runtime, trajectoryId);
+        expect(stored?.steps.map((step) => step.stepId)).toEqual([
+          rootId,
+          first,
+          second,
+          third,
+          fourth,
+        ]);
+        expect(
+          stored?.steps.find((step) => step.stepId === first)?.llmCalls[0]
+            ?.response,
+        ).toBe(reply);
+        expect(
+          stored?.steps.find((step) => step.stepId === fourth)
+            ?.providerAccesses[0]?.data,
+        ).toEqual({ text: reply });
+        expect(
+          stored?.steps.find((step) => step.stepId === second)?.childSteps,
+        ).toEqual([third]);
+        expect(
+          stored?.steps.find((step) => step.stepId === third)?.childSteps,
+        ).toEqual([fourth]);
+        await logger.endTrajectory(trajectoryId, "completed");
+      } finally {
+        await logger.stop();
+      }
+    },
+  );
+
+  it.each(["public", "installed"] as const)(
+    "%s logger separates child starts arriving after a batch enters persistence",
+    async (mode) => {
+      const gated = transactionGatedRuntime(crypto.randomUUID());
+      const { logger } = await databaseLogger(
+        mode,
+        gated.runtime.agentId,
+        gated.runtime,
+      );
+      try {
+        const trajectoryId = await logger.startTrajectory(
+          gated.runtime.agentId,
+        );
+        const rootId = logger.startStep(trajectoryId);
+        await flushTrajectoryWrites(gated.runtime, trajectoryId);
+        gated.transactions.count = 0;
+        gated.gate.arm();
+        const first = logger.startStep(trajectoryId, { parentStepId: rootId });
+        const second = logger.startStep(trajectoryId, { parentStepId: rootId });
+        await gated.gate.entered;
+        const third = logger.startStep(trajectoryId, { parentStepId: second });
+        const fourth = logger.startStep(trajectoryId, { parentStepId: third });
+        gated.gate.release();
+        await flushTrajectoryWrites(gated.runtime, trajectoryId);
+        expect(gated.transactions.count).toBe(2);
+        const stored = await loadTrajectoryById(gated.runtime, trajectoryId);
+        expect(stored?.steps.map((step) => step.stepId)).toEqual([
+          rootId,
+          first,
+          second,
+          third,
+          fourth,
+        ]);
+        expect(
+          stored?.steps.find((step) => step.stepId === rootId)?.childSteps,
+        ).toEqual([first, second]);
+        expect(
+          stored?.steps.find((step) => step.stepId === second)?.childSteps,
+        ).toEqual([third]);
+        await logger.endTrajectory(trajectoryId, "completed");
+      } finally {
+        gated.gate.release();
+        await logger.stop();
+      }
+    },
+  );
+
+  it.each(["public", "installed"] as const)(
+    "%s logger does not merge child-start batches from different logger owners",
+    async (mode) => {
+      const counted = transactionGatedRuntime(crypto.randomUUID());
+      const first = await databaseLogger(
+        mode,
+        counted.runtime.agentId,
+        counted.runtime,
+      );
+      const second = await databaseLogger(
+        mode,
+        counted.runtime.agentId,
+        counted.runtime,
+      );
+      try {
+        const trajectoryId = await first.logger.startTrajectory(
+          counted.runtime.agentId,
+        );
+        const rootId = first.logger.startStep(trajectoryId);
+        await flushTrajectoryWrites(counted.runtime, trajectoryId);
+        counted.transactions.count = 0;
+        const ids = [
+          first.logger.startStep(trajectoryId, { parentStepId: rootId }),
+          first.logger.startStep(trajectoryId, { parentStepId: rootId }),
+          second.logger.startStep(trajectoryId, { parentStepId: rootId }),
+          second.logger.startStep(trajectoryId, { parentStepId: rootId }),
+        ];
+        await flushTrajectoryWrites(counted.runtime, trajectoryId);
+        expect(counted.transactions.count).toBe(2);
+        const stored = await loadTrajectoryById(counted.runtime, trajectoryId);
+        expect(stored?.steps.map((step) => step.stepId)).toEqual([
+          rootId,
+          ...ids,
+        ]);
+        expect(
+          stored?.steps.find((step) => step.stepId === rootId)?.childSteps,
+        ).toEqual(ids);
+        await first.logger.endTrajectory(trajectoryId, "completed");
+      } finally {
+        await second.logger.stop();
+        await first.logger.stop();
+      }
+    },
+  );
+
+  it.each(["public", "installed"] as const)(
+    "%s logger exposes child-start batch rollback without partial parent links",
+    async (mode) => {
+      const batchRuntime = sharedDatabaseRuntime(crypto.randomUUID());
+      const baseDb = (
+        batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }
+      ).adapter.db;
+      let failNext = false;
+      const failure = new Error("child-start transaction failure");
+      (batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }).adapter =
+        {
+          db: {
+            execute: baseDb.execute.bind(baseDb),
+            transaction: <T>(callback: (tx: TestSqlExecutor) => Promise<T>) =>
+              baseDb.transaction(async (tx) => {
+                const result = await callback(tx);
+                if (failNext) {
+                  failNext = false;
+                  throw failure;
+                }
+                return result;
+              }),
+          },
+        };
+      const { logger } = await databaseLogger(
+        mode,
+        batchRuntime.agentId,
+        batchRuntime,
+      );
+      try {
+        const trajectoryId = await logger.startTrajectory(batchRuntime.agentId);
+        const rootId = logger.startStep(trajectoryId);
+        await flushTrajectoryWrites(batchRuntime, trajectoryId);
+        const before = await loadTrajectoryById(batchRuntime, trajectoryId);
+        failNext = true;
+        const first = logger.startStep(trajectoryId, { parentStepId: rootId });
+        logger.startStep(trajectoryId, { parentStepId: first });
+        await expect(
+          flushTrajectoryWrites(batchRuntime, trajectoryId),
+        ).rejects.toMatchObject({
+          code: "TRAJECTORY_SAVE_FAILED",
+          cause: failure,
+        });
+        expect(
+          (await loadTrajectoryById(batchRuntime, trajectoryId))?.steps,
+        ).toEqual(before?.steps);
+        expect(batchRuntime.reportError).toHaveBeenCalledWith(
+          "TrajectoryStorage.write",
+          expect.objectContaining({
+            code: "TRAJECTORY_SAVE_FAILED",
+            cause: failure,
+          }),
+          expect.objectContaining({ diagnosticOnly: true }),
+        );
+        // A reported failed batch must not chain-block later independent work.
+        const later = logger.startStep(trajectoryId, { parentStepId: rootId });
+        await flushTrajectoryWrites(batchRuntime, trajectoryId);
+        const after = await loadTrajectoryById(batchRuntime, trajectoryId);
+        expect(after?.steps.map((step) => step.stepId)).toEqual([
+          rootId,
+          later,
+        ]);
+        expect(
+          after?.steps.find((step) => step.stepId === rootId)?.childSteps,
+        ).toEqual([later]);
+        await logger.endTrajectory(trajectoryId, "completed");
+      } finally {
+        await logger.stop();
+      }
+    },
+  );
+
   it.each(["public", "installed"] as const)(
     "%s logger keeps in-flight batches separate and retries them against concurrent writes",
     async (mode) => {
