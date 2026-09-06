@@ -1554,6 +1554,120 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(result.finalMessage).toContain("favorite-color");
 	});
 
+	it.each([
+		{
+			name: "a replacement body merely quotes the missed target",
+			failedParams: { action: "update", query: "favorite color" },
+			successfulParams: {
+				action: "update",
+				memoryId: "00000000-0000-0000-0000-0000000000b1",
+				text: "This unrelated note quotes the words favorite color.",
+			},
+			successfulResult: {
+				success: true,
+				text: "Updated the unrelated note.",
+				data: { op: "update" },
+			},
+		},
+		{
+			name: "the same description identifies a resource in another container",
+			failedParams: {
+				action: "update",
+				query: "favorite color",
+				memoryId: "00000000-0000-0000-0000-0000000000a2",
+				roomId: "00000000-0000-0000-0000-0000000000a1",
+			},
+			successfulParams: {
+				action: "update",
+				memoryId: "00000000-0000-0000-0000-0000000000b1",
+				roomId: "00000000-0000-0000-0000-0000000000b2",
+				text: "Updated favorite color.",
+			},
+			successfulResult: {
+				success: true,
+				text: "Updated favorite color in the other room.",
+				data: { op: "update" },
+			},
+		},
+		{
+			name: "a partial success still lists the missed target as failed",
+			failedParams: { action: "delete", query: "favorite color" },
+			successfulParams: { action: "delete", query: "coffee preference" },
+			successfulResult: {
+				success: true,
+				text: "Deleted the coffee preference; favorite color was not found.",
+				data: {
+					op: "delete",
+					deletedCount: 1,
+					failed: [{ query: "favorite color", error: "MEMORY_NOT_FOUND" }],
+				},
+			},
+		},
+	])("keeps target-miss failure authority when $name", async (scenario) => {
+		const honestReply =
+			"The other change succeeded, but I couldn't find the requested favorite color record.";
+		const h = harness({
+			userMessage: "Change my favorite color record and the other record.",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "missed-target",
+							arguments: {
+								...scenario.failedParams,
+								confirm: true,
+								eliza_turn_scope: "final",
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "other-target",
+							arguments: {
+								...scenario.successfulParams,
+								confirm: true,
+								eliza_turn_scope: "final",
+							},
+						},
+					],
+				},
+				honestReply,
+			],
+			evaluations: [
+				continueWork(
+					"The requested target was not found; another change remains.",
+				),
+				finish("Both requested records were changed."),
+				honestReply,
+			],
+			results: [
+				{
+					success: false,
+					text: 'No stored memory matches "favorite color".',
+					data: { error: "MEMORY_NOT_FOUND", actionName: "MEMORY" },
+				},
+				{
+					...scenario.successfulResult,
+					transcriptVisibility: "internal",
+				},
+			],
+			intents: ["change favorite color", "change the other record"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["MEMORY", "MEMORY"]);
+		expect(result.trajectory.steps[0].result).toMatchObject({
+			success: false,
+			data: { error: "MEMORY_NOT_FOUND" },
+		});
+		expect(result.finalMessage).toBe(honestReply);
+	});
+
 	it("malformed-call supersession keeps every supplied target of the failed call", () => {
 		const failedUpdateA = {
 			name: "VIEWS",

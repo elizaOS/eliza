@@ -2919,9 +2919,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(memoryTable.unique, true));
       }
 
-      if (agentId) {
-        conditions.push(eq(memoryTable.agentId, agentId));
-      }
+      // An adapter is bound to one agent; a read that names no agent is a read
+      // of that agent's memories. Relying on RLS alone leaked one agent's facts
+      // into another agent's prompt on a database without RLS policies (live
+      // 2026-09-06: the owner's facts stored by a second agent rendered in the
+      // first agent's FACTS block and could not be forgotten from it).
+      conditions.push(eq(memoryTable.agentId, agentId ?? this.agentId));
 
       if (textContains) {
         // Push the keyword filter into the store as a case-insensitive ILIKE;
@@ -4475,9 +4478,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (params.entityId) {
         conditions.push(eq(memoryTable.entityId, params.entityId));
       }
-      if (params.agentId) {
-        conditions.push(eq(memoryTable.agentId, params.agentId));
-      }
+      conditions.push(eq(memoryTable.agentId, params.agentId ?? this.agentId));
       if (params.unique) {
         conditions.push(eq(memoryTable.unique, true));
       }

@@ -452,6 +452,9 @@ const factsProvider: Provider = {
 						tableName: "facts",
 						entityId,
 						authorEntityIds: [entityId],
+						// The owner entity is shared across this owner's agents; the
+						// pool must be this agent's own facts.
+						agentId: runtime.agentId,
 						unique: false,
 					}),
 				),

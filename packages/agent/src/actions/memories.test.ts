@@ -133,7 +133,12 @@ function makeRuntime(options?: {
 
 function seedFact(
   rows: StoredRow[],
-  fields: { text: string; entityId: UUID; roomId?: UUID },
+  fields: {
+    text: string;
+    entityId: UUID;
+    roomId?: UUID;
+    metadata?: Record<string, unknown>;
+  },
 ): UUID {
   const id = crypto.randomUUID() as UUID;
   rows.push({
@@ -143,6 +148,7 @@ function seedFact(
       agentId: AGENT_ID,
       roomId: fields.roomId ?? ROOM_ID,
       content: { text: fields.text },
+      ...(fields.metadata ? { metadata: fields.metadata } : {}),
       createdAt: Date.now(),
     } as Memory,
     tableName: "facts",
@@ -520,6 +526,64 @@ describe("MEMORY mutations settle with receipts for the grounded reply gate", ()
 });
 
 describe("MEMORY op:delete by query scope", () => {
+  it("deletes only the explicit id and preserves unrelated facts from the same source message", async () => {
+    const { runtime, rows } = makeRuntime();
+    const id = seedFact(rows, {
+      text: "The user's dog is named Biscuit.",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-and-jazz" },
+    });
+    seedFact(rows, {
+      text: "User has_dog Biscuit",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-and-jazz" },
+    });
+    seedFact(rows, {
+      text: "User likes jazz.",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-and-jazz" },
+    });
+    const preservedRows = structuredClone(rows.slice(1));
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      memoryId: String(id),
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows).toEqual(preservedRows);
+    expect(result.effectReceipts).toHaveLength(1);
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      resource: { id },
+      outcome: "applied",
+    });
+  });
+
+  it("preserves a different same-message claim sharing the queried subject", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "user's dog is named Biscuit",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-care" },
+    });
+    const careId = seedFact(rows, {
+      text: "The user's dog needs a daily walk",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-care" },
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "user's dog is named Biscuit",
+      confirm: true,
+    });
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_AMBIGUOUS_QUERY" });
+    expect(result.effectReceipts).toBeUndefined();
+    expect(rows).toHaveLength(2);
+    expect(
+      rows.find((row) => row.memory.id === careId)?.memory.content.text,
+    ).toBe("The user's dog needs a daily walk");
+  });
+
   it.each(["delete", "update"] as const)(
     "%s matches clock forms without changing a different time or owner's fact",
     async (action) => {
@@ -564,6 +628,72 @@ describe("MEMORY op:delete by query scope", () => {
       }
     },
   );
+  it("returns sibling candidates for selective deletion by id before any mutation", async () => {
+    // Live 2026-09-06 05:40: "forget my dog's name" removed "user's dog is
+    // named Biscuit" and left the extractor's "User has_dog Biscuit" row from
+    // the same message, so the bot still knew the name.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "user's dog is named Biscuit",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-1" },
+    });
+    seedFact(rows, {
+      text: "User has_dog Biscuit",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-1" },
+    });
+    seedFact(rows, {
+      text: "User likes jazz.",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-jazz" },
+    });
+    const targetIds = rows.slice(0, 2).map((row) => row.memory.id);
+    const originalRows = structuredClone(rows);
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "user's dog is named Biscuit",
+      confirm: true,
+    });
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "MEMORY_AMBIGUOUS_QUERY",
+      candidates: expect.arrayContaining(
+        targetIds.map((id) => expect.objectContaining({ id })),
+      ),
+    });
+    expect(result.effectReceipts).toBeUndefined();
+    expect(rows).toEqual(originalRows);
+    for (const memoryId of targetIds) {
+      if (!memoryId) throw new Error("Seeded fact must have an id");
+      const deletion = await runAction(runtime, makeMessage(), {
+        action: "delete",
+        memoryId,
+        confirm: true,
+      });
+      expect(deletion.success).toBe(true);
+    }
+    const left = rows.filter((row) => row.tableName === "facts");
+    expect(left).toHaveLength(1);
+    expect(String(left[0]?.memory.content.text)).toContain("jazz");
+  });
+
+  it("matches clock times across abbreviation dots and spacing (6am vs 6a.m. vs 6 am)", async () => {
+    // Live 2026-09-06 02:36: "forget that I usually wake up at 6am" scanned 20
+    // rows and matched nothing against "The user usually wakes up at 6a.m.".
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "The user usually wakes up at 6a.m.",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "usually wake up at 6 am",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
+  });
 
   it.each(["delete", "update"] as const)(
     "%s preserves distinct query targets",
@@ -804,6 +934,54 @@ describe("MEMORY op:delete by query scope", () => {
 });
 
 describe("MEMORY op:update", () => {
+  it("does not mistake this turn's extracted update request for an older saved fact", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedFact(rows, {
+      text: "Indigo Finch review starts at 6 a.m.",
+      entityId: USER_ID,
+    });
+    seedFact(rows, {
+      text: "Indigo Finch review time changes from 6 a.m. to 7 a.m.",
+      entityId: USER_ID,
+    });
+    rows[1].memory.metadata = {
+      type: "custom",
+      source: "facts_and_relationships_stage",
+      messageId: message.id,
+    };
+    const before = structuredClone(rows);
+    const result = await runAction(runtime, message, {
+      action: "update",
+      type: "facts",
+      query: "Indigo Finch review time",
+      text: "Indigo Finch review starts at 7 a.m.",
+      confirm: true,
+    });
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_NOT_FOUND" });
+    expect(rows).toEqual(before);
+  });
+
+  it("updates saved knowledge by default without rewriting a matching chat message", async () => {
+    const { runtime, rows } = makeRuntime();
+    const text = "Indigo Finch review starts at 6 a.m.";
+    seedFact(rows, { text, entityId: USER_ID });
+    rows.push({
+      tableName: "messages",
+      memory: { ...makeMessage(), content: { text } },
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "update",
+      query: text,
+      text: "Indigo Finch review starts at 7 a.m.",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows[0].memory.content.text).toContain("7 a.m.");
+    expect(rows[1].memory.content.text).toBe(text);
+  });
+
   it("updates a text-only memory without requiring an embedding provider", async () => {
     const { runtime, rows } = makeRuntime();
     const memoryId = seedFact(rows, {

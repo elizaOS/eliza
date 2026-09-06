@@ -243,3 +243,33 @@ it("uses buffered compatibility before dispatch when stream events are unavailab
   expect(native.call).toHaveBeenCalledTimes(1);
   expect(native.call.mock.calls[0][0].method).toBe("http_request");
 });
+
+it.each(["event", "promise"])(
+  "rejects a missing native response head completed by %s without replay",
+  async (completionKind) => {
+    await install();
+    const completion = Promise.withResolvers<{ result: unknown }>();
+    native.call.mockReturnValue(completion.promise);
+    const request = fetch(endpoint, {
+      method: "POST",
+      headers: { accept: "text/event-stream" },
+      body: "one message",
+    });
+    const rejected = expect(request).rejects.toMatchObject({
+      code: "NATIVE_STREAM_RESPONSE_MISSING",
+    });
+    await vi.waitFor(() => expect(native.listeners.size).toBe(3));
+    const streamId = native.call.mock.calls[0][0].args.streamId;
+    native.listeners.get("agentStreamChunk")?.({
+      streamId,
+      dataBase64: btoa("The server refused this message"),
+    });
+    if (completionKind === "event") {
+      native.listeners.get("agentStreamComplete")?.({ streamId });
+    } else completion.resolve({ result: { streamId, done: true } });
+    await rejected;
+    expect(native.call).toHaveBeenCalledTimes(1);
+    expect(native.call.mock.calls[0][0].method).toBe("http_request_stream");
+    expect(native.listeners.size).toBe(0);
+  },
+);
