@@ -29,8 +29,24 @@ interface MockConnectorCredentialStore {
   reveal(vaultRef: string, caller?: string): Promise<string>;
 }
 
+/** Stable owner grant id that matches GMAIL_MOCK_ACCOUNTS[0]. */
+export const SIMULATED_OWNER_GOOGLE_GRANT_ID = "mock-google-work-grant";
+export const SIMULATED_OWNER_GOOGLE_ACCOUNT_ID = "work";
+
 function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function mockGmailAccountIdForEmail(email: string): string | undefined {
+  if (email === "owner@example.test") return "work";
+  if (email === "owner.home@example.test") return "home";
+  return undefined;
+}
+
+function buildMockGoogleRefreshToken(grantId?: string): string {
+  return grantId
+    ? `mock-google-refresh-token-${sanitizePathSegment(grantId)}`
+    : "mock-google-refresh-token";
 }
 
 function buildMockGoogleTokenRef(
@@ -129,6 +145,7 @@ function writeMockGoogleToken(args: {
     tokenRef,
   );
   const now = Date.now();
+  const gmailAccountId = mockGmailAccountIdForEmail(args.email);
   const token = {
     provider: "google" as const,
     agentId: args.agentId,
@@ -137,11 +154,12 @@ function writeMockGoogleToken(args: {
     clientId: "mock-google-client",
     redirectUri: "http://127.0.0.1/mock-google/callback",
     accessToken: buildMockGoogleAccessToken(args.grantId),
-    refreshToken: "mock-google-refresh-token",
+    refreshToken: buildMockGoogleRefreshToken(args.grantId),
     tokenType: "Bearer",
     grantedScopes: args.grantedScopes,
     grantId: args.grantId ?? null,
     accountEmail: args.email,
+    ...(gmailAccountId ? { gmailAccountId } : {}),
     expiresAt: now + 24 * 60 * 60 * 1000,
     refreshTokenExpiresAt: now + 30 * 24 * 60 * 60 * 1000,
     createdAt: new Date(now).toISOString(),
@@ -208,6 +226,7 @@ export async function seedGoogleConnectorGrant(
     vaultRef,
     JSON.stringify({
       access_token: accessToken,
+      refresh_token: buildMockGoogleRefreshToken(id),
       token_type: "Bearer",
       scope: grantedScopes.join(" "),
       expiry_date: expiresAt,
@@ -255,7 +274,7 @@ export async function seedGoogleConnectorGrant(
       identity: { email },
       grantedCapabilities: ["google.basic_identity", ...capabilities],
       grantedScopes,
-      hasRefreshToken: false,
+      hasRefreshToken: true,
       expiresAt,
       oauthCredentialVersion: String(expiresAt),
       credentialRefs: [
