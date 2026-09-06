@@ -44,7 +44,16 @@ export function setNavigationConstraint(
 		roomId: message.roomId,
 		actorId: message.entityId,
 		action: "VIEWS",
-		operations: ["show", "open"],
+		operations: [
+			"show",
+			"open",
+			"manager",
+			"close",
+			"pin",
+			"window",
+			"split",
+			"tile",
+		],
 		disposition,
 		reason,
 	});

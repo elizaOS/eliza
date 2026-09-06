@@ -4,10 +4,11 @@
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { Memory } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { runWithStreamingContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setNavigationConstraint } from "./navigation-execution.js";
+import { createViewsAction, createViewsAliasAction } from "./views.js";
 import { createViewsClient, type ViewSummary } from "./views-client.js";
 import { runViewsShow } from "./views-show.js";
 
@@ -176,3 +177,80 @@ describe("navigation execution policy", () => {
 		});
 	});
 });
+
+const shellModes = [
+	"manager",
+	"window",
+	"pin",
+	"close",
+	"split",
+	"tile",
+] as const;
+const actionRuntime = { agentId: "agent-1" } as unknown as IAgentRuntime;
+function shellAction(mode: string) {
+	return createViewsAction().handler(actionRuntime, message, undefined, {
+		...options,
+		action: mode,
+		views: ["calendar", "notes"],
+		viewType: "gui",
+	});
+}
+describe("dispatcher-wide navigation effect constraints", () => {
+	for (const mode of shellModes) {
+		it(`blocks ${mode} under trusted denial without a transport effect`, async () => {
+			const result = await turn(() => shellAction(mode), "deny");
+			expect(posts).toEqual([]);
+			expect(result).toMatchObject({
+				success: false,
+				data: { navigation: { status: "forbidden", stepId: "step-1" } },
+			});
+		});
+		it(`blocks ${mode} after canonical cancellation`, async () => {
+			const result = await turn(() => {
+				controller.abort("superseded");
+				return shellAction(mode);
+			});
+			expect(posts).toEqual([]);
+			expect(result).toMatchObject({
+				success: false,
+				data: { navigation: { status: "cancelled", stepId: "step-1" } },
+			});
+		});
+	}
+	for (const mode of ["window", "pin", "close", "split", "tile"]) {
+		it(`cannot dispatch ${mode} when cancellation arrives during catalog resolution`, async () => {
+			cancelCatalog = true;
+			const result = await turn(() => shellAction(mode));
+			expect(posts).toEqual([]);
+			expect(result).toMatchObject({
+				success: false,
+				data: { navigation: { status: "cancelled" } },
+			});
+		});
+	}
+	it("keeps catalog reads available when navigation is forbidden", async () => {
+		const result = await turn(() => shellAction("list"), "deny");
+		expect(result).toMatchObject({ success: true });
+		expect(posts).toEqual([]);
+	});
+});
+
+for (const alias of ["CLOSE_VIEW", "CLOSE_ALL_VIEWS"] as const) {
+	it(`cannot bypass navigation denial through ${alias}`, async () => {
+		const result = await turn(
+			() =>
+				createViewsAliasAction(alias).handler(
+					actionRuntime,
+					message,
+					undefined,
+					options,
+				),
+			"deny",
+		);
+		expect(posts).toEqual([]);
+		expect(result).toMatchObject({
+			success: false,
+			data: { navigation: { status: "forbidden" } },
+		});
+	});
+}

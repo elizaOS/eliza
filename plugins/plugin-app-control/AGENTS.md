@@ -220,9 +220,13 @@ gates. Navigation receipts remain separate from event, note, or task effects.
 
 The contextual evaluator binds navigation permission to the incoming message,
 room, and actor through core StreamingContext. Nested model scopes preserve that
-policy and cancellation signal. Tool parameters cannot relax a deny constraint;
-planner steps require an explicit allow. Catalog requests and the final dispatch
-observe cancellation. Every navigation outcome uses `data.navigation.stepId`;
+policy and cancellation signal. Tool parameters cannot relax a deny constraint.
+The same policy applies to manager,
+close (including aliases), window, pin, and split/tile navigation, with another
+check at the shell transport boundary; read and domain modes remain independent.
+Planner steps require an explicit allow. Catalog requests and the final dispatch
+observe cancellation. Show/open outcomes and alternate-mode denials use
+`data.navigation.stepId`;
 `delivered` requires the matching completed-action handoff receipt, while missing,
 negative, or malformed delivery remains explicit. Stable handoff IDs scope replay
 to the same message, actor, client, step, and destination.
