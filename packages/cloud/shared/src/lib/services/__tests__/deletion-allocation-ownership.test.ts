@@ -28,6 +28,7 @@ process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq } from "drizzle-orm";
+import { agentComputeStopIntents } from "../../../db/schemas/agent-compute-stop-intents";
 import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../../db/schemas/api-keys";
@@ -84,6 +85,7 @@ beforeAll(async () => {
       users,
       userCharacters,
       agentSandboxes,
+      agentComputeStopIntents,
       apiKeys,
       generations,
       usageRecords,

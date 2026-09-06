@@ -32,6 +32,14 @@ import {
 import type { DbTransaction } from "../../db/client";
 import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbWrite } from "../../db/helpers";
+import { agentBillingRepository } from "../../db/repositories/agent-billing";
+import {
+  type AgentPaymentResumeAuthority,
+  assertPaymentResumeExecutionAuthorityInTransaction,
+  carryConfirmedStopReceiptAcrossClaimInTransaction,
+  listAgentPaymentResumeCandidates,
+  lockAgentPaymentResumeAuthorityInTransaction,
+} from "../../db/repositories/agent-compute-stop-intents";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
   cutoverResumeWindowAllows,
@@ -46,6 +54,7 @@ import {
   type RecoveryFailureWritebackBuilder,
   StaleJobExecutionError,
 } from "../../db/repositories/jobs";
+import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
 import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import {
   type AgentBillingStatus,
@@ -272,6 +281,10 @@ export interface AgentResumeJobData {
   agentId: string;
   organizationId: string;
   userId: string;
+  paymentResume?: {
+    stopIntentId: string;
+    stoppedLifecycleRevision: string;
+  };
 }
 
 export interface AgentSleepJobData {
@@ -892,8 +905,26 @@ function isAgentResumeJobData(value: unknown): value is AgentResumeJobData {
     value !== null &&
     typeof (value as { agentId?: unknown }).agentId === "string" &&
     typeof (value as { organizationId?: unknown }).organizationId === "string" &&
-    typeof (value as { userId?: unknown }).userId === "string"
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    (!("paymentResume" in value) || isPaymentResumeJobAuthority(value.paymentResume))
   );
+}
+
+function isPaymentResumeJobAuthority(
+  value: unknown,
+): value is NonNullable<AgentResumeJobData["paymentResume"]> {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("stopIntentId" in value) ||
+    typeof value.stopIntentId !== "string" ||
+    !isValidUUID(value.stopIntentId) ||
+    !("stoppedLifecycleRevision" in value) ||
+    typeof value.stoppedLifecycleRevision !== "string" ||
+    !/^(0|[1-9][0-9]*)$/.test(value.stoppedLifecycleRevision)
+  )
+    return false;
+  return BigInt(value.stoppedLifecycleRevision) <= 9223372036854775807n;
 }
 
 function readAgentResumeJobData(job: Job): AgentResumeJobData {
@@ -1191,6 +1222,8 @@ function snapshotAuthorityRejection(
 }
 
 interface LifecycleJobOptions<TData extends object> {
+  /** The automatic request being granted; other new lifecycle requests revoke prior grants. */
+  paymentResumeIntentId?: string;
   /** Wire value for `jobs.type` (one of JOB_TYPES.*). */
   jobType: ProvisioningJobType;
   /** Typed job data to persist into `jobs.data` JSONB. */
@@ -1983,6 +2016,27 @@ export class ProvisioningJobService {
 
     await opts.beforeInsert?.(tx, sandbox);
 
+    if (EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(opts.jobType)) {
+      await tx
+        .update(agentComputeStopIntents)
+        .set({
+          status: "superseded",
+          superseded_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentComputeStopIntents.organization_id, opts.organizationId),
+            eq(agentComputeStopIntents.agent_id, opts.agentId),
+            eq(agentComputeStopIntents.status, "provider_confirmed"),
+            isNotNull(agentComputeStopIntents.resume_job_id),
+            opts.paymentResumeIntentId
+              ? ne(agentComputeStopIntents.id, opts.paymentResumeIntentId)
+              : undefined,
+          ),
+        );
+    }
+
     const [job] = await tx
       .insert(jobs)
       .values(await prepareJobInsertData(newJob))
@@ -2695,16 +2749,139 @@ export class ProvisioningJobService {
     };
   }
 
-  /**
-   * Enqueue an Agent resume job.
-   *
-   * Daemon-side execution re-runs `provision()` against the existing
-   * sandbox row: this restores `bridge_url` / `health_url` from a fresh
-   * sandbox handle and reuses the existing Neon DB (the `sandbox_id` is
-   * retained across suspend). A faster `docker start` path will replace
-   * the re-provision once `DockerSandboxProvider` exposes a standalone
-   * `start()` that returns the handle.
-   */
+  /** Reconcile one explicit page; the daemon advances its cursor even past unfunded accounts. */
+  async reconcileFundedAgentResumes(input: { limit: number; afterIntentId?: string }) {
+    const candidates = await listAgentPaymentResumeCandidates(input);
+    const result = {
+      total: candidates.length,
+      queued: 0,
+      reused: 0,
+      unfunded: 0,
+      accountFenced: 0,
+      authorityChanged: 0,
+      failures: [] as Array<{ agentId: string; intentId: string; error: string }>,
+      nextCursor: candidates.length === input.limit ? candidates.at(-1)!.intentId : null,
+    };
+    for (const candidate of candidates) {
+      try {
+        const admission = await this.enqueueFundedAgentResumeOnce(candidate);
+        switch (admission.status) {
+          case "queued":
+            if (admission.created) result.queued += 1;
+            else result.reused += 1;
+            break;
+          case "unfunded":
+            result.unfunded += 1;
+            break;
+          case "account_fenced":
+            result.accountFenced += 1;
+            break;
+          case "authority_changed":
+            result.authorityChanged += 1;
+            break;
+        }
+      } catch (error) {
+        // error-policy:J1 The batch boundary reports each failed admission;
+        // its retained receipt remains discoverable on the next sweep.
+        const failure = {
+          agentId: candidate.agentId,
+          intentId: candidate.intentId,
+          error: jobErrorText(error),
+        };
+        result.failures.push(failure);
+        logger.error("[provisioning-jobs] Funded resume admission failed", failure);
+      }
+    }
+    return result;
+  }
+
+  /** Admit a payment recovery job atomically with receipt checks and accrued-debt settlement. */
+  async enqueueFundedAgentResumeOnce(
+    authority: AgentPaymentResumeAuthority,
+  ): Promise<
+    | { status: "queued"; job: Job; created: boolean }
+    | { status: "authority_changed" | "unfunded" | "account_fenced" }
+  > {
+    return dbWrite.transaction(async (tx) => {
+      const current = await lockAgentPaymentResumeAuthorityInTransaction(tx, authority);
+      if (!current) return { status: "authority_changed" };
+      const funding = await agentBillingRepository.settlePaymentResumeFundingInTransaction(
+        tx,
+        current.agentId,
+        current.organizationId,
+        await readPostLockDatabaseNow(tx),
+      );
+      if (funding !== "funded") return { status: funding };
+      const result = await this.enqueueLifecycleJobInTx<AgentResumeJobData>(tx, {
+        jobType: JOB_TYPES.AGENT_RESUME,
+        paymentResumeIntentId: current.intentId,
+        jobData: {
+          agentId: current.agentId,
+          organizationId: current.organizationId,
+          userId: current.userId,
+          paymentResume: {
+            stopIntentId: current.intentId,
+            stoppedLifecycleRevision: current.lifecycleRevision,
+          },
+        },
+        toRecord: agentResumeJobDataToRecord,
+        agentId: current.agentId,
+        organizationId: current.organizationId,
+        userId: current.userId,
+        maxAttempts: 3,
+        estimatedDurationMs: CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS,
+        logName: "funded_agent_resume",
+        validateReuse: (job) => {
+          const existing = readAgentResumeJobData(job);
+          if (
+            existing.paymentResume &&
+            (existing.paymentResume.stopIntentId !== current.intentId ||
+              existing.paymentResume.stoppedLifecycleRevision !== current.lifecycleRevision)
+          ) {
+            throw new ElizaError("A different payment resume already owns the agent", {
+              code: "PAYMENT_RESUME_JOB_CONFLICT",
+              context: { agentId: current.agentId, jobId: job.id },
+            });
+          }
+        },
+        afterInsert: async (tx, _sandbox, job) => {
+          const [bound] = await tx
+            .update(agentComputeStopIntents)
+            .set({
+              resume_job_id: job.id,
+              updated_at: await readPostLockDatabaseNow(tx),
+            })
+            .where(
+              and(
+                eq(agentComputeStopIntents.id, current.intentId),
+                eq(agentComputeStopIntents.status, "provider_confirmed"),
+                or(
+                  isNull(agentComputeStopIntents.resume_job_id),
+                  sql`EXISTS (
+              SELECT 1 FROM ${jobs} AS prior_resume
+              WHERE prior_resume.id = ${agentComputeStopIntents.resume_job_id}
+                AND prior_resume.status = 'failed' AND prior_resume.execution_quiesced_at IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM ${jobExecutionLeases} AS prior_lease
+                  WHERE prior_lease.job_id = prior_resume.id AND prior_lease.expires_at > NOW())
+            )`,
+                ),
+              ),
+            )
+            .returning({ id: agentComputeStopIntents.id });
+          if (!bound)
+            throw new ElizaError(
+              "Payment resume job could not acquire its durable stop authority",
+              {
+                code: "PAYMENT_RESUME_JOB_BINDING_CONFLICT",
+                context: { agentId: current.agentId, intentId: current.intentId, jobId: job.id },
+              },
+            );
+        },
+      });
+      return { status: "queued", ...result };
+    });
+  }
+
   async enqueueAgentResumeOnce(params: {
     agentId: string;
     organizationId: string;
@@ -4887,6 +5064,7 @@ export class ProvisioningJobService {
 
         const [sandboxAuthority] = await tx
           .select({
+            lifecycleRevision: sql<string>`${agentSandboxes.lifecycle_revision}::text`,
             executionTier: agentSandboxes.execution_tier,
             pool_status: agentSandboxes.pool_status,
             deleted_at: agentSandboxes.deleted_at,
@@ -4967,6 +5145,24 @@ export class ProvisioningJobService {
             },
           );
         }
+        const paymentResume =
+          job.type === JOB_TYPES.AGENT_RESUME
+            ? readAgentResumeJobData(job).paymentResume
+            : undefined;
+        if (paymentResume) {
+          await assertPaymentResumeExecutionAuthorityInTransaction(
+            tx,
+            {
+              intentId: paymentResume.stopIntentId,
+              lifecycleRevision: paymentResume.stoppedLifecycleRevision,
+              jobId: job.id,
+              agentId: identity.agentId,
+              organizationId: identity.organizationId,
+              userId: readAgentResumeJobData(job).userId,
+            },
+            "claim",
+          );
+        }
         const [claimedSandbox] = await tx
           .update(agentSandboxes)
           .set({
@@ -4986,7 +5182,19 @@ export class ProvisioningJobService {
               ),
             ),
           )
-          .returning({ id: agentSandboxes.id });
+          .returning({
+            id: agentSandboxes.id,
+            lifecycleRevision: sql<string>`${agentSandboxes.lifecycle_revision}::text`,
+          });
+        if (claimedSandbox && sandboxAuthority && job.type === JOB_TYPES.AGENT_SUSPEND) {
+          await carryConfirmedStopReceiptAcrossClaimInTransaction(tx, {
+            jobId: job.id,
+            agentId: identity.agentId,
+            organizationId: identity.organizationId,
+            previousRevision: sandboxAuthority.lifecycleRevision,
+            claimedRevision: claimedSandbox.lifecycleRevision,
+          });
+        }
         if (!claimedSandbox) {
           const [existingSandbox] = await tx
             .select({ id: agentSandboxes.id })
@@ -5327,7 +5535,28 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const result = await elizaSandboxService.executeResume(data.agentId, data.organizationId);
+    if (data.paymentResume && !job.execution_generation) {
+      throw new ElizaError("Automatic resume has no execution generation", {
+        code: "PAYMENT_RESUME_PROVIDER_LEASE_LOST",
+        context: { jobId: job.id, agentId: data.agentId },
+      });
+    }
+    const result = await elizaSandboxService.executeResume(
+      data.agentId,
+      data.organizationId,
+      data.paymentResume && job.execution_generation
+        ? {
+            intentId: data.paymentResume.stopIntentId,
+            lifecycleRevision: data.paymentResume.stoppedLifecycleRevision,
+            agentId: data.agentId,
+            organizationId: data.organizationId,
+            userId: data.userId,
+            jobId: job.id,
+            executionGeneration: job.execution_generation,
+            executionOwnerId: this.executionOwnerId,
+          }
+        : undefined,
+    );
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 

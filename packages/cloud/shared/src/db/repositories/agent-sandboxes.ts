@@ -86,6 +86,10 @@ import {
   isDigestPinnedImageSql,
   pinnedImageDigestSql,
 } from "../utils/docker-image-ref";
+import {
+  type AgentPaymentResumeExecutionAuthority,
+  lockPaymentResumeProviderAuthorityInTransaction,
+} from "./agent-compute-stop-intents";
 
 export type {
   AgentBackupSnapshotType,
@@ -1491,6 +1495,60 @@ export class AgentSandboxesRepository {
       )
       .returning();
     return r;
+  }
+
+  /** Admit automatic recovery only while its grant, funding, and execution lease are current. */
+  async admitPaymentResumeProvisioning(authority: AgentPaymentResumeExecutionAuthority): Promise<{
+    sandbox: AgentSandbox;
+    previousStatus: AgentSandboxStatus;
+  }> {
+    await ensureAgentSandboxSchema();
+    return dbWrite.transaction(async (tx) => {
+      const current = await lockPaymentResumeProviderAuthorityInTransaction(
+        tx,
+        authority,
+        "provider",
+      );
+      if (
+        current.replacement_cleanup_sandbox_id ||
+        current.replacement_cleanup_attempt_id ||
+        current.replacement_cleanup_container_id
+      ) {
+        throw new ElizaError(
+          "Payment resume must settle its previous replacement before provisioning",
+          {
+            code: "PAYMENT_RESUME_CLEANUP_REQUIRED",
+            context: { agentId: authority.agentId, jobId: authority.jobId },
+          },
+        );
+      }
+      if (current.status === "running") {
+        if (!current.bridge_url || !current.health_url)
+          throw new ElizaError("Running recovery has no published endpoint", {
+            code: "PAYMENT_RESUME_ENDPOINT_UNAVAILABLE",
+            context: { agentId: authority.agentId },
+          });
+        return { sandbox: current, previousStatus: current.status };
+      }
+      const [admitted] = await tx
+        .update(agentSandboxes)
+        .set(provisioningAdmissionUpdatePayload())
+        .where(
+          and(
+            eq(agentSandboxes.id, authority.agentId),
+            eq(agentSandboxes.organization_id, authority.organizationId),
+            eq(agentSandboxes.lifecycle_job_id, authority.jobId),
+            eq(agentSandboxes.lifecycle_execution_generation, authority.executionGeneration),
+          ),
+        )
+        .returning();
+      if (!admitted)
+        throw new ElizaError("Payment resume lost its provisioning admission", {
+          code: "PAYMENT_RESUME_ADMISSION_CHANGED",
+          context: { agentId: authority.agentId, jobId: authority.jobId },
+        });
+      return { sandbox: admitted, previousStatus: current.status };
+    });
   }
 
   /**

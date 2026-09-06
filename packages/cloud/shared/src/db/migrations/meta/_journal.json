@@ -2542,6 +2542,13 @@
       "when": 1796083200006,
       "tag": "0379_subscription_account_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 363,
+      "version": "7",
+      "when": 1796083200007,
+      "tag": "0362_agent_compute_stop_confirmed_revision",
+      "breakpoints": true
     }
   ]
 }

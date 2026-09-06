@@ -11,6 +11,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { agentComputeStopIntents } from "../../../db/schemas/agent-compute-stop-intents";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -109,6 +110,7 @@ beforeAll(async () => {
       users,
       userCharacters,
       agentSandboxes,
+      agentComputeStopIntents,
       apiKeys,
       generations,
       usageRecords,

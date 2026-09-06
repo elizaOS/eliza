@@ -3608,3 +3608,105 @@ describe("compute billing recovery", () => {
 });
 
 test("PGlite setup is mandatory", () => expect(ready).toBe(true));
+
+describe("payment resume funding admission", () => {
+  test("settles accrued charges before recognizing a funded refill", async () => {
+    const { org, sandbox, lastBilledAt } = await seed("0.030000");
+    const now = new Date(lastBilledAt.getTime() + 2 * 60 * 60 * 1000);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "stopped" })
+      .where(eq(agentSandboxes.id, sandbox.id));
+    const funding = await dbWrite.transaction((tx) =>
+      agentBillingRepository.settlePaymentResumeFundingInTransaction(tx, sandbox.id, org.id, now),
+    );
+    expect(funding).toBe("funded");
+    const [updated] = await dbWrite
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    expect(Number(updated.credit_balance)).toBeCloseTo(0.01, 6);
+    const repeated = await dbWrite.transaction((tx) =>
+      agentBillingRepository.settlePaymentResumeFundingInTransaction(tx, sandbox.id, org.id, now),
+    );
+    expect(repeated).toBe("funded");
+    const charges = await dbWrite
+      .select()
+      .from(creditTransactions)
+      .where(eq(creditTransactions.organization_id, org.id));
+    expect(charges).toHaveLength(1);
+  });
+
+  test("does not resume when accrued debt consumes the refill", async () => {
+    const { org, sandbox, lastBilledAt } = await seed("0.020000");
+    const funding = await dbWrite.transaction((tx) =>
+      agentBillingRepository.settlePaymentResumeFundingInTransaction(
+        tx,
+        sandbox.id,
+        org.id,
+        new Date(lastBilledAt.getTime() + 2 * 60 * 60 * 1000),
+      ),
+    );
+    expect(funding).toBe("unfunded");
+  });
+
+  test("does not authorize unpaid debt merely because the balance is positive", async () => {
+    const { org, sandbox, lastBilledAt } = await seed("0.010000");
+    const funding = await dbWrite.transaction((tx) =>
+      agentBillingRepository.settlePaymentResumeFundingInTransaction(
+        tx,
+        sandbox.id,
+        org.id,
+        new Date(lastBilledAt.getTime() + 2 * 60 * 60 * 1000),
+      ),
+    );
+    expect(funding).toBe("unfunded");
+    const [updated] = await dbWrite
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    expect(Number(updated.credit_balance)).toBeCloseTo(0.01, 6);
+  });
+
+  test("account deletion fences a positive credited balance", async () => {
+    const { org, sandbox, lastBilledAt } = await seed("10.000000");
+    await dbWrite
+      .update(organizations)
+      .set({ account_lifecycle_state: "deletion_recovery" })
+      .where(eq(organizations.id, org.id));
+    const funding = await dbWrite.transaction((tx) =>
+      agentBillingRepository.settlePaymentResumeFundingInTransaction(
+        tx,
+        sandbox.id,
+        org.id,
+        lastBilledAt,
+      ),
+    );
+    expect(funding).toBe("account_fenced");
+  });
+
+  test("rolling back admission also rolls back its debt settlement", async () => {
+    const { org, sandbox, lastBilledAt } = await seed("0.030000");
+    await expect(
+      dbWrite.transaction(async (tx) => {
+        await agentBillingRepository.settlePaymentResumeFundingInTransaction(
+          tx,
+          sandbox.id,
+          org.id,
+          new Date(lastBilledAt.getTime() + 2 * 60 * 60 * 1000),
+        );
+        throw new Error("resume job insertion failed");
+      }),
+    ).rejects.toThrow("resume job insertion failed");
+    const [updated] = await dbWrite
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    expect(Number(updated.credit_balance)).toBeCloseTo(0.03, 6);
+    const charges = await dbWrite
+      .select()
+      .from(creditTransactions)
+      .where(eq(creditTransactions.organization_id, org.id));
+    expect(charges).toHaveLength(0);
+  });
+});
