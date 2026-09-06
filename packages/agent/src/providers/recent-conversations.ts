@@ -45,6 +45,15 @@ import {
   roomSourceTag,
 } from "../shared/conversation-format.ts";
 
+function userPayloadText(message: Memory): string {
+  const metadata = message.content.metadata as
+    | Record<string, unknown>
+    | undefined;
+  const payload = metadata?.userPayloadText;
+  if (typeof payload === "string" && payload.trim().length > 0) return payload;
+  return message.content.text ?? "";
+}
+
 function attachmentPromptSummary(attachments: readonly Media[]): string {
   return attachments
     .map((attachment) => {
@@ -225,24 +234,29 @@ export const recentConversationsProvider: Provider = {
       const manifestText = manifestLines.join("\n");
       const relevanceKeywords =
         recentConversationsProvider.relevanceKeywords ?? [];
+      // Inbound text from an untrusted transport arrives wrapped in the
+      // external-content notice, whose boilerplate contains the word
+      // "conversation" and so matched a recall keyword on every turn (live
+      // 2026-09-06: a 33-char time question reached here as 653 chars). Only
+      // the user's own words may carry the recall signal.
+      const relevanceText = userPayloadText(message);
       const eagerRelevant = validateActionKeywords(
-        message,
+        { ...message, content: { ...message.content, text: relevanceText } },
         [],
         relevanceKeywords,
       );
-      runtime.logger?.warn?.(
+      runtime.logger?.debug?.(
         {
           src: "provider:recent-conversations",
           eagerRelevant,
           keywordCount: relevanceKeywords.length,
           matchedKeyword: eagerRelevant
             ? relevanceKeywords.find((keyword) =>
-                (message.content.text ?? "")
-                  .toLowerCase()
-                  .includes(keyword.toLowerCase()),
+                relevanceText.toLowerCase().includes(keyword.toLowerCase()),
               )
             : undefined,
           messageTextChars: (message.content.text ?? "").length,
+          relevanceTextChars: relevanceText.length,
           storedMessages: sorted.length,
         },
         "recent-conversations representation chosen",
