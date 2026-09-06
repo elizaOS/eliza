@@ -472,6 +472,7 @@ interface CloudPageFinding {
   path: string;
   route: string;
   consoleErrors: string[];
+  renderStateIssues: string[];
   blueColors: string[];
   hoverViolations: string[];
   hoverFailures: string[];
@@ -486,6 +487,7 @@ function computeCloudVerdict(
 ): CloudVerdict {
   if (
     finding.consoleErrors.length > 0 ||
+    finding.renderStateIssues.length > 0 ||
     finding.qualityIssues.length > 0 ||
     finding.readableChars < 10
   ) {
@@ -495,6 +497,16 @@ function computeCloudVerdict(
     return "needs-work";
   }
   return "needs-eyeball";
+}
+
+async function collectCloudRenderStateIssues(page: Page): Promise<string[]> {
+  const errorHeading = page.getByRole("heading", {
+    name: "Something went wrong",
+    exact: true,
+  });
+  return (await errorHeading.isVisible())
+    ? ["Dashboard rendered its error state"]
+    : [];
 }
 
 function renderManualReviewStub(findings: CloudPageFinding[]): string {
@@ -512,6 +524,7 @@ function renderManualReviewStub(findings: CloudPageFinding[]): string {
       "",
       `- **verdict:** ${f.verdict}`,
       `- **console errors:** ${f.consoleErrors.length ? f.consoleErrors.join("; ") : "none"}`,
+      `- **rendered errors:** ${f.renderStateIssues.length ? f.renderStateIssues.join("; ") : "none"}`,
       `- **blue colors (banned):** ${f.blueColors.length ? f.blueColors.join(", ") : "none"}`,
       `- **orange hover violations:** ${f.hoverViolations.length ? f.hoverViolations.join("; ") : "none"}`,
       `- **hover probe failures:** ${f.hoverFailures.length ? f.hoverFailures.join("; ") : "none"}`,
@@ -600,6 +613,7 @@ async function captureTransitionState(options: {
       ...options.pageErrors.map((message) => `pageerror: ${message}`),
       ...options.consoleErrors,
     ],
+    renderStateIssues: await collectCloudRenderStateIssues(options.page),
     blueColors,
     hoverViolations,
     hoverFailures,
@@ -725,6 +739,40 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       phantom,
       `audit table routes that are no longer registered: ${phantom.join(", ")}`,
     ).toEqual([]);
+  });
+
+  test("rendered API failure is a broken audit finding", async ({ page }) => {
+    await seedStewardToken(page);
+    await installCloudApiStubs(page);
+    await page.route("**/api/v1/api-keys", (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Controlled API key failure" }),
+      }),
+    );
+    await page.goto("/cloud/api-keys", { waitUntil: "domcontentloaded" });
+    await expect(
+      page.getByRole("heading", { name: "Something went wrong", exact: true }),
+    ).toBeVisible();
+    const readableChars = await page.locator("body").innerText();
+    expect(readableChars.length).toBeGreaterThan(10);
+    expect(
+      computeCloudVerdict({
+        slug: "controlled-api-failure",
+        viewport: "desktop",
+        path: "/cloud/api-keys",
+        route: "cloud/api-keys",
+        consoleErrors: [],
+        renderStateIssues: await collectCloudRenderStateIssues(page),
+        blueColors: [],
+        hoverViolations: [],
+        hoverFailures: [],
+        readableChars: readableChars.length,
+        quality: null,
+        qualityIssues: [],
+      }),
+    ).toBe("broken");
   });
 
   for (const auditCase of CLOUD_AUDIT_CASES) {
@@ -1030,6 +1078,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
             ...pageErrors.map((message) => `pageerror: ${message}`),
             ...consoleErrors,
           ],
+          renderStateIssues: await collectCloudRenderStateIssues(page),
           blueColors,
           hoverViolations,
           hoverFailures,

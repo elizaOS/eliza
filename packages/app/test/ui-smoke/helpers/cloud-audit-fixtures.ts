@@ -778,6 +778,26 @@ const STUB_RULES: StubRule[] = [
     match: path_("/api/v1/referrals"),
     body: { code: "SMOKE20", total_referrals: 0, is_active: true },
   },
+  // api-keys/
+  {
+    match: path_("/api/v1/api-keys"),
+    body: {
+      keys: [
+        {
+          id: "api-key-smoke-1",
+          name: "Smoke API key",
+          description: "Deterministic audit fixture",
+          key_prefix: "test_smoke",
+          is_active: true,
+          last_used_at: null,
+          created_at: NOW_ISO,
+          usage_count: 0,
+          rate_limit: 100,
+          expires_at: null,
+        },
+      ],
+    },
+  },
   // api-explorer/
   { match: path_("/api/v1/api-keys/explorer"), body: { apiKey: null } },
   { match: path_("/api/v1/pricing/summary"), body: { pricing: {} } },
