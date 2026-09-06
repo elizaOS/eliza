@@ -3301,6 +3301,23 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								};
 								capability = matches[0].id;
 							} else if (matches.length === 0 && !standardCapability) {
+								const scopedAction = resolvedView.scopedActions?.find(
+									(action) => action.name === capability,
+								);
+								if (scopedAction) {
+									// A known action in the capability slot is a no-effect
+									// preflight error, never an alias for another operation.
+									return {
+										success: false,
+										transcriptVisibility: "internal",
+										text: `"${capability}" is a view-scoped action name, not a VIEWS interact capability. No interaction was dispatched. Invoke that action by name only if it is exposed in your tool list. Otherwise use VIEWS action=interact on this view for each declared step: step.kind is capability, step.target is params.id, and step.value is params.value for agent-fill. Substitute declared parameter references with the supplied values. A successful interaction result is still required to prove the requested UI change.`,
+										data: {
+											coachingFailure: true,
+											viewId,
+											scopedAction,
+										},
+									};
+								}
 								// Generated action labels may be a unique semantic alias for
 								// a declared catalog capability. Keep the view target fixed so
 								// this cannot dispatch across an unrelated surface.

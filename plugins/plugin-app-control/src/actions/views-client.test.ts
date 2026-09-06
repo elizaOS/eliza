@@ -29,6 +29,133 @@ afterEach(() => {
 });
 
 describe("views client", () => {
+	it("preserves complete static scoped-action declarations without copying renderer state", async () => {
+		const scopedActions = [
+			{
+				name: "VIEW_CALENDAR_SELECT_VISIBLE_DAY",
+				description: "Select a visible calendar day while Calendar is active.",
+				parameters: ["date"],
+				similes: ["SELECT_VISIBLE_DAY"],
+				steps: [{ kind: "agent-click", target: "calendar-day-{{date}}" }],
+			},
+			{
+				name: "VIEW_EDITOR_FILL",
+				description: "Fill the focused editor without saving it.",
+				parameters: ["content"],
+				steps: [
+					{ kind: "agent-focus", target: "editor" },
+					{ kind: "agent-fill", target: "editor", value: "{{content}}" },
+				],
+			},
+		];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				jsonResponse({
+					views: [
+						{
+							id: "calendar",
+							label: "Calendar",
+							pluginName: "@elizaos/plugin-calendar",
+							available: true,
+							scopedActions,
+							elements: [{ id: "private-note", value: "other client text" }],
+							selectedDate: "2026-09-06",
+						},
+					],
+				}),
+			),
+		);
+
+		const [view] = await createViewsClient().listViews();
+		expect(view?.scopedActions).toEqual(scopedActions);
+		expect(view).not.toHaveProperty("elements");
+		expect(view).not.toHaveProperty("selectedDate");
+	});
+
+	it.each([
+		{},
+		{ name: "", description: "invalid", steps: [] },
+		{ name: "INVALID", steps: [] },
+		{ name: "INVALID", description: "invalid", steps: "click" },
+		{
+			name: "INVALID",
+			description: "invalid",
+			steps: [
+				{ kind: "agent-click", target: "ok" },
+				{ kind: "unknown", target: "bad" },
+			],
+		},
+		{
+			name: "INVALID",
+			description: "invalid",
+			steps: [{ kind: "agent-click" }],
+		},
+		{
+			name: "INVALID",
+			description: "invalid",
+			steps: [{ kind: "agent-fill", target: "editor", value: 42 }],
+		},
+		{
+			name: "INVALID",
+			description: "invalid",
+			steps: [],
+			parameters: ["date", 42],
+		},
+		{ name: "INVALID", description: "invalid", steps: [], similes: "ALIAS" },
+	])("drops an invalid scoped declaration as a whole: %j", async (invalid) => {
+		const valid = {
+			name: "VALID",
+			description: "Valid action",
+			steps: [{ kind: "agent-click", target: "ok" }],
+		};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				jsonResponse({
+					views: [
+						{
+							id: "calendar",
+							label: "Calendar",
+							pluginName: "@elizaos/plugin-calendar",
+							available: true,
+							scopedActions: [invalid, valid],
+						},
+					],
+				}),
+			),
+		);
+
+		const [view] = await createViewsClient().listViews();
+		expect(view?.scopedActions).toEqual([valid]);
+	});
+
+	it.each([undefined, null, "invalid", {}])(
+		"keeps absent or non-array scoped metadata compatible: %j",
+		async (scopedActions) => {
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () =>
+					jsonResponse({
+						views: [
+							{
+								id: "legacy",
+								label: "Legacy",
+								pluginName: "@scenario/plugin-legacy",
+								available: true,
+								...(scopedActions === undefined ? {} : { scopedActions }),
+							},
+						],
+					}),
+				),
+			);
+
+			const [view] = await createViewsClient().listViews();
+			expect(view?.id).toBe("legacy");
+			expect(view).not.toHaveProperty("scopedActions");
+		},
+	);
+
 	it("fails closed on malformed interaction response JSON", async () => {
 		await expect(
 			parseViewInteractionResponse({
