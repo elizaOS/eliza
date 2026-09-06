@@ -216,15 +216,33 @@ export async function onboardingFetch(
   try {
     if (controller.signal.aborted) return await abortPromise;
     throwIfAbortedOrExpired();
-    const response = await Promise.race([
-      stub.fetch(input, { ...init, signal: controller.signal }),
-      abortPromise,
-    ]);
-    throwIfAbortedOrExpired();
-    const buffered = await Promise.race([
-      bufferOnboardingResponse(response, controller.signal, throwIfAbortedOrExpired),
-      abortPromise,
-    ]);
+    // Own cleanup even when headers arrive after the caller has already timed
+    // out. Racing headers alone leaves a late response body without an owner.
+    const bufferedRequest = stub
+      .fetch(input, { ...init, signal: controller.signal })
+      .then(async (response) => {
+        try {
+          return await bufferOnboardingResponse(
+            response,
+            controller.signal,
+            throwIfAbortedOrExpired,
+          );
+        } catch (error) {
+          // error-policy:J6 Release an unread transport body and preserve the rejection.
+          if (response.body && !response.body.locked && !response.bodyUsed) {
+            try {
+              await response.body.cancel(error);
+            } catch (cause) {
+              // error-policy:J6 Cancellation only releases the rejected transport.
+              logger.debug("[onboarding-chat] Failed to cancel unread onboarding response body", {
+                cause,
+              });
+            }
+          }
+          throw error;
+        }
+      });
+    const buffered = await Promise.race([bufferedRequest, abortPromise]);
     throwIfAbortedOrExpired();
     return buffered;
   } finally {
