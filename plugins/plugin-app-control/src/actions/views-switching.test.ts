@@ -41,6 +41,9 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
 	return {
 		...coreMock,
+		getStreamingContext: actual.getStreamingContext,
+		getTurnActionConstraint: actual.getTurnActionConstraint,
+		setTurnActionConstraint: actual.setTurnActionConstraint,
 		getUserMessageText: actual.getUserMessageText,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
 		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
@@ -503,7 +506,7 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.values).not.toHaveProperty("completedActionHandoffId");
 		});
 
-		it("keeps terminal fallback enabled for a malformed success receipt", async () => {
+		it("keeps malformed delivery on the planner failure path", async () => {
 			installNavigateCapture();
 			vi.mocked(globalThis.fetch).mockResolvedValue(
 				new Response("{", {
@@ -530,7 +533,9 @@ describe("view switching — VIEWS action resolver", () => {
 				vi.fn(),
 			);
 
-			expect(result?.success).toBe(true);
+			expect(result?.success).toBe(false);
+			expect(result?.modelReplyRequired).toBeUndefined();
+			expect(result?.turnComplete).toBe(false);
 			expect(result?.values).not.toHaveProperty("completedActionDelivered");
 		});
 
@@ -560,7 +565,7 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.success).toBe(false);
 			expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
 				effect: "view_navigation",
-				status: "unconfirmed",
+				status: "transport-error",
 				viewId: "calendar",
 			});
 		});
@@ -740,7 +745,6 @@ describe("view switching — VIEWS action resolver", () => {
 	describe("semantic Calendar preference", () => {
 		it.each([
 			{ phrase: "open calendar", kind: "explicit English command" },
-			{ phrase: "what's on my calendar", kind: "passive English intent" },
 			{ phrase: "muéstrame mi calendario", kind: "multilingual command" },
 		])(
 			"opens Simple Calendar for a $kind when both Calendar views are registered",
@@ -833,18 +837,18 @@ describe("view switching — VIEWS action resolver", () => {
 			},
 		);
 
-		// The deterministic intent->view fallback (resolveIntentView) routes the
-		// spec's passive examples even when the planner does NOT pre-resolve the
-		// id: an intent-only utterance like "what is on my calendar" maps straight
-		// to the calendar view, where previously the whole-phrase keyword scorer
-		// returned 0 and nothing resolved.
-		it("resolves an intent-only phrase from raw text via the intent fallback", async () => {
+		it("requires a planner target for a calendar content question", async () => {
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(
-				REGISTRY,
-				"show me what is on my calendar",
-			);
-			expect(result?.success).toBe(true);
+			const phrase = "show me what is on my calendar";
+			const unresolved = await runShow(REGISTRY, phrase);
+			expect(unresolved.result?.success).toBe(false);
+			expect(navigated).toEqual([]);
+
+			const planned = await runShow(REGISTRY, phrase, {
+				action: "show",
+				view: "calendar",
+			});
+			expect(planned.result?.success).toBe(true);
 			expect(navigated).toEqual(["calendar"]);
 		});
 
@@ -869,7 +873,7 @@ describe("view switching — VIEWS action resolver", () => {
 			readonly [string, string, string]
 		> = [
 			["open my calendar", "wallet", "calendar"],
-			["check my messages", "calendar", "inbox"],
+			["open my messages", "calendar", "inbox"],
 			["show my wallet", "calendar", "wallet"],
 			["muéstrame mi calendario", "wallet", "calendar"],
 			["我的钱包", "calendar", "wallet"],

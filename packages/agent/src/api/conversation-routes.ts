@@ -3250,7 +3250,7 @@ export async function handleConversationRoutes(
           const text =
             transcriptVisibility === "internal"
               ? ""
-              : role === "assistant"
+              : role === "assistant" && !interrupted
                 ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
                 : rawText;
           const attachments = selectAttachmentsForViewer(

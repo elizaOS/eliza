@@ -19,6 +19,7 @@ export const LIFE_OPERATION_VALUES = [
   "update",
   "delete",
   "complete",
+  "reopen",
   "skip",
   "snooze",
   "review",
