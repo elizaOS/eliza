@@ -199,6 +199,14 @@
     "lint": {
       "outputs": []
     },
+    "@elizaos/capacitor-gateway#lint": {
+      "env": ["DEVELOPER_DIR"],
+      "outputs": []
+    },
+    "@elizaos/capacitor-gateway#lint:check": {
+      "env": ["DEVELOPER_DIR"],
+      "outputs": []
+    },
     "@elizaos/ui#lint:check": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -280,10 +288,7 @@
       "outputs": []
     },
     "@elizaos/plugin-calendar#typecheck": {
-      "dependsOn": [
-        "@elizaos/ui#build",
-        "@elizaos/plugin-scheduling#build"
-      ],
+      "dependsOn": ["@elizaos/ui#build", "@elizaos/plugin-scheduling#build"],
       "outputs": []
     },
     "@elizaos/plugin-personal-assistant#typecheck": {
