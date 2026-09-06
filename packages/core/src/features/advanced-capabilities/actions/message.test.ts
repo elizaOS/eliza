@@ -45,6 +45,19 @@ function mockRuntime(connectors: unknown[]): IAgentRuntime {
 		agentId: "00000000-0000-0000-0000-000000000001",
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
 		getMessageConnectors: () => connectors,
+		// #25284: the umbrella resolves the caller's principal role before
+		// dispatching; give the harness sender an explicit world grant so these
+		// op-logic tests exercise their op, not the role floor.
+		getRoom: async () => ({
+			id: "00000000-0000-0000-0000-0000000000bb",
+			worldId: "00000000-0000-0000-0000-0000000000dd",
+		}),
+		getWorld: async () => ({
+			id: "00000000-0000-0000-0000-0000000000dd",
+			metadata: {
+				roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" },
+			},
+		}),
 	} as unknown as IAgentRuntime;
 }
 
@@ -362,7 +375,19 @@ describe("MESSAGE op=send owner-binding gate", () => {
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 			getService: (type: string) =>
 				type === "connector_account" ? manager : null,
-			getRoom: async () => null,
+			// #25284: the umbrella resolves the caller's principal role before
+			// dispatching; grant the harness sender ADMIN so these owner-binding
+			// tests exercise the account gate, not the role floor.
+			getRoom: async () => ({
+				id: "00000000-0000-0000-0000-0000000000bb",
+				worldId: "00000000-0000-0000-0000-0000000000dd",
+			}),
+			getWorld: async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: {
+					roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" },
+				},
+			}),
 			getMessageConnectors: () => [
 				{
 					source: "matrix",
@@ -492,7 +517,18 @@ describe("MESSAGE op=send delivery evidence", () => {
 					contexts: [],
 				},
 			],
-			getRoom: async () => null,
+			// #25284: grant the harness sender ADMIN so these delivery-evidence
+			// tests exercise the send path, not the role floor.
+			getRoom: async () => ({
+				id: "00000000-0000-0000-0000-0000000000bb",
+				worldId: "00000000-0000-0000-0000-0000000000dd",
+			}),
+			getWorld: async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: {
+					roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" },
+				},
+			}),
 			sendMessageToTarget: async () => outcome,
 			ensureWorldExists: async () => undefined,
 			ensureRoomExists: async () => undefined,
@@ -745,6 +781,9 @@ describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => 
 			source: "discord",
 			channelId: "chan-1",
 			serverId: "guild-1",
+			// #25284: link the room to a world that grants the harness sender
+			// ADMIN so these resolution tests exercise routing, not the floor.
+			worldId: "00000000-0000-0000-0000-0000000000dd",
 		};
 	}
 
@@ -776,6 +815,13 @@ describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => 
 				},
 			],
 			getRoom: async () => roomFixture(),
+			// #25284: grant the harness sender ADMIN in the fixture world.
+			getWorld: async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: {
+					roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" },
+				},
+			}),
 			getEntitiesForRoom: async () => options.roomEntities,
 			getMemories: async () => [],
 			getEntityById: (options.getEntityById ??
@@ -988,7 +1034,18 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 					],
 				},
 			],
+			// #25284: getRoom returns null (the entity-search path must stay
+			// relationship-free); the caller's world is resolved from the
+			// message's discordServerId metadata instead, granting the harness
+			// sender ADMIN so these gate tests exercise the recipient gate, not
+			// the role floor.
 			getRoom: async () => null,
+			getWorld: async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: {
+					roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" },
+				},
+			}),
 			getEntitiesForRoom: async () => options.roomEntities ?? [],
 			getEntityById: (async (id: string) =>
 				options.known
@@ -1054,10 +1111,24 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 	async function send(
 		runtime: IAgentRuntime,
 		text: string,
+		overrides?: {
+			body?: string;
+			roomId?: string;
+			thread?: string;
+			messageId?: string;
+		},
 	): Promise<ActionResult> {
 		const result = await messageAction.handler(
 			runtime,
-			{ ...message, content: { text, source: "discord" } } as Memory,
+			{
+				...message,
+				id: overrides?.messageId ?? message.id,
+				content: { text, source: "discord" },
+				// #25284: the harness world (which grants this sender ADMIN)
+				// is resolved from the discord world-id metadata key.
+				metadata: { discordServerId: "00000000-0000-0000-0000-0000000000dd" },
+				...(overrides?.roomId ? { roomId: overrides.roomId } : {}),
+			} as Memory,
 			undefined,
 			{
 				parameters: {
@@ -1065,7 +1136,8 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 					persist: false,
 					target: "fuzzymatch",
 					targetKind: "user",
-					message: "hey there",
+					message: overrides?.body ?? "hey there",
+					...(overrides?.thread ? { thread: overrides.thread } : {}),
 				},
 			},
 			undefined,
@@ -1093,7 +1165,10 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 		expect(first.data).toMatchObject({ awaitingUserInput: true });
 		expect(sends).toHaveLength(0);
 
-		const second = await send(runtime, "yes");
+		// A distinct later user turn carries the affirmative.
+		const second = await send(runtime, "yes", {
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		});
 		expect(second.success).toBe(true);
 		expect(sends).toHaveLength(1);
 		expect(sends[0].target).toMatchObject({ entityId: STRANGER_PLATFORM_ID });
@@ -1102,7 +1177,9 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 	it("a declined confirmation cancels the send", async () => {
 		const { runtime, sends } = harness({ known: false });
 		await send(runtime, "message fuzzymatch saying hey");
-		const second = await send(runtime, "no, don't do that");
+		const second = await send(runtime, "no, don't do that", {
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		});
 
 		expect(second.success).toBe(false);
 		expect(second.data).toMatchObject({ cancelled: true });
@@ -1158,5 +1235,182 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 		expect(result.data).not.toMatchObject({ confirmationRequired: true });
 		expect(sends).toHaveLength(1);
 		expect(sends[0].target).toMatchObject({ entityId: KNOWN_PLATFORM_ID });
+	});
+
+	it("does not authorize substituted bytes from another room (#25284 review: confirmation is turn-bound)", async () => {
+		// ss251's adversarial case: a safe preview in room A arms the pending
+		// record; a later planner turn answering `yes` from room B with
+		// different outbound bytes must NOT consume that confirmation.
+		const { runtime, sends } = harness({ known: false });
+		const first = await send(runtime, "message fuzzymatch saying hey");
+		expect(first.data).toMatchObject({ awaitingUserInput: true });
+		expect(sends).toHaveLength(0);
+
+		const second = await send(runtime, "yes", {
+			body: "substituted hostile bytes",
+			roomId: "00000000-0000-0000-0000-0000000000e1",
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		});
+
+		// Fail-closed: cache miss re-arms a fresh confirmation for the NEW
+		// room+payload instead of delivering anything.
+		expect(sends).toHaveLength(0);
+		expect(second.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
+	});
+
+	it("does not authorize substituted bytes in the same room (#25284 review: payload is bound)", async () => {
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey");
+
+		const second = await send(runtime, "yes", {
+			body: "substituted hostile bytes",
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		});
+
+		expect(sends).toHaveLength(0);
+		expect(second.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
+	});
+
+	it("does not authorize a send retargeted to a different thread (#25284 review: target is bound)", async () => {
+		// The confirmation digest covers the full resolved TargetInfo, so a
+		// `yes` carrying a different threadId is a cache miss and re-prompts
+		// instead of delivering to the substituted thread.
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey"); // arm thread X
+
+		const second = await send(runtime, "yes", {
+			thread: "00000000-0000-0000-0000-0000000000f2",
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		});
+
+		expect(sends).toHaveLength(0);
+		expect(second.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
+	});
+
+	it("a re-prompted confirmation of the substituted payload proceeds (loop terminates)", async () => {
+		// After a mismatch re-prompt (above), the substituted payload's OWN
+		// confirmation record is armed; the user deliberately confirming THOSE
+		// bytes on a distinct later message sends exactly those bytes.
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey"); // arm original bytes
+		const rePrompt = await send(runtime, "yes", {
+			body: "re-prompted and deliberately confirmed",
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		}); // mismatch → re-arms for the new payload
+		expect(rePrompt.data).toMatchObject({ awaitingUserInput: true });
+
+		const confirmed = await send(runtime, "yes", {
+			body: "re-prompted and deliberately confirmed",
+			messageId: "00000000-0000-0000-0000-0000000000a3",
+		});
+		expect(confirmed.success).toBe(true);
+		expect(sends).toHaveLength(1);
+		expect(sends[0].target).toMatchObject({ entityId: STRANGER_PLATFORM_ID });
+	});
+
+	it("an affirmative cannot be consumed by a re-invocation of the SAME message that armed it (#25284 review: distinct-turn bound)", async () => {
+		// Same-message self-consumption: the planner re-invoking the action
+		// for the same yes-shaped user message must not treat that message
+		// as both the arming request and its confirmation.
+		const { runtime, sends } = harness({ known: false });
+		const first = await send(runtime, "message fuzzymatch saying hey");
+		expect(first.data).toMatchObject({ awaitingUserInput: true });
+
+		// Identical message id re-invoked with an explicit send param.
+		const reInvoke = await send(runtime, "message fuzzymatch saying hey");
+		expect(sends).toHaveLength(0);
+		expect(reInvoke.data).toMatchObject({ awaitingUserInput: true });
+	});
+
+	it("a stale armed preview cannot be selected after a newer operation re-armed the slot (#25284 review: single slot)", async () => {
+		// Preview A arms; substitute B re-arms the slot (overwrites A); the
+		// user says yes (intending B). A planner re-supplying A's exact bytes
+		// must find the slot describes B — not the stale A record.
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey"); // arm A
+		const rePrompt = await send(runtime, "yes", {
+			body: "operation B bytes",
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		}); // consumes A (digest mismatch → re-arms slot for B)
+		expect(rePrompt.data).toMatchObject({ awaitingUserInput: true });
+
+		// Planner now supplies A's bytes on the SAME message that said yes to B.
+		const stale = await send(runtime, "yes", {
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		}); // slot describes B → digest mismatch for A → re-arm + pending
+		expect(sends).toHaveLength(0);
+		expect(stale.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
+	});
+
+	it("a stale armed preview for ANOTHER recipient cannot be selected (#25284 review: one slot per room)", async () => {
+		// Preview to recipient A arms the room's single slot; a yes arriving
+		// with bytes for a different recipient B must not consume A's record
+		// — the digest covers the full TargetInfo, so any recipient change is
+		// a mismatch that re-arms and sends nothing.
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey"); // arm for A
+
+		const second = await send(runtime, "yes", {
+			body: "substituted bytes aimed at recipient B",
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		});
+		expect(sends).toHaveLength(0);
+		expect(second.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
+	});
+
+	it("switching operations WITHOUT saying yes re-arms for the new operation instead of reporting a decline (#27932 review §3a)", async () => {
+		// The non-affirmative switch: preview for operation A is armed, then
+		// the next turn requests a DIFFERENT send (new body bytes — the
+		// digest covers {target, content}) without answering the first
+		// preview. requireConfirmation consumed A's record and returned
+		// cancelled with A's metadata; the digest cannot match the new
+		// operation, so the fix re-arms for it. Reporting "declined" for a
+		// request the user never answered — while leaving the new operation
+		// unarmed — was the §3a bug (a false decline + a dead slot).
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey"); // arm op A
+
+		const switchTurn = await send(
+			runtime,
+			"message fuzzymatch saying I'm late instead",
+			{
+				body: "I'm late instead",
+				messageId: "00000000-0000-0000-0000-0000000000a2",
+			},
+		);
+		// Not a decline: the user asked for a new send, so the new preview is
+		// armed and awaits its own confirmation.
+		expect(switchTurn.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+			cancelled: false,
+		});
+		expect(sends).toHaveLength(0);
+
+		// The next affirmative now confirms the NEW operation's bytes (the
+		// armed record), not the superseded preview — the planner re-supplies
+		// the same operation parameters on the confirming turn, so the
+		// recomputed digest matches the re-armed record.
+		const confirmed = await send(runtime, "yes", {
+			body: "I'm late instead",
+			messageId: "00000000-0000-0000-0000-0000000000a3",
+		});
+		expect(confirmed.success).toBe(true);
+		expect(sends).toHaveLength(1);
 	});
 });

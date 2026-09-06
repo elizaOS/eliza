@@ -18,6 +18,7 @@ import {
 	formatSendAtIso,
 	scheduleDraftSendAction,
 } from "../actions/scheduleDraftSend.ts";
+import { draftConsentDigest } from "../actions/send-consent.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { registerDeferredMessageScheduler } from "../deferred-send-scheduler.ts";
 import {
@@ -200,8 +201,8 @@ describe("durable deferred MESSAGE core contract", () => {
 		service.getStore().saveDraft(draft());
 
 		const [first, second] = await Promise.all([
-			service.sendDraft(rt, "draft-1"),
-			service.sendDraft(rt, "draft-1"),
+			service.sendDraft(rt, "draft-1", draftConsentDigest(draft())),
+			service.sendDraft(rt, "draft-1", draftConsentDigest(draft())),
 		]);
 
 		expect(adapter.sendCount).toBe(1);

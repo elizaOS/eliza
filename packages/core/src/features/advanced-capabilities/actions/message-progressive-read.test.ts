@@ -11,7 +11,9 @@ import type {
 	IAgentRuntime,
 	Memory,
 	ReadView,
+	Room,
 	UUID,
+	World,
 } from "../../../types/index.ts";
 import { messageAction } from "./message.ts";
 
@@ -52,6 +54,21 @@ function runtimeFor(
 		agentId: AGENT_ID,
 		getMemoryById,
 		getParticipantsForRoom,
+		// #25284: the umbrella resolves the caller's principal role before
+		// dispatching; grant the harness sender ADMIN in the room's world so
+		// these op-logic tests exercise the read op, not the role floor.
+		getRoom: async () =>
+			({
+				id: ROOM_ID,
+				worldId: "00000000-0000-0000-0000-0000000000dd",
+			}) as Room,
+		getWorld: async () =>
+			({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: {
+					roles: { [REQUESTER_ID]: "ADMIN" },
+				},
+			}) as World,
 	});
 }
 

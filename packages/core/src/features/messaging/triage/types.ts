@@ -258,6 +258,15 @@ export interface MessageAdapter {
 		runtime: IAgentRuntime,
 		draft: DraftRequest,
 	): Promise<{ draftId: string; preview: string }>;
+	/**
+	 * Sends a draft by id. CONSENT-RELEVANT INVARIANT (#25284): a `draftId`
+	 * identifies ONE immutable delivery snapshot for its whole lifecycle.
+	 * The id maps to the create-time request bytes the adapter captured when
+	 * `createDraft` produced it — implementations MUST deliver exactly those
+	 * bytes and MUST NOT re-read mutable draft state at send time. The
+	 * service's consent digest pins the same snapshot; anything else the
+	 * adapter sends is by definition content the user never consented to.
+	 */
 	sendDraft(
 		runtime: IAgentRuntime,
 		draftId: string,
