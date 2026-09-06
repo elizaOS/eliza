@@ -4,6 +4,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RegistryAppInfo } from "../api";
+import { publishAppValue, seedAppValue } from "../state/app-store";
 import { __resetResourceCache, invalidate } from "./resource-cache";
 
 const mocks = vi.hoisted(() => {
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => {
   };
   return {
     authority,
+    reconnectListeners: new Set<() => void>(),
     appShellRoutesSupported: { value: true },
     networkReady: { value: true },
     client: {
@@ -23,6 +25,7 @@ const mocks = vi.hoisted(() => {
       }),
       listInstalledApps: vi.fn(),
       launchApp: vi.fn(),
+      onReconnect: vi.fn(),
     },
     loadAppsCatalog: vi.fn(),
     refreshViews: vi.fn(),
@@ -91,12 +94,26 @@ function catalogApp(name: string): RegistryAppInfo {
   };
 }
 
+function publishRuntimeStatus(
+  state: "starting" | "running",
+  startedAt: number,
+) {
+  publishAppValue({ agentStatus: { state, startedAt } } as Parameters<
+    typeof publishAppValue
+  >[0]);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   __resetViewCatalogSourceStateForTests();
   mocks.loadAppsCatalog.mockReset();
   mocks.client.listInstalledApps.mockReset();
   mocks.client.launchApp.mockReset();
+  mocks.reconnectListeners.clear();
+  mocks.client.onReconnect.mockImplementation((listener: () => void) => {
+    mocks.reconnectListeners.add(listener);
+    return () => mocks.reconnectListeners.delete(listener);
+  });
   __resetResourceCache();
   mocks.authority.value = "https://agent-a.test";
   mocks.appShellRoutesSupported.value = true;
@@ -105,9 +122,363 @@ beforeEach(() => {
   mocks.routableViews.views = [];
   mocks.routableViews.loading = false;
   mocks.routableViews.error = null;
+  seedAppValue({ agentStatus: null } as Parameters<typeof seedAppValue>[0]);
 });
 
 describe("useViewCatalog authority isolation", () => {
+  it("uses readiness already published before the launcher mounts", async () => {
+    publishRuntimeStatus("running", 100);
+    mocks.loadAppsCatalog.mockResolvedValue([catalogApp("catalog-app")]);
+    mocks.client.listInstalledApps
+      .mockRejectedValueOnce(new Error("initial request disconnected"))
+      .mockResolvedValue([]);
+    const { result } = renderHook(() => useViewCatalog());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(2);
+    expect(mocks.loadAppsCatalog).toHaveBeenCalledOnce();
+    expect(result.current.error).toBeNull();
+  });
+
+  it.each(["catalog", "installed"] as const)(
+    "retains initial runtime readiness while a failed %s startup retry is still loading",
+    async (source) => {
+      vi.useFakeTimers();
+      try {
+        mocks.loadAppsCatalog.mockResolvedValue([catalogApp("catalog-app")]);
+        mocks.client.listInstalledApps.mockResolvedValue([]);
+        const failed =
+          source === "catalog"
+            ? mocks.loadAppsCatalog
+            : mocks.client.listInstalledApps;
+        const healthy =
+          source === "catalog"
+            ? mocks.client.listInstalledApps
+            : mocks.loadAppsCatalog;
+        const restartingRequest = deferred<RegistryAppInfo[]>();
+        failed
+          .mockRejectedValueOnce(new Error("API restarting"))
+          .mockReturnValueOnce(restartingRequest.promise);
+        const first = renderHook(() => useViewCatalog());
+        const second = renderHook(() => useViewCatalog());
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(500);
+        });
+        expect(failed).toHaveBeenCalledTimes(2);
+        act(() => publishRuntimeStatus("running", 100));
+        expect(failed).toHaveBeenCalledTimes(2);
+        await act(async () => {
+          restartingRequest.reject(new Error("old request disconnected"));
+        });
+        expect(failed).toHaveBeenCalledTimes(3);
+        expect(healthy).toHaveBeenCalledTimes(1);
+        for (const consumer of [first, second]) {
+          expect(consumer.result.current.error).toBeNull();
+          expect(
+            consumer.result.current.entries.map((entry) => entry.id),
+          ).toContain("catalog-app");
+        }
+        expect(mocks.refreshViews).not.toHaveBeenCalled();
+        expect(mocks.client.onReconnect).toHaveBeenCalled();
+        act(() => publishRuntimeStatus("running", 100));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(60_000);
+        });
+        expect(failed).toHaveBeenCalledTimes(3);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("does not repeat a successful request that was loading when runtime readiness arrived", async () => {
+    const installed = deferred<never[]>();
+    mocks.loadAppsCatalog.mockResolvedValue([catalogApp("catalog-app")]);
+    mocks.client.listInstalledApps.mockReturnValueOnce(installed.promise);
+    const { result } = renderHook(() => useViewCatalog());
+    act(() => publishRuntimeStatus("running", 100));
+    await act(async () => {
+      installed.resolve([]);
+    });
+    expect(result.current.error).toBeNull();
+    expect(mocks.client.listInstalledApps).toHaveBeenCalledOnce();
+    act(() => publishRuntimeStatus("running", 200));
+    expect(mocks.client.listInstalledApps).toHaveBeenCalledOnce();
+  });
+
+  it.each(["catalog", "installed"] as const)(
+    "retries a timed-out %s readiness recovery once after it settles",
+    async (source) => {
+      vi.useFakeTimers();
+      try {
+        mocks.loadAppsCatalog.mockResolvedValue([catalogApp("catalog-app")]);
+        mocks.client.listInstalledApps.mockResolvedValue([]);
+        const failed =
+          source === "catalog"
+            ? mocks.loadAppsCatalog
+            : mocks.client.listInstalledApps;
+        const healthy =
+          source === "catalog"
+            ? mocks.client.listInstalledApps
+            : mocks.loadAppsCatalog;
+        const recoveryRequest = deferred<RegistryAppInfo[]>();
+        failed
+          .mockRejectedValueOnce(new Error("API restarting"))
+          .mockRejectedValueOnce(new Error("API still restarting"))
+          .mockReturnValueOnce(recoveryRequest.promise);
+        const first = renderHook(() => useViewCatalog());
+        const second = renderHook(() => useViewCatalog());
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(500);
+        });
+        expect(failed).toHaveBeenCalledTimes(2);
+        act(() => publishRuntimeStatus("running", 100));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2_000);
+        });
+        expect(failed).toHaveBeenCalledTimes(3);
+        await act(async () => {
+          recoveryRequest.reject(new Error("Recovery request timed out"));
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(499);
+        });
+        expect(failed).toHaveBeenCalledTimes(3);
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1);
+        });
+        expect(failed).toHaveBeenCalledTimes(4);
+        expect(healthy).toHaveBeenCalledOnce();
+        for (const consumer of [first, second]) {
+          expect(consumer.result.current.error).toBeNull();
+          expect(consumer.result.current.loading).toBe(false);
+        }
+        await act(async () => {
+          publishRuntimeStatus("running", 100);
+          await vi.advanceTimersByTimeAsync(60_000);
+        });
+        expect(failed).toHaveBeenCalledTimes(4);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("recovers on a new in-process runtime generation, but does not turn repeated ready status into polling", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.loadAppsCatalog.mockResolvedValue([catalogApp("catalog-app")]);
+      mocks.client.listInstalledApps.mockRejectedValue(
+        new Error("installed unavailable"),
+      );
+      const first = renderHook(() => useViewCatalog());
+      renderHook(() => useViewCatalog());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        publishRuntimeStatus("running", 100);
+      });
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(3);
+      await act(async () => {
+        publishRuntimeStatus("running", 100);
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(4);
+      expect(first.result.current.error?.message).toBe("installed unavailable");
+      await act(async () => {
+        publishRuntimeStatus("running", 100);
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(4);
+      mocks.client.listInstalledApps.mockResolvedValue([]);
+      await act(async () => {
+        publishRuntimeStatus("running", 200);
+      });
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(5);
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledOnce();
+      expect(first.result.current.error).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers when socket reconnection precedes runtime readiness", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.loadAppsCatalog.mockResolvedValue([catalogApp("catalog-app")]);
+      mocks.client.listInstalledApps.mockRejectedValue(
+        new Error("API still booting"),
+      );
+      const { result } = renderHook(() => useViewCatalog());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      await act(async () => {
+        publishRuntimeStatus("starting", 100);
+        for (const listener of mocks.reconnectListeners) listener();
+      });
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(3);
+      expect(result.current.error?.message).toBe("API still booting");
+      mocks.client.listInstalledApps.mockResolvedValue([]);
+      await act(async () => {
+        publishRuntimeStatus("running", 100);
+      });
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(4);
+      expect(result.current.error).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not spend an old authority's queued readiness recovery on the next agent", async () => {
+    const oldInstalled = deferred<never[]>();
+    mocks.loadAppsCatalog.mockResolvedValue([catalogApp("agent-a-app")]);
+    mocks.client.listInstalledApps
+      .mockReturnValueOnce(oldInstalled.promise)
+      .mockResolvedValue([]);
+    const { result } = renderHook(() => useViewCatalog());
+    act(() => publishRuntimeStatus("running", 100));
+    mocks.loadAppsCatalog.mockResolvedValue([catalogApp("agent-b-app")]);
+    await act(async () => {
+      mocks.authority.value = "https://agent-b.test";
+      for (const listener of mocks.authority.listeners) listener();
+    });
+    await act(async () => {
+      oldInstalled.reject(new Error("departed agent"));
+    });
+    expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(2);
+    expect(result.current.entries.map((entry) => entry.id)).toEqual([
+      "agent-b-app",
+    ]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it.each(["catalog", "installed"] as const)(
+    "recovers only the failed %s source once after reconnection across launcher consumers",
+    async (source) => {
+      vi.useFakeTimers();
+      try {
+        mocks.routableViews.views = [
+          {
+            id: "notes",
+            label: "Notes",
+            path: "/notes",
+            available: true,
+            builtin: true,
+            pluginName: "@elizaos/builtin",
+            viewType: "gui",
+            viewKind: "release",
+          },
+        ];
+        mocks.loadAppsCatalog.mockResolvedValue([catalogApp("catalog-app")]);
+        mocks.client.listInstalledApps.mockResolvedValue([]);
+        const failedSource =
+          source === "catalog"
+            ? mocks.loadAppsCatalog
+            : mocks.client.listInstalledApps;
+        const healthySource =
+          source === "catalog"
+            ? mocks.client.listInstalledApps
+            : mocks.loadAppsCatalog;
+        failedSource.mockRejectedValue(new Error(`${source} unavailable`));
+        const first = renderHook(() => useViewCatalog());
+        const second = renderHook(() => useViewCatalog());
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(500);
+        });
+        expect(failedSource).toHaveBeenCalledTimes(2);
+        expect(first.result.current.error?.message).toBe(
+          `${source} unavailable`,
+        );
+        expect(second.result.current.error?.message).toBe(
+          `${source} unavailable`,
+        );
+
+        const recovered = deferred<RegistryAppInfo[]>();
+        failedSource.mockReturnValueOnce(recovered.promise);
+        act(() => {
+          for (const listener of mocks.reconnectListeners) listener();
+          for (const listener of mocks.reconnectListeners) listener();
+        });
+        expect(failedSource).toHaveBeenCalledTimes(3);
+        expect(healthySource).toHaveBeenCalledTimes(1);
+        expect(mocks.refreshViews).not.toHaveBeenCalled();
+        await act(async () => {
+          recovered.resolve(
+            source === "catalog" ? [catalogApp("recovered-app")] : [],
+          );
+        });
+        for (const consumer of [first, second]) {
+          expect(consumer.result.current.error).toBeNull();
+          expect(
+            consumer.result.current.entries.some(
+              (entry) => entry.id === "notes",
+            ),
+          ).toBe(true);
+        }
+        act(() => {
+          for (const listener of mocks.reconnectListeners) listener();
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(60_000);
+        });
+        expect(failedSource).toHaveBeenCalledTimes(3);
+        expect(healthySource).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("keeps a failed recovery observable and ignores a departed authority's reconnect callback", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.loadAppsCatalog.mockResolvedValue([catalogApp("agent-a-app")]);
+      mocks.client.listInstalledApps.mockRejectedValue(
+        new Error("installed unavailable"),
+      );
+      const { result } = renderHook(() => useViewCatalog());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(result.current.error?.message).toBe("installed unavailable");
+      const previousListeners = [...mocks.reconnectListeners];
+      await act(async () => {
+        for (const listener of previousListeners) listener();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(3);
+      expect(result.current.error?.message).toBe("installed unavailable");
+
+      mocks.loadAppsCatalog.mockResolvedValue([catalogApp("agent-b-app")]);
+      mocks.client.listInstalledApps.mockResolvedValue([]);
+      act(() => {
+        mocks.authority.value = "https://agent-b.test";
+        for (const listener of mocks.authority.listeners) listener();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.entries.map((entry) => entry.id)).toEqual([
+        "agent-b-app",
+      ]);
+      expect(result.current.error).toBeNull();
+      act(() => {
+        for (const listener of previousListeners) listener();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(4);
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("settles to an honest empty launcher when app-shell sources are unsupported", () => {
     mocks.appShellRoutesSupported.value = false;
 
