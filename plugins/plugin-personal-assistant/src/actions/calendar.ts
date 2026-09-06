@@ -1146,8 +1146,10 @@ async function guardProtectedSleepCreate(args: {
 
 const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   feed: {
-    description: "List events. Time window: today, this week.",
-    descriptionCompressed: "list events time-window",
+    description:
+      "Read the full unfiltered agenda for a date or time range. Use details.timeMin/timeMax and timeZone. A date-only request or no-keyword-filter request belongs here, not search_events.",
+    descriptionCompressed:
+      "full unfiltered agenda/date/time-range; dates are bounds, not keywords",
     required: [],
     optional: ["intent", "details"],
   },
@@ -1158,8 +1160,10 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     optional: ["intent", "details"],
   },
   search_events: {
-    description: "Search events: title, attendee, location, date.",
-    descriptionCompressed: "search events title|attendee|location|date",
+    description:
+      "Filter events by a user-requested title, attendee, location, or keyword, optionally within a time range. For all events on a date or an unfiltered agenda use feed; never turn the date into a title search.",
+    descriptionCompressed:
+      "content-filter title|attendee|location|keyword; full/date-only agenda -> feed",
     required: [],
     optional: ["intent", "query", "queries", "details"],
   },
@@ -1758,7 +1762,7 @@ export const calendarAction: Action & {
     {
       name: "query",
       description:
-        "Search phrase for search_events/travel_itinerary: flight, dentist, Denver. " +
+        "Event-content search phrase for search_events/travel_itinerary: flight, dentist, Denver. Dates and agenda/schedule words are not content filters; for a full day agenda use feed and omit query/queries. " +
         "update_event/delete_event: the TARGET event in its own words (e.g. 'piano lesson') whenever details.eventId is not known. An update may also identify its target with details.oldTitle; a delete may use the existing title when query and eventId are absent.",
       required: false,
       subactions: [
@@ -1774,7 +1778,8 @@ export const calendarAction: Action & {
     },
     {
       name: "queries",
-      description: "Optional search_events phrases array. Combined/deduped.",
+      description:
+        "Optional event-content filters for search_events. Combined/deduped. Do not use dates as keywords; an unfiltered agenda uses feed with time bounds.",
       required: false,
       subactions: ["search_events", "trip_window"],
       schema: { type: "array" as const, items: { type: "string" as const } },
@@ -1782,6 +1787,7 @@ export const calendarAction: Action & {
     {
       name: "details",
       description:
+        "For feed/search_events: details.timeMin/timeMax bound the date range and details.timeZone supplies its IANA timezone. For a full agenda use feed without query/queries. " +
         "Structured fields for create_event/update_event/delete_event. " +
         "`start`/`end`: local wall-clock ISO-8601 WITHOUT any offset or Z (e.g. 2026-09-10T18:00:00 for 6pm); never convert to UTC. When supplying the owner's local new start/end, explicitly include `details.timeZone` with the owner's configured IANA timezone; an update otherwise interprets them in the existing event's timezone, which may differ. If the user names another timezone, use that IANA zone for these values. Aliases `startAt`/`endAt` and `startTime`/`endTime` accepted. " +
         "For a move or reschedule the time the user names ('to 6pm') is the new `start`; keep the event's previous duration for `end` unless the user gives a new end. " +
