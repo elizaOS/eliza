@@ -19,6 +19,24 @@ bun run test
 
 See `package.json` for `build`, `lint`, and other scripts.
 
+## Manifest-v3 quarantine materialization
+
+`createAgentBackupRestoreV3ProcessMaterializer` implements the durable restore
+coordinator's record, component and assembly effects in private one-shot Agent
+processes. It requires an existing isolated `CandidateFs` authority and retains
+the exact root device/inode identities. It does not boot a runtime, register
+plugins, open a listener, authorize a generation commit, or publish routes.
+
+The worker receives bounded metadata and raw record bytes on stdin; fd 3 is a
+parent-liveness channel. Only the digest of the completed canonical receipt is
+returned. Cancellation closes the liveness channel and waits for worker
+settlement, including nested database validation, before the adapter returns.
+Credentials and process preload options are not inherited. This is a trusted
+local-process transport, not an authenticated remote Docker endpoint; its
+caller must exclusively own both the transport and the quarantined roots.
+Production filesystem authority requires Linux. Non-Linux pathname emulation
+is explicitly test-only and makes no cross-process kernel-lock claim.
+
 ## Research tasks
 
 `ResearchTaskExecutor` requires a provider registered for
