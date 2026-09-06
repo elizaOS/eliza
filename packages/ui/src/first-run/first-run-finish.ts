@@ -797,7 +797,10 @@ export async function listOrAutoProvisionCloudAgent(
     firstRunRuntimeTarget("cloud"),
   );
   ports.setRuntimeState("firstRunProvider", "elizacloud");
-  if (!getCloudAuthToken(client)) {
+  // A backend session is independent of Cloud identity. In particular, a
+  // canceled desktop sign-in must not promote its local API credential into
+  // a successful Cloud login.
+  if (!getCloudAuthToken()) {
     // Interactive OAuth is the unbounded wait (#19255): tell the conductor so
     // it can seed the waiting turn and arm the bounded recovery deadline.
     ports.onInteractiveLogin?.();
@@ -805,7 +808,7 @@ export async function listOrAutoProvisionCloudAgent(
     ports.onInteractiveLoginComplete?.();
     ports.signal?.throwIfAborted();
   }
-  const authToken = getCloudAuthToken(client) ?? "";
+  const authToken = getCloudAuthToken() ?? "";
   if (!authToken) {
     return { kind: "needs-cloud-login" };
   }
