@@ -309,174 +309,20 @@ type LocalGrantInventoryEntry = Readonly<{
 export const ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY: readonly LocalGrantInventoryEntry[] =
   Object.freeze([
     {
-      table: "subscription_allowance_transactions",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_funding_allocations",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_funding_reservations",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "subscription_allowance_periods",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_subscription_incidents",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_subscription_event_receipts",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_subscription_incidents",
-      column: "resolved_by_user_id",
-      subject: "user",
-      action: "null",
-    },
-    {
-      table: "billing_subscription_commands",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
       table: "subscription_billing_fences",
       column: "organization_id",
       subject: "organization",
       action: "delete",
     },
-    {
-      table: "app_billing_members",
-      column: "user_id",
-      subject: "user",
-      action: "delete",
-    },
+    { table: "app_billing_members", column: "user_id", subject: "user", action: "delete" },
     {
       table: "organization_entitlements",
       column: "organization_id",
       subject: "organization",
       action: "delete",
     },
-    {
-      table: "billing_subscription_revisions",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_subscriptions",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "affiliate_payout_outbox",
-      column: "affiliate_user_id",
-      subject: "user",
-      action: "delete",
-    },
-    {
-      table: "app_reservation_settlement_quarantines",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "app_reservation_settlements",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "container_billing_legacy_ledger_bindings",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "container_billing_records",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "compute_billing_rate_segments",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "agent_billing_records",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "payment_request_receipts",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "stripe_checkout_legacy_quarantine",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "stripe_checkout_legacy_quarantine",
-      column: "initiated_by_user_id",
-      subject: "user",
-      action: "delete",
-    },
-    {
-      table: "stripe_checkout_orders",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "stripe_checkout_orders",
-      column: "initiated_by_user_id",
-      subject: "user",
-      action: "delete",
-    },
-    {
-      table: "stripe_customer_attempts",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "stripe_customer_legacy_quarantines",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
     { table: "admin_users", column: "granted_by", subject: "user", action: "null" },
-    {
-      table: "app_secret_requirements",
-      column: "approved_by",
-      subject: "user",
-      action: "null",
-    },
+    { table: "app_secret_requirements", column: "approved_by", subject: "user", action: "null" },
     { table: "jobs", column: "user_id", subject: "user", action: "null" },
     { table: "moderation_violations", column: "reviewed_by", subject: "user", action: "null" },
     { table: "secret_bindings", column: "created_by", subject: "user", action: "null" },
@@ -515,9 +361,6 @@ async function countLocalRestrictiveRows(context: AccountDeletionProviderContext
 async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContext): Promise<void> {
   await dbWrite.transaction(async (tx) => {
     await subscriptionAuthorityRepository.releaseForAccountDeletion(tx, context.organizationId);
-    await tx.execute(
-      sql`SELECT set_config('eliza.subscription_account_deletion_authority', 'on', true)`,
-    );
     for (const entry of ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY) {
       const subject = localGrantSubject(entry, context);
       if (entry.action === "delete") {
@@ -531,11 +374,6 @@ async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContex
         );
       }
     }
-    // Belt-and-braces disarm for readers and future statements; the setting is
-    // transaction-local and would be cleared automatically at commit.
-    await tx.execute(
-      sql`SELECT set_config('eliza.subscription_account_deletion_authority', '', true)`,
-    );
   });
 }
 
