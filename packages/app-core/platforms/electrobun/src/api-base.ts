@@ -2,6 +2,7 @@
 import { resolveApiExposePort, resolveDesktopApiPort } from "@elizaos/shared";
 import { DEFAULT_API_PORT } from "./constants";
 import { logger } from "./logger";
+import { isLoopbackBase } from "./native/auth-bridge";
 
 /**
  * Renderer-facing API base for the desktop local-agent IPC transport (#12180
@@ -254,12 +255,6 @@ export function resolveInitialApiBase(
   return `http://127.0.0.1:${agentPort}`;
 }
 
-/** True when the hostname is a loopback we treat as same-trust as 127.0.0.1. */
-function isLoopbackHttpHostname(hostname: string): boolean {
-  const h = hostname.toLowerCase();
-  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
-}
-
 /**
  * When the desktop loads the UI from a local http(s) dev server (Vite), the
  * renderer must call `/api` on **that origin** so requests stay same-origin and
@@ -273,12 +268,9 @@ export function resolveHttpLoopbackRendererOriginForApiClient(
 ): string | null {
   const raw =
     env.ELIZA_RENDERER_URL?.trim() || env.VITE_DEV_SERVER_URL?.trim() || "";
-  if (!raw) return null;
+  if (!raw || !isLoopbackBase(raw)) return null;
   try {
-    const u = new URL(raw);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    if (!isLoopbackHttpHostname(u.hostname)) return null;
-    return u.origin;
+    return new URL(raw).origin;
   } catch {
     // error-policy:J3 malformed renderer URL is not a loopback origin
     return null;
