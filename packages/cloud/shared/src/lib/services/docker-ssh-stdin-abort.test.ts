@@ -1,3 +1,7 @@
+/**
+ * Deterministic SSH channel faults exercise cancellation and receipt fencing
+ * in the real client; the separate loopback suite covers native SSH framing.
+ */
 import { describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { DockerSSHClient } from "./docker-ssh";
@@ -30,6 +34,7 @@ class FakeClientChannel extends EventEmitter {
   closeCalls = 0;
   destroyCalls = 0;
   endedWith: Buffer | undefined;
+  writtenWith: Buffer | undefined;
 
   close(): void {
     this.closeCalls += 1;
@@ -42,6 +47,11 @@ class FakeClientChannel extends EventEmitter {
 
   end(input: Buffer): void {
     this.endedWith = input;
+  }
+
+  write(input: Buffer): boolean {
+    this.writtenWith = input;
+    return true;
   }
 }
 
@@ -72,6 +82,7 @@ async function requireError(promise: Promise<unknown>): Promise<Error> {
   try {
     await promise;
   } catch (error) {
+    // error-policy:J1 The assertion boundary requires an explicit rejection.
     if (error instanceof Error) return error;
     throw new Error("Expected an Error rejection");
   }
@@ -129,6 +140,89 @@ describe("DockerSSHClient.connect cancellation", () => {
 });
 
 describe("DockerSSHClient.execStdinAbortable", () => {
+  function receiptExchange(expected = "a".repeat(64)) {
+    const channel = new FakeClientChannel();
+    const session: FakeSshSession = {
+      execCalls: 0,
+      destroyCalls: 0,
+      exec(_command, callback) {
+        this.execCalls += 1;
+        callback(undefined, channel);
+      },
+      destroy() {
+        this.destroyCalls += 1;
+      },
+    };
+    const controller = new AbortController();
+    const input = Buffer.from("private restore frame");
+    const promise = makeConnectedClient(session).execStdinAbortable(
+      "restore-worker",
+      input,
+      controller.signal,
+      5_000,
+      expected,
+    );
+    return { channel, session, controller, input, promise };
+  }
+
+  test("keeps framed stdin open and requires the complete receipt plus exit zero", async () => {
+    const { channel, input, promise } = receiptExchange();
+    expect(channel.writtenWith).toBe(input);
+    expect(channel.endedWith).toBeUndefined();
+    let settled = false;
+    void promise.then(() => {
+      settled = true;
+    });
+    for (const text of ["a".repeat(17), "a".repeat(47)]) {
+      const chunk = Buffer.from(text);
+      channel.emit("data", chunk);
+      expect(chunk.every((byte) => byte === 0)).toBe(true);
+    }
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    channel.emit("close", 0);
+    await promise;
+    expect(settled).toBe(true);
+  });
+
+  test.each([
+    ["short", "a".repeat(63), false, 0],
+    ["wrong", "b".repeat(64), false, 0],
+    ["trailing", `${"a".repeat(64)}\n`, false, 0],
+    ["stderr", "private restore frame", true, 0],
+    ["failed exit", "a".repeat(64), false, 1],
+  ] as const)(
+    "rejects %s acknowledgements without reflecting remote bytes",
+    async (_name, data, stderr, code) => {
+      const { channel, promise } = receiptExchange();
+      const chunk = Buffer.from(data);
+      (stderr ? channel.stderr : channel).emit("data", chunk);
+      channel.emit("close", code);
+      const error = await requireError(promise);
+      expect(chunk.every((byte) => byte === 0)).toBe(true);
+      expect(error.message).not.toContain(data);
+    },
+  );
+
+  test("abort wins even after the full receipt arrived", async () => {
+    const { channel, controller, promise } = receiptExchange();
+    channel.emit("data", Buffer.from("a".repeat(64)));
+    const reason = makeCallerAbortReason("lease lost before exit");
+    controller.abort(reason);
+    channel.emit("close", 0);
+    expect(await requireError(promise)).toBe(reason);
+  });
+
+  test.each(["", "A".repeat(64), `${"a".repeat(64)}\n`, "a".repeat(65)])(
+    "rejects malformed expected receipt before opening a channel (%s)",
+    async (expected) => {
+      const { session, channel, promise } = receiptExchange(expected);
+      expect((await requireError(promise)).message).toBe("Invalid expected SSH restore receipt");
+      expect(session.execCalls).toBe(0);
+      expect(channel.writtenWith).toBeUndefined();
+    },
+  );
+
   test("preserves a pre-aborted signal reason before opening an SSH exec channel", async () => {
     const channel = new FakeClientChannel();
     const session: FakeSshSession = {
