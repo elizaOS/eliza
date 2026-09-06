@@ -218,6 +218,29 @@ describe("askAboutImage against a stub server", () => {
     }
   });
 
+  it("rejects an inaccessible cache entry before requesting the provider again", async () => {
+    const { server, url, requests } = await startStub([conformingBody()]);
+    try {
+      await askAboutImage(imagePath, QUESTIONS, baseOptions(url));
+      const root = path.join(tmpDir, ".vision-qa-cache");
+      const imageDir = path.join(root, fs.readdirSync(root)[0]);
+      const entry = path.join(imageDir, fs.readdirSync(imageDir)[0]);
+      fs.unlinkSync(entry);
+      fs.mkdirSync(entry);
+      await expect(
+        askAboutImage(imagePath, QUESTIONS, baseOptions(url)),
+      ).rejects.toMatchObject({
+        code: "VISION_CACHE_READ_FAILED",
+        context: { file: entry },
+        cause: { code: "EISDIR" },
+      });
+      expect(requests).toHaveLength(1);
+      expect(fs.statSync(entry).isDirectory()).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it("bypasses the cache with noCache and neither reads nor writes it", async () => {
     const { server, url } = await startStub([
       conformingBody(),
@@ -235,6 +258,88 @@ describe("askAboutImage against a stub server", () => {
       server.close();
     }
   });
+
+  it.each([200, 429])(
+    "keeps the deadline active while a %i response body stalls",
+    async (status) => {
+      let headersSent = false;
+      const server = createServer((_req, res) => {
+        res.writeHead(status, { "content-type": "application/json" });
+        res.flushHeaders();
+        res.write("{");
+        headersSent = true;
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve),
+      );
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw new Error("Expected TCP listener");
+      try {
+        await expect(
+          askAboutImage(imagePath, QUESTIONS, {
+            ...baseOptions(`http://127.0.0.1:${address.port}/v1`),
+            timeoutMs: 200,
+          }),
+        ).rejects.toMatchObject({ name: "AbortError" });
+        expect(headersSent).toBe(true);
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+    5000,
+  );
+
+  it.each([
+    "missing provenance",
+    "invalid answer",
+    "wrong questions",
+    "wrong model",
+  ])(
+    "replaces a cache entry with %s by asking the provider again",
+    async (corruption) => {
+      const { server, url, requests } = await startStub([conformingBody()]);
+      try {
+        const options = baseOptions(url);
+        const valid = await askAboutImage(imagePath, QUESTIONS, options);
+        const root = path.join(tmpDir, ".vision-qa-cache");
+        const imageDir = path.join(root, fs.readdirSync(root)[0]);
+        const file = path.join(imageDir, fs.readdirSync(imageDir)[0]);
+        const broken =
+          corruption === "missing provenance"
+            ? { ...valid, provenance: null }
+            : corruption === "invalid answer"
+              ? {
+                  ...valid,
+                  answers: [
+                    { ...valid.answers[0], confidence: 2 },
+                    valid.answers[1],
+                  ],
+                }
+              : corruption === "wrong questions"
+                ? {
+                    ...valid,
+                    answers: [
+                      { ...valid.answers[0], id: "another-question" },
+                      valid.answers[1],
+                    ],
+                  }
+                : {
+                    ...valid,
+                    provenance: { ...valid.provenance, model: "another-model" },
+                  };
+        fs.writeFileSync(file, JSON.stringify(broken));
+        const recovered = await askAboutImage(imagePath, QUESTIONS, options);
+        expect(requests).toHaveLength(2);
+        expect(recovered.provenance.cached).toBe(false);
+        expect(recovered.answers).toEqual(valid.answers);
+        expect(recovered.provenance.model).toBe(valid.provenance.model);
+      } finally {
+        server.close();
+      }
+    },
+  );
 
   it("rejects duplicate question ids before any network call", async () => {
     await expect(

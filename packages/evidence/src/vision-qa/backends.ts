@@ -18,6 +18,7 @@ import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { z } from "zod";
 import { EvidenceError } from "../errors.ts";
 import type { PreparedImage } from "./image.ts";
+import { visionAnswerSchema } from "./result-schema.ts";
 import type { TokenUsage, VisionAnswer, VisionQuestion } from "./types.ts";
 
 /** Default model per backend; overridable via `AskOptions.model`. */
@@ -79,15 +80,8 @@ export function renderQuestionPrompt(questions: VisionQuestion[]): string {
   return `Answer each of these questions about the screenshot:\n${lines.join("\n")}`;
 }
 
-const answerSchema = z.strictObject({
-  id: z.string().min(1),
-  answer: z.string(),
-  confidence: z.number().min(0).max(1),
-  details: z.string(),
-});
-
 const responseSchema = z.strictObject({
-  answers: z.array(answerSchema),
+  answers: z.array(visionAnswerSchema),
 });
 
 /**

@@ -84,33 +84,32 @@ async function postJson(
 ): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let response: Awaited<ReturnType<FetchLike>>;
   try {
-    response = await fetchImpl(url, {
+    const response = await fetchImpl(url, {
       method: "POST",
       headers,
       body,
       signal: controller.signal,
     });
+    if (!response.ok) {
+      const detail = await response.text();
+      // error-policy:J1 transport boundary — a non-2xx from the provider is a
+      // typed failure carrying status + body, not a fabricated answer.
+      throw new EvidenceError(
+        `vision-qa backend returned ${response.status} ${response.statusText}`,
+        {
+          code: "VISION_BACKEND_HTTP",
+          context: {
+            status: response.status,
+            detail: truncateWellFormed(toWellFormedUnicode(detail), 500),
+          },
+        },
+      );
+    }
+    return await response.json();
   } finally {
     clearTimeout(timer);
   }
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    // error-policy:J1 transport boundary — a non-2xx from the provider is a
-    // typed failure carrying status + body, not a fabricated answer.
-    throw new EvidenceError(
-      `vision-qa backend returned ${response.status} ${response.statusText}`,
-      {
-        code: "VISION_BACKEND_HTTP",
-        context: {
-          status: response.status,
-          detail: truncateWellFormed(toWellFormedUnicode(detail), 500),
-        },
-      },
-    );
-  }
-  return response.json();
 }
 
 /**
@@ -136,7 +135,7 @@ export async function askAboutImage(
   const query = queryHash(client.model, backend, questions, image.dimensions);
   const cacheRoot = options.cacheDir ?? process.cwd();
   if (options.noCache !== true) {
-    const hit = readCache(cacheRoot, image.sourceSha256, query);
+    const hit = readCache(cacheRoot, image.sourceSha256, query, questions);
     if (hit !== null) {
       return { ...hit, provenance: { ...hit.provenance, cached: true } };
     }
