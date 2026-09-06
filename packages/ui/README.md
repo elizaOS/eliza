@@ -95,6 +95,11 @@ import {
 Normal pages render only their body. Do not recreate a header, safe-area pad,
 or floating-chat clearance inside the plugin; the shell owns those layers.
 
+## Notifications
+
+See [notification-policy.md](notification-policy.md) for shared native delivery,
+viewport fallback ownership, interactive popup exceptions, and platform limits.
+
 ## Development
 
 ```bash

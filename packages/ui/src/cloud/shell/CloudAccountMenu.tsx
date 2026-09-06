@@ -6,7 +6,7 @@
 
 import { ChevronDown, LogOut, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../bridge/toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
