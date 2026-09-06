@@ -820,6 +820,30 @@ export function getVolumePath(agentId: string): string {
   return volumePath;
 }
 
+/**
+ * Proves a host directory is root-owned, non-symlinked, and not writable by
+ * another user. Callers must check ancestors in order before preparing a child;
+ * this does not provide lifecycle exclusion against another root process.
+ */
+export function buildProtectedHostDirectoryCommands(
+  path: string,
+  createIfAbsent = false,
+): string[] {
+  validateVolumePath(path);
+  const quoted = shellQuote(path);
+  const proof = [
+    `test -d ${quoted} && test ! -L ${quoted} || exit 45`,
+    `test "$(stat -c '%u' -- ${quoted})" = 0 || exit 45`,
+    `directory_mode=$(stat -c '%a' -- ${quoted}); case "$directory_mode" in *[2367][0-7]|*[0-7][2367]) exit 45 ;; esac`,
+  ];
+  return createIfAbsent
+    ? [
+        `if test -e ${quoted} || test -L ${quoted}; then ${proof.join("; ")}; else install -d -m 700 ${quoted}; fi`,
+        ...proof,
+      ]
+    : proof;
+}
+
 function assertCanonicalReplacementPathAttemptId(replacementAttemptId: string): void {
   if (!CANONICAL_REPLACEMENT_PATH_ATTEMPT_ID.test(replacementAttemptId)) {
     throw new ElizaError("Invalid replacement attempt ID for remote attempt artifacts.", {

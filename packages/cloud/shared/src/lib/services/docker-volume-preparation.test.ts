@@ -4,11 +4,24 @@
  * cancellation boundary and filesystem effects, not cross-process exclusion.
  */
 import { expect, test } from "bun:test";
-import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureVolumeVaultPassphrase, shellQuote } from "./docker-sandbox-utils";
+import {
+  buildProtectedHostDirectoryCommands,
+  ensureVolumeVaultPassphrase,
+  shellQuote,
+} from "./docker-sandbox-utils";
 
 test("cancelled replacement cannot recreate its removed volume during vault preparation", async () => {
   const root = mkdtempSync(join(tmpdir(), "eliza-cancelled-volume-"));
@@ -82,6 +95,58 @@ test("cancelled replacement cannot recreate its removed volume during vault prep
     ).rejects.toThrow("exited with code 79");
     expect(existsSync(volume)).toBe(true);
     expect(existsSync(join(attempts, activeAttempt, "vault-stdin"))).toBe(false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("protected directory preparation refuses symlinks and writable parents before child writes", () => {
+  const root = mkdtempSync(join(tmpdir(), "eliza-protected-volume-"));
+  const bin = join(root, "bin");
+  const volume = join(root, "volume");
+  const target = join(root, "other-agent");
+  mkdirSync(bin, { mode: 0o700 });
+  mkdirSync(target, { mode: 0o700 });
+  const sentinel = join(target, "preserve");
+  writeFileSync(sentinel, "other agent data");
+  // Fixture ownership is simulated; real stat supplies directory permissions.
+  const nativeModeCommand =
+    process.platform === "darwin" ? '/usr/bin/stat -f %Lp "$4"' : '/usr/bin/stat -c %a -- "$4"';
+  writeFileSync(
+    join(bin, "stat"),
+    `#!/bin/sh\ncase "$2" in "%u") printf '%s' "$FIXTURE_UID" ;; "%a") ${nativeModeCommand} ;; *) exit 64 ;; esac\n`,
+    { mode: 0o700 },
+  );
+  const run = (uid = "0") =>
+    spawnSync(
+      "/bin/sh",
+      [
+        "-c",
+        [
+          "set -eu",
+          ...buildProtectedHostDirectoryCommands(volume, true),
+          ...buildProtectedHostDirectoryCommands(`${volume}/eliza`, true),
+          `printf seeded > ${shellQuote(`${volume}/eliza/seed`)}`,
+        ].join("; "),
+      ],
+      { env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FIXTURE_UID: uid } },
+    );
+  try {
+    symlinkSync(target, volume);
+    expect(run().status).toBe(45);
+    expect(existsSync(join(target, "eliza"))).toBe(false);
+    expect(readFileSync(sentinel, "utf8")).toBe("other agent data");
+    rmSync(volume);
+    mkdirSync(volume, { mode: 0o700 });
+    chmodSync(volume, 0o777);
+    expect(run().status).toBe(45);
+    expect(existsSync(join(volume, "eliza"))).toBe(false);
+    chmodSync(volume, 0o700);
+    expect(run("1000").status).toBe(45);
+    expect(existsSync(join(volume, "eliza"))).toBe(false);
+    expect(run().status).toBe(0);
+    expect(readFileSync(join(volume, "eliza", "seed"), "utf8")).toBe("seeded");
+    expect(run().status).toBe(0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
