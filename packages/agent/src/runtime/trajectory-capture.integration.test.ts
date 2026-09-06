@@ -28,6 +28,7 @@ import {
   type Plugin,
   type Provider,
   runWithTrajectoryContext,
+  TrajectoriesService,
   trajectoriesPlugin,
   tryHandleTrajectoryReadRoutes,
   type UUID,
@@ -55,8 +56,11 @@ import {
 } from "./trajectory-steps-writer.ts";
 import {
   __getTrajectoryBridgeStateCountsForTests,
+  annotateTrajectoryStep,
+  clearPersistedTrajectoryRows,
   DatabaseTrajectoryLogger,
   flushTrajectoryWrites,
+  startTrajectoryStepInDatabase,
 } from "./trajectory-storage.ts";
 
 interface CapturedLlmCall {
@@ -252,8 +256,10 @@ function sharedDatabaseRuntime(agentId: string): AgentRuntime {
   const source = runtime as unknown as Record<string, unknown>;
   return {
     agentId,
+    runtimeInstanceId: crypto.randomUUID(),
     adapter: source.adapter,
     actions: [],
+    getSetting: () => null,
     getRoom: async () => null,
     getService: () => null,
     getServicesByType: () => [],
@@ -366,6 +372,24 @@ async function databaseLogger(
   return { runtime: loggerRuntime, logger };
 }
 
+async function shutdownLogger(
+  mode: "public" | "installed",
+  target: AgentRuntime,
+) {
+  if (mode === "public") return databaseLogger(mode, target.agentId, target);
+  const native = new TrajectoriesService(target);
+  native.setEnabled(true);
+  await native.initialize();
+  Object.assign(target, {
+    getService: () => native,
+    getServicesByType: () => [native],
+  });
+  await installDatabaseTrajectoryLogger(target);
+  await ensureTrajectoriesTable(target);
+  native.setEnabled(true);
+  return { runtime: target, logger: native as unknown as LifecycleTrajLogger };
+}
+
 let runtime: AgentRuntime;
 let pgliteDir: string;
 const prevPgliteDir = process.env.PGLITE_DATA_DIR;
@@ -470,6 +494,405 @@ afterAll(async () => {
 });
 
 describe("trajectory capture -> DB -> viewer", () => {
+  describe.each(["public", "installed"] as const)(
+    "%s bridge graceful shutdown",
+    (mode) => {
+      it("settles its own starts without changing other runtimes, terminal results, or legacy ownership", async () => {
+        const ownRuntime = sharedDatabaseRuntime(crypto.randomUUID());
+        const owner = await shutdownLogger(mode, ownRuntime);
+        const sibling = await shutdownLogger(
+          mode,
+          sharedDatabaseRuntime(ownRuntime.agentId),
+        );
+        // The host can reuse an installation identity across process generations.
+        Object.assign(sibling.runtime, {
+          runtimeInstanceId: ownRuntime.runtimeInstanceId,
+        });
+        const other = await shutdownLogger(
+          mode,
+          sharedDatabaseRuntime(crypto.randomUUID()),
+        );
+        const noStep = await owner.logger.startTrajectory(ownRuntime.agentId, {
+          metadata: {
+            runtimeInstanceId: sibling.runtime.runtimeInstanceId,
+            runtimeTrajectoryOwnerId: "forged",
+          },
+        });
+        const active = await owner.logger.startTrajectory(ownRuntime.agentId);
+        const child = owner.logger.startStep(active);
+        owner.logger.logLlmCall(
+          llmCall(
+            child,
+            "openai",
+            "shutdown-owner",
+            "Preserve this recorded response.",
+          ),
+        );
+        const completed = await owner.logger.startTrajectory(
+          ownRuntime.agentId,
+        );
+        await flushTrajectoryWrites(ownRuntime);
+        await sibling.logger.endTrajectory(completed, "completed");
+        const completedBefore = await loadTrajectoryById(ownRuntime, completed);
+        const activeBefore = await loadTrajectoryById(ownRuntime, active);
+        const siblingId = await sibling.logger.startTrajectory(
+          sibling.runtime.agentId,
+        );
+        const otherId = await other.logger.startTrajectory(
+          other.runtime.agentId,
+        );
+        await flushTrajectoryWrites(sibling.runtime);
+        await flushTrajectoryWrites(other.runtime);
+        owner.logger.startStep(siblingId);
+        await flushTrajectoryWrites(ownRuntime);
+        const siblingBefore = await loadTrajectoryById(
+          sibling.runtime,
+          siblingId,
+        );
+        // Explicit IDs are also used by legacy/direct instrumentation. Reusing
+        // one must not transfer ownership through attacker-controlled metadata.
+        await owner.logger.startTrajectory(siblingId, {
+          agentId: ownRuntime.agentId,
+          metadata: {
+            runtimeInstanceId: ownRuntime.runtimeInstanceId,
+            runtimeTrajectoryOwnerId: "takeover",
+          },
+        });
+        const legacyId = crypto.randomUUID();
+        await saveTrajectory(
+          ownRuntime,
+          createBaseTrajectory(
+            legacyId,
+            Date.now(),
+            ownRuntime.agentId,
+            "legacy",
+            {
+              runtimeInstanceId: ownRuntime.runtimeInstanceId,
+              runtimeTrajectoryOwnerId:
+                activeBefore?.metadata.runtimeTrajectoryOwnerId,
+            },
+          ),
+        );
+        const unstampedId = crypto.randomUUID();
+        await saveTrajectory(
+          ownRuntime,
+          createBaseTrajectory(unstampedId, Date.now(), ownRuntime.agentId),
+        );
+        const implicitId = crypto.randomUUID();
+        await startTrajectoryStepInDatabase({
+          runtime: ownRuntime,
+          stepId: implicitId,
+          source: "shutdown-direct",
+        });
+        const annotatedId = crypto.randomUUID();
+        await annotateTrajectoryStep({
+          runtime: ownRuntime,
+          stepId: annotatedId,
+          kind: "action",
+          script: "recorded annotation",
+        });
+        await flushTrajectoryWrites(ownRuntime);
+        const siblingAfterStart = await loadTrajectoryById(
+          sibling.runtime,
+          siblingId,
+        );
+        expect(siblingAfterStart?.metadata).toEqual(siblingBefore?.metadata);
+
+        await Promise.all([owner.logger.stop(), owner.logger.stop()]);
+        const stopped = await loadTrajectoryById(ownRuntime, active);
+        expect(stopped?.status).toBe("terminated");
+        expect(stopped?.metrics.finalStatus).toBe("terminated");
+        expect(stopped?.steps).toEqual(activeBefore?.steps);
+        expect(stopped?.metadata).toEqual(activeBefore?.metadata);
+        expect(stopped?.endTime).toBeGreaterThanOrEqual(
+          stopped?.startTime ?? Infinity,
+        );
+        expect(await loadTrajectoryById(ownRuntime, noStep)).toMatchObject({
+          status: "terminated",
+          steps: [],
+          metadata: { runtimeInstanceId: ownRuntime.runtimeInstanceId },
+        });
+        expect((await loadTrajectoryById(ownRuntime, implicitId))?.status).toBe(
+          "terminated",
+        );
+        expect(
+          (await loadTrajectoryById(ownRuntime, annotatedId))?.status,
+        ).toBe("terminated");
+        expect(await loadTrajectoryById(ownRuntime, completed)).toEqual(
+          completedBefore,
+        );
+        expect(await loadTrajectoryById(sibling.runtime, siblingId)).toEqual(
+          siblingAfterStart,
+        );
+        expect((await loadTrajectoryById(other.runtime, otherId))?.status).toBe(
+          "active",
+        );
+        expect((await loadTrajectoryById(ownRuntime, legacyId))?.status).toBe(
+          "active",
+        );
+        expect(
+          (await loadTrajectoryById(ownRuntime, unstampedId))?.status,
+        ).toBe("active");
+        await owner.logger.stop();
+        expect(await loadTrajectoryById(ownRuntime, active)).toEqual(stopped);
+        await sibling.logger.stop();
+        await other.logger.stop();
+      });
+
+      it("drains an accepted pending start and captures before stopping", async () => {
+        const gated = transactionGatedRuntime(crypto.randomUUID());
+        const owner = await shutdownLogger(mode, gated.runtime);
+        gated.gate.arm();
+        const id = await owner.logger.startTrajectory(owner.runtime.agentId);
+        const child = owner.logger.startStep(id);
+        owner.logger.logLlmCall(
+          llmCall(child, "openai", "pending-shutdown", "Accepted before stop."),
+        );
+        await gated.gate.entered;
+        let stopped = false;
+        const stopping = owner.logger.stop().then(() => {
+          stopped = true;
+        });
+        await Promise.resolve();
+        const stoppedBeforeRelease = stopped;
+        const rejected = await owner.logger.startTrajectory(
+          owner.runtime.agentId,
+        );
+        gated.gate.release();
+        await stopping;
+        expect(stoppedBeforeRelease).toBe(false);
+        const saved = await loadTrajectoryById(owner.runtime, id);
+        expect(saved?.status).toBe("terminated");
+        expect(saved?.steps.flatMap((step) => step.llmCalls)).toEqual([
+          expect.objectContaining({ response: "Accepted before stop." }),
+        ]);
+        expect(await loadTrajectoryById(owner.runtime, rejected)).toBeNull();
+      });
+
+      it("rolls back failed shutdown atomically and retains ownership for a coalesced retry", async () => {
+        const target = sharedDatabaseRuntime(crypto.randomUUID());
+        const owner = await shutdownLogger(mode, target);
+        const id = await owner.logger.startTrajectory(target.agentId);
+        const child = owner.logger.startStep(id);
+        owner.logger.logLlmCall(
+          llmCall(
+            child,
+            "openai",
+            "shutdown-rollback",
+            "Keep every recorded byte.",
+          ),
+        );
+        await flushTrajectoryWrites(target);
+        const before = await loadTrajectoryById(target, id);
+        const baseDb = (target as unknown as { adapter: { db: TestRuntimeDb } })
+          .adapter.db;
+        let fail = true;
+        let shutdownUpdates = 0;
+        Object.assign(target, {
+          adapter: {
+            db: {
+              execute: baseDb.execute.bind(baseDb),
+              transaction: <T>(callback: (tx: TestSqlExecutor) => Promise<T>) =>
+                baseDb.transaction((tx) =>
+                  callback({
+                    execute: async (query: unknown) => {
+                      const result = await tx.execute(query);
+                      if (
+                        /UPDATE trajectories SET status = 'terminated'/.test(
+                          sqlText(query),
+                        )
+                      ) {
+                        shutdownUpdates += 1;
+                        if (fail)
+                          throw new Error(
+                            "injected shutdown failure after update",
+                          );
+                      }
+                      return result;
+                    },
+                  }),
+                ),
+            },
+          },
+        });
+        const results = await Promise.allSettled([
+          owner.logger.stop(),
+          owner.logger.stop(),
+        ]);
+        expect(results.map((result) => result.status)).toEqual([
+          "rejected",
+          "rejected",
+        ]);
+        expect(shutdownUpdates).toBe(1);
+        expect(await loadTrajectoryById(target, id)).toEqual(before);
+        fail = false;
+        await Promise.all([owner.logger.stop(), owner.logger.stop()]);
+        expect(shutdownUpdates).toBe(2);
+        const after = await loadTrajectoryById(target, id);
+        expect(after?.status).toBe("terminated");
+        expect(after?.metrics).toEqual({
+          ...before?.metrics,
+          finalStatus: "terminated",
+        });
+        expect(after?.steps).toEqual(before?.steps);
+        expect(after?.metadata).toEqual(before?.metadata);
+        await owner.logger.stop();
+        expect(shutdownUpdates).toBe(2);
+      });
+
+      it("does not claim a same-ID start that another runtime inserts first", async () => {
+        const gated = transactionGatedRuntime(crypto.randomUUID());
+        const owner = await shutdownLogger(mode, gated.runtime);
+        const siblingRuntime = sharedDatabaseRuntime(owner.runtime.agentId);
+        Object.assign(siblingRuntime, {
+          runtimeInstanceId: owner.runtime.runtimeInstanceId,
+        });
+        const sibling = await shutdownLogger(mode, siblingRuntime);
+        const id = crypto.randomUUID();
+        gated.gate.arm();
+        await owner.logger.startTrajectory(id, {
+          agentId: owner.runtime.agentId,
+        });
+        await gated.gate.entered;
+        await sibling.logger.startTrajectory(id, {
+          agentId: sibling.runtime.agentId,
+        });
+        await flushTrajectoryWrites(sibling.runtime);
+        const before = await loadTrajectoryById(sibling.runtime, id);
+        gated.gate.release();
+        await expect(
+          flushTrajectoryWrites(owner.runtime),
+        ).rejects.toMatchObject({ code: "TRAJECTORY_START_CONFLICT" });
+        await expect(owner.logger.stop()).rejects.toThrow(
+          "Trajectory shutdown persistence failed",
+        );
+        await owner.logger.stop();
+        expect(await loadTrajectoryById(sibling.runtime, id)).toEqual(before);
+        await sibling.logger.stop();
+        expect((await loadTrajectoryById(sibling.runtime, id))?.status).toBe(
+          "terminated",
+        );
+      });
+
+      it("releases deleted ownership and retains a later same-ID creator", async () => {
+        const target = sharedDatabaseRuntime(crypto.randomUUID());
+        const owner = await shutdownLogger(mode, target);
+        const deleted = await owner.logger.startTrajectory(target.agentId);
+        const reused = await owner.logger.startTrajectory(target.agentId);
+        await flushTrajectoryWrites(target);
+        const previousToken = (await loadTrajectoryById(target, reused))
+          ?.metadata.runtimeTrajectoryOwnerId;
+        expect(await owner.logger.deleteTrajectories([deleted, reused])).toBe(
+          2,
+        );
+        await owner.logger.startTrajectory(reused, { agentId: target.agentId });
+        await flushTrajectoryWrites(target);
+        expect(
+          (await loadTrajectoryById(target, reused))?.metadata
+            .runtimeTrajectoryOwnerId,
+        ).not.toBe(previousToken);
+        const baseDb = (target as unknown as { adapter: { db: TestRuntimeDb } })
+          .adapter.db;
+        const lockedIds: string[] = [];
+        Object.assign(target, {
+          adapter: {
+            db: {
+              execute: baseDb.execute.bind(baseDb),
+              transaction: <T>(callback: (tx: TestSqlExecutor) => Promise<T>) =>
+                baseDb.transaction((tx) =>
+                  callback({
+                    execute: async (query: unknown) => {
+                      const statement = sqlText(query);
+                      if (
+                        /FROM trajectories.*WHERE id =[\s\S]*FOR UPDATE/.test(
+                          statement,
+                        )
+                      )
+                        lockedIds.push(statement);
+                      return tx.execute(query);
+                    },
+                  }),
+                ),
+            },
+          },
+        });
+        await owner.logger.stop();
+        expect(lockedIds).toHaveLength(1);
+        expect(lockedIds[0]).toContain(reused);
+        expect(await loadTrajectoryById(target, deleted)).toBeNull();
+        expect((await loadTrajectoryById(target, reused))?.status).toBe(
+          "terminated",
+        );
+      });
+
+      it.each(["delete", "clear"] as const)(
+        "rolls back malformed %s results without losing ownership",
+        async (operation) => {
+          const target = sharedDatabaseRuntime(crypto.randomUUID());
+          const owner = await shutdownLogger(mode, target);
+          const id = await owner.logger.startTrajectory(target.agentId);
+          const step = owner.logger.startStep(id);
+          owner.logger.logLlmCall(
+            llmCall(step, "openai", "delete-result", "Must survive rollback."),
+          );
+          await flushTrajectoryWrites(target);
+          const before = await loadTrajectoryById(target, id);
+          const baseDb = (
+            target as unknown as { adapter: { db: TestRuntimeDb } }
+          ).adapter.db;
+          let corruptResult = true;
+          let ownershipReads = 0;
+          Object.assign(target, {
+            adapter: {
+              db: {
+                execute: baseDb.execute.bind(baseDb),
+                transaction: <T>(
+                  callback: (tx: TestSqlExecutor) => Promise<T>,
+                ) =>
+                  baseDb.transaction((tx) =>
+                    callback({
+                      execute: async (query: unknown) => {
+                        const statement = sqlText(query);
+                        const result = await tx.execute(query);
+                        if (
+                          corruptResult &&
+                          /DELETE FROM trajectories/.test(statement)
+                        )
+                          return [{}];
+                        if (
+                          /FROM trajectories.*WHERE id =[\s\S]*FOR UPDATE/.test(
+                            statement,
+                          )
+                        )
+                          ownershipReads += 1;
+                        return result;
+                      },
+                    }),
+                  ),
+              },
+            },
+          });
+          const remove = () =>
+            operation === "delete"
+              ? owner.logger.deleteTrajectories([id])
+              : clearPersistedTrajectoryRows(target);
+          await expect(remove()).rejects.toMatchObject({
+            code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
+          });
+          expect(await loadTrajectoryById(target, id)).toEqual(before);
+          corruptResult = false;
+          await owner.logger.stop();
+          expect((await loadTrajectoryById(target, id))?.status).toBe(
+            "terminated",
+          );
+          expect(ownershipReads).toBe(1);
+          expect(await remove()).toBe(1);
+          expect(await loadTrajectoryById(target, id)).toBeNull();
+        },
+      );
+    },
+  );
+
   it.each(["public", "installed"] as const)(
     "%s logger batches adjacent child starts with exact serial persistence equivalence",
     async (mode) => {

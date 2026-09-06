@@ -2231,6 +2231,10 @@ export function mergeMetadata(
   if (!incoming) return existing;
   const merged: Record<string, unknown> = { ...existing };
   for (const [key, value] of Object.entries(incoming)) {
+    // Ownership comes from the writer that created the row, never metadata
+    // supplied by a later start/annotation using an existing trajectory ID.
+    if (key === "runtimeInstanceId" || key === "runtimeTrajectoryOwnerId")
+      continue;
     if (value !== undefined) merged[key] = value;
   }
   return normalizeTrajectoryMetadata(merged).metadata;
@@ -3644,8 +3648,21 @@ export async function saveTrajectory(
     updateLegacySnapshot?: boolean;
     requireActiveExisting?: boolean;
     expectedUpdatedAt?: string;
+    createOnly?: boolean;
   } = {},
 ): Promise<boolean> {
+  if (
+    options.createOnly &&
+    (options.requireActiveExisting || options.expectedUpdatedAt !== undefined)
+  ) {
+    throw new ElizaError(
+      "Insert-only trajectory writes cannot update an existing row",
+      {
+        code: "TRAJECTORY_WRITE_PRECONDITION_INVALID",
+        context: { trajectoryId: trajectory.id },
+      },
+    );
+  }
   if (trajectory.agentId !== runtime.agentId) {
     throw new ElizaError("Trajectory belongs to another agent", {
       code: "TRAJECTORY_AGENT_OWNERSHIP_CONFLICT",
@@ -3753,7 +3770,7 @@ export async function saveTrajectory(
   // Current schema (Core TrajectoriesService): metrics_json / metadata_json /
   // reward_components_json. Prefer this so active/completed metrics are always
   // valid for strict Core readers that share the table.
-  const currentSchemaSql = `INSERT INTO trajectories (
+  const currentSchemaInsertSql = `INSERT INTO trajectories (
       id,
       agent_id,
       source,
@@ -3807,7 +3824,10 @@ export async function saveTrajectory(
       ${serializedRewardComponents},
       ${sqlQuote(createdAt)},
       ${sqlQuote(updatedAt)}
-    )
+    )`;
+  const currentSchemaSql = options.createOnly
+    ? `${currentSchemaInsertSql} ON CONFLICT (id) DO NOTHING RETURNING id`
+    : `${currentSchemaInsertSql}
     ON CONFLICT (id) DO UPDATE SET
       source = EXCLUDED.source,
       status = EXCLUDED.status,
@@ -3862,7 +3882,7 @@ export async function saveTrajectory(
 
   // Legacy Eliza schema (metadata TEXT + episode_length) when canonical
   // JSONB columns are missing on the adapter.
-  const legacySchemaSql = `INSERT INTO trajectories (
+  const legacySchemaInsertSql = `INSERT INTO trajectories (
       id,
       agent_id,
       source,
@@ -3908,7 +3928,10 @@ export async function saveTrajectory(
       ${sqlQuote(createdAt)},
       ${sqlQuote(updatedAt)},
       ${sqlNumber(trajectory.steps.length)}
-    )
+    )`;
+  const legacySchemaSql = options.createOnly
+    ? `${legacySchemaInsertSql} ON CONFLICT (id) DO NOTHING RETURNING id`
+    : `${legacySchemaInsertSql}
     ON CONFLICT (id) DO UPDATE SET
       source = EXCLUDED.source,
       status = EXCLUDED.status,
@@ -3964,6 +3987,7 @@ export async function saveTrajectory(
       {
         requireActiveExisting: options.requireActiveExisting === true,
         expectedUpdatedAt: options.expectedUpdatedAt,
+        createOnly: options.createOnly === true,
       },
     );
   } catch (currentSchemaError) {
@@ -3977,6 +4001,7 @@ export async function saveTrajectory(
         "TRAJECTORY_OWNER_CLOSED",
         "TRAJECTORY_WRITE_CONFLICT",
         "TRAJECTORY_PARENT_NOT_FOUND",
+        "TRAJECTORY_START_CONFLICT",
       ].includes(currentSchemaError.code)
     ) {
       throw currentSchemaError;
@@ -4004,6 +4029,7 @@ export async function saveTrajectory(
         {
           requireActiveExisting: options.requireActiveExisting === true,
           expectedUpdatedAt: options.expectedUpdatedAt,
+          createOnly: options.createOnly === true,
         },
       );
     } catch (legacySchemaError) {
@@ -4017,6 +4043,7 @@ export async function saveTrajectory(
           "TRAJECTORY_OWNER_CLOSED",
           "TRAJECTORY_WRITE_CONFLICT",
           "TRAJECTORY_PARENT_NOT_FOUND",
+          "TRAJECTORY_START_CONFLICT",
         ].includes(legacySchemaError.code)
       ) {
         throw legacySchemaError;
@@ -4044,6 +4071,7 @@ async function persistTrajectoryAndSteps(
   precondition: {
     requireActiveExisting: boolean;
     expectedUpdatedAt?: string;
+    createOnly: boolean;
   },
 ): Promise<void> {
   await executeRawSqlTransaction(runtime, async (execute) => {
@@ -4057,7 +4085,19 @@ async function persistTrajectoryAndSteps(
         runtime.agentId,
         true,
       );
-      await execute(parentUpsertSql);
+      const result = await execute(parentUpsertSql);
+      if (
+        precondition.createOnly &&
+        extractRequiredRows(result, {
+          operation: "create trajectory owner",
+          trajectoryId,
+        }).length !== 1
+      ) {
+        throw new ElizaError("Trajectory already has a creator", {
+          code: "TRAJECTORY_START_CONFLICT",
+          context: { trajectoryId },
+        });
+      }
     } else {
       const conflictPredicates = [
         `trajectories.id = ${sqlQuote(trajectoryId)}`,
