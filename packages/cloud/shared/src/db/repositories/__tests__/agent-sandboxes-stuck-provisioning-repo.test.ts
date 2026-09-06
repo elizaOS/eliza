@@ -34,6 +34,7 @@ import { organizations } from "../../schemas/organizations";
 import { usageRecords } from "../../schemas/usage-records";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
+import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 
 const [
   { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests },
@@ -201,6 +202,7 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
     await getPgliteClientForTests().exec(
       await readFile(
         new URL("../../migrations/0183_lifecycle_execution_fence.sql", import.meta.url),
