@@ -358,6 +358,7 @@ describe("VIEWS action ownership after planner selection", () => {
 
 	it("keeps non-owner read navigation available", async () => {
 		const { action, listViews } = makeAction(false);
+		listViews.mockResolvedValue([{ ...NOTES_VIEW, roleGate: undefined }]);
 		const runtime = makeRuntime(action);
 		const inbound = message("open the notes view");
 		expect(

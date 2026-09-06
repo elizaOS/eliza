@@ -295,6 +295,8 @@ describe("matchViewCommand — possessive read-questions stay with the planner",
 	// command. Regression: the possessive leg used to match unanchored, so the
 	// shortcut evaluator hijacked these and the user only ever saw the ack.
 	const readQuestions = [
+		"check my messages",
+		"revisa mi correo",
 		"what is on my calendar this week?",
 		"whats on my calendar this week?",
 		"do i have anything on my calendar today?",
@@ -320,8 +322,6 @@ describe("matchViewCommand — possessive read-questions stay with the planner",
 		["my settings now", "settings"],
 		["show me my calendar", "calendar"],
 		["open calendar", "calendar"],
-		["check my messages", "inbox"],
-		["revisa mi correo", "inbox"],
 		// anchoring must not reject common phrasings, tails, or trailing emoji
 		["my todo list", "todos"],
 		["my to-do list", "todos"],

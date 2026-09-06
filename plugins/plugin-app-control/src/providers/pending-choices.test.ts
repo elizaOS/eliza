@@ -216,6 +216,8 @@ describe("model-owned app-control choices", () => {
 
 	it("does not replace a model decision with an exact-token action dispatch", async () => {
 		const runtime = runtimeWith([pending("APP")]);
+		// This caller has app creation but no GUI navigation surface.
+		runtime.actions = runtime.actions.filter((action) => action.name === "APP");
 		const handler = {
 			processMessage: "RESPOND",
 			thought: "Ask about the current request",

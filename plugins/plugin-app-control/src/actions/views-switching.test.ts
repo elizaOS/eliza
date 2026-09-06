@@ -579,7 +579,7 @@ describe("view switching — VIEWS action resolver", () => {
 			);
 
 			expect(result?.success).toBe(false);
-			expect(result?.modelReplyRequired).toBeUndefined();
+			expect(result?.modelReplyRequired).toBe(true);
 			expect(result?.turnComplete).toBe(false);
 			expect(result?.values).not.toHaveProperty("completedActionDelivered");
 		});

@@ -366,14 +366,15 @@ export async function navigateToView(
 			return {
 				ok: true,
 				status: "accepted",
-				receiptStatus: malformedReceipt
-					? "malformed"
-					: delivery === "completed-action"
-						? confirmsCompletedActionDelivery(responseBody) &&
-							(!completedActionHandoffId || echoedCompletedActionHandoffId)
-							? "delivered"
-							: "not-delivered"
-						: "not-requested",
+				receiptStatus:
+					malformedReceipt && delivery === "completed-action"
+						? "malformed"
+						: delivery === "completed-action"
+							? confirmsCompletedActionDelivery(responseBody) &&
+								(!completedActionHandoffId || echoedCompletedActionHandoffId)
+								? "delivered"
+								: "not-delivered"
+							: "not-requested",
 				text: navigationEffectReceipt({
 					status: "accepted",
 					view,
@@ -619,7 +620,8 @@ export async function runViewsShow({
 			transcriptVisibility: "internal",
 			turnComplete: false,
 			text: JSON.stringify(navigation),
-			data: { navigation },
+			modelReplyRequired: true,
+			data: { navigation, navigationAttempted: false },
 		};
 	}
 	const subview =
