@@ -875,6 +875,34 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
                 )
             : null;
 
+        if (auditCase.slug === "cloud-api-keys") {
+          await expect(
+            page
+              .getByText("Smoke API key", { exact: true })
+              .filter({ visible: true }),
+          ).toBeVisible();
+          const title = page.getByRole("heading", {
+            name: "API Keys",
+            exact: true,
+          });
+          const titleText = await title.evaluate((element) => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            const rect = range.getBoundingClientRect();
+            return { right: rect.right };
+          });
+          const action = await page
+            .getByRole("button", { name: "Generate key", exact: true })
+            .boundingBox();
+          if (!action)
+            throw new Error("Generate key has no visible layout box");
+          expect(titleText.right).toBeLessThanOrEqual(action.x);
+          if (vp.name === "mobile") {
+            expect(action.width).toBeGreaterThanOrEqual(44);
+            expect(action.height).toBeGreaterThanOrEqual(44);
+          }
+        }
+
         if (auditCase.slug === "cloud-agents") {
           // The loading skeleton has readable column labels, so the generic
           // paint gate cannot prove the canonical list DTO was accepted.
