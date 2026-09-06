@@ -9,6 +9,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   type AcpJsonRpcMessage,
@@ -154,6 +155,11 @@ export class NativeAcpClient {
   private proc?: ChildProcessWithoutNullStreams;
   private nextId = 1;
   private readBuffer = "";
+  // Decodes stdout as a UTF-8 stream so a code point split across two pipe
+  // chunks is reassembled instead of becoming U+FFFD on both sides. A decoder
+  // (not stdout.setEncoding) so the transport works over any emitter that
+  // yields Buffers, including the test doubles.
+  private readonly stdoutDecoder = new StringDecoder("utf8");
   private stderrBuffer = "";
   private pending = new Map<JsonRpcId, PendingRequest>();
   private activePrompts = new Map<string, Promise<NativeAcpPromptResult>>();
@@ -523,8 +529,9 @@ export class NativeAcpClient {
     return this.proc;
   }
 
-  private handleStdout(chunk: Buffer): void {
-    this.readBuffer += chunk.toString("utf8");
+  private handleStdout(chunk: Buffer | string): void {
+    this.readBuffer +=
+      typeof chunk === "string" ? chunk : this.stdoutDecoder.write(chunk);
     let newline = this.readBuffer.indexOf("\n");
     while (newline >= 0) {
       const line = this.readBuffer.slice(0, newline).trim();
