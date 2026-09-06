@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { ElizaError } from "@elizaos/core";
-import { getVastProvider } from "./index";
+import { getProviderForModelWithFallback, getVastProvider } from "./index";
 import { resolveVastEndpointConfig, resolveVastFallbackModel } from "./vast-endpoints";
 
 const model = "vast/eliza-1-27b";
@@ -118,6 +118,7 @@ test("provider factory rejects malformed routing before dispatch and preserves v
   });
   const keys = [
     "VAST_ENDPOINTS_JSON",
+    "VAST_FALLBACK_MODEL_MAP_JSON",
     "VAST_BASE_URL",
     "VAST_API_KEY",
     "VAST_BASE_URL_ELIZA_1_27B",
@@ -129,11 +130,20 @@ test("provider factory rejects malformed routing before dispatch and preserves v
     process.env.VAST_ENDPOINTS_JSON = "{broken";
     process.env.VAST_BASE_URL = `http://127.0.0.1:${server.port}`;
     process.env.VAST_API_KEY = "synthetic-test-key";
-    expect(() => getVastProvider(model)).toThrow("VAST_ENDPOINTS_JSON");
-    expect(calls).toEqual([]);
+    for (const raw of ["{broken", "{placeholder broken", "{your_model broken"]) {
+      process.env.VAST_ENDPOINTS_JSON = raw;
+      expect(() => getVastProvider(model)).toThrow("VAST_ENDPOINTS_JSON");
+      expect(calls).toEqual([]);
+    }
     process.env.VAST_ENDPOINTS_JSON = JSON.stringify({
-      [model]: { url: process.env.VAST_BASE_URL, model: "local-model" },
+      [model]: { url: process.env.VAST_BASE_URL, model: "your_placeholder_model" },
     });
+    for (const raw of ["{placeholder broken", "{your_model broken"]) {
+      process.env.VAST_FALLBACK_MODEL_MAP_JSON = raw;
+      expect(() => getProviderForModelWithFallback(model)).toThrow("VAST_FALLBACK_MODEL_MAP_JSON");
+      expect(calls).toEqual([]);
+    }
+    delete process.env.VAST_FALLBACK_MODEL_MAP_JSON;
     const messages = [{ role: "user" as const, content: "Complete routing request payload" }];
     const response = await getVastProvider(model).chatCompletions({
       model,
@@ -144,7 +154,10 @@ test("provider factory rejects malformed routing before dispatch and preserves v
       choices: [{ message: { role: "assistant", content: "local receipt" } }],
     });
     expect(calls).toEqual([
-      { path: "/v1/chat/completions", body: { model: "local-model", messages, stream: false } },
+      {
+        path: "/v1/chat/completions",
+        body: { model: "your_placeholder_model", messages, stream: false },
+      },
     ]);
   } finally {
     keys.forEach((key, index) => {
