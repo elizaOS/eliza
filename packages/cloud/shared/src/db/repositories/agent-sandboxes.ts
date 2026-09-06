@@ -3,6 +3,7 @@
  * shared database boundary. Warm-pool capacity and claim operations share one
  * eligibility predicate so scheduling never counts a row it cannot transfer.
  */
+
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import {
@@ -90,6 +91,7 @@ import {
   type AgentPaymentResumeExecutionAuthority,
   lockPaymentResumeProviderAuthorityInTransaction,
 } from "./agent-compute-stop-intents";
+import { servingDeletionAuthority } from "./agent-serving-placement";
 
 export type {
   AgentBackupSnapshotType,
@@ -3061,8 +3063,22 @@ export class AgentSandboxesRepository {
           id: agentSandboxes.id,
           lifecycleRevision: agentSandboxes.lifecycle_revision,
           retention: agentSandboxes.local_state_retention,
+          servingPlacement: agentSandboxes.serving_placement,
+          sandboxId: agentSandboxes.sandbox_id,
+          containerName: agentSandboxes.container_name,
+          nodeId: agentSandboxes.node_id,
         });
       if (!claimed) return { outcome: "not-owned", lifecycleRevision: null };
+      const captured =
+        claimed.retention ??
+        (claimed.servingPlacement
+          ? servingDeletionAuthority(claimed.servingPlacement, {
+              agentId: claimed.id,
+              nodeId: claimed.nodeId,
+              sandboxId: claimed.sandboxId,
+              containerName: claimed.containerName,
+            })
+          : null);
 
       const decremented = await tx
         .update(dockerNodes)
@@ -3076,14 +3092,14 @@ export class AgentSandboxesRepository {
             gt(dockerNodes.allocated_count, 0),
             // The logical node ID can be reused between deletion admission
             // and provider completion. Spend only the captured host's counter.
-            claimed.retention
+            captured
               ? and(
-                  eq(dockerNodes.id, claimed.retention.nodeRecordId),
-                  eq(dockerNodes.node_id, claimed.retention.nodeId),
-                  eq(dockerNodes.hostname, claimed.retention.hostname),
-                  eq(dockerNodes.ssh_port, claimed.retention.sshPort),
-                  eq(dockerNodes.ssh_user, claimed.retention.sshUser),
-                  eq(dockerNodes.host_key_fingerprint, claimed.retention.hostKeyFingerprint),
+                  eq(dockerNodes.id, captured.nodeRecordId),
+                  eq(dockerNodes.node_id, captured.nodeId),
+                  eq(dockerNodes.hostname, captured.hostname),
+                  eq(dockerNodes.ssh_port, captured.sshPort),
+                  eq(dockerNodes.ssh_user, captured.sshUser),
+                  eq(dockerNodes.host_key_fingerprint, captured.hostKeyFingerprint),
                 )
               : undefined,
           ),

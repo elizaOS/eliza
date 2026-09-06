@@ -1027,9 +1027,20 @@ test.each(["current", "replacement-node", "changed-ssh"] as const)(
   },
 );
 
-test.each(["captured", "recreated", "retargeted"] as const)(
-  "retained allocation release never decrements a different physical node (%s)",
-  async (scenario) => {
+test.each([
+  "captured",
+  "recreated",
+  "retargeted",
+  "serving-captured",
+  "serving-recreated",
+  "serving-retargeted",
+  "serving-incomplete",
+  "serving-mismatch",
+] as const)(
+  "captured allocation release preserves physical host authority (%s)",
+  async (sourceScenario) => {
+    const serving = sourceScenario.startsWith("serving-");
+    const scenario = sourceScenario.replace("serving-", "");
     const { authority, captured } = await seed();
     const deletionAttemptId = crypto.randomUUID();
     const [deleting] = await dbWrite
@@ -1039,7 +1050,25 @@ test.each(["captured", "recreated", "retargeted"] as const)(
         deletion_attempt_id: deletionAttemptId,
         deletion_started_at: new Date(),
         deletion_allocation_counted: true,
-        local_state_retention: { ...captured, state: "stopped" },
+        local_state_retention: serving ? null : { ...captured, state: "stopped" },
+        serving_placement: serving
+          ? {
+              version: 1,
+              volumePath: `/data/agents/${authority.agentId}`,
+              locator: {
+                sandboxId: captured.containerName,
+                containerName: captured.containerName,
+                containerId: captured.containerId,
+                nodeId: captured.nodeId,
+                nodeRecordId: captured.nodeRecordId,
+                nodeHostname: captured.hostname,
+                nodeSshPort: captured.sshPort,
+                nodeSshUser: captured.sshUser,
+                nodeHostKeyFingerprint:
+                  scenario === "incomplete" ? null : captured.hostKeyFingerprint,
+              },
+            }
+          : null,
       })
       .where(eq(agentSandboxes.id, authority.agentId))
       .returning();
@@ -1052,6 +1081,37 @@ test.each(["captured", "recreated", "retargeted"] as const)(
       await dbWrite.execute(
         sql`UPDATE docker_nodes SET hostname = '192.0.2.99', host_key_fingerprint = 'SHA256:other' WHERE node_id = ${captured.nodeId}`,
       );
+    if (scenario === "mismatch")
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ container_name: "replacement-container" })
+        .where(eq(agentSandboxes.id, authority.agentId));
+    if (scenario === "incomplete" || scenario === "mismatch") {
+      const [before] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, authority.agentId));
+      await expect(
+        agentSandboxesRepository.tryReleaseDeletionAllocationForCommit(
+          authority.agentId,
+          authority.organizationId,
+          deletionAttemptId,
+          captured.nodeId,
+          before.lifecycle_revision,
+        ),
+      ).rejects.toThrow("Serving deletion placement differs from its captured authority");
+      const [after] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, authority.agentId));
+      expect(after.deletion_allocation_counted).toBe(true);
+      expect(after.lifecycle_revision).toBe(before.lifecycle_revision);
+      const count = await dbWrite.execute<{ allocated_count: number }>(
+        sql`SELECT allocated_count FROM docker_nodes WHERE node_id = ${captured.nodeId}`,
+      );
+      expect(count.rows[0].allocated_count).toBe(3);
+      return;
+    }
     const result = await agentSandboxesRepository.tryReleaseDeletionAllocationForCommit(
       authority.agentId,
       authority.organizationId,

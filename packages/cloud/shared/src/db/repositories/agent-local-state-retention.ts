@@ -249,7 +249,16 @@ export async function admitLocalRetentionInTransaction(
 /** Publication must not follow a mutable node mapping away from retained state. */
 export async function assertRetainedNodePublicationAuthorityInTransaction(
   tx: DbTransaction,
-  retention: AgentLocalStateRetention,
+  retention: Pick<
+    AgentLocalStateRetention,
+    | "agentId"
+    | "nodeRecordId"
+    | "nodeId"
+    | "hostname"
+    | "sshPort"
+    | "sshUser"
+    | "hostKeyFingerprint"
+  >,
 ): Promise<void> {
   const [node] = await tx
     .select({ id: dockerNodes.id })

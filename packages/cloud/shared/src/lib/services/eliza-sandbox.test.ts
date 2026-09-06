@@ -6342,155 +6342,200 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     }
   });
 
-  test.each(["ordinary", "retained", "changed-placement", "missing-node"] as const)(
-    "prepareAgentDelete enforces captured deletion authority (%s)",
-    async (scenario) => {
-      const svc = await makeSvc();
-      const live: AgentSandbox = {
-        ...customSandbox(),
-        id: AGENT,
-        organization_id: ORG,
-        last_heartbeat_at: null,
+  test.each([
+    "ordinary",
+    "retained",
+    "changed-placement",
+    "missing-node",
+    "serving",
+    "serving-changed",
+    "serving-missing",
+    "serving-incomplete",
+  ] as const)("prepareAgentDelete enforces captured deletion authority (%s)", async (scenario) => {
+    const svc = await makeSvc();
+    const live: AgentSandbox = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      last_heartbeat_at: null,
+    };
+    if (scenario !== "ordinary") {
+      live.sandbox_id = "agent-retained-delete";
+      live.container_name = live.sandbox_id;
+      live.node_id = "retained-node";
+      live.local_state_retention = {
+        version: 1,
+        stopIntentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        nodeId: "retained-node",
+        nodeRecordId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        containerId: "a".repeat(64),
+        containerName: live.sandbox_id,
+        agentId: AGENT,
+        hostname: "192.0.2.20",
+        sshPort: 2200,
+        sshUser: "retained-user",
+        hostKeyFingerprint: "SHA256:retained-key",
+        capturedAt: "2026-09-06T00:00:00.000Z",
+        bridgeUrl: live.bridge_url,
+        healthUrl: live.health_url,
+        state: "resumed",
       };
-      if (scenario !== "ordinary") {
-        live.sandbox_id = "agent-retained-delete";
-        live.container_name = live.sandbox_id;
-        live.node_id = "retained-node";
-        live.local_state_retention = {
+      if (scenario.startsWith("serving")) {
+        const captured = live.local_state_retention;
+        live.serving_placement = {
           version: 1,
-          stopIntentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          nodeId: "retained-node",
-          nodeRecordId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-          containerId: "a".repeat(64),
-          containerName: live.sandbox_id,
-          agentId: AGENT,
-          hostname: "192.0.2.20",
-          sshPort: 2200,
-          sshUser: "retained-user",
-          hostKeyFingerprint: "SHA256:retained-key",
-          capturedAt: "2026-09-06T00:00:00.000Z",
-          bridgeUrl: live.bridge_url,
-          healthUrl: live.health_url,
-          state: "resumed",
+          volumePath: `/data/agents/${AGENT}`,
+          locator: {
+            sandboxId: captured.containerName,
+            containerName: captured.containerName,
+            containerId: captured.containerId,
+            nodeId: captured.nodeId,
+            nodeRecordId: captured.nodeRecordId,
+            nodeHostname: captured.hostname,
+            nodeSshPort: captured.sshPort,
+            nodeSshUser: captured.sshUser,
+            nodeHostKeyFingerprint:
+              scenario === "serving-incomplete" ? null : captured.hostKeyFingerprint,
+          },
         };
-        if (scenario === "changed-placement") live.node_id = "replacement-node";
+        live.local_state_retention = null;
       }
-      const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
-      const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(live);
-      const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
-      const activeReplacement = spyOn(svc, "hasActiveReplacementJobTx").mockResolvedValue(false);
-      // An authorized live-row delete must carry a current-generation capture
-      // (#18517); persistence itself is covered by the dedicated capture tests.
-      const persist = spyOn(
-        svc as unknown as {
-          persistSnapshotWithinTransaction: (
-            ...args: unknown[]
-          ) => Promise<{ backupId: string; lifecycleRevision: number }>;
-        },
-        "persistSnapshotWithinTransaction",
-      ).mockResolvedValue({
-        backupId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-        lifecycleRevision: 2,
-      });
-      const update = mock(() => ({
-        set: mock(() => ({
-          where: mock(() => ({
-            returning: mock(async () => [
-              {
-                id: AGENT,
-                deletionAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                deletionStartedAt: new Date("2026-06-04T12:00:00.000Z"),
-                lifecycleRevision: 1,
-              },
-            ]),
-          })),
+      if (scenario === "changed-placement" || scenario === "serving-changed")
+        live.node_id = "replacement-node";
+    }
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(svc, "hasActiveReplacementJobTx").mockResolvedValue(false);
+    // An authorized live-row delete must carry a current-generation capture
+    // (#18517); persistence itself is covered by the dedicated capture tests.
+    const persist = spyOn(
+      svc as unknown as {
+        persistSnapshotWithinTransaction: (
+          ...args: unknown[]
+        ) => Promise<{ backupId: string; lifecycleRevision: number }>;
+      },
+      "persistSnapshotWithinTransaction",
+    ).mockResolvedValue({
+      backupId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      lifecycleRevision: 2,
+    });
+    const update = mock(() => ({
+      set: mock(() => ({
+        where: mock(() => ({
+          returning: mock(async () => [
+            {
+              id: AGENT,
+              deletionAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              deletionStartedAt: new Date("2026-06-04T12:00:00.000Z"),
+              lifecycleRevision: 1,
+            },
+          ]),
         })),
-      }));
-      upgradeTransactionImpl = async (fn) =>
-        fn({
-          execute: async () => ({
-            rows: [
-              {
-                hostname: "dedicated-node.example.test",
-                ssh_port: 2222,
-                ssh_user: "eliza",
-                host_key_fingerprint: "SHA256:test",
-              },
-            ],
-          }),
-          update,
-          select: () => ({
-            from: () => ({
-              where: () => ({
-                for: () => ({
-                  limit: async () =>
-                    scenario === "missing-node"
-                      ? []
-                      : [{ id: live.local_state_retention?.nodeRecordId }],
-                }),
+      })),
+    }));
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => ({
+          rows: [
+            {
+              hostname: "dedicated-node.example.test",
+              ssh_port: 2222,
+              ssh_user: "eliza",
+              host_key_fingerprint: "SHA256:test",
+            },
+          ],
+        }),
+        update,
+        select: () => ({
+          from: () => ({
+            where: () => ({
+              for: () => ({
+                limit: async () =>
+                  scenario === "missing-node" || scenario === "serving-missing"
+                    ? []
+                    : [
+                        {
+                          id:
+                            live.local_state_retention?.nodeRecordId ??
+                            live.serving_placement?.locator.nodeRecordId,
+                        },
+                      ],
               }),
             }),
           }),
-        });
+        }),
+      });
 
-      try {
-        const preparation = (
-          svc as unknown as {
-            prepareAgentDelete: (...args: unknown[]) => Promise<unknown>;
-          }
-        ).prepareAgentDelete(AGENT, ORG, "user_request", {
-          snapshot: {
-            stateData: { tables: {} },
-            sizeBytes: 1,
-            bridgeUrl: live.bridge_url,
-          },
-          captureAuthority: live,
-          captureWaiverGeneration: null,
-          captureWaiverAlreadyPersisted: false,
-          existingBackup: null,
-        });
-        if (scenario === "changed-placement" || scenario === "missing-node") {
-          await expect(preparation).rejects.toThrow(
-            scenario === "changed-placement"
-              ? "Retained deletion placement differs from its captured authority"
-              : "Retained node authority changed before publication",
-          );
-          return;
+    try {
+      const preparation = (
+        svc as unknown as {
+          prepareAgentDelete: (...args: unknown[]) => Promise<unknown>;
         }
-        await expect(preparation).resolves.toMatchObject({
-          ok: true,
-          deletionLocator: {
-            sandboxId: live.sandbox_id,
-            agentId: live.id,
-            nodeId: live.node_id,
-            containerName: live.container_name,
-            ...(scenario === "retained"
-              ? {
-                  containerId: live.local_state_retention!.containerId,
-                  hostname: "192.0.2.20",
-                  sshPort: 2200,
-                  sshUser: "retained-user",
-                  hostKeyFingerprint: "SHA256:retained-key",
-                }
-              : {
-                  hostname: "dedicated-node.example.test",
-                  sshPort: 2222,
-                  sshUser: "eliza",
-                  hostKeyFingerprint: "SHA256:test",
-                }),
-          },
-        });
-        expect(update).toHaveBeenCalled();
-      } finally {
-        upgradeTransactionImpl = null;
-        lockLifecycle.mockRestore();
-        getForMutation.mockRestore();
-        activeProvision.mockRestore();
-        activeReplacement.mockRestore();
-        persist.mockRestore();
+      ).prepareAgentDelete(AGENT, ORG, "user_request", {
+        snapshot: {
+          stateData: { tables: {} },
+          sizeBytes: 1,
+          bridgeUrl: live.bridge_url,
+        },
+        captureAuthority: live,
+        captureWaiverGeneration: null,
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      });
+      if (scenario === "serving-changed" || scenario === "serving-incomplete") {
+        await expect(preparation).rejects.toThrow(
+          "Serving deletion placement differs from its captured authority",
+        );
+        return;
       }
-    },
-  );
+      if (
+        scenario === "changed-placement" ||
+        scenario === "missing-node" ||
+        scenario === "serving-missing"
+      ) {
+        await expect(preparation).rejects.toThrow(
+          scenario === "changed-placement"
+            ? "Retained deletion placement differs from its captured authority"
+            : "Retained node authority changed before publication",
+        );
+        return;
+      }
+      await expect(preparation).resolves.toMatchObject({
+        ok: true,
+        deletionLocator: {
+          sandboxId: live.sandbox_id,
+          agentId: live.id,
+          nodeId: live.node_id,
+          containerName: live.container_name,
+          ...(scenario === "retained" || scenario === "serving"
+            ? {
+                containerId:
+                  live.local_state_retention?.containerId ??
+                  live.serving_placement!.locator.containerId,
+                hostname: "192.0.2.20",
+                sshPort: 2200,
+                sshUser: "retained-user",
+                hostKeyFingerprint: "SHA256:retained-key",
+              }
+            : {
+                hostname: "dedicated-node.example.test",
+                sshPort: 2222,
+                sshUser: "eliza",
+                hostKeyFingerprint: "SHA256:test",
+              }),
+        },
+      });
+      expect(update).toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+      persist.mockRestore();
+    }
+  });
 
   test("linked character cleanup waits until the reconciliation tombstone is removed", async () => {
     const svc = await makeSvc();
