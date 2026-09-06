@@ -38,6 +38,16 @@ bun run dev          # wrangler dev (writes .dev.vars from repo .env/.env.local)
 
 `.dev.vars.example` is a reference template; `.dev.vars` and `.dev.vars.example` are both gitignored. Real secrets belong in the repo `.env.local`. Talking to live services (Railway Postgres, R2, Stripe, providers) requires the corresponding bindings/secrets.
 
+## Verify deployment routing
+
+From the repository root, verify that the development API answers with its own environment:
+
+```bash
+node packages/cloud/scripts/verify-environment-routing-cli.mjs --environment development --require-beacon
+```
+
+The expected endpoint is `api-development.eliza.app`, matching the development infrastructure API origin. The check fails until that endpoint is deployed and reachable. Use `--environment staging`, `--environment production`, or `--environment all` for the other declared routes. A response from another tier always fails, including when unreachable origins are temporarily permitted during a rollout.
+
 ## Scripts
 
 - `bun run dev` — local Worker via wrangler
