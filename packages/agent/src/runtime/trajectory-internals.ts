@@ -2233,7 +2233,11 @@ export function mergeMetadata(
   for (const [key, value] of Object.entries(incoming)) {
     // Ownership comes from the writer that created the row, never metadata
     // supplied by a later start/annotation using an existing trajectory ID.
-    if (key === "runtimeInstanceId" || key === "runtimeTrajectoryOwnerId")
+    if (
+      key === "runtimeInstanceId" ||
+      key === "runtimeTrajectoryOwnerId" ||
+      key === "runtimeExecutionOwnerId"
+    )
       continue;
     if (value !== undefined) merged[key] = value;
   }

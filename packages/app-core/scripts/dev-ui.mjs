@@ -38,6 +38,7 @@ import {
   createApiHealthWatchdog,
   createParentExitGuard,
 } from "./lib/dev-process-lifecycle.mjs";
+import { createDevTrajectoryRecoveryCoordinator } from "./lib/dev-trajectory-recovery.mjs";
 import { isRedundantApiListenLine } from "./lib/dev-ui-log-filter.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
 import { resolveSupervisedViteCommand } from "./lib/dev-ui-vite.mjs";
@@ -1180,6 +1181,9 @@ if (uiOnly) {
   // re-fires a cloud TTS call and fully reloads the native whisper model on
   // every edit, flooding the dev log.
   let apiLaunchCount = 0;
+  const trajectoryRecovery = createDevTrajectoryRecoveryCoordinator({
+    warn: (message) => console.error(`  ${green(logPrefix)} ${message}`),
+  });
   const apiSupervisor = createApiSupervisor({
     spawnChild: () => {
       const apiProcessSpawnedAtMs = String(Date.now());
@@ -1190,12 +1194,15 @@ if (uiOnly) {
           ...apiSpawnEnv,
           [API_PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
           [PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
+          ELIZA_DEV_TRAJECTORY_RECOVERY: "1",
           ...(isHotReload ? { ELIZA_DEV_IS_HOT_RELOAD: "1" } : {}),
         },
-        stdio: ["inherit", "pipe", "pipe"],
+        stdio: ["inherit", "pipe", "pipe", "ipc"],
+        serialization: "json",
       });
     },
     onSpawn: (child) => {
+      trajectoryRecovery.attach(child);
       apiProcess = child;
       // The watchdog outlives API children. Every replacement generation is
       // legitimately unhealthy while booting, whether it came from a source

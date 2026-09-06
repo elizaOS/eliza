@@ -35,6 +35,7 @@ import type {
   TrajectoryStatus,
   TrajectoryStepKind,
 } from "../types/trajectory.ts";
+import { getDevTrajectoryExecutionOwnerId } from "./dev-trajectory-recovery.ts";
 import {
   exportPersistedTrajectories,
   persistedTrajectoryToDetailRecord,
@@ -157,11 +158,14 @@ async function saveNewOwnedTrajectory(
   trajectory: PersistedTrajectory,
   options: { changedStepIds: string[]; updateLegacySnapshot?: boolean },
 ): Promise<void> {
+  const executionOwnerId = await getDevTrajectoryExecutionOwnerId(runtime);
   const token = randomUUID();
+  delete trajectory.metadata.runtimeExecutionOwnerId;
   trajectory.metadata = {
     ...trajectory.metadata,
     runtimeInstanceId: runtime.runtimeInstanceId,
     runtimeTrajectoryOwnerId: token,
+    ...(executionOwnerId ? { runtimeExecutionOwnerId: executionOwnerId } : {}),
   };
   let owned = ownedTrajectoryStarts.get(runtime as object);
   if (!owned) {
@@ -187,6 +191,27 @@ async function settleOwnedTrajectoryStart(
   trajectoryId: string,
   token: string,
 ): Promise<void> {
+  await settleTrajectoryStart(runtime, trajectoryId, token);
+  // A rolled-back transaction retains its token for an explicit stop retry.
+  releaseOwnedTrajectoryStart(runtime, trajectoryId, token);
+}
+
+/** @internal Only the dev recovery coordinator supplies confirmed-exit owners. */
+export async function settleExitedTrajectoryForDevRecovery(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  token: string,
+  executionOwnerId: string,
+): Promise<void> {
+  await settleTrajectoryStart(runtime, trajectoryId, token, executionOwnerId);
+}
+
+async function settleTrajectoryStart(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  token: string,
+  executionOwnerId?: string,
+): Promise<void> {
   await executeRawSqlTransaction(runtime, async (execute) => {
     const result = await execute(
       `SELECT * FROM trajectories WHERE id = ${sqlQuote(trajectoryId)}
@@ -202,10 +227,24 @@ async function settleOwnedTrajectoryStart(
     const trajectory = parsePersistedTrajectoryRow(row, trajectoryId);
     if (
       trajectory.status !== "active" ||
-      trajectory.metadata.runtimeTrajectoryOwnerId !== token ||
-      trajectory.metadata.runtimeInstanceId !== runtime.runtimeInstanceId
+      trajectory.metadata.runtimeInstanceId !== runtime.runtimeInstanceId ||
+      (executionOwnerId !== undefined &&
+        trajectory.metadata.runtimeExecutionOwnerId !== executionOwnerId)
     )
       return;
+
+    if (trajectory.metadata.runtimeTrajectoryOwnerId !== token) {
+      if (executionOwnerId !== undefined) {
+        throw new ElizaError(
+          "Exited execution trajectory changed its row ownership token",
+          {
+            code: "DEV_TRAJECTORY_RECOVERY_REJECTED",
+            context: { trajectoryId },
+          },
+        );
+      }
+      return;
+    }
 
     const now = Date.now();
     const endTime = Math.max(now, trajectory.startTime);
@@ -220,8 +259,6 @@ async function settleOwnedTrajectoryStart(
        AND status = 'active'`,
     );
   });
-  // A rolled-back transaction retains its token for an explicit stop retry.
-  releaseOwnedTrajectoryStart(runtime, trajectoryId, token);
 }
 
 function stopTrajectoryBridge(runtime: IAgentRuntime): Promise<void> {

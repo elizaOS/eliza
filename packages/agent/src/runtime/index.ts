@@ -10,6 +10,13 @@ export * from "./advanced-capabilities-config.ts";
 export * from "./agent-event-service.ts";
 export * from "./boot-hooks.ts";
 export * from "./boot-pipeline.ts";
+export {
+  type DevTrajectoryRecoveryPreparation,
+  type DevTrajectoryRecoveryRegistration,
+  type DevTrajectoryRecoveryTransport,
+  prepareDevTrajectoryRecovery,
+} from "./dev-trajectory-recovery.ts";
+export * from "./dev-trajectory-recovery-protocol.ts";
 export * from "./eliza.ts";
 export * from "./eliza-plugin.ts";
 export * from "./first-run-names.ts";
