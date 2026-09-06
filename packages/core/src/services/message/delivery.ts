@@ -1,5 +1,9 @@
 /** Wraps visible message callbacks with shared voice rendering, duplicate-delivery suppression, and egress policy. */
 
+import { resolveCallbackActionName } from "./action-identifiers.js";
+
+export { resolveCallbackActionName } from "./action-identifiers.js";
+
 import { v4 } from "uuid";
 import { getEffectDeliveryBinding } from "../../runtime/effect-delivery";
 import { containsExternalEnvelopeMaterial } from "../../security/external-content";
@@ -358,24 +362,6 @@ export function wrapSingleTurnVisibleCallback(
 
 	return async (response, actionName) =>
 		deliver(await voiceActionReply(response, actionName), actionName);
-}
-
-export function resolveCallbackActionName(
-	response: Content,
-	actionName?: string,
-): string | undefined {
-	if (typeof actionName === "string" && actionName.trim()) {
-		return actionName.trim();
-	}
-	const action = response.action;
-	if (typeof action === "string" && action.trim()) {
-		return action.trim();
-	}
-	const actions = response.actions;
-	if (Array.isArray(actions)) {
-		return actions.find((candidate) => candidate.trim().length > 0)?.trim();
-	}
-	return undefined;
 }
 
 export function actionCallbackVoiceRewriteEnabled(

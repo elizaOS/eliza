@@ -16,6 +16,7 @@ import {
   sqlQuote,
   sqlText,
   type TransactionalDb,
+  toText,
   withTransaction,
 } from "../sql.js";
 import { isoNow } from "./record-values.js";

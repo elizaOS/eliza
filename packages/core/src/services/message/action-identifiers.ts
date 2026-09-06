@@ -1,6 +1,7 @@
 /** Resolves planner action identifiers and inline parameters against the registered runtime action catalog. */
 
 import type { Action } from "../../types/components";
+import type { Content } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
@@ -370,4 +371,22 @@ export function resolveRuntimeAction(
 	}
 
 	return actionLookup.get(normalized);
+}
+
+export function resolveCallbackActionName(
+	response: Content,
+	actionName?: string,
+): string | undefined {
+	if (typeof actionName === "string" && actionName.trim()) {
+		return actionName.trim();
+	}
+	const action = response.action;
+	if (typeof action === "string" && action.trim()) {
+		return action.trim();
+	}
+	const actions = response.actions;
+	if (Array.isArray(actions)) {
+		return actions.find((candidate) => candidate.trim().length > 0)?.trim();
+	}
+	return undefined;
 }

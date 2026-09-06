@@ -25,7 +25,7 @@ import type { Memory } from "../../types/memory";
 import type { Content } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
-import { resolveCallbackActionName } from "./delivery.js";
+import { resolveCallbackActionName } from "./action-identifiers.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {
 	replyClaimsCompletedSideEffect,

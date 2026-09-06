@@ -1,6 +1,7 @@
 /** Coordinates Stage 1 decisions, planner execution, visible reply resolution, and ordered trajectory finalization for a message turn. */
 
 import { TurnAbortedError } from "../../runtime/turn-controller";
+import { getStreamingContext } from "../../streaming-context";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import { generateStage1Decision } from "./stage1-decision.js";
 
