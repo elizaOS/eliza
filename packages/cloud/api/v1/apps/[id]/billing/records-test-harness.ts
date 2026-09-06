@@ -338,7 +338,6 @@ async function setupRoutes() {
   const { runWithCloudBindingsAsync } = await import(
     "@/lib/runtime/cloud-bindings"
   );
-  const { default: resolveAccount } = await import("./accounts/resolve/route");
   const { default: administrators } = await import(
     "./accounts/[accountId]/administrators/route"
   );
@@ -358,7 +357,6 @@ async function setupRoutes() {
     "/api/v1/billing/application-slots/:slotKey",
     applicationProduct,
   );
-  routes.route("/api/v1/apps/:id/billing/accounts/resolve", resolveAccount);
   routes.get("/api/v1/apps/:id/billing/catalog", getBillingCatalog);
   routes.get(path, getBillingSnapshot);
   routes.get(`${path}/seats`, handlers.listBillingSeats);
@@ -371,7 +369,11 @@ async function setupRoutes() {
 export async function sdk(
   identity: BuyerBillingIdentity,
   live = false,
-  options: { clientId?: string; omitCsrfMarker?: boolean } = {},
+  options: {
+    clientId?: string;
+    omitCsrfMarker?: boolean;
+    productionRouteTree?: boolean;
+  } = {},
 ) {
   const session = await import("@/lib/auth/playwright-test-session");
   const token = session.createPlaywrightTestSessionToken(
@@ -379,6 +381,21 @@ export async function sdk(
     org,
     env,
   );
+  let selectedRoutes = routes;
+  if (options.productionRouteTree) {
+    const { billingRoute } = await import("./_handlers");
+    const { runWithCloudBindingsAsync } = await import(
+      "@/lib/runtime/cloud-bindings"
+    );
+    const { mountShardRoutes } = await import(
+      "../../../../src/_router.generated"
+    );
+    selectedRoutes = billingRoute();
+    selectedRoutes.use("*", (c, next) =>
+      runWithCloudBindingsAsync(c.env, next),
+    );
+    await mountShardRoutes(selectedRoutes, "v1/apps");
+  }
   const fetchImpl = Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(init?.headers);
@@ -386,7 +403,7 @@ export async function sdk(
         headers.delete("X-Eliza-Request");
         headers.set("Content-Type", "text/plain");
       }
-      return routes.request(
+      return selectedRoutes.request(
         input,
         { ...init, headers },
         {

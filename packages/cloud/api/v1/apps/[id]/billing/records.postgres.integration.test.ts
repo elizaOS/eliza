@@ -28,9 +28,9 @@ describe.skipIf(!postgresUrl)(
     beforeAll(setupRecordsTest);
     afterAll(closeRecordsTest);
 
-    test("SDK account resolution traverses the mounted route and retains one account on retry", async () => {
+    test("SDK account resolution traverses the production route tree and retains one account on retry", async () => {
       const { identity } = await buyer();
-      const client = await sdk(identity);
+      const client = await sdk(identity, false, { productionRouteTree: true });
       const input = {
         externalReference: null,
         displayName: "Personal app workspace",

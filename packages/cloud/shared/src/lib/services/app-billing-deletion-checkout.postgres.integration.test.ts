@@ -92,6 +92,7 @@ describe.skipIf(!postgresUrl)("departing purchaser Checkout cleanup", () => {
       "0373_subscription_authority",
       "0429_app_billing_applied_revision",
       "0374_subscription_funding_transaction_uniqueness",
+      "0379_subscription_account_authority",
       "0380_app_billing_catalog",
       "0381_app_billing_scope_records",
       "0382_app_billing_registration_constraints",
