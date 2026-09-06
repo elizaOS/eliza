@@ -5,8 +5,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   captureDockerRetainedContainer,
-  deleteDockerRetainedContainer,
   checkDockerRetainedContainerHealth,
+  deleteDockerRetainedContainer,
   resumeDockerRetainedContainer,
   stopDockerRetainingState,
 } from "./docker-retained-stop";

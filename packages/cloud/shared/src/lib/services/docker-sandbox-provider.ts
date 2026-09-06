@@ -60,8 +60,8 @@ import {
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
   captureDockerRetainedContainer,
-  deleteDockerRetainedContainer,
   checkDockerRetainedContainerHealth,
+  deleteDockerRetainedContainer,
   resumeDockerRetainedContainer,
   stopDockerRetainingState,
 } from "./docker-retained-stop";
