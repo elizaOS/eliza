@@ -47,6 +47,7 @@ export * from "./app-billing-deletion-dispositions";
 export * from "./app-billing-delivery";
 export * from "./app-billing-memberships";
 export * from "./app-billing-quotes";
+export * from "./app-billing-refund-observations";
 export * from "./app-billing-seat-mutations";
 export * from "./app-billing-verifications";
 export * from "./app-config";
