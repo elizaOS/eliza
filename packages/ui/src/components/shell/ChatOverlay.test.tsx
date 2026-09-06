@@ -2304,6 +2304,19 @@ describe("ChatOverlay", () => {
     );
   });
 
+  it("clears the view search when sending the draft to the agent", () => {
+    const onQuery = vi.fn();
+    setViewChatBinding({ onQuery });
+    const controller = makeController({ messages: [] });
+    render(<ChatOverlay controller={controller} />);
+    fireEvent.change(screen.getByLabelText("message"), {
+      target: { value: "Save a document here" },
+    });
+    fireEvent.click(screen.getByLabelText("send"));
+    expect(controller.send).toHaveBeenCalledWith("Save a document here");
+    expect(onQuery).toHaveBeenLastCalledWith("");
+  });
+
   it("a view-binding does NOT claim an image-bearing turn (images must not be lost)", async () => {
     // A focused cockpit session registers a text-only onSubmit binding. A turn
     // that also carries an image must fall through to the host agent (which can

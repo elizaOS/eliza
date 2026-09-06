@@ -207,6 +207,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     // DOCUMENT (core documents feature) is the CRUD twin of the view's
     // upload/delete controls (#14369 guard mapping).
     relatedActions: ["OWNER_DOCUMENTS", "DOCUMENT"],
+    surface: { capabilities: ["agent-surface"] },
     anticipatoryIntent:
       "Offer to triage the newest ingested attachments/documents — summarize, tag, or file them — grounded in the recent-attachment counts.",
     visibleInManager: true,

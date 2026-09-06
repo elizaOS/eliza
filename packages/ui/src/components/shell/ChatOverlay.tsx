@@ -2637,6 +2637,8 @@ export function ChatOverlay({
       if (trimmed && images.length === 0 && tryHandleTutorialText(trimmed)) {
         resetMessageHistory();
         clearChatDraft(activeConversationIdRef.current);
+        // The submitted text is no longer a live view filter.
+        viewChatBinding?.onQuery?.("");
         setDraft("");
         setSlashDismissed(false);
         setPendingImages([]);
@@ -2651,6 +2653,7 @@ export function ChatOverlay({
       // (not just via the debounced persist of the now-empty draft) so a reload
       // in the debounce window can't restore an already-sent draft.
       clearChatDraft(activeConversationIdRef.current);
+      viewChatBinding?.onQuery?.("");
       // A bound view (e.g. the coding cockpit when a session is focused) can
       // claim the send to drive its OWN target instead of the host agent. If it
       // consumes the text, clear the composer and stop — do not fall through to

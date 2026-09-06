@@ -395,6 +395,8 @@ function KnowledgeDocumentsViewForAuthority({
 }: KnowledgeDocumentsViewProps & { authority: string }) {
   const t = useAppSelector((s) => s.t);
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const chatSending = useAppSelector((s) => s.chatSending);
+  const wasChatSending = useRef(chatSending);
   const authorityRef = useRef(authority);
   authorityRef.current = authority;
   const runCapabilityWarmup = useAbortableCapabilityWarmup();
@@ -626,6 +628,14 @@ function KnowledgeDocumentsViewForAuthority({
       setLoading(false);
     });
   }, [documentsCacheKey, loadData]);
+  // Agent document actions write through the runtime store, outside this view.
+  // Revalidate after an overlay turn so their effects appear without a reload.
+  useEffect(() => {
+    const completed = wasChatSending.current && !chatSending;
+    wasChatSending.current = chatSending;
+    if (completed) void loadData({ silent: true });
+  }, [chatSending, loadData]);
+
   useEffect(() => {
     if (!isServiceLoading) {
       serviceRetryRef.current = 0;

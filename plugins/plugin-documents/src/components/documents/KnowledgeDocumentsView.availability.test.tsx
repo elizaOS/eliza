@@ -106,6 +106,40 @@ afterEach(() => {
 });
 
 describe("KnowledgeDocumentsView availability", () => {
+  it("shows documents saved by an overlay turn without remounting", async () => {
+    clientMock.listDocuments
+      .mockResolvedValueOnce({ documents: [] })
+      .mockResolvedValue({
+        documents: [
+          {
+            id: "saved-doc",
+            filename: "Overlay checklist.txt",
+            contentType: "text/plain",
+            fileSize: 24,
+            createdAt: 2,
+            fragmentCount: 1,
+            source: "upload",
+            scope: "owner-private",
+            canEditText: true,
+            canDelete: true,
+          },
+        ],
+      });
+    clientMock.getDocumentFacetCounts.mockResolvedValue({
+      counts: { all: 0, doc: 0, image: 0, audio: 0, video: 0, transcript: 0 },
+    });
+    appMock.value.chatSending = false;
+    const view = render(
+      <KnowledgeDocumentsView fileInputId="knowledge-upload" />,
+    );
+    await screen.findByText("No knowledge yet");
+    appMock.value.chatSending = true;
+    view.rerender(<KnowledgeDocumentsView fileInputId="knowledge-upload" />);
+    appMock.value.chatSending = false;
+    view.rerender(<KnowledgeDocumentsView fileInputId="knowledge-upload" />);
+    expect(await screen.findByText("Overlay checklist.txt")).toBeTruthy();
+  });
+
   it("recovers when the documents route appears during deferred startup", async () => {
     vi.useFakeTimers();
     clientMock.listDocuments
