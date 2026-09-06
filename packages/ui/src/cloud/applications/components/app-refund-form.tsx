@@ -180,16 +180,17 @@ export function AppRefundForm({
                 {new Date(operation.createdAt).toLocaleString()} ·{" "}
                 {operation.state.replaceAll("_", " ")}
               </p>
-              {operation.state !== "failed" && (
-                <Button
-                  size="touch"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => onRecover(operation.id)}
-                >
-                  View refund status
-                </Button>
-              )}
+              {operation.state !== "failed" &&
+                operation.state !== "superseded" && (
+                  <Button
+                    size="touch"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => onRecover(operation.id)}
+                  >
+                    View refund status
+                  </Button>
+                )}
             </div>
           ))}
         </Card>

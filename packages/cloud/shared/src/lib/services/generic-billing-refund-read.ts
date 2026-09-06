@@ -150,11 +150,13 @@ export class GenericBillingRefundReadService {
                   ? ("prepared" as const)
                   : command.status === "OUTCOME_UNKNOWN"
                     ? ("outcome_unknown" as const)
-                    : command.status === "SUCCEEDED" && command.provider_result?.kind === "refund"
-                      ? ("receipt_available" as const)
-                      : command.status === "FAILED"
-                        ? ("failed" as const)
-                        : null;
+                    : command.status === "SUPERSEDED"
+                      ? ("superseded" as const)
+                      : command.status === "SUCCEEDED" && command.provider_result?.kind === "refund"
+                        ? ("receipt_available" as const)
+                        : command.status === "FAILED"
+                          ? ("failed" as const)
+                          : null;
               if (state === null)
                 appBillingAdminFailure("Refund history has an unsupported execution state");
               return {

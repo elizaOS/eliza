@@ -167,3 +167,32 @@ it("recovers refund history after browser storage is gone without submitting ano
     false,
   );
 });
+
+it("does not offer provider recovery for a refund superseded before dispatch", async () => {
+  const value = fixture();
+  value.payments[0].refundOperations.push({
+    id: "unstarted-refund",
+    amountCents: 500,
+    state: "superseded",
+    createdAt: "2026-09-05T12:00:00Z",
+  });
+  mount(value);
+  const user = userEvent.setup();
+  await user.selectOptions(
+    await screen.findByLabelText("App client and billing environment"),
+    "client-test",
+  );
+  await screen.findByText(/superseded/);
+  expect(
+    screen.queryByRole("button", { name: "View refund status" }),
+  ).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Review payment" }));
+  await screen.findByRole("button", { name: "Confirm refund and keep access" });
+  expect(
+    value.calls.some(
+      (call) =>
+        call.path.endsWith("/unstarted-refund/recover") ||
+        call.path.endsWith("/refunds"),
+    ),
+  ).toBe(false);
+});

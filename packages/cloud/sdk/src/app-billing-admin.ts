@@ -107,7 +107,12 @@ export interface AppBillingPlanRevisionRequest extends AppBillingAdminIntent {
 export interface AppBillingRefundOperationSummary {
   id: string;
   amountCents: number;
-  state: "prepared" | "outcome_unknown" | "receipt_available" | "failed";
+  state:
+    | "prepared"
+    | "outcome_unknown"
+    | "receipt_available"
+    | "failed"
+    | "superseded";
   createdAt: string;
 }
 export interface AppBillingPaidPeriod {

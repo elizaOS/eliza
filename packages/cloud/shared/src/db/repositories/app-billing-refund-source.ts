@@ -7,11 +7,11 @@ import {
   appBillingPlanRevisions,
   appBillingScopes,
   appSubscriptionPaidPeriods,
+  billingMerchants,
 } from "../schemas/app-billing";
 import { billingSubscriptions } from "../schemas/billing-subscriptions";
 import {
   type AppBillingOwner,
-  adminMerchant,
   adminRegistration,
   appBillingAdminFailure,
   lockAppBillingOwner,
@@ -31,6 +31,16 @@ export async function lockAppBillingRefundSource(
   await lockAppBillingOwner(tx, owner);
   const registration = await adminRegistration(tx, owner, selection.clientRegistrationId);
   const livemode = registration.billing_environment === "live";
+  return lockHistoricalAppBillingRefundSource(tx, owner, selection.paidPeriodId, livemode);
+}
+
+/** Resolves retained payment identity after the caller has locked and validated its own authority. This resolver grants no provider mutation authority. */
+export async function lockHistoricalAppBillingRefundSource(
+  tx: DbTransaction,
+  owner: Pick<AppBillingOwner, "appId" | "organizationId">,
+  paidPeriodId: string,
+  livemode: boolean,
+) {
   const [candidate] = await tx
     .select({ merchantId: appBillingScopes.merchant_id })
     .from(appSubscriptionPaidPeriods)
@@ -40,13 +50,24 @@ export async function lockAppBillingRefundSource(
     )
     .where(
       and(
-        eq(appSubscriptionPaidPeriods.id, selection.paidPeriodId),
+        eq(appSubscriptionPaidPeriods.id, paidPeriodId),
         eq(appBillingScopes.app_id, owner.appId),
       ),
     );
   if (!candidate)
     appBillingAdminFailure("Paid period is not owned by this application", "FORBIDDEN");
-  const merchant = await adminMerchant(tx, owner, candidate.merchantId, livemode);
+  const [merchant] = await tx
+    .select()
+    .from(billingMerchants)
+    .where(
+      and(
+        eq(billingMerchants.id, candidate.merchantId),
+        eq(billingMerchants.organization_id, owner.organizationId),
+        eq(billingMerchants.livemode, livemode),
+      ),
+    )
+    .for("share");
+  if (!merchant) appBillingAdminFailure("Historical refund merchant is unavailable", "FORBIDDEN");
   const [source] = await tx
     .select({
       period: appSubscriptionPaidPeriods,
@@ -69,7 +90,7 @@ export async function lockAppBillingRefundSource(
     )
     .where(
       and(
-        eq(appSubscriptionPaidPeriods.id, selection.paidPeriodId),
+        eq(appSubscriptionPaidPeriods.id, paidPeriodId),
         eq(appBillingScopes.app_id, owner.appId),
       ),
     )
@@ -84,7 +105,7 @@ export async function lockAppBillingRefundSource(
     source.subscription.billing_scope_id !== source.scope.id ||
     source.subscription.organization_id !== owner.organizationId ||
     source.subscription.merchant_key !== merchant.provider_account_key ||
-    source.subscription.provider_environment !== registration.billing_environment ||
+    source.subscription.provider_environment !== (livemode ? "live" : "test") ||
     source.plan.app_id !== owner.appId ||
     source.plan.merchant_id !== merchant.id ||
     source.plan.product_family_key !== source.scope.product_family_key ||
