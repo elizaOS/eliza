@@ -27,6 +27,14 @@ function cerebrasConfig(credential?: string): ElizaConfig {
   } as unknown as ElizaConfig;
 }
 
+function openAiConfig(): ElizaConfig {
+  return {
+    serviceRouting: {
+      llmText: { transport: "direct", backend: "openai" },
+    },
+  } as unknown as ElizaConfig;
+}
+
 function runtimeWith(options: {
   credential?: string | null;
   openAiCredential?: string | null;
@@ -137,7 +145,11 @@ describe("provider serving truth", () => {
     ).toBeNull();
   });
 
-  it("reports failed runtime credential lookup without falling back to an env key", () => {
+  it("reports a throwing settings lookup inside the cerebras-mode gate without falling back to an env key", () => {
+    // `CEREBRAS_API_KEY` is first read by `isCerebrasMode` through the
+    // cerebras-mode gate, so the throw is reported from that catch and the
+    // credential loop below it is never reached. The two cases that follow
+    // pin the loop and the registration lookup on a path with no such gate.
     const runtime = runtimeWith({ throwOnSetting: "CEREBRAS_API_KEY" });
     expect(
       resolveActiveChat(
@@ -149,6 +161,46 @@ describe("provider serving truth", () => {
     expect(runtime.reportError).toHaveBeenCalledWith(
       "model-config.serving-truth",
       expect.objectContaining({ message: "lookup unavailable" }),
+    );
+  });
+
+  it("reports a throwing credential lookup on the openai path, which has no cerebras-mode gate", () => {
+    const runtime = {
+      reportError: vi.fn(),
+      getSetting: (key: string) => {
+        if (key === "OPENAI_API_KEY") throw new Error("lookup unavailable");
+        return null;
+      },
+      getModelRegistrations: () => [
+        { modelType: ModelType.TEXT_SMALL, provider: "openai" },
+      ],
+    } as unknown as AgentRuntime;
+    expect(
+      resolveActiveChat(
+        openAiConfig(),
+        { OPENAI_API_KEY: "deterministic-env-credential" },
+        runtime,
+      ),
+    ).toBeNull();
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "model-config.serving-truth",
+      expect.objectContaining({ message: "lookup unavailable" }),
+      { credentialKey: "OPENAI_API_KEY" },
+    );
+  });
+
+  it("reports a throwing model-registration lookup instead of claiming a handler", () => {
+    const runtime = {
+      reportError: vi.fn(),
+      getSetting: () => "deterministic-credential",
+      getModelRegistrations: () => {
+        throw new Error("registrations unavailable");
+      },
+    } as unknown as AgentRuntime;
+    expect(resolveActiveChat(openAiConfig(), {}, runtime)).toBeNull();
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "model-config.serving-truth",
+      expect.objectContaining({ message: "registrations unavailable" }),
     );
   });
 
