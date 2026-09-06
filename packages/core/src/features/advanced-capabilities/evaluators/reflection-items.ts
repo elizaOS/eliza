@@ -552,16 +552,26 @@ async function prepareFacts(
 	return { ...base, knownFacts };
 }
 
-function findDedupTarget(
+/** `content.source` / `metadata.source` the MEMORY action stamps on facts it stores verbatim for the user. */
+const EXPLICIT_MEMORY_SOURCE = "MEMORY";
+
+function isExplicitMemoryFact(memory: Memory): boolean {
+	const metadataSource = (memory.metadata as { source?: unknown } | undefined)
+		?.source;
+	return (
+		metadataSource === EXPLICIT_MEMORY_SOURCE ||
+		memory.content?.source === EXPLICIT_MEMORY_SOURCE
+	);
+}
+
+function bestLexicalMatch(
 	candidates: FactCandidate[],
 	targetValues: unknown[],
-	kind: FactKind,
-	category: string,
+	accept: (memory: Memory) => boolean,
 ): { memory: Memory; similarity: number } | null {
 	let best: { memory: Memory; similarity: number } | null = null;
 	for (const candidate of candidates) {
-		if (readFactKind(candidate.memory) !== kind) continue;
-		if (readCategory(candidate.memory) !== category) continue;
+		if (!accept(candidate.memory)) continue;
 		const similarity = factLexicalSimilarity(targetValues, [
 			candidate.searchText,
 			readStoredFactKeywords(candidate.memory),
@@ -573,6 +583,31 @@ function findDedupTarget(
 		}
 	}
 	return best;
+}
+
+/**
+ * Extractor-authored facts dedupe only within the same kind and category: the
+ * taxonomy is part of what the extractor asserts. Facts the MEMORY action
+ * stored are the user's own words with a caller-chosen category, so a matching
+ * claim strengthens them whatever kind or category the extractor picked (live
+ * 2026-09-06: "remember that my favorite tea is genmaicha" stored a
+ * durable/preference fact, the extractor added a current/uncategorized copy,
+ * and the next "forget my favorite tea" hit MEMORY_AMBIGUOUS_QUERY).
+ */
+function findDedupTarget(
+	candidates: FactCandidate[],
+	targetValues: unknown[],
+	kind: FactKind,
+	category: string,
+): { memory: Memory; similarity: number } | null {
+	return (
+		bestLexicalMatch(
+			candidates,
+			targetValues,
+			(memory) =>
+				readFactKind(memory) === kind && readCategory(memory) === category,
+		) ?? bestLexicalMatch(candidates, targetValues, isExplicitMemoryFact)
+	);
 }
 
 interface ApplyContext {
