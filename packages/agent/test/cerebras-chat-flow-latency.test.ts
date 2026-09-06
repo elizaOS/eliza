@@ -8,11 +8,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  type BenchmarkTurnObservation,
   captureModelInput,
   distribution,
   modelUsageEvidence,
+  observeBenchmarkTurn,
   percentile,
   promptCacheTelemetry,
+  settleBenchmarkChecks,
   sourceRevisionEvidence,
   verifyExactResponseParity,
   verifyProofResponse,
@@ -40,6 +43,97 @@ function createCleanRepository(): string {
 }
 
 describe("Cerebras chat-flow latency helpers", () => {
+  it("retains completed receipts and partial failed output after a later proof mismatch", async () => {
+    const observations: BenchmarkTurnObservation<{
+      proof: string;
+      persistedId: string;
+    }>[] = [];
+    const run = async (index: number, output: string) =>
+      observeBenchmarkTurn(
+        observations,
+        {
+          phase: index < 2 ? "sample" : "isolation",
+          index,
+          proof: `PARCEL-${index}`,
+          roomId: `room-${index}`,
+        },
+        async (observation) => {
+          observation.firstVisibleTextMs = 12 + index;
+          observation.wallMs = 34 + index;
+          observation.output = output;
+          observation.streamedOutput = output;
+          observation.stage = "response-validation";
+          verifyProofResponse(output, `PARCEL-${index}`);
+          observation.backgroundQuiescenceMs = 2;
+          observation.stage = "persistence-validation";
+          return { proof: output, persistedId: `persisted-${index}` };
+        },
+      );
+    await run(0, "PARCEL-0");
+    await run(1, "PARCEL-1");
+    await expect(run(2, "PARCEL-typo")).rejects.toThrow();
+    // The real CLI serializes this same retained collection after a rejected turn.
+    const report = JSON.parse(
+      JSON.stringify({ status: "failed", turnObservations: observations }),
+    );
+    expect(report.turnObservations[0].receipt.persistedId).toBe("persisted-0");
+    expect(report.turnObservations[1].receipt.persistedId).toBe("persisted-1");
+    expect(report.turnObservations[0].firstVisibleTextMs).toBe(12);
+    const failed = report.turnObservations[2];
+    expect(failed.context.phase).toBe("isolation");
+    expect(failed.status).toBe("failed");
+    expect(failed.stage).toBe("response-validation");
+    expect(failed.streamedOutput).toBe("PARCEL-typo");
+    expect(failed.wallMs).toBe(36);
+    expect(failed.elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(failed.backgroundQuiescenceMs).toBeNull();
+    expect(failed.receipt).toBeNull();
+    expect(failed.error).toContain("PARCEL-2");
+  });
+
+  it("waits for a concurrent sibling receipt before returning a failed batch", async () => {
+    const observations: BenchmarkTurnObservation<string>[] = [];
+    let releaseSibling: (() => void) | undefined;
+    const siblingReady = new Promise<void>((resolve) => {
+      releaseSibling = resolve;
+    });
+    const first = observeBenchmarkTurn(
+      observations,
+      { phase: "isolation", proof: "FIRST" },
+      async () => {
+        verifyProofResponse("mismatched response", "FIRST");
+        return "unreachable";
+      },
+    );
+    const second = observeBenchmarkTurn(
+      observations,
+      { phase: "isolation", proof: "SECOND" },
+      async () => {
+        await siblingReady;
+        verifyProofResponse("SECOND", "SECOND");
+        return "SECOND";
+      },
+    );
+    let batchSettled = false;
+    const batch = settleBenchmarkChecks([first, second]).finally(() => {
+      batchSettled = true;
+    });
+    const rejection = expect(batch).rejects.toThrow(
+      "Concurrent benchmark checks failed",
+    );
+    await Promise.resolve();
+    expect(batchSettled).toBe(false);
+    expect(observations[1]?.status).toBe("running");
+    releaseSibling?.();
+    await rejection;
+    expect(observations.map((item) => item.status)).toEqual([
+      "failed",
+      "success",
+    ]);
+    expect(observations[1]?.receipt).toBe("SECOND");
+    expect(observations.every((item) => item.elapsedMs !== null)).toBe(true);
+  });
+
   it("attests the exact head only for a clean source tree", () => {
     const repoRoot = createCleanRepository();
     try {

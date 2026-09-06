@@ -135,6 +135,115 @@ export interface ModelInputContext {
   expectedCacheKey?: string | null;
 }
 
+type ChatResult = Awaited<ReturnType<typeof generateChatResponse>>;
+type PersistedTurnResponse = {
+  id: string;
+  entityId: string;
+  roomId: string;
+  text: string;
+  returnedByMessageService: boolean;
+};
+
+interface ChatTurnReceipt {
+  index: number;
+  roomId: string;
+  observedIdleMs: number | null;
+  proof: string;
+  prompt: string;
+  output: string;
+  wallMs: number;
+  firstVisibleTextMs: number | null;
+  backgroundTasks: number;
+  backgroundQuiescenceMs: number;
+  totalToQuiescenceMs: number;
+  streamedOutput: string;
+  streamedCharacters: number;
+  outputCharacters: number;
+  usage: ChatResult["usage"];
+  modelUsages: ModelUsageEvidence[];
+  failureKind: ChatResult["failureKind"] | null;
+  persistedResponse: PersistedTurnResponse;
+}
+
+export interface BenchmarkTurnObservation<T> {
+  context: ModelInputContext;
+  status: "running" | "success" | "failed";
+  stage:
+    | "dispatch"
+    | "response-validation"
+    | "post-delivery"
+    | "usage-validation"
+    | "persistence-validation"
+    | "complete";
+  elapsedMs: number | null;
+  observedIdleMs: number | null;
+  firstVisibleTextMs: number | null;
+  wallMs: number | null;
+  backgroundQuiescenceMs: number | null;
+  totalToQuiescenceMs: number | null;
+  output: string | null;
+  streamedOutput: string;
+  persistedResponse: PersistedTurnResponse | null;
+  receipt: T | null;
+  error: string | null;
+}
+
+/** Keeps completed and partial turn evidence when a later check rejects the run. */
+export async function observeBenchmarkTurn<T>(
+  observations: BenchmarkTurnObservation<T>[],
+  context: ModelInputContext,
+  execute: (observation: BenchmarkTurnObservation<T>) => Promise<T>,
+): Promise<T> {
+  const startedAt = performance.now();
+  const observation: BenchmarkTurnObservation<T> = {
+    context: { ...context },
+    status: "running",
+    stage: "dispatch",
+    elapsedMs: null,
+    observedIdleMs: null,
+    firstVisibleTextMs: null,
+    wallMs: null,
+    backgroundQuiescenceMs: null,
+    totalToQuiescenceMs: null,
+    output: null,
+    streamedOutput: "",
+    persistedResponse: null,
+    receipt: null,
+    error: null,
+  };
+  observations.push(observation);
+  try {
+    const receipt = await execute(observation);
+    observation.receipt = receipt;
+    observation.stage = "complete";
+    observation.status = "success";
+    return receipt;
+  } catch (error) {
+    // error-policy:J2 Retain the failed stage and partial evidence before rethrowing the same failure.
+    observation.status = "failed";
+    observation.error = error instanceof Error ? error.message : String(error);
+    throw error;
+  } finally {
+    observation.elapsedMs = rounded(performance.now() - startedAt);
+  }
+}
+
+/** Waits for every in-flight room before serializing failure evidence or tearing down SQL. */
+export async function settleBenchmarkChecks<T>(
+  checks: Promise<T>[],
+): Promise<T[]> {
+  const results = await Promise.allSettled(checks);
+  const errors = results.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  );
+  if (errors.length > 0)
+    throw new AggregateError(errors, "Concurrent benchmark checks failed");
+  return results.map((result) => {
+    if (result.status === "rejected") throw result.reason;
+    return result.value;
+  });
+}
+
 export interface ModelInputEvidence {
   context: ModelInputContext | null;
   modelType: string;
@@ -653,6 +762,9 @@ async function main(): Promise<void> {
     text: string;
     streamedText: string;
   }> = [];
+  const runStartedAt = performance.now();
+  let runStage = "initialization";
+  const turnObservations: BenchmarkTurnObservation<ChatTurnReceipt>[] = [];
   const modelInputs: ModelInputEvidence[] = [];
   const modelExecutions: Array<{
     modelType: string;
@@ -824,143 +936,178 @@ async function main(): Promise<void> {
         proof,
         roomId: turnRoomId,
       };
-      let result: Awaited<ReturnType<typeof generateChatResponse>>;
-      result = await modelContext.run(context, () =>
-        generateChatResponse(
-          runtime,
-          message as Memory,
-          runtime.character.name ?? "CerebrasLatencyAudit",
-          {
-            onChunk: (chunk) => {
-              if (chunk.length > 0 && firstTextAt === null)
-                firstTextAt = performance.now();
-              streamed.push(chunk);
-            },
-          },
-        ),
-      );
-      const wallMs = performance.now() - startedAt;
-      const streamedText = streamed.join("");
-      returnedChatResponses.push({
-        context: { ...context },
-        text: result.text,
-        streamedText,
-      });
-      try {
-        verifyProofResponse(result.text, proof);
-        verifyProofResponse(streamedText, proof);
-        verifyExactResponseParity(streamedText, result.text);
-      } catch (cause) {
-        throw new Error(
-          `Live chat proof validation failed: ${JSON.stringify({
-            proof,
-            result,
+      return observeBenchmarkTurn(
+        turnObservations,
+        context,
+        async (observation) => {
+          observation.observedIdleMs = observedIdleMs;
+          let result: Awaited<ReturnType<typeof generateChatResponse>>;
+          result = await modelContext.run(context, () =>
+            generateChatResponse(
+              runtime,
+              message as Memory,
+              runtime.character.name ?? "CerebrasLatencyAudit",
+              {
+                onChunk: (chunk) => {
+                  if (chunk.length > 0 && firstTextAt === null)
+                    firstTextAt = performance.now();
+                  streamed.push(chunk);
+                  observation.streamedOutput += chunk;
+                  observation.firstVisibleTextMs =
+                    firstTextAt === null
+                      ? null
+                      : rounded(firstTextAt - startedAt);
+                },
+              },
+            ),
+          );
+          const wallMs = performance.now() - startedAt;
+          const streamedText = streamed.join("");
+          observation.wallMs = rounded(wallMs);
+          observation.output = result.text;
+          observation.stage = "response-validation";
+          returnedChatResponses.push({
+            context: { ...context },
+            text: result.text,
             streamedText,
-            wallMs: rounded(wallMs),
-          })}`,
-          { cause },
-        );
-      }
-      const quiescenceStartedAt = performance.now();
-      const backgroundTasks = await drainPostDeliveryTasks(runtime);
-      const backgroundQuiescenceMs = performance.now() - quiescenceStartedAt;
-      const totalToQuiescenceMs = performance.now() - startedAt;
-      const failedModels = modelExecutions.filter(
-        (execution) =>
-          execution.context?.proof === proof && execution.outcome === "error",
-      );
-      if (failedModels.length > 0) {
-        throw new Error(
-          `Model execution failed during ${proof}, including post-delivery work: ${failedModels.map((execution) => execution.modelType).join(", ")}`,
-        );
-      }
-      const turnUsageEvents = modelUsageEvents
-        .slice(usageEventOffset)
-        .filter(
-          (event) =>
-            event.context?.proof === proof &&
-            event.payload.type !== ModelType.TEXT_EMBEDDING,
-        )
-        .map((event) => event.payload);
-      if (turnUsageEvents.length === 0)
-        throw new Error(`No live MODEL_USED event for ${proof}`);
-      const modelUsages = turnUsageEvents.map((event) =>
-        modelUsageEvidence(event, model),
-      );
-      const recentMessages = await runtime.getMemories({
-        roomId: turnRoomId as UUID,
-        tableName: "messages",
-        limit: 12,
-      });
-      const persistedResponse = recentMessages.find((memory) => {
-        const text = (memory.content as { text?: unknown }).text;
-        return (
-          memory.entityId === runtime.agentId &&
-          typeof text === "string" &&
-          text === result.text
-        );
-      });
-      if (!persistedResponse?.id) {
-        throw new Error(
-          `Live assistant response was not persisted: ${JSON.stringify({
+          });
+          try {
+            verifyProofResponse(result.text, proof);
+            verifyProofResponse(streamedText, proof);
+            verifyExactResponseParity(streamedText, result.text);
+          } catch (cause) {
+            throw new Error(
+              `Live chat proof validation failed: ${JSON.stringify({
+                proof,
+                result,
+                streamedText,
+                wallMs: rounded(wallMs),
+              })}`,
+              { cause },
+            );
+          }
+          observation.stage = "post-delivery";
+          const quiescenceStartedAt = performance.now();
+          const backgroundTasks = await drainPostDeliveryTasks(runtime);
+          const backgroundQuiescenceMs =
+            performance.now() - quiescenceStartedAt;
+          const totalToQuiescenceMs = performance.now() - startedAt;
+          observation.backgroundQuiescenceMs = rounded(backgroundQuiescenceMs);
+          observation.totalToQuiescenceMs = rounded(totalToQuiescenceMs);
+          const failedModels = modelExecutions.filter(
+            (execution) =>
+              execution.context?.proof === proof &&
+              execution.outcome === "error",
+          );
+          if (failedModels.length > 0) {
+            throw new Error(
+              `Model execution failed during ${proof}, including post-delivery work: ${failedModels.map((execution) => execution.modelType).join(", ")}`,
+            );
+          }
+          observation.stage = "usage-validation";
+          const turnUsageEvents = modelUsageEvents
+            .slice(usageEventOffset)
+            .filter(
+              (event) =>
+                event.context?.proof === proof &&
+                event.payload.type !== ModelType.TEXT_EMBEDDING,
+            )
+            .map((event) => event.payload);
+          if (turnUsageEvents.length === 0)
+            throw new Error(`No live MODEL_USED event for ${proof}`);
+          const modelUsages = turnUsageEvents.map((event) =>
+            modelUsageEvidence(event, model),
+          );
+          observation.stage = "persistence-validation";
+          const recentMessages = await runtime.getMemories({
+            roomId: turnRoomId as UUID,
+            tableName: "messages",
+            limit: 12,
+          });
+          const persistedResponse = recentMessages.find((memory) => {
+            const text = (memory.content as { text?: unknown }).text;
+            return (
+              memory.entityId === runtime.agentId &&
+              typeof text === "string" &&
+              text === result.text
+            );
+          });
+          if (!persistedResponse?.id) {
+            throw new Error(
+              `Live assistant response was not persisted: ${JSON.stringify({
+                proof,
+                output: result.text,
+                returnedPersistenceIds:
+                  result.persistedResponseMessageIds ?? [],
+              })}`,
+            );
+          }
+          observation.persistedResponse = {
+            id: persistedResponse.id,
+            entityId: persistedResponse.entityId,
+            roomId: persistedResponse.roomId,
+            text: (persistedResponse.content as { text: string }).text,
+            returnedByMessageService:
+              result.persistedResponseMessageIds?.includes(
+                persistedResponse.id,
+              ) ?? false,
+          };
+          if (
+            result.persistedResponseMessageIds?.length &&
+            !result.persistedResponseMessageIds.includes(persistedResponse.id)
+          ) {
+            throw new Error(
+              `Returned persistence ids do not contain the exact assistant memory: ${JSON.stringify(
+                {
+                  proof,
+                  persistedResponseId: persistedResponse.id,
+                  returnedPersistenceIds: result.persistedResponseMessageIds,
+                },
+              )}`,
+            );
+          }
+          lastRoomCompletion.set(turnRoomId, performance.now());
+          return {
+            index,
+            roomId: turnRoomId,
+            observedIdleMs,
             proof,
+            prompt,
             output: result.text,
-            returnedPersistenceIds: result.persistedResponseMessageIds ?? [],
-          })}`,
-        );
-      }
-      if (
-        result.persistedResponseMessageIds?.length &&
-        !result.persistedResponseMessageIds.includes(persistedResponse.id)
-      ) {
-        throw new Error(
-          `Returned persistence ids do not contain the exact assistant memory: ${JSON.stringify(
-            {
-              proof,
-              persistedResponseId: persistedResponse.id,
-              returnedPersistenceIds: result.persistedResponseMessageIds,
+            wallMs: rounded(wallMs),
+            firstVisibleTextMs:
+              firstTextAt === null ? null : rounded(firstTextAt - startedAt),
+            backgroundTasks,
+            backgroundQuiescenceMs: rounded(backgroundQuiescenceMs),
+            totalToQuiescenceMs: rounded(totalToQuiescenceMs),
+            streamedOutput: streamedText,
+            streamedCharacters: streamedText.length,
+            outputCharacters: result.text.length,
+            usage: result.usage,
+            modelUsages,
+            failureKind: result.failureKind ?? null,
+            persistedResponse: {
+              id: persistedResponse.id,
+              entityId: persistedResponse.entityId,
+              roomId: persistedResponse.roomId,
+              text: (persistedResponse.content as { text: string }).text,
+              returnedByMessageService:
+                result.persistedResponseMessageIds?.includes(
+                  persistedResponse.id,
+                ) ?? false,
             },
-          )}`,
-        );
-      }
-      lastRoomCompletion.set(turnRoomId, performance.now());
-      return {
-        index,
-        roomId: turnRoomId,
-        observedIdleMs,
-        proof,
-        prompt,
-        output: result.text,
-        wallMs: rounded(wallMs),
-        firstVisibleTextMs:
-          firstTextAt === null ? null : rounded(firstTextAt - startedAt),
-        backgroundTasks,
-        backgroundQuiescenceMs: rounded(backgroundQuiescenceMs),
-        totalToQuiescenceMs: rounded(totalToQuiescenceMs),
-        streamedOutput: streamedText,
-        streamedCharacters: streamedText.length,
-        outputCharacters: result.text.length,
-        usage: result.usage,
-        modelUsages,
-        failureKind: result.failureKind ?? null,
-        persistedResponse: {
-          id: persistedResponse.id,
-          entityId: persistedResponse.entityId,
-          roomId: persistedResponse.roomId,
-          text: (persistedResponse.content as { text: string }).text,
-          returnedByMessageService:
-            result.persistedResponseMessageIds?.includes(
-              persistedResponse.id,
-            ) ?? false,
+          };
         },
-      };
+      );
     };
 
+    runStage = "warmup";
     for (let index = 0; index < warmupCount; index += 1) {
       await runTurn(index, true);
     }
     inferenceTimingRegistry.reset();
 
+    runStage = "workload";
     const samples = await runChatCondition({
       condition,
       samples: sampleCount,
@@ -994,7 +1141,8 @@ async function main(): Promise<void> {
       `PARCEL-A-${randomUUID()}`,
       `PARCEL-B-${randomUUID()}`,
     ];
-    const isolationPriming = await Promise.all(
+    runStage = "isolation-priming";
+    const isolationPriming = await settleBenchmarkChecks(
       isolationRooms.map((room, index) => {
         const proof = isolationProofs[index];
         if (!proof) throw new Error("Missing room isolation fixture");
@@ -1004,7 +1152,8 @@ async function main(): Promise<void> {
         });
       }),
     );
-    const isolationResumption = await Promise.all(
+    runStage = "isolation-resumption";
+    const isolationResumption = await settleBenchmarkChecks(
       isolationRooms.map((room, index) => {
         const proof = isolationProofs[index];
         if (!proof) throw new Error("Missing room isolation fixture");
@@ -1021,6 +1170,7 @@ async function main(): Promise<void> {
         throw new Error("Concurrent recall leaked the other room's reference");
     }
 
+    runStage = "cancellation";
     const cancellationProof = `CANCEL-${randomUUID()}`;
     const cancellationMessage = createMessageMemory({
       id: randomUUID() as UUID,
@@ -1154,6 +1304,7 @@ async function main(): Promise<void> {
       ),
     };
 
+    runStage = "provider-sweep";
     const registeredProviderNames = runtime.providers.map(
       (provider) => provider.name,
     );
@@ -1215,11 +1366,14 @@ async function main(): Promise<void> {
         throw new Error(`Missing actual SDK wire request for ${turn.proof}`);
       }
     }
+    runStage = "wire-verification";
     const validatedWireRequests = verifyCacheExperimentWire(
       wireEvidence,
       cacheMode,
     );
     const report = {
+      status: "success",
+      turnObservations,
       generatedAt: new Date().toISOString(),
       sourceRevision,
       runtime: "AgentRuntime + plugin-sql/PGLite + plugin-openai",
@@ -1334,6 +1488,12 @@ async function main(): Promise<void> {
             modelInputs,
             modelExecutions,
             returnedChatResponses,
+            turnObservations,
+            requestedSamples: sampleCount,
+            requestedWarmups: warmupCount,
+            requestedIdleMs: idleMs,
+            failedStage: runStage,
+            elapsedMs: rounded(performance.now() - runStartedAt),
             error: error instanceof Error ? error.message : String(error),
           }),
           null,
