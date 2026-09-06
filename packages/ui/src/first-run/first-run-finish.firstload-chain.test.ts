@@ -132,6 +132,7 @@ beforeEach(() => {
   window.localStorage.clear();
   clientStub.listConversations = vi.fn(async () => ({ conversations: [] }));
   clientStub.getCloudStatus.mockResolvedValue({ connected: false });
+  clientStub.getRestAuthToken.mockReturnValue(null);
   clientStub.getPersonalSharedEliza.mockResolvedValue({
     personalElizaId: SHARED_AGENT_ID,
     agentId: SHARED_AGENT_ID,
@@ -162,7 +163,8 @@ describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
     expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
-  it("lands a new interactive bearer without any agent-list or status probe", async () => {
+  it("lands a new interactive bearer without mistaking the local backend credential for Cloud sign-in", async () => {
+    clientStub.getRestAuthToken.mockReturnValue("local-runtime-token");
     const { ports: p, handleInteractiveCloudLogin } = ports();
     handleInteractiveCloudLogin.mockImplementation(async () => {
       storeStewardToken("fresh-jwt");
@@ -180,15 +182,19 @@ describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
     expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
-  it("returns needs-cloud-login when interactive auth lands no bearer", async () => {
-    const { ports: p, handleInteractiveCloudLogin } = ports();
-    const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
-    expect(outcome.kind).toBe("needs-cloud-login");
-    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
-    expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
-    expect(clientStub.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
-    expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
-  });
+  it.each([null, "local-runtime-token"])(
+    "returns needs-cloud-login when interactive auth lands no Cloud bearer (backend=%s)",
+    async (backendToken) => {
+      clientStub.getRestAuthToken.mockReturnValue(backendToken);
+      const { ports: p, handleInteractiveCloudLogin } = ports();
+      const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
+      expect(outcome.kind).toBe("needs-cloud-login");
+      expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
+      expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
+      expect(clientStub.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
+      expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("bindCloudAgent — agent-base warm-up", () => {

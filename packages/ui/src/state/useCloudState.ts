@@ -854,7 +854,7 @@ export function useCloudState({
       // Only callers that declare that stronger requirement bypass the normal
       // connected-server short-circuits below.
       const hasRequiredClientAuth = () =>
-        !options.requireClientAuth || Boolean(getCloudAuthToken(client));
+        !options.requireClientAuth || Boolean(getCloudAuthToken());
       if (
         !options.forceReauth &&
         isCloudStatusAuthenticated(
