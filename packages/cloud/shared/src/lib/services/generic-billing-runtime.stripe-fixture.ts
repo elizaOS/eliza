@@ -2,8 +2,13 @@
 import Stripe from "stripe";
 
 export function createRuntimeStripeFixture() {
-  const requests: { method: string; path: string; body: URLSearchParams; key: string | null }[] =
-    [];
+  const requests: {
+    method: string;
+    path: string;
+    body: URLSearchParams;
+    query: URLSearchParams;
+    key: string | null;
+  }[] = [];
   const customers = new Map<
     string,
     { id: string; object: "customer"; livemode: boolean; metadata: Record<string, string> }
@@ -103,6 +108,12 @@ export function createRuntimeStripeFixture() {
       status: "pending" | "requires_action" | "succeeded" | "failed" | "canceled";
     }
   >();
+  let loseNextExpiryResponse = false;
+  let beforeSubscriptionRead: (() => Promise<void>) | null = null;
+  let beforeCancellation: (() => Promise<void>) | null = null;
+  let loseCancellationResponse = false;
+  let beforeCheckoutExpiry: (() => Promise<void>) | null = null;
+  const checkoutReadFailures = new Map<string, number>();
   let loseNextRefundResponse = false;
   let loseNextCheckoutResponse = false;
   let loseNextUpdateResponse = false;
@@ -259,6 +270,7 @@ export function createRuntimeStripeFixture() {
           requests.push({
             method,
             path: url.pathname,
+            query: url.searchParams,
             body,
             key: new Headers(init?.headers).get("idempotency-key"),
           });
@@ -403,7 +415,15 @@ export function createRuntimeStripeFixture() {
           if (url.pathname.startsWith("/v1/subscriptions/")) {
             const row = subscriptions.get(url.pathname.split("/")[3]!);
             if (row) {
-              if (method === "DELETE") row.canceled = true;
+              if (method === "GET" && beforeSubscriptionRead) await beforeSubscriptionRead();
+              if (method === "DELETE") {
+                if (beforeCancellation) await beforeCancellation();
+                row.canceled = true;
+                if (loseCancellationResponse) {
+                  loseCancellationResponse = false;
+                  throw new Error("Connection lost after provider cancellation");
+                }
+              }
               if (method === "POST" && body.has("cancel_at_period_end"))
                 row.cancelAtPeriodEnd = body.get("cancel_at_period_end") === "true";
               else if (method === "POST" && body.has("default_payment_method")) {
@@ -504,7 +524,43 @@ export function createRuntimeStripeFixture() {
           if (url.pathname.startsWith("/v1/checkout/sessions/")) {
             const row = checkouts.get(url.pathname.split("/")[4]!);
             if (row) {
-              if (url.pathname.endsWith("/expire")) row.expired = true;
+              const failure = checkoutReadFailures.get(row.id);
+              if (failure && method === "GET")
+                return Response.json(
+                  {
+                    error: {
+                      type: failure === 404 ? "invalid_request_error" : "api_error",
+                      message: "Controlled Checkout read failure",
+                    },
+                  },
+                  { status: failure },
+                );
+              if (url.pathname.endsWith("/expire")) {
+                if (beforeCheckoutExpiry) await beforeCheckoutExpiry();
+                if (checkout(row).status === "complete")
+                  return Response.json(
+                    {
+                      error: {
+                        type: "invalid_request_error",
+                        message: "Completed Checkout cannot expire",
+                      },
+                    },
+                    { status: 400 },
+                  );
+                row.expired = true;
+                if (loseNextExpiryResponse) {
+                  loseNextExpiryResponse = false;
+                  return Response.json(
+                    {
+                      error: {
+                        type: "api_error",
+                        message: "Expiration response lost after provider acceptance",
+                      },
+                    },
+                    { status: 500 },
+                  );
+                }
+              }
               if (url.pathname.endsWith("/line_items"))
                 return Response.json({
                   object: "list",
@@ -674,6 +730,25 @@ export function createRuntimeStripeFixture() {
     ),
   });
   return {
+    loseExpiryResponse() {
+      loseNextExpiryResponse = true;
+    },
+    beforeSubscriptionRead(callback: (() => Promise<void>) | null) {
+      beforeSubscriptionRead = callback;
+    },
+    beforeCancellation(callback: (() => Promise<void>) | null) {
+      beforeCancellation = callback;
+    },
+    loseCancellationResponse() {
+      loseCancellationResponse = true;
+    },
+    beforeExpiry(callback: (() => Promise<void>) | null) {
+      beforeCheckoutExpiry = callback;
+    },
+    failCheckoutRead(sessionId: string, status: number | null) {
+      if (status === null) checkoutReadFailures.delete(sessionId);
+      else checkoutReadFailures.set(sessionId, status);
+    },
     setupIntents,
     paymentMethods,
     resumeInvoices,

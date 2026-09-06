@@ -11,6 +11,7 @@ export async function applyAppBillingTestMigrations(
     `CREATE TABLE IF NOT EXISTS webhook_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),event_id text NOT NULL UNIQUE,provider text NOT NULL,event_type text,payload_hash text NOT NULL,source_ip text,processed_at timestamp NOT NULL DEFAULT now(),event_timestamp timestamp);`,
   );
   for (const tag of [
+    "0429_app_billing_applied_revision",
     "0380_app_billing_catalog",
     "0381_app_billing_scope_records",
     "0382_app_billing_registration_constraints",

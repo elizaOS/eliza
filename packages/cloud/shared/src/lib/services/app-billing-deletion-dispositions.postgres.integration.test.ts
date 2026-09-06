@@ -86,6 +86,7 @@ describe.skipIf(!postgresUrl)("canonical billing deletion decisions with Postgre
     `);
     for (const tag of [
       "0373_subscription_authority",
+      "0429_app_billing_applied_revision",
       "0374_subscription_funding_transaction_uniqueness",
       "0379_subscription_account_authority",
       "0380_app_billing_catalog",
@@ -118,6 +119,7 @@ describe.skipIf(!postgresUrl)("canonical billing deletion decisions with Postgre
       "0420_billing_identity_references",
       "0421_app_billing_deletion_dispositions",
       "0422_app_billing_deletion_disposition_guards",
+      "0430_app_billing_completed_checkout",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -296,12 +298,16 @@ describe.skipIf(!postgresUrl)("canonical billing deletion decisions with Postgre
     const { identity, scopeId } = await buyer();
     const other = await buyer();
     const foreign = await deletion(other.identity.actorUserId);
-    await expect(decide(scopeId, foreign)).rejects.toThrow("does not administer");
+    await expect(decide(scopeId, foreign)).rejects.toMatchObject({
+      code: "APP_BILLING_AUTHORITY_CONFLICT",
+    });
     const own = await deletion(identity.actorUserId);
     await db.query("UPDATE app_billing_members SET role='member' WHERE user_id=$1", [
       identity.actorUserId,
     ]);
-    await expect(decide(scopeId, own)).rejects.toThrow("does not administer");
+    await expect(decide(scopeId, own)).rejects.toMatchObject({
+      code: "APP_BILLING_AUTHORITY_CONFLICT",
+    });
     expect(
       (
         await db.query("SELECT * FROM app_billing_deletion_dispositions WHERE scope_id=$1", [

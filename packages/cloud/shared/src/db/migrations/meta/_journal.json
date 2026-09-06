@@ -2801,6 +2801,34 @@
       "when": 1796083200043,
       "tag": "0427_app_billing_paid_resume_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 400,
+      "version": "7",
+      "when": 1796083200044,
+      "tag": "0428_app_billing_deletion_checkout",
+      "breakpoints": true
+    },
+    {
+      "idx": 401,
+      "version": "7",
+      "when": 1796083200045,
+      "tag": "0429_app_billing_applied_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 402,
+      "version": "7",
+      "when": 1796083200046,
+      "tag": "0430_app_billing_completed_checkout",
+      "breakpoints": true
+    },
+    {
+      "idx": 403,
+      "version": "7",
+      "when": 1796083200047,
+      "tag": "0431_app_billing_deletion_cancellation",
+      "breakpoints": true
     }
   ]
 }

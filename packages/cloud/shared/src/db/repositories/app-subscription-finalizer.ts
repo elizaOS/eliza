@@ -704,6 +704,7 @@ export class AppSubscriptionFinalizer {
             state_revision: command.state_revision + 1,
             provider_response_digest: input.subscription.digest,
             result_subscription_id: subscription.id,
+            result_subscription_revision: subscription.lifecycle_revision,
             completed_at: now,
             applied_at: now,
             error_code: null,

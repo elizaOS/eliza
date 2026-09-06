@@ -6,6 +6,7 @@ import { accountDeletionRequests } from "../schemas/account-deletion-requests";
 import { appBillingMembers, appBillingScopes } from "../schemas/app-billing";
 import { appBillingDeletionDispositions } from "../schemas/app-billing-deletion-dispositions";
 import { organizations } from "../schemas/organizations";
+import { billingSubscriptionCommands } from "../schemas/subscription-billing-operations";
 import { users } from "../schemas/users";
 import type { AppBillingDeletionRecoveryAuthority } from "./app-billing-deletion-authority";
 import { appBillingConflict, lockAppBillingScope } from "./app-subscription-authority";
@@ -155,8 +156,29 @@ export async function decideAppBillingDeletionScope(input: {
         member.role === "administrator",
     );
     const developer = request.organization_id === scope.organizationId;
-    if (!developer && !relevant.some((member) => member.user_id === request.user_id))
-      appBillingConflict("Deleting subject does not administer this billing scope");
+    const administrator = relevant.some((member) => member.user_id === request.user_id);
+    const [historical] = await tx
+      .select({ id: billingSubscriptionCommands.id })
+      .from(billingSubscriptionCommands)
+      .where(
+        and(
+          eq(billingSubscriptionCommands.billing_scope_id, scope.scopeId),
+          eq(billingSubscriptionCommands.requested_by_user_id, request.user_id),
+          sql`${billingSubscriptionCommands.request_payload}->>'domain' = 'buyer'`,
+        ),
+      )
+      .limit(1);
+    const [ownDecision] = await tx
+      .select()
+      .from(appBillingDeletionDispositions)
+      .where(
+        and(
+          eq(appBillingDeletionDispositions.request_id, request.id),
+          eq(appBillingDeletionDispositions.scope_id, scope.scopeId),
+        ),
+      );
+    if (!developer && !administrator && !historical && !ownDecision)
+      appBillingConflict("Deleting subject has no billing scope authority");
     const survivor = relevant.some((member) => {
       const principal = principals.find((candidate) => candidate.id === member.user_id);
       return (
@@ -179,6 +201,13 @@ export async function decideAppBillingDeletionScope(input: {
         ),
       )
       .limit(1);
+    if (
+      !developer &&
+      !administrator &&
+      ownDecision?.disposition !== "close" &&
+      (!survivor || closing)
+    )
+      appBillingConflict("Historical purchaser cannot authorize scope closure");
     const disposition = developer || !survivor || closing ? "close" : "retain_shared";
     if (disposition === "close")
       await tx

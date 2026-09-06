@@ -35,14 +35,8 @@ import {
 import { appBillingDeletionDispositions } from "../../db/schemas/app-billing-deletion-dispositions";
 import { apps } from "../../db/schemas/apps";
 import { managedDomains } from "../../db/schemas/managed-domains";
-import {
-  orgStorageDeleteOperations,
-  orgStorageGcOutbox,
-  orgStorageObjects,
-  orgStoragePutOperations,
-} from "../../db/schemas/org-storage-mutations";
-import { orgStorageReadOperations } from "../../db/schemas/org-storage-reads";
 import { organizations } from "../../db/schemas/organizations";
+import { billingSubscriptionCommands } from "../../db/schemas/subscription-billing-operations";
 import { userVoices } from "../../db/schemas/user-voices";
 import type { RuntimeR2Bucket, RuntimeR2ObjectMetadata } from "../storage/r2-runtime-binding";
 import { getStripe } from "../stripe";
@@ -53,7 +47,9 @@ import type {
   AccountDeletionProviderInspection,
   AccountDeletionProviderPhase,
 } from "./account-deletion-saga";
+import { reconcileAccountDeletionStorage } from "./account-deletion-storage";
 import {
+  type AppBillingDeletionCheckout,
   type AppBillingDeletionRuntime,
   recoverAppBillingForAccountDeletion,
 } from "./app-billing-deletion-recovery";
@@ -136,6 +132,7 @@ function isMissingStripeResource(error: unknown): boolean {
 
 export interface AccountDeletionProviderAdapterDependencies {
   appBillingRuntime?: AppBillingDeletionRuntime;
+  appBillingCheckout?: AppBillingDeletionCheckout;
   backupAuthority?: AccountDeletionBackupAuthority;
   backupDatabase?: AccountDeletionBackupDatabase;
   computeDatabase?: AccountDeletionComputeDatabase;
@@ -562,12 +559,6 @@ export function createAccountDeletionProviderAdapters(
     },
     stripe: {
       async inspect(context) {
-        const commandRecovery = await recoverAppBillingForAccountDeletion(
-          context,
-          dependencies.appBillingRuntime,
-        );
-        if (commandRecovery === "pending")
-          return { state: "action_required", errorCode: "APP_BILLING_COMMAND_RECOVERY_REQUIRED" };
         const appObligations = await readAppBillingDeletionObligations(context);
         const closed = await dbWrite
           .select({ scopeId: appBillingDeletionDispositions.scope_id })
@@ -580,8 +571,22 @@ export function createAccountDeletionProviderAdapters(
           );
         let requiresCleanup = closed.length > 0;
         for (const obligation of appObligations) {
-          if (obligation.disposition !== "developer_owned" && !obligation.departingAdministrator)
-            continue;
+          if (obligation.disposition !== "developer_owned" && !obligation.departingAdministrator) {
+            const [historical] = await dbWrite
+              .select({ id: billingSubscriptionCommands.id })
+              .from(billingSubscriptionCommands)
+              .where(
+                and(
+                  eq(billingSubscriptionCommands.billing_scope_id, obligation.scopeId),
+                  eq(billingSubscriptionCommands.requested_by_user_id, context.userId),
+                  sql`${billingSubscriptionCommands.request_payload}->>'domain' = 'buyer'`,
+                ),
+              )
+              .limit(1);
+            if (!historical && !closed.some((decision) => decision.scopeId === obligation.scopeId))
+              continue;
+          }
+
           const decision = await decideAppBillingDeletionScope({
             scopeId: obligation.scopeId,
             authority: {
@@ -595,6 +600,23 @@ export function createAccountDeletionProviderAdapters(
           });
           if (decision.disposition === "close") requiresCleanup = true;
         }
+        const commandRecovery = await recoverAppBillingForAccountDeletion(
+          context,
+          dependencies.appBillingRuntime,
+          dependencies.appBillingCheckout,
+        );
+        if (commandRecovery === "pending")
+          return { state: "action_required", errorCode: "APP_BILLING_COMMAND_RECOVERY_REQUIRED" };
+        const currentClosed = await dbWrite
+          .select({ scopeId: appBillingDeletionDispositions.scope_id })
+          .from(appBillingDeletionDispositions)
+          .where(
+            and(
+              eq(appBillingDeletionDispositions.request_id, context.requestId),
+              eq(appBillingDeletionDispositions.disposition, "close"),
+            ),
+          );
+        requiresCleanup ||= currentClosed.length > 0;
         if (requiresCleanup)
           return { state: "action_required", errorCode: "APP_BILLING_PROVIDER_CLEANUP_REQUIRED" };
 
@@ -825,32 +847,17 @@ export function createAccountDeletionProviderAdapters(
     },
     primary_object_storage: {
       async inspect(context) {
-        const keys = await listOrganizationObjectKeys(context.blob, context.organizationId);
-        if (keys.length > 0) return { state: "needs_execution" };
-        const [row] = await dbWrite
-          .select({ id: orgStorageObjects.id })
-          .from(orgStorageObjects)
-          .where(eq(orgStorageObjects.organization_id, context.organizationId))
-          .limit(1);
-        if (row) {
-          await dbWrite.transaction(async (tx) => {
-            await tx
-              .delete(orgStorageReadOperations)
-              .where(eq(orgStorageReadOperations.organization_id, context.organizationId));
-            await tx
-              .delete(orgStorageDeleteOperations)
-              .where(eq(orgStorageDeleteOperations.organization_id, context.organizationId));
-            await tx
-              .delete(orgStorageGcOutbox)
-              .where(eq(orgStorageGcOutbox.organization_id, context.organizationId));
-            await tx
-              .delete(orgStoragePutOperations)
-              .where(eq(orgStoragePutOperations.organization_id, context.organizationId));
-            await tx
-              .delete(orgStorageObjects)
-              .where(eq(orgStorageObjects.organization_id, context.organizationId));
-          });
-        }
+        const result = await reconcileAccountDeletionStorage(
+          context,
+          async () =>
+            (await listOrganizationObjectKeys(context.blob, context.organizationId)).length === 0,
+        );
+        if (result === "provider_present") return { state: "needs_execution" };
+        if (result === "retained_reads")
+          return {
+            state: "action_required",
+            errorCode: "ACCOUNT_DELETION_STORAGE_FINANCIAL_RETENTION_REQUIRED",
+          };
         return complete(context, "primary_object_storage");
       },
       async execute(context) {

@@ -28,6 +28,25 @@ describe.skipIf(!postgresUrl)(
     beforeAll(setupRecordsTest);
     afterAll(closeRecordsTest);
 
+    test("SDK account resolution traverses the mounted route and retains one account on retry", async () => {
+      const { identity } = await buyer();
+      const client = await sdk(identity);
+      const input = {
+        externalReference: null,
+        displayName: "Personal app workspace",
+      };
+      const first = await client.resolveAccount(input);
+      const repeated = await client.resolveAccount(input);
+      expect(repeated.data.id).toBe(first.data.id);
+      expect(first.data.appId).toBe(identity.appId);
+      expect(first.data.role).toBe("administrator");
+      const stored = await db.query(
+        "SELECT id FROM app_billing_accounts WHERE app_id=$1 AND external_account_key=$2",
+        [identity.appId, `user:${identity.actorUserId}`],
+      );
+      expect(stored.rows).toEqual([{ id: first.data.id }]);
+    });
+
     test("free session assigns current members and persists retry receipts across revocation and reassignment", async () => {
       const { client, identity, scopeId } = await trial();
       const subject = await member(identity);

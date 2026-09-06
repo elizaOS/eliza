@@ -66,7 +66,13 @@ export type BuyerBillingCommandResult =
   | { kind: "portal"; url: string; expiresAt: string | null }
   | BuyerBillingPaymentAction
   | { kind: "completed"; subscriptionId: string | null; subscriptionRevision: number | null }
-  | { kind: "expired_checkout"; checkoutSessionId: string };
+  | { kind: "expired_checkout"; checkoutSessionId: string }
+  | {
+      kind: "completed_checkout";
+      checkoutSessionId: string;
+      subscriptionId: string;
+      subscriptionRevision: number;
+    };
 
 export type AdminBillingCommandPayload = {
   version: 1;
@@ -99,10 +105,48 @@ export type OperatorBillingCommandPayload = {
   manifestDigest: string;
   manifest: import("./generic-billing-import-manifest").AppBillingImportManifest;
 };
+/** Internal cleanup intent; purchaser endpoints never accept this domain. */
+export interface DeletionCheckoutCommandPayload {
+  version: 1;
+  domain: "account_deletion";
+  action: "expire_checkout";
+  sourceCommandId: string;
+  requestId: string;
+  requestDigest: string;
+  lifecycleRevision: number;
+  phaseReceiptId: string;
+  initiatingPhaseGeneration: number;
+  checkoutSessionId: string;
+  customerId: string;
+  subscriptionId: string | null;
+  mode: "setup" | "subscription";
+  planRevisionId: string | null;
+}
+
+/** Server-selected immediate cancellation of one subscription in a canonically closed scope. */
+export interface DeletionCancellationCommandPayload {
+  version: 1;
+  domain: "account_deletion";
+  action: "cancel";
+  requestId: string;
+  requestDigest: string;
+  lifecycleRevision: number;
+  phaseReceiptId: string;
+  initiatingPhaseGeneration: number;
+  customerId: string;
+  subscriptionId: string;
+  localSubscriptionId: string;
+  planRevisionId: string;
+  providerAccountId: string;
+  timing: "immediate";
+}
+
 export type GenericBillingCommandPayload =
   | BuyerBillingCommandPayload
   | AdminBillingCommandPayload
-  | OperatorBillingCommandPayload;
+  | OperatorBillingCommandPayload
+  | DeletionCheckoutCommandPayload
+  | DeletionCancellationCommandPayload;
 export type AdminBillingCommandResult =
   | { kind: "merchant"; merchantId: string }
   | { kind: "merchant_onboarding"; url: string; expiresAt: string }

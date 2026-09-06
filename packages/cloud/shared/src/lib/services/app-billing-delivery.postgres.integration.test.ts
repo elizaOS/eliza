@@ -66,6 +66,7 @@ beforeAll(async () => {
   `);
   for (const tag of [
     "0373_subscription_authority",
+    "0429_app_billing_applied_revision",
     "0374_subscription_funding_transaction_uniqueness",
     "0379_subscription_account_authority",
     "0380_app_billing_catalog",

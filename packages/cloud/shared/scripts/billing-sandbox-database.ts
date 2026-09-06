@@ -13,6 +13,7 @@ export async function initializeBillingSandboxDatabase(db: Client) {
     `);
   for (const tag of [
     "0373_subscription_authority",
+    "0429_app_billing_applied_revision",
     "0374_subscription_funding_transaction_uniqueness",
     "0379_subscription_account_authority",
     "0380_app_billing_catalog",
@@ -45,6 +46,8 @@ export async function initializeBillingSandboxDatabase(db: Client) {
     "0420_billing_identity_references",
     "0426_app_billing_resume_payment_progress",
     "0427_app_billing_paid_resume_progress",
+    "0428_app_billing_deletion_checkout",
+    "0430_app_billing_completed_checkout",
   ]) {
     const migration = await readFile(
       new URL(`../src/db/migrations/${tag}.sql`, import.meta.url),

@@ -96,6 +96,7 @@ export const billingSubscriptionCommands = pgTable(
     error_code: text("error_code"),
     completed_at: timestamp("completed_at", { withTimezone: true }),
     result_subscription_id: uuid("result_subscription_id"),
+    result_subscription_revision: bigint("result_subscription_revision", { mode: "number" }),
     applied_at: timestamp("applied_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -132,6 +133,23 @@ export const billingSubscriptionCommands = pgTable(
       foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],
       name: "billing_subscription_commands_subscription_tenant_fk",
     }).onDelete("restrict"),
+    result_revision_fk: foreignKey({
+      columns: [
+        table.result_subscription_id,
+        table.organization_id,
+        table.result_subscription_revision,
+      ],
+      foreignColumns: [
+        billingSubscriptionRevisions.subscription_id,
+        billingSubscriptionRevisions.organization_id,
+        billingSubscriptionRevisions.revision,
+      ],
+      name: "billing_commands_result_revision_fk",
+    }).onDelete("restrict"),
+    result_revision_check: check(
+      "billing_commands_result_revision_check",
+      sql`${table.result_subscription_revision} IS NULL OR (${table.status} = 'APPLIED' AND ${table.result_subscription_id} IS NOT NULL AND ${table.result_subscription_revision} > 0)`,
+    ),
     result_subscription_tenant_fk: foreignKey({
       columns: [table.result_subscription_id, table.organization_id],
       foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],

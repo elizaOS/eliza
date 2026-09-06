@@ -95,6 +95,7 @@ export async function setupRecordsTest() {
       CREATE TABLE credit_transactions(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),CONSTRAINT credit_transactions_id_org_idx UNIQUE(id,organization_id));`);
   for (const tag of [
     "0373_subscription_authority",
+    "0429_app_billing_applied_revision",
     "0374_subscription_funding_transaction_uniqueness",
     "0379_subscription_account_authority",
     "0380_app_billing_catalog",
@@ -337,6 +338,7 @@ async function setupRoutes() {
   const { runWithCloudBindingsAsync } = await import(
     "@/lib/runtime/cloud-bindings"
   );
+  const { default: resolveAccount } = await import("./accounts/resolve/route");
   const { default: administrators } = await import(
     "./accounts/[accountId]/administrators/route"
   );
@@ -356,6 +358,7 @@ async function setupRoutes() {
     "/api/v1/billing/application-slots/:slotKey",
     applicationProduct,
   );
+  routes.route("/api/v1/apps/:id/billing/accounts/resolve", resolveAccount);
   routes.get("/api/v1/apps/:id/billing/catalog", getBillingCatalog);
   routes.get(path, getBillingSnapshot);
   routes.get(`${path}/seats`, handlers.listBillingSeats);

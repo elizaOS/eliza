@@ -1816,9 +1816,11 @@ export function createGenericBillingProvider(
         atPeriodEnd: boolean;
       },
       intent: DurableProviderIntent,
+      beforeMutation?: () => Promise<void>,
     ) {
       const current = await retrieveSubscription(scope, input);
       if (current.value.status === "canceled") return observation(current.value, input, intent);
+      if (beforeMutation) await beforeMutation();
       const raw = input.atPeriodEnd
         ? await stripe.subscriptions.update(
             input.subscriptionId,

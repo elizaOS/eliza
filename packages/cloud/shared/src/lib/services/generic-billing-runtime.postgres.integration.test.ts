@@ -28,6 +28,7 @@ let authority: typeof import("../../db/repositories/app-subscription-authority")
 let commands: typeof import("../../db/repositories/app-billing-command-runtime").appBillingCommandRuntimeRepository;
 let queries: typeof import("../../db/repositories/app-billing-queries").appBillingQueries;
 let runtime: GenericBillingRuntime;
+let resolveProvider: typeof import("./generic-billing-provider-runtime").getAppBillingProvider;
 const fixture = createRuntimeStripeFixture();
 const org = randomUUID();
 const merchant = randomUUID();
@@ -91,6 +92,7 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
     `);
     for (const tag of [
       "0373_subscription_authority",
+      "0429_app_billing_applied_revision",
       "0374_subscription_funding_transaction_uniqueness",
       "0379_subscription_account_authority",
       "0380_app_billing_catalog",
@@ -123,6 +125,10 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
       "0420_billing_identity_references",
       "0421_app_billing_deletion_dispositions",
       "0422_app_billing_deletion_disposition_guards",
+      "0426_app_billing_resume_payment_progress",
+      "0427_app_billing_paid_resume_progress",
+      "0428_app_billing_deletion_checkout",
+      "0430_app_billing_completed_checkout",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -150,14 +156,15 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
     );
     const { createGenericBillingProvider } = await import("./generic-billing-provider");
     const { GenericBillingRuntime } = await import("./generic-billing-runtime");
-    runtime = new GenericBillingRuntime(async (merchantId, livemode) => {
+    resolveProvider = async (merchantId, livemode) => {
       if (merchantId !== merchant || livemode) throw new Error("Unexpected runtime merchant");
       return createGenericBillingProvider(
         fixture.stripe,
         { merchantId, kind: "connected", stripeAccountId: "acct_runtime", livemode },
         appBillingProviderBindings,
       );
-    });
+    };
+    runtime = new GenericBillingRuntime(resolveProvider);
   });
   afterAll(async () => {
     if (close) await close();
@@ -359,7 +366,7 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
     ).toEqual([{ disposition: "retain_shared", phase_generation: "1" }]);
     context.phaseGeneration = 2;
     await db.query("UPDATE users SET is_active=false WHERE id=$1", [survivor]);
-    await expect(adapter.inspect(context)).resolves.toEqual({
+    expect(await adapter.inspect(context)).toEqual({
       state: "action_required",
       errorCode: "APP_BILLING_PROVIDER_CLEANUP_REQUIRED",
     });
@@ -370,14 +377,14 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
         { ...trial, idempotencyKey: randomUUID() },
       ),
     ).rejects.toThrow("fenced");
-    await expect(adapter.inspect(context)).resolves.toEqual({
+    expect(await adapter.inspect(context)).toEqual({
       state: "action_required",
       errorCode: "APP_BILLING_PROVIDER_CLEANUP_REQUIRED",
     });
     await db.query("UPDATE app_billing_members SET role='member' WHERE user_id=$1", [
       identity.actorUserId,
     ]);
-    await expect(adapter.inspect(context)).resolves.toEqual({
+    expect(await adapter.inspect(context)).toEqual({
       state: "action_required",
       errorCode: "APP_BILLING_PROVIDER_CLEANUP_REQUIRED",
     });
@@ -1530,7 +1537,7 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
   }
 
   for (const state of ["prepared", "open_checkout"] as const) {
-    test(`shared purchaser deletion handles ${state} intent without dispatching new work`, async () => {
+    test(`shared purchaser deletion retires ${state} intent without creating a purchase`, async () => {
       const { identity, scopeId, planId } = await buyer();
       const command =
         state === "prepared"
@@ -1596,15 +1603,25 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
       const { createAccountDeletionProviderAdapters } = await import(
         "./account-deletion-provider-adapters"
       );
-      const adapter = createAccountDeletionProviderAdapters({ appBillingRuntime: runtime }).stripe;
+      const { expirePurchaserCheckoutForDeletion } = await import(
+        "./app-billing-deletion-checkout"
+      );
+      const adapter = createAccountDeletionProviderAdapters({
+        appBillingRuntime: runtime,
+        appBillingCheckout: (id, authority) =>
+          expirePurchaserCheckoutForDeletion(id, authority, resolveProvider),
+      }).stripe;
       const writes = fixture.requests.filter((row) => row.method === "POST").length;
-      const expected =
-        state === "prepared"
-          ? { state: "complete" }
-          : { state: "action_required", errorCode: "APP_BILLING_COMMAND_RECOVERY_REQUIRED" };
+      const expected = { state: "complete" };
       await expect(adapter.inspect(context)).resolves.toMatchObject(expected);
       await expect(adapter.inspect(context)).resolves.toMatchObject(expected);
-      expect(fixture.requests.filter((row) => row.method === "POST")).toHaveLength(writes);
+      expect(fixture.requests.filter((row) => row.method === "POST")).toHaveLength(
+        writes + (state === "open_checkout" ? 1 : 0),
+      );
+      if (state === "open_checkout")
+        expect(fixture.requests.filter((row) => row.method === "POST").at(-1)?.path).toMatch(
+          /\/checkout\/sessions\/[^/]+\/expire$/,
+        );
       expect(
         (
           await db.query(
@@ -1613,7 +1630,7 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
           )
         ).rows[0],
       ).toMatchObject({
-        status: state === "prepared" ? "SUPERSEDED" : "SUCCEEDED",
+        status: state === "prepared" ? "SUPERSEDED" : "FAILED",
         ...(state === "prepared" ? { provider_started_at: null } : {}),
       });
       expect(
