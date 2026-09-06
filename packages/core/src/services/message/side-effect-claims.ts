@@ -710,10 +710,11 @@ const CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN =
 
 // Quoted wording is classified once as non-assertive text. Preserve offsets and
 // line boundaries in this local grammar projection; the original reply and all
-// model context remain untouched.
+// model context remain untouched. An escaped delimiter belongs to its quoted
+// content; only an unescaped closing delimiter ends that span.
 function unquotedEmptyClaimText(text: string): string {
 	return text.replace(
-		/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|`[^`\n]*`|(?<![\p{L}\p{N}])'[^'\n]*'(?![\p{L}\p{N}])/gu,
+		/"(?:\\[^\r\n]|[^"\\\r\n])*"|“(?:\\[^\r\n]|[^”\\\r\n])*”|‘(?:\\[^\r\n]|[^’\\\r\n])*’|`(?:\\[^\r\n]|[^`\\\r\n])*`|(?<![\p{L}\p{N}])'(?:\\[^\r\n]|[^'\\\r\n])*'(?![\p{L}\p{N}])/gu,
 		(quote) => quote.replace(/[^\r\n]/g, " "),
 	);
 }

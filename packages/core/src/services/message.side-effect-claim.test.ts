@@ -1812,3 +1812,28 @@ describe("empty-state uncertainty and quoted clause boundaries", () => {
 		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
 	});
 });
+
+describe("escaped quote boundaries for empty-state egress", () => {
+	const quoted = String.raw`The example says "literal \"If you have no notes\" text"`;
+	it("requires proof for the assertion after escaped quoted content", () => {
+		const reply = `${quoted}; you have no tasks.`;
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+	});
+	it("keeps escaped quoted explanations non-assertive", () => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: quoted,
+				actionResults: [],
+				actions: [],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+	it("does not let an escaped backslash consume the actual closing quote", () => {
+		const reply = String.raw`The example says "If you have no notes\\"; you have no tasks.`;
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+	});
+});
