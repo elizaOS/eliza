@@ -67,9 +67,15 @@ function message(): Memory {
     id: "00000000-0000-0000-0000-0000000000a1" as UUID,
     entityId: ENTITY_ID,
     roomId: ROOM_ID,
-    content: { text: "hello there" },
+    // A recall phrase: the eager form is emitted only when the current
+    // message carries one of the provider's relevance keywords.
+    content: { text: "what did we say about this earlier?" },
     createdAt: 2,
   } as Memory;
+}
+
+function plainMessage(): Memory {
+  return { ...message(), content: { text: "what time is it right now?" } };
 }
 
 function makeRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
@@ -84,7 +90,11 @@ function makeRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
     getRoomsForParticipants: vi.fn(async () => [ROOM_ID]),
     getRoomsForParticipant: vi.fn(async () => [ROOM_ID]),
     getMemoriesByRoomIds: vi.fn(async () => [
-      { ...message(), createdAt: Number.POSITIVE_INFINITY },
+      {
+        ...message(),
+        content: { text: "hello there" },
+        createdAt: Number.POSITIVE_INFINITY,
+      },
     ]),
     getRoomsByIds: vi.fn(async () => [
       { id: ROOM_ID, source: "discord", name: "general" },
@@ -125,6 +135,22 @@ describe("recentConversationsProvider", () => {
     expect(markOwnerExclusiveDisclosureUsed).toHaveBeenCalledWith(
       expect.objectContaining({ entityId: ENTITY_ID }),
     );
+  });
+
+  it("emits only the manifest when the current message carries no recall signal", async () => {
+    const runtime = makeRuntime();
+
+    const result = await recentConversationsProvider.get(
+      runtime,
+      plainMessage(),
+      EMPTY_STATE,
+    );
+
+    expect(result.text).toContain("Stored conversation manifest:");
+    expect(result.text).toContain(`[discord] general roomId=${ROOM_ID}`);
+    expect(result.text).not.toContain("hello there");
+    expect(result.overflowText).toBe(result.text);
+    expect(result.values?.recentConversationCount).toBe(1);
   });
 
   it("expands linked aliases into complete eager context and a body-free manifest", async () => {

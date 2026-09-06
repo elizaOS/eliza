@@ -5,6 +5,13 @@
  * transcript when present. Suppressed
  * inside automation and page-scoped rooms, which carry their own context.
  * Gated to ADMIN (enforced by applyPluginRoleGating).
+ *
+ * The eager form is emitted only when the current message carries a recall
+ * signal (this provider's own `relevanceKeywords`, the same test Stage 1
+ * applies before it swaps eager blocks for their manifest); every other turn
+ * gets the manifest as its text, so a brand-new room never pays the complete
+ * cross-platform corpus on its first message (live 2026-09-06: an empty room
+ * rendered 265K chars of other rooms' history into a 92K-token Stage 1).
  */
 import type {
   IAgentRuntime,
@@ -24,6 +31,7 @@ import {
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
   toWellFormedUnicode,
+  validateActionKeywords,
 } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
@@ -214,9 +222,15 @@ export const recentConversationsProvider: Provider = {
 
       markOwnerExclusiveDisclosureUsed(message);
 
+      const manifestText = manifestLines.join("\n");
+      const eagerRelevant = validateActionKeywords(
+        message,
+        [],
+        recentConversationsProvider.relevanceKeywords ?? [],
+      );
       return {
-        text: eagerLines.join("\n"),
-        overflowText: manifestLines.join("\n"),
+        text: eagerRelevant ? eagerLines.join("\n") : manifestText,
+        overflowText: manifestText,
         values: {
           recentConversationCount: sorted.length,
           recentConversationRoomCount: rooms.length,
