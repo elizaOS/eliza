@@ -76,6 +76,7 @@ describe("Pi provider routes", () => {
           {
             id: "anthropic/claude-sonnet-4.5",
             name: "anthropic/claude-sonnet-4.5",
+            api: "openai-completions",
           },
         ]);
       } else {

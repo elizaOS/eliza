@@ -266,7 +266,19 @@ export async function preparePiProviderRoute(input: {
     // custom row. OpenRouter is the exception: its route contract deliberately
     // accepts arbitrary catalog ids, so the selected id must be materialized.
     ...(route.accountProviderId === "openrouter-api" || !route.builtIn
-      ? { models: [{ id: model, name: model }] }
+      ? {
+          models: [
+            {
+              id: model,
+              name: model,
+              // This endpoint uses Chat Completions even when Pi's catalog
+              // maps the selected Claude model to Anthropic Messages.
+              ...(route.accountProviderId === "openrouter-api"
+                ? { api: "openai-completions" }
+                : {}),
+            },
+          ],
+        }
       : {}),
   };
   const models = { providers: { [route.piProviderId]: provider } };
