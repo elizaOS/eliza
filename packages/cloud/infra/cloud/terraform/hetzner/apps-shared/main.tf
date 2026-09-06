@@ -134,8 +134,9 @@ resource "hcloud_server" "tenant_db" {
     backup_encryption_passphrase = var.backup_encryption_passphrase
     backup_retention_days        = var.backup_retention_days
     pitr_files = var.pitr_repository == null ? "" : templatefile("${path.module}/cloud-init/tenant-db-pitr.yaml.tftpl", {
-      repository  = var.pitr_repository
-      environment = var.environment
+      check_script = indent(6, file("${path.module}/cloud-init/tenant-db-pitr-check.sh"))
+      repository   = var.pitr_repository
+      environment  = var.environment
     })
     pitr_enabled = var.pitr_repository != null
   })

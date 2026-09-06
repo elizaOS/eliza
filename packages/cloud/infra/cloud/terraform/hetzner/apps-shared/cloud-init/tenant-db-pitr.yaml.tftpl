@@ -7,7 +7,7 @@
     content: |
       archive_mode = on
       archive_timeout = '60s'
-      archive_command = '/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant archive-push %p'
+      archive_command = '/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --config-include-path=/etc/pgbackrest/eliza-empty.d --stanza=tenant archive-push %p'
       wal_level = replica
 
   - path: /etc/pgbackrest/eliza-tenant.conf
@@ -58,9 +58,9 @@
       Type=oneshot
       User=postgres
       UMask=0077
-      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant stanza-create
-      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant check
-      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant --type=full backup
+      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --config-include-path=/etc/pgbackrest/eliza-empty.d --stanza=tenant stanza-create
+      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --config-include-path=/etc/pgbackrest/eliza-empty.d --stanza=tenant check
+      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --config-include-path=/etc/pgbackrest/eliza-empty.d --stanza=tenant --type=full backup
       RemainAfterExit=yes
       Restart=on-failure
       RestartSec=60s
@@ -84,7 +84,7 @@
       UMask=0077
       Nice=10
       IOSchedulingClass=idle
-      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant --type=%i backup
+      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --config-include-path=/etc/pgbackrest/eliza-empty.d --stanza=tenant --type=%i backup
       TimeoutStartSec=infinity
 
   - path: /etc/systemd/system/tenant-db-pitr-full.timer
@@ -109,6 +109,12 @@
       [Install]
       WantedBy=timers.target
 
+  - path: /usr/local/bin/tenant-db-pitr-check.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      ${check_script}
+
   - path: /etc/systemd/system/tenant-db-pitr-check.service
     owner: root:root
     permissions: '0644'
@@ -121,7 +127,7 @@
       Type=oneshot
       User=postgres
       UMask=0077
-      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant check
+      ExecStart=/usr/local/bin/tenant-db-pitr-check.sh
       TimeoutStartSec=180s
 
   - path: /etc/systemd/system/tenant-db-pitr-check.timer

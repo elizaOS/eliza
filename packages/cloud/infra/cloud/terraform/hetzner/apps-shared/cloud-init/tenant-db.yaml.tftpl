@@ -542,12 +542,15 @@ runcmd:
   # picks it up automatically (WantedBy=multi-user.target) — runcmd is per-
   # instance and never runs again, but the unit does.
   - systemctl daemon-reload
+%{ if pitr_enabled ~}
+  - install -d -o root -g root -m 0755 /etc/pgbackrest/eliza-empty.d
+  - install -d -o postgres -g postgres -m 0700 /var/lib/pgbackrest/lock
+%{ endif ~}
   - systemctl enable --now tenant-db-init.service
   # The backup timer is always enabled; the script itself no-ops until the
   # backup env file exists, so unarmed nodes stay quiet.
   - systemctl enable --now tenant-db-backup.timer
 %{ if pitr_enabled ~}
-  - install -d -o postgres -g postgres -m 0700 /var/lib/pgbackrest/lock
   - systemctl enable --now tenant-db-pitr-init.service
   - systemctl enable --now tenant-db-pitr-full.timer tenant-db-pitr-diff.timer tenant-db-pitr-check.timer
 %{ endif ~}
