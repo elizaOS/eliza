@@ -135,6 +135,33 @@ describe("setEntityRoleCas against the real in-memory adapter", () => {
 		expect(body?.metadata?.outcome).toBe("committed");
 	});
 
+	it("does not write or audit when the requested grant is already committed", async () => {
+		const { adapter, runtime, message } = await setup();
+		const first = await setEntityRoleCas(runtime, message, TARGET_ID, "ADMIN", {
+			authorize: () => true,
+		});
+		expect(first.status).toBe("committed");
+		const before = await storedWorld(adapter);
+		const revisionBefore = (before?.metadata as Record<string, unknown>)[
+			WORLD_METADATA_REVISION_KEY
+		];
+
+		// Live 2026-09-06: the same grant re-issued on every world event appended
+		// 6,184 audit rows and bumped one world's revision to 7,050.
+		const again = await setEntityRoleCas(runtime, message, TARGET_ID, "ADMIN", {
+			authorize: () => true,
+		});
+		expect(again.status).toBe("committed");
+		if (again.status === "committed") {
+			expect(again.roles[TARGET_ID]).toBe("ADMIN");
+		}
+		const after = await storedWorld(adapter);
+		expect(
+			(after?.metadata as Record<string, unknown>)[WORLD_METADATA_REVISION_KEY],
+		).toBe(revisionBefore);
+		expect(await adapter.getLogs({ type: "role_audit" })).toHaveLength(1);
+	});
+
 	it("returns unauthorized when the per-attempt authorize predicate denies on fresh state", async () => {
 		const { adapter, runtime, message } = await setup();
 		const result = await setEntityRoleCas(
