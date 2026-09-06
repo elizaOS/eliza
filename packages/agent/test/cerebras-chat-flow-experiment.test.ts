@@ -9,7 +9,10 @@ import { createServer } from "node:http";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { describe, expect, it } from "vitest";
-import { replayRequest } from "../scripts/cerebras-cache-wire-replay";
+import {
+  replayRequest,
+  validateReplayStream,
+} from "../scripts/cerebras-cache-wire-replay";
 import {
   applyCacheExperiment,
   measuredProviderFetch,
@@ -166,6 +169,19 @@ describe("real chat cache experiment", () => {
       model: "embed",
       dimensions: 384,
     });
+  });
+
+  it("rejects a transport-success replay whose complete stream is failed or unfinished", () => {
+    const complete = `data: ${JSON.stringify({ choices: [{ delta: { content: "complete answer" }, finish_reason: "stop" }], usage: { prompt_tokens: 12, completion_tokens: 2 } })}\n\ndata: [DONE]\n\n`;
+    expect(validateReplayStream(complete).usage.prompt_tokens).toBe(12);
+    expect(() =>
+      validateReplayStream(complete.replace("data: [DONE]", "")),
+    ).toThrow("without DONE");
+    expect(() =>
+      validateReplayStream(
+        `data: ${JSON.stringify({ error: { message: "provider failed" } })}\n\ndata: [DONE]\n`,
+      ),
+    ).toThrow("stream error");
   });
 
   it("sends the selected affinity through the actual OpenAI SDK serializer", async () => {
