@@ -182,7 +182,7 @@
   },
   {
     "file": "packages/scripts/vitest/unit.config.ts",
-    "tokens": ["@elizaos/plugin-anthropic", "@elizaos/plugin-cli"],
+    "tokens": ["@elizaos/plugin-anthropic"],
     "reason": "unit-lane vitest config stubs these provider plugins so unit suites stay keyless and offline"
   },
   {

@@ -34,10 +34,13 @@ import type {
 	ActionResult,
 	Entity,
 	Evaluator,
+	EvaluatorRunOptions,
+	EvaluatorSharedPromptContext,
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
 	MemoryMetadata,
+	PromptSegment,
 	RegisteredEvaluator,
 	State,
 	UUID,
@@ -234,6 +237,7 @@ const relationshipSchema: JSONSchema = {
 				properties: {
 					sourceEntityId: { type: "string" },
 					targetEntityId: { type: "string" },
+					relationshipType: { type: "string" },
 					tags: { type: "array", items: { type: "string" } },
 					// Strict mode: every object must carry additionalProperties:false
 					// AND an explicit properties map even when the property is
@@ -286,12 +290,21 @@ const successSchema: JSONSchema = {
 	additionalProperties: false,
 };
 
-const RelationshipUpdateSchema = z.object({
-	sourceEntityId: z.string().min(1),
-	targetEntityId: z.string().min(1),
-	tags: z.array(z.string()).optional(),
-	metadata: z.record(z.string(), z.unknown()).optional(),
-});
+const RelationshipUpdateSchema = z
+	.object({
+		sourceEntityId: z.string().min(1),
+		targetEntityId: z.string().min(1),
+		relationshipType: z.string().trim().min(1).optional(),
+		tags: z.array(z.string()).optional(),
+		metadata: z.record(z.string(), z.unknown()).optional(),
+	})
+	.refine(
+		(relationship) =>
+			relationship.relationshipType === undefined ||
+			relationship.metadata?.relationshipType === undefined ||
+			relationship.metadata.relationshipType === relationship.relationshipType,
+		{ message: "Relationship type fields disagree" },
+	);
 
 const RelationshipOutputSchema = z.object({
 	relationships: z.array(RelationshipUpdateSchema),
@@ -847,12 +860,20 @@ async function applyRelationshipUpdates(
 			? relationship.tags.map((tag) => tag.trim()).filter(Boolean)
 			: [];
 
+		// Existing relationship context reads metadata.relationshipType; preserve
+		// the explicit extraction field through that canonical storage contract.
+		const semanticMetadata = {
+			...(relationship.metadata ?? {}),
+			...(relationship.relationshipType
+				? { relationshipType: relationship.relationshipType }
+				: {}),
+		};
 		if (existing) {
 			const updatedMetadata = {
 				...existing.metadata,
 				interactions:
 					((existing.metadata?.interactions as number | undefined) || 0) + 1,
-				...(relationship.metadata ?? {}),
+				...semanticMetadata,
 			};
 			const updatedTags = Array.from(
 				new Set([...(existing.tags || []), ...tags]),
@@ -869,7 +890,7 @@ async function applyRelationshipUpdates(
 				tags,
 				metadata: {
 					interactions: 1,
-					...(relationship.metadata ?? {}),
+					...semanticMetadata,
 				},
 			});
 		}
@@ -999,21 +1020,18 @@ export function canEvaluateMessage(
 	);
 }
 
-export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
-	name: "factMemory",
-	description:
-		"Extracts durable/current fact-store ops from recent conversation.",
-	priority: EvaluatorPriority.REFLECTION_FACTS,
-	schema: factOpsSchema,
-	async shouldRun({ message, options }) {
-		return canEvaluateMessage(message, options);
-	},
-	async prepare({ runtime, message }) {
-		return prepareFacts(runtime, message);
-	},
-	prompt({ prepared, shared }) {
-		const { durable, current } = partitionByKind(prepared.knownFacts);
-		return `Find stable/current facts about speaker.
+function renderFactMemoryPromptSegments({
+	prepared,
+	shared,
+}: {
+	prepared: FactPrepared;
+	shared?: EvaluatorSharedPromptContext;
+}): PromptSegment[] {
+	const { durable, current } = partitionByKind(prepared.knownFacts);
+
+	return [
+		{
+			content: `Find stable/current facts about speaker.
 
 Fact stores:
 - durable: identity-level claims matter in a year. Categories: identity, health, relationship, life_event, business_role, preference, goal.
@@ -1034,13 +1052,39 @@ Rules:
   life_event/goal: event, to, goal, domain.
   Omit unknown fields; do not invent values.
 
-${recentMessagesSection(shared, prepared.recentMessages)}
+`,
+			stable: true,
+		},
+		{
+			content: `${recentMessagesSection(shared, prepared.recentMessages)}
 
 Known durable facts:
 ${formatKnownLines(durable, "durable")}
 
 Known current facts:
-${formatKnownLines(current, "current")}`;
+${formatKnownLines(current, "current")}`,
+			stable: false,
+		},
+	];
+}
+
+export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
+	name: "factMemory",
+	description:
+		"Extracts durable/current fact-store ops from recent conversation.",
+	priority: EvaluatorPriority.REFLECTION_FACTS,
+	schema: factOpsSchema,
+	async shouldRun({ message, options }) {
+		return canEvaluateMessage(message, options);
+	},
+	async prepare({ runtime, message }) {
+		return prepareFacts(runtime, message);
+	},
+	promptSegments: renderFactMemoryPromptSegments,
+	prompt(context) {
+		return renderFactMemoryPromptSegments(context)
+			.map((segment) => segment.content)
+			.join("");
 	},
 	parse(output) {
 		// Tolerant, op-by-op: a single malformed op must not discard the whole
@@ -1110,6 +1154,41 @@ ${formatKnownLines(current, "current")}`;
 	],
 };
 
+function renderRelationshipPromptSegments({
+	prepared,
+	shared,
+}: {
+	prepared: ReflectionPrepared;
+	shared?: EvaluatorSharedPromptContext;
+}): PromptSegment[] {
+	return [
+		{
+			content: `Find semantic relationship changes between participants.
+
+Rules:
+- Return only clearly supported relationships.
+- Use exact UUIDs from Entities in Room. Do not use names or placeholders.
+- Directional: sourceEntityId initiates, targetEntityId receives.
+- Include relationshipType for the supported relationship, such as "colleague".
+- Use tags for any additional supported labels; do not invent a relationship type.
+- Nothing changed -> {"relationships":[]}.
+
+`,
+			stable: true,
+		},
+		{
+			content: `${recentMessagesSection(shared, prepared.recentMessages)}
+
+Entities in Room:
+${formatEntities(prepared.entities)}
+
+Existing relationships:
+${formatRelationships(prepared.existingRelationships)}`,
+			stable: false,
+		},
+	];
+}
+
 export const relationshipEvaluator: Evaluator<
 	z.infer<typeof RelationshipOutputSchema>,
 	ReflectionPrepared
@@ -1125,22 +1204,11 @@ export const relationshipEvaluator: Evaluator<
 	async prepare({ runtime, message }) {
 		return prepareReflectionContext(runtime, message);
 	},
-	prompt({ prepared, shared }) {
-		return `Find semantic relationship changes between participants.
-
-Rules:
-- Return only clearly supported relationships.
-- Use exact UUIDs from Entities in Room. Do not use names or placeholders.
-- Directional: sourceEntityId initiates, targetEntityId receives.
-- Nothing changed -> {"relationships":[]}.
-
-${recentMessagesSection(shared, prepared.recentMessages)}
-
-Entities in Room:
-${formatEntities(prepared.entities)}
-
-Existing relationships:
-${formatRelationships(prepared.existingRelationships)}`;
+	promptSegments: renderRelationshipPromptSegments,
+	prompt(context) {
+		return renderRelationshipPromptSegments(context)
+			.map((segment) => segment.content)
+			.join("");
 	},
 	parse(output) {
 		const result = RelationshipOutputSchema.safeParse(output);
@@ -1165,6 +1233,38 @@ ${formatRelationships(prepared.existingRelationships)}`;
 	],
 };
 
+function renderIdentityPromptSegments({
+	prepared,
+	shared,
+}: {
+	prepared: ReflectionPrepared;
+	shared?: EvaluatorSharedPromptContext;
+}): PromptSegment[] {
+	return [
+		{
+			content: `Find explicit platform identity claims for known room participants.
+
+Rules:
+- Use exact UUIDs from Entities in Room.
+- Only emit identities explicitly stated in the recent conversation.
+- Do not invent identities or emit ambient public-figure mentions.
+- platform is lowercase, such as twitter, github, telegram, discord, bluesky, farcaster, linkedin.
+- confidence 0-1: higher for self-claims, lower for second-hand.
+- Nothing mentioned -> {"identities":[]}.
+
+`,
+			stable: true,
+		},
+		{
+			content: `${recentMessagesSection(shared, prepared.recentMessages)}
+
+Entities in Room:
+${formatEntities(prepared.entities)}`,
+			stable: false,
+		},
+	];
+}
+
 export const identityEvaluator: Evaluator<
 	z.infer<typeof IdentityOutputSchema>,
 	ReflectionPrepared
@@ -1179,21 +1279,11 @@ export const identityEvaluator: Evaluator<
 	async prepare({ runtime, message }) {
 		return prepareReflectionContext(runtime, message);
 	},
-	prompt({ prepared, shared }) {
-		return `Find explicit platform identity claims for known room participants.
-
-Rules:
-- Use exact UUIDs from Entities in Room.
-- Only emit identities explicitly stated in the recent conversation.
-- Do not invent identities or emit ambient public-figure mentions.
-- platform is lowercase, such as twitter, github, telegram, discord, bluesky, farcaster, linkedin.
-- confidence 0-1: higher for self-claims, lower for second-hand.
-- Nothing mentioned -> {"identities":[]}.
-
-${recentMessagesSection(shared, prepared.recentMessages)}
-
-Entities in Room:
-${formatEntities(prepared.entities)}`;
+	promptSegments: renderIdentityPromptSegments,
+	prompt(context) {
+		return renderIdentityPromptSegments(context)
+			.map((segment) => segment.content)
+			.join("");
 	},
 	parse(output) {
 		const result = IdentityOutputSchema.safeParse(output);
@@ -1219,6 +1309,45 @@ ${formatEntities(prepared.entities)}`;
 	],
 };
 
+function renderSuccessPromptSegments({
+	prepared,
+	options,
+	shared,
+}: {
+	prepared: SuccessPrepared;
+	options: EvaluatorRunOptions;
+	shared?: EvaluatorSharedPromptContext;
+}): PromptSegment[] {
+	const actionResultsText = renderActionResultsForModel(
+		prepared.actionResults,
+	).text;
+	const actionResultsSection =
+		shared?.actionResultsText === actionResultsText
+			? 'Action results: see "Action results" in the Shared Turn Context above.'
+			: `Action results:\n${actionResultsText}`;
+	return [
+		{
+			content: `Evaluate if current user task is complete after agent response.
+
+Rules:
+- completed=true only if user needs no more action/follow-up this turn.
+- Clarifying question, failed action, pending work, or partial handling -> completed=false.
+- Ground the reason in the conversation and action results.
+
+`,
+			stable: true,
+		},
+		{
+			content: `Did respond: ${options.didRespond === true ? "true" : "false"}
+
+${recentMessagesSection(shared, prepared.recentMessages)}
+
+${actionResultsSection}`,
+			stable: false,
+		},
+	];
+}
+
 export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	name: "success",
 	description: "Evaluates whether user task is complete this turn.",
@@ -1239,28 +1368,11 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 					: actionResultsFromState(state),
 		};
 	},
-	prompt({ prepared, options, shared }) {
-		const actionResultsText = renderActionResultsForModel(
-			prepared.actionResults,
-		).text;
-		// The cache may contain outcomes absent from state; share only an exact
-		// complete rendering so a cached failure can never disappear.
-		const actionResultsSection =
-			shared?.actionResultsText === actionResultsText
-				? 'Action results: see "Action results" in the Shared Turn Context above.'
-				: `Action results:\n${actionResultsText}`;
-		return `Evaluate if current user task is complete after agent response.
-
-Rules:
-- completed=true only if user needs no more action/follow-up this turn.
-- Clarifying question, failed action, pending work, or partial handling -> completed=false.
-- Ground the reason in the conversation and action results.
-
-Did respond: ${options.didRespond === true ? "true" : "false"}
-
-${recentMessagesSection(shared, prepared.recentMessages)}
-
-${actionResultsSection}`;
+	promptSegments: renderSuccessPromptSegments,
+	prompt(context) {
+		return renderSuccessPromptSegments(context)
+			.map((segment) => segment.content)
+			.join("");
 	},
 	parse(output) {
 		const result = SuccessOutputSchema.safeParse(output);

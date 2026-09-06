@@ -4,7 +4,7 @@ Source for the public [elizaOS](https://github.com/elizaOS/eliza) documentation 
 
 ## Local Development
 
-Preview from this directory with the current Mintlify CLI:
+Run these commands from the repository root:
 
 ```bash
 bun run --cwd packages/docs predev
@@ -44,7 +44,7 @@ packages/docs/
 
 ## Tests
 
-`test/docs.test.ts` uses Node's built-in test runner. It validates:
+`test/docs.test.ts` runs with Bun's test runner. It validates:
 
 - Navigation tabs and groups contain no duplicate labels or pages.
 - Every page referenced in navigation exists on disk.

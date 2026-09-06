@@ -12,9 +12,12 @@ import {
   renameSync,
   statSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveStateDir } from "@elizaos/core";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
+
+export const BUNDLED_SKILLS_OVERRIDE_INVALID =
+  "BUNDLED_SKILLS_OVERRIDE_INVALID";
 
 let cachedSkillsDir: string | undefined;
 
@@ -71,6 +74,9 @@ function looksLikeSkillsDir(dir: string): boolean {
  * 3. Package's own `skills/` directory (relative to this module)
  *
  * @returns Absolute path to the skills directory
+ * A nonempty override selects one readable directory, including an empty one.
+ * Invalid overrides throw BUNDLED_SKILLS_OVERRIDE_INVALID; automatic discovery
+ * is used only when the setting is absent or blank.
  * @throws Error if skills directory cannot be found
  */
 export function getSkillsDir(): string {
@@ -79,9 +85,25 @@ export function getSkillsDir(): string {
   }
 
   const override = process.env.ELIZAOS_BUNDLED_SKILLS_DIR?.trim();
-  if (override && existsSync(override)) {
-    cachedSkillsDir = override;
-    return cachedSkillsDir;
+  if (override) {
+    const directory = resolve(override);
+    try {
+      // An explicitly selected empty directory is valid; only automatic
+      // discovery needs a heuristic to distinguish bundled skills from other data.
+      readdirSync(directory);
+    } catch (cause) {
+      // error-policy:J2 An invalid explicit selection must not load a different bundle.
+      throw new ElizaError(
+        `ELIZAOS_BUNDLED_SKILLS_DIR must name a readable directory: ${directory}`,
+        {
+          code: BUNDLED_SKILLS_OVERRIDE_INVALID,
+          cause,
+          context: { setting: "ELIZAOS_BUNDLED_SKILLS_DIR", directory },
+        },
+      );
+    }
+    cachedSkillsDir = directory;
+    return directory;
   }
 
   const execDir = dirname(process.execPath);
@@ -117,31 +139,22 @@ export function clearSkillsDirCache(): void {
   cachedSkillsDir = undefined;
 }
 
-/**
- * Default base directory for the curated learning loop. Lives under the
- * elizaOS state dir and holds two sibling namespaces:
- *
- *   curated/active/    — auto-promoted or human-promoted skills (loaded)
- *   curated/proposed/  — staged drafts awaiting human review (NOT loaded)
- *
- * Honors the state directory resolved by @elizaos/core.
- */
-function resolveCuratedBaseDir(): string {
-  return join(resolveStateDir(), "skills", "curated");
+/** The state root is resolved at call time so hosts can select it after import. */
+function resolveCuratedBaseDir(stateDir = resolveStateDir()): string {
+  return join(stateDir, "skills", "curated");
 }
 
 /**
- * Absolute path to the curated **active** skills directory. Skills here are
- * loaded into the runtime alongside bundled and managed skills.
+ * Curated active store selected by loadSkills, relative to the supplied state
+ * root or the host's current resolveStateDir() result.
  */
-export function getCuratedActiveDir(): string {
-  return join(resolveCuratedBaseDir(), "active");
+export function getCuratedActiveDir(stateDir?: string): string {
+  return join(resolveCuratedBaseDir(stateDir), "active");
 }
 
 /**
- * Absolute path to the curated **proposed** skills directory. Skills here are
- * NEVER loaded into the runtime — they are staged for human review via the
- * Settings → Learned Skills UI.
+ * Draft store excluded from automatic loadSkills discovery. Callers can still
+ * select drafts deliberately through an explicit skillPaths entry.
  */
 export function getProposedSkillsDir(): string {
   return join(resolveCuratedBaseDir(), "proposed");

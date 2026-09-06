@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 // Deep primitive/brand imports per the packages/ui extension rules — the
 // root cloud-ui barrel would drag the entire kit into this chunk graph.
 import { Button, Skeleton } from "../../../cloud-ui/components/primitives";

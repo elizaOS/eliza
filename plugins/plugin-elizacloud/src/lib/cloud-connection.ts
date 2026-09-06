@@ -1,3 +1,4 @@
+/** Resolves Cloud credentials, connection state, and billing against the configured deployment. */
 import {
   isCloudInferenceSelectedInConfig,
   isElizaSettingsDebugEnabled,
@@ -26,7 +27,6 @@ import {
   scrubCloudSecretsFromEnv,
 } from "./cloud-secrets";
 
-const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 export const CLOUD_BILLING_URL =
   "https://cloud.eliza.app/cloud/billing";
 
@@ -221,10 +221,7 @@ function resolvePersistedCloudIdentity(runtime: AgentRuntime | null): {
 }
 
 export function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
-  return (
-    resolveCanonicalCloudApiBaseUrl(rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL) ??
-    DEFAULT_CLOUD_API_BASE_URL
-  );
+  return resolveCanonicalCloudApiBaseUrl(rawBaseUrl);
 }
 
 export function resolveCloudApiKey(

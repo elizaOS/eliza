@@ -226,17 +226,6 @@ export default defineConfig({
         find: /^@elizaos\/vault\/(.+)$/,
         replacement: path.join(monorepoRoot, "packages/vault/src/$1"),
       },
-      {
-        find: /^@elizaos\/plugin-cli$/,
-        replacement: path.join(
-          repoRoot,
-          "plugins",
-          "plugin-cli",
-          "typescript",
-          "src",
-          "index.ts",
-        ),
-      },
     ],
   },
   test: {

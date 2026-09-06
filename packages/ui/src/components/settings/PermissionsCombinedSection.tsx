@@ -7,11 +7,13 @@
  */
 import { AppPermissionsSection } from "./AppPermissionsSection";
 import { PermissionsSection } from "./PermissionsSection";
+import { WebPushSettingsSection } from "./WebPushSettingsSection";
 
 export function PermissionsCombinedSection(): React.JSX.Element {
   return (
     <div className="flex flex-col gap-8">
       <PermissionsSection />
+      <WebPushSettingsSection />
       <section aria-label="App permissions">
         <h2 className="mb-3 text-sm font-semibold text-txt-strong">
           App permissions

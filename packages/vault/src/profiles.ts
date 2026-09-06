@@ -1,23 +1,8 @@
 /**
- * Profile resolution + per-context routing on top of `Vault`.
- *
- * Two layers:
- *
- * 1. Per-key active profile.
- *    A key K can have multiple named profiles (e.g. work, personal,
- *    throwaway). Each profile's value lives at `K.profile.<profileId>`;
- *    the meta blob (`_meta.K`) tracks the profile list and which one
- *    is currently active for bare reads. When no meta is present the
- *    legacy storage path is used (the value lives at K itself).
- *
- * 2. Per-context routing rules.
- *    A user can declare "for OPENROUTER_API_KEY, when agentId=X use the
- *    work profile". Rules are walked in order; the first match wins.
- *    Falls back to the key's `activeProfile`, then to the global
- *    `defaultProfile`, then to the legacy bare-key value.
- *
- * The vault stays dumb: every read goes through `Vault.get/has`. The
- * only routing logic lives here so the vault contract is unchanged.
+ * Resolves profile credentials for agent, app, and skill contexts through the
+ * vault's existing storage API. The first matching routing rule precedes the
+ * active profile, global default, and bare key. Persisted routing must validate
+ * completely before it can influence credential selection.
  */
 
 import {
@@ -27,8 +12,6 @@ import {
   readEntryMeta,
 } from "./inventory.js";
 import type { Vault } from "./vault.js";
-
-// ── Routing config ─────────────────────────────────────────────────
 
 export type RoutingScopeKind = "agent" | "app" | "skill";
 
@@ -63,8 +46,6 @@ export interface ResolutionContext {
   readonly appName?: string;
   readonly skillId?: string;
 }
-
-// ── Public API ─────────────────────────────────────────────────────
 
 /**
  * Resolve `key` against (a) per-context routing rules, (b) the key's
@@ -109,27 +90,21 @@ export async function resolveActiveValue(
   return vault.get(key);
 }
 
-/**
- * Read the routing config blob from the vault. Missing or malformed
- * entries return `EMPTY_ROUTING` — routing is best-effort overlay,
- * not a load-bearing contract.
- */
+/** Missing configuration has no rules; malformed persisted configuration throws. */
 export async function readRoutingConfig(vault: Vault): Promise<RoutingConfig> {
   if (!(await vault.has(ROUTING_KEY))) return EMPTY_ROUTING;
   const raw = await vault.get(ROUTING_KEY);
   return parseRoutingConfig(raw);
 }
 
-/** Persist the routing config blob. Caller-validated input. */
+/** Validate the complete configuration before replacing persisted routing. */
 export async function writeRoutingConfig(
   vault: Vault,
-  config: RoutingConfig,
+  config: unknown,
 ): Promise<void> {
-  const normalized = normalizeRoutingConfig(config);
+  const normalized = validateRoutingConfig(config);
   await vault.set(ROUTING_KEY, JSON.stringify(normalized));
 }
-
-// ── Internals ───────────────────────────────────────────────────────
 
 function pickRule(
   rules: ReadonlyArray<RoutingRule>,
@@ -169,94 +144,95 @@ function matchesScope(scope: RoutingScope, ctx: ResolutionContext): boolean {
   return false;
 }
 
+/** Safe diagnostics for routing failures; values and credential keys are never included. */
+export class RoutingConfigError extends Error {
+  readonly code = "VAULT_ROUTING_CONFIG_INVALID";
+  constructor(readonly field: string) {
+    super(`Invalid vault routing configuration at ${field}`);
+    this.name = "RoutingConfigError";
+  }
+}
+
 function parseRoutingConfig(raw: string): RoutingConfig {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    // error-policy:J3 untrusted-input sanitizing — routing config is non-secret
-    // UI/plumbing data (per-context key routing rules), not a credential. An
-    // unparseable config yields the explicit empty routing set ("no custom
-    // rules → use defaults"), which is the safe/closed direction: it can only
-    // remove routing overrides, never grant access to a value.
-    return EMPTY_ROUTING;
+    // error-policy:J3 reject malformed persisted input without copying its bytes into diagnostics.
+    throw new RoutingConfigError("config");
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return EMPTY_ROUTING;
-  }
-  const obj = parsed as Record<string, unknown>;
-  const rules: RoutingRule[] = [];
-  if (Array.isArray(obj.rules)) {
-    for (const r of obj.rules) {
-      const normalized = normalizeRule(r);
-      if (normalized) rules.push(normalized);
-    }
-  }
-  const out: RoutingConfig = {
-    rules,
-    ...(typeof obj.defaultProfile === "string" && obj.defaultProfile.length > 0
-      ? { defaultProfile: obj.defaultProfile }
-      : {}),
-  };
-  return out;
+  return validateRoutingConfig(parsed);
 }
 
-function normalizeRoutingConfig(config: RoutingConfig): RoutingConfig {
-  const rules: RoutingRule[] = [];
-  for (const r of config.rules ?? []) {
-    const normalized = normalizeRule(r);
-    if (normalized) rules.push(normalized);
+function record(value: unknown, field: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new RoutingConfigError(field);
   }
+  return value as Record<string, unknown>;
+}
+
+function nonemptyString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new RoutingConfigError(field);
+  }
+  return value;
+}
+
+function validateRoutingConfig(value: unknown): RoutingConfig {
+  const config = record(value, "config");
+  if (!Array.isArray(config.rules)) throw new RoutingConfigError("rules");
+  const rules = config.rules.map(
+    (value: unknown, index: number): RoutingRule => {
+      const field = `rules[${index}]`;
+      const rule = record(value, field);
+      const keyPattern = nonemptyString(rule.keyPattern, `${field}.keyPattern`);
+      if (keyPattern.startsWith(META_PREFIX) || keyPattern === ROUTING_KEY) {
+        throw new RoutingConfigError(`${field}.keyPattern`);
+      }
+      const profileId = nonemptyString(rule.profileId, `${field}.profileId`);
+      const scope = record(rule.scope, `${field}.scope`);
+      switch (scope.kind) {
+        case "agent":
+          return {
+            keyPattern,
+            profileId,
+            scope: {
+              kind: "agent",
+              agentId: nonemptyString(scope.agentId, `${field}.scope.agentId`),
+            },
+          };
+        case "app":
+          return {
+            keyPattern,
+            profileId,
+            scope: {
+              kind: "app",
+              appName: nonemptyString(scope.appName, `${field}.scope.appName`),
+            },
+          };
+        case "skill":
+          return {
+            keyPattern,
+            profileId,
+            scope: {
+              kind: "skill",
+              skillId: nonemptyString(scope.skillId, `${field}.scope.skillId`),
+            },
+          };
+        default:
+          throw new RoutingConfigError(`${field}.scope.kind`);
+      }
+    },
+  );
   return {
     rules,
-    ...(typeof config.defaultProfile === "string" &&
-    config.defaultProfile.length > 0
-      ? { defaultProfile: config.defaultProfile }
-      : {}),
+    ...(config.defaultProfile === undefined
+      ? {}
+      : {
+          defaultProfile: nonemptyString(
+            config.defaultProfile,
+            "defaultProfile",
+          ),
+        }),
   };
-}
-
-function normalizeRule(r: unknown): RoutingRule | null {
-  if (!r || typeof r !== "object") return null;
-  const rec = r as Record<string, unknown>;
-  if (typeof rec.keyPattern !== "string" || rec.keyPattern.length === 0) {
-    return null;
-  }
-  if (
-    rec.keyPattern.startsWith(META_PREFIX) ||
-    rec.keyPattern === ROUTING_KEY
-  ) {
-    return null; // never route an internal key
-  }
-  if (typeof rec.profileId !== "string" || rec.profileId.length === 0) {
-    return null;
-  }
-  const scope = rec.scope;
-  if (!scope || typeof scope !== "object") return null;
-  const scopeRec = scope as Record<string, unknown>;
-  const kind = scopeRec.kind;
-  if (kind !== "agent" && kind !== "app" && kind !== "skill") return null;
-
-  if (kind === "agent" && typeof scopeRec.agentId === "string") {
-    return {
-      keyPattern: rec.keyPattern,
-      scope: { kind: "agent", agentId: scopeRec.agentId },
-      profileId: rec.profileId,
-    };
-  }
-  if (kind === "app" && typeof scopeRec.appName === "string") {
-    return {
-      keyPattern: rec.keyPattern,
-      scope: { kind: "app", appName: scopeRec.appName },
-      profileId: rec.profileId,
-    };
-  }
-  if (kind === "skill" && typeof scopeRec.skillId === "string") {
-    return {
-      keyPattern: rec.keyPattern,
-      scope: { kind: "skill", skillId: scopeRec.skillId },
-      profileId: rec.profileId,
-    };
-  }
-  return null;
 }

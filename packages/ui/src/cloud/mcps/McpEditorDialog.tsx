@@ -16,7 +16,7 @@ import {
   legacyMcpPointsToOrganizationCredits,
 } from "@elizaos/cloud-sdk/browser-contracts";
 import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../bridge/toast";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import {

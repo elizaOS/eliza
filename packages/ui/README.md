@@ -113,6 +113,11 @@ import {
 Normal pages render only their body. Do not recreate a header, safe-area pad,
 or floating-chat clearance inside the plugin; the shell owns those layers.
 
+## Notifications
+
+See [notification-policy.md](notification-policy.md) for shared native delivery,
+viewport fallback ownership, interactive popup exceptions, and platform limits.
+
 ## Development
 
 ```bash
@@ -124,6 +129,11 @@ bun run --cwd packages/ui stories:dev # component stories
 bun run --cwd packages/ui audit:story-coverage # report current story coverage
 bun run --cwd packages/ui audit:stories:build  # build and gate every story
 ```
+
+The realtime voice playback sample-rate boundary has a browser audio check:
+`bun run --cwd packages/ui test:voice-playback-e2e` renders the streaming sink in
+Chromium at 16, 44.1, and 48 kHz. Set `PLAYBACK_EVIDENCE_DIR` to retain the rendered
+WAV files and duration, pitch, continuity, and interruption measurements.
 
 This is a library; there is no standalone dev server — run it through a host app.
 

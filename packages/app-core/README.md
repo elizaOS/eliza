@@ -34,12 +34,12 @@ The full subpath list lives in the `exports` map of `package.json`.
 
 ```bash
 bun run --cwd packages/app-core build       # tsc → flatten → copy assets → rewrite dist ESM imports
-bun run --cwd packages/app-core typecheck   # tsgo --noEmit
+bun run --cwd packages/app-core typecheck   # tsc --noEmit
 bun run --cwd packages/app-core test         # vitest
 bun run --cwd packages/app-core lint         # Biome
 ```
 
-This package is consumed by `@elizaos/agent`, `@elizaos/ui`, `@elizaos/shared`, the `packages/app` shell, and most `plugins/*` app plugins. It targets Node `>=24`, with `react`/`react-dom`/`three` as peer dependencies and the `@elizaos/capacitor-*` mobile bridges as optional dependencies.
+This package supplies host integration to the `packages/app` shell and app-facing plugins. It targets Node `>=24`, with `react`/`react-dom`/`three` as peer dependencies and the `@elizaos/capacitor-*` mobile bridges as optional dependencies.
 
 ## Isolated local development
 

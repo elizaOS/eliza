@@ -88,6 +88,14 @@ await manager.set("ui.theme", "dark");
 `in-house` is always available. External backend failures are surfaced
 instead of silently falling back to local storage.
 
+## Credential profiles
+
+`manager.getActive(key, context)` applies per-context routing, then the active
+profile, global default, and bare-key fallback. `writeRoutingConfig` validates
+the complete configuration before persisting it. Missing configuration means
+no custom rules; malformed stored configuration throws `RoutingConfigError`
+(`VAULT_ROUTING_CONFIG_INVALID`) so it cannot silently choose another profile.
+
 ## Storage
 
 - **Sensitive values** — AES-256-GCM encrypted at rest with the vault

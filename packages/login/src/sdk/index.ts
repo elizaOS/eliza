@@ -111,7 +111,6 @@ export {
   LoginApiError,
   LoginClient,
 } from "./client.ts";
-// v0.4.0 - Tenant config, dashboard, approvals, webhooks
 export type {
   AgentAccountCapability,
   AgentAccountSummary,

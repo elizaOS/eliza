@@ -501,9 +501,11 @@ function CodingModelGroup({
 export function ModelConfigurationPanelView({
   state,
   t,
+  showChatModels = true,
 }: {
   state: ModelConfigurationState;
   t: Translator;
+  showChatModels?: boolean;
 }) {
   if (state.phase === "loading") {
     return (
@@ -612,27 +614,31 @@ export function ModelConfigurationPanelView({
   }
   return (
     <>
-      <ChatModelGroup
-        group={state.small}
-        title={t("modelconfig.smallGroupTitle", {
-          defaultValue: "Small model",
-        })}
-        description={t("modelconfig.smallGroupDescription", {
-          defaultValue:
-            "Fast, cheap model for routing and lightweight replies.",
-        })}
-        t={t}
-      />
-      <ChatModelGroup
-        group={state.large}
-        title={t("modelconfig.largeGroupTitle", {
-          defaultValue: "Large model",
-        })}
-        description={t("modelconfig.largeGroupDescription", {
-          defaultValue: "Primary reasoning model for substantive replies.",
-        })}
-        t={t}
-      />
+      {showChatModels ? (
+        <>
+          <ChatModelGroup
+            group={state.small}
+            title={t("modelconfig.smallGroupTitle", {
+              defaultValue: "Small model",
+            })}
+            description={t("modelconfig.smallGroupDescription", {
+              defaultValue:
+                "Fast, cheap model for routing and lightweight replies.",
+            })}
+            t={t}
+          />
+          <ChatModelGroup
+            group={state.large}
+            title={t("modelconfig.largeGroupTitle", {
+              defaultValue: "Large model",
+            })}
+            description={t("modelconfig.largeGroupDescription", {
+              defaultValue: "Primary reasoning model for substantive replies.",
+            })}
+            t={t}
+          />
+        </>
+      ) : null}
       <CodingModelGroup group={state.coding} t={t} />
     </>
   );
@@ -640,12 +646,21 @@ export function ModelConfigurationPanelView({
 
 export function ModelConfigurationPanel({
   activeChatProvider,
+  showChatModels = true,
 }: {
   /** Catalog chat provider implied by the active intelligence selection;
    * pins the small/large provider so models track what actually routes chat. */
   activeChatProvider?: string;
+  /** Subscription chat does not use the API-key small/large model controls. */
+  showChatModels?: boolean;
 }) {
   const t = useAppSelector((s) => s.t);
   const state = useModelConfiguration({ activeChatProvider });
-  return <ModelConfigurationPanelView state={state} t={t} />;
+  return (
+    <ModelConfigurationPanelView
+      state={state}
+      t={t}
+      showChatModels={showChatModels}
+    />
+  );
 }

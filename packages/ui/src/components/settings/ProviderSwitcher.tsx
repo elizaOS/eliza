@@ -7,7 +7,6 @@
 import type { LinkedAccountProviderId } from "@elizaos/shared";
 import { Mic } from "lucide-react";
 import { useCallback, useMemo } from "react";
-import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import {
   FIRST_RUN_PROVIDER_CATALOG,
   getDirectAccountProviderForFirstRunProvider,
@@ -19,6 +18,10 @@ import {
   isRealtimeVoiceForceEnabled,
   isRealtimeVoiceSelfHostedEnabled,
 } from "../../voice/realtime-voice-build-flags";
+import { VOICE_PROVIDERS } from "../../voice/types";
+import { useVoiceConfig } from "../../voice/useVoiceConfig";
+import { resolveEffectiveVoiceConfig } from "../../voice/voice-chat-types";
+import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import { AccountManagementPanel } from "../accounts/AccountManagementPanel";
 import { ProvidersList } from "../local-inference/ProvidersList";
 import { RoutingMatrix } from "../local-inference/RoutingMatrix";
@@ -66,7 +69,9 @@ interface ProviderSwitcherProps {
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const app = useAppSelectorShallow((s) => ({
     t: s.t,
+    uiLanguage: s.uiLanguage,
     elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
     plugins: s.plugins,
     pluginSaving: s.pluginSaving,
     pluginSaveSuccess: s.pluginSaveSuccess,
@@ -76,10 +81,18 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     setActionNotice: s.setActionNotice,
   }));
   const t = app.t;
-  // Warm the runtime-mode default voice/ASR cache for the Voice section.
-  useDefaultProviderPresets();
+  const { voiceConfig } = useVoiceConfig(app.uiLanguage);
   const elizaCloudConnected =
     props.elizaCloudConnected ?? Boolean(app.elizaCloudConnected);
+  const effectiveVoiceConfig = resolveEffectiveVoiceConfig(voiceConfig, {
+    cloudConnected: isCloudVoiceRunnable({
+      connected: elizaCloudConnected,
+      proxyAvailable: app.elizaCloudVoiceProxyAvailable,
+    }),
+  });
+  const voiceProvider = VOICE_PROVIDERS.find(
+    (provider) => provider.id === effectiveVoiceConfig?.provider,
+  );
   const plugins = Array.isArray(props.plugins)
     ? props.plugins
     : Array.isArray(app.plugins)
@@ -195,7 +208,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const handleCloudSignIn = useCallback(() => {
     // Keep the popup user-activation alive across the async login start.
     claimCloudLoginWindow();
-    void handleInteractiveCloudLogin?.().catch((error: unknown) => {
+    void handleInteractiveCloudLogin?.({
+      forceReauth: true,
+    }).catch((error: unknown) => {
       // error-policy:J4 Login failed; keep Settings usable and show the notice.
       setActionNotice?.(
         error instanceof Error ? error.message : "Could not start Cloud login.",
@@ -369,6 +384,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       {settingsContentReady && !selection.cloudRuntimeLocked ? (
         <ModelConfigurationPanel
           activeChatProvider={activeChatCatalogProvider}
+          showChatModels={
+            !isSubscriptionProviderSelectionId(resolvedSelectedId)
+          }
         />
       ) : null}
 
@@ -399,7 +417,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
       {/* Build flags only enable the realtime path. This read-only row does
           not probe its connection and must not imply that Cartesia is ready. */}
-      {settingsContentReady ? (
+      {settingsContentReady &&
+      realtimeVoiceEnabled &&
+      !selection.cloudRuntimeLocked ? (
         <SettingsGroup
           title={t("providerswitcher.voiceGroupTitle", {
             defaultValue: "Voice",
@@ -410,59 +430,54 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             label={
               <span className="flex items-center gap-2">
                 <Mic className="size-[18px] shrink-0 text-accent" aria-hidden />
-                {selection.cloudRuntimeLocked
-                  ? t("providerswitcher.cloudVoiceRowLabel", {
-                      defaultValue: "Eliza Cloud voice",
-                    })
-                  : realtimeVoiceEnabled
-                    ? t("providerswitcher.realtimeVoiceRowLabel", {
-                        defaultValue: "Cartesia (realtime)",
-                      })
-                    : t("providerswitcher.voiceRowLabel", {
-                        defaultValue: "Kokoro (on-device)",
-                      })}
+                {t("providerswitcher.realtimeVoiceRowLabel", {
+                  defaultValue: "Cartesia (realtime)",
+                })}
               </span>
             }
             description={
-              selection.cloudRuntimeLocked
-                ? t("providerswitcher.cloudVoiceRowDescription", {
+              servingAxes.runtime === "remote"
+                ? t("providerswitcher.remoteRealtimeVoiceRowDescription", {
                     defaultValue:
-                      "Speech recognition and playback use your signed-in Eliza Cloud service. This app does not download a local voice model.",
+                      "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on the remote host.",
                   })
-                : realtimeVoiceEnabled
-                  ? servingAxes.runtime === "remote"
-                    ? t("providerswitcher.remoteRealtimeVoiceRowDescription", {
-                        defaultValue:
-                          "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on the remote host.",
-                      })
-                    : t("providerswitcher.realtimeVoiceRowDescription", {
-                        defaultValue:
-                          "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on this device.",
-                      })
-                  : servingAxes.runtime === "remote"
-                    ? t("providerswitcher.remoteVoiceRowDescription", {
-                        defaultValue:
-                          "Speech uses Kokoro on your remote host — nothing to configure. Voice selection moves to your character.",
-                      })
-                    : t("providerswitcher.voiceRowDescription", {
-                        defaultValue:
-                          "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
-                      })
+                : t("providerswitcher.realtimeVoiceRowDescription", {
+                    defaultValue:
+                      "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on this device.",
+                  })
             }
             control={
-              <span
-                className={
-                  realtimeVoiceEnabled && !selection.cloudRuntimeLocked
-                    ? "text-xs text-muted"
-                    : "text-xs text-accent"
-                }
-              >
-                {realtimeVoiceEnabled && !selection.cloudRuntimeLocked
-                  ? t("providerswitcher.enabledProvider", {
-                      defaultValue: "Enabled",
+              <span className="text-xs text-muted">
+                {t("providerswitcher.enabledProvider", {
+                  defaultValue: "Enabled",
+                })}
+              </span>
+            }
+          />
+        </SettingsGroup>
+      ) : settingsContentReady ? (
+        <SettingsGroup
+          title={t("providerswitcher.voiceGroupTitle", {
+            defaultValue: "Voice",
+          })}
+          bare
+        >
+          <SettingsRow
+            icon={Mic}
+            label={t("providerswitcher.speechPlaybackLabel", {
+              defaultValue: "Speech playback",
+            })}
+            description={t("providerswitcher.speechPlaybackDescription", {
+              defaultValue: "Provider used for spoken replies.",
+            })}
+            control={
+              <span className="text-xs text-txt-strong">
+                {voiceProvider
+                  ? t(voiceProvider.labelKey, {
+                      defaultValue: voiceProvider.label,
                     })
-                  : t("providerswitcher.activeProvider", {
-                      defaultValue: "Active",
+                  : t("providerswitcher.servingInferenceUnconfirmed", {
+                      defaultValue: "Unconfirmed",
                     })}
               </span>
             }
@@ -517,7 +532,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
 /**
  * Selection state says what is configured; the serving axes say what actually
- * answered chat. When a direct external provider is serving, do not leave the
+ * answered chat. When serving is unconfirmed or external, do not leave the
  * Local or Cloud tile labelled Active merely because that routing toggle is
  * still selected. Mark a matching key-provider entry active when one exists.
  *
@@ -527,18 +542,35 @@ export function reconcileProviderEntriesWithServingAxes(
   entries: ProviderListEntry[],
   axes: ServingAxes,
 ): ProviderListEntry[] {
-  if (axes.inference !== "external") return entries;
+  if (axes.inference !== "external" && axes.inference !== "unknown") {
+    return entries;
+  }
   const providerId = axes.activeChatProvider?.trim().toLowerCase() ?? "";
   return entries.map((entry) => {
+    // Coding-only subscriptions are independent of the chat serving source.
+    if (
+      entry.category === "subscription" &&
+      entry.id !== "openai-subscription"
+    ) {
+      return entry;
+    }
     const current =
-      entry.category === "key" && entry.id.trim().toLowerCase() === providerId;
+      axes.inference === "external" &&
+      entry.category === "key" &&
+      entry.id.trim().toLowerCase() === providerId;
     const selectedInferenceTile =
       entry.category === "local" || entry.category === "cloud";
     return {
       ...entry,
       current,
       ...(selectedInferenceTile && entry.status.label === "Active"
-        ? { status: { tone: "muted" as const, label: "Available" } }
+        ? {
+            status: {
+              tone: "muted" as const,
+              label:
+                axes.inference === "unknown" ? "Unconfirmed" : "Not serving",
+            },
+          }
         : {}),
     };
   });
