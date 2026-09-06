@@ -494,7 +494,19 @@ async function __hono_POST(c: AppContext) {
       );
     }
 
-    const formData = await request.formData();
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch (error) {
+      // error-policy:J3 malformed multipart bytes are explicit invalid input.
+      logger.warn("[Voice STT API] Invalid multipart form data", {
+        errorType: error instanceof Error ? error.name : "unknown",
+      });
+      return Response.json(
+        { error: "Invalid multipart form data" },
+        { status: 400 },
+      );
+    }
     const audioFile = formData.get("audio") as File | null;
     const languageCodeValue = formData.get("languageCode");
     const languageCode =
