@@ -146,7 +146,7 @@ unified router in `@elizaos/ui`.
 
 **Add a new i18n locale:**
 1. Add `src/i18n/locales/<locale>.json` following the existing key structure.
-2. Register the locale in `src/providers/I18nProvider.tsx`.
+2. Register its lazy loader in `src/providers/language-messages.ts`.
 
 **Update release download data:**
 Run `node packages/app-core/scripts/write-homepage-release-data.mjs` — this is
