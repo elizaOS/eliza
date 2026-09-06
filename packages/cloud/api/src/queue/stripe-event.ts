@@ -55,6 +55,7 @@ import {
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { referralsService } from "@/lib/services/referrals";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
+import { reconcileStripeTerminalLifecycle } from "@/lib/services/stripe-terminal-lifecycle";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 
@@ -204,10 +205,16 @@ export async function processStripeEvent(
     `[Stripe Queue] Processing ${event.type} (${event.id}) attempt=${delivery.attempts}`,
   );
 
-  // No recurring finalizer is registered yet. Retain the complete signed
-  // delivery in the existing retry/DLQ path until it can be reconciled; an
-  // unknown handler or legacy metadata disposition is not durable application.
+  // Only known terminal organization lifecycle is implemented. Other recurring
+  // deliveries remain intact in retry/DLQ until their policy can be reconciled.
   try {
+    if (
+      event.type === "customer.subscription.updated" ||
+      event.type === "customer.subscription.deleted"
+    ) {
+      await reconcileStripeTerminalLifecycle(delivery.body);
+      return "ack";
+    }
     if (await requiresSubscriptionReconciliation(event)) {
       logger.error(
         "[Stripe Queue] Subscription reconciliation unavailable; retaining delivery",

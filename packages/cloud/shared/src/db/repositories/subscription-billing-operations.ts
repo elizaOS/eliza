@@ -923,6 +923,31 @@ export class SubscriptionBillingOperationsRepository {
       : null;
   }
 
+  /** Releases only this live worker lease after a retryable failure; never rewinds a newer worker or terminal receipt. */
+  async releaseEventForRetry(input: {
+    organizationId: string;
+    receiptId: string;
+    leaseToken: string;
+  }): Promise<void> {
+    await dbWrite
+      .update(billingSubscriptionEventReceipts)
+      .set({
+        status: "received",
+        lease_token: null,
+        lease_expires_at: null,
+        updated_at: sql`clock_timestamp()`,
+      })
+      .where(
+        and(
+          eq(billingSubscriptionEventReceipts.organization_id, input.organizationId),
+          eq(billingSubscriptionEventReceipts.id, input.receiptId),
+          eq(billingSubscriptionEventReceipts.status, "processing"),
+          eq(billingSubscriptionEventReceipts.lease_token, input.leaseToken),
+          gt(billingSubscriptionEventReceipts.lease_expires_at, sql`clock_timestamp()`),
+        ),
+      );
+  }
+
   async failEvent(input: {
     organizationId: string;
     receiptId: string;

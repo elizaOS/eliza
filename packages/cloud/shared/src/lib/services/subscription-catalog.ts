@@ -321,6 +321,17 @@ function parseBindings(env: NodeJS.ProcessEnv): SubscriptionCatalogBindings {
   return deepFreeze({ expectedLivemode, credential: secret.data, plans });
 }
 
+/** Resolves server-owned provider identity without publishing policy or accepting caller bindings. */
+export function resolveSubscriptionProviderBinding(
+  env: NodeJS.ProcessEnv,
+  planKey: SubscriptionPlanKey,
+  catalogVersion: string,
+): Readonly<PlanBinding> & { expectedLivemode: boolean } {
+  resolveSubscriptionPlanDefinition(planKey, catalogVersion);
+  const bindings = parseBindings(env);
+  return { ...bindings.plans[planKey], expectedLivemode: bindings.expectedLivemode };
+}
+
 function mismatch(planKey: SubscriptionPlanKey, field: string): never {
   throw new SubscriptionCatalogError(
     "SUBSCRIPTION_CATALOG_PROVIDER_DRIFT",

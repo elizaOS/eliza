@@ -65,3 +65,18 @@ There is no build step here (`build:linked-workspaces` defers to the repo-root `
 ## More
 
 See [CLAUDE.md](./CLAUDE.md) for the migration workflow, how to add tables/services/DTOs, and the architecture rules (CQRS, server-only `lib/`, append-only migrations). WHY docs live under `docs/`.
+
+## Terminal Stripe lifecycle reconciliation
+
+The existing Stripe webhook queue calls `stripe-terminal-lifecycle` for updates
+and deletions of known organization subscriptions. It retrieves the subscription
+through the configured platform Stripe client, validates the deployment and
+server catalog bindings, and publishes terminal state through the atomic
+subscription receipt/finalizer transaction. Connect-account events, unknown
+identities, nonterminal transitions, changed periods or catalog bindings, and
+out-of-order observations remain retryable in the existing queue/DLQ.
+
+This path issues no provider mutations or grants. It does not implement checkout,
+trial activation, renewal funding, dunning/grace policy, refunds, or generic app
+subscriber lifecycle. Local consumer tests control the Stripe transport boundary;
+they do not establish live merchant credentials or provider execution evidence.
