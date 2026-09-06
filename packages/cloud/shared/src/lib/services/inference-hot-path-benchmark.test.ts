@@ -2,7 +2,8 @@
  * Measures the warm inference authentication path with the real in-memory
  * CacheClient and deterministic boundary mocks. A fully authorized API-key
  * request must use one cache read, one strong-revocation check, and no
- * authoritative authentication or moderation reads.
+ * authoritative authentication or moderation reads. A positive cache hit also
+ * reads current primary policy once; policy storage and admission are mocked.
  */
 
 process.env.MOCK_REDIS = "1";
@@ -17,17 +18,31 @@ process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
 process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
 
 import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
+import type { OrganizationPolicyStamp, OrganizationQuotaPolicy } from "./organization-quota-policy";
 
 let authChainCalls = 0;
 let moderationCalls = 0;
 let usageCalls = 0;
 let admissionLoadCalls = 0;
+let primaryPolicyReads = 0;
+let policyAdmissionCalls = 0;
 let appScopeCalls = 0;
 let revocationBoundaryCalls = 0;
 
-// Admission and app scope are part of the cached identity, so their
-// authoritative reads are allowed only while warming a cold miss.
-const ADMISSION = {
+// Admission and app scope hydrate on cold misses. Positive warm reads still
+// consult primary policy authority before trusting the cached projection.
+const ADMISSION: InferenceAdmissionSnapshot = {
+  authority: {
+    generation: "0",
+    source: "legacy",
+    sourceSubscriptionId: null,
+    sourceRevision: null,
+    projectionRevision: null,
+    catalogVersion: null,
+    effectiveFrom: "2026-01-01T00:00:00.000Z",
+    effectiveUntil: null,
+  },
   subscriptionFunded: false,
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
   rateLimits: {
@@ -38,7 +53,55 @@ const ADMISSION = {
   },
 };
 
+const POLICY: OrganizationQuotaPolicy = {
+  authority: ADMISSION.authority,
+  tier: { status: "available", value: { tierName: "fixture", ...ADMISSION.rateLimits } },
+  subscriptionFunded: ADMISSION.subscriptionFunded,
+  tierSourceCreditTotal: "0",
+  overrides: { completionsRpm: null, embeddingsRpm: null, standardRpm: null, strictRpm: null },
+  limits: {
+    characters: { status: "unavailable", code: "outside_test_scope" },
+    nonEagerSandboxes: { status: "unavailable", code: "outside_test_scope" },
+    sandboxes: { status: "unavailable", code: "outside_test_scope" },
+    containers: { status: "unavailable", code: "outside_test_scope" },
+    apps: { status: "unavailable", code: "outside_test_scope" },
+    storage: { status: "unavailable", code: "outside_test_scope" },
+  },
+  observedAt: new Date(ADMISSION.balance.balanceAt).toISOString(),
+  balance: {
+    status: "available",
+    value: {
+      balanceUsd: ADMISSION.balance.balanceUsd,
+      revision: ADMISSION.balance.balanceRevision,
+    },
+  },
+};
+
+// Cache behavior is real; primary policy reads and admission transactions are
+// controlled boundaries. Migrated lifecycle tests own locking and publication.
+mock.module("./organization-quota-policy", () => ({
+  readOrganizationQuotaPolicy: async () => {
+    primaryPolicyReads++;
+    return POLICY;
+  },
+  requireOrganizationRateTier: (policy: OrganizationQuotaPolicy) => {
+    if (policy.tier.status !== "available") throw new Error("Fixture rate tier unavailable");
+    return policy.tier.value;
+  },
+}));
+mock.module("./organization-policy-admission", () => ({
+  withOrganizationPolicyAdmission: async <T>(
+    _orgId: string,
+    _authority: OrganizationPolicyStamp | undefined,
+    action: (policy: OrganizationQuotaPolicy) => Promise<T>,
+  ): Promise<T> => {
+    policyAdmissionCalls++;
+    return action(POLICY);
+  },
+}));
+
 mock.module("./inference-admission-snapshot", () => ({
+  inferenceAdmissionSnapshotFromPolicy: (_policy: OrganizationQuotaPolicy) => ADMISSION,
   loadInferenceAdmissionSnapshot: async () => {
     admissionLoadCalls++;
     return ADMISSION;
@@ -133,6 +196,8 @@ beforeEach(async () => {
   moderationCalls = 0;
   usageCalls = 0;
   admissionLoadCalls = 0;
+  primaryPolicyReads = 0;
+  policyAdmissionCalls = 0;
   appScopeCalls = 0;
   revocationBoundaryCalls = 0;
   await invalidateInferenceAuthContextByKeyHash(hashApiKey(KEY));
@@ -165,6 +230,8 @@ describe("inference hot-path benchmark", () => {
     expect(getSpy).toHaveBeenCalledTimes(1);
     expect(authChainCalls).toBe(1); // one auth chain
     expect(moderationCalls).toBe(1); // one moderation read
+    expect(primaryPolicyReads).toBe(0);
+    expect(policyAdmissionCalls).toBe(1);
     expect(admissionLoadCalls).toBe(1); // one admission projection load (IAC v2)
     expect(appScopeCalls).toBe(1); // one app-key scope load (IAC v2)
     expect(revocationBoundaryCalls).toBe(1);
@@ -182,6 +249,8 @@ describe("inference hot-path benchmark", () => {
     authChainCalls = 0;
     moderationCalls = 0;
     admissionLoadCalls = 0;
+    primaryPolicyReads = 0;
+    policyAdmissionCalls = 0;
     appScopeCalls = 0;
     revocationBoundaryCalls = 0;
     usageCalls = 0;
@@ -190,12 +259,14 @@ describe("inference hot-path benchmark", () => {
 
     expect(warm.kind).toBe("authorized");
     if (warm.kind === "authorized") expect(warm.source).toBe("cache");
-    // THE benchmark assertion: one cache read plus the strong denial fence.
+    // Primary policy authority and the strong denial fence accompany the cache read.
     expect(getSpy).toHaveBeenCalledTimes(1);
     expect(setSpy).toHaveBeenCalledTimes(0);
     expect(delSpy).toHaveBeenCalledTimes(0);
     expect(authChainCalls).toBe(0); // zero auth DB work
     expect(moderationCalls).toBe(0); // zero moderation DB work
+    expect(primaryPolicyReads).toBe(1);
+    expect(policyAdmissionCalls).toBe(0);
     expect(admissionLoadCalls).toBe(0); // admission rides in the single cache read (IAC v2)
     expect(appScopeCalls).toBe(0); // app scope rides in the single cache read (IAC v2)
     expect(revocationBoundaryCalls).toBe(1);
@@ -206,13 +277,15 @@ describe("inference hot-path benchmark", () => {
     delSpy.mockRestore();
   });
 
-  test("N warm hits stay O(1) cache reads each (no per-request DB growth)", async () => {
+  test("N warm hits use one cache and primary policy read each without auth hydration", async () => {
     await resolveInferenceAuthContext(req()); // populate
 
     const getSpy = spyOn(cache, "getWithOutcome");
     authChainCalls = 0;
     moderationCalls = 0;
     admissionLoadCalls = 0;
+    primaryPolicyReads = 0;
+    policyAdmissionCalls = 0;
     appScopeCalls = 0;
     revocationBoundaryCalls = 0;
 
@@ -222,6 +295,8 @@ describe("inference hot-path benchmark", () => {
     expect(getSpy).toHaveBeenCalledTimes(N); // exactly one read per request
     expect(authChainCalls).toBe(0);
     expect(moderationCalls).toBe(0);
+    expect(primaryPolicyReads).toBe(N);
+    expect(policyAdmissionCalls).toBe(0);
     expect(admissionLoadCalls).toBe(0);
     expect(appScopeCalls).toBe(0);
     expect(revocationBoundaryCalls).toBe(N);
@@ -249,6 +324,8 @@ describe("inference hot-path benchmark", () => {
     expect(authChainCalls).toBe(0);
     expect(moderationCalls).toBe(0);
     expect(revocationBoundaryCalls).toBe(0);
+    expect(primaryPolicyReads).toBe(0);
+    expect(policyAdmissionCalls).toBe(0);
 
     getSpy.mockRestore();
     setSpy.mockRestore();

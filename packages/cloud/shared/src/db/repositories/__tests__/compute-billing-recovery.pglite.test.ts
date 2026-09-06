@@ -48,6 +48,7 @@ import { settleComputeRateSegments } from "../compute-billing-segments";
 import { containerBillingRepository } from "../container-billing";
 import { containersRepository } from "../containers";
 import { jobsRepository } from "../jobs";
+import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 
 const PGLITE_TIMEOUT = 60_000;
 let ready = true;
@@ -74,6 +75,7 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    await installOrganizationPolicyTestSchema((query) => dbWrite.execute(sql.raw(query)));
     await dbWrite.execute(
       sql.raw(`CREATE TABLE jobs (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

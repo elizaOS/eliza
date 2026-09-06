@@ -64,6 +64,7 @@ import {
 import { users } from "../../schemas/users";
 import { apiKeysRepository } from "../api-keys";
 import { type App, appsRepository } from "../apps";
+import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 import { organizationsRepository } from "../organizations";
 import { usersRepository } from "../users";
 
@@ -150,6 +151,14 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    await installOrganizationPolicyTestSchema((query) => dbWrite.execute(query));
+    const appBillingMigration = readFileSync(
+      new URL("../../migrations/0381_app_billing_registration.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of appBillingMigration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await dbWrite.execute(statement);
+    }
 
     // pushSchema only derives DDL from the Drizzle schema objects above — it
     // never runs hand-written SQL migrations. The credential-tombstone
@@ -1499,6 +1508,7 @@ describe("AppsService.create organization cap", () => {
     expect(pgliteReady).toBe(true);
     const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
     process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "1abc";
+    const createKey = spyOn(apiKeysService, "create");
     try {
       const { organizationId, userId } = await seedOrgAndUser();
       await createApp({
@@ -1516,11 +1526,14 @@ describe("AppsService.create organization cap", () => {
         }),
       ).rejects.toMatchObject({
         name: "ElizaError",
-        code: "INVALID_MAX_APPS_PER_ORG",
+        code: "RESOURCE_POLICY_UNAVAILABLE",
+        context: { resource: "apps" },
       });
 
       expect(await appsRepository.countByOrganization(organizationId)).toBe(1);
+      expect(createKey).not.toHaveBeenCalled();
     } finally {
+      createKey.mockRestore();
       if (previousLimit === undefined) {
         delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
       } else {
