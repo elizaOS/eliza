@@ -1,11 +1,19 @@
-/** Tests deterministic batching and strict concurrency configuration without spawning Vitest. */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+/** Tests batch admission and filesystem evidence reconciliation with deterministic malformed-report fixtures. */
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
 import {
   createBatches,
   createVitestInvocation,
+  mergeAgentJunit,
+  parseAgentTestArgs,
   positiveInteger,
   resolveBunExecutable,
 } from "./run-vitest-batches.mjs";
@@ -24,6 +32,46 @@ afterAll(() => {
 });
 
 describe("agent Vitest batch orchestration", () => {
+  test("requires complete reporter arguments and rejects unsupported overrides", () => {
+    for (const args of [
+      ["--reporter=junit"],
+      ["--outputFile.junit=report.xml"],
+      ["--reporter=default"],
+      ["--outputFile.junit="],
+      ["--passWithNoTests"],
+      [
+        "--reporter=junit",
+        "--outputFile.junit=one.xml",
+        "--outputFile.junit=two.xml",
+      ],
+    ]) {
+      expect(() => parseAgentTestArgs(args)).toThrow();
+    }
+    expect(
+      parseAgentTestArgs([
+        "--reporter=default",
+        "--reporter=junit",
+        "--outputFile.junit=report.xml",
+      ]).reporterOutfile,
+    ).toBe("report.xml");
+  });
+
+  test("missing, malformed and forged batch evidence cannot publish an aggregate", () => {
+    const fragment = path.join(fixtureRoot, "invalid-fragment.xml");
+    const destination = path.join(fixtureRoot, "invalid-aggregate.xml");
+    expect(() => mergeAgentJunit([fragment], destination)).toThrow();
+    for (const xml of [
+      "<testsuites>",
+      '<testsuites tests="9"><testsuite tests="1"><testcase name="actual" /></testsuite></testsuites>',
+      '<testsuites tests="1" failures="1"><testsuite tests="1" failures="1"><testcase name="failed"><failure>assertion</failure></testcase></testsuite></testsuites>',
+    ]) {
+      writeFileSync(fragment, xml);
+      expect(() => mergeAgentJunit([fragment], destination)).toThrow();
+      expect(existsSync(destination)).toBe(false);
+    }
+    expect(() => mergeAgentJunit([], destination)).toThrow();
+  });
+
   test("keeps sorted file membership isolated and complete", () => {
     expect(createBatches(["a.test.ts", "b.test.ts", "c.test.ts"], 1)).toEqual([
       ["a.test.ts"],
