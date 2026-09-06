@@ -1042,3 +1042,68 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     }
   });
 });
+
+describe("Browser workspace address bar during an in-flight tab operation", () => {
+  const NAVIGATED_WORKSPACE = {
+    ...EXAMPLE_WORKSPACE,
+    tabs: [{ ...EXAMPLE_WORKSPACE.tabs[0], url: "https://docs.elizaos.ai/" }],
+  };
+
+  async function renderWithPendingNavigation() {
+    const pending = deferred<{ tab: (typeof EXAMPLE_WORKSPACE)["tabs"][0] }>();
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockResolvedValueOnce(EXAMPLE_WORKSPACE)
+      .mockResolvedValue(NAVIGATED_WORKSPACE);
+    vi.mocked(client.navigateBrowserWorkspaceTab)
+      .mockReset()
+      .mockImplementation(() => pending.promise);
+
+    render(<BrowserWorkspaceView />);
+    const address = (await screen.findByTestId(
+      "browser-workspace-address-input",
+    )) as HTMLInputElement;
+    await waitFor(() => expect(address.value).toBe("https://example.com/"));
+
+    fireEvent.change(address, { target: { value: "docs.elizaos.ai" } });
+    fireEvent.click(screen.getByLabelText("Go"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    return { address, pending };
+  }
+
+  async function settle(
+    pending: Awaited<ReturnType<typeof renderWithPendingNavigation>>["pending"],
+  ) {
+    pending.resolve({ tab: NAVIGATED_WORKSPACE.tabs[0] });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  it("keeps what the user typed while a navigation was still in flight", async () => {
+    const { address, pending } = await renderWithPendingNavigation();
+
+    // The user changes their mind mid-load, as in a real browser.
+    fireEvent.change(address, {
+      target: { value: "typed-during-flight.test" },
+    });
+    await settle(pending);
+
+    // Completing the navigation used to write the settled URL and clear the
+    // dirty flag unconditionally, which also re-armed the sync effect and left
+    // the bar showing the tab's PREVIOUS address rather than either the typed
+    // text or the navigation target.
+    expect(address.value).toBe("typed-during-flight.test");
+  });
+
+  it("still adopts the settled URL when the user did not type", async () => {
+    // Liveness control: without this, the assertion above would pass just as
+    // well if the address bar simply stopped following navigations.
+    const { address, pending } = await renderWithPendingNavigation();
+    await settle(pending);
+    expect(address.value).toBe("https://docs.elizaos.ai/");
+  });
+});
