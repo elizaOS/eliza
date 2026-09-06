@@ -1071,6 +1071,17 @@ describe("conversation-route chat idempotency wiring", () => {
     expect((receipt?.content as { text?: string } | undefined)?.text).toBe("");
 
     const persistsAfterAbort = createMemory.mock.calls.length;
+    const hydrated = await runRoute("GET", SEND_PATH, state, {});
+    expect(hydrated.captured.payload).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: firstDone?.messageId,
+          role: "assistant",
+          text: "",
+          interrupted: true,
+        }),
+      ]),
+    });
     const retry = await runRoute("POST", STREAM_PATH, state, body);
     // The retried key adopts the interrupted outcome: no second generation,
     // no second persisted pair, the exact same terminal frame.
@@ -1118,11 +1129,102 @@ describe("conversation-route chat idempotency wiring", () => {
       interrupted: true,
     });
 
+    const hydrated = await runRoute("GET", SEND_PATH, state, {});
+    expect(hydrated.captured.payload).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: firstDone?.messageId,
+          text: "partial re",
+          interrupted: true,
+        }),
+      ]),
+    });
     const retry = await runRoute("POST", STREAM_PATH, state, body);
     expect(handleMessage).toHaveBeenCalledTimes(1);
     expect(
       parseDataFrames(retry.record).find((frame) => frame.type === "done"),
     ).toEqual(firstDone);
+  });
+
+  it("GET: preserves empty interrupted diagnostics beside a genuine model reply", async () => {
+    const { state, handleMessage, createMemory, updateMemory, storedMemories } =
+      createHarness();
+    handleMessage.mockImplementationOnce(async () => {
+      throw Object.assign(new Error("generation cancelled"), {
+        code: "TURN_ABORTED",
+      });
+    });
+    const aborted = await runRoute("POST", STREAM_PATH, state, {
+      text: "cancelled turn",
+      clientMessageId: "hydrate-aborted-diagnostics",
+    });
+    const interruptedId = parseDataFrames(aborted.record).find(
+      (frame) => frame.type === "done",
+    )?.messageId;
+    const receipt = storedMemories.find(
+      (memory) => memory.id === interruptedId,
+    );
+    if (!receipt?.id)
+      throw new Error("Expected a persisted interrupted receipt");
+    const terminalFailure = {
+      kind: "provider_issue",
+      message: "Generation was interrupted during shutdown.",
+      transient: true,
+      code: "TURN_ABORTED",
+    };
+    if (!state.runtime) throw new Error("Expected the test runtime");
+    await state.runtime.updateMemory({
+      ...receipt,
+      id: receipt.id,
+      content: {
+        ...receipt.content,
+        failureKind: terminalFailure.kind,
+        terminalFailure,
+      },
+    });
+    const completed = await runRoute("POST", STREAM_PATH, state, {
+      text: "a new turn",
+      clientMessageId: "hydrate-genuine-reply",
+    });
+    const completedDone = parseDataFrames(completed.record).find(
+      (frame) => frame.type === "done",
+    );
+    expect(completedDone?.fullText).toBe("ok");
+    expect(completedDone?.messageId).toBeTruthy();
+    const persistedBeforeRead = new Map(
+      storedMemories.map((memory) => [
+        memory.id,
+        structuredClone(memory.content),
+      ]),
+    );
+    const writesBeforeRead = createMemory.mock.calls.length;
+    const updatesBeforeRead = updateMemory.mock.calls.length;
+
+    const hydrated = await runRoute("GET", SEND_PATH, state, {});
+
+    expect(hydrated.captured.payload).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: interruptedId,
+          role: "assistant",
+          text: "",
+          interrupted: true,
+          failureKind: terminalFailure.kind,
+          terminalFailure,
+        }),
+        expect.objectContaining({
+          id: completedDone?.messageId,
+          role: "assistant",
+          text: completedDone?.fullText,
+        }),
+      ]),
+    });
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(createMemory).toHaveBeenCalledTimes(writesBeforeRead);
+    expect(updateMemory).toHaveBeenCalledTimes(updatesBeforeRead);
+    expect(
+      new Map(storedMemories.map((memory) => [memory.id, memory.content])),
+    ).toEqual(persistedBeforeRead);
   });
 
   it("SSE: a persisted interrupted receipt survives outcome-marker settlement failure and restart", async () => {
@@ -1742,8 +1844,24 @@ describe("conversation-route chat idempotency wiring", () => {
     }
   });
 
-  it("rapid identical wallet guidance persists distinct rows on stream and JSON routes", async () => {
+  it("rapid identical model replies persist distinct rows on stream and JSON routes", async () => {
     const { state, handleMessage, storedMemories } = createHarness();
+    const modelReply = "Your wallet address is available in Wallet.";
+    handleMessage.mockImplementation(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: { onStreamChunk?: (chunk: string) => Promise<void> | void },
+      ) => {
+        await options?.onStreamChunk?.(modelReply);
+        return {
+          didRespond: true,
+          responseContent: { text: modelReply },
+          responseMessages: [],
+        };
+      },
+    );
     const requests = [
       [STREAM_PATH, "wallet-stream-a"],
       [STREAM_PATH, "wallet-stream-b"],
@@ -1761,7 +1879,7 @@ describe("conversation-route chat idempotency wiring", () => {
         const done = parseDataFrames(result.record).find(
           (frame) => frame.type === "done",
         );
-        expect(done?.fullText).toContain("Detected wallets");
+        expect(done?.fullText).toBe(modelReply);
         expect(done?.messageId).toBeTruthy();
         messageIds.push(String(done?.messageId));
       } else {
@@ -1769,18 +1887,21 @@ describe("conversation-route chat idempotency wiring", () => {
           text?: string;
           messageId?: string;
         };
-        expect(payload.text).toContain("Detected wallets");
+        expect(payload.text).toBe(modelReply);
         expect(payload.messageId).toBeTruthy();
         messageIds.push(String(payload.messageId));
       }
     }
 
-    expect(handleMessage).not.toHaveBeenCalled();
+    expect(handleMessage).toHaveBeenCalledTimes(requests.length);
     expect(new Set(messageIds)).toHaveProperty("size", 4);
     for (const messageId of messageIds) {
       expect(
         storedMemories.some(
-          (memory) => memory.id === messageId && memory.entityId === AGENT_ID,
+          (memory) =>
+            memory.id === messageId &&
+            memory.entityId === AGENT_ID &&
+            memory.content.text === modelReply,
         ),
       ).toBe(true);
     }
