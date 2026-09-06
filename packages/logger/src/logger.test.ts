@@ -35,6 +35,19 @@ describe("logger", () => {
     expect(recentLogs()).toContain("info [LOGGER-TEST] hello (requestId=abc)");
   });
 
+  it("formats custom error with error name in pretty extras", () => {
+    const logger = bufferLogger();
+
+    logger.error(
+      { src: "logger-test", err: new TypeError("bad type") },
+      "failed",
+    );
+
+    expect(recentLogs()).toContain(
+      "error [LOGGER-TEST] failed (err=TypeError: bad type)",
+    );
+  });
+
   it("removes log listeners through the unsubscribe function", () => {
     const logger = bufferLogger();
     const listener = vi.fn<(entry: LogEntry) => void>();
