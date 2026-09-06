@@ -1,5 +1,5 @@
 /** Exercises entitlement publication against a real PGlite database, including atomic lifecycle publication, leases and actual billing admission readback. */
-import { readFile } from "node:fs/promises";
+
 import {
   afterAll,
   afterEach,
@@ -10,6 +10,7 @@ import {
   setDefaultTimeout,
   test,
 } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -177,6 +178,9 @@ async function prepare(kind: "subscription" | "invoice" = "subscription") {
 
 async function expectUnapplied() {
   expect(await policyHistory()).toEqual(preparedPolicy);
+  expect(
+    (await getPgliteClientForTests().query("SELECT * FROM subscription_notice_intents")).rows,
+  ).toEqual([]);
   expect((await authority.findById(ORG_A, SUB_A))?.lifecycle_revision).toBe(1);
   expect(await authority.listRevisions(ORG_A, SUB_A)).toHaveLength(1);
   expect((await entitlements.find(ORG_A))?.plan_key).toBe("plus_monthly");
@@ -188,6 +192,7 @@ afterEach(async () => {
     DROP TRIGGER IF EXISTS fail_projection ON organization_entitlements;
     DROP TRIGGER IF EXISTS fail_receipt ON billing_subscription_event_receipts;
     DROP TRIGGER IF EXISTS fail_policy_audit ON organization_policy_audit;
+    DROP TRIGGER IF EXISTS fail_notice ON subscription_notice_intents;
   `);
 });
 
@@ -213,8 +218,22 @@ describe("atomic terminal subscription finalization", () => {
       sourceRevision: "2",
       projectionRevision: "2",
     });
+    const notices = await getPgliteClientForTests().query(
+      "SELECT * FROM subscription_notice_intents",
+    );
+    expect(notices.rows).toEqual([
+      expect.objectContaining({
+        organization_id: ORG_A,
+        subscription_id: SUB_A,
+        source_revision: 2,
+        state: "policy_unavailable",
+      }),
+    ]);
     await operations.finalizeLifecycleEvent(input);
     expect(await policyHistory()).toEqual(published);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM subscription_notice_intents")).rows,
+    ).toEqual(notices.rows);
     const lifecycle = await authority.findById(ORG_A, SUB_A);
     const projection = await entitlements.find(ORG_A);
     const receipt = await operations.findEventReceipt(ORG_A, RECEIPT);
@@ -233,6 +252,15 @@ describe("atomic terminal subscription finalization", () => {
       "SELECT * FROM subscription_allowance_transactions",
     );
     expect(grants.rows).toEqual([]);
+  });
+
+  test("notice insertion failure rolls back source, projection, receipt, generation and audit together", async () => {
+    const input = await prepare();
+    await getPgliteClientForTests().exec(`CREATE FUNCTION reject_notice_insert() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected notice insertion failure'; END $$;
+      CREATE TRIGGER fail_notice BEFORE INSERT ON subscription_notice_intents FOR EACH ROW EXECUTE FUNCTION reject_notice_insert();`);
+    await expect(operations.finalizeLifecycleEvent(input)).rejects.toThrow();
+    await expectUnapplied();
+    expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(true);
   });
 
   test("a projection failure rolls back the lifecycle journal and leaves the receipt retryable", async () => {
@@ -443,9 +471,19 @@ describe("atomic terminal subscription finalization", () => {
       expectedProjectionRevision: 2,
     });
     const replacementPolicy = await policyHistory();
+    const replacementNotices = await getPgliteClientForTests().query(
+      "SELECT * FROM subscription_notice_intents ORDER BY id",
+    );
     const replay = await operations.finalizeLifecycleEvent(input);
     expect(replay.outcome).toBe("already_applied");
     expect(await policyHistory()).toEqual(replacementPolicy);
+    expect(
+      (
+        await getPgliteClientForTests().query(
+          "SELECT * FROM subscription_notice_intents ORDER BY id",
+        )
+      ).rows,
+    ).toEqual(replacementNotices.rows);
     expect(await entitlements.find(ORG_A)).toEqual(replacement.entitlement);
     expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(true);
     expect(await authority.listRevisions(ORG_A, SUB_A)).toHaveLength(2);

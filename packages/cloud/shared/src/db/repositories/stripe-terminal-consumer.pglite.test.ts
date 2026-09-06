@@ -1,6 +1,7 @@
 /** Exercises the actual Stripe queue consumer and primary lifecycle finalizer on PGlite with only Stripe retrieval controlled at the external boundary. */
-import { readFile } from "node:fs/promises";
+
 import { afterAll, beforeAll, beforeEach, expect, mock, setDefaultTimeout, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -210,6 +211,7 @@ test("historical applied replay acknowledges its exact receipt without retrievin
   expect(projection).toMatchObject({ plan_key: "free", source_subscription_revision: 3 });
   const revisions = await authority.listRevisions(ORG_A, SUB_A);
   const policyAudit = await rows("organization_policy_audit");
+  const notices = await rows("subscription_notice_intents");
   const association = await rows("organization_subscription_authorities");
   let requests = 0;
   retrieve = async () => {
@@ -222,6 +224,7 @@ test("historical applied replay acknowledges its exact receipt without retrievin
   expect(await entitlements.find(ORG_A)).toEqual(projection);
   expect(await authority.listRevisions(ORG_A, SUB_A)).toEqual(revisions);
   expect(await rows("organization_policy_audit")).toEqual(policyAudit);
+  expect(await rows("subscription_notice_intents")).toEqual(notices);
   expect(await rows("organization_subscription_authorities")).toEqual(association);
   expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(false);
   const altered = delivery("evt_first");

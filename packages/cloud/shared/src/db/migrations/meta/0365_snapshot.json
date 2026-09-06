@@ -11971,6 +11971,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "quota_admission_scope": {
+          "name": "quota_admission_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unclassified'"
+        },
         "sandbox_id": {
           "name": "sandbox_id",
           "type": "text",
@@ -15969,6 +15976,143 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.app_billing_registrations": {
+      "name": "app_billing_registrations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "app_id": {
+          "name": "app_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_organization_id": {
+          "name": "owner_organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "infrastructure_payer_organization_id": {
+          "name": "infrastructure_payer_organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "registered_by_user_id": {
+          "name": "registered_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_environment": {
+          "name": "provider_environment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "merchant_state": {
+          "name": "merchant_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unconfigured'"
+        },
+        "policy_state": {
+          "name": "policy_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unconfigured'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "app_billing_registrations_app_environment_idx": {
+          "name": "app_billing_registrations_app_environment_idx",
+          "columns": [
+            {
+              "expression": "app_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider_environment",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "app_billing_registrations_id_app_idx": {
+          "name": "app_billing_registrations_id_app_idx",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "app_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "app_billing_registrations_owner_fk": {
+          "name": "app_billing_registrations_owner_fk",
+          "tableFrom": "app_billing_registrations",
+          "tableTo": "apps",
+          "columnsFrom": [
+            "app_id",
+            "owner_organization_id",
+            "registered_by_user_id"
+          ],
+          "columnsTo": [
+            "id",
+            "organization_id",
+            "created_by_user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "app_billing_registrations_state_check": {
+          "name": "app_billing_registrations_state_check",
+          "value": "\"app_billing_registrations\".\"merchant_state\" = 'unconfigured' AND \"app_billing_registrations\".\"policy_state\" = 'unconfigured' AND \"app_billing_registrations\".\"provider_environment\" IN ('test','live') AND \"app_billing_registrations\".\"infrastructure_payer_organization_id\" = \"app_billing_registrations\".\"owner_organization_id\""
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.app_charge_callback_outbox": {
       "name": "app_charge_callback_outbox",
       "schema": "",
@@ -18355,6 +18499,116 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.app_subscriber_accounts": {
+      "name": "app_subscriber_accounts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "registration_id": {
+          "name": "registration_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "app_id": {
+          "name": "app_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subscriber_user_id": {
+          "name": "subscriber_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "account_kind": {
+          "name": "account_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'individual'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "app_subscriber_accounts_subscriber_idx": {
+          "name": "app_subscriber_accounts_subscriber_idx",
+          "columns": [
+            {
+              "expression": "registration_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "subscriber_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "app_subscriber_accounts_registration_fk": {
+          "name": "app_subscriber_accounts_registration_fk",
+          "tableFrom": "app_subscriber_accounts",
+          "tableTo": "app_billing_registrations",
+          "columnsFrom": [
+            "registration_id",
+            "app_id"
+          ],
+          "columnsTo": [
+            "id",
+            "app_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "app_subscriber_accounts_consent_fk": {
+          "name": "app_subscriber_accounts_consent_fk",
+          "tableFrom": "app_subscriber_accounts",
+          "tableTo": "app_users",
+          "columnsFrom": [
+            "app_id",
+            "subscriber_user_id"
+          ],
+          "columnsTo": [
+            "app_id",
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "app_subscriber_accounts_kind_check": {
+          "name": "app_subscriber_accounts_kind_check",
+          "value": "\"app_subscriber_accounts\".\"account_kind\" = 'individual'"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.app_usage_projections": {
       "name": "app_usage_projections",
       "schema": "",
@@ -18973,6 +19227,33 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "apps_billing_owner_idx": {
+          "name": "apps_billing_owner_idx",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -34075,6 +34356,13 @@
           "primaryKey": true,
           "notNull": true
         },
+        "limit_override_authorized": {
+          "name": "limit_override_authorized",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "bytes_used": {
           "name": "bytes_used",
           "type": "bigint",
@@ -35368,10 +35656,110 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.organization_policy_audit": {
+      "name": "organization_policy_audit",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation": {
+          "name": "generation",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor": {
+          "name": "actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "change": {
+          "name": "change",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "organization_policy_audit_generation_idx": {
+          "name": "organization_policy_audit_generation_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "organization_policy_audit_organization_id_organizations_id_fk": {
+          "name": "organization_policy_audit_organization_id_organizations_id_fk",
+          "tableFrom": "organization_policy_audit",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.organization_subscription_authorities": {
       "name": "organization_subscription_authorities",
       "schema": "",
       "columns": {
+        "policy_generation": {
+          "name": "policy_generation",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
         "organization_id": {
           "name": "organization_id",
           "type": "uuid",
@@ -56329,6 +56717,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "96c035ab-65bf-4969-96d7-58bdfb39f5ab",
-  "prevId": "3436df5f-98af-49b8-9218-f5bd6d34b0a1"
+  "id": "79fc0688-30f6-48b8-a180-fb64efd01578",
+  "prevId": "c1c285c5-93d0-48e0-975c-6d1cfd881802"
 }

@@ -17,6 +17,7 @@ import {
   processSubscriptionNotice,
   sweepSubscriptionNotices,
 } from "../../lib/services/subscription-notices";
+import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -57,27 +58,7 @@ beforeAll(async () => {
     CREATE TABLE users (id uuid PRIMARY KEY);
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id));
   `);
-  const migration = await readFile(
-    new URL("../migrations/0373_subscription_authority.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await getPgliteClientForTests().exec(statement);
-  }
-  const eraseMigration = await readFile(
-    new URL("../migrations/0374_subscription_funding_transaction_uniqueness.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of eraseMigration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await getPgliteClientForTests().exec(statement);
-  }
-  const identityMigration = await readFile(
-    new URL("../migrations/0379_subscription_account_authority.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of identityMigration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await getPgliteClientForTests().exec(statement);
-  }
+  await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   const noticeMigration = await readFile(
     new URL("../migrations/0382_subscription_notice_intents.sql", import.meta.url),
     "utf8",

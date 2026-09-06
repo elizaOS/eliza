@@ -270,7 +270,7 @@ describe("account deletion export", () => {
     });
 
     const artifact = JSON.parse(new TextDecoder().decode(bytes));
-    expect(artifact.tables).toHaveLength(8);
+    expect(artifact.tables).toHaveLength(10);
     expect(artifact.tables.map((table: { table: string }) => table.table)).toEqual([
       "app_analytics",
       "app_billing_registrations",
@@ -295,11 +295,27 @@ describe("account deletion export", () => {
     expect(
       artifact.tables.find((table: { table: string }) => table.table === "secret_audit_log"),
     ).toMatchObject({ policy: "retained_security_audit", rows: [{ action: "read" }] });
+    expect(
+      artifact.tables.find(
+        (table: { table: string }) => table.table === "subscription_notice_intents",
+      ),
+    ).toMatchObject({
+      policy: "portable_subject_data",
+      rows: [{ organization_id: ORGANIZATION_ID, state: "policy_unavailable" }],
+    });
+    expect(
+      artifact.tables.find(
+        (table: { table: string }) => table.table === "subscription_notice_attempts",
+      ),
+    ).toMatchObject({
+      policy: "portable_subject_data",
+      rows: [{ organization_id: ORGANIZATION_ID, status: "uncertain" }],
+    });
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: "repeatable read",
       accessMode: "read only",
     });
-    expect(execute).toHaveBeenCalledTimes(16);
+    expect(execute).toHaveBeenCalledTimes(20);
 
     execute.mockReset();
     execute.mockResolvedValueOnce({

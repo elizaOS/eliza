@@ -197,7 +197,11 @@ async function policyHistory(organizationId: string) {
     "SELECT * FROM organization_policy_audit WHERE organization_id=$1 ORDER BY generation",
     [organizationId],
   );
-  return { generation: generation.rows[0].value, audit: audit.rows };
+  const notices = await setupClient!.query(
+    "SELECT * FROM subscription_notice_intents WHERE organization_id=$1 ORDER BY id",
+    [organizationId],
+  );
+  return { generation: generation.rows[0].value, audit: audit.rows, notices: notices.rows };
 }
 
 function finalizationOutcome(input: Parameters<typeof operations.finalizeLifecycleEvent>[0]) {
@@ -227,7 +231,10 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     await installOrganizationPolicyTestSchema(async (query) => {
       await setupClient!.query(query);
     });
-    const noticeMigration = await readFile(new URL("../migrations/0382_subscription_notice_intents.sql", import.meta.url), "utf8");
+    const noticeMigration = await readFile(
+      new URL("../migrations/0382_subscription_notice_intents.sql", import.meta.url),
+      "utf8",
+    );
     for (const statement of noticeMigration.split("--> statement-breakpoint")) {
       if (statement.trim()) await setupClient.query(statement);
     }
@@ -857,6 +864,14 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       const committedPolicy = await policyHistory(source.organizationId);
       expect(BigInt(committedPolicy.generation)).toBe(BigInt(initialPolicy.generation) + 1n);
       expect(committedPolicy.audit).toHaveLength(initialPolicy.audit.length + 1);
+      expect(committedPolicy.notices).toEqual([
+        expect.objectContaining({
+          organization_id: source.organizationId,
+          subscription_id: source.subscriptionId,
+          source_revision: "2",
+          state: "policy_unavailable",
+        }),
+      ]);
     } finally {
       await locker.query("ROLLBACK");
       await Promise.all(pending);

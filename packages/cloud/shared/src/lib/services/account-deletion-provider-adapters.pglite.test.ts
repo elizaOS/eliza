@@ -113,6 +113,42 @@ describe("account deletion restrictive-grant terminal absence", () => {
     await dbWrite.execute(
       sql`UPDATE organizations SET account_lifecycle_state='deletion_irreversible' WHERE id=${ORGANIZATION_ID}`,
     );
+    const before = await getPgliteClientForTests().query(
+      "SELECT * FROM subscription_notice_intents",
+    );
+    const attemptsBefore = await getPgliteClientForTests().query(
+      "SELECT * FROM subscription_notice_attempts",
+    );
+    const sourceBefore = await getPgliteClientForTests().query(
+      "SELECT * FROM billing_subscriptions",
+    );
+    const revisionsBefore = await getPgliteClientForTests().query(
+      "SELECT * FROM billing_subscription_revisions",
+    );
+    const identityBefore = await getPgliteClientForTests().query(
+      "SELECT * FROM organization_subscription_authorities",
+    );
+    await getPgliteClientForTests().exec(
+      `CREATE TABLE notice_erasure_restrict_probe(notice_id uuid REFERENCES subscription_notice_intents(id) ON DELETE RESTRICT); INSERT INTO notice_erasure_restrict_probe SELECT id FROM subscription_notice_intents;`,
+    );
+    await expect(adapter.execute(context, "blocked-notice-erasure")).rejects.toThrow();
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM subscription_notice_intents")).rows,
+    ).toEqual(before.rows);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM subscription_notice_attempts")).rows,
+    ).toEqual(attemptsBefore.rows);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM billing_subscriptions")).rows,
+    ).toEqual(sourceBefore.rows);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM billing_subscription_revisions")).rows,
+    ).toEqual(revisionsBefore.rows);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM organization_subscription_authorities"))
+        .rows,
+    ).toEqual(identityBefore.rows);
+    await getPgliteClientForTests().exec("DROP TABLE notice_erasure_restrict_probe");
     await adapter.execute(context, "delete-local-grants-once");
     await expect(adapter.inspect(context)).resolves.toMatchObject({ state: "complete" });
 

@@ -57,8 +57,6 @@ beforeAll(async () => {
   for (const statement of [
     "CREATE TABLE organizations (id uuid PRIMARY KEY, name text NOT NULL)",
     "CREATE TABLE users (id uuid PRIMARY KEY, email text NOT NULL)",
-    "CREATE TABLE subscription_notice_intents (id uuid PRIMARY KEY, organization_id uuid NOT NULL, state text NOT NULL)",
-    "CREATE TABLE subscription_notice_attempts (id uuid PRIMARY KEY, organization_id uuid NOT NULL, status text NOT NULL)",
     `CREATE TABLE conversations (
       id uuid PRIMARY KEY,
       user_id uuid NOT NULL,
@@ -101,8 +99,6 @@ beforeAll(async () => {
     `INSERT INTO users VALUES
       ('${USER_ID}', 'owned@example.test'),
       ('${FOREIGN_USER_ID}', 'foreign@example.test')`,
-    `INSERT INTO subscription_notice_intents VALUES ('99999999-9999-4999-8999-999999999991','${ORGANIZATION_ID}','policy_unavailable'),('99999999-9999-4999-8999-999999999992','${FOREIGN_ORGANIZATION_ID}','foreign')`,
-    `INSERT INTO subscription_notice_attempts VALUES ('99999999-9999-4999-8999-999999999993','${ORGANIZATION_ID}','uncertain'),('99999999-9999-4999-8999-999999999994','${FOREIGN_ORGANIZATION_ID}','foreign')`,
     `INSERT INTO conversations VALUES
       ('33333333-3333-4333-8333-333333333331', '${USER_ID}', '${ORGANIZATION_ID}', 'Owned conversation'),
       ('33333333-3333-4333-8333-333333333332', '${FOREIGN_USER_ID}', '${FOREIGN_ORGANIZATION_ID}', 'Foreign conversation')`,
@@ -130,6 +126,52 @@ beforeAll(async () => {
       ('${FOREIGN_ORGANIZATION_ID}',3,'foreign_override','${FOREIGN_USER_ID}','{"completionsRpm":99}')`);
   for (const statement of migration.split("--> statement-breakpoint")) {
     if (statement.trim()) await getPgliteClientForTests().exec(statement);
+  }
+  const noticeMigration = await Bun.file(
+    new URL("../../db/migrations/0382_subscription_notice_intents.sql", import.meta.url),
+  ).text();
+  for (const statement of noticeMigration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await getPgliteClientForTests().exec(statement);
+  }
+  for (const [organizationId, subscriptionId, noticeId, label] of [
+    [
+      ORGANIZATION_ID,
+      "99999999-9999-4999-8999-999999999981",
+      "99999999-9999-4999-8999-999999999991",
+      "owned",
+    ],
+    [
+      FOREIGN_ORGANIZATION_ID,
+      "99999999-9999-4999-8999-999999999982",
+      "99999999-9999-4999-8999-999999999992",
+      "foreign",
+    ],
+  ]) {
+    await getPgliteClientForTests().query(
+      `INSERT INTO billing_subscriptions(id,organization_id,provider_environment,stripe_customer_id,stripe_subscription_id,stripe_subscription_item_id,plan_key,catalog_version,status,current_period_start,current_period_end,lifecycle_revision,provider_object_digest)
+      VALUES ($1,$2,'test',$3,$4,$5,'plus_monthly','v1','canceled','2026-08-01Z','2026-09-01Z',1,$6)`,
+      [
+        subscriptionId,
+        organizationId,
+        `cus_${label}`,
+        `sub_${label}`,
+        `si_${label}`,
+        "a".repeat(64),
+      ],
+    );
+    await getPgliteClientForTests().query(
+      `INSERT INTO billing_subscription_revisions(organization_id,subscription_id,revision,source,provider_environment,stripe_customer_id,stripe_subscription_id,stripe_subscription_item_id,plan_key,catalog_version,status,current_period_start,current_period_end,cancel_at_period_end,provider_object_digest)
+      SELECT organization_id,id,1,'webhook',provider_environment,stripe_customer_id,stripe_subscription_id,stripe_subscription_item_id,plan_key,catalog_version,status,current_period_start,current_period_end,false,provider_object_digest FROM billing_subscriptions WHERE id=$1`,
+      [subscriptionId],
+    );
+    await getPgliteClientForTests().query(
+      `INSERT INTO subscription_notice_intents(id,organization_id,subscription_id,source_revision,state) VALUES ($1,$2,$3,1,'uncertain')`,
+      [noticeId, organizationId, subscriptionId],
+    );
+    await getPgliteClientForTests().query(
+      `INSERT INTO subscription_notice_attempts(notice_id,organization_id,policy_digest,status,reason,started_at,expires_at,completed_at) VALUES ($1,$2,$3,'uncertain','submission_outcome_unrecorded',now()-interval '2 minutes',now()-interval '1 minute',now())`,
+      [noticeId, organizationId, "b".repeat(64)],
+    );
   }
   await dbWrite.execute(`INSERT INTO app_users SELECT a.id,u.id FROM apps a CROSS JOIN users u`);
   await dbWrite.execute(
@@ -204,10 +246,20 @@ test("exports transitive owned rows and excludes cross-tenant rows through real 
     new Set(["55555555-5555-4555-8555-555555555551", "55555555-5555-4555-8555-555555555552"]),
   );
   expect(table("subscription_notice_intents")?.rows).toEqual([
-    expect.objectContaining({ organization_id: ORGANIZATION_ID, state: "policy_unavailable" }),
+    expect.objectContaining({
+      organization_id: ORGANIZATION_ID,
+      subscription_id: "99999999-9999-4999-8999-999999999981",
+      source_revision: 1,
+      state: "uncertain",
+    }),
   ]);
   expect(table("subscription_notice_attempts")?.rows).toEqual([
-    expect.objectContaining({ organization_id: ORGANIZATION_ID, status: "uncertain" }),
+    expect.objectContaining({
+      organization_id: ORGANIZATION_ID,
+      notice_id: "99999999-9999-4999-8999-999999999991",
+      status: "uncertain",
+      reason: "submission_outcome_unrecorded",
+    }),
   ]);
   expect(JSON.stringify(artifact)).not.toContain("foreign");
   expect(JSON.stringify(artifact)).not.toContain("owned-secret");
