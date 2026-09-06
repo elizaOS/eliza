@@ -148,6 +148,7 @@ describe("promoted Notes execution", () => {
       params: { content: "Conversation context QA" },
     });
     expect(deleted.success).toBe(true);
+    expect(deleted.data?.note).toEqual(updated.data?.note);
     expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
 
     for (const result of [created, listed, updated, deleted]) {
@@ -157,6 +158,7 @@ describe("promoted Notes execution", () => {
         modelReplyRequired: true,
       });
       expect(result).not.toHaveProperty("userFacingText");
+      expect(result).not.toHaveProperty("text");
       expect(result).not.toHaveProperty("verifiedUserFacing");
       expect(result).not.toHaveProperty("turnComplete");
     }
@@ -430,7 +432,7 @@ describe("NOTES operation parsing", () => {
     const result = await run(runtime, {});
 
     expect(result.success).toBe(true);
-    expect(result.text).toBe("You have 1 note.");
+    expect(result.data).toMatchObject({ count: 1, total: 1 });
     expect(result.data?.notes).toMatchObject([
       { title: "wifi is on the fridge", body: "", color: "yellow" },
     ]);
@@ -446,7 +448,6 @@ describe("NOTES operation parsing", () => {
     expect(callback).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       success: true,
-      text: "You have 1 note.",
       transcriptVisibility: "internal",
       modelReplyRequired: true,
       data: {
@@ -456,6 +457,7 @@ describe("NOTES operation parsing", () => {
       },
     });
     expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("text");
     expect(result).not.toHaveProperty("modelReplyFallback");
     expect(result).not.toHaveProperty("verifiedUserFacing");
     expect(result).not.toHaveProperty("turnComplete");
@@ -498,7 +500,6 @@ describe("NOTES operation parsing", () => {
 
     expect(result).toMatchObject({
       success: true,
-      text: "You have 2 notes.",
       data: {
         count: 2,
         total: 2,
@@ -549,7 +550,6 @@ describe("NOTES operation parsing", () => {
     });
 
     const match = await run(runtime, { action: "list", content: "PLUMBER" });
-    expect(match.text).toBe("I found 1 matching note.");
     expect(match.data?.notes).toMatchObject([
       {
         title: "the plumber comes thursday morning",
@@ -564,7 +564,6 @@ describe("NOTES operation parsing", () => {
     });
 
     const absent = await run(runtime, { action: "list", query: "dentist" });
-    expect(absent.text).toBe("I couldn't find a matching note.");
     expect(absent.data?.notes).toEqual([]);
     expect(absent.data).toMatchObject({
       count: 0,
@@ -582,7 +581,10 @@ describe("NOTES operation parsing", () => {
       content: "Demo Checklist: mic, charger, water",
     });
     expect(created.success).toBe(true);
-    expect(created.text).toContain("Demo Checklist — mic, charger, water");
+    expect(created.data?.note).toMatchObject({
+      title: "Demo Checklist",
+      body: "mic, charger, water",
+    });
   });
 
   it.each(["Stable Local Notes QA", "QA: afternoon"])(
@@ -596,9 +598,10 @@ describe("NOTES operation parsing", () => {
       });
 
       expect(created.success).toBe(true);
-      expect(created.text).toContain(
-        `${title} — Cerebras local note persistence`,
-      );
+      expect(created.data?.note).toMatchObject({
+        title,
+        body: "Cerebras local note persistence",
+      });
       const listed = await run(runtime, { action: "list" });
       expect(listed.data?.notes).toMatchObject([
         {
@@ -674,7 +677,7 @@ describe("NOTES operation parsing", () => {
       content: "bins go out tuesday",
     });
     expect(created.success).toBe(true);
-    expect(created.text).toContain("saved a note");
+    expect(created.data?.note).toMatchObject({ title: "bins go out tuesday" });
 
     const listed = await run(runtime, { action: "list" });
     expect(listed.success).toBe(true);
@@ -688,17 +691,19 @@ describe("NOTES operation parsing", () => {
       body: "bins go out wednesday",
     });
     expect(updated.success).toBe(true);
-    expect(updated.text).toContain("bins go out wednesday");
+    expect(updated.data?.note).toMatchObject({
+      title: "bins go out wednesday",
+    });
 
     const deleted = await run(runtime, {
       action: "delete",
       content: "wednesday",
     });
     expect(deleted.success).toBe(true);
-    expect(deleted.text).toContain("deleted the note");
+    expect(deleted.data?.note).toEqual(updated.data?.note);
 
     const after = await run(runtime, { action: "list" });
-    expect(after.text).toBe("You don't have any notes yet.");
+    expect(after.data).toMatchObject({ count: 0, total: 0, notes: [] });
   });
 });
 
@@ -747,7 +752,10 @@ describe("identical-duplicate notes", () => {
 
     const result = await run(runtime, { action: "delete", content: "milk" });
     expect(result.success).toBe(true);
-    expect(result.text).toContain("removed 4 identical copies");
+    expect(result.data).toMatchObject({
+      removedCount: 4,
+      note: { title: "i need to buy milk", body: "" },
+    });
 
     const after = await run(runtime, { action: "list" });
     expect(after.data?.notes).toMatchObject([
@@ -775,7 +783,6 @@ describe("identical-duplicate notes", () => {
       body: "i already bought milk",
     });
 
-    expect(result.text).toContain("consolidated 4 identical copies");
     expect(result.data).toMatchObject({ consolidatedCount: 3 });
     const after = await run(runtime, { action: "list" });
     expect(after.data).toMatchObject({ count: 1, total: 1 });
